@@ -1,6 +1,14 @@
 import { config } from "dotenv";
 config({ path: "../../.env" });
-import { collectionWorker } from "./workers/collection.js";
+import { Worker } from "bullmq";
+import { createRedisConnection } from "@newsletter/shared/db";
+import { handleCollectionJob } from "./workers/collection.js";
+
+const collectionWorker = new Worker(
+  "collection",
+  handleCollectionJob,
+  { connection: createRedisConnection() },
+);
 
 const shutdown = async (): Promise<void> => {
   console.log(JSON.stringify({ event: "worker_shutting_down", queue: "collection" }));

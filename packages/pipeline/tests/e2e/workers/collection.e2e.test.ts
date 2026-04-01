@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
-import { Queue, Worker, type Job } from "bullmq";
+import { Queue, QueueEvents, Worker, type Job } from "bullmq";
 import { rawItems } from "@newsletter/shared/db";
 import { handleCollectionJob } from "../../../src/workers/collection.js";
 import { getTestDb, truncateAll, closeTestDb } from "../setup/test-db.js";
@@ -14,12 +14,14 @@ config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
 describe("Collection Worker E2E", () => {
   let db: AppDb;
   let queue: Queue;
+  let queueEvents: QueueEvents;
   let worker: Worker;
 
   beforeAll(() => {
     db = getTestDb();
     const connection = getTestRedis();
     queue = new Queue("collection-e2e-test", { connection });
+    queueEvents = new QueueEvents("collection-e2e-test", { connection });
     worker = new Worker(
       "collection-e2e-test",
       handleCollectionJob,
@@ -28,6 +30,7 @@ describe("Collection Worker E2E", () => {
 
     return async () => {
       await worker.close();
+      await queueEvents.close();
       await queue.close();
       await closeTestRedis();
       await closeTestDb();
@@ -50,7 +53,7 @@ describe("Collection Worker E2E", () => {
       },
     });
 
-    const result = await job.waitUntilFinished(queue.events, 30000) as CollectorResult;
+    const result = await job.waitUntilFinished(queueEvents, 30000) as CollectorResult;
 
     expect(result.itemsFetched).toBeGreaterThan(0);
     expect(result.itemsStored).toBeGreaterThan(0);
@@ -71,7 +74,7 @@ describe("Collection Worker E2E", () => {
       },
     });
 
-    const result = await job.waitUntilFinished(queue.events, 30000) as CollectorResult;
+    const result = await job.waitUntilFinished(queueEvents, 30000) as CollectorResult;
 
     expect(result).toHaveProperty("itemsFetched");
     expect(result).toHaveProperty("commentsFetched");
@@ -88,7 +91,7 @@ describe("Collection Worker E2E", () => {
     });
 
     try {
-      await job.waitUntilFinished(queue.events, 10000);
+      await job.waitUntilFinished(queueEvents, 10000);
       expect.fail("Job should have failed");
     } catch (err) {
       expect(String(err)).toContain("Unknown collector");

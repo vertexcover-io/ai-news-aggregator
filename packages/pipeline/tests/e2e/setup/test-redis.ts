@@ -13,9 +13,9 @@ export function getTestRedis(): IORedis {
   return testRedis;
 }
 
-export async function cleanQueues(): Promise<void> {
+export async function cleanQueues(queueName: string = "collection-e2e-test"): Promise<void> {
   const connection = getTestRedis();
-  const queue = new Queue("collection", { connection });
+  const queue = new Queue(queueName, { connection });
   await queue.obliterate({ force: true });
   await queue.close();
 }

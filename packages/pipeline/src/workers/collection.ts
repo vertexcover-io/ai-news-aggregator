@@ -1,5 +1,5 @@
-import { Worker, type Job } from "bullmq";
-import { createRedisConnection, getDb } from "@newsletter/shared/db";
+import type { Job } from "bullmq";
+import { getDb } from "@newsletter/shared/db";
 import { collectHn } from "../collectors/hn.js";
 import type { CollectorResult } from "@newsletter/shared/types";
 
@@ -13,9 +13,3 @@ export async function handleCollectionJob(job: Job): Promise<CollectorResult> {
       throw new Error(`Unknown collector: ${job.name}`);
   }
 }
-
-export const collectionWorker = new Worker(
-  "collection",
-  handleCollectionJob,
-  { connection: createRedisConnection() },
-);
