@@ -1,0 +1,20 @@
+{
+  "version": "https://jsonfeed.org/version/1",
+  "title": "Comments on: Show HN: An open-source AI agent framework",
+  "home_page_url": "https://news.ycombinator.com/item?id=40001111",
+  "feed_url": "https://hnrss.org/item?id=40001111.jsonfeed",
+  "items": [
+    {
+      "id": "https://news.ycombinator.com/item?id=40001112",
+      "content_html": "<p>This looks really promising. The agent loop is clean.</p>",
+      "date_published": "2026-03-31T12:30:00Z",
+      "authors": [{ "name": "dave" }]
+    },
+    {
+      "id": "https://news.ycombinator.com/item?id=40001113",
+      "content_html": "<p>How does this compare to LangChain?</p>",
+      "date_published": "2026-03-31T12:45:00Z",
+      "authors": [{ "name": "eve" }]
+    }
+  ]
+}
