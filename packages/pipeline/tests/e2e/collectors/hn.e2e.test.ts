@@ -1,0 +1,158 @@
+import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { config } from "dotenv";
+import { resolve } from "node:path";
+import { sources } from "@newsletter/shared/db";
+import { rawItems } from "@newsletter/shared/db";
+import { collectHn } from "../../../src/collectors/hn.js";
+import { getTestDb, truncateAll, closeTestDb } from "../setup/test-db.js";
+import type { AppDb } from "@newsletter/shared/db";
+import type { HnCollectConfig } from "@newsletter/shared/types";
+
+config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
+
+describe("HN Collector E2E", () => {
+  let db: AppDb;
+
+  beforeAll(() => {
+    db = getTestDb();
+    return async () => {
+      await closeTestDb();
+    };
+  });
+
+  beforeEach(async () => {
+    await truncateAll();
+  });
+
+  it("fetches items from hnrss.org and stores them in raw_items", async () => {
+    const cfg: HnCollectConfig = {
+      feeds: ["newest"],
+      count: 5,
+      pointsThreshold: 1,
+      commentsPerItem: 0,
+    };
+
+    const result = await collectHn({ db }, null, cfg);
+
+    expect(result.itemsFetched).toBeGreaterThan(0);
+    expect(result.itemsStored).toBeGreaterThan(0);
+    expect(result.durationMs).toBeGreaterThan(0);
+
+    const rows = await db.select().from(rawItems);
+    expect(rows.length).toBeGreaterThanOrEqual(result.itemsStored);
+
+    for (const row of rows) {
+      expect(row.sourceType).toBe("hn");
+      expect(row.title).toBeTruthy();
+      expect(row.url).toBeTruthy();
+      expect(row.externalId).toBeTruthy();
+      expect(row.engagement).toBeDefined();
+    }
+  });
+
+  it("fetches comments and stores them in metadata", async () => {
+    const cfg: HnCollectConfig = {
+      feeds: ["best"],
+      count: 3,
+      pointsThreshold: 50,
+      commentsPerItem: 5,
+    };
+
+    const result = await collectHn({ db }, null, cfg);
+
+    expect(result.commentsFetched).toBeGreaterThanOrEqual(0);
+
+    const rows = await db.select().from(rawItems);
+    for (const row of rows) {
+      const meta = row.metadata as { comments?: unknown[] };
+      expect(meta).toHaveProperty("comments");
+      expect(Array.isArray(meta.comments)).toBe(true);
+    }
+  });
+
+  it("deduplicates on repeated collection via upsert", async () => {
+    const cfg: HnCollectConfig = {
+      feeds: ["newest"],
+      count: 5,
+      pointsThreshold: 1,
+      commentsPerItem: 0,
+    };
+
+    await collectHn({ db }, null, cfg);
+    const firstRunRows = await db.select().from(rawItems);
+    const firstRunCount = firstRunRows.length;
+
+    await collectHn({ db }, null, cfg);
+    const secondRunRows = await db.select().from(rawItems);
+
+    // Same items should be upserted, not duplicated
+    expect(secondRunRows.length).toBe(firstRunCount);
+
+    // updatedAt should be refreshed on second run
+    for (let i = 0; i < firstRunRows.length; i++) {
+      const original = firstRunRows.find(
+        (r) => r.externalId === secondRunRows[i].externalId,
+      );
+      if (original) {
+        expect(secondRunRows[i].updatedAt.getTime()).toBeGreaterThanOrEqual(
+          original.updatedAt.getTime(),
+        );
+      }
+    }
+  });
+
+  it("respects points threshold — all stored items meet minimum", async () => {
+    const highThreshold = 100;
+    const cfg: HnCollectConfig = {
+      feeds: ["best"],
+      count: 10,
+      pointsThreshold: highThreshold,
+      commentsPerItem: 0,
+    };
+
+    await collectHn({ db }, null, cfg);
+
+    const rows = await db.select().from(rawItems);
+    for (const row of rows) {
+      const engagement = row.engagement as { points: number };
+      expect(engagement.points).toBeGreaterThanOrEqual(highThreshold);
+    }
+  });
+
+  it("stores source_url pointing to news.ycombinator.com", async () => {
+    const cfg: HnCollectConfig = {
+      feeds: ["newest"],
+      count: 3,
+      pointsThreshold: 1,
+      commentsPerItem: 0,
+    };
+
+    await collectHn({ db }, null, cfg);
+
+    const rows = await db.select().from(rawItems);
+    for (const row of rows) {
+      expect(row.sourceUrl).toContain("news.ycombinator.com/item?id=");
+    }
+  });
+
+  it("associates items with a source when sourceId is provided", async () => {
+    const [source] = await db
+      .insert(sources)
+      .values({ name: "Hacker News", type: "hn", url: "https://news.ycombinator.com" })
+      .returning();
+
+    const cfg: HnCollectConfig = {
+      feeds: ["newest"],
+      count: 3,
+      pointsThreshold: 1,
+      commentsPerItem: 0,
+    };
+
+    await collectHn({ db }, source.id, cfg);
+
+    const rows = await db.select().from(rawItems);
+    for (const row of rows) {
+      expect(row.sourceId).toBe(source.id);
+    }
+  });
+});

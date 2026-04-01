@@ -49,7 +49,7 @@ describe("collectHn", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const mod = await import("../../collectors/hn.js");
+    const mod = await import("../../../src/collectors/hn.js");
     collectHn = mod.collectHn as typeof collectHn;
   });
 

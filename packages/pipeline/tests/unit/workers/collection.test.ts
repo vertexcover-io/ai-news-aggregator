@@ -5,7 +5,7 @@ vi.mock("bullmq", () => ({
   Worker: vi.fn(),
 }));
 
-vi.mock("../../collectors/hn.js", () => ({
+vi.mock("../../../src/collectors/hn.js", () => ({
   collectHn: vi.fn(),
 }));
 
@@ -15,9 +15,9 @@ vi.mock("@newsletter/shared/db", () => ({
   createRedisConnection: vi.fn(),
 }));
 
-const { collectHn } = await import("../../collectors/hn.js");
+const { collectHn } = await import("../../../src/collectors/hn.js");
 const { getDb } = await import("@newsletter/shared/db");
-const { handleCollectionJob } = await import("../../workers/collection.js");
+const { handleCollectionJob } = await import("../../../src/workers/collection.js");
 
 const mockCollectHn = vi.mocked(collectHn);
 const mockGetDb = vi.mocked(getDb);
