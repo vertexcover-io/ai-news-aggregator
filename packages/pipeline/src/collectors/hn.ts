@@ -202,17 +202,19 @@ export async function collectHn(
 
   let totalComments = 0;
 
-  for (let i = 0; i < allItems.length; i++) {
-    if (i > 0) {
-      await delay(RATE_LIMIT_MS);
-    }
+  if (commentsPerItem > 0) {
+    for (let i = 0; i < allItems.length; i++) {
+      if (i > 0) {
+        await delay(RATE_LIMIT_MS);
+      }
 
-    const comments = await fetchComments(fetchFn, allItems[i].externalId, commentsPerItem);
-    allItems[i].comments = comments;
-    totalComments += comments.length;
+      const comments = await fetchComments(fetchFn, allItems[i].externalId, commentsPerItem);
+      allItems[i].comments = comments;
+      totalComments += comments.length;
 
-    if (comments.length === 0 && allItems[i].engagement.commentCount > 0) {
-      console.warn(`Comment fetch returned empty for item ${allItems[i].externalId}`);
+      if (comments.length === 0 && allItems[i].engagement.commentCount > 0) {
+        console.warn(`Comment fetch returned empty for item ${allItems[i].externalId}`);
+      }
     }
   }
 
