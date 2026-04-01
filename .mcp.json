@@ -5,7 +5,7 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-postgres",
-        "postgresql://newsletter_user:newsletter_pass@localhost:5432/newsletter"
+        "postgresql://newsletter:newsletter@localhost:5432/newsletter"
       ]
     },
     "redis": {
@@ -23,10 +23,7 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-github"
-      ],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "<your-github-pat-here>"
-      }
+      ]
     },
     "playwright": {
       "command": "npx",
