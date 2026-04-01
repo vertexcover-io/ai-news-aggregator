@@ -7,7 +7,7 @@ export async function handleCollectionJob(job: Job): Promise<CollectorResult> {
   switch (job.name) {
     case "hn-collect": {
       const db = getDb();
-      return collectHn({ db }, job.data.config);
+      return collectHn({ db }, job.data.sourceId ?? null, job.data.config);
     }
     default:
       throw new Error(`Unknown collector: ${job.name}`);

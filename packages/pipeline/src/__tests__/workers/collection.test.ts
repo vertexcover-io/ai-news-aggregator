@@ -40,6 +40,7 @@ describe("collection worker dispatch", () => {
     const fakeJob = {
       name: "hn-collect",
       data: {
+        sourceId: 1,
         config: { pointsThreshold: 100, count: 5 },
       },
     };
@@ -50,6 +51,7 @@ describe("collection worker dispatch", () => {
     expect(mockCollectHn).toHaveBeenCalledOnce();
     expect(mockCollectHn).toHaveBeenCalledWith(
       { db: mockGetDb.mock.results[0]?.value },
+      1,
       { pointsThreshold: 100, count: 5 },
     );
     expect(result).toEqual(fakeResult);

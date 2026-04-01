@@ -8,6 +8,8 @@ const DEFAULT_KEYWORDS = [
 ];
 const DEFAULT_POINTS_THRESHOLD = 20;
 const DEFAULT_COUNT = 100;
+const DEFAULT_COMMENTS_PER_ITEM = 20;
+const DEFAULT_FEEDS = ["newest", "best"];
 const MAX_RETRIES = 3;
 const RATE_LIMIT_MS = 500;
 
@@ -22,6 +24,7 @@ interface JsonFeedItem {
   url?: string;
   external_url?: string;
   date_published?: string;
+  author?: { name: string };
   authors?: Array<{ name: string }>;
   content_html?: string;
 }
@@ -31,6 +34,7 @@ interface JsonFeed {
 }
 
 interface ParsedComment {
+  id: string;
   author: string;
   content: string;
   publishedAt: string;
@@ -41,17 +45,21 @@ interface ParsedItem {
   url: string;
   externalId: string;
   author: string | null;
+  content: string | null;
   publishedAt: Date | null;
   sourceUrl: string;
   engagement: { points: number; commentCount: number };
   comments: ParsedComment[];
 }
 
-function buildFeedUrl(config: HnCollectConfig): string {
+function buildFeedUrl(feed: string, config: HnCollectConfig): string {
   const keywords = config.keywords ?? DEFAULT_KEYWORDS;
   const points = config.pointsThreshold ?? DEFAULT_POINTS_THRESHOLD;
   const count = config.count ?? DEFAULT_COUNT;
   const q = keywords.map((k) => k.replace(/ /g, "+")).join("+OR+");
+  if (feed === "best") {
+    return `https://hnrss.org/best.jsonfeed?q=${q}&points=${points}&count=${count}`;
+  }
   return `https://hnrss.org/newest.jsonfeed?q=${q}&points=${points}&count=${count}`;
 }
 
@@ -111,16 +119,18 @@ async function fetchWithRetry(
 async function fetchComments(
   fetchFn: typeof fetch,
   hnId: string,
+  count: number,
 ): Promise<ParsedComment[]> {
   try {
-    const url = `https://hnrss.org/item?id=${hnId}.jsonfeed`;
+    const url = `https://hnrss.org/item.jsonfeed?id=${hnId}&count=${count}`;
     const response = await fetchFn(url);
     if (!response.ok) {
       return [];
     }
     const data = await response.json() as JsonFeed;
     return (data.items ?? []).map((item) => ({
-      author: item.authors?.[0]?.name ?? "unknown",
+      id: extractHnId(item) ?? "",
+      author: item.author?.name ?? item.authors?.[0]?.name ?? "unknown",
       content: item.content_html ?? "",
       publishedAt: item.date_published ?? "",
     }));
@@ -150,7 +160,8 @@ function parseItems(feed: JsonFeed): ParsedItem[] {
       title: item.title,
       url: item.url ?? "",
       externalId: hnId,
-      author: item.authors?.[0]?.name ?? null,
+      author: item.author?.name ?? item.authors?.[0]?.name ?? null,
+      content: item.content_html ?? null,
       publishedAt: item.date_published ? new Date(item.date_published) : null,
       sourceUrl: `https://news.ycombinator.com/item?id=${hnId}`,
       engagement,
@@ -163,41 +174,60 @@ function parseItems(feed: JsonFeed): ParsedItem[] {
 
 export async function collectHn(
   deps: HnCollectorDeps,
+  sourceId: number | null,
   config: HnCollectConfig,
 ): Promise<CollectorResult> {
   const startTime = Date.now();
   const fetchFn = deps.fetchFn ?? fetch;
+  const feeds = config.feeds ?? DEFAULT_FEEDS;
+  const commentsPerItem = config.commentsPerItem ?? DEFAULT_COMMENTS_PER_ITEM;
 
-  const feedUrl = buildFeedUrl(config);
-  const feed = await fetchWithRetry(fetchFn, feedUrl);
+  const seenIds = new Set<string>();
+  const allItems: ParsedItem[] = [];
 
-  const parsedItems = parseItems(feed);
+  for (const feed of feeds) {
+    const feedUrl = buildFeedUrl(feed, config);
+    const feedData = await fetchWithRetry(fetchFn, feedUrl);
+    const items = parseItems(feedData);
+    for (const item of items) {
+      if (!seenIds.has(item.externalId)) {
+        seenIds.add(item.externalId);
+        allItems.push(item);
+      }
+    }
+    if (feed !== feeds[feeds.length - 1]) {
+      await delay(RATE_LIMIT_MS);
+    }
+  }
+
   let totalComments = 0;
 
-  for (let i = 0; i < parsedItems.length; i++) {
+  for (let i = 0; i < allItems.length; i++) {
     if (i > 0) {
       await delay(RATE_LIMIT_MS);
     }
 
-    const comments = await fetchComments(fetchFn, parsedItems[i].externalId);
-    parsedItems[i].comments = comments;
+    const comments = await fetchComments(fetchFn, allItems[i].externalId, commentsPerItem);
+    allItems[i].comments = comments;
     totalComments += comments.length;
 
-    if (comments.length === 0 && parsedItems[i].engagement.commentCount > 0) {
-      console.warn(`Comment fetch returned empty for item ${parsedItems[i].externalId}`);
+    if (comments.length === 0 && allItems[i].engagement.commentCount > 0) {
+      console.warn(`Comment fetch returned empty for item ${allItems[i].externalId}`);
     }
   }
 
   let itemsStored = 0;
 
-  if (parsedItems.length > 0) {
-    const rows = parsedItems.map((item) => ({
+  if (allItems.length > 0) {
+    const rows = allItems.map((item) => ({
+      sourceId: sourceId,
       sourceType: "hn" as const,
       externalId: item.externalId,
       title: item.title,
       url: item.url,
       sourceUrl: item.sourceUrl,
       author: item.author,
+      content: item.content,
       publishedAt: item.publishedAt,
       collectedAt: new Date(),
       engagement: item.engagement,
@@ -214,11 +244,11 @@ export async function collectHn(
       },
     });
 
-    itemsStored = parsedItems.length;
+    itemsStored = allItems.length;
   }
 
   return {
-    itemsFetched: parsedItems.length,
+    itemsFetched: allItems.length,
     commentsFetched: totalComments,
     itemsStored,
     durationMs: Date.now() - startTime,

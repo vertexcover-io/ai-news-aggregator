@@ -1,3 +1,5 @@
+import { config } from "dotenv";
+config({ path: "../../.env" });
 import { collectionWorker } from "./workers/collection.js";
 
 const shutdown = async (): Promise<void> => {

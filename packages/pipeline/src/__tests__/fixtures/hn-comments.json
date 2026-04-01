@@ -2,7 +2,7 @@
   "version": "https://jsonfeed.org/version/1",
   "title": "Comments on: Show HN: An open-source AI agent framework",
   "home_page_url": "https://news.ycombinator.com/item?id=40001111",
-  "feed_url": "https://hnrss.org/item?id=40001111.jsonfeed",
+  "feed_url": "https://hnrss.org/item.jsonfeed?id=40001111",
   "items": [
     {
       "id": "https://news.ycombinator.com/item?id=40001112",
