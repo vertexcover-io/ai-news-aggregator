@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { sources, rawItems } from "@newsletter/shared/db";
 import { getTestDb, truncateAll, closeTestDb } from "../setup/test-db.js";
 import type { AppDb } from "@newsletter/shared/db";
@@ -54,9 +54,16 @@ describe("Database Schema E2E", () => {
       .insert(sources)
       .values({ name: "Hacker News", type: "hn", url: "https://news.ycombinator.com" });
 
-    await expect(
-      db.insert(sources).values({ name: "Hacker News", type: "hn", url: "https://hn.example.com" }),
-    ).rejects.toThrow();
+    // postgres.js throws PostgresError on unique violation
+    let threw = false;
+    try {
+      await db.execute(
+        sql`INSERT INTO sources (name, type, url) VALUES ('Hacker News', 'hn', 'https://hn.example.com')`,
+      );
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
   });
 
   it("inserts a raw_item with foreign key to sources", async () => {
