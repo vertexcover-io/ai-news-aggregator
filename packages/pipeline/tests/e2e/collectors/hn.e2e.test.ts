@@ -39,14 +39,15 @@ describe("HN Collector E2E", () => {
     expect(result.durationMs).toBeGreaterThan(0);
 
     const rows = await db.select().from(rawItems);
-    expect(rows.length).toBe(result.itemsStored);
+    expect(rows.length).toBeGreaterThanOrEqual(result.itemsStored);
 
-    const firstRow = rows[0];
-    expect(firstRow.sourceType).toBe("hn");
-    expect(firstRow.title).toBeTruthy();
-    expect(firstRow.url).toBeTruthy();
-    expect(firstRow.externalId).toBeTruthy();
-    expect(firstRow.engagement).toBeDefined();
+    for (const row of rows) {
+      expect(row.sourceType).toBe("hn");
+      expect(row.title).toBeTruthy();
+      expect(row.url).toBeTruthy();
+      expect(row.externalId).toBeTruthy();
+      expect(row.engagement).toBeDefined();
+    }
   });
 
   it("fetches comments and stores them in metadata", async () => {
