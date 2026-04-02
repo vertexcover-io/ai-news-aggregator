@@ -1,8 +1,11 @@
 import { config } from "dotenv";
-config({ path: "../../.env" });
+config();
 import type { Job } from "bullmq";
-import { collectionWorker } from "./workers/collection.js";
+import type { CollectionJobLike } from "@pipeline/workers/collection.js";
+import { collectionWorker } from "@pipeline/workers/collection.js";
 import { createLogger } from "@newsletter/shared/logger";
+
+type CollectionJobData = CollectionJobLike["data"];
 
 const logger = createLogger("pipeline");
 
@@ -20,10 +23,10 @@ collectionWorker.on("ready", () => {
   logger.info({ queue: "collection" }, "worker ready");
 });
 
-collectionWorker.on("completed", (job: Job) => {
+collectionWorker.on("completed", (job: Job<CollectionJobData>) => {
   logger.info({ jobId: job.id, jobName: job.name, result: job.returnvalue }, "job completed");
 });
 
-collectionWorker.on("failed", (job: Job | undefined, err: Error) => {
+collectionWorker.on("failed", (job: Job<CollectionJobData> | undefined, err: Error) => {
   logger.error({ jobId: job?.id, jobName: job?.name, error: err.message }, "job failed");
 });
