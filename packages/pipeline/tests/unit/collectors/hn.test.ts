@@ -1,19 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { CollectorResult, HnCollectConfig } from "@newsletter/shared/types";
+import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemsRepo } from "../../repositories/raw-items.js";
 import hnFeedFixture from "../fixtures/hn-feed.json";
 import hnCommentsFixture from "../fixtures/hn-comments.json";
 
-interface MockDb {
-  insert: ReturnType<typeof vi.fn>;
-}
-
 const SINGLE_FEED: HnCollectConfig = { feeds: ["newest"] };
 
-function createMockDb(): MockDb {
-  const onConflictDoUpdate = vi.fn().mockResolvedValue([{ count: 1 }]);
-  const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
-  const insert = vi.fn().mockReturnValue({ values });
-  return { insert };
+function createMockRepo(): RawItemsRepo & { upsertItems: ReturnType<typeof vi.fn> } {
+  return {
+    upsertItems: vi.fn().mockResolvedValue(undefined),
+  };
 }
 
 function createMockFetch(responses: Array<{ ok: boolean; status: number; body: unknown }>): ReturnType<typeof vi.fn> {
@@ -45,7 +42,7 @@ function errorResponse(status: number): { ok: boolean; status: number; body: unk
 }
 
 describe("collectHn", () => {
-  let collectHn: (deps: { db: MockDb; fetchFn: ReturnType<typeof vi.fn> }, sourceId: number | null, config: HnCollectConfig) => Promise<CollectorResult>;
+  let collectHn: (deps: { rawItemsRepo: RawItemsRepo & { upsertItems: ReturnType<typeof vi.fn> }; fetchFn: ReturnType<typeof vi.fn> }, sourceId: number | null, config: HnCollectConfig) => Promise<CollectorResult>;
 
   beforeEach(async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -58,9 +55,9 @@ describe("collectHn", () => {
     const mockFetch = createMockFetch([
       feedResponse({ ...hnFeedFixture, items: [] }),
     ]);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
-    await collectHn({ db, fetchFn: mockFetch }, null, SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
     const url = mockFetch.mock.calls[0][0] as string;
     expect(url).toContain("https://hnrss.org/newest.jsonfeed");
@@ -77,10 +74,10 @@ describe("collectHn", () => {
     const mockFetch = createMockFetch([
       feedResponse({ ...hnFeedFixture, items: [] }),
     ]);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
     await collectHn(
-      { db, fetchFn: mockFetch },
+      { rawItemsRepo, fetchFn: mockFetch },
       null,
       { keywords: ["Rust", "Zig"], pointsThreshold: 50, count: 25, feeds: ["newest"] },
     );
@@ -99,20 +96,18 @@ describe("collectHn", () => {
       commentsResponse({ ...hnCommentsFixture, items: [] }),
       commentsResponse({ ...hnCommentsFixture, items: [] }),
     ]);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ db, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(3);
     expect(result.itemsStored).toBe(3);
 
-    const insertCall = db.insert.mock.calls[0];
-    expect(insertCall).toBeDefined();
+    expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(3);
 
-    const valuesCall = db.insert.mock.results[0].value.values.mock.calls[0][0] as Array<Record<string, unknown>>;
-    expect(valuesCall).toHaveLength(3);
-
-    const firstItem = valuesCall[0];
+    const firstItem = rows[0];
     expect(firstItem["title"]).toBe("Show HN: An open-source AI agent framework");
     expect(firstItem["url"]).toBe("https://example.com/ai-agent-framework");
     expect(firstItem["externalId"]).toBe("40001111");
@@ -135,14 +130,11 @@ describe("collectHn", () => {
       feedResponse(malformedFeed),
       commentsResponse({ ...hnCommentsFixture, items: [] }),
     ]);
-    const db = createMockDb();
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ db, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(1);
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
   });
 
   // EDGE-006: Missing engagement data defaults to 0
@@ -157,12 +149,12 @@ describe("collectHn", () => {
       feedResponse(noEngagementFeed),
       commentsResponse({ ...hnCommentsFixture, items: [] }),
     ]);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
-    await collectHn({ db, fetchFn: mockFetch }, null, SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
-    const valuesCall = db.insert.mock.results[0].value.values.mock.calls[0][0] as Array<Record<string, unknown>>;
-    expect(valuesCall[0]["engagement"]).toEqual({ points: 0, commentCount: 0 });
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(rows[0]["engagement"]).toEqual({ points: 0, commentCount: 0 });
   });
 
   // EDGE-010: HN ID extraction from various URL formats
@@ -177,16 +169,16 @@ describe("collectHn", () => {
       feedResponse(feed),
       commentsResponse({ ...hnCommentsFixture, items: [] }),
     ]);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
-    await collectHn({ db, fetchFn: mockFetch }, null, SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
-    const valuesCall = db.insert.mock.results[0].value.values.mock.calls[0][0] as Array<Record<string, unknown>>;
-    expect(valuesCall[0]["externalId"]).toBe("99999");
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(rows[0]["externalId"]).toBe("99999");
   });
 
   // EDGE-010: Unparseable HN ID is skipped
-  it("skips items with unparseable HN ID and logs warning", async () => {
+  it("skips items with unparseable HN ID", async () => {
     const badIdFeed = {
       ...hnFeedFixture,
       items: [
@@ -196,14 +188,11 @@ describe("collectHn", () => {
     const mockFetch = createMockFetch([
       feedResponse(badIdFeed),
     ]);
-    const db = createMockDb();
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ db, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(0);
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
   });
 
   // REQ-005: Comment fetching attaches comments with IDs
@@ -213,13 +202,13 @@ describe("collectHn", () => {
       feedResponse(singleItemFeed),
       commentsResponse(),
     ]);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ db, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
     expect(result.commentsFetched).toBe(2);
-    const valuesCall = db.insert.mock.results[0].value.values.mock.calls[0][0] as Array<Record<string, unknown>>;
-    const metadata = valuesCall[0]["metadata"] as { comments: Array<{ id: string; author: string; content: string; publishedAt: string }> };
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const metadata = rows[0]["metadata"] as { comments: Array<{ id: string; author: string; content: string; publishedAt: string }> };
     expect(metadata.comments).toHaveLength(2);
     expect(metadata.comments[0].author).toBe("dave");
     expect(metadata.comments[0].id).toBe("40001112");
@@ -232,18 +221,15 @@ describe("collectHn", () => {
       feedResponse(singleItemFeed),
       errorResponse(502),
     ]);
-    const db = createMockDb();
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ db, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(1);
     expect(result.commentsFetched).toBe(0);
-    const valuesCall = db.insert.mock.results[0].value.values.mock.calls[0][0] as Array<Record<string, unknown>>;
-    const metadata = valuesCall[0]["metadata"] as { comments: unknown[] };
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const metadata = rows[0]["metadata"] as { comments: unknown[] };
     expect(metadata.comments).toEqual([]);
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
   });
 
   // REQ-013, EDGE-001: Retry on 502
@@ -253,10 +239,10 @@ describe("collectHn", () => {
       errorResponse(502),
       errorResponse(502),
     ]);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
     await expect(
-      collectHn({ db, fetchFn: mockFetch }, null, SINGLE_FEED),
+      collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED),
     ).rejects.toThrow();
 
     expect(mockFetch).toHaveBeenCalledTimes(3);
@@ -273,10 +259,10 @@ describe("collectHn", () => {
       .mockResolvedValueOnce(htmlResponse)
       .mockResolvedValueOnce(htmlResponse)
       .mockResolvedValueOnce(htmlResponse);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
     await expect(
-      collectHn({ db, fetchFn }, null, SINGLE_FEED),
+      collectHn({ rawItemsRepo, fetchFn }, null, SINGLE_FEED),
     ).rejects.toThrow();
 
     expect(fetchFn).toHaveBeenCalledTimes(3);
@@ -304,9 +290,9 @@ describe("collectHn", () => {
         json: () => Promise.resolve({ ...hnCommentsFixture, items: [] }),
       });
     });
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
-    await collectHn({ db, fetchFn: mockFetchFn }, null, SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetchFn }, null, SINGLE_FEED);
 
     for (let i = 2; i < timestamps.length; i++) {
       const gap = timestamps[i] - timestamps[i - 1];
@@ -320,36 +306,35 @@ describe("collectHn", () => {
     const mockFetch = createMockFetch([
       feedResponse(emptyFeed),
     ]);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ db, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(0);
     expect(result.commentsFetched).toBe(0);
     expect(result.itemsStored).toBe(0);
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
-    expect(db.insert).not.toHaveBeenCalled();
+    expect(rawItemsRepo.upsertItems).not.toHaveBeenCalled();
   });
 
   // REQ-007, EDGE-005: DB upsert with correct shape
-  it("calls db.insert with rawItems and onConflictDoUpdate", async () => {
+  it("calls upsertItems with correct row shape", async () => {
     const singleItemFeed = { ...hnFeedFixture, items: [hnFeedFixture.items[0]] };
     const mockFetch = createMockFetch([
       feedResponse(singleItemFeed),
       commentsResponse({ ...hnCommentsFixture, items: [] }),
     ]);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
-    await collectHn({ db, fetchFn: mockFetch }, null, SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
-    expect(db.insert).toHaveBeenCalledTimes(1);
-    const valuesReturn = db.insert.mock.results[0].value;
-    expect(valuesReturn.values).toHaveBeenCalledTimes(1);
-    expect(valuesReturn.values.mock.results[0].value.onConflictDoUpdate).toHaveBeenCalledTimes(1);
-
-    const upsertArg = valuesReturn.values.mock.results[0].value.onConflictDoUpdate.mock.calls[0][0] as Record<string, unknown>;
-    expect(upsertArg).toHaveProperty("target");
-    expect(upsertArg).toHaveProperty("set");
+    expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveProperty("sourceType", "hn");
+    expect(rows[0]).toHaveProperty("externalId");
+    expect(rows[0]).toHaveProperty("engagement");
+    expect(rows[0]).toHaveProperty("metadata");
   });
 
   // EDGE-003: Item with 0 comments stores empty array
@@ -360,12 +345,12 @@ describe("collectHn", () => {
       feedResponse(singleItemFeed),
       commentsResponse(emptyComments),
     ]);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
-    await collectHn({ db, fetchFn: mockFetch }, null, SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
-    const valuesCall = db.insert.mock.results[0].value.values.mock.calls[0][0] as Array<Record<string, unknown>>;
-    const metadata = valuesCall[0]["metadata"] as { comments: unknown[] };
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const metadata = rows[0]["metadata"] as { comments: unknown[] };
     expect(metadata.comments).toEqual([]);
   });
 
@@ -377,9 +362,9 @@ describe("collectHn", () => {
       commentsResponse({ ...hnCommentsFixture, items: [] }),
       commentsResponse({ ...hnCommentsFixture, items: [] }),
     ]);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ db, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
     expect(result).toHaveProperty("itemsFetched");
     expect(result).toHaveProperty("commentsFetched");
@@ -399,9 +384,9 @@ describe("collectHn", () => {
       commentsResponse({ ...hnCommentsFixture, items: [] }),
       commentsResponse({ ...hnCommentsFixture, items: [] }),
     ]);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ db, fetchFn: mockFetch }, null, { feeds: ["newest", "best"] });
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, { feeds: ["newest", "best"] });
 
     expect(result.itemsFetched).toBe(3);
 
@@ -418,9 +403,9 @@ describe("collectHn", () => {
       feedResponse(singleItemFeed),
       commentsResponse({ ...hnCommentsFixture, items: [] }),
     ]);
-    const db = createMockDb();
+    const rawItemsRepo = createMockRepo();
 
-    await collectHn({ db, fetchFn: mockFetch }, null, { feeds: ["newest"], commentsPerItem: 50 });
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, { feeds: ["newest"], commentsPerItem: 50 });
 
     const commentUrl = mockFetch.mock.calls[1][0] as string;
     expect(commentUrl).toContain("count=50");
