@@ -81,6 +81,19 @@ function extractEngagement(contentHtml: string | undefined): { points: number; c
   };
 }
 
+function isJsonFeed(value: unknown): value is JsonFeed {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "items" in value &&
+    Array.isArray(value.items)
+  );
+}
+
+function parseJsonFeed(value: unknown): JsonFeed {
+  return isJsonFeed(value) ? value : { items: [] };
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -102,8 +115,8 @@ async function fetchWithRetry(
         }
         throw new Error(`HTTP error: ${status}`);
       }
-      const data = await response.json() as JsonFeed;
-      return data;
+      const data: unknown = await response.json();
+      return parseJsonFeed(data);
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       if (lastError.message.startsWith("Non-retryable")) {
@@ -130,8 +143,9 @@ async function fetchComments(
     if (!response.ok) {
       return [];
     }
-    const data = await response.json() as JsonFeed;
-    return (data.items ?? []).map((item) => ({
+    const data: unknown = await response.json();
+    const feed = parseJsonFeed(data);
+    return (feed.items ?? []).map((item) => ({
       id: extractHnId(item) ?? "",
       author: item.author?.name ?? item.authors?.[0]?.name ?? "unknown",
       content: item.content_html ?? "",

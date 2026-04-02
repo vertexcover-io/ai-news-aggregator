@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { CollectorResult, HnCollectConfig } from "@newsletter/shared/types";
+import type { CollectorResult, HnCollectConfig, RawItemEngagement, RawItemComment } from "@newsletter/shared/types";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import type { RawItemsRepo } from "../../repositories/raw-items.js";
 import hnFeedFixture from "../fixtures/hn-feed.json";
@@ -7,15 +7,19 @@ import hnCommentsFixture from "../fixtures/hn-comments.json";
 
 const SINGLE_FEED: HnCollectConfig = { feeds: ["newest"] };
 
-function createMockRepo(): RawItemsRepo & { upsertItems: ReturnType<typeof vi.fn> } {
+type MockUpsertFn = ReturnType<typeof vi.fn<[items: RawItemInsert[]], Promise<void>>>;
+
+function createMockRepo(): RawItemsRepo & { upsertItems: MockUpsertFn } {
   return {
-    upsertItems: vi.fn().mockResolvedValue(undefined),
+    upsertItems: vi.fn<[items: RawItemInsert[]], Promise<void>>().mockResolvedValue(undefined),
   };
 }
 
-function createMockFetch(responses: Array<{ ok: boolean; status: number; body: unknown }>): ReturnType<typeof vi.fn> {
+type MockFetchFn = ReturnType<typeof vi.fn<[url: string, init?: RequestInit], Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>>>;
+
+function createMockFetch(responses: Array<{ ok: boolean; status: number; body: unknown }>): MockFetchFn {
   let callIndex = 0;
-  return vi.fn().mockImplementation(() => {
+  return vi.fn<[url: string, init?: RequestInit], Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>>().mockImplementation(() => {
     const resp = responses[callIndex] ?? responses[responses.length - 1];
     callIndex++;
     if (!resp) {
@@ -41,13 +45,16 @@ function errorResponse(status: number): { ok: boolean; status: number; body: unk
   return { ok: false, status, body: "<html>Error</html>" };
 }
 
+type CollectHnFn = (deps: { rawItemsRepo: RawItemsRepo & { upsertItems: MockUpsertFn }; fetchFn: MockFetchFn }, sourceId: number | null, config: HnCollectConfig) => Promise<CollectorResult>;
+
 describe("collectHn", () => {
-  let collectHn: (deps: { rawItemsRepo: RawItemsRepo & { upsertItems: ReturnType<typeof vi.fn> }; fetchFn: ReturnType<typeof vi.fn> }, sourceId: number | null, config: HnCollectConfig) => Promise<CollectorResult>;
+  let collectHn: CollectHnFn;
 
   beforeEach(async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const mod = await import("../../../src/collectors/hn.js");
-    collectHn = mod.collectHn as typeof collectHn;
+    // Mock types are runtime-compatible but structurally incompatible with Drizzle chain types
+    collectHn = mod.collectHn as CollectHnFn;
   });
 
   // REQ-002, REQ-010: URL construction with default config
@@ -59,7 +66,7 @@ describe("collectHn", () => {
 
     await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
-    const url = mockFetch.mock.calls[0][0] as string;
+    const url = mockFetch.mock.calls[0][0];
     expect(url).toContain("https://hnrss.org/newest.jsonfeed");
     expect(url).toContain("q=");
     expect(url).toContain("AI");
@@ -82,7 +89,7 @@ describe("collectHn", () => {
       { keywords: ["Rust", "Zig"], pointsThreshold: 50, count: 25, feeds: ["newest"] },
     );
 
-    const url = mockFetch.mock.calls[0][0] as string;
+    const url = mockFetch.mock.calls[0][0];
     expect(url).toContain("q=Rust+OR+Zig");
     expect(url).toContain("points=50");
     expect(url).toContain("count=25");
@@ -104,17 +111,17 @@ describe("collectHn", () => {
     expect(result.itemsStored).toBe(3);
 
     expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     expect(rows).toHaveLength(3);
 
     const firstItem = rows[0];
-    expect(firstItem["title"]).toBe("Show HN: An open-source AI agent framework");
-    expect(firstItem["url"]).toBe("https://example.com/ai-agent-framework");
-    expect(firstItem["externalId"]).toBe("40001111");
-    expect(firstItem["author"]).toBe("alice");
-    expect(firstItem["sourceType"]).toBe("hn");
-    expect(firstItem["sourceUrl"]).toBe("https://news.ycombinator.com/item?id=40001111");
-    expect(firstItem["engagement"]).toEqual({ points: 142, commentCount: 37 });
+    expect(firstItem.title).toBe("Show HN: An open-source AI agent framework");
+    expect(firstItem.url).toBe("https://example.com/ai-agent-framework");
+    expect(firstItem.externalId).toBe("40001111");
+    expect(firstItem.author).toBe("alice");
+    expect(firstItem.sourceType).toBe("hn");
+    expect(firstItem.sourceUrl).toBe("https://news.ycombinator.com/item?id=40001111");
+    expect(firstItem.engagement).toEqual({ points: 142, commentCount: 37 });
   });
 
   // EDGE-002: Malformed item (missing title) is skipped
@@ -153,8 +160,8 @@ describe("collectHn", () => {
 
     await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
-    expect(rows[0]["engagement"]).toEqual({ points: 0, commentCount: 0 });
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    expect(rows[0].engagement).toEqual({ points: 0, commentCount: 0 });
   });
 
   // EDGE-010: HN ID extraction from various URL formats
@@ -173,8 +180,8 @@ describe("collectHn", () => {
 
     await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
-    expect(rows[0]["externalId"]).toBe("99999");
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    expect(rows[0].externalId).toBe("99999");
   });
 
   // EDGE-010: Unparseable HN ID is skipped
@@ -207,8 +214,8 @@ describe("collectHn", () => {
     const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
     expect(result.commentsFetched).toBe(2);
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
-    const metadata = rows[0]["metadata"] as { comments: Array<{ id: string; author: string; content: string; publishedAt: string }> };
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    const metadata = rows[0].metadata;
     expect(metadata.comments).toHaveLength(2);
     expect(metadata.comments[0].author).toBe("dave");
     expect(metadata.comments[0].id).toBe("40001112");
@@ -227,8 +234,8 @@ describe("collectHn", () => {
 
     expect(result.itemsFetched).toBe(1);
     expect(result.commentsFetched).toBe(0);
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
-    const metadata = rows[0]["metadata"] as { comments: unknown[] };
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    const metadata = rows[0].metadata;
     expect(metadata.comments).toEqual([]);
   });
 
@@ -329,7 +336,7 @@ describe("collectHn", () => {
     await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
     expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     expect(rows).toHaveLength(1);
     expect(rows[0]).toHaveProperty("sourceType", "hn");
     expect(rows[0]).toHaveProperty("externalId");
@@ -349,8 +356,8 @@ describe("collectHn", () => {
 
     await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
 
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0] as Array<Record<string, unknown>>;
-    const metadata = rows[0]["metadata"] as { comments: unknown[] };
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    const metadata = rows[0].metadata;
     expect(metadata.comments).toEqual([]);
   });
 
@@ -390,8 +397,8 @@ describe("collectHn", () => {
 
     expect(result.itemsFetched).toBe(3);
 
-    const firstUrl = mockFetch.mock.calls[0][0] as string;
-    const secondUrl = mockFetch.mock.calls[1][0] as string;
+    const firstUrl = mockFetch.mock.calls[0][0];
+    const secondUrl = mockFetch.mock.calls[1][0];
     expect(firstUrl).toContain("newest.jsonfeed");
     expect(secondUrl).toContain("best.jsonfeed");
   });
@@ -407,7 +414,7 @@ describe("collectHn", () => {
 
     await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, { feeds: ["newest"], commentsPerItem: 50 });
 
-    const commentUrl = mockFetch.mock.calls[1][0] as string;
+    const commentUrl = mockFetch.mock.calls[1][0];
     expect(commentUrl).toContain("count=50");
   });
 });
