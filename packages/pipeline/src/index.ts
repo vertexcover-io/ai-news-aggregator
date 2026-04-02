@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-config();
+config({ path: "../../.env" });
 import type { Job } from "bullmq";
 import type { CollectionJobLike } from "@pipeline/workers/collection.js";
 import { collectionWorker } from "@pipeline/workers/collection.js";
