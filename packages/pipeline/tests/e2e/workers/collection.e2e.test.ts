@@ -102,6 +102,50 @@ describe("Collection Worker E2E", () => {
     expect(typeof result.durationMs).toBe("number");
   });
 
+  it("enqueues reddit-collect job, worker processes it, data lands in DB", async () => {
+    const job = await queue.add("reddit-collect", {
+      sourceId: null,
+      config: {
+        subreddits: ["MachineLearning"],
+        sort: "top",
+        timeframe: "week",
+        limit: 3,
+        commentsPerItem: 0,
+      },
+    });
+
+    const result = assertCollectorResult(await job.waitUntilFinished(queueEvents, 60000));
+
+    expect(result.itemsFetched).toBeGreaterThan(0);
+    expect(result.itemsStored).toBeGreaterThan(0);
+    expect(result.durationMs).toBeGreaterThan(0);
+
+    const rows = await db.select().from(rawItems);
+    expect(rows.length).toBeGreaterThanOrEqual(result.itemsStored);
+  });
+
+  it("completed reddit-collect job returns CollectorResult with all fields", async () => {
+    const job = await queue.add("reddit-collect", {
+      sourceId: null,
+      config: {
+        subreddits: ["MachineLearning"],
+        sort: "top",
+        timeframe: "week",
+        limit: 3,
+        commentsPerItem: 0,
+      },
+    });
+
+    const result = assertCollectorResult(await job.waitUntilFinished(queueEvents, 60000));
+
+    expect(result).toHaveProperty("itemsFetched");
+    expect(result).toHaveProperty("commentsFetched");
+    expect(result).toHaveProperty("itemsStored");
+    expect(result).toHaveProperty("durationMs");
+    expect(typeof result.itemsFetched).toBe("number");
+    expect(typeof result.durationMs).toBe("number");
+  });
+
   it("unknown job name results in a failed job", async () => {
     const job = await queue.add("nonexistent-collect", {
       sourceId: null,
