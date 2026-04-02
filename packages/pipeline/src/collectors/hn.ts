@@ -216,6 +216,7 @@ export async function collectHn(
       if (comments.length === 0 && allItems[i].engagement.commentCount > 0) {
         logger.warn({ externalId: allItems[i].externalId, commentCount: allItems[i].engagement.commentCount }, "comment fetch returned empty");
       }
+    }
   }
 
   let itemsStored = 0;

@@ -1,5 +1,5 @@
-import type { Job } from "bullmq";
-import { getDb } from "@newsletter/shared/db";
+import { Worker, type Job } from "bullmq";
+import { getDb, createRedisConnection } from "@newsletter/shared/db";
 import { collectHn } from "../collectors/hn.js";
 import { createRawItemsRepo } from "../repositories/raw-items.js";
 import type { CollectorResult } from "@newsletter/shared/types";
@@ -17,3 +17,9 @@ export async function handleCollectionJob(job: Job): Promise<CollectorResult> {
     }
   }
 }
+
+export const collectionWorker = new Worker(
+  "collection",
+  handleCollectionJob,
+  { connection: createRedisConnection() },
+);

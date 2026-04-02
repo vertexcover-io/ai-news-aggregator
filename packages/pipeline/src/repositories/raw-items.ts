@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { rawItems } from "@newsletter/shared/db";
 import type { AppDb, RawItemInsert } from "@newsletter/shared/db";
 
@@ -12,8 +13,8 @@ export function createRawItemsRepo(db: Pick<AppDb, "insert">): RawItemsRepo {
       await db.insert(rawItems).values(items).onConflictDoUpdate({
         target: [rawItems.sourceType, rawItems.externalId],
         set: {
-          engagement: items[0].engagement,
-          metadata: items[0].metadata,
+          engagement: sql.raw(`excluded.${rawItems.engagement.name}`),
+          metadata: sql.raw(`excluded.${rawItems.metadata.name}`),
           updatedAt: new Date(),
         },
       });
