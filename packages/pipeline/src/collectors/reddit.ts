@@ -16,6 +16,8 @@ const DEFAULT_LIMIT = 25;
 const DEFAULT_COMMENTS_PER_ITEM = 10;
 const MAX_RETRIES = 3;
 const RATE_LIMIT_MS = 500;
+const COMMENT_RATE_LIMIT_MS = 2000;
+const MIN_COMMENTS_FOR_FETCH = 5;
 const USER_AGENT = "Mozilla/5.0 (compatible; NewsletterBot/1.0; +https://vertexcover.io)";
 
 export interface RedditCollectorDeps {
@@ -215,7 +217,11 @@ async function fetchComments(
     }
 
     return comments;
-  } catch {
+  } catch (err) {
+    logger.warn(
+      { subreddit, postId, error: err instanceof Error ? err.message : String(err) },
+      "comment fetch failed",
+    );
     return [];
   }
 }
@@ -233,6 +239,8 @@ export async function collectReddit(
   const limit = config.limit ?? DEFAULT_LIMIT;
   const commentsPerItem = config.commentsPerItem ?? DEFAULT_COMMENTS_PER_ITEM;
 
+  logger.info({ subreddits, sort, timeframe, limit, commentsPerItem, sourceId }, "collection started");
+
   const seenIds = new Set<string>();
   const allItems: ParsedItem[] = [];
 
@@ -243,12 +251,15 @@ export async function collectReddit(
       const data = await fetchWithRetry(fetchFn, url);
       const items = parseListingItems(data);
 
+      let added = 0;
       for (const item of items) {
         if (!seenIds.has(item.externalId)) {
           seenIds.add(item.externalId);
           allItems.push(item);
+          added++;
         }
       }
+      logger.info({ subreddit, fetched: items.length, added }, "subreddit fetched");
     } catch (err) {
       logger.error({ subreddit, error: err instanceof Error ? err.message : String(err) }, "failed to fetch subreddit");
     }
@@ -261,10 +272,16 @@ export async function collectReddit(
   let totalComments = 0;
 
   if (commentsPerItem > 0) {
+    let commentRequests = 0;
     for (let i = 0; i < allItems.length; i++) {
-      if (i > 0) {
-        await delay(RATE_LIMIT_MS);
+      if (allItems[i].engagement.commentCount < MIN_COMMENTS_FOR_FETCH) {
+        continue;
       }
+
+      if (commentRequests > 0) {
+        await delay(COMMENT_RATE_LIMIT_MS);
+      }
+      commentRequests++;
 
       const comments = await fetchComments(
         fetchFn,
@@ -307,10 +324,14 @@ export async function collectReddit(
     itemsStored = allItems.length;
   }
 
-  return {
+  const result = {
     itemsFetched: allItems.length,
     commentsFetched: totalComments,
     itemsStored,
     durationMs: Date.now() - startTime,
   };
+
+  logger.info(result, "collection completed");
+
+  return result;
 }

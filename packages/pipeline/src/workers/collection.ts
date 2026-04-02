@@ -31,5 +31,9 @@ export async function handleCollectionJob(job: CollectionJobLike): Promise<Colle
 export const collectionWorker = new Worker(
   "collection",
   handleCollectionJob,
-  { connection: createRedisConnection() },
+  {
+    connection: createRedisConnection(),
+    stalledInterval: 30000,
+    maxStalledCount: 2,
+  },
 );
