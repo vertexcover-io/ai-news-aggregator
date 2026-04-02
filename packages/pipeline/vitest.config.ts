@@ -1,9 +1,17 @@
 import { defineConfig } from "vitest/config";
+import { resolve } from "node:path";
+
+const alias = {
+  "@pipeline": resolve(__dirname, "src"),
+  "@pipeline-tests": resolve(__dirname, "tests"),
+};
 
 export default defineConfig({
+  resolve: { alias },
   test: {
     projects: [
       {
+        resolve: { alias },
         test: {
           name: "unit",
           include: ["tests/unit/**/*.test.ts"],
@@ -11,6 +19,7 @@ export default defineConfig({
         },
       },
       {
+        resolve: { alias },
         test: {
           name: "e2e",
           include: ["tests/e2e/**/*.e2e.test.ts"],

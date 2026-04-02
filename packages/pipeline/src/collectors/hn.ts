@@ -1,7 +1,7 @@
 import type { RawItemInsert } from "@newsletter/shared/db";
 import type { HnCollectConfig, CollectorResult } from "@newsletter/shared/types";
 import { createLogger } from "@newsletter/shared/logger";
-import type { RawItemsRepo } from "../repositories/raw-items.js";
+import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 
 const logger = createLogger("collector:hn");
 

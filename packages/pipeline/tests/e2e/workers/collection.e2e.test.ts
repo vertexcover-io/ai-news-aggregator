@@ -3,9 +3,9 @@ import { config } from "dotenv";
 import { resolve } from "node:path";
 import { Queue, QueueEvents, Worker, type Job } from "bullmq";
 import { rawItems } from "@newsletter/shared/db";
-import { handleCollectionJob } from "../../../src/workers/collection.js";
-import { getTestDb, truncateAll, closeTestDb } from "../setup/test-db.js";
-import { getTestRedis, cleanQueues, closeTestRedis } from "../setup/test-redis.js";
+import { handleCollectionJob } from "@pipeline/workers/collection.js";
+import { getTestDb, truncateAll, closeTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
+import { getTestRedis, cleanQueues, closeTestRedis } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { AppDb } from "@newsletter/shared/db";
 import type { CollectorResult } from "@newsletter/shared/types";
 

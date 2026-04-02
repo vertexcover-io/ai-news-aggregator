@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { CollectorResult, HnCollectConfig, RawItemEngagement, RawItemComment } from "@newsletter/shared/types";
 import type { RawItemInsert } from "@newsletter/shared/db";
-import type { RawItemsRepo } from "../../repositories/raw-items.js";
-import hnFeedFixture from "../fixtures/hn-feed.json";
-import hnCommentsFixture from "../fixtures/hn-comments.json";
+import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import hnFeedFixture from "@pipeline-tests/unit/fixtures/hn-feed.json";
+import hnCommentsFixture from "@pipeline-tests/unit/fixtures/hn-comments.json";
 
 const SINGLE_FEED: HnCollectConfig = { feeds: ["newest"] };
 
@@ -52,7 +52,7 @@ describe("collectHn", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const mod = await import("../../../src/collectors/hn.js");
+    const mod = await import("@pipeline/collectors/hn.js");
     // Mock types are runtime-compatible but structurally incompatible with Drizzle chain types
     collectHn = mod.collectHn as CollectHnFn;
   });

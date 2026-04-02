@@ -5,7 +5,7 @@ vi.mock("bullmq", () => ({
   Worker: vi.fn(),
 }));
 
-vi.mock("../../../src/collectors/hn.js", () => ({
+vi.mock("@pipeline/collectors/hn.js", () => ({
   collectHn: vi.fn(),
 }));
 
@@ -15,14 +15,14 @@ vi.mock("@newsletter/shared/db", () => ({
   createRedisConnection: vi.fn(),
 }));
 
-vi.mock("../../../src/repositories/raw-items.js", () => ({
+vi.mock("@pipeline/repositories/raw-items.js", () => ({
   createRawItemsRepo: vi.fn(() => ({ upsertItems: vi.fn() })),
 }));
 
-const { collectHn } = await import("../../../src/collectors/hn.js");
+const { collectHn } = await import("@pipeline/collectors/hn.js");
 const { getDb } = await import("@newsletter/shared/db");
-const { createRawItemsRepo } = await import("../../../src/repositories/raw-items.js");
-const { handleCollectionJob } = await import("../../../src/workers/collection.js");
+const { createRawItemsRepo } = await import("@pipeline/repositories/raw-items.js");
+const { handleCollectionJob } = await import("@pipeline/workers/collection.js");
 
 const mockCollectHn = vi.mocked(collectHn);
 const mockGetDb = vi.mocked(getDb);
