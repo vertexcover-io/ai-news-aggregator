@@ -1,3 +1,19 @@
+export interface RawItemEngagement {
+  points: number;
+  commentCount: number;
+}
+
+export interface RawItemComment {
+  id: string;
+  author: string;
+  content: string;
+  publishedAt: string;
+}
+
+export interface RawItemMetadata {
+  comments: RawItemComment[];
+}
+
 export interface HnCollectConfig {
   keywords?: string[];
   pointsThreshold?: number;

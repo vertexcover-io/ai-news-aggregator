@@ -11,6 +11,24 @@ import type { CollectorResult } from "@newsletter/shared/types";
 
 config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
 
+function isCollectorResult(value: unknown): value is CollectorResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "itemsFetched" in value &&
+    "commentsFetched" in value &&
+    "itemsStored" in value &&
+    "durationMs" in value
+  );
+}
+
+function assertCollectorResult(value: unknown): CollectorResult {
+  if (!isCollectorResult(value)) {
+    throw new Error(`Expected CollectorResult, got: ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
 describe("Collection Worker E2E", () => {
   let db: AppDb;
   let queue: Queue;
@@ -53,7 +71,7 @@ describe("Collection Worker E2E", () => {
       },
     });
 
-    const result = await job.waitUntilFinished(queueEvents, 30000) as CollectorResult;
+    const result = assertCollectorResult(await job.waitUntilFinished(queueEvents, 30000));
 
     expect(result.itemsFetched).toBeGreaterThan(0);
     expect(result.itemsStored).toBeGreaterThan(0);
@@ -74,7 +92,7 @@ describe("Collection Worker E2E", () => {
       },
     });
 
-    const result = await job.waitUntilFinished(queueEvents, 30000) as CollectorResult;
+    const result = assertCollectorResult(await job.waitUntilFinished(queueEvents, 30000));
 
     expect(result).toHaveProperty("itemsFetched");
     expect(result).toHaveProperty("commentsFetched");

@@ -1,4 +1,5 @@
 import { boolean, integer, jsonb, pgEnum, pgTable, serial, text, timestamp, unique } from "drizzle-orm/pg-core";
+import type { RawItemEngagement, RawItemMetadata } from "../types/index.js";
 
 export const sourceTypeEnum = pgEnum("source_type", [
   "hn",
@@ -32,8 +33,8 @@ export const rawItems = pgTable("raw_items", {
   content: text("content"),
   publishedAt: timestamp("published_at"),
   collectedAt: timestamp("collected_at").notNull().defaultNow(),
-  engagement: jsonb("engagement").notNull().default({}),
-  metadata: jsonb("metadata").notNull().default({}),
+  engagement: jsonb("engagement").$type<RawItemEngagement>().notNull().default({ points: 0, commentCount: 0 }),
+  metadata: jsonb("metadata").$type<RawItemMetadata>().notNull().default({ comments: [] }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

@@ -51,7 +51,7 @@ describe("collection worker dispatch", () => {
       },
     };
 
-    const result = await handleCollectionJob(fakeJob as Parameters<typeof handleCollectionJob>[0]);
+    const result = await handleCollectionJob(fakeJob);
 
     expect(mockGetDb).toHaveBeenCalledOnce();
     expect(mockCreateRawItemsRepo).toHaveBeenCalledOnce();
@@ -80,7 +80,7 @@ describe("collection worker dispatch", () => {
       data: { config: {} },
     };
 
-    const result = await handleCollectionJob(fakeJob as Parameters<typeof handleCollectionJob>[0]);
+    const result = await handleCollectionJob(fakeJob);
     expect(result).toEqual(fakeResult);
   });
 
@@ -92,7 +92,7 @@ describe("collection worker dispatch", () => {
     };
 
     await expect(
-      handleCollectionJob(fakeJob as Parameters<typeof handleCollectionJob>[0]),
+      handleCollectionJob(fakeJob),
     ).rejects.toThrow("Unknown collector: reddit-collect");
   });
 
@@ -103,7 +103,7 @@ describe("collection worker dispatch", () => {
     };
 
     try {
-      await handleCollectionJob(fakeJob as Parameters<typeof handleCollectionJob>[0]);
+      await handleCollectionJob(fakeJob);
     } catch {
       // expected
     }

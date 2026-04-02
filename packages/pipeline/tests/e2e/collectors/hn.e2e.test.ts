@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { sources } from "@newsletter/shared/db";
 import { rawItems } from "@newsletter/shared/db";
 import { collectHn } from "../../../src/collectors/hn.js";
+import { createRawItemsRepo } from "../../../src/repositories/raw-items.js";
 import { getTestDb, truncateAll, closeTestDb } from "../setup/test-db.js";
 import type { AppDb } from "@newsletter/shared/db";
 import type { HnCollectConfig } from "@newsletter/shared/types";
@@ -32,7 +33,7 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    const result = await collectHn({ db }, null, cfg);
+    const result = await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
 
     expect(result.itemsFetched).toBeGreaterThan(0);
     expect(result.itemsStored).toBeGreaterThan(0);
@@ -58,15 +59,14 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 5,
     };
 
-    const result = await collectHn({ db }, null, cfg);
+    const result = await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
 
     expect(result.commentsFetched).toBeGreaterThanOrEqual(0);
 
     const rows = await db.select().from(rawItems);
     for (const row of rows) {
-      const meta = row.metadata as { comments?: unknown[] };
-      expect(meta).toHaveProperty("comments");
-      expect(Array.isArray(meta.comments)).toBe(true);
+      expect(row.metadata).toHaveProperty("comments");
+      expect(Array.isArray(row.metadata.comments)).toBe(true);
     }
   });
 
@@ -78,11 +78,11 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectHn({ db }, null, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
     const firstRunRows = await db.select().from(rawItems);
     const firstRunCount = firstRunRows.length;
 
-    await collectHn({ db }, null, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
     const secondRunRows = await db.select().from(rawItems);
 
     // Same items should be upserted, not duplicated
@@ -110,12 +110,11 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectHn({ db }, null, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
 
     const rows = await db.select().from(rawItems);
     for (const row of rows) {
-      const engagement = row.engagement as { points: number };
-      expect(engagement.points).toBeGreaterThanOrEqual(highThreshold);
+      expect(row.engagement.points).toBeGreaterThanOrEqual(highThreshold);
     }
   });
 
@@ -127,7 +126,7 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectHn({ db }, null, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
 
     const rows = await db.select().from(rawItems);
     for (const row of rows) {
@@ -148,7 +147,7 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectHn({ db }, source.id, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, source.id, cfg);
 
     const rows = await db.select().from(rawItems);
     for (const row of rows) {
