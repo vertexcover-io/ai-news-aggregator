@@ -20,7 +20,8 @@ export function getTestDb(): ReturnType<typeof drizzle<typeof schema>> {
 
 export async function truncateAll(): Promise<void> {
   const db = getTestDb();
-  await db.execute(sql`TRUNCATE TABLE raw_items, sources CASCADE`);
+  // RESTART IDENTITY resets auto-increment counters so IDs are predictable
+  await db.execute(sql`TRUNCATE TABLE raw_items, sources RESTART IDENTITY CASCADE`);
 }
 
 export async function closeTestDb(): Promise<void> {

@@ -27,6 +27,8 @@ export default defineConfig({
           globals: false,
           globalSetup: ["tests/e2e/setup/global-setup.ts"],
           fileParallelism: false,
+          pool: "forks",
+          poolOptions: { forks: { singleFork: true } },
         },
       },
     ],
