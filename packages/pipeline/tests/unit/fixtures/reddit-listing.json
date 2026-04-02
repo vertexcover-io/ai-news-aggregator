@@ -1,0 +1,70 @@
+{
+  "kind": "Listing",
+  "data": {
+    "after": "t3_abc123",
+    "children": [
+      {
+        "kind": "t3",
+        "data": {
+          "id": "post001",
+          "title": "New open-source LLM beats GPT-4 on benchmarks",
+          "url": "https://example.com/new-llm",
+          "permalink": "/r/MachineLearning/comments/post001/new_opensource_llm/",
+          "author": "ml_researcher",
+          "selftext": "",
+          "selftext_html": null,
+          "is_self": false,
+          "score": 1542,
+          "num_comments": 234,
+          "created_utc": 1743465600,
+          "stickied": false,
+          "subreddit": "MachineLearning",
+          "link_flair_text": "[R]",
+          "over_18": false,
+          "domain": "example.com"
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "post002",
+          "title": "Discussion: What's the best local LLM setup in 2026?",
+          "url": "https://www.reddit.com/r/MachineLearning/comments/post002/discussion_whats_the_best/",
+          "permalink": "/r/MachineLearning/comments/post002/discussion_whats_the_best/",
+          "author": "ai_enthusiast",
+          "selftext": "I've been experimenting with different local LLM setups and wanted to share my findings.\n\nHere's what I've tested so far...",
+          "selftext_html": "&lt;p&gt;I've been experimenting...&lt;/p&gt;",
+          "is_self": true,
+          "score": 89,
+          "num_comments": 45,
+          "created_utc": 1743462000,
+          "stickied": false,
+          "subreddit": "MachineLearning",
+          "link_flair_text": "[D]",
+          "over_18": false,
+          "domain": "self.MachineLearning"
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "post003",
+          "title": "Weekly Discussion Thread",
+          "url": "https://www.reddit.com/r/MachineLearning/comments/post003/weekly_discussion/",
+          "permalink": "/r/MachineLearning/comments/post003/weekly_discussion/",
+          "author": "AutoModerator",
+          "selftext": "This is the weekly discussion thread.",
+          "is_self": true,
+          "score": 12,
+          "num_comments": 156,
+          "created_utc": 1743458400,
+          "stickied": true,
+          "subreddit": "MachineLearning",
+          "link_flair_text": null,
+          "over_18": false,
+          "domain": "self.MachineLearning"
+        }
+      }
+    ]
+  }
+}
