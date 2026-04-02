@@ -7,7 +7,7 @@ import { collectHn } from "@pipeline/collectors/hn.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { getTestDb, truncateAll, closeTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
 import type { AppDb } from "@newsletter/shared/db";
-import type { HnCollectConfig } from "@newsletter/shared/types";
+import type { HnCollectConfig } from "@pipeline/types.js";
 
 config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
 

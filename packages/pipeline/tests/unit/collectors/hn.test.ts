@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { CollectorResult, HnCollectConfig, RawItemEngagement, RawItemComment } from "@newsletter/shared/types";
+import type { CollectorResult, RawItemEngagement, RawItemComment } from "@newsletter/shared/types";
+import type { HnCollectConfig } from "@pipeline/types.js";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import hnFeedFixture from "@pipeline-tests/unit/fixtures/hn-feed.json";

@@ -2,7 +2,8 @@ import { Worker, type Job } from "bullmq";
 import { getDb, createRedisConnection } from "@newsletter/shared/db";
 import { collectHn } from "@pipeline/collectors/hn.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
-import type { CollectorResult, HnCollectConfig } from "@newsletter/shared/types";
+import type { CollectorResult } from "@newsletter/shared/types";
+import type { HnCollectConfig } from "@pipeline/types.js";
 
 export interface CollectionJobLike {
   name: string;

@@ -1,5 +1,6 @@
 import type { RawItemInsert } from "@newsletter/shared/db";
-import type { HnCollectConfig, CollectorResult } from "@newsletter/shared/types";
+import type { CollectorResult } from "@newsletter/shared/types";
+import type { HnCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 

@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type {
-  HnCollectConfig,
-  HnCollectJobData,
-  CollectorResult,
-} from "@newsletter/shared/types";
+import type { CollectorResult } from "@newsletter/shared/types";
+import type { HnCollectConfig, HnCollectJobData } from "@pipeline/types.js";
 
 // REQ-010, REQ-011: HnCollectConfig supports configurable keywords and points threshold
 describe("HnCollectConfig", () => {
