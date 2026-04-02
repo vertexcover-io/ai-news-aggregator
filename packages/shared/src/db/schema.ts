@@ -1,5 +1,5 @@
 import { boolean, integer, jsonb, pgEnum, pgTable, serial, text, timestamp, unique } from "drizzle-orm/pg-core";
-import type { RawItemEngagement, RawItemMetadata } from "../types/index.js";
+import type { RawItemEngagement, RawItemMetadata } from "@shared/types/index.js";
 
 export const sourceTypeEnum = pgEnum("source_type", [
   "hn",

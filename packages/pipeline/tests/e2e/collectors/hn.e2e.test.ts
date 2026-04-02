@@ -3,9 +3,9 @@ import { config } from "dotenv";
 import { resolve } from "node:path";
 import { sources } from "@newsletter/shared/db";
 import { rawItems } from "@newsletter/shared/db";
-import { collectHn } from "../../../src/collectors/hn.js";
-import { createRawItemsRepo } from "../../../src/repositories/raw-items.js";
-import { getTestDb, truncateAll, closeTestDb } from "../setup/test-db.js";
+import { collectHn } from "@pipeline/collectors/hn.js";
+import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import { getTestDb, truncateAll, closeTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
 import type { AppDb } from "@newsletter/shared/db";
 import type { HnCollectConfig } from "@newsletter/shared/types";
 
