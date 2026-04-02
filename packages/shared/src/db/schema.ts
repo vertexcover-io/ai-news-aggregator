@@ -1,20 +1,12 @@
-import { boolean, integer, jsonb, pgEnum, pgTable, serial, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgTable, serial, text, timestamp, unique } from "drizzle-orm/pg-core";
 import type { RawItemEngagement, RawItemMetadata } from "@shared/types/index.js";
 
-export const sourceTypeEnum = pgEnum("source_type", [
-  "hn",
-  "reddit",
-  "twitter",
-  "rss",
-  "github",
-  "blog",
-  "newsletter",
-]);
+export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter";
 
 export const sources = pgTable("sources", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
-  type: sourceTypeEnum("type").notNull(),
+  type: text("type").$type<SourceType>().notNull(),
   url: text("url").notNull(),
   enabled: boolean("enabled").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -24,7 +16,7 @@ export const sources = pgTable("sources", {
 export const rawItems = pgTable("raw_items", {
   id: serial("id").primaryKey(),
   sourceId: integer("source_id").references(() => sources.id),
-  sourceType: sourceTypeEnum("source_type").notNull(),
+  sourceType: text("source_type").$type<SourceType>().notNull(),
   externalId: text("external_id").notNull(),
   title: text("title").notNull(),
   url: text("url").notNull(),
@@ -42,6 +34,3 @@ export const rawItems = pgTable("raw_items", {
 ]);
 
 export type RawItemInsert = typeof rawItems.$inferInsert;
-export type RawItemSelect = typeof rawItems.$inferSelect;
-export type SourceInsert = typeof sources.$inferInsert;
-export type SourceSelect = typeof sources.$inferSelect;
