@@ -39,3 +39,8 @@ export const rawItems = pgTable("raw_items", {
 }, (t) => [
   unique("raw_items_source_type_external_id_unique").on(t.sourceType, t.externalId),
 ]);
+
+export type RawItemInsert = typeof rawItems.$inferInsert;
+export type RawItemSelect = typeof rawItems.$inferSelect;
+export type SourceInsert = typeof sources.$inferInsert;
+export type SourceSelect = typeof sources.$inferSelect;

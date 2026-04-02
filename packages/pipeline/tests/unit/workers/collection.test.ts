@@ -15,12 +15,18 @@ vi.mock("@newsletter/shared/db", () => ({
   createRedisConnection: vi.fn(),
 }));
 
+vi.mock("../../../src/repositories/raw-items.js", () => ({
+  createRawItemsRepo: vi.fn(() => ({ upsertItems: vi.fn() })),
+}));
+
 const { collectHn } = await import("../../../src/collectors/hn.js");
 const { getDb } = await import("@newsletter/shared/db");
+const { createRawItemsRepo } = await import("../../../src/repositories/raw-items.js");
 const { handleCollectionJob } = await import("../../../src/workers/collection.js");
 
 const mockCollectHn = vi.mocked(collectHn);
 const mockGetDb = vi.mocked(getDb);
+const mockCreateRawItemsRepo = vi.mocked(createRawItemsRepo);
 
 describe("collection worker dispatch", () => {
   beforeEach(() => {
@@ -48,9 +54,11 @@ describe("collection worker dispatch", () => {
     const result = await handleCollectionJob(fakeJob as Parameters<typeof handleCollectionJob>[0]);
 
     expect(mockGetDb).toHaveBeenCalledOnce();
+    expect(mockCreateRawItemsRepo).toHaveBeenCalledOnce();
+    expect(mockCreateRawItemsRepo).toHaveBeenCalledWith(mockGetDb.mock.results[0]?.value);
     expect(mockCollectHn).toHaveBeenCalledOnce();
     expect(mockCollectHn).toHaveBeenCalledWith(
-      { db: mockGetDb.mock.results[0]?.value },
+      { rawItemsRepo: mockCreateRawItemsRepo.mock.results[0]?.value },
       1,
       { pointsThreshold: 100, count: 5 },
     );

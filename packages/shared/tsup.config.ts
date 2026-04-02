@@ -7,6 +7,7 @@ export default defineConfig({
     "src/types/index.ts",
     "src/constants/index.ts",
     "src/utils/index.ts",
+    "src/logger.ts",
   ],
   format: ["esm"],
   dts: true,

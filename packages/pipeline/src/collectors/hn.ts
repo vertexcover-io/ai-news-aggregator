@@ -1,6 +1,9 @@
-import { rawItems } from "@newsletter/shared/db";
-import type { AppDb } from "@newsletter/shared/db";
+import type { RawItemInsert } from "@newsletter/shared/db";
 import type { HnCollectConfig, CollectorResult } from "@newsletter/shared/types";
+import { createLogger } from "@newsletter/shared/logger";
+import type { RawItemsRepo } from "../repositories/raw-items.js";
+
+const logger = createLogger("collector:hn");
 
 const DEFAULT_KEYWORDS = [
   "AI", "LLM", "GPT", "machine learning", "deep learning",
@@ -14,7 +17,7 @@ const MAX_RETRIES = 3;
 const RATE_LIMIT_MS = 500;
 
 export interface HnCollectorDeps {
-  db: Pick<AppDb, "insert">;
+  rawItemsRepo: RawItemsRepo;
   fetchFn?: typeof fetch;
 }
 
@@ -144,13 +147,11 @@ function parseItems(feed: JsonFeed): ParsedItem[] {
 
   for (const item of feed.items ?? []) {
     if (!item.title) {
-      console.warn("Skipping item with missing title", { id: item.id, url: item.url });
       continue;
     }
 
     const hnId = extractHnId(item);
     if (!hnId) {
-      console.warn("Skipping item with unparseable HN ID", { id: item.id, url: item.url });
       continue;
     }
 
@@ -213,7 +214,7 @@ export async function collectHn(
       totalComments += comments.length;
 
       if (comments.length === 0 && allItems[i].engagement.commentCount > 0) {
-        console.warn(`Comment fetch returned empty for item ${allItems[i].externalId}`);
+        logger.warn({ externalId: allItems[i].externalId, commentCount: allItems[i].engagement.commentCount }, "comment fetch returned empty");
       }
     }
   }
@@ -221,7 +222,7 @@ export async function collectHn(
   let itemsStored = 0;
 
   if (allItems.length > 0) {
-    const rows = allItems.map((item) => ({
+    const rows: RawItemInsert[] = allItems.map((item) => ({
       sourceId: sourceId,
       sourceType: "hn" as const,
       externalId: item.externalId,
@@ -237,14 +238,7 @@ export async function collectHn(
       updatedAt: new Date(),
     }));
 
-    await deps.db.insert(rawItems).values(rows).onConflictDoUpdate({
-      target: [rawItems.sourceType, rawItems.externalId],
-      set: {
-        engagement: rows[0].engagement,
-        metadata: rows[0].metadata,
-        updatedAt: new Date(),
-      },
-    });
+    await deps.rawItemsRepo.upsertItems(rows);
 
     itemsStored = allItems.length;
   }
