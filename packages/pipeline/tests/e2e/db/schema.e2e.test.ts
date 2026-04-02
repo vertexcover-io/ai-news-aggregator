@@ -3,7 +3,7 @@ import { config } from "dotenv";
 import { resolve } from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { sources, rawItems } from "@newsletter/shared/db";
-import { getTestDb, truncateAll, closeTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
+import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import type { AppDb } from "@newsletter/shared/db";
 
 config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
@@ -13,9 +13,6 @@ describe("Database Schema E2E", () => {
 
   beforeAll(() => {
     db = getTestDb();
-    return async () => {
-      await closeTestDb();
-    };
   });
 
   beforeEach(async () => {

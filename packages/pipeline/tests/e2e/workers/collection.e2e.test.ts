@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
-import { Queue, QueueEvents, Worker, type Job } from "bullmq";
+import { Queue, QueueEvents, Worker } from "bullmq";
 import { rawItems } from "@newsletter/shared/db";
 import { handleCollectionJob } from "@pipeline/workers/collection.js";
-import { getTestDb, truncateAll, closeTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
+import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import { getTestRedis, cleanQueues, closeTestRedis } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { AppDb } from "@newsletter/shared/db";
 import type { CollectorResult } from "@newsletter/shared/types";
@@ -51,7 +51,6 @@ describe("Collection Worker E2E", () => {
       await queueEvents.close();
       await queue.close();
       await closeTestRedis();
-      await closeTestDb();
     };
   });
 

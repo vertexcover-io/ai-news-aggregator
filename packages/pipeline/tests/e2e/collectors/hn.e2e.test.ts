@@ -5,7 +5,7 @@ import { sources } from "@newsletter/shared/db";
 import { rawItems } from "@newsletter/shared/db";
 import { collectHn } from "@pipeline/collectors/hn.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
-import { getTestDb, truncateAll, closeTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
+import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import type { AppDb } from "@newsletter/shared/db";
 import type { HnCollectConfig } from "@pipeline/types.js";
 
@@ -16,9 +16,6 @@ describe("HN Collector E2E", () => {
 
   beforeAll(() => {
     db = getTestDb();
-    return async () => {
-      await closeTestDb();
-    };
   });
 
   beforeEach(async () => {

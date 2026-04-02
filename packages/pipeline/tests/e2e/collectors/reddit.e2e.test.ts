@@ -5,7 +5,7 @@ import { sources, rawItems } from "@newsletter/shared/db";
 import { eq } from "drizzle-orm";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
-import { getTestDb, truncateAll, closeTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
+import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import type { AppDb } from "@newsletter/shared/db";
 import type { RedditCollectConfig } from "@pipeline/types.js";
 
@@ -16,9 +16,6 @@ describe("Reddit Collector E2E", () => {
 
   beforeAll(() => {
     db = getTestDb();
-    return async () => {
-      await closeTestDb();
-    };
   });
 
   beforeEach(async () => {
