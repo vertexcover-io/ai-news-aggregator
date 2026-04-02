@@ -198,6 +198,8 @@ export async function collectHn(
   const feeds = config.feeds ?? DEFAULT_FEEDS;
   const commentsPerItem = config.commentsPerItem ?? DEFAULT_COMMENTS_PER_ITEM;
 
+  logger.info({ feeds, commentsPerItem, sourceId }, "collection started");
+
   const seenIds = new Set<string>();
   const allItems: ParsedItem[] = [];
 
@@ -258,10 +260,14 @@ export async function collectHn(
     itemsStored = allItems.length;
   }
 
-  return {
+  const result = {
     itemsFetched: allItems.length,
     commentsFetched: totalComments,
     itemsStored,
     durationMs: Date.now() - startTime,
   };
+
+  logger.info(result, "collection completed");
+
+  return result;
 }
