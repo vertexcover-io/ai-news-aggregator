@@ -24,11 +24,21 @@ Ignore these — they are NOT corrections:
 
 ## Step 2: Apply the 3-Criteria Filter
 
-For each correction you found, it must pass ALL 3 criteria to be a learning candidate:
+For each correction you found, it must pass ALL 4 criteria to be a learning candidate:
 
 1. **User-initiated** — the user told you to change, not you self-correcting
 2. **About HOW code is written** — patterns, style, architecture decisions. NOT about WHAT to build (features, specific data, business requirements)
 3. **Generalizable** — the lesson applies beyond the specific file or function being discussed. It is a pattern that would apply in future work.
+4. **Likely to recur** — Claude would plausibly make the same mistake again in a future session without this rule. If the correction was a one-time configuration fix (e.g. changing a test script, updating a hook, fixing a specific file), it will NOT recur because the fix is already in the codebase. Only capture patterns where Claude's default behavior or instinct would lead it to repeat the mistake when writing NEW code.
+
+Examples of recurring patterns (CAPTURE):
+- "Don't use repository/factory pattern" — Claude defaults to this every time it writes data access code
+- "Don't create intermediate types when a direct mapping exists" — Claude's instinct is to add extra type layers
+
+Examples of one-time fixes (DO NOT CAPTURE):
+- "Run all monorepo tests, not just one package" — the test script is now configured correctly
+- "Use pre-push hook instead of pre-PR hook" — the hook is now set up, won't be rewritten
+- "Add this specific URL to the source list" — done once, stays in the codebase
 
 Discard any correction that fails even one criterion. Be strict — when in doubt, discard.
 
