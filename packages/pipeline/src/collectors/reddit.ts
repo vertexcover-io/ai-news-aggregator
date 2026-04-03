@@ -1,5 +1,5 @@
 import type { RawItemInsert } from "@newsletter/shared/db";
-import type { CollectorResult } from "@newsletter/shared/types";
+import type { CollectorResult, RawItemComment, RawItemEngagement } from "@newsletter/shared/types";
 import type { RedditCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -57,26 +57,6 @@ interface RedditListing<T> {
   data: {
     children: RedditChild<T>[];
   };
-}
-
-interface ParsedComment {
-  id: string;
-  author: string;
-  content: string;
-  publishedAt: string;
-}
-
-interface ParsedItem {
-  title: string;
-  url: string;
-  externalId: string;
-  author: string;
-  content: string;
-  publishedAt: Date;
-  sourceUrl: string;
-  subreddit: string;
-  engagement: { points: number; commentCount: number };
-  comments: ParsedComment[];
 }
 
 function delay(ms: number): Promise<void> {
@@ -152,12 +132,12 @@ async function fetchWithRetry(
   throw lastError ?? new Error("Fetch failed after retries");
 }
 
-function parseListingItems(data: unknown): ParsedItem[] {
+function parseListingItems(data: unknown): RawItemInsert[] {
   if (!isRedditListing(data)) {
     return [];
   }
 
-  const items: ParsedItem[] = [];
+  const items: RawItemInsert[] = [];
 
   for (const child of data.data.children) {
     if (child.kind !== "t3") continue;
@@ -170,17 +150,21 @@ function parseListingItems(data: unknown): ParsedItem[] {
       ? `https://www.reddit.com${post.permalink}`
       : post.url;
 
+    const engagement: RawItemEngagement = { points: post.score, commentCount: post.num_comments };
+
     items.push({
+      sourceType: "reddit" as const,
+      externalId: post.id,
       title: post.title,
       url: postUrl,
-      externalId: post.id,
+      sourceUrl: `https://www.reddit.com${post.permalink}`,
       author: post.author,
       content: post.selftext,
       publishedAt: new Date(post.created_utc * 1000),
-      sourceUrl: `https://www.reddit.com${post.permalink}`,
-      subreddit: post.subreddit,
-      engagement: { points: post.score, commentCount: post.num_comments },
-      comments: [],
+      collectedAt: new Date(),
+      engagement,
+      metadata: { comments: [] },
+      updatedAt: new Date(),
     });
   }
 
@@ -192,7 +176,7 @@ async function fetchComments(
   subreddit: string,
   postId: string,
   limit: number,
-): Promise<ParsedComment[]> {
+): Promise<RawItemComment[]> {
   try {
     const url = buildCommentsUrl(subreddit, postId, limit);
     const data = await fetchWithRetry(fetchFn, url);
@@ -202,7 +186,7 @@ async function fetchComments(
     }
 
     const commentListing = data[1];
-    const comments: ParsedComment[] = [];
+    const comments: RawItemComment[] = [];
 
     for (const child of commentListing.data.children) {
       if (child.kind !== "t1") continue;
@@ -241,7 +225,8 @@ export async function collectReddit(
   logger.info({ subreddits, sort, timeframe, limit, commentsPerItem }, "collection started");
 
   const seenIds = new Set<string>();
-  const allItems: ParsedItem[] = [];
+  const allItems: RawItemInsert[] = [];
+  const subredditByExternalId = new Map<string, string>();
 
   for (const subreddit of subreddits) {
     const url = buildListingUrl(subreddit, sort, timeframe, limit);
@@ -254,6 +239,7 @@ export async function collectReddit(
       for (const item of items) {
         if (!seenIds.has(item.externalId)) {
           seenIds.add(item.externalId);
+          subredditByExternalId.set(item.externalId, subreddit);
           allItems.push(item);
           added++;
         }
@@ -273,7 +259,7 @@ export async function collectReddit(
   if (commentsPerItem > 0) {
     let commentRequests = 0;
     for (const item of allItems) {
-      if (item.engagement.commentCount < MIN_COMMENTS_FOR_FETCH) {
+      if (!item.engagement || item.engagement.commentCount < MIN_COMMENTS_FOR_FETCH) {
         continue;
       }
 
@@ -282,13 +268,14 @@ export async function collectReddit(
       }
       commentRequests++;
 
+      const itemSubreddit = subredditByExternalId.get(item.externalId) ?? "";
       const comments = await fetchComments(
         fetchFn,
-        item.subreddit,
+        itemSubreddit,
         item.externalId,
         commentsPerItem,
       );
-      item.comments = comments;
+      item.metadata = { comments };
       totalComments += comments.length;
 
       if (comments.length === 0 && item.engagement.commentCount > 0) {
@@ -303,22 +290,7 @@ export async function collectReddit(
   let itemsStored = 0;
 
   if (allItems.length > 0) {
-    const rows: RawItemInsert[] = allItems.map((item) => ({
-      sourceType: "reddit" as const,
-      externalId: item.externalId,
-      title: item.title,
-      url: item.url,
-      sourceUrl: item.sourceUrl,
-      author: item.author,
-      content: item.content,
-      publishedAt: item.publishedAt,
-      collectedAt: new Date(),
-      engagement: item.engagement,
-      metadata: { comments: item.comments },
-      updatedAt: new Date(),
-    }));
-
-    await deps.rawItemsRepo.upsertItems(rows);
+    await deps.rawItemsRepo.upsertItems(allItems);
     itemsStored = allItems.length;
   }
 
