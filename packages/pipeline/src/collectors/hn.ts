@@ -1,5 +1,5 @@
 import type { RawItemInsert } from "@newsletter/shared/db";
-import type { CollectorResult } from "@newsletter/shared/types";
+import type { CollectorResult, RawItemComment, RawItemEngagement } from "@newsletter/shared/types";
 import type { HnCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -37,25 +37,6 @@ interface JsonFeed {
   items?: JsonFeedItem[];
 }
 
-interface ParsedComment {
-  id: string;
-  author: string;
-  content: string;
-  publishedAt: string;
-}
-
-interface ParsedItem {
-  title: string;
-  url: string;
-  externalId: string;
-  author: string | null;
-  content: string | null;
-  publishedAt: Date | null;
-  sourceUrl: string;
-  engagement: { points: number; commentCount: number };
-  comments: ParsedComment[];
-}
-
 function buildFeedUrl(feed: string, config: HnCollectConfig): string {
   const keywords = config.keywords ?? DEFAULT_KEYWORDS;
   const points = config.pointsThreshold ?? DEFAULT_POINTS_THRESHOLD;
@@ -73,7 +54,7 @@ function extractHnId(item: JsonFeedItem): string | null {
   return match ? match[1] : null;
 }
 
-function extractEngagement(contentHtml: string | undefined): { points: number; commentCount: number } {
+function extractEngagement(contentHtml: string | undefined): RawItemEngagement {
   const pointsMatch = /Points:\s*(\d+)/i.exec(contentHtml ?? "");
   const commentsMatch = /#\s*Comments:\s*(\d+)/i.exec(contentHtml ?? "");
   return {
@@ -137,7 +118,7 @@ async function fetchComments(
   fetchFn: typeof fetch,
   hnId: string,
   count: number,
-): Promise<ParsedComment[]> {
+): Promise<RawItemComment[]> {
   try {
     const url = `https://hnrss.org/item.jsonfeed?id=${hnId}&count=${count}`;
     const response = await fetchFn(url);
@@ -157,8 +138,8 @@ async function fetchComments(
   }
 }
 
-function parseItems(feed: JsonFeed): ParsedItem[] {
-  const items: ParsedItem[] = [];
+function parseItems(feed: JsonFeed): RawItemInsert[] {
+  const items: RawItemInsert[] = [];
 
   for (const item of feed.items ?? []) {
     if (!item.title) {
@@ -171,17 +152,21 @@ function parseItems(feed: JsonFeed): ParsedItem[] {
     }
 
     const engagement = extractEngagement(item.content_html);
+    const now = new Date();
 
     items.push({
+      sourceType: "hn" as const,
+      externalId: hnId,
       title: item.title,
       url: item.url ?? "",
-      externalId: hnId,
+      sourceUrl: `https://news.ycombinator.com/item?id=${hnId}`,
       author: item.author?.name ?? item.authors?.[0]?.name ?? null,
       content: item.content_html ?? null,
       publishedAt: item.date_published ? new Date(item.date_published) : null,
-      sourceUrl: `https://news.ycombinator.com/item?id=${hnId}`,
+      collectedAt: now,
       engagement,
-      comments: [],
+      metadata: { comments: [] },
+      updatedAt: now,
     });
   }
 
@@ -200,7 +185,7 @@ export async function collectHn(
   logger.info({ feeds, commentsPerItem }, "collection started");
 
   const seenIds = new Set<string>();
-  const allItems: ParsedItem[] = [];
+  const allItems: RawItemInsert[] = [];
 
   for (const feed of feeds) {
     const feedUrl = buildFeedUrl(feed, config);
@@ -225,12 +210,13 @@ export async function collectHn(
         await delay(RATE_LIMIT_MS);
       }
 
-      const comments = await fetchComments(fetchFn, allItems[i].externalId, commentsPerItem);
-      allItems[i].comments = comments;
+      const item = allItems[i];
+      const comments = await fetchComments(fetchFn, item.externalId, commentsPerItem);
+      item.metadata = { comments };
       totalComments += comments.length;
 
-      if (comments.length === 0 && allItems[i].engagement.commentCount > 0) {
-        logger.warn({ externalId: allItems[i].externalId, commentCount: allItems[i].engagement.commentCount }, "comment fetch returned empty");
+      if (comments.length === 0 && item.engagement?.commentCount && item.engagement.commentCount > 0) {
+        logger.warn({ externalId: item.externalId, commentCount: item.engagement.commentCount }, "comment fetch returned empty");
       }
     }
   }
@@ -238,23 +224,7 @@ export async function collectHn(
   let itemsStored = 0;
 
   if (allItems.length > 0) {
-    const rows: RawItemInsert[] = allItems.map((item) => ({
-      sourceType: "hn" as const,
-      externalId: item.externalId,
-      title: item.title,
-      url: item.url,
-      sourceUrl: item.sourceUrl,
-      author: item.author,
-      content: item.content,
-      publishedAt: item.publishedAt,
-      collectedAt: new Date(),
-      engagement: item.engagement,
-      metadata: { comments: item.comments },
-      updatedAt: new Date(),
-    }));
-
-    await deps.rawItemsRepo.upsertItems(rows);
-
+    await deps.rawItemsRepo.upsertItems(allItems);
     itemsStored = allItems.length;
   }
 
