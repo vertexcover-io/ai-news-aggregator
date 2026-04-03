@@ -16,14 +16,15 @@ const shutdown = async (): Promise<void> => {
   process.exit(0);
 };
 
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+process.on("SIGTERM", () => void shutdown());
+process.on("SIGINT", () => void shutdown());
 
 collectionWorker.on("ready", () => {
   logger.info({ queue: "collection" }, "worker ready");
 });
 
 collectionWorker.on("completed", (job: Job<CollectionJobData>) => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- BullMQ types returnvalue as any
   logger.info({ jobId: job.id, jobName: job.name, result: job.returnvalue }, "job completed");
 });
 

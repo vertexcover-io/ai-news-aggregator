@@ -7,7 +7,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 export async function setup(): Promise<void> {
   config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
 
-  const databaseUrl = process.env["DATABASE_URL"];
+  const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL not set in .env.test");
   }
@@ -40,7 +40,7 @@ export async function setup(): Promise<void> {
 }
 
 export async function teardown(): Promise<void> {
-  const databaseUrl = process.env["DATABASE_URL"];
+  const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) return;
 
   const teardownSql = postgres(databaseUrl);

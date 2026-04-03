@@ -5,7 +5,7 @@ let testRedis: IORedis | undefined;
 
 export function getTestRedis(): IORedis {
   if (!testRedis) {
-    const redisUrl = process.env["REDIS_URL"] ?? "redis://localhost:6379";
+    const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
     testRedis = new IORedis(redisUrl, {
       maxRetriesPerRequest: null,
     });
@@ -13,7 +13,7 @@ export function getTestRedis(): IORedis {
   return testRedis;
 }
 
-export async function cleanQueues(queueName: string = "collection-e2e-test"): Promise<void> {
+export async function cleanQueues(queueName = "collection-e2e-test"): Promise<void> {
   const connection = getTestRedis();
   const queue = new Queue(queueName, { connection });
   await queue.obliterate({ force: true });

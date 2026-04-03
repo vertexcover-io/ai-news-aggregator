@@ -41,6 +41,8 @@ packages/
 | Job Queue | BullMQ + Redis |
 | Email | Resend |
 | Containers | Podman Compose (compose.yml) |
+| Linting | ESLint (flat config, per-package) |
+| Pre-commit | Husky + lint-staged |
 | Auth (MVP) | Simple password middleware on /review and /admin |
 
 ## Commands
@@ -49,10 +51,15 @@ packages/
 pnpm install          # Install all dependencies
 pnpm dev              # Start all packages in dev mode (via Turborepo)
 pnpm build            # Build all packages
+pnpm lint             # Lint all packages (ESLint)
 pnpm typecheck        # Type check all packages
 pnpm infra:up         # Start local PostgreSQL + Redis via podman-compose
 pnpm infra:down       # Stop local infrastructure
 pnpm infra:reset      # Wipe volumes and restart infrastructure
+
+# Pre-commit hooks (via Husky + lint-staged)
+# Automatically runs lint and typecheck on staged files before each commit
+# Installed via `pnpm install` (husky prepare script)
 
 # Database
 pnpm --filter @newsletter/shared db:generate   # Generate Drizzle migrations from schema changes
