@@ -105,6 +105,19 @@ pnpm --filter @newsletter/shared db:migrate    # Apply pending Drizzle migration
 - **Frontend broken?** Use Playwright MCP to test the page, check browser console output
 - **Writing code with a library?** Always use Context7 first to get current docs — never assume API signatures
 
+## GitHub Actions — Review Fix Workflow
+
+When triggered by `@claude` on a PR review comment and the request is asking to **fix** code (e.g. "fix this", "can you fix this", "apply this suggestion"), follow this workflow:
+
+1. **Assess clarity** — if the review comment is vague or ambiguous (e.g. "this doesn't look right", "can we improve this?"), reply in the review thread asking for clarification instead of guessing. Only proceed when the fix is clear.
+2. **Read the code** — use the file path and line number from the review comment to read the relevant code. Understand what the reviewer is asking to change.
+3. **Apply the fix** — make the code changes the reviewer described. Run `pnpm lint`, `pnpm typecheck`, and `pnpm test:unit` to verify the fix doesn't break anything.
+4. **Commit the fix** — commit the changes with message format `fix: <description> (from review)`. The GitHub Action handles pushing to the right branch automatically (PR branch if open, new branch if merged/closed).
+5. **Extract learnings** — invoke the `/extract-learnings` skill in review-fix mode to evaluate whether the reviewer's feedback represents a recurring pattern. If a learning is extracted, include it in a separate commit. If a contradiction with an existing rule is found, mention it in the reply.
+6. **Reply to the comment** — in the same review thread, summarize: what was changed, which files were modified, whether tests pass, and any learnings captured or contradictions found.
+
+This workflow ONLY applies when the `@claude` comment is on a PR review comment asking for a code fix. For all other `@claude` interactions (questions, explanations, general tasks), respond normally without this workflow.
+
 ## Spec Documents
 
 - `docs/superpowers/specs/2026-04-01-tech-stack-design.md` — Tech stack and monorepo structure decisions
