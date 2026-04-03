@@ -46,7 +46,7 @@ function errorResponse(status: number): { ok: boolean; status: number; body: unk
   return { ok: false, status, body: "<html>Error</html>" };
 }
 
-type CollectHnFn = (deps: { rawItemsRepo: RawItemsRepo & { upsertItems: MockUpsertFn }; fetchFn: MockFetchFn }, sourceId: number | null, config: HnCollectConfig) => Promise<CollectorResult>;
+type CollectHnFn = (deps: { rawItemsRepo: RawItemsRepo & { upsertItems: MockUpsertFn }; fetchFn: MockFetchFn }, config: HnCollectConfig) => Promise<CollectorResult>;
 
 describe("collectHn", () => {
   let collectHn: CollectHnFn;
@@ -65,7 +65,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
 
     const url = mockFetch.mock.calls[0][0];
     expect(url).toContain("https://hnrss.org/newest.jsonfeed");
@@ -86,7 +86,6 @@ describe("collectHn", () => {
 
     await collectHn(
       { rawItemsRepo, fetchFn: mockFetch },
-      null,
       { keywords: ["Rust", "Zig"], pointsThreshold: 50, count: 25, feeds: ["newest"] },
     );
 
@@ -106,7 +105,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(3);
     expect(result.itemsStored).toBe(3);
@@ -140,7 +139,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(1);
   });
@@ -159,7 +158,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
 
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     expect(rows[0].engagement).toEqual({ points: 0, commentCount: 0 });
@@ -179,7 +178,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
 
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     expect(rows[0].externalId).toBe("99999");
@@ -198,7 +197,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(0);
   });
@@ -212,7 +211,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
 
     expect(result.commentsFetched).toBe(2);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
@@ -231,7 +230,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(1);
     expect(result.commentsFetched).toBe(0);
@@ -250,7 +249,7 @@ describe("collectHn", () => {
     const rawItemsRepo = createMockRepo();
 
     await expect(
-      collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED),
+      collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED),
     ).rejects.toThrow();
 
     expect(mockFetch).toHaveBeenCalledTimes(3);
@@ -270,7 +269,7 @@ describe("collectHn", () => {
     const rawItemsRepo = createMockRepo();
 
     await expect(
-      collectHn({ rawItemsRepo, fetchFn }, null, SINGLE_FEED),
+      collectHn({ rawItemsRepo, fetchFn },SINGLE_FEED),
     ).rejects.toThrow();
 
     expect(fetchFn).toHaveBeenCalledTimes(3);
@@ -300,7 +299,7 @@ describe("collectHn", () => {
     });
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetchFn }, null, SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetchFn },SINGLE_FEED);
 
     for (let i = 2; i < timestamps.length; i++) {
       const gap = timestamps[i] - timestamps[i - 1];
@@ -316,7 +315,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(0);
     expect(result.commentsFetched).toBe(0);
@@ -334,7 +333,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
 
     expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
@@ -355,7 +354,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
 
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     const metadata = rows[0].metadata;
@@ -372,7 +371,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
 
     expect(result).toHaveProperty("itemsFetched");
     expect(result).toHaveProperty("commentsFetched");
@@ -394,7 +393,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, { feeds: ["newest", "best"] });
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },{ feeds: ["newest", "best"] });
 
     expect(result.itemsFetched).toBe(3);
 
@@ -413,7 +412,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, null, { feeds: ["newest"], commentsPerItem: 50 });
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch },{ feeds: ["newest"], commentsPerItem: 50 });
 
     const commentUrl = mockFetch.mock.calls[1][0];
     expect(commentUrl).toContain("count=50");

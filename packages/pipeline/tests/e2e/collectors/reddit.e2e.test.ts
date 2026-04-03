@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
-import { sources, rawItems } from "@newsletter/shared/db";
+import { rawItems } from "@newsletter/shared/db";
 import { eq } from "drizzle-orm";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -31,7 +31,7 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
 
     expect(result.itemsFetched).toBeGreaterThan(0);
     expect(result.itemsStored).toBeGreaterThan(0);
@@ -58,7 +58,7 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 3,
     };
 
-    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
 
     expect(result.commentsFetched).toBeGreaterThanOrEqual(0);
 
@@ -78,11 +78,11 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
     const firstRunRows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
     const firstRunCount = firstRunRows.length;
 
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
     const secondRunRows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
 
     expect(secondRunRows.length).toBe(firstRunCount);
@@ -108,7 +108,7 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
 
     const rows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
     for (const row of rows) {
@@ -116,25 +116,4 @@ describe("Reddit Collector E2E", () => {
     }
   });
 
-  it("associates items with a source when sourceId is provided", async () => {
-    const [source] = await db
-      .insert(sources)
-      .values({ name: "Reddit", type: "reddit", url: "https://reddit.com" })
-      .returning();
-
-    const cfg: RedditCollectConfig = {
-      subreddits: ["MachineLearning"],
-      sort: "top",
-      timeframe: "week",
-      limit: 3,
-      commentsPerItem: 0,
-    };
-
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, source.id, cfg);
-
-    const rows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
-    for (const row of rows) {
-      expect(row.sourceId).toBe(source.id);
-    }
-  });
 });

@@ -13,7 +13,6 @@ describe("raw_items schema", () => {
     const columnNames = Object.keys(columns);
 
     expect(columnNames).toContain("id");
-    expect(columnNames).toContain("sourceId");
     expect(columnNames).toContain("sourceType");
     expect(columnNames).toContain("externalId");
     expect(columnNames).toContain("title");

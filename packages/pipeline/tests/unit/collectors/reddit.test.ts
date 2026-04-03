@@ -46,7 +46,7 @@ function errorResponse(status: number): { ok: boolean; status: number; body: unk
   return { ok: false, status, body: "<html>Error</html>" };
 }
 
-type CollectRedditFn = (deps: { rawItemsRepo: RawItemsRepo & { upsertItems: MockUpsertFn }; fetchFn: MockFetchFn }, sourceId: number | null, config: RedditCollectConfig) => Promise<CollectorResult>;
+type CollectRedditFn = (deps: { rawItemsRepo: RawItemsRepo & { upsertItems: MockUpsertFn }; fetchFn: MockFetchFn }, config: RedditCollectConfig) => Promise<CollectorResult>;
 
 describe("collectReddit", () => {
   let collectReddit: CollectRedditFn;
@@ -63,7 +63,7 @@ describe("collectReddit", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_SUB);
+    await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
 
     const url = mockFetch.mock.calls[0][0];
     expect(url).toContain("https://www.reddit.com/r/MachineLearning/");
@@ -81,7 +81,6 @@ describe("collectReddit", () => {
 
     await collectReddit(
       { rawItemsRepo, fetchFn: mockFetch },
-      null,
       { subreddits: ["LocalLLaMA", "OpenAI"], sort: "hot", timeframe: "week", limit: 10 },
     );
 
@@ -102,7 +101,7 @@ describe("collectReddit", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_SUB);
+    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
 
     // Fixture has 3 posts, but post003 is stickied so only 2 are parsed
     expect(result.itemsFetched).toBe(2);
@@ -131,7 +130,7 @@ describe("collectReddit", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_SUB);
+    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
 
     // post003 is stickied, should be excluded
     expect(result.itemsFetched).toBe(2);
@@ -164,7 +163,7 @@ describe("collectReddit", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_SUB);
+    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
 
     // Only post002 should remain (post001 has empty title)
     expect(result.itemsFetched).toBe(1);
@@ -192,7 +191,7 @@ describe("collectReddit", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_SUB);
+    await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
 
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     expect(rows[0].engagement).toEqual({ points: undefined, commentCount: undefined });
@@ -209,7 +208,7 @@ describe("collectReddit", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_SUB);
+    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
 
     expect(result.commentsFetched).toBe(2);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
@@ -233,7 +232,7 @@ describe("collectReddit", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_SUB);
+    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
 
     expect(result.itemsFetched).toBe(1);
     expect(result.commentsFetched).toBe(0);
@@ -251,7 +250,7 @@ describe("collectReddit", () => {
     const rawItemsRepo = createMockRepo();
 
     // Listing fetch fails after 3 retries; collectReddit catches per-subreddit errors
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_SUB);
+    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
 
     expect(mockFetch).toHaveBeenCalledTimes(3);
     expect(result.itemsFetched).toBe(0);
@@ -288,7 +287,7 @@ describe("collectReddit", () => {
     });
     const rawItemsRepo = createMockRepo();
 
-    await collectReddit({ rawItemsRepo, fetchFn: mockFetchFn }, null, SINGLE_SUB);
+    await collectReddit({ rawItemsRepo, fetchFn: mockFetchFn },SINGLE_SUB);
 
     // There should be delays between comment fetches (index 1 onward)
     for (let i = 2; i < timestamps.length; i++) {
@@ -304,7 +303,7 @@ describe("collectReddit", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_SUB);
+    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
 
     expect(result.itemsFetched).toBe(0);
     expect(result.commentsFetched).toBe(0);
@@ -324,7 +323,7 @@ describe("collectReddit", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_SUB);
+    await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
 
     expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
@@ -349,7 +348,7 @@ describe("collectReddit", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_SUB);
+    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
 
     expect(result).toHaveProperty("itemsFetched");
     expect(result).toHaveProperty("commentsFetched");
@@ -377,7 +376,6 @@ describe("collectReddit", () => {
 
     const result = await collectReddit(
       { rawItemsRepo, fetchFn: mockFetch },
-      null,
       { subreddits: ["MachineLearning", "LocalLLaMA"] },
     );
 
@@ -399,7 +397,7 @@ describe("collectReddit", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_SUB);
+    await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
 
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     const selfPost = rows[0];
@@ -421,7 +419,7 @@ describe("collectReddit", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, null, SINGLE_SUB);
+    await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
 
     // Check that every call includes User-Agent header
     for (const call of mockFetch.mock.calls) {

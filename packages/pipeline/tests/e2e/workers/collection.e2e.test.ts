@@ -61,7 +61,6 @@ describe("Collection Worker E2E", () => {
 
   it("enqueues hn-collect job, worker processes it, data lands in DB", async () => {
     const job = await queue.add("hn-collect", {
-      sourceId: null,
       config: {
         feeds: ["newest"],
         count: 3,
@@ -82,7 +81,6 @@ describe("Collection Worker E2E", () => {
 
   it("completed job returns CollectorResult with all fields", async () => {
     const job = await queue.add("hn-collect", {
-      sourceId: null,
       config: {
         feeds: ["newest"],
         count: 3,
@@ -103,7 +101,6 @@ describe("Collection Worker E2E", () => {
 
   it("enqueues reddit-collect job, worker processes it, data lands in DB", async () => {
     const job = await queue.add("reddit-collect", {
-      sourceId: null,
       config: {
         subreddits: ["MachineLearning"],
         sort: "top",
@@ -125,7 +122,6 @@ describe("Collection Worker E2E", () => {
 
   it("completed reddit-collect job returns CollectorResult with all fields", async () => {
     const job = await queue.add("reddit-collect", {
-      sourceId: null,
       config: {
         subreddits: ["MachineLearning"],
         sort: "top",
@@ -147,7 +143,6 @@ describe("Collection Worker E2E", () => {
 
   it("unknown job name results in a failed job", async () => {
     const job = await queue.add("nonexistent-collect", {
-      sourceId: null,
       config: {},
     });
 
