@@ -5,7 +5,7 @@ import { Queue, QueueEvents, Worker } from "bullmq";
 import { rawItems } from "@newsletter/shared/db";
 import { handleCollectionJob } from "@pipeline/workers/collection.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
-import { getTestRedis, cleanQueues, closeTestRedis } from "@pipeline-tests/e2e/setup/test-redis.js";
+import { getTestRedis, closeTestRedis } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { AppDb } from "@newsletter/shared/db";
 import type { CollectorResult } from "@newsletter/shared/types";
 

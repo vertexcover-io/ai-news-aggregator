@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:e2e": "vitest run --project e2e",
-    "test:watch": "vitest --project unit"
+    "test:watch": "vitest --project unit",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@newsletter/shared": "workspace:*",

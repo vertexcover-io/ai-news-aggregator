@@ -273,8 +273,8 @@ export async function collectReddit(
 
   if (commentsPerItem > 0) {
     let commentRequests = 0;
-    for (let i = 0; i < allItems.length; i++) {
-      if (allItems[i].engagement.commentCount < MIN_COMMENTS_FOR_FETCH) {
+    for (const item of allItems) {
+      if (item.engagement.commentCount < MIN_COMMENTS_FOR_FETCH) {
         continue;
       }
 
@@ -285,16 +285,16 @@ export async function collectReddit(
 
       const comments = await fetchComments(
         fetchFn,
-        allItems[i].subreddit,
-        allItems[i].externalId,
+        item.subreddit,
+        item.externalId,
         commentsPerItem,
       );
-      allItems[i].comments = comments;
+      item.comments = comments;
       totalComments += comments.length;
 
-      if (comments.length === 0 && allItems[i].engagement.commentCount > 0) {
+      if (comments.length === 0 && item.engagement.commentCount > 0) {
         logger.warn(
-          { externalId: allItems[i].externalId, commentCount: allItems[i].engagement.commentCount },
+          { externalId: item.externalId, commentCount: item.engagement.commentCount },
           "comment fetch returned empty",
         );
       }

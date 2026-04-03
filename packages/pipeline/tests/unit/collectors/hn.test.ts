@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { CollectorResult, RawItemEngagement, RawItemComment } from "@newsletter/shared/types";
+import type { CollectorResult } from "@newsletter/shared/types";
 import type { HnCollectConfig } from "@pipeline/types.js";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -18,7 +18,7 @@ function createMockRepo(): RawItemsRepo & { upsertItems: MockUpsertFn } {
 
 type MockFetchFn = ReturnType<typeof vi.fn<[url: string, init?: RequestInit], Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>>>;
 
-function createMockFetch(responses: Array<{ ok: boolean; status: number; body: unknown }>): MockFetchFn {
+function createMockFetch(responses: { ok: boolean; status: number; body: unknown }[]): MockFetchFn {
   let callIndex = 0;
   return vi.fn<[url: string, init?: RequestInit], Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>>().mockImplementation(() => {
     const resp = responses[callIndex] ?? responses[responses.length - 1];

@@ -1,4 +1,4 @@
-import { Worker, type Job } from "bullmq";
+import { Worker } from "bullmq";
 import { getDb, createRedisConnection } from "@newsletter/shared/db";
 import { collectHn } from "@pipeline/collectors/hn.js";
 import { collectReddit } from "@pipeline/collectors/reddit.js";

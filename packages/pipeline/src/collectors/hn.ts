@@ -29,7 +29,7 @@ interface JsonFeedItem {
   external_url?: string;
   date_published?: string;
   author?: { name: string };
-  authors?: Array<{ name: string }>;
+  authors?: { name: string }[];
   content_html?: string;
 }
 

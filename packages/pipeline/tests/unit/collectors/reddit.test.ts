@@ -18,7 +18,7 @@ function createMockRepo(): RawItemsRepo & { upsertItems: MockUpsertFn } {
 
 type MockFetchFn = ReturnType<typeof vi.fn<[url: string, init?: RequestInit], Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>>>;
 
-function createMockFetch(responses: Array<{ ok: boolean; status: number; body: unknown }>): MockFetchFn {
+function createMockFetch(responses: { ok: boolean; status: number; body: unknown }[]): MockFetchFn {
   let callIndex = 0;
   return vi.fn<[url: string, init?: RequestInit], Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>>().mockImplementation(() => {
     const resp = responses[callIndex] ?? responses[responses.length - 1];
@@ -213,7 +213,7 @@ describe("collectReddit", () => {
 
     expect(result.commentsFetched).toBe(2);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    const metadata = rows[0].metadata as { comments: Array<{ author: string; id: string; content: string }> };
+    const metadata = rows[0].metadata as { comments: { author: string; id: string; content: string }[] };
     expect(metadata.comments).toHaveLength(2);
     expect(metadata.comments[0].author).toBe("deep_learner");
     expect(metadata.comments[0].id).toBe("comment001");
