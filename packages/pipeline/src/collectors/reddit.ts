@@ -1,8 +1,8 @@
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { AppDb, RawItemInsert } from "@newsletter/shared/db";
 import type { CollectorResult } from "@newsletter/shared/types";
 import type { RedditCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
-import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import { upsertItems } from "@pipeline/repositories/raw-items.js";
 
 const logger = createLogger("collector:reddit");
 
@@ -21,7 +21,7 @@ const MIN_COMMENTS_FOR_FETCH = 5;
 const USER_AGENT = "Mozilla/5.0 (compatible; NewsletterBot/1.0; +https://vertexcover.io)";
 
 export interface RedditCollectorDeps {
-  rawItemsRepo: RawItemsRepo;
+  db: Pick<AppDb, "insert">;
   fetchFn?: typeof fetch;
 }
 
@@ -320,7 +320,7 @@ export async function collectReddit(
       updatedAt: new Date(),
     }));
 
-    await deps.rawItemsRepo.upsertItems(rows);
+    await upsertItems(deps.db, rows);
     itemsStored = allItems.length;
   }
 

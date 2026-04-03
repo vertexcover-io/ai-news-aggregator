@@ -1,8 +1,8 @@
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { AppDb, RawItemInsert } from "@newsletter/shared/db";
 import type { CollectorResult } from "@newsletter/shared/types";
 import type { HnCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
-import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import { upsertItems } from "@pipeline/repositories/raw-items.js";
 
 const logger = createLogger("collector:hn");
 
@@ -18,7 +18,7 @@ const MAX_RETRIES = 3;
 const RATE_LIMIT_MS = 500;
 
 export interface HnCollectorDeps {
-  rawItemsRepo: RawItemsRepo;
+  db: Pick<AppDb, "insert">;
   fetchFn?: typeof fetch;
 }
 
@@ -255,7 +255,7 @@ export async function collectHn(
       updatedAt: new Date(),
     }));
 
-    await deps.rawItemsRepo.upsertItems(rows);
+    await upsertItems(deps.db, rows);
 
     itemsStored = allItems.length;
   }
