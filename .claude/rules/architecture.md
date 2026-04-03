@@ -25,6 +25,15 @@ The following have NOT been decided yet. Do not assume or introduce:
 
 If a task requires one of these, ask the user before proceeding.
 
+## Collector pattern
+
+Every collector maps directly from source API response to `RawItemInsert[]` — no intermediate types.
+
+- **Source API types** (e.g. `JsonFeedItem`, `RedditPostData`) are private to each collector file
+- **`RawItemInsert`** from `@newsletter/shared` is the only output type — collectors never define their own `ParsedItem` or equivalent
+- Use `RawItemEngagement` and `RawItemComment` from shared types for the jsonb fields
+- Each collector is a function: fetch → transform to `RawItemInsert[]` → upsert via repo → return `CollectorResult`
+
 ## No scope creep
 
 - Don't add packages, services, or infrastructure not described in the spec
