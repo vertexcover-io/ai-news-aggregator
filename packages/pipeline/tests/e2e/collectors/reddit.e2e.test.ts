@@ -4,7 +4,6 @@ import { resolve } from "node:path";
 import { sources, rawItems } from "@newsletter/shared/db";
 import { eq } from "drizzle-orm";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
-import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import type { AppDb } from "@newsletter/shared/db";
 import type { RedditCollectConfig } from "@pipeline/types.js";
@@ -31,7 +30,7 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    const result = await collectReddit({ db }, null, cfg);
 
     expect(result.itemsFetched).toBeGreaterThan(0);
     expect(result.itemsStored).toBeGreaterThan(0);
@@ -58,7 +57,7 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 3,
     };
 
-    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    const result = await collectReddit({ db }, null, cfg);
 
     expect(result.commentsFetched).toBeGreaterThanOrEqual(0);
 
@@ -78,11 +77,11 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    await collectReddit({ db }, null, cfg);
     const firstRunRows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
     const firstRunCount = firstRunRows.length;
 
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    await collectReddit({ db }, null, cfg);
     const secondRunRows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
 
     expect(secondRunRows.length).toBe(firstRunCount);
@@ -108,7 +107,7 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    await collectReddit({ db }, null, cfg);
 
     const rows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
     for (const row of rows) {
@@ -130,7 +129,7 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, source.id, cfg);
+    await collectReddit({ db }, source.id, cfg);
 
     const rows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
     for (const row of rows) {

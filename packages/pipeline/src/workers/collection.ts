@@ -2,7 +2,6 @@ import { Worker } from "bullmq";
 import { getDb, createRedisConnection } from "@newsletter/shared/db";
 import { collectHn } from "@pipeline/collectors/hn.js";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
-import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import type { CollectorResult } from "@newsletter/shared/types";
 import type { HnCollectConfig, RedditCollectConfig } from "@pipeline/types.js";
 
@@ -15,13 +14,11 @@ export async function handleCollectionJob(job: CollectionJobLike): Promise<Colle
   switch (job.name) {
     case "hn-collect": {
       const db = getDb();
-      const rawItemsRepo = createRawItemsRepo(db);
-      return collectHn({ rawItemsRepo }, job.data.sourceId ?? null, job.data.config);
+      return collectHn({ db }, job.data.sourceId ?? null, job.data.config);
     }
     case "reddit-collect": {
       const db = getDb();
-      const rawItemsRepo = createRawItemsRepo(db);
-      return collectReddit({ rawItemsRepo }, job.data.sourceId ?? null, job.data.config as RedditCollectConfig);
+      return collectReddit({ db }, job.data.sourceId ?? null, job.data.config as RedditCollectConfig);
     }
     default:
       throw new Error(`Unknown collector: ${job.name}`);

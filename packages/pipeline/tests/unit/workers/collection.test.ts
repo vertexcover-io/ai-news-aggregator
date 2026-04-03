@@ -19,20 +19,14 @@ vi.mock("@newsletter/shared/db", () => ({
   createRedisConnection: vi.fn(),
 }));
 
-vi.mock("@pipeline/repositories/raw-items.js", () => ({
-  createRawItemsRepo: vi.fn(() => ({ upsertItems: vi.fn() })),
-}));
-
 const { collectHn } = await import("@pipeline/collectors/hn.js");
 const { collectReddit } = await import("@pipeline/collectors/reddit.js");
 const { getDb } = await import("@newsletter/shared/db");
-const { createRawItemsRepo } = await import("@pipeline/repositories/raw-items.js");
 const { handleCollectionJob } = await import("@pipeline/workers/collection.js");
 
 const mockCollectHn = vi.mocked(collectHn);
 const mockCollectReddit = vi.mocked(collectReddit);
 const mockGetDb = vi.mocked(getDb);
-const mockCreateRawItemsRepo = vi.mocked(createRawItemsRepo);
 
 describe("collection worker dispatch", () => {
   beforeEach(() => {
@@ -60,11 +54,9 @@ describe("collection worker dispatch", () => {
     const result = await handleCollectionJob(fakeJob);
 
     expect(mockGetDb).toHaveBeenCalledOnce();
-    expect(mockCreateRawItemsRepo).toHaveBeenCalledOnce();
-    expect(mockCreateRawItemsRepo).toHaveBeenCalledWith(mockGetDb.mock.results[0]?.value);
     expect(mockCollectHn).toHaveBeenCalledOnce();
     expect(mockCollectHn).toHaveBeenCalledWith(
-      { rawItemsRepo: mockCreateRawItemsRepo.mock.results[0]?.value },
+      { db: mockGetDb.mock.results[0]?.value },
       1,
       { pointsThreshold: 100, count: 5 },
     );
@@ -111,11 +103,9 @@ describe("collection worker dispatch", () => {
     const result = await handleCollectionJob(fakeJob);
 
     expect(mockGetDb).toHaveBeenCalledOnce();
-    expect(mockCreateRawItemsRepo).toHaveBeenCalledOnce();
-    expect(mockCreateRawItemsRepo).toHaveBeenCalledWith(mockGetDb.mock.results[0]?.value);
     expect(mockCollectReddit).toHaveBeenCalledOnce();
     expect(mockCollectReddit).toHaveBeenCalledWith(
-      { rawItemsRepo: mockCreateRawItemsRepo.mock.results[0]?.value },
+      { db: mockGetDb.mock.results[0]?.value },
       2,
       { subreddits: ["MachineLearning"], sort: "top" },
     );

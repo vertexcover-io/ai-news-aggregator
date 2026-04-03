@@ -10,7 +10,7 @@ BullMQ workers that collect, process, and prepare newsletter items.
 ## Rules
 - No HTTP framework — this is a standalone Node process
 - Workers call plain collector functions — no business logic in workers
-- Use `createRawItemsRepo(db)` for DB access, not raw `db.insert()`
+- Use `upsertItems(db, items)` from `@pipeline/repositories/raw-items.js` for DB access, not raw `db.insert()`
 - Jobs must be idempotent — safe to retry
 - Use `@pipeline/*` path aliases, never relative imports
 
