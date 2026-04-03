@@ -1,5 +1,5 @@
 ---
-name: learn
+name: extract-learnings
 description: Scan the current session for user corrections and extract reusable code pattern learnings as rule files
 ---
 
