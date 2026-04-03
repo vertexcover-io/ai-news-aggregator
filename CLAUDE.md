@@ -95,6 +95,7 @@ pnpm --filter @newsletter/shared db:migrate    # Apply pending Drizzle migration
 | `/test-api` | After implementing or modifying API endpoints — hits Hono routes and validates responses match expected types and status codes |
 | `/db-migrate` | When schema changes are needed — runs Drizzle Kit migrations with pre/post verification |
 | `/monorepo-scaffold` | When setting up a new TypeScript monorepo from a tech stack spec document |
+| `/extract-learnings` | After any session where you corrected Claude's code patterns — extracts reusable learnings as rule files in `.claude/rules/learnings/` |
 
 ### When to reach for what
 
