@@ -5,15 +5,27 @@ description: Scan the current session for user corrections and extract reusable 
 
 # Extract Learnings from Session
 
-You are analyzing this conversation to find moments where the user corrected your approach. Your goal is to extract reusable code pattern rules and save them as rule files.
+You are analyzing this conversation to find moments where your approach was corrected. Your goal is to extract reusable code pattern rules and save them as rule files.
+
+## Step 0: Detect Context
+
+Determine which context you're running in:
+
+**Session mode** (default): You're in an interactive session with a user. There is back-and-forth conversation where the user may have corrected your approach. Proceed to Step 1 and scan the full conversation.
+
+**Review-fix mode**: You just fixed code based on a PR review comment. The conversation contains a reviewer's feedback and the fix you applied. In this mode:
+- Treat the reviewer's comment as the "correction"
+- Treat the code that was changed as the "mistake"
+- Skip Step 1 and go directly to Step 2 to evaluate whether the reviewer's feedback passes the 4-criteria filter
 
 ## Step 1: Scan for Corrections
 
-Go through the entire conversation and find moments where the user pushed back on your approach. Look for these correction signals:
+Go through the entire conversation and find moments where your approach was corrected. Look for these correction signals:
 
 - User explicitly told you to change something: "don't do X", "use Y instead", "remove this", "why did you add X"
 - User rejected a pattern: "this is over-engineered", "keep it simple", "we don't need this abstraction"
 - User redirected your approach: "no, just pass it directly", "that's not how we do it here"
+- PR reviewer pointing out a pattern issue: "Better to do X", "This pattern is wrong", "Should be structured as Y"
 
 Ignore these — they are NOT corrections:
 - User adding new requirements: "also add LinkedIn URL"
@@ -22,11 +34,11 @@ Ignore these — they are NOT corrections:
 - User approving your work: "looks good", "yes"
 - Normal back-and-forth discussion without a direction change
 
-## Step 2: Apply the 3-Criteria Filter
+## Step 2: Apply the 4-Criteria Filter
 
 For each correction you found, it must pass ALL 4 criteria to be a learning candidate:
 
-1. **User-initiated** — the user told you to change, not you self-correcting
+1. **User-initiated** — the user or reviewer told you to change, not you self-correcting
 2. **About HOW code is written** — patterns, style, architecture decisions. NOT about WHAT to build (features, specific data, business requirements)
 3. **Generalizable** — the lesson applies beyond the specific file or function being discussed. It is a pattern that would apply in future work.
 4. **Likely to recur** — Claude would plausibly make the same mistake again in a future session without this rule. If the correction was a one-time configuration fix (e.g. changing a test script, updating a hook, fixing a specific file), it will NOT recur because the fix is already in the codebase. Only capture patterns where Claude's default behavior or instinct would lead it to repeat the mistake when writing NEW code.
@@ -42,20 +54,26 @@ Examples of one-time fixes (DO NOT CAPTURE):
 
 Discard any correction that fails even one criterion. Be strict — when in doubt, discard.
 
-## Step 3: Deduplicate Against Existing Rules
+## Step 3: Deduplicate and Check Contradictions Against Existing Rules
 
 Use the Glob tool to find all existing rule files:
 ```
 Glob pattern: .claude/rules/**/*.md
 ```
 
-Read each file using the Read tool. For each learning candidate, check if an existing rule already covers the same guidance — even if worded differently. Skip the candidate if it is already covered.
+Read each file using the Read tool. For each learning candidate:
 
-Exception: if the existing rule is vague but your candidate is more specific and actionable, keep the candidate.
+**Duplicate check:** Does an existing rule already cover the same guidance — even if worded differently? Skip the candidate if it is already covered. Exception: if the existing rule is vague but your candidate is more specific and actionable, keep the candidate.
+
+**Contradiction check:** Does this candidate contradict an existing rule? For example, the new learning says "pass db as first parameter" but an existing rule says "use dependency injection, don't pass db directly." If a contradiction is found:
+- Do NOT write the new rule
+- Do NOT modify the existing rule
+- Report the conflict in your output: "Contradiction detected: new learning '<new>' conflicts with existing rule '<path>': '<existing>'"
+- In review-fix mode, reply to the PR comment explaining the contradiction so the reviewer is aware
 
 ## Step 4: Write Learning Files
 
-For each surviving candidate, write a rule file to `.claude/rules/learnings/<slug>.md` using the Write tool.
+For each surviving candidate (passed filter, not duplicate, not contradicting), write a rule file to `.claude/rules/learnings/<slug>.md` using the Write tool.
 
 **Filename:** kebab-case slug describing the pattern (e.g. `no-repository-factory-pattern.md`)
 
@@ -82,6 +100,10 @@ After writing all files (or finding no new patterns), report:
 If learnings were written:
 - List each learning file created with its path and a one-line summary
 - Example: "Created `.claude/rules/learnings/no-repository-factory-pattern.md` — pass db directly, don't use factory wrappers"
+
+If contradictions were found:
+- List each contradiction with the conflicting rule path and a summary
+- Example: "Contradiction: reviewer suggested 'pass db directly' but existing rule `.claude/rules/learnings/use-dependency-injection.md` says 'use DI, don't pass db'. No rule written."
 
 If no learnings found:
 - Say: "No new pattern learnings detected in this session."
