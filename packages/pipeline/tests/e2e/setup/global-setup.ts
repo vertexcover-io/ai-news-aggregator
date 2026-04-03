@@ -44,6 +44,6 @@ export async function teardown(): Promise<void> {
   if (!databaseUrl) return;
 
   const teardownSql = postgres(databaseUrl);
-  await teardownSql`TRUNCATE TABLE raw_items, sources RESTART IDENTITY CASCADE`;
+  await teardownSql`TRUNCATE TABLE raw_items RESTART IDENTITY CASCADE`;
   await teardownSql.end();
 }

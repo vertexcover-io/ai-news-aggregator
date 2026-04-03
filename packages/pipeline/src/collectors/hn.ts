@@ -190,7 +190,6 @@ function parseItems(feed: JsonFeed): ParsedItem[] {
 
 export async function collectHn(
   deps: HnCollectorDeps,
-  sourceId: number | null,
   config: HnCollectConfig,
 ): Promise<CollectorResult> {
   const startTime = Date.now();
@@ -198,7 +197,7 @@ export async function collectHn(
   const feeds = config.feeds ?? DEFAULT_FEEDS;
   const commentsPerItem = config.commentsPerItem ?? DEFAULT_COMMENTS_PER_ITEM;
 
-  logger.info({ feeds, commentsPerItem, sourceId }, "collection started");
+  logger.info({ feeds, commentsPerItem }, "collection started");
 
   const seenIds = new Set<string>();
   const allItems: ParsedItem[] = [];
@@ -240,7 +239,6 @@ export async function collectHn(
 
   if (allItems.length > 0) {
     const rows: RawItemInsert[] = allItems.map((item) => ({
-      sourceId: sourceId,
       sourceType: "hn" as const,
       externalId: item.externalId,
       title: item.title,

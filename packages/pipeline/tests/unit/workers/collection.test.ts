@@ -52,7 +52,6 @@ describe("collection worker dispatch", () => {
     const fakeJob = {
       name: "hn-collect",
       data: {
-        sourceId: 1,
         config: { pointsThreshold: 100, count: 5 },
       },
     };
@@ -65,7 +64,6 @@ describe("collection worker dispatch", () => {
     expect(mockCollectHn).toHaveBeenCalledOnce();
     expect(mockCollectHn).toHaveBeenCalledWith(
       { rawItemsRepo: mockCreateRawItemsRepo.mock.results[0]?.value },
-      1,
       { pointsThreshold: 100, count: 5 },
     );
     expect(result).toEqual(fakeResult);
@@ -103,7 +101,6 @@ describe("collection worker dispatch", () => {
     const fakeJob = {
       name: "reddit-collect",
       data: {
-        sourceId: 2,
         config: { subreddits: ["MachineLearning"], sort: "top" as const },
       },
     };
@@ -116,7 +113,6 @@ describe("collection worker dispatch", () => {
     expect(mockCollectReddit).toHaveBeenCalledOnce();
     expect(mockCollectReddit).toHaveBeenCalledWith(
       { rawItemsRepo: mockCreateRawItemsRepo.mock.results[0]?.value },
-      2,
       { subreddits: ["MachineLearning"], sort: "top" },
     );
     expect(result).toEqual(fakeResult);

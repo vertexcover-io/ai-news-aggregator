@@ -228,7 +228,6 @@ async function fetchComments(
 
 export async function collectReddit(
   deps: RedditCollectorDeps,
-  sourceId: number | null,
   config: RedditCollectConfig,
 ): Promise<CollectorResult> {
   const startTime = Date.now();
@@ -239,7 +238,7 @@ export async function collectReddit(
   const limit = config.limit ?? DEFAULT_LIMIT;
   const commentsPerItem = config.commentsPerItem ?? DEFAULT_COMMENTS_PER_ITEM;
 
-  logger.info({ subreddits, sort, timeframe, limit, commentsPerItem, sourceId }, "collection started");
+  logger.info({ subreddits, sort, timeframe, limit, commentsPerItem }, "collection started");
 
   const seenIds = new Set<string>();
   const allItems: ParsedItem[] = [];
@@ -305,7 +304,6 @@ export async function collectReddit(
 
   if (allItems.length > 0) {
     const rows: RawItemInsert[] = allItems.map((item) => ({
-      sourceId: sourceId,
       sourceType: "reddit" as const,
       externalId: item.externalId,
       title: item.title,

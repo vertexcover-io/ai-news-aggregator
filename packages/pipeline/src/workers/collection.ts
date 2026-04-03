@@ -8,7 +8,7 @@ import type { HnCollectConfig, RedditCollectConfig } from "@pipeline/types.js";
 
 export interface CollectionJobLike {
   name: string;
-  data: { sourceId?: number | null; config: HnCollectConfig | RedditCollectConfig };
+  data: { config: HnCollectConfig | RedditCollectConfig };
 }
 
 export async function handleCollectionJob(job: CollectionJobLike): Promise<CollectorResult> {
@@ -16,12 +16,12 @@ export async function handleCollectionJob(job: CollectionJobLike): Promise<Colle
     case "hn-collect": {
       const db = getDb();
       const rawItemsRepo = createRawItemsRepo(db);
-      return collectHn({ rawItemsRepo }, job.data.sourceId ?? null, job.data.config);
+      return collectHn({ rawItemsRepo }, job.data.config);
     }
     case "reddit-collect": {
       const db = getDb();
       const rawItemsRepo = createRawItemsRepo(db);
-      return collectReddit({ rawItemsRepo }, job.data.sourceId ?? null, job.data.config as RedditCollectConfig);
+      return collectReddit({ rawItemsRepo }, job.data.config as RedditCollectConfig);
     }
     default:
       throw new Error(`Unknown collector: ${job.name}`);

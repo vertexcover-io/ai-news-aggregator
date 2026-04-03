@@ -7,7 +7,6 @@ export interface HnCollectConfig {
 }
 
 export interface HnCollectJobData {
-  sourceId: number;
   config: HnCollectConfig;
 }
 

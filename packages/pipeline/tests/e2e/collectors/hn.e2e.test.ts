@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
-import { sources } from "@newsletter/shared/db";
 import { rawItems } from "@newsletter/shared/db";
 import { collectHn } from "@pipeline/collectors/hn.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -30,7 +29,7 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    const result = await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    const result = await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
 
     expect(result.itemsFetched).toBeGreaterThan(0);
     expect(result.itemsStored).toBeGreaterThan(0);
@@ -56,7 +55,7 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 5,
     };
 
-    const result = await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    const result = await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
 
     expect(result.commentsFetched).toBeGreaterThanOrEqual(0);
 
@@ -75,11 +74,11 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
     const firstRunRows = await db.select().from(rawItems);
     const firstRunCount = firstRunRows.length;
 
-    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
     const secondRunRows = await db.select().from(rawItems);
 
     // Same items should be upserted, not duplicated
@@ -107,7 +106,7 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
 
     const rows = await db.select().from(rawItems);
     for (const row of rows) {
@@ -123,7 +122,7 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, null, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
 
     const rows = await db.select().from(rawItems);
     for (const row of rows) {
@@ -131,24 +130,4 @@ describe("HN Collector E2E", () => {
     }
   });
 
-  it("associates items with a source when sourceId is provided", async () => {
-    const [source] = await db
-      .insert(sources)
-      .values({ name: "Hacker News", type: "hn", url: "https://news.ycombinator.com" })
-      .returning();
-
-    const cfg: HnCollectConfig = {
-      feeds: ["newest"],
-      count: 3,
-      pointsThreshold: 1,
-      commentsPerItem: 0,
-    };
-
-    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, source.id, cfg);
-
-    const rows = await db.select().from(rawItems);
-    for (const row of rows) {
-      expect(row.sourceId).toBe(source.id);
-    }
-  });
 });

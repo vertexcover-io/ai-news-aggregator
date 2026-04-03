@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { CollectorResult } from "@newsletter/shared/types";
 import type { HnCollectConfig, HnCollectJobData } from "@pipeline/types.js";
 
+
 // REQ-010, REQ-011: HnCollectConfig supports configurable keywords and points threshold
 describe("HnCollectConfig", () => {
   it("accepts all optional fields", () => {
@@ -25,12 +26,10 @@ describe("HnCollectConfig", () => {
 
 // REQ-001: HnCollectJobData defines the job payload shape
 describe("HnCollectJobData", () => {
-  it("requires sourceId and config", () => {
+  it("requires config", () => {
     const jobData: HnCollectJobData = {
-      sourceId: 1,
       config: { keywords: ["GPT"], pointsThreshold: 20 },
     };
-    expect(jobData.sourceId).toBe(1);
     expect(jobData.config.keywords).toEqual(["GPT"]);
     expect(jobData.config.pointsThreshold).toBe(20);
   });
