@@ -109,23 +109,26 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          TECH_DEBT_BRANCH: ${{ steps.tech-debt.outputs.branch_name }}
-          DOCS_SYNC_BRANCH: ${{ steps.docs-sync.outputs.branch_name }}
-          COVERAGE_BRANCH: ${{ steps.coverage.outputs.branch_name }}
+          RUN_START: ${{ github.event.repository.updated_at }}
         run: |
           PRS=""
-          if [ -n "$TECH_DEBT_BRANCH" ]; then
-            PR_URL=$(gh pr list --head "$TECH_DEBT_BRANCH" --json url --jq '.[0].url' 2>/dev/null || echo "")
-            [ -n "$PR_URL" ] && PRS="${PRS}\n• *Tech-debt:* ${PR_URL}"
-          fi
-          if [ -n "$DOCS_SYNC_BRANCH" ]; then
-            PR_URL=$(gh pr list --head "$DOCS_SYNC_BRANCH" --json url --jq '.[0].url' 2>/dev/null || echo "")
-            [ -n "$PR_URL" ] && PRS="${PRS}\n• *Docs:* ${PR_URL}"
-          fi
-          if [ -n "$COVERAGE_BRANCH" ]; then
-            PR_URL=$(gh pr list --head "$COVERAGE_BRANCH" --json url --jq '.[0].url' 2>/dev/null || echo "")
-            [ -n "$PR_URL" ] && PRS="${PRS}\n• *Coverage:* ${PR_URL}"
-          fi
+          # Find all open PRs created in this run by searching for recent PRs
+          # Claude/orchestrate creates branches with patterns like chore/tech-debt-*, docs/*, test/coverage-*, code-health/*
+          RECENT_PRS=$(gh pr list --state open --json url,title,createdAt --jq '.[].url' 2>/dev/null || echo "")
+          # Also check PRs created in the last 30 minutes to catch ones from this run
+          for PR_URL in $RECENT_PRS; do
+            PR_CREATED=$(gh pr view "$PR_URL" --json createdAt --jq '.createdAt' 2>/dev/null || echo "")
+            if [ -n "$PR_CREATED" ]; then
+              # Check if PR was created within the last 30 minutes
+              PR_TS=$(date -d "$PR_CREATED" +%s 2>/dev/null || echo "0")
+              NOW_TS=$(date +%s)
+              DIFF=$(( NOW_TS - PR_TS ))
+              if [ "$DIFF" -lt 1800 ]; then
+                PR_TITLE=$(gh pr view "$PR_URL" --json title --jq '.title' 2>/dev/null || echo "")
+                PRS="${PRS}\n• *${PR_TITLE}:* ${PR_URL}"
+              fi
+            fi
+          done
           if [ -z "$PRS" ]; then
             PRS="No PRs created — nothing to fix."
           fi
