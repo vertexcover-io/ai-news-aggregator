@@ -4,27 +4,29 @@ import { collectHn } from "@pipeline/collectors/hn.js";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import type { CollectorResult } from "@newsletter/shared/types";
-import type { HnCollectConfig, RedditCollectConfig } from "@pipeline/types.js";
+import type { HnCollectJobData, RedditCollectJobData } from "@pipeline/types.js";
 
-export interface CollectionJobLike {
-  name: string;
-  data: { config: HnCollectConfig | RedditCollectConfig };
-}
+const STALLED_INTERVAL_MS = 30_000;
+const MAX_STALLED_COUNT = 2;
+
+export type CollectionJobLike =
+  | { name: "hn-collect"; data: HnCollectJobData }
+  | { name: "reddit-collect"; data: RedditCollectJobData };
 
 export async function handleCollectionJob(job: CollectionJobLike): Promise<CollectorResult> {
+  const db = getDb();
+  const rawItemsRepo = createRawItemsRepo(db);
+
   switch (job.name) {
-    case "hn-collect": {
-      const db = getDb();
-      const rawItemsRepo = createRawItemsRepo(db);
+    case "hn-collect":
       return collectHn({ rawItemsRepo }, job.data.config);
+    case "reddit-collect":
+      return collectReddit({ rawItemsRepo }, job.data.config);
+    default: {
+      // Unreachable at compile time; guards against runtime unknown job names
+      const unknownName = (job as { name: string }).name;
+      throw new Error(`Unknown collector: ${unknownName}`);
     }
-    case "reddit-collect": {
-      const db = getDb();
-      const rawItemsRepo = createRawItemsRepo(db);
-      return collectReddit({ rawItemsRepo }, job.data.config as RedditCollectConfig);
-    }
-    default:
-      throw new Error(`Unknown collector: ${job.name}`);
   }
 }
 
@@ -33,7 +35,7 @@ export const collectionWorker = new Worker(
   handleCollectionJob,
   {
     connection: createRedisConnection(),
-    stalledInterval: 30000,
-    maxStalledCount: 2,
+    stalledInterval: STALLED_INTERVAL_MS,
+    maxStalledCount: MAX_STALLED_COUNT,
   },
 );

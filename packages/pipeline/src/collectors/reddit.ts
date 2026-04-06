@@ -3,6 +3,7 @@ import type { CollectorResult, RawItemComment, RawItemEngagement } from "@newsle
 import type { RedditCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import { delay, fetchWithRetry, MAX_RETRIES, RATE_LIMIT_MS } from "@pipeline/collectors/utils.js";
 
 const logger = createLogger("collector:reddit");
 
@@ -14,11 +15,11 @@ const DEFAULT_SORT = "top";
 const DEFAULT_TIMEFRAME = "day";
 const DEFAULT_LIMIT = 25;
 const DEFAULT_COMMENTS_PER_ITEM = 10;
-const MAX_RETRIES = 3;
-const RATE_LIMIT_MS = 500;
 const COMMENT_RATE_LIMIT_MS = 2000;
 const MIN_COMMENTS_FOR_FETCH = 5;
+const MS_PER_SECOND = 1000;
 const USER_AGENT = "Mozilla/5.0 (compatible; NewsletterBot/1.0; +https://vertexcover.io)";
+const REDDIT_HEADERS = { "User-Agent": USER_AGENT, "Accept": "application/json" };
 
 export interface RedditCollectorDeps {
   rawItemsRepo: RawItemsRepo;
@@ -59,21 +60,13 @@ interface RedditListing<T> {
   };
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function isRedditListing(value: unknown): value is RedditListing<RedditPostData> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "kind" in value &&
-    "data" in value &&
-    typeof (value as Record<string, unknown>).data === "object" &&
-    (value as Record<string, unknown>).data !== null &&
-    "children" in ((value as Record<string, unknown>).data as Record<string, unknown>) &&
-    Array.isArray(((value as Record<string, unknown>).data as Record<string, unknown[]>).children)
-  );
+  if (typeof value !== "object" || value === null) return false;
+  if (!("kind" in value) || !("data" in value)) return false;
+  const data = (value as Record<string, unknown>).data;
+  if (typeof data !== "object" || data === null) return false;
+  if (!("children" in data)) return false;
+  return Array.isArray((data as Record<string, unknown>).children);
 }
 
 function isRedditCommentsResponse(value: unknown): value is [RedditListing<RedditPostData>, RedditListing<RedditCommentData>] {
@@ -97,41 +90,6 @@ function buildCommentsUrl(
   return `https://www.reddit.com/r/${subreddit}/comments/${postId}.json?limit=${limit}`;
 }
 
-async function fetchWithRetry(
-  fetchFn: typeof fetch,
-  url: string,
-  retries: number = MAX_RETRIES,
-): Promise<unknown> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const response = await fetchFn(url, {
-        headers: { "User-Agent": USER_AGENT, "Accept": "application/json" },
-      });
-      if (!response.ok) {
-        const status = response.status;
-        if (status >= 400 && status < 500 && status !== 429) {
-          throw new Error(`Non-retryable HTTP error: ${status}`);
-        }
-        throw new Error(`HTTP error: ${status}`);
-      }
-      return await response.json();
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (lastError.message.startsWith("Non-retryable")) {
-        throw lastError;
-      }
-      if (attempt < retries - 1) {
-        const backoffMs = Math.pow(2, attempt) * 1000;
-        await delay(backoffMs);
-      }
-    }
-  }
-
-  throw lastError ?? new Error("Fetch failed after retries");
-}
-
 function parseListingItems(data: unknown): RawItemInsert[] {
   if (!isRedditListing(data)) {
     return [];
@@ -151,6 +109,7 @@ function parseListingItems(data: unknown): RawItemInsert[] {
       : post.url;
 
     const engagement: RawItemEngagement = { points: post.score, commentCount: post.num_comments };
+    const collectedAt = new Date();
 
     items.push({
       sourceType: "reddit" as const,
@@ -160,11 +119,11 @@ function parseListingItems(data: unknown): RawItemInsert[] {
       sourceUrl: `https://www.reddit.com${post.permalink}`,
       author: post.author,
       content: post.selftext,
-      publishedAt: new Date(post.created_utc * 1000),
-      collectedAt: new Date(),
+      publishedAt: new Date(post.created_utc * MS_PER_SECOND),
+      collectedAt,
       engagement,
       metadata: { comments: [] },
-      updatedAt: new Date(),
+      updatedAt: collectedAt,
     });
   }
 
@@ -179,7 +138,7 @@ async function fetchComments(
 ): Promise<RawItemComment[]> {
   try {
     const url = buildCommentsUrl(subreddit, postId, limit);
-    const data = await fetchWithRetry(fetchFn, url);
+    const data = await fetchWithRetry(fetchFn, url, { headers: REDDIT_HEADERS, retries: MAX_RETRIES });
 
     if (!isRedditCommentsResponse(data)) {
       return [];
@@ -196,7 +155,7 @@ async function fetchComments(
         id: comment.id,
         author: comment.author,
         content: comment.body,
-        publishedAt: new Date(comment.created_utc * 1000).toISOString(),
+        publishedAt: new Date(comment.created_utc * MS_PER_SECOND).toISOString(),
       });
     }
 
@@ -232,7 +191,7 @@ export async function collectReddit(
     const url = buildListingUrl(subreddit, sort, timeframe, limit);
 
     try {
-      const data = await fetchWithRetry(fetchFn, url);
+      const data = await fetchWithRetry(fetchFn, url, { headers: REDDIT_HEADERS, retries: MAX_RETRIES });
       const items = parseListingItems(data);
 
       let added = 0;

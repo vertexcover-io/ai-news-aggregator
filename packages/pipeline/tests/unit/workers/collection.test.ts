@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { CollectorResult } from "@newsletter/shared/types";
+import type { CollectionJobLike } from "@pipeline/workers/collection.js";
 
 vi.mock("bullmq", () => ({
   Worker: vi.fn(),
@@ -50,7 +51,7 @@ describe("collection worker dispatch", () => {
     mockCollectHn.mockResolvedValue(fakeResult);
 
     const fakeJob = {
-      name: "hn-collect",
+      name: "hn-collect" as const,
       data: {
         config: { pointsThreshold: 100, count: 5 },
       },
@@ -80,7 +81,7 @@ describe("collection worker dispatch", () => {
     mockCollectHn.mockResolvedValue(fakeResult);
 
     const fakeJob = {
-      name: "hn-collect",
+      name: "hn-collect" as const,
       data: { config: {} },
     };
 
@@ -99,7 +100,7 @@ describe("collection worker dispatch", () => {
     mockCollectReddit.mockResolvedValue(fakeResult);
 
     const fakeJob = {
-      name: "reddit-collect",
+      name: "reddit-collect" as const,
       data: {
         config: { subreddits: ["MachineLearning"], sort: "top" as const },
       },
@@ -120,10 +121,7 @@ describe("collection worker dispatch", () => {
 
   // EDGE-008: Unknown job names throw descriptive errors
   it("throws a descriptive error for unknown job names", async () => {
-    const fakeJob = {
-      name: "twitter-collect",
-      data: { config: {} },
-    };
+    const fakeJob = { name: "twitter-collect", data: { config: {} } } as unknown as CollectionJobLike;
 
     await expect(
       handleCollectionJob(fakeJob),
@@ -131,10 +129,7 @@ describe("collection worker dispatch", () => {
   });
 
   it("does not call collectHn for unknown job names", async () => {
-    const fakeJob = {
-      name: "unknown-source",
-      data: { config: {} },
-    };
+    const fakeJob = { name: "unknown-source", data: { config: {} } } as unknown as CollectionJobLike;
 
     try {
       await handleCollectionJob(fakeJob);
@@ -146,10 +141,7 @@ describe("collection worker dispatch", () => {
   });
 
   it("does not call collectReddit for unknown job names", async () => {
-    const fakeJob = {
-      name: "unknown-source",
-      data: { config: {} },
-    };
+    const fakeJob = { name: "unknown-source", data: { config: {} } } as unknown as CollectionJobLike;
 
     try {
       await handleCollectionJob(fakeJob);
