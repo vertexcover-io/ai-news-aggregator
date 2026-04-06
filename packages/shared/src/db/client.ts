@@ -19,3 +19,7 @@ export function getDb(): AppDb {
   db ??= createClient();
   return db;
 }
+
+export function resetDb(): void {
+  db = undefined;
+}

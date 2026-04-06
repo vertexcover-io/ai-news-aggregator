@@ -10,6 +10,10 @@ export interface HnCollectJobData {
   config: HnCollectConfig;
 }
 
+export interface RedditCollectJobData {
+  config: RedditCollectConfig;
+}
+
 export interface RedditCollectConfig {
   subreddits?: string[];
   sort?: "hot" | "new" | "top";

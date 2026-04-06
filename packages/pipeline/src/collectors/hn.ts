@@ -3,6 +3,7 @@ import type { CollectorResult, RawItemComment, RawItemEngagement } from "@newsle
 import type { HnCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import { delay, fetchWithRetry, MAX_RETRIES, RATE_LIMIT_MS } from "@pipeline/collectors/utils.js";
 
 const logger = createLogger("collector:hn");
 
@@ -14,8 +15,6 @@ const DEFAULT_POINTS_THRESHOLD = 20;
 const DEFAULT_COUNT = 100;
 const DEFAULT_COMMENTS_PER_ITEM = 20;
 const DEFAULT_FEEDS = ["newest", "best"];
-const MAX_RETRIES = 3;
-const RATE_LIMIT_MS = 500;
 
 export interface HnCollectorDeps {
   rawItemsRepo: RawItemsRepo;
@@ -76,44 +75,6 @@ function parseJsonFeed(value: unknown): JsonFeed {
   return isJsonFeed(value) ? value : { items: [] };
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function fetchWithRetry(
-  fetchFn: typeof fetch,
-  url: string,
-  retries: number = MAX_RETRIES,
-): Promise<JsonFeed> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const response = await fetchFn(url);
-      if (!response.ok) {
-        const status = response.status;
-        if (status >= 400 && status < 500 && status !== 429) {
-          throw new Error(`Non-retryable HTTP error: ${status}`);
-        }
-        throw new Error(`HTTP error: ${status}`);
-      }
-      const data: unknown = await response.json();
-      return parseJsonFeed(data);
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (lastError.message.startsWith("Non-retryable")) {
-        throw lastError;
-      }
-      if (attempt < retries - 1) {
-        const backoffMs = Math.pow(2, attempt) * 1000;
-        await delay(backoffMs);
-      }
-    }
-  }
-
-  throw lastError ?? new Error("Fetch failed after retries");
-}
-
 async function fetchComments(
   fetchFn: typeof fetch,
   hnId: string,
@@ -133,7 +94,8 @@ async function fetchComments(
       content: item.content_html ?? "",
       publishedAt: item.date_published ?? "",
     }));
-  } catch {
+  } catch (err) {
+    logger.warn({ hnId, error: err instanceof Error ? err.message : String(err) }, "comment fetch failed");
     return [];
   }
 }
@@ -189,7 +151,8 @@ export async function collectHn(
 
   for (const feed of feeds) {
     const feedUrl = buildFeedUrl(feed, config);
-    const feedData = await fetchWithRetry(fetchFn, feedUrl);
+    const rawData = await fetchWithRetry(fetchFn, feedUrl, { retries: MAX_RETRIES });
+    const feedData = parseJsonFeed(rawData);
     const items = parseItems(feedData);
     for (const item of items) {
       if (!seenIds.has(item.externalId)) {
