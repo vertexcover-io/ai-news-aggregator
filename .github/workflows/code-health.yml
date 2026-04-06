@@ -33,6 +33,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run tech-debt finder
+        id: tech-debt
         if: ${{ github.event.inputs.skill == 'all' || github.event.inputs.skill == 'tech-debt' }}
         uses: anthropics/claude-code-action@v1
         with:
@@ -43,10 +44,18 @@ jobs:
           additional_permissions: |
             actions: read
           prompt: |
-            Run the `/harness:tech-debt-finder` skill to scan the codebase for tech debt. Generate a report of all issues found. Then run `/harness:orchestrate --auto` to fix all issues from the report. If there are code changes after fixes, commit them and create a PR with title prefix `chore(tech-debt):`. If no changes needed, skip PR creation.
+            You have access to the harness plugin with skills including `harness:tech-debt-finder` and `harness:orchestrate`.
+
+            Step 1: Use the Skill tool to invoke `harness:tech-debt-finder` to scan the codebase for tech debt. This will generate a report of all issues found.
+
+            Step 2: Once the report is generated, use the Skill tool to invoke `harness:orchestrate` with the report as input and the `--auto` flag. For example: `harness:orchestrate <path-to-report> --auto`
+            The orchestrate skill will fix all issues from the report in auto mode (no interactive approval needed).
+
+            Step 3: After orchestrate completes, if there are code changes, commit them and create a PR with title prefix `chore(tech-debt):`. If no changes were needed, skip PR creation.
           branch_prefix: 'code-health/'
 
       - name: Run docs sync
+        id: docs-sync
         if: ${{ github.event.inputs.skill == 'all' || github.event.inputs.skill == 'docs' }}
         uses: anthropics/claude-code-action@v1
         with:
@@ -57,10 +66,18 @@ jobs:
           additional_permissions: |
             actions: read
           prompt: |
-            Run the `/harness:sync-docs` skill to scan for stale, missing, or contradictory documentation. Generate a report. Then run `/harness:orchestrate --auto` to fix all documentation issues. If there are changes, commit and create a PR with title prefix `docs:`. If no changes, skip PR creation.
+            You have access to the harness plugin with skills including `harness:sync-docs` and `harness:orchestrate`.
+
+            Step 1: Use the Skill tool to invoke `harness:sync-docs` to scan for stale, missing, or contradictory documentation. This will generate a report.
+
+            Step 2: Once the report is generated, use the Skill tool to invoke `harness:orchestrate` with the report as input and the `--auto` flag. For example: `harness:orchestrate <path-to-report> --auto`
+            The orchestrate skill will fix all documentation issues in auto mode.
+
+            Step 3: After orchestrate completes, if there are changes, commit and create a PR with title prefix `docs:`. If no changes, skip PR creation.
           branch_prefix: 'code-health/'
 
       - name: Run coverage guard
+        id: coverage
         if: ${{ github.event.inputs.skill == 'all' || github.event.inputs.skill == 'coverage' }}
         uses: anthropics/claude-code-action@v1
         with:
@@ -71,5 +88,58 @@ jobs:
           additional_permissions: |
             actions: read
           prompt: |
-            Run the `/harness:coverage-guard` skill to check test coverage meets thresholds. Generate a report of coverage gaps. Then run `/harness:orchestrate --auto` to add missing tests. If there are changes, commit and create a PR with title prefix `test(coverage):`. If no changes, skip PR creation.
+            You have access to the harness plugin with skills including `harness:coverage-guard` and `harness:orchestrate`.
+
+            Step 1: Use the Skill tool to invoke `harness:coverage-guard` to check test coverage and identify coverage gaps. This will generate a report.
+
+            Step 2: Once the report is generated, use the Skill tool to invoke `harness:orchestrate` with the report as input and the `--auto` flag. For example: `harness:orchestrate <path-to-report> --auto`
+            The orchestrate skill will add missing tests in auto mode.
+
+            Step 3: After orchestrate completes, if there are changes, commit and create a PR with title prefix `test(coverage):`. If no changes, skip PR creation.
           branch_prefix: 'code-health/'
+
+      - name: Collect PR links
+        id: collect-prs
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TECH_DEBT_BRANCH: ${{ steps.tech-debt.outputs.branch_name }}
+          DOCS_SYNC_BRANCH: ${{ steps.docs-sync.outputs.branch_name }}
+          COVERAGE_BRANCH: ${{ steps.coverage.outputs.branch_name }}
+        run: |
+          PRS=""
+          if [ -n "$TECH_DEBT_BRANCH" ]; then
+            PR_URL=$(gh pr list --head "$TECH_DEBT_BRANCH" --json url --jq '.[0].url' 2>/dev/null || echo "")
+            [ -n "$PR_URL" ] && PRS="${PRS}\n• *Tech-debt:* ${PR_URL}"
+          fi
+          if [ -n "$DOCS_SYNC_BRANCH" ]; then
+            PR_URL=$(gh pr list --head "$DOCS_SYNC_BRANCH" --json url --jq '.[0].url' 2>/dev/null || echo "")
+            [ -n "$PR_URL" ] && PRS="${PRS}\n• *Docs:* ${PR_URL}"
+          fi
+          if [ -n "$COVERAGE_BRANCH" ]; then
+            PR_URL=$(gh pr list --head "$COVERAGE_BRANCH" --json url --jq '.[0].url' 2>/dev/null || echo "")
+            [ -n "$PR_URL" ] && PRS="${PRS}\n• *Coverage:* ${PR_URL}"
+          fi
+          if [ -z "$PRS" ]; then
+            PRS="No PRs created — nothing to fix."
+          fi
+          echo "pr_summary<<EOF" >> "$GITHUB_OUTPUT"
+          echo -e "$PRS" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack
+        if: always() && vars.SLACK_NOTIFICATIONS_ENABLED == 'true'
+        uses: slackapi/slack-github-action@v2.1.0
+        env:
+          SKILL_INPUT: ${{ github.event.inputs.skill }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PR_SUMMARY: ${{ steps.collect-prs.outputs.pr_summary }}
+          REPO_NAME: ${{ github.repository }}
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": ":wrench: *Code Health Run Complete*\n\n*Repo:* ${{ env.REPO_NAME }}\n*Skill:* `${{ env.SKILL_INPUT }}`\n*Status:* ${{ env.JOB_STATUS }}\n*Run:* ${{ env.RUN_URL }}\n\n*PRs:*\n${{ env.PR_SUMMARY }}"
+            }
