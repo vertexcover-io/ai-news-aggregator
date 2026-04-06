@@ -41,3 +41,19 @@ export interface WebCollectConfig {
 export interface WebCollectJobData {
   config: WebCollectConfig;
 }
+
+export interface WebAutoSourceConfig {
+  name: string;
+  sourceType: "blog" | "rss";
+  indexUrl: string;
+  maxItems?: number;
+  selectors?: WebSourceSelectors;
+}
+
+export interface WebAutoCollectConfig {
+  sources: WebAutoSourceConfig[];
+}
+
+export interface WebAutoCollectJobData {
+  config: WebAutoCollectConfig;
+}
