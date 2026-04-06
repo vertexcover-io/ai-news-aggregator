@@ -17,3 +17,27 @@ export interface RedditCollectConfig {
   limit?: number;
   commentsPerItem?: number;
 }
+
+export interface WebSourceSelectors {
+  articleLink: string;
+  title: string;
+  content: string;
+  author?: string;
+  date?: string;
+}
+
+export interface WebSourceConfig {
+  name: string;
+  sourceType: "blog" | "rss";
+  indexUrl: string;
+  selectors: WebSourceSelectors;
+  maxItems?: number;
+}
+
+export interface WebCollectConfig {
+  sources: WebSourceConfig[];
+}
+
+export interface WebCollectJobData {
+  config: WebCollectConfig;
+}
