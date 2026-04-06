@@ -13,6 +13,10 @@ vi.mock("@pipeline/collectors/reddit.js", () => ({
   collectReddit: vi.fn(),
 }));
 
+vi.mock("@pipeline/collectors/web.js", () => ({
+  collectWeb: vi.fn(),
+}));
+
 vi.mock("@newsletter/shared/db", () => ({
   getDb: vi.fn(() => ({ fake: "db" })),
   rawItems: {},
@@ -25,12 +29,14 @@ vi.mock("@pipeline/repositories/raw-items.js", () => ({
 
 const { collectHn } = await import("@pipeline/collectors/hn.js");
 const { collectReddit } = await import("@pipeline/collectors/reddit.js");
+const { collectWeb } = await import("@pipeline/collectors/web.js");
 const { getDb } = await import("@newsletter/shared/db");
 const { createRawItemsRepo } = await import("@pipeline/repositories/raw-items.js");
 const { handleCollectionJob } = await import("@pipeline/workers/collection.js");
 
 const mockCollectHn = vi.mocked(collectHn);
 const mockCollectReddit = vi.mocked(collectReddit);
+const mockCollectWeb = vi.mocked(collectWeb);
 const mockGetDb = vi.mocked(getDb);
 const mockCreateRawItemsRepo = vi.mocked(createRawItemsRepo);
 
@@ -158,5 +164,61 @@ describe("collection worker dispatch", () => {
     }
 
     expect(mockCollectReddit).not.toHaveBeenCalled();
+  });
+
+  // REQ-017: Web collector is wired into the BullMQ collection worker
+  it("dispatches web-collect jobs to collectWeb with db and config", async () => {
+    const fakeResult: CollectorResult = {
+      itemsFetched: 6,
+      commentsFetched: 0,
+      itemsStored: 6,
+      durationMs: 3500,
+    };
+    mockCollectWeb.mockResolvedValue(fakeResult);
+
+    const fakeJob = {
+      name: "web-collect",
+      data: {
+        config: {
+          sources: [
+            {
+              name: "OpenAI Blog",
+              sourceType: "blog" as const,
+              indexUrl: "https://openai.com/blog",
+              selectors: {
+                articleLink: "a.post-link",
+                title: "h1",
+                content: "article",
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    const result = await handleCollectionJob(fakeJob);
+
+    expect(mockGetDb).toHaveBeenCalledOnce();
+    expect(mockCreateRawItemsRepo).toHaveBeenCalledOnce();
+    expect(mockCreateRawItemsRepo).toHaveBeenCalledWith(mockGetDb.mock.results[0]?.value);
+    expect(mockCollectWeb).toHaveBeenCalledOnce();
+    expect(mockCollectWeb).toHaveBeenCalledWith(
+      { rawItemsRepo: mockCreateRawItemsRepo.mock.results[0]?.value },
+      {
+        sources: [
+          {
+            name: "OpenAI Blog",
+            sourceType: "blog",
+            indexUrl: "https://openai.com/blog",
+            selectors: {
+              articleLink: "a.post-link",
+              title: "h1",
+              content: "article",
+            },
+          },
+        ],
+      },
+    );
+    expect(result).toEqual(fakeResult);
   });
 });

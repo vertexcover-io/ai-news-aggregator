@@ -3,7 +3,7 @@
 BullMQ workers that collect, process, and prepare newsletter items.
 
 ## Responsibilities
-- Collectors fetch from external sources (HN, Reddit, etc.)
+- Collectors fetch from external sources (HN, Reddit, Web/blog/RSS)
 - Workers dispatch jobs to collectors based on job name
 - Repository modules handle DB access (via @newsletter/shared schema)
 
