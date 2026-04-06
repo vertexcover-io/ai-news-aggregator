@@ -112,7 +112,7 @@ function parseArticle(
   };
 }
 
-async function collectSource(
+export async function collectSource(
   fetchFn: typeof fetch,
   source: WebSourceConfig,
 ): Promise<RawItemInsert[]> {
