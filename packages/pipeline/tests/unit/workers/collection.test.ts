@@ -17,6 +17,18 @@ vi.mock("@pipeline/collectors/web.js", () => ({
   collectWeb: vi.fn(),
 }));
 
+vi.mock("@pipeline/collectors/web-auto.js", () => ({
+  collectWebAuto: vi.fn(),
+}));
+
+vi.mock("@pipeline/collectors/web-selectors.js", () => ({
+  createGeminiClient: vi.fn(() => ({ generateContent: vi.fn() })),
+}));
+
+vi.mock("@pipeline/collectors/selector-cache.js", () => ({
+  createSelectorCache: vi.fn(() => ({ get: vi.fn(), set: vi.fn(), invalidate: vi.fn(), save: vi.fn() })),
+}));
+
 vi.mock("@newsletter/shared/db", () => ({
   getDb: vi.fn(() => ({ fake: "db" })),
   rawItems: {},
@@ -30,6 +42,9 @@ vi.mock("@pipeline/repositories/raw-items.js", () => ({
 const { collectHn } = await import("@pipeline/collectors/hn.js");
 const { collectReddit } = await import("@pipeline/collectors/reddit.js");
 const { collectWeb } = await import("@pipeline/collectors/web.js");
+const { collectWebAuto } = await import("@pipeline/collectors/web-auto.js");
+const { createGeminiClient } = await import("@pipeline/collectors/web-selectors.js");
+const { createSelectorCache } = await import("@pipeline/collectors/selector-cache.js");
 const { getDb } = await import("@newsletter/shared/db");
 const { createRawItemsRepo } = await import("@pipeline/repositories/raw-items.js");
 const { handleCollectionJob } = await import("@pipeline/workers/collection.js");
@@ -37,6 +52,9 @@ const { handleCollectionJob } = await import("@pipeline/workers/collection.js");
 const mockCollectHn = vi.mocked(collectHn);
 const mockCollectReddit = vi.mocked(collectReddit);
 const mockCollectWeb = vi.mocked(collectWeb);
+const mockCollectWebAuto = vi.mocked(collectWebAuto);
+const mockCreateGeminiClient = vi.mocked(createGeminiClient);
+const mockCreateSelectorCache = vi.mocked(createSelectorCache);
 const mockGetDb = vi.mocked(getDb);
 const mockCreateRawItemsRepo = vi.mocked(createRawItemsRepo);
 
@@ -215,6 +233,58 @@ describe("collection worker dispatch", () => {
               title: "h1",
               content: "article",
             },
+          },
+        ],
+      },
+    );
+    expect(result).toEqual(fakeResult);
+  });
+
+  // REQ-011: web-auto-collect dispatches to collectWebAuto
+  it("dispatches web-auto-collect jobs to collectWebAuto with deps and config", async () => {
+    const fakeResult: CollectorResult = {
+      itemsFetched: 4,
+      commentsFetched: 0,
+      itemsStored: 4,
+      durationMs: 2500,
+    };
+    mockCollectWebAuto.mockResolvedValue(fakeResult);
+
+    const fakeJob = {
+      name: "web-auto-collect",
+      data: {
+        config: {
+          sources: [
+            {
+              name: "Anthropic Blog",
+              sourceType: "blog" as const,
+              indexUrl: "https://anthropic.com/blog",
+            },
+          ],
+        },
+      },
+    };
+
+    const result = await handleCollectionJob(fakeJob);
+
+    expect(mockGetDb).toHaveBeenCalledOnce();
+    expect(mockCreateRawItemsRepo).toHaveBeenCalledOnce();
+    expect(mockCreateRawItemsRepo).toHaveBeenCalledWith(mockGetDb.mock.results[0]?.value);
+    expect(mockCreateGeminiClient).toHaveBeenCalledOnce();
+    expect(mockCreateSelectorCache).toHaveBeenCalledOnce();
+    expect(mockCollectWebAuto).toHaveBeenCalledOnce();
+    expect(mockCollectWebAuto).toHaveBeenCalledWith(
+      {
+        rawItemsRepo: mockCreateRawItemsRepo.mock.results[0]?.value,
+        geminiClient: mockCreateGeminiClient.mock.results[0]?.value,
+        selectorCache: mockCreateSelectorCache.mock.results[0]?.value,
+      },
+      {
+        sources: [
+          {
+            name: "Anthropic Blog",
+            sourceType: "blog",
+            indexUrl: "https://anthropic.com/blog",
           },
         ],
       },

@@ -43,6 +43,8 @@ packages/
 | Containers | Podman Compose (compose.yml) |
 | Linting | ESLint (flat config, per-package) |
 | Pre-commit | Husky + lint-staged |
+| Web Scraping | Cheerio (HTML parsing + CSS selectors) |
+| LLM (selector extraction) | Gemini 2.5 Flash Lite via @google/genai |
 | Auth (MVP) | Simple password middleware on /review and /admin |
 
 ## Commands
@@ -68,7 +70,7 @@ pnpm --filter @newsletter/shared db:migrate    # Apply pending Drizzle migration
 
 ## Design Decisions
 
-- **Scraping approach and AI/LLM choices are deferred** — not yet decided how sources will be scraped or which model handles summarization. Don't assume specific libraries.
+- **Web scraping uses Cheerio + Gemini for selector extraction** — `web-collect` requires manual CSS selectors; `web-auto-collect` uses Gemini 2.5 Flash Lite to auto-derive selectors from page HTML with file-based caching. AI/LLM choices for summarization, ranking, and filtering are still deferred.
 - **Pipeline has no HTTP framework** — it's a standalone Node process running BullMQ workers. Don't add Express/Hono/etc to the pipeline package.
 - **Shared package owns the DB schema** — all Drizzle schema definitions and migrations live in `@newsletter/shared`. Both API and pipeline import from there.
 - **No public subscribers for MVP** — recipients are hardcoded (Ritesh, Aman). No subscription management.
