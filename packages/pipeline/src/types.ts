@@ -18,42 +18,11 @@ export interface RedditCollectConfig {
   commentsPerItem?: number;
 }
 
-export interface WebSourceSelectors {
-  articleLink: string;
-  title: string;
-  content: string;
-  author?: string;
-  date?: string;
-}
-
-export interface WebSourceConfig {
-  name: string;
-  sourceType: "blog" | "rss";
-  indexUrl: string;
-  selectors: WebSourceSelectors;
-  maxItems?: number;
-}
-
 export interface WebCollectConfig {
-  sources: WebSourceConfig[];
+  urls: string[];
+  sourceType: "blog" | "rss";
 }
 
 export interface WebCollectJobData {
   config: WebCollectConfig;
-}
-
-export interface WebAutoSourceConfig {
-  name: string;
-  sourceType: "blog" | "rss";
-  indexUrl: string;
-  maxItems?: number;
-  selectors?: WebSourceSelectors;
-}
-
-export interface WebAutoCollectConfig {
-  sources: WebAutoSourceConfig[];
-}
-
-export interface WebAutoCollectJobData {
-  config: WebAutoCollectConfig;
 }

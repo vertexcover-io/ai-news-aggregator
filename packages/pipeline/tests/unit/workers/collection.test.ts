@@ -17,16 +17,8 @@ vi.mock("@pipeline/collectors/web.js", () => ({
   collectWeb: vi.fn(),
 }));
 
-vi.mock("@pipeline/collectors/web-auto.js", () => ({
-  collectWebAuto: vi.fn(),
-}));
-
-vi.mock("@pipeline/collectors/web-selectors.js", () => ({
+vi.mock("@pipeline/llm.js", () => ({
   createGeminiClient: vi.fn(() => ({ generateContent: vi.fn() })),
-}));
-
-vi.mock("@pipeline/collectors/selector-cache.js", () => ({
-  createSelectorCache: vi.fn(() => ({ get: vi.fn(), set: vi.fn(), invalidate: vi.fn(), save: vi.fn() })),
 }));
 
 vi.mock("@newsletter/shared/db", () => ({
@@ -42,9 +34,7 @@ vi.mock("@pipeline/repositories/raw-items.js", () => ({
 const { collectHn } = await import("@pipeline/collectors/hn.js");
 const { collectReddit } = await import("@pipeline/collectors/reddit.js");
 const { collectWeb } = await import("@pipeline/collectors/web.js");
-const { collectWebAuto } = await import("@pipeline/collectors/web-auto.js");
-const { createGeminiClient } = await import("@pipeline/collectors/web-selectors.js");
-const { createSelectorCache } = await import("@pipeline/collectors/selector-cache.js");
+const { createGeminiClient } = await import("@pipeline/llm.js");
 const { getDb } = await import("@newsletter/shared/db");
 const { createRawItemsRepo } = await import("@pipeline/repositories/raw-items.js");
 const { handleCollectionJob } = await import("@pipeline/workers/collection.js");
@@ -52,9 +42,7 @@ const { handleCollectionJob } = await import("@pipeline/workers/collection.js");
 const mockCollectHn = vi.mocked(collectHn);
 const mockCollectReddit = vi.mocked(collectReddit);
 const mockCollectWeb = vi.mocked(collectWeb);
-const mockCollectWebAuto = vi.mocked(collectWebAuto);
 const mockCreateGeminiClient = vi.mocked(createGeminiClient);
-const mockCreateSelectorCache = vi.mocked(createSelectorCache);
 const mockGetDb = vi.mocked(getDb);
 const mockCreateRawItemsRepo = vi.mocked(createRawItemsRepo);
 
@@ -63,7 +51,6 @@ describe("collection worker dispatch", () => {
     vi.clearAllMocks();
   });
 
-  // REQ-001: HN collector is wired into the BullMQ collection worker
   it("dispatches hn-collect jobs to collectHn with db and config", async () => {
     const fakeResult: CollectorResult = {
       itemsFetched: 5,
@@ -93,7 +80,6 @@ describe("collection worker dispatch", () => {
     expect(result).toEqual(fakeResult);
   });
 
-  // REQ-009: Structured error handling for unknown collectors
   it("returns the CollectorResult from collectHn", async () => {
     const fakeResult: CollectorResult = {
       itemsFetched: 3,
@@ -112,7 +98,6 @@ describe("collection worker dispatch", () => {
     expect(result).toEqual(fakeResult);
   });
 
-  // REQ-001: Reddit collector is wired into the BullMQ collection worker
   it("dispatches reddit-collect jobs to collectReddit with db and config", async () => {
     const fakeResult: CollectorResult = {
       itemsFetched: 8,
@@ -142,7 +127,6 @@ describe("collection worker dispatch", () => {
     expect(result).toEqual(fakeResult);
   });
 
-  // EDGE-008: Unknown job names throw descriptive errors
   it("throws a descriptive error for unknown job names", async () => {
     const fakeJob = {
       name: "twitter-collect",
@@ -184,12 +168,11 @@ describe("collection worker dispatch", () => {
     expect(mockCollectReddit).not.toHaveBeenCalled();
   });
 
-  // REQ-017: Web collector is wired into the BullMQ collection worker
-  it("dispatches web-collect jobs to collectWeb with db and config", async () => {
+  it("dispatches web-collect jobs to collectWeb with geminiClient and config", async () => {
     const fakeResult: CollectorResult = {
-      itemsFetched: 6,
+      itemsFetched: 2,
       commentsFetched: 0,
-      itemsStored: 6,
+      itemsStored: 2,
       durationMs: 3500,
     };
     mockCollectWeb.mockResolvedValue(fakeResult);
@@ -198,69 +181,8 @@ describe("collection worker dispatch", () => {
       name: "web-collect",
       data: {
         config: {
-          sources: [
-            {
-              name: "OpenAI Blog",
-              sourceType: "blog" as const,
-              indexUrl: "https://openai.com/blog",
-              selectors: {
-                articleLink: "a.post-link",
-                title: "h1",
-                content: "article",
-              },
-            },
-          ],
-        },
-      },
-    };
-
-    const result = await handleCollectionJob(fakeJob);
-
-    expect(mockGetDb).toHaveBeenCalledOnce();
-    expect(mockCreateRawItemsRepo).toHaveBeenCalledOnce();
-    expect(mockCreateRawItemsRepo).toHaveBeenCalledWith(mockGetDb.mock.results[0]?.value);
-    expect(mockCollectWeb).toHaveBeenCalledOnce();
-    expect(mockCollectWeb).toHaveBeenCalledWith(
-      { rawItemsRepo: mockCreateRawItemsRepo.mock.results[0]?.value },
-      {
-        sources: [
-          {
-            name: "OpenAI Blog",
-            sourceType: "blog",
-            indexUrl: "https://openai.com/blog",
-            selectors: {
-              articleLink: "a.post-link",
-              title: "h1",
-              content: "article",
-            },
-          },
-        ],
-      },
-    );
-    expect(result).toEqual(fakeResult);
-  });
-
-  // REQ-011: web-auto-collect dispatches to collectWebAuto
-  it("dispatches web-auto-collect jobs to collectWebAuto with deps and config", async () => {
-    const fakeResult: CollectorResult = {
-      itemsFetched: 4,
-      commentsFetched: 0,
-      itemsStored: 4,
-      durationMs: 2500,
-    };
-    mockCollectWebAuto.mockResolvedValue(fakeResult);
-
-    const fakeJob = {
-      name: "web-auto-collect",
-      data: {
-        config: {
-          sources: [
-            {
-              name: "Anthropic Blog",
-              sourceType: "blog" as const,
-              indexUrl: "https://anthropic.com/blog",
-            },
-          ],
+          urls: ["https://openai.com/blog/post-1", "https://openai.com/blog/post-2"],
+          sourceType: "blog" as const,
         },
       },
     };
@@ -271,22 +193,15 @@ describe("collection worker dispatch", () => {
     expect(mockCreateRawItemsRepo).toHaveBeenCalledOnce();
     expect(mockCreateRawItemsRepo).toHaveBeenCalledWith(mockGetDb.mock.results[0]?.value);
     expect(mockCreateGeminiClient).toHaveBeenCalledOnce();
-    expect(mockCreateSelectorCache).toHaveBeenCalledOnce();
-    expect(mockCollectWebAuto).toHaveBeenCalledOnce();
-    expect(mockCollectWebAuto).toHaveBeenCalledWith(
+    expect(mockCollectWeb).toHaveBeenCalledOnce();
+    expect(mockCollectWeb).toHaveBeenCalledWith(
       {
         rawItemsRepo: mockCreateRawItemsRepo.mock.results[0]?.value,
         geminiClient: mockCreateGeminiClient.mock.results[0]?.value,
-        selectorCache: mockCreateSelectorCache.mock.results[0]?.value,
       },
       {
-        sources: [
-          {
-            name: "Anthropic Blog",
-            sourceType: "blog",
-            indexUrl: "https://anthropic.com/blog",
-          },
-        ],
+        urls: ["https://openai.com/blog/post-1", "https://openai.com/blog/post-2"],
+        sourceType: "blog",
       },
     );
     expect(result).toEqual(fakeResult);
