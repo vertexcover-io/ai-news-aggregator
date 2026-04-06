@@ -43,6 +43,8 @@ jobs:
           show_full_output: true
           additional_permissions: |
             actions: read
+          claude_args: |
+            --permission-mode bypassPermissions
           prompt: |
             You have access to the harness plugin with skills including `harness:tech-debt-finder` and `harness:orchestrate`.
 
@@ -65,6 +67,8 @@ jobs:
           show_full_output: true
           additional_permissions: |
             actions: read
+          claude_args: |
+            --permission-mode bypassPermissions
           prompt: |
             You have access to the harness plugin with skills including `harness:sync-docs` and `harness:orchestrate`.
 
@@ -87,6 +91,8 @@ jobs:
           show_full_output: true
           additional_permissions: |
             actions: read
+          claude_args: |
+            --permission-mode bypassPermissions
           prompt: |
             You have access to the harness plugin with skills including `harness:coverage-guard` and `harness:orchestrate`.
 
