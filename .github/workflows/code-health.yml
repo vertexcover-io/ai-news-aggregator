@@ -1,0 +1,75 @@
+name: Code Health
+
+on:
+  workflow_dispatch:
+    inputs:
+      skill:
+        description: 'Which code health skill to run'
+        required: true
+        type: choice
+        options:
+          - all
+          - tech-debt
+          - docs
+          - coverage
+
+concurrency:
+  group: code-health-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  code-health:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run tech-debt finder
+        if: ${{ github.event.inputs.skill == 'all' || github.event.inputs.skill == 'tech-debt' }}
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: 'https://github.com/vertexcover-io/harness-engineering.git'
+          plugins: 'harness@main'
+          show_full_output: true
+          additional_permissions: |
+            actions: read
+          prompt: |
+            Run the `/harness:tech-debt-finder` skill to scan the codebase for tech debt. Generate a report of all issues found. Then run `/harness:orchestrate --auto` to fix all issues from the report. If there are code changes after fixes, commit them and create a PR with title prefix `chore(tech-debt):`. If no changes needed, skip PR creation.
+          branch_prefix: 'code-health/'
+
+      - name: Run docs sync
+        if: ${{ github.event.inputs.skill == 'all' || github.event.inputs.skill == 'docs' }}
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: 'https://github.com/vertexcover-io/harness-engineering.git'
+          plugins: 'harness@main'
+          show_full_output: true
+          additional_permissions: |
+            actions: read
+          prompt: |
+            Run the `/harness:sync-docs` skill to scan for stale, missing, or contradictory documentation. Generate a report. Then run `/harness:orchestrate --auto` to fix all documentation issues. If there are changes, commit and create a PR with title prefix `docs:`. If no changes, skip PR creation.
+          branch_prefix: 'code-health/'
+
+      - name: Run coverage guard
+        if: ${{ github.event.inputs.skill == 'all' || github.event.inputs.skill == 'coverage' }}
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: 'https://github.com/vertexcover-io/harness-engineering.git'
+          plugins: 'harness@main'
+          show_full_output: true
+          additional_permissions: |
+            actions: read
+          prompt: |
+            Run the `/harness:coverage-guard` skill to check test coverage meets thresholds. Generate a report of coverage gaps. Then run `/harness:orchestrate --auto` to add missing tests. If there are changes, commit and create a PR with title prefix `test(coverage):`. If no changes, skip PR creation.
+          branch_prefix: 'code-health/'
