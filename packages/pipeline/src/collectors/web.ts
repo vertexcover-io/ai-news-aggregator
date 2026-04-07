@@ -1,8 +1,15 @@
+import pLimit from "p-limit";
 import { generateText, Output } from "ai";
 import type { LanguageModel } from "ai";
 import { z } from "zod";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
+import type {
+  BlogSource,
+  CollectorFailure,
+  WebCollectConfig,
+} from "@pipeline/types.js";
+import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 
 const logger = createLogger("collector:web");
 
@@ -10,10 +17,7 @@ const JINA_BASE_URL = "https://r.jina.ai/";
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
 const MAX_ERROR_LENGTH = 200;
-
-// Referenced by Phase 5 (failure logging + truncation); kept here to establish module constants.
-void logger;
-void MAX_ERROR_LENGTH;
+const DEFAULT_POST_CONCURRENCY = 3;
 
 export async function fetchMarkdown(
   url: string,
@@ -146,6 +150,156 @@ export function parseDateOrNull(raw: string | undefined | null): Date | null {
   if (!raw) return null;
   const t = Date.parse(raw);
   return Number.isNaN(t) ? null : new Date(t);
+}
+
+type FailureStage =
+  | "discovery-fetch"
+  | "discovery-llm"
+  | "discovery-empty"
+  | "detail-fetch"
+  | "detail-llm"
+  | "validate";
+
+class CollectorError extends Error {
+  constructor(
+    public readonly stage: FailureStage,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CollectorError";
+  }
+}
+
+function truncateError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.length > MAX_ERROR_LENGTH ? msg.slice(0, MAX_ERROR_LENGTH) : msg;
+}
+
+function logFailure(
+  source: string,
+  stage: FailureStage,
+  error: string,
+  postUrl?: string,
+): void {
+  logger.warn(
+    { event: "collector_failure", collector: "web", source, stage, postUrl, error },
+    "collector failure",
+  );
+}
+
+interface ProcessSourceResult {
+  items: RawItemInsert[];
+  failures: CollectorFailure[];
+  sourceFailed: boolean;
+}
+
+export async function processOnePost(
+  post: DiscoveredPost,
+  fetchFn: typeof fetch,
+  llmModel: LanguageModel,
+): Promise<RawItemInsert> {
+  let markdown: string;
+  try {
+    markdown = await fetchMarkdown(post.url, fetchFn);
+  } catch (err) {
+    throw new CollectorError("detail-fetch", truncateError(err));
+  }
+
+  let fields: ExtractedFields;
+  try {
+    fields = await extractPostFields(post.url, markdown, llmModel);
+  } catch (err) {
+    throw new CollectorError("detail-llm", truncateError(err));
+  }
+
+  if (!fields.title.trim()) {
+    throw new CollectorError("validate", "empty title");
+  }
+
+  return buildRawItem(post.url, markdown, fields);
+}
+
+export async function processSource(
+  source: BlogSource,
+  config: WebCollectConfig,
+  deps: {
+    rawItemsRepo: RawItemsRepo;
+    fetchFn: typeof fetch;
+    llmModel: LanguageModel;
+  },
+): Promise<ProcessSourceResult> {
+  let listingMarkdown: string;
+  try {
+    listingMarkdown = await fetchMarkdown(source.listingUrl, deps.fetchFn);
+  } catch (err) {
+    const error = truncateError(err);
+    logFailure(source.name, "discovery-fetch", error);
+    return {
+      items: [],
+      failures: [{ source: source.name, error }],
+      sourceFailed: true,
+    };
+  }
+
+  let discovered: DiscoveredPost[];
+  try {
+    discovered = await discoverPostUrls(source.listingUrl, listingMarkdown, deps.llmModel);
+  } catch (err) {
+    const error = truncateError(err);
+    logFailure(source.name, "discovery-llm", error);
+    return {
+      items: [],
+      failures: [{ source: source.name, error }],
+      sourceFailed: true,
+    };
+  }
+
+  const validated = validateDiscoveredUrls(discovered, listingMarkdown);
+  const filtered = applySinceDays(validated, config.sinceDays);
+  const capped = filtered.slice(0, config.maxItems);
+
+  if (capped.length === 0) {
+    const error = "no posts after filter";
+    logFailure(source.name, "discovery-empty", error);
+    return {
+      items: [],
+      failures: [{ source: source.name, error }],
+      sourceFailed: true,
+    };
+  }
+
+  const existing = await deps.rawItemsRepo.findExistingExternalIds(
+    "blog",
+    capped.map((p) => p.url),
+  );
+  const newPosts = capped.filter((p) => !existing.has(p.url));
+
+  if (newPosts.length === 0) {
+    return { items: [], failures: [], sourceFailed: false };
+  }
+
+  const limit = pLimit(config.postConcurrency ?? DEFAULT_POST_CONCURRENCY);
+  const settled = await Promise.allSettled(
+    newPosts.map((p) => limit(() => processOnePost(p, deps.fetchFn, deps.llmModel))),
+  );
+
+  const items: RawItemInsert[] = [];
+  const failures: CollectorFailure[] = [];
+  for (let i = 0; i < settled.length; i++) {
+    const result = settled[i];
+    const post = newPosts[i];
+    if (result.status === "fulfilled") {
+      items.push(result.value);
+    } else {
+      const err: unknown = result.reason;
+      const stage: FailureStage = err instanceof CollectorError ? err.stage : "detail-llm";
+      const error = err instanceof Error ? err.message : String(err);
+      logFailure(source.name, stage, error, post.url);
+      failures.push({ source: source.name, postUrl: post.url, error });
+    }
+  }
+
+  return { items, failures, sourceFailed: false };
 }
 
 export function buildRawItem(

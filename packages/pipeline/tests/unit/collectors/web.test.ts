@@ -10,8 +10,12 @@ import {
   validateDiscoveredUrls,
   DiscoverySchema,
   DetailSchema,
+  processOnePost,
+  processSource,
   type DiscoveredPost,
 } from "@pipeline/collectors/web.js";
+import type { BlogSource, WebCollectConfig } from "@pipeline/types.js";
+import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 
 interface FetchResponse {
   ok: boolean;
@@ -536,5 +540,551 @@ describe("filters and row assembly", () => {
       { title: "T", author: "A", published_at: "not a date" },
     );
     expect(item.publishedAt).toBeNull();
+  });
+});
+
+describe("processOnePost and processSource", () => {
+  const POST_BODY = "Title: Some Post\nURL Source: https://example.com/blog/scaling-events\n\nMarkdown Content:\nthe post body";
+
+  function makeFetch(body: string): ReturnType<typeof vi.fn> {
+    return vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(body),
+    });
+  }
+
+  function makeFetchThrowing(): ReturnType<typeof vi.fn> {
+    return vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: () => Promise.resolve("not found"),
+    });
+  }
+
+  function makeNeverCalledModel(): MockLanguageModelV3 {
+    return new MockLanguageModelV3({
+      doGenerate: () => {
+        throw new Error("LLM should not be called in this test");
+      },
+    });
+  }
+
+  function makeExtractModel(fields: { title: string; author: string; published_at: string }): MockLanguageModelV3 {
+    return new MockLanguageModelV3({
+      doGenerate: () =>
+        Promise.resolve({
+          content: [{ type: "text", text: JSON.stringify(fields) }],
+          finishReason: { unified: "stop", raw: "stop" },
+          usage: {
+            inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+            outputTokens: { total: 20, text: 20, reasoning: undefined, cached: undefined },
+          },
+          warnings: [],
+        }),
+    });
+  }
+
+  function makeRepo(existing: string[] = []): RawItemsRepo {
+    return {
+      upsertItems: vi.fn().mockResolvedValue(undefined),
+      findExistingExternalIds: vi.fn().mockResolvedValue(new Set(existing)),
+    };
+  }
+
+  const samplePost: DiscoveredPost = {
+    url: "https://example.com/blog/scaling-events",
+    title: "Scaling our event pipeline to 10M events/sec",
+    published_at: "2026-03-30",
+  };
+
+  describe("processOnePost", () => {
+    async function captureError(fn: () => Promise<unknown>): Promise<Error & { stage?: string }> {
+      let caught: unknown = null;
+      try {
+        await fn();
+      } catch (err) {
+        caught = err;
+      }
+      if (!(caught instanceof Error)) {
+        throw new Error("expected function to throw an Error");
+      }
+      return caught as Error & { stage?: string };
+    }
+
+    // REQ-076
+    it("throws CollectorError with stage 'detail-fetch' when fetchMarkdown throws", async () => {
+      const fetchFn = makeFetchThrowing();
+      const model = makeNeverCalledModel();
+
+      const err = await captureError(() =>
+        processOnePost(samplePost, fetchFn as unknown as typeof fetch, model),
+      );
+
+      expect(err.stage).toBe("detail-fetch");
+    });
+
+    // REQ-077
+    it("throws CollectorError with stage 'detail-llm' when extractPostFields throws", async () => {
+      const fetchFn = makeFetch(POST_BODY);
+      const model = new MockLanguageModelV3({
+        doGenerate: () => Promise.reject(new Error("LLM down")),
+      });
+
+      const err = await captureError(() =>
+        processOnePost(samplePost, fetchFn as unknown as typeof fetch, model),
+      );
+
+      expect(err.stage).toBe("detail-llm");
+    });
+
+    // REQ-078
+    it("throws CollectorError with stage 'validate' when extracted title is empty string", async () => {
+      const fetchFn = makeFetch(POST_BODY);
+      const model = makeExtractModel({ title: "   ", author: "Jane", published_at: "2026-03-30" });
+
+      const err = await captureError(() =>
+        processOnePost(samplePost, fetchFn as unknown as typeof fetch, model),
+      );
+
+      expect(err.stage).toBe("validate");
+    });
+
+    it("returns RawItemInsert on happy path", async () => {
+      const fetchFn = makeFetch(POST_BODY);
+      const model = makeExtractModel({
+        title: "Scaling our event pipeline",
+        author: "Jane Doe",
+        published_at: "2026-03-30",
+      });
+
+      const result = await processOnePost(samplePost, fetchFn as unknown as typeof fetch, model);
+
+      expect(result.title).toBe("Scaling our event pipeline");
+      expect(result.author).toBe("Jane Doe");
+      expect(result.url).toBe(samplePost.url);
+      expect(result.externalId).toBe(samplePost.url);
+      expect(result.sourceType).toBe("blog");
+    });
+  });
+
+  describe("processSource", () => {
+    const source: BlogSource = {
+      name: "example",
+      listingUrl: "https://example.com/blog",
+    };
+    const baseConfig: WebCollectConfig = {
+      sources: [source],
+      maxItems: 10,
+    };
+
+    const listing = webListingFixture as { listingUrl: string; markdown: string };
+
+    function makeListingFetch(opts: {
+      listingFails?: boolean;
+      postBody?: string;
+    } = {}): ReturnType<typeof vi.fn> {
+      return vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith(source.listingUrl)) {
+          if (opts.listingFails) {
+            return Promise.resolve({
+              ok: false,
+              status: 404,
+              text: () => Promise.resolve("not found"),
+            });
+          }
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            text: () => Promise.resolve(`URL Source: ${source.listingUrl}\n\nMarkdown Content:\n${listing.markdown}`),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () => Promise.resolve(opts.postBody ?? POST_BODY),
+        });
+      });
+    }
+
+    function makeDiscoveryThenExtractModel(
+      discovery: { posts: { url: string; title: string; published_at: string }[] },
+      extract: { title: string; author: string; published_at: string },
+    ): MockLanguageModelV3 {
+      let calls = 0;
+      return new MockLanguageModelV3({
+        doGenerate: () => {
+          const isDiscovery = calls === 0;
+          calls++;
+          const payload = isDiscovery ? discovery : extract;
+          return Promise.resolve({
+            content: [{ type: "text", text: JSON.stringify(payload) }],
+            finishReason: { unified: "stop" as const, raw: "stop" },
+            usage: {
+              inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+              outputTokens: { total: 20, text: 20, reasoning: undefined, cached: undefined },
+            },
+            warnings: [],
+          });
+        },
+      });
+    }
+
+    // REQ-072
+    it("records source-level failure (no postUrl) when listing fetchMarkdown throws", async () => {
+      const fetchFn = makeListingFetch({ listingFails: true });
+      const model = makeNeverCalledModel();
+      const repo = makeRepo();
+
+      const result = await processSource(source, baseConfig, {
+        rawItemsRepo: repo,
+        fetchFn: fetchFn as unknown as typeof fetch,
+        llmModel: model,
+      });
+
+      expect(result.sourceFailed).toBe(true);
+      expect(result.items).toEqual([]);
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0].source).toBe("example");
+      expect(result.failures[0].postUrl).toBeUndefined();
+      expect(result.failures[0].error).toContain("404");
+    });
+
+    // REQ-073
+    it("records source-level failure when discoverPostUrls throws", async () => {
+      const fetchFn = makeListingFetch();
+      const model = new MockLanguageModelV3({
+        doGenerate: () => Promise.reject(new Error("llm discovery failed")),
+      });
+      const repo = makeRepo();
+
+      const result = await processSource(source, baseConfig, {
+        rawItemsRepo: repo,
+        fetchFn: fetchFn as unknown as typeof fetch,
+        llmModel: model,
+      });
+
+      expect(result.sourceFailed).toBe(true);
+      expect(result.items).toEqual([]);
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0].source).toBe("example");
+      expect(result.failures[0].postUrl).toBeUndefined();
+    });
+
+    // REQ-074
+    it("records source-level 'discovery-empty' failure when capped is empty after sinceDays filter", async () => {
+      const fetchFn = makeListingFetch();
+      const model = makeDiscoveryThenExtractModel(
+        {
+          posts: [
+            { url: "https://example.com/blog/scaling-events", title: "Old", published_at: "2020-01-01" },
+            { url: "https://example.com/blog/rust-scheduler", title: "Old", published_at: "2020-01-02" },
+          ],
+        },
+        { title: "x", author: "y", published_at: "2020-01-01" },
+      );
+      const repo = makeRepo();
+
+      const result = await processSource(
+        source,
+        { ...baseConfig, sinceDays: 1 },
+        {
+          rawItemsRepo: repo,
+          fetchFn: fetchFn as unknown as typeof fetch,
+          llmModel: model,
+        },
+      );
+
+      expect(result.sourceFailed).toBe(true);
+      expect(result.items).toEqual([]);
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0].error).toContain("no posts");
+    });
+
+    // REQ-075
+    it("returns sourceFailed: false and items: [] when all capped posts already exist (dedup)", async () => {
+      const fetchFn = makeListingFetch();
+      const discoveredUrls = [
+        "https://example.com/blog/scaling-events",
+        "https://example.com/blog/rust-scheduler",
+      ];
+      const model = makeDiscoveryThenExtractModel(
+        {
+          posts: discoveredUrls.map((u) => ({ url: u, title: "T", published_at: "2026-03-30" })),
+        },
+        { title: "x", author: "y", published_at: "2026-03-30" },
+      );
+      const repo = makeRepo(discoveredUrls);
+
+      const result = await processSource(source, baseConfig, {
+        rawItemsRepo: repo,
+        fetchFn: fetchFn as unknown as typeof fetch,
+        llmModel: model,
+      });
+
+      expect(result.sourceFailed).toBe(false);
+      expect(result.items).toEqual([]);
+      expect(result.failures).toEqual([]);
+    });
+
+    // REQ-012
+    it("drops hallucinated URLs from discovery before filtering", async () => {
+      const fetchFn = makeListingFetch();
+      const model = makeDiscoveryThenExtractModel(
+        {
+          posts: [
+            { url: "https://example.com/blog/scaling-events", title: "Real", published_at: "2026-03-30" },
+            { url: "https://example.com/blog/hallucinated", title: "Fake", published_at: "2026-03-30" },
+          ],
+        },
+        { title: "Real Title", author: "Author", published_at: "2026-03-30" },
+      );
+      const repo = makeRepo();
+
+      const result = await processSource(source, baseConfig, {
+        rawItemsRepo: repo,
+        fetchFn: fetchFn as unknown as typeof fetch,
+        llmModel: model,
+      });
+
+      expect(repo.findExistingExternalIds).toHaveBeenCalledWith("blog", [
+        "https://example.com/blog/scaling-events",
+      ]);
+      expect(result.items).toHaveLength(1);
+    });
+
+    // REQ-031
+    it("calls findExistingExternalIds with the capped URLs", async () => {
+      const fetchFn = makeListingFetch();
+      const model = makeDiscoveryThenExtractModel(
+        {
+          posts: [
+            { url: "https://example.com/blog/scaling-events", title: "A", published_at: "2026-03-30" },
+            { url: "https://example.com/blog/rust-scheduler", title: "B", published_at: "2026-03-30" },
+            { url: "https://example.com/blog/remote-oncall", title: "C", published_at: "2026-03-30" },
+          ],
+        },
+        { title: "T", author: "A", published_at: "2026-03-30" },
+      );
+      const repo = makeRepo();
+
+      await processSource(
+        source,
+        { ...baseConfig, maxItems: 2 },
+        {
+          rawItemsRepo: repo,
+          fetchFn: fetchFn as unknown as typeof fetch,
+          llmModel: model,
+        },
+      );
+
+      expect(repo.findExistingExternalIds).toHaveBeenCalledWith("blog", [
+        "https://example.com/blog/scaling-events",
+        "https://example.com/blog/rust-scheduler",
+      ]);
+    });
+
+    // REQ-061
+    it("with postConcurrency 2 never exceeds 2 in-flight processOnePost calls", async () => {
+      let inFlight = 0;
+      let maxInFlight = 0;
+      const fetchFn = vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith(source.listingUrl)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            text: () =>
+              Promise.resolve(
+                `URL Source: ${source.listingUrl}\n\nMarkdown Content:\n${listing.markdown}`,
+              ),
+          });
+        }
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            inFlight--;
+            resolve({
+              ok: true,
+              status: 200,
+              text: () => Promise.resolve(POST_BODY),
+            });
+          }, 20);
+        });
+      });
+
+      const model = makeDiscoveryThenExtractModel(
+        {
+          posts: [
+            { url: "https://example.com/blog/scaling-events", title: "A", published_at: "2026-03-30" },
+            { url: "https://example.com/blog/rust-scheduler", title: "B", published_at: "2026-03-30" },
+            { url: "https://example.com/blog/remote-oncall", title: "C", published_at: "2026-03-30" },
+            { url: "https://example.com/blog/cloud-cost", title: "D", published_at: "2026-03-30" },
+          ],
+        },
+        { title: "T", author: "A", published_at: "2026-03-30" },
+      );
+      const repo = makeRepo();
+
+      const result = await processSource(
+        source,
+        { ...baseConfig, postConcurrency: 2 },
+        {
+          rawItemsRepo: repo,
+          fetchFn: fetchFn as unknown as typeof fetch,
+          llmModel: model,
+        },
+      );
+
+      expect(maxInFlight).toBeLessThanOrEqual(2);
+      expect(result.items).toHaveLength(4);
+    });
+
+    // REQ-062
+    it("defaults to postConcurrency 3 when unspecified", async () => {
+      let inFlight = 0;
+      let maxInFlight = 0;
+      const fetchFn = vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith(source.listingUrl)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            text: () =>
+              Promise.resolve(
+                `URL Source: ${source.listingUrl}\n\nMarkdown Content:\n${listing.markdown}`,
+              ),
+          });
+        }
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            inFlight--;
+            resolve({
+              ok: true,
+              status: 200,
+              text: () => Promise.resolve(POST_BODY),
+            });
+          }, 20);
+        });
+      });
+
+      const model = makeDiscoveryThenExtractModel(
+        {
+          posts: [
+            { url: "https://example.com/blog/scaling-events", title: "A", published_at: "2026-03-30" },
+            { url: "https://example.com/blog/rust-scheduler", title: "B", published_at: "2026-03-30" },
+            { url: "https://example.com/blog/remote-oncall", title: "C", published_at: "2026-03-30" },
+            { url: "https://example.com/blog/cloud-cost", title: "D", published_at: "2026-03-30" },
+            { url: "https://example.com/blog/feature-flags", title: "E", published_at: "2026-03-30" },
+          ],
+        },
+        { title: "T", author: "A", published_at: "2026-03-30" },
+      );
+      const repo = makeRepo();
+
+      await processSource(source, baseConfig, {
+        rawItemsRepo: repo,
+        fetchFn: fetchFn as unknown as typeof fetch,
+        llmModel: model,
+      });
+
+      expect(maxInFlight).toBeLessThanOrEqual(3);
+      expect(maxInFlight).toBeGreaterThan(2);
+    });
+
+    // REQ-081
+    it("truncates error strings longer than MAX_ERROR_LENGTH in recorded failures", async () => {
+      const longMessage = "x".repeat(10_000);
+      const fetchFn = makeListingFetch();
+      let calls = 0;
+      const model = new MockLanguageModelV3({
+        doGenerate: () => {
+          const isDiscovery = calls === 0;
+          calls++;
+          if (isDiscovery) {
+            return Promise.resolve({
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    posts: [
+                      { url: "https://example.com/blog/scaling-events", title: "A", published_at: "2026-03-30" },
+                    ],
+                  }),
+                },
+              ],
+              finishReason: { unified: "stop" as const, raw: "stop" },
+              usage: {
+                inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+                outputTokens: { total: 20, text: 20, reasoning: undefined, cached: undefined },
+              },
+              warnings: [],
+            });
+          }
+          return Promise.reject(new Error(longMessage));
+        },
+      });
+      const repo = makeRepo();
+
+      const result = await processSource(source, baseConfig, {
+        rawItemsRepo: repo,
+        fetchFn: fetchFn as unknown as typeof fetch,
+        llmModel: model,
+      });
+
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0].error.length).toBeLessThanOrEqual(200);
+    });
+
+    it("returns mixed outcomes — 2 succeed and 1 fails with detail-fetch", async () => {
+      const failingUrl = "https://example.com/blog/rust-scheduler";
+      const fetchFn = vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith(source.listingUrl)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            text: () =>
+              Promise.resolve(
+                `URL Source: ${source.listingUrl}\n\nMarkdown Content:\n${listing.markdown}`,
+              ),
+          });
+        }
+        if (url.includes(failingUrl)) {
+          return Promise.resolve({
+            ok: false,
+            status: 404,
+            text: () => Promise.resolve("not found"),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () => Promise.resolve(POST_BODY),
+        });
+      });
+      const model = makeDiscoveryThenExtractModel(
+        {
+          posts: [
+            { url: "https://example.com/blog/scaling-events", title: "A", published_at: "2026-03-30" },
+            { url: failingUrl, title: "B", published_at: "2026-03-30" },
+            { url: "https://example.com/blog/remote-oncall", title: "C", published_at: "2026-03-30" },
+          ],
+        },
+        { title: "T", author: "A", published_at: "2026-03-30" },
+      );
+      const repo = makeRepo();
+
+      const result = await processSource(source, baseConfig, {
+        rawItemsRepo: repo,
+        fetchFn: fetchFn as unknown as typeof fetch,
+        llmModel: model,
+      });
+
+      expect(result.items).toHaveLength(2);
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0].postUrl).toBe(failingUrl);
+      expect(result.sourceFailed).toBe(false);
+    });
   });
 });
