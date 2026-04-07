@@ -1,6 +1,7 @@
 import { generateText, Output } from "ai";
 import type { LanguageModel } from "ai";
 import { z } from "zod";
+import type { RawItemInsert } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
 
 const logger = createLogger("collector:web");
@@ -123,4 +124,49 @@ export function validateDiscoveredUrls(
   listingMarkdown: string,
 ): DiscoveredPost[] {
   return posts.filter((p) => listingMarkdown.includes(p.url));
+}
+
+const MS_PER_DAY = 86_400_000;
+
+export function applySinceDays(
+  posts: DiscoveredPost[],
+  sinceDays: number | undefined,
+): DiscoveredPost[] {
+  if (sinceDays === undefined) return posts;
+  const cutoff = Date.now() - sinceDays * MS_PER_DAY;
+  return posts.filter((p) => {
+    if (!p.published_at) return true;
+    const t = Date.parse(p.published_at);
+    if (Number.isNaN(t)) return true;
+    return t >= cutoff;
+  });
+}
+
+export function parseDateOrNull(raw: string | undefined | null): Date | null {
+  if (!raw) return null;
+  const t = Date.parse(raw);
+  return Number.isNaN(t) ? null : new Date(t);
+}
+
+export function buildRawItem(
+  postUrl: string,
+  markdownBody: string,
+  fields: ExtractedFields,
+): RawItemInsert {
+  const now = new Date();
+  const author = fields.author.trim();
+  return {
+    sourceType: "blog" as const,
+    externalId: postUrl,
+    title: fields.title,
+    url: postUrl,
+    sourceUrl: postUrl,
+    author: author.length > 0 ? author : null,
+    content: markdownBody,
+    publishedAt: parseDateOrNull(fields.published_at),
+    collectedAt: now,
+    engagement: { points: 0, commentCount: 0 },
+    metadata: { comments: [] },
+    updatedAt: now,
+  };
 }

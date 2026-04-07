@@ -380,3 +380,161 @@ describe("LLM extraction helpers", () => {
     });
   });
 });
+
+describe("filters and row assembly", () => {
+  interface DiscoveredPostShape {
+    url: string;
+    title: string;
+    published_at: string;
+  }
+  interface ExtractedFieldsShape {
+    title: string;
+    author: string;
+    published_at: string;
+  }
+  type ApplySinceDaysFn = (
+    posts: DiscoveredPostShape[],
+    sinceDays: number | undefined,
+  ) => DiscoveredPostShape[];
+  type ParseDateOrNullFn = (raw: string | undefined | null) => Date | null;
+  type BuildRawItemFn = (
+    postUrl: string,
+    markdownBody: string,
+    fields: ExtractedFieldsShape,
+  ) => import("@newsletter/shared/db").RawItemInsert;
+
+  let applySinceDays: ApplySinceDaysFn;
+  let parseDateOrNull: ParseDateOrNullFn;
+  let buildRawItem: BuildRawItemFn;
+
+  beforeEach(async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-04-07T00:00:00Z"));
+    const mod = await import("@pipeline/collectors/web.js");
+    applySinceDays = mod.applySinceDays as ApplySinceDaysFn;
+    parseDateOrNull = mod.parseDateOrNull as ParseDateOrNullFn;
+    buildRawItem = mod.buildRawItem as BuildRawItemFn;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("applySinceDays returns input unchanged when sinceDays is undefined", () => {
+    const posts: DiscoveredPostShape[] = [
+      { url: "https://x/a", title: "A", published_at: "2020-01-01" },
+      { url: "https://x/b", title: "B", published_at: "" },
+    ];
+    expect(applySinceDays(posts, undefined)).toEqual(posts);
+  });
+
+  // REQ-020
+  it("applySinceDays drops posts older than the cutoff", () => {
+    const tenDaysAgo = new Date("2026-03-28T00:00:00Z").toISOString();
+    const posts: DiscoveredPostShape[] = [
+      { url: "https://x/old", title: "Old", published_at: tenDaysAgo },
+    ];
+    expect(applySinceDays(posts, 7)).toEqual([]);
+  });
+
+  // REQ-020
+  it("applySinceDays keeps posts within the cutoff", () => {
+    const fiveDaysAgo = new Date("2026-04-02T00:00:00Z").toISOString();
+    const posts: DiscoveredPostShape[] = [
+      { url: "https://x/new", title: "New", published_at: fiveDaysAgo },
+    ];
+    expect(applySinceDays(posts, 7)).toEqual(posts);
+  });
+
+  // REQ-021
+  it("applySinceDays keeps posts with empty published_at even when sinceDays is set", () => {
+    const posts: DiscoveredPostShape[] = [
+      { url: "https://x/empty", title: "Empty", published_at: "" },
+    ];
+    expect(applySinceDays(posts, 7)).toEqual(posts);
+  });
+
+  // REQ-022
+  it("applySinceDays keeps posts with unparseable published_at", () => {
+    const posts: DiscoveredPostShape[] = [
+      { url: "https://x/bad", title: "Bad", published_at: "not a date" },
+    ];
+    expect(applySinceDays(posts, 7)).toEqual(posts);
+  });
+
+  it("applySinceDays keeps a post exactly at the cutoff boundary", () => {
+    const cutoff = new Date("2026-03-31T00:00:00Z").toISOString();
+    const posts: DiscoveredPostShape[] = [
+      { url: "https://x/edge", title: "Edge", published_at: cutoff },
+    ];
+    expect(applySinceDays(posts, 7)).toEqual(posts);
+  });
+
+  it("parseDateOrNull returns null for empty string", () => {
+    expect(parseDateOrNull("")).toBeNull();
+  });
+
+  it("parseDateOrNull returns null for null input", () => {
+    expect(parseDateOrNull(null)).toBeNull();
+  });
+
+  // REQ-051
+  it("parseDateOrNull returns null for unparseable input", () => {
+    expect(parseDateOrNull("not a date")).toBeNull();
+  });
+
+  it("parseDateOrNull returns a Date for YYYY-MM-DD input", () => {
+    const result = parseDateOrNull("2026-04-07");
+    expect(result).toBeInstanceOf(Date);
+    expect(result?.toISOString()).toBe("2026-04-07T00:00:00.000Z");
+  });
+
+  it("parseDateOrNull returns a Date for full ISO-8601 input", () => {
+    const result = parseDateOrNull("2026-04-07T10:30:00Z");
+    expect(result).toBeInstanceOf(Date);
+    expect(result?.toISOString()).toBe("2026-04-07T10:30:00.000Z");
+  });
+
+  // REQ-050
+  it("buildRawItem produces correct shape with all required fields", () => {
+    const item = buildRawItem(
+      "https://example.com/post-1",
+      "# Body markdown",
+      { title: "Post 1", author: "Jane Doe", published_at: "2026-04-01T00:00:00Z" },
+    );
+    expect(item.sourceType).toBe("blog");
+    expect(item.externalId).toBe("https://example.com/post-1");
+    expect(item.url).toBe("https://example.com/post-1");
+    expect(item.sourceUrl).toBe("https://example.com/post-1");
+    expect(item.title).toBe("Post 1");
+    expect(item.author).toBe("Jane Doe");
+    expect(item.content).toBe("# Body markdown");
+    if (!(item.publishedAt instanceof Date)) {
+      throw new Error("expected publishedAt to be a Date");
+    }
+    expect(item.publishedAt.toISOString()).toBe("2026-04-01T00:00:00.000Z");
+    expect(item.engagement).toEqual({ points: 0, commentCount: 0 });
+    expect(item.metadata).toEqual({ comments: [] });
+    expect(item.collectedAt).toBeInstanceOf(Date);
+    expect(item.updatedAt).toBeInstanceOf(Date);
+  });
+
+  it("buildRawItem sets author to null when extracted author is empty", () => {
+    const item = buildRawItem(
+      "https://example.com/post-2",
+      "body",
+      { title: "T", author: "   ", published_at: "" },
+    );
+    expect(item.author).toBeNull();
+  });
+
+  // REQ-051
+  it("buildRawItem sets publishedAt to null when published_at is unparseable", () => {
+    const item = buildRawItem(
+      "https://example.com/post-3",
+      "body",
+      { title: "T", author: "A", published_at: "not a date" },
+    );
+    expect(item.publishedAt).toBeNull();
+  });
+});
