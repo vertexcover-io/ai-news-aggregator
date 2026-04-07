@@ -294,7 +294,7 @@ export async function processSource(
     } else {
       const err: unknown = result.reason;
       const stage: FailureStage = err instanceof CollectorError ? err.stage : "detail-llm";
-      const error = err instanceof Error ? err.message : String(err);
+      const error = truncateError(err instanceof Error ? err.message : String(err));
       logFailure(source.name, stage, error, post.url);
       failures.push({ source: source.name, postUrl: post.url, error });
     }
