@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { CollectorResult } from "@newsletter/shared/types";
 
+const mockLoggerInfo = vi.fn();
+const mockLoggerError = vi.fn();
+const mockLoggerWarn = vi.fn();
+
 vi.mock("bullmq", () => ({
   Worker: vi.fn(),
 }));
@@ -20,8 +24,36 @@ vi.mock("@pipeline/collectors/web.js", () => ({
 vi.mock("@newsletter/shared/db", () => ({
   getDb: vi.fn(() => ({ fake: "db" })),
   rawItems: {},
-  createRedisConnection: vi.fn(),
+  createRedisConnection: vi.fn(() => ({ fake: "redis" })),
 }));
+
+vi.mock("@newsletter/shared/logger", () => ({
+  createLogger: vi.fn(() => ({
+    info: mockLoggerInfo,
+    error: mockLoggerError,
+    warn: mockLoggerWarn,
+  })),
+}));
+
+const mockUpdateSource = vi.fn(() => Promise.resolve());
+const mockSetStage = vi.fn(() => Promise.resolve());
+
+vi.mock("@pipeline/services/run-state.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("@pipeline/services/run-state.js")>(
+      "@pipeline/services/run-state.js",
+    );
+  return {
+    ...actual,
+    createRunStateService: vi.fn(() => ({
+      get: vi.fn(),
+      set: vi.fn(),
+      update: vi.fn(),
+      updateSource: mockUpdateSource,
+      setStage: mockSetStage,
+    })),
+  };
+});
 
 vi.mock("@pipeline/repositories/raw-items.js", () => ({
   createRawItemsRepo: vi.fn(() => ({ upsertItems: vi.fn() })),
@@ -43,6 +75,10 @@ const mockCreateRawItemsRepo = vi.mocked(createRawItemsRepo);
 describe("collection worker dispatch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUpdateSource.mockClear();
+    mockSetStage.mockClear();
+    mockLoggerInfo.mockClear();
+    mockLoggerError.mockClear();
   });
 
   // REQ-001: HN collector is wired into the BullMQ collection worker
@@ -199,5 +235,136 @@ describe("collection worker dispatch", () => {
     }
 
     expect(mockCollectReddit).not.toHaveBeenCalled();
+  });
+
+  // REQ-030: Backward-compat — jobs without runId do not touch run-state
+  it("does not call run-state service when runId is absent", async () => {
+    const fakeResult: CollectorResult = {
+      itemsFetched: 2,
+      commentsFetched: 0,
+      itemsStored: 2,
+      durationMs: 500,
+    };
+    mockCollectHn.mockResolvedValue(fakeResult);
+
+    await handleCollectionJob({
+      name: "hn-collect",
+      data: { config: {} },
+    });
+
+    expect(mockUpdateSource).not.toHaveBeenCalled();
+    expect(mockSetStage).not.toHaveBeenCalled();
+  });
+
+  // REQ-031: Success path with runId transitions source running → completed
+  it("transitions source status on success when runId is provided", async () => {
+    const fakeResult: CollectorResult = {
+      itemsFetched: 6,
+      commentsFetched: 4,
+      itemsStored: 6,
+      durationMs: 900,
+    };
+    mockCollectHn.mockResolvedValue(fakeResult);
+
+    await handleCollectionJob({
+      name: "hn-collect",
+      data: { runId: "run-42", config: {} },
+    });
+
+    expect(mockUpdateSource).toHaveBeenNthCalledWith(1, "run-42", "hn", {
+      status: "running",
+    });
+    expect(mockSetStage).toHaveBeenCalledWith("run-42", "collecting");
+    expect(mockUpdateSource).toHaveBeenNthCalledWith(2, "run-42", "hn", {
+      status: "completed",
+      itemsFetched: 6,
+    });
+  });
+
+  // REQ-081: Emits run.source.completed log on success
+  it("emits run.source.completed log with runId, sourceType, itemsFetched, durationMs", async () => {
+    const fakeResult: CollectorResult = {
+      itemsFetched: 3,
+      commentsFetched: 0,
+      itemsStored: 3,
+      durationMs: 0,
+    };
+    mockCollectReddit.mockResolvedValue(fakeResult);
+
+    await handleCollectionJob({
+      name: "reddit-collect",
+      data: {
+        runId: "run-99",
+        config: { subreddits: ["MachineLearning"], sort: "top" as const },
+      },
+    });
+
+    const completedCall = mockLoggerInfo.mock.calls.find(
+      (call) =>
+        typeof call[0] === "object" &&
+        call[0] !== null &&
+        (call[0] as { event?: string }).event === "run.source.completed",
+    );
+    expect(completedCall).toBeDefined();
+    const payload = completedCall?.[0] as {
+      event: string;
+      runId: string;
+      sourceType: string;
+      itemsFetched: number;
+      durationMs: number;
+    };
+    expect(payload.runId).toBe("run-99");
+    expect(payload.sourceType).toBe("reddit");
+    expect(payload.itemsFetched).toBe(3);
+    expect(typeof payload.durationMs).toBe("number");
+  });
+
+  // REQ-032: Collector failure transitions source to failed and rethrows
+  it("marks source failed and rethrows when collector throws", async () => {
+    mockCollectHn.mockRejectedValue(new Error("fetch exploded"));
+
+    await expect(
+      handleCollectionJob({
+        name: "hn-collect",
+        data: { runId: "run-7", config: {} },
+      }),
+    ).rejects.toThrow("fetch exploded");
+
+    expect(mockUpdateSource).toHaveBeenNthCalledWith(1, "run-7", "hn", {
+      status: "running",
+    });
+    expect(mockUpdateSource).toHaveBeenLastCalledWith("run-7", "hn", {
+      status: "failed",
+      errors: ["fetch exploded"],
+    });
+  });
+
+  // REQ-082: Emits run.source.failed log on failure
+  it("emits run.source.failed log on collector throw", async () => {
+    mockCollectHn.mockRejectedValue(new Error("boom"));
+
+    await expect(
+      handleCollectionJob({
+        name: "hn-collect",
+        data: { runId: "run-11", config: {} },
+      }),
+    ).rejects.toThrow("boom");
+
+    const failedCall = mockLoggerError.mock.calls.find(
+      (call) =>
+        typeof call[0] === "object" &&
+        call[0] !== null &&
+        (call[0] as { event?: string }).event === "run.source.failed",
+    );
+    expect(failedCall).toBeDefined();
+    const payload = failedCall?.[0] as {
+      event: string;
+      runId: string;
+      sourceType: string;
+      error: string;
+    };
+    expect(payload.runId).toBe("run-11");
+    expect(payload.sourceType).toBe("hn");
+    expect(payload.error).toBe("boom");
   });
 });
