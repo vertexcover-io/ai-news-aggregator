@@ -8,6 +8,7 @@ import type {
   BlogSource,
   CollectorFailure,
   WebCollectConfig,
+  WebCollectorResult,
 } from "@pipeline/types.js";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 
@@ -300,6 +301,85 @@ export async function processSource(
   }
 
   return { items, failures, sourceFailed: false };
+}
+
+export interface WebCollectorDeps {
+  rawItemsRepo: RawItemsRepo;
+  fetchFn?: typeof fetch;
+  llmModel?: LanguageModel;
+}
+
+let cachedDefaultModel: LanguageModel | null = null;
+
+async function resolveDefaultModel(): Promise<LanguageModel> {
+  if (cachedDefaultModel) return cachedDefaultModel;
+  const { google } = await import("@ai-sdk/google");
+  cachedDefaultModel = google("gemini-2.5-flash");
+  return cachedDefaultModel;
+}
+
+export async function collectWeb(
+  deps: WebCollectorDeps,
+  config: WebCollectConfig,
+): Promise<WebCollectorResult> {
+  const startTime = Date.now();
+  const fetchFn = deps.fetchFn ?? globalThis.fetch;
+  const llmModel = deps.llmModel ?? (await resolveDefaultModel());
+
+  logger.info(
+    {
+      sourceCount: config.sources.length,
+      maxItems: config.maxItems,
+      sinceDays: config.sinceDays,
+    },
+    "collection started",
+  );
+
+  const results = await Promise.all(
+    config.sources.map((source) =>
+      processSource(source, config, {
+        rawItemsRepo: deps.rawItemsRepo,
+        fetchFn,
+        llmModel,
+      }),
+    ),
+  );
+
+  const allItems: RawItemInsert[] = [];
+  const allFailures: CollectorFailure[] = [];
+  for (const r of results) {
+    allItems.push(...r.items);
+    allFailures.push(...r.failures);
+  }
+
+  if (config.sources.length > 0 && results.every((r) => r.sourceFailed)) {
+    throw new Error("all sources failed");
+  }
+
+  if (allItems.length > 0) {
+    await deps.rawItemsRepo.upsertItems(allItems);
+  }
+
+  const durationMs = Date.now() - startTime;
+  const result: WebCollectorResult = {
+    itemsFetched: allItems.length,
+    itemsStored: allItems.length,
+    commentsFetched: 0,
+    durationMs,
+    failures: allFailures.length > 0 ? allFailures : undefined,
+  };
+
+  logger.info(
+    {
+      itemsFetched: result.itemsFetched,
+      itemsStored: result.itemsStored,
+      failures: result.failures?.length ?? 0,
+      durationMs,
+    },
+    "collection completed",
+  );
+
+  return result;
 }
 
 export function buildRawItem(

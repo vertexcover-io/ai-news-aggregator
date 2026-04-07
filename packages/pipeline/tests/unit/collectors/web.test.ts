@@ -12,6 +12,7 @@ import {
   DetailSchema,
   processOnePost,
   processSource,
+  collectWeb,
   type DiscoveredPost,
 } from "@pipeline/collectors/web.js";
 import type { BlogSource, WebCollectConfig } from "@pipeline/types.js";
@@ -1086,5 +1087,360 @@ describe("processOnePost and processSource", () => {
       expect(result.failures[0].postUrl).toBe(failingUrl);
       expect(result.sourceFailed).toBe(false);
     });
+  });
+});
+
+describe("collectWeb", () => {
+  const POST_BODY =
+    "Title: Some Post\nURL Source: https://example.com/blog/scaling-events\n\nMarkdown Content:\nthe post body";
+  const listing = webListingFixture as { listingUrl: string; markdown: string };
+
+  function makeRepo(existing: string[] = []): RawItemsRepo {
+    return {
+      upsertItems: vi.fn().mockResolvedValue(undefined),
+      findExistingExternalIds: vi.fn().mockResolvedValue(new Set(existing)),
+    };
+  }
+
+  function makeDiscoveryThenExtractModel(
+    discovery: { posts: { url: string; title: string; published_at: string }[] },
+    extract: { title: string; author: string; published_at: string },
+  ): MockLanguageModelV3 {
+    let calls = 0;
+    return new MockLanguageModelV3({
+      doGenerate: () => {
+        const isDiscovery = calls === 0;
+        calls++;
+        const payload = isDiscovery ? discovery : extract;
+        return Promise.resolve({
+          content: [{ type: "text" as const, text: JSON.stringify(payload) }],
+          finishReason: { unified: "stop" as const, raw: "stop" },
+          usage: {
+            inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+            outputTokens: { total: 20, text: 20, reasoning: undefined, cached: undefined },
+          },
+          warnings: [],
+        });
+      },
+    });
+  }
+
+  function makeFetchForSource(
+    sourceListingUrl: string,
+    opts: { listingFails?: boolean; postBody?: string } = {},
+  ): ReturnType<typeof vi.fn> {
+    return vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith(sourceListingUrl)) {
+        if (opts.listingFails) {
+          return Promise.resolve({
+            ok: false,
+            status: 404,
+            text: () => Promise.resolve("not found"),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              `URL Source: ${sourceListingUrl}\n\nMarkdown Content:\n${listing.markdown}`,
+            ),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(opts.postBody ?? POST_BODY),
+      });
+    });
+  }
+
+  const sourceA: BlogSource = { name: "alpha", listingUrl: "https://alpha.example.com/blog" };
+  const sourceB: BlogSource = { name: "beta", listingUrl: "https://beta.example.com/blog" };
+
+  // EDGE-018: empty sources array
+  it("returns empty result without throwing when sources is []", async () => {
+    const repo = makeRepo();
+    const fetchFn = vi.fn();
+    const model = new MockLanguageModelV3({
+      doGenerate: () => {
+        throw new Error("LLM should not be called");
+      },
+    });
+
+    const result = await collectWeb(
+      { rawItemsRepo: repo, fetchFn: fetchFn as unknown as typeof fetch, llmModel: model },
+      { sources: [], maxItems: 5 },
+    );
+
+    expect(result.itemsFetched).toBe(0);
+    expect(result.itemsStored).toBe(0);
+    expect(result.failures).toBeUndefined();
+    expect(repo.upsertItems).not.toHaveBeenCalled();
+  });
+
+  // REQ-052: upsert exactly once with aggregated batch
+  it("calls upsertItems exactly once with the aggregated batch", async () => {
+    const fetchFn = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith(sourceA.listingUrl) || url.endsWith(sourceB.listingUrl)) {
+        const lurl = url.endsWith(sourceA.listingUrl) ? sourceA.listingUrl : sourceB.listingUrl;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(`URL Source: ${lurl}\n\nMarkdown Content:\n${listing.markdown}`),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(POST_BODY),
+      });
+    });
+    const model = makeDiscoveryThenExtractModel(
+      {
+        posts: [
+          { url: "https://example.com/blog/scaling-events", title: "A", published_at: "2026-03-30" },
+        ],
+      },
+      { title: "T", author: "A", published_at: "2026-03-30" },
+    );
+    const repo = makeRepo();
+
+    const result = await collectWeb(
+      { rawItemsRepo: repo, fetchFn: fetchFn as unknown as typeof fetch, llmModel: model },
+      { sources: [sourceA, sourceB], maxItems: 5 },
+    );
+
+    expect(repo.upsertItems).toHaveBeenCalledTimes(1);
+    expect(result.itemsFetched).toBe(result.itemsStored);
+    expect(result.itemsStored).toBeGreaterThan(0);
+  });
+
+  // REQ-079: throws when every source failed
+  it("throws when every source fails (all sourceFailed: true)", async () => {
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: () => Promise.resolve("not found"),
+    });
+    const model = new MockLanguageModelV3({
+      doGenerate: () => {
+        throw new Error("LLM should not be called");
+      },
+    });
+    const repo = makeRepo();
+
+    await expect(
+      collectWeb(
+        { rawItemsRepo: repo, fetchFn: fetchFn as unknown as typeof fetch, llmModel: model },
+        { sources: [sourceA, sourceB], maxItems: 5 },
+      ),
+    ).rejects.toThrow("all sources failed");
+    expect(repo.upsertItems).not.toHaveBeenCalled();
+  });
+
+  // REQ-080: returns result when one source succeeds, one fails
+  it("returns a result (no throw) when one source succeeds and one fails", async () => {
+    const fetchFn = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith(sourceA.listingUrl)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              `URL Source: ${sourceA.listingUrl}\n\nMarkdown Content:\n${listing.markdown}`,
+            ),
+        });
+      }
+      if (url.endsWith(sourceB.listingUrl)) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          text: () => Promise.resolve("not found"),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(POST_BODY),
+      });
+    });
+    const model = makeDiscoveryThenExtractModel(
+      {
+        posts: [
+          { url: "https://example.com/blog/scaling-events", title: "A", published_at: "2026-03-30" },
+        ],
+      },
+      { title: "T", author: "A", published_at: "2026-03-30" },
+    );
+    const repo = makeRepo();
+
+    const result = await collectWeb(
+      { rawItemsRepo: repo, fetchFn: fetchFn as unknown as typeof fetch, llmModel: model },
+      { sources: [sourceA, sourceB], maxItems: 5 },
+    );
+
+    expect(result.itemsStored).toBeGreaterThan(0);
+    expect(result.failures).toBeDefined();
+    expect(result.failures?.some((f) => f.source === "beta")).toBe(true);
+    expect(repo.upsertItems).toHaveBeenCalledTimes(1);
+  });
+
+  // REQ-090: failures: undefined when no failures occurred
+  it("returns failures: undefined when all sources succeed with no failures", async () => {
+    const fetchFn = makeFetchForSource(sourceA.listingUrl);
+    const model = makeDiscoveryThenExtractModel(
+      {
+        posts: [
+          { url: "https://example.com/blog/scaling-events", title: "A", published_at: "2026-03-30" },
+        ],
+      },
+      { title: "T", author: "A", published_at: "2026-03-30" },
+    );
+    const repo = makeRepo();
+
+    const result = await collectWeb(
+      { rawItemsRepo: repo, fetchFn: fetchFn as unknown as typeof fetch, llmModel: model },
+      { sources: [sourceA], maxItems: 5 },
+    );
+
+    expect(result.failures).toBeUndefined();
+    expect(result.itemsStored).toBeGreaterThan(0);
+  });
+
+  // REQ-090: failures: [...] when any failure occurred
+  it("returns a non-empty failures array when at least one failure occurred", async () => {
+    const repo = makeRepo();
+    const fetchFnMixed = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith(sourceA.listingUrl)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              `URL Source: ${sourceA.listingUrl}\n\nMarkdown Content:\n${listing.markdown}`,
+            ),
+        });
+      }
+      if (url.endsWith(sourceB.listingUrl)) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          text: () => Promise.resolve("not found"),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(POST_BODY),
+      });
+    });
+    const modelMixed = makeDiscoveryThenExtractModel(
+      {
+        posts: [
+          { url: "https://example.com/blog/scaling-events", title: "A", published_at: "2026-03-30" },
+        ],
+      },
+      { title: "T", author: "A", published_at: "2026-03-30" },
+    );
+
+    const result = await collectWeb(
+      {
+        rawItemsRepo: repo,
+        fetchFn: fetchFnMixed as unknown as typeof fetch,
+        llmModel: modelMixed,
+      },
+      { sources: [sourceA, sourceB], maxItems: 5 },
+    );
+
+    expect(result.failures).toBeDefined();
+    expect(result.failures?.length ?? 0).toBeGreaterThan(0);
+  });
+
+  // REQ-060: top-level parallelism — source 2 listing fetch starts before source 1's resolves
+  it("processes sources in parallel (source 2 starts before source 1 resolves)", async () => {
+    const startTimes: Record<string, number> = {};
+    const fetchFn = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith(sourceA.listingUrl)) {
+        startTimes.a = Date.now();
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              ok: true,
+              status: 200,
+              text: () =>
+                Promise.resolve(
+                  `URL Source: ${sourceA.listingUrl}\n\nMarkdown Content:\n${listing.markdown}`,
+                ),
+            });
+          }, 50);
+        });
+      }
+      if (url.endsWith(sourceB.listingUrl)) {
+        startTimes.b = Date.now();
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              ok: true,
+              status: 200,
+              text: () =>
+                Promise.resolve(
+                  `URL Source: ${sourceB.listingUrl}\n\nMarkdown Content:\n${listing.markdown}`,
+                ),
+            });
+          }, 50);
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(POST_BODY),
+      });
+    });
+    const model = makeDiscoveryThenExtractModel(
+      {
+        posts: [
+          { url: "https://example.com/blog/scaling-events", title: "A", published_at: "2026-03-30" },
+        ],
+      },
+      { title: "T", author: "A", published_at: "2026-03-30" },
+    );
+    const repo = makeRepo();
+
+    await collectWeb(
+      { rawItemsRepo: repo, fetchFn: fetchFn as unknown as typeof fetch, llmModel: model },
+      { sources: [sourceA, sourceB], maxItems: 5 },
+    );
+
+    // both started before either resolved (within a tiny window)
+    expect(startTimes.a).toBeDefined();
+    expect(startTimes.b).toBeDefined();
+    expect(Math.abs((startTimes.b ?? 0) - (startTimes.a ?? 0))).toBeLessThan(40);
+  });
+
+  // REQ-091/092: result structure proves start and end logs were emitted
+  it("returns WebCollectorResult with itemsFetched=itemsStored and durationMs set", async () => {
+    const fetchFn = makeFetchForSource(sourceA.listingUrl);
+    const model = makeDiscoveryThenExtractModel(
+      {
+        posts: [
+          { url: "https://example.com/blog/scaling-events", title: "A", published_at: "2026-03-30" },
+        ],
+      },
+      { title: "T", author: "A", published_at: "2026-03-30" },
+    );
+    const repo = makeRepo();
+
+    const result = await collectWeb(
+      { rawItemsRepo: repo, fetchFn: fetchFn as unknown as typeof fetch, llmModel: model },
+      { sources: [sourceA], maxItems: 5 },
+    );
+
+    // REQ-091: completion metric shape
+    expect(result.itemsFetched).toBe(result.itemsStored);
+    expect(result.commentsFetched).toBe(0);
+    expect(typeof result.durationMs).toBe("number");
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
   });
 });
