@@ -164,3 +164,219 @@ describe("fetchMarkdown", () => {
     expect(headers?.Authorization).toBeUndefined();
   });
 });
+
+interface ListingFixture {
+  listingUrl: string;
+  markdown: string;
+}
+
+interface PostFixture {
+  postUrl: string;
+  markdown: string;
+}
+
+const listing = webListingFixture as ListingFixture;
+const post = webPostFixture as PostFixture;
+
+function makeDiscoveryMockModel(jsonObject: unknown): MockLanguageModelV3 {
+  return new MockLanguageModelV3({
+    doGenerate: () =>
+      Promise.resolve({
+        content: [{ type: "text", text: JSON.stringify(jsonObject) }],
+        finishReason: { unified: "stop", raw: "stop" },
+        usage: {
+          inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: {
+            total: 20,
+            text: 20,
+            reasoning: undefined,
+            cached: undefined,
+          },
+        },
+        warnings: [],
+      }),
+  });
+}
+
+function makeThrowingModel(message: string): MockLanguageModelV3 {
+  return new MockLanguageModelV3({
+    doGenerate: () => Promise.reject(new Error(message)),
+  });
+}
+
+function getCallOrThrow(
+  calls: readonly LanguageModelV3CallOptions[],
+  index: number,
+): LanguageModelV3CallOptions {
+  const call = calls[index];
+  if (!call) throw new Error(`expected call at index ${String(index)}`);
+  return call;
+}
+
+describe("LLM extraction helpers", () => {
+  describe("discoverPostUrls", () => {
+    it("returns posts array from mocked LLM", async () => {
+      const fakePosts = [
+        {
+          url: "https://example.com/blog/scaling-events",
+          title: "Scaling our event pipeline to 10M events/sec",
+          published_at: "2026-03-30",
+        },
+        {
+          url: "https://example.com/blog/rust-scheduler",
+          title: "Why we rewrote our scheduler in Rust",
+          published_at: "2026-03-22",
+        },
+      ];
+      const model = makeDiscoveryMockModel({ posts: fakePosts });
+
+      const result = await discoverPostUrls(listing.listingUrl, listing.markdown, model);
+
+      expect(result).toEqual(fakePosts);
+    });
+
+    it("passes temperature 0 to generateText", async () => {
+      const model = makeDiscoveryMockModel({ posts: [] });
+
+      await discoverPostUrls(listing.listingUrl, listing.markdown, model);
+
+      expect(model.doGenerateCalls).toHaveLength(1);
+      const call = getCallOrThrow(model.doGenerateCalls, 0);
+      expect(call.temperature).toBe(0);
+    });
+
+    it("passes DiscoverySchema to generateText", async () => {
+      const model = makeDiscoveryMockModel({ posts: [] });
+
+      await discoverPostUrls(listing.listingUrl, listing.markdown, model);
+
+      const call = getCallOrThrow(model.doGenerateCalls, 0);
+      const responseFormat = call.responseFormat;
+      if (responseFormat?.type !== "json") {
+        throw new Error("expected json response format");
+      }
+      const schema = responseFormat.schema as { properties?: Record<string, unknown> } | undefined;
+      expect(schema?.properties).toHaveProperty("posts");
+    });
+
+    it("throws when LLM throws", async () => {
+      const model = makeThrowingModel("upstream LLM failure");
+
+      await expect(
+        discoverPostUrls(listing.listingUrl, listing.markdown, model),
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("extractPostFields", () => {
+    it("returns title/author/published_at from mocked LLM", async () => {
+      const fakeFields = {
+        title: "Scaling our event pipeline to 10M events/sec",
+        author: "Jane Doe",
+        published_at: "2026-03-30",
+      };
+      const model = makeDiscoveryMockModel(fakeFields);
+
+      const result = await extractPostFields(post.postUrl, post.markdown, model);
+
+      expect(result).toEqual(fakeFields);
+    });
+
+    it("passes temperature 0 to generateText", async () => {
+      const model = makeDiscoveryMockModel({ title: "", author: "", published_at: "" });
+
+      await extractPostFields(post.postUrl, post.markdown, model);
+
+      expect(model.doGenerateCalls).toHaveLength(1);
+      const call = getCallOrThrow(model.doGenerateCalls, 0);
+      expect(call.temperature).toBe(0);
+    });
+
+    it("passes DetailSchema to generateText", async () => {
+      const model = makeDiscoveryMockModel({ title: "", author: "", published_at: "" });
+
+      await extractPostFields(post.postUrl, post.markdown, model);
+
+      const call = getCallOrThrow(model.doGenerateCalls, 0);
+      const responseFormat = call.responseFormat;
+      if (responseFormat?.type !== "json") {
+        throw new Error("expected json response format");
+      }
+      const schema = responseFormat.schema as { properties?: Record<string, unknown> } | undefined;
+      expect(schema?.properties).toHaveProperty("title");
+      expect(schema?.properties).toHaveProperty("author");
+      expect(schema?.properties).toHaveProperty("published_at");
+    });
+  });
+
+  describe("validateDiscoveredUrls", () => {
+    it("drops URLs not present in the listing markdown", () => {
+      const posts: DiscoveredPost[] = [
+        {
+          url: "https://example.com/blog/scaling-events",
+          title: "Real post",
+          published_at: "2026-03-30",
+        },
+        {
+          url: "https://example.com/blog/hallucinated-post",
+          title: "Made up by the LLM",
+          published_at: "2026-03-25",
+        },
+      ];
+
+      const result = validateDiscoveredUrls(posts, listing.markdown);
+
+      expect(result).toHaveLength(1);
+      expect(result.map((p) => p.url)).toEqual([
+        "https://example.com/blog/scaling-events",
+      ]);
+    });
+
+    it("keeps URLs that appear as substrings", () => {
+      const posts: DiscoveredPost[] = [
+        {
+          url: "https://example.com/blog/scaling-events",
+          title: "A",
+          published_at: "",
+        },
+        {
+          url: "https://example.com/blog/rust-scheduler",
+          title: "B",
+          published_at: "",
+        },
+        {
+          url: "https://example.com/blog/feature-flags",
+          title: "C",
+          published_at: "",
+        },
+      ];
+
+      const result = validateDiscoveredUrls(posts, listing.markdown);
+
+      expect(result).toHaveLength(3);
+    });
+
+    it("handles empty input gracefully", () => {
+      const result = validateDiscoveredUrls([], listing.markdown);
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe("schemas", () => {
+    it("DiscoverySchema parses well-formed input", () => {
+      const parsed = DiscoverySchema.parse({
+        posts: [{ url: "https://example.com/a", title: "A", published_at: "2026-01-01" }],
+      });
+      expect(parsed.posts).toHaveLength(1);
+    });
+
+    it("DetailSchema parses well-formed input", () => {
+      const parsed = DetailSchema.parse({
+        title: "T",
+        author: "A",
+        published_at: "2026-01-01",
+      });
+      expect(parsed.title).toBe("T");
+    });
+  });
+});

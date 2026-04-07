@@ -1,3 +1,6 @@
+import { generateText, Output } from "ai";
+import type { LanguageModel } from "ai";
+import { z } from "zod";
 import { createLogger } from "@newsletter/shared/logger";
 
 const logger = createLogger("collector:web");
@@ -55,4 +58,69 @@ function stripJinaEnvelope(raw: string): string {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export const DiscoverySchema = z.object({
+  posts: z.array(
+    z.object({
+      url: z.string(),
+      title: z.string(),
+      published_at: z.string(),
+    }),
+  ),
+});
+
+export const DetailSchema = z.object({
+  title: z.string(),
+  author: z.string(),
+  published_at: z.string(),
+});
+
+export type DiscoveredPost = z.infer<typeof DiscoverySchema>["posts"][number];
+export type ExtractedFields = z.infer<typeof DetailSchema>;
+
+export async function discoverPostUrls(
+  listingUrl: string,
+  listingMarkdown: string,
+  model: LanguageModel,
+): Promise<DiscoveredPost[]> {
+  const result = await generateText({
+    model,
+    output: Output.object({ schema: DiscoverySchema }),
+    temperature: 0,
+    prompt:
+      `You are extracting blog posts from a listing page that has been ` +
+      `converted to markdown. The listing URL is ${listingUrl}.\n\n` +
+      `Return the actual blog post entries in the order they appear on the page ` +
+      `(top = newest). Skip everything that is not a post: navigation, footer, ` +
+      `social links, "related posts" sidebars, author bios, tag indexes, pagination.\n\n` +
+      `Use empty strings for fields you cannot determine \u2014 never invent data.\n\n` +
+      `--- BEGIN LISTING MARKDOWN ---\n${listingMarkdown}\n--- END LISTING MARKDOWN ---`,
+  });
+  return result.output.posts;
+}
+
+export async function extractPostFields(
+  postUrl: string,
+  postMarkdown: string,
+  model: LanguageModel,
+): Promise<ExtractedFields> {
+  const result = await generateText({
+    model,
+    output: Output.object({ schema: DetailSchema }),
+    temperature: 0,
+    prompt:
+      `Extract title, author, and publish date from this blog post markdown. ` +
+      `The source URL is ${postUrl}. ` +
+      `Use empty strings for fields not stated on the page \u2014 never invent data.\n\n` +
+      `--- BEGIN ARTICLE ---\n${postMarkdown}\n--- END ARTICLE ---`,
+  });
+  return result.output;
+}
+
+export function validateDiscoveredUrls(
+  posts: DiscoveredPost[],
+  listingMarkdown: string,
+): DiscoveredPost[] {
+  return posts.filter((p) => listingMarkdown.includes(p.url));
 }
