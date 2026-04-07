@@ -1,3 +1,5 @@
+import type { CollectorResult } from "@newsletter/shared/types";
+
 export interface HnCollectConfig {
   keywords?: string[];
   pointsThreshold?: number;
@@ -16,4 +18,30 @@ export interface RedditCollectConfig {
   timeframe?: "hour" | "day" | "week" | "month";
   limit?: number;
   commentsPerItem?: number;
+}
+
+export interface BlogSource {
+  name: string;
+  listingUrl: string;
+}
+
+export interface WebCollectConfig {
+  sources: BlogSource[];
+  maxItems: number;
+  sinceDays?: number;
+  postConcurrency?: number;
+}
+
+export interface WebCollectJobData {
+  config: WebCollectConfig;
+}
+
+export interface CollectorFailure {
+  source: string;
+  postUrl?: string;
+  error: string;
+}
+
+export interface WebCollectorResult extends CollectorResult {
+  failures?: CollectorFailure[];
 }
