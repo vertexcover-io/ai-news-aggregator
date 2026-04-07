@@ -287,15 +287,33 @@ export async function collectReddit(
     }
   }
 
+  let filteredItems = allItems;
+  if (config.sinceDays !== undefined && config.sinceDays > 0) {
+    const cutoff = Date.now() - config.sinceDays * 86_400_000;
+    const before = filteredItems.length;
+    filteredItems = filteredItems.filter((item) => {
+      if (!item.publishedAt) return true;
+      const t = item.publishedAt.getTime();
+      return Number.isFinite(t) && t >= cutoff;
+    });
+    const dropped = before - filteredItems.length;
+    if (dropped === 0 && before > 0) {
+      logger.warn(
+        { sinceDays: config.sinceDays, fetched: before },
+        "sinceDays filter dropped 0 items — feed may be truncated",
+      );
+    }
+  }
+
   let itemsStored = 0;
 
-  if (allItems.length > 0) {
-    await deps.rawItemsRepo.upsertItems(allItems);
-    itemsStored = allItems.length;
+  if (filteredItems.length > 0) {
+    await deps.rawItemsRepo.upsertItems(filteredItems);
+    itemsStored = filteredItems.length;
   }
 
   const result = {
-    itemsFetched: allItems.length,
+    itemsFetched: filteredItems.length,
     commentsFetched: totalComments,
     itemsStored,
     durationMs: Date.now() - startTime,
