@@ -26,7 +26,9 @@ packages/
 - Both API and pipeline share PostgreSQL through the shared Drizzle schema
 - Pipeline signals "ready for review" by updating DB status; API sends notification email
 
-**Key data flow:** Sources -> Collectors (parallel via BullMQ) -> Dedup -> Filter -> Rank -> Summarize -> `pending_review` in DB -> Admin approves on /review -> Digest assembled -> Email sent via Resend
+**Key data flow (current — Run UI slice):** User submits HN + Reddit config on `/run` -> API enqueues a BullMQ flow (`FlowProducer`) -> Collector children fan out in parallel and write to `raw_items` -> Parent `run-process` worker dedups -> ranks via Vercel AI SDK + Gemini -> writes `rankedItems` to Redis run-state -> Frontend polls `GET /api/runs/:runId` and renders the ranked list with rationale.
+
+**Future stages (not yet wired):** Filter, Summarize, persistent `pending_review` in DB, `/review` admin approval, daily digest assembly, and Resend email delivery — these belong to later PRs and remain documented in the design specs.
 
 ## Tech Stack
 
@@ -34,16 +36,21 @@ packages/
 |-------|-----------|
 | Language | TypeScript (strict) |
 | Monorepo | Turborepo + pnpm workspaces |
-| Frontend | React + Vite |
+| Frontend | React + Vite + Tailwind CSS |
+| Frontend routing | react-router-dom |
+| Frontend data | @tanstack/react-query (polling/cache) + react-hook-form |
 | Backend API | Hono |
 | Database | PostgreSQL |
 | ORM | Drizzle + Drizzle Kit (migrations) |
-| Job Queue | BullMQ + Redis |
+| Job Queue | BullMQ + Redis (API uses `FlowProducer` to enqueue runs) |
+| Ranking LLM | Vercel AI SDK (`ai`) + `@ai-sdk/google` (default `gemini-2.5-flash`) |
+| Validation | zod (API request bodies, ranking structured output) |
 | Email | Resend |
+| Testing | Vitest 3 (unit + e2e projects per package) |
 | Containers | Podman Compose (compose.yml) |
 | Linting | ESLint (flat config, per-package) |
 | Pre-commit | Husky + lint-staged |
-| Auth (MVP) | Simple password middleware on /review and /admin |
+| Auth (MVP) | Simple `x-admin-password` middleware on `/api/runs/*` and the `/run` page |
 
 ## Commands
 
