@@ -58,19 +58,20 @@ describe("fetchMarkdown", () => {
     vi.useRealTimers();
   });
 
-  // REQ-010: happy path
-  it("returns the stripped body on 200", async () => {
+  // Returns the full Jina response (envelope header + body) trimmed. The
+  // envelope contains Title/URL Source/Published Time which the detail LLM
+  // relies on to extract metadata — stripping it would discard that data.
+  it("returns the full trimmed response on 200", async () => {
     const mockFetch = createMockFetch([
       { ok: true, status: 200, body: jinaEnvelopeFixture.envelope },
     ]);
 
     const result = await fetchMarkdown("https://example.com/post", mockFetch);
 
-    expect(result).toBe(jinaEnvelopeFixture.expectedBody);
+    expect(result).toBe(jinaEnvelopeFixture.envelope.trim());
   });
 
-  // REQ-010: envelope strip
-  it("strips the Jina envelope (Title: / URL Source: / Markdown Content:)", async () => {
+  it("preserves the Jina envelope header (Title: / URL Source: / Markdown Content:)", async () => {
     const envelope = "Title: Foo\nURL Source: https://x\n\nMarkdown Content:\n<body>";
     const mockFetch = createMockFetch([
       { ok: true, status: 200, body: envelope },
@@ -78,10 +79,9 @@ describe("fetchMarkdown", () => {
 
     const result = await fetchMarkdown("https://x", mockFetch);
 
-    expect(result).toBe("<body>");
+    expect(result).toBe(envelope);
   });
 
-  // REQ-010 edge: no envelope
   it("returns raw trimmed when envelope is missing", async () => {
     const mockFetch = createMockFetch([
       { ok: true, status: 200, body: "  just some markdown body  " },
@@ -101,7 +101,7 @@ describe("fetchMarkdown", () => {
 
     const result = await fetchMarkdown("https://example.com/post", mockFetch);
 
-    expect(result).toBe(jinaEnvelopeFixture.expectedBody);
+    expect(result).toBe(jinaEnvelopeFixture.envelope.trim());
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
@@ -639,16 +639,45 @@ describe("processOnePost and processSource", () => {
       expect(err.stage).toBe("detail-llm");
     });
 
-    // REQ-078
-    it("throws CollectorError with stage 'validate' when extracted title is empty string", async () => {
+    // Throws validate only when BOTH the detail LLM and the discovery post
+    // have empty titles. When the detail LLM returns empty but the discovery
+    // post has a title, processOnePost falls back to the discovery title.
+    it("throws CollectorError with stage 'validate' when both detail and discovery titles are empty", async () => {
       const fetchFn = makeFetch(POST_BODY);
       const model = makeExtractModel({ title: "   ", author: "Jane", published_at: "2026-03-30" });
+      const titlelessPost: DiscoveredPost = { ...samplePost, title: "" };
 
       const err = await captureError(() =>
-        processOnePost(samplePost, fetchFn as unknown as typeof fetch, model),
+        processOnePost(titlelessPost, fetchFn as unknown as typeof fetch, model),
       );
 
       expect(err.stage).toBe("validate");
+    });
+
+    it("falls back to the discovered title when the detail LLM returns empty", async () => {
+      const fetchFn = makeFetch(POST_BODY);
+      const model = makeExtractModel({ title: "", author: "Jane", published_at: "2026-03-30" });
+
+      const result = await processOnePost(
+        samplePost,
+        fetchFn as unknown as typeof fetch,
+        model,
+      );
+
+      expect(result.title).toBe(samplePost.title);
+    });
+
+    it("falls back to the discovered published_at when the detail LLM returns empty", async () => {
+      const fetchFn = makeFetch(POST_BODY);
+      const model = makeExtractModel({ title: "Real Title", author: "Jane", published_at: "" });
+
+      const result = await processOnePost(
+        samplePost,
+        fetchFn as unknown as typeof fetch,
+        model,
+      );
+
+      expect(result.publishedAt?.toISOString().slice(0, 10)).toBe("2026-03-30");
     });
 
     it("returns RawItemInsert on happy path", async () => {

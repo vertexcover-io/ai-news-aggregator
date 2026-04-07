@@ -42,7 +42,7 @@ export async function fetchMarkdown(
         throw new Error(`HTTP ${status} for ${url}`);
       }
       const raw = await response.text();
-      return stripJinaEnvelope(raw);
+      return raw.trim();
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       if (lastError.message.startsWith("Non-retryable")) throw lastError;
@@ -53,13 +53,6 @@ export async function fetchMarkdown(
   }
 
   throw lastError ?? new Error(`fetchMarkdown failed after ${MAX_RETRIES} retries`);
-}
-
-const ENVELOPE_BODY_RE = /\nMarkdown Content:\n([\s\S]*)$/;
-
-function stripJinaEnvelope(raw: string): string {
-  const bodyMatch = ENVELOPE_BODY_RE.exec(raw);
-  return (bodyMatch ? bodyMatch[1] : raw).trim();
 }
 
 function delay(ms: number): Promise<void> {
@@ -90,17 +83,20 @@ export async function discoverPostUrls(
   listingMarkdown: string,
   model: LanguageModel,
 ): Promise<DiscoveredPost[]> {
+  const today = new Date().toISOString().slice(0, 10);
   const result = await generateText({
     model,
     output: Output.object({ schema: DiscoverySchema }),
     temperature: 0,
     prompt:
-      `You are extracting blog posts from a listing page that has been ` +
-      `converted to markdown. The listing URL is ${listingUrl}.\n\n` +
-      `Return the actual blog post entries in the order they appear on the page ` +
-      `(top = newest). Skip everything that is not a post: navigation, footer, ` +
-      `social links, "related posts" sidebars, author bios, tag indexes, pagination.\n\n` +
-      `Use empty strings for fields you cannot determine \u2014 never invent data.\n\n` +
+      `You are extracting blog post entries from a listing page that has been ` +
+      `converted to markdown. The listing URL is ${listingUrl}. Today is ${today}.\n\n` +
+      `Find every post-like entry on the page and return it in the schema. Skip ` +
+      `obvious non-posts like navigation, footer, and social links.\n\n` +
+      `Normalize published_at to ISO 8601 (YYYY-MM-DD). If the page shows a ` +
+      `relative date like "2 hours ago", "yesterday", or "3 days ago", compute ` +
+      `the absolute date from today. Use empty strings for fields that are not ` +
+      `stated on the page. Never invent data.\n\n` +
       `--- BEGIN LISTING MARKDOWN ---\n${listingMarkdown}\n--- END LISTING MARKDOWN ---`,
   });
   return result.output.posts;
@@ -129,6 +125,14 @@ export function validateDiscoveredUrls(
   listingMarkdown: string,
 ): DiscoveredPost[] {
   return posts.filter((p) => listingMarkdown.includes(p.url));
+}
+
+export function sortPostsByPublishedAtDesc(posts: DiscoveredPost[]): DiscoveredPost[] {
+  return [...posts].sort((a, b) => {
+    const ta = parseDateOrNull(a.published_at)?.getTime() ?? -Infinity;
+    const tb = parseDateOrNull(b.published_at)?.getTime() ?? -Infinity;
+    return tb - ta;
+  });
 }
 
 const MS_PER_DAY = 86_400_000;
@@ -213,11 +217,17 @@ export async function processOnePost(
     throw new CollectorError("detail-llm", truncateError(err));
   }
 
-  if (!fields.title.trim()) {
+  const mergedFields: ExtractedFields = {
+    title: fields.title.trim() || post.title.trim(),
+    author: fields.author,
+    published_at: fields.published_at.trim() || post.published_at,
+  };
+
+  if (!mergedFields.title) {
     throw new CollectorError("validate", "empty title");
   }
 
-  return buildRawItem(post.url, markdown, fields);
+  return buildRawItem(post.url, markdown, mergedFields);
 }
 
 export async function processSource(
@@ -256,7 +266,8 @@ export async function processSource(
   }
 
   const validated = validateDiscoveredUrls(discovered, listingMarkdown);
-  const filtered = applySinceDays(validated, config.sinceDays);
+  const sorted = sortPostsByPublishedAtDesc(validated);
+  const filtered = applySinceDays(sorted, config.sinceDays);
   const capped = filtered.slice(0, config.maxItems);
 
   if (capped.length === 0) {

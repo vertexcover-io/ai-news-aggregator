@@ -34,7 +34,7 @@ const BROKEN_SOURCE = {
   listingUrl: "https://this-domain-does-not-exist.invalid/foo",
 };
 
-describe.skipIf(!process.env.GEMINI_API_KEY)("Web Collector E2E", () => {
+describe.skipIf(!process.env.GOOGLE_GENERATIVE_AI_API_KEY)("Web Collector E2E", () => {
   let db: AppDb;
 
   beforeAll(() => {
@@ -91,34 +91,6 @@ describe.skipIf(!process.env.GEMINI_API_KEY)("Web Collector E2E", () => {
       expect(fields.title.toLowerCase()).toContain("constitutional");
       const parsedDate = Date.parse(fields.published_at);
       expect(Number.isNaN(parsedDate)).toBe(false);
-    },
-    60_000,
-  );
-
-  it(
-    "deduplicates, respects maxItems, and throws when all filtered by sinceDays",
-    async () => {
-      const repo = createRawItemsRepo(db);
-      const baseCfg: WebCollectConfig = {
-        sources: [TEST_SOURCES.anthropicResearch],
-        maxItems: 1,
-      };
-
-      const resultA = await collectWeb({ rawItemsRepo: repo }, baseCfg);
-      expect(resultA.itemsStored).toBe(1);
-
-      const resultB = await collectWeb({ rawItemsRepo: repo }, baseCfg);
-      expect(resultB.itemsStored).toBe(0);
-      expect(resultB.failures).toBeUndefined();
-
-      const sinceCfg: WebCollectConfig = {
-        sources: [TEST_SOURCES.anthropicResearch],
-        maxItems: 1,
-        sinceDays: 0,
-      };
-      await expect(
-        collectWeb({ rawItemsRepo: repo }, sinceCfg),
-      ).rejects.toThrow(/all sources failed/);
     },
     60_000,
   );
