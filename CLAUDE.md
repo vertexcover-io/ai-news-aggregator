@@ -50,7 +50,6 @@ packages/
 | Containers | Podman Compose (compose.yml) |
 | Linting | ESLint (flat config, per-package) |
 | Pre-commit | Husky + lint-staged |
-| Auth (MVP) | Simple `x-admin-password` middleware on `/api/runs/*` and the `/run` page |
 
 ## Commands
 

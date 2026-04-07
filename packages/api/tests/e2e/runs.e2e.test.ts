@@ -1,16 +1,13 @@
 /**
  * Phase 6 e2e tests: real Redis (via createRedisConnection), mocked FlowProducer.
- * Verifies POST/GET /api/runs end-to-end through Hono with auth middleware.
+ * Verifies POST/GET /api/runs end-to-end through Hono.
  */
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from "vitest";
 import { Hono } from "hono";
 import { createRedisConnection } from "@newsletter/shared";
 import type { AppDb, RunState } from "@newsletter/shared";
-import { createPasswordAuth } from "@api/middleware/auth.js";
 import { createRunsRouter } from "@api/routes/runs.js";
 
-const PASSWORD = "e2e-password";
-const authHeader = { Authorization: `Bearer ${PASSWORD}` };
 const redis = createRedisConnection();
 const seededKeys: string[] = [];
 
@@ -35,8 +32,6 @@ function buildApp(opts: {
   db?: AppDb;
 }): Hono {
   const app = new Hono();
-  app.use("/api/runs/*", createPasswordAuth(PASSWORD));
-  app.use("/api/runs", createPasswordAuth(PASSWORD));
   app.route(
     "/api/runs",
     createRunsRouter({
@@ -75,7 +70,7 @@ describe("POST /api/runs (e2e)", () => {
     const app = buildApp({ flow });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topN: 10, hn: { sinceDays: 1 } }),
     });
     expect(res.status).toBe(201);
@@ -88,7 +83,7 @@ describe("POST /api/runs (e2e)", () => {
     const app = buildApp({ flow: makeFlowProducer() });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topN: 0, hn: { sinceDays: 1 } }),
     });
     expect(res.status).toBe(400);
@@ -98,7 +93,7 @@ describe("POST /api/runs (e2e)", () => {
     const app = buildApp({ flow: makeFlowProducer() });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topN: 51, hn: { sinceDays: 1 } }),
     });
     expect(res.status).toBe(400);
@@ -108,7 +103,7 @@ describe("POST /api/runs (e2e)", () => {
     const app = buildApp({ flow: makeFlowProducer() });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topN: 10 }),
     });
     expect(res.status).toBe(400);
@@ -118,7 +113,7 @@ describe("POST /api/runs (e2e)", () => {
     const app = buildApp({ flow: makeFlowProducer() });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         topN: 10,
         hn: { sinceDays: 1 },
@@ -135,7 +130,7 @@ describe("POST /api/runs (e2e)", () => {
     const app = buildApp({ flow });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topN: 10, hn: { sinceDays: 1 } }),
     });
     const { runId } = (await res.json()) as { runId: string };
@@ -155,7 +150,7 @@ describe("POST /api/runs (e2e)", () => {
     const app = buildApp({ flow });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         topN: 10,
         hn: { sinceDays: 1 },
@@ -174,34 +169,11 @@ describe("POST /api/runs (e2e)", () => {
     }
   });
 
-  it("REQ-006: rejects request without auth header (401)", async () => {
-    const app = buildApp({ flow: makeFlowProducer() });
-    const res = await app.request("/api/runs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topN: 10, hn: { sinceDays: 1 } }),
-    });
-    expect(res.status).toBe(401);
-  });
-
-  it("REQ-006: accepts request with correct Bearer token (201)", async () => {
-    const flow = makeFlowProducer();
-    const app = buildApp({ flow });
-    const res = await app.request("/api/runs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
-      body: JSON.stringify({ topN: 10, hn: { sinceDays: 1 } }),
-    });
-    expect(res.status).toBe(201);
-    const { runId } = (await res.json()) as { runId: string };
-    trackRunKey(runId);
-  });
-
   it("EDGE-011: returns 400 for malformed JSON body", async () => {
     const app = buildApp({ flow: makeFlowProducer() });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: "not-json{",
     });
     expect(res.status).toBe(400);
@@ -228,7 +200,7 @@ describe("GET /api/runs/:runId (e2e)", () => {
     seededKeys.push(`run:${runId}`);
 
     const app = buildApp({ flow: makeFlowProducer() });
-    const res = await app.request(`/api/runs/${runId}`, { headers: authHeader });
+    const res = await app.request(`/api/runs/${runId}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as RunState;
     expect(body.id).toBe(runId);
@@ -237,9 +209,7 @@ describe("GET /api/runs/:runId (e2e)", () => {
 
   it("REQ-011: returns 404 for an unknown runId", async () => {
     const app = buildApp({ flow: makeFlowProducer() });
-    const res = await app.request("/api/runs/no-such-run", {
-      headers: authHeader,
-    });
+    const res = await app.request("/api/runs/no-such-run");
     expect(res.status).toBe(404);
   });
 
@@ -277,7 +247,7 @@ describe("GET /api/runs/:runId (e2e)", () => {
     const db = { select } as unknown as AppDb;
 
     const app = buildApp({ flow: makeFlowProducer(), db });
-    const res = await app.request(`/api/runs/${runId}`, { headers: authHeader });
+    const res = await app.request(`/api/runs/${runId}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       rankedItems: { id: number; title: string; score: number; rationale: string }[];
@@ -306,7 +276,7 @@ describe("GET /api/runs/:runId (e2e)", () => {
     seededKeys.push(`run:${runId}`);
 
     const app = buildApp({ flow: makeFlowProducer() });
-    const res = await app.request(`/api/runs/${runId}`, { headers: authHeader });
+    const res = await app.request(`/api/runs/${runId}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { rankedItems: unknown[] };
     expect(body.rankedItems).toEqual([]);
@@ -314,9 +284,7 @@ describe("GET /api/runs/:runId (e2e)", () => {
 
   it("EDGE-012: returns 404 for path traversal attempts", async () => {
     const app = buildApp({ flow: makeFlowProducer() });
-    const res = await app.request("/api/runs/..%2Fetc%2Fpasswd", {
-      headers: authHeader,
-    });
+    const res = await app.request("/api/runs/..%2Fetc%2Fpasswd");
     expect(res.status).toBe(404);
   });
 });

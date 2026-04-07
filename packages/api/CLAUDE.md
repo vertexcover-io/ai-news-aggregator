@@ -1,10 +1,9 @@
 # @newsletter/api
 
-Hono REST API for job enqueueing, auth, and email delivery.
+Hono REST API for job enqueueing and email delivery.
 
 ## Responsibilities
 - HTTP route handlers and middleware
-- Auth (simple password for MVP, via `x-admin-password` header)
 - Enqueue collection/processing flows to Redis using a BullMQ `FlowProducer`
 - Send digest emails via Resend (future)
 - Serve as the backend for the React frontend
@@ -12,7 +11,6 @@ Hono REST API for job enqueueing, auth, and email delivery.
 ## Layout
 - `src/routes/` — Hono route modules (e.g. `runs.ts` for `/api/runs`)
 - `src/services/` — business logic invoked by routes (`runs.ts` enqueues runs and reads run-state; `rank-hydration.ts` joins ranked IDs to `raw_items`)
-- `src/middleware/` — Hono middleware (`auth.ts` checks `ADMIN_PASSWORD`)
 - `src/lib/` — package-private helpers (`flow.ts` builds the BullMQ flow tree, `validate.ts` is the zod request-schema layer)
 
 ## Rules

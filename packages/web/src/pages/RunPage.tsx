@@ -3,25 +3,16 @@ import { RunForm } from "../components/RunForm";
 import { StatusPanel } from "../components/StatusPanel";
 import { ResultList } from "../components/ResultList";
 import { useRunPolling } from "../hooks/useRunPolling";
-import { useAuth } from "../auth/useAuth";
 
 export function RunPage(): ReactElement {
   const [runId, setRunId] = useState<string | null>(null);
   const { data, error, isLoading } = useRunPolling(runId);
-  const { logout } = useAuth();
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-4xl mx-auto space-y-6">
-        <header className="flex items-center justify-between">
+        <header>
           <h1 className="text-2xl font-bold">AI Newsletter — Run</h1>
-          <button
-            type="button"
-            onClick={logout}
-            className="text-sm text-gray-600 hover:text-gray-900"
-          >
-            Logout
-          </button>
         </header>
 
         <section className="bg-white p-6 rounded shadow">

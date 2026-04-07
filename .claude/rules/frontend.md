@@ -18,5 +18,4 @@ paths:
 
 ## Routes
 
-- `/review` and `/admin` are password-protected (handled by API auth, not frontend logic)
 - `/archive` and `/digest/:date` are public

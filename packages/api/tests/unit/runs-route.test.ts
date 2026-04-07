@@ -3,7 +3,6 @@ import { Hono } from "hono";
 import type IORedis from "ioredis";
 import type { AppDb, RunState } from "@newsletter/shared";
 import { createRunsRouter } from "@api/routes/runs.js";
-import { createPasswordAuth } from "@api/middleware/auth.js";
 
 interface MockRedis {
   store: Map<string, { value: string; ttl: number }>;
@@ -46,15 +45,11 @@ function makeFlowProducer() {
 }
 
 function makeApp(opts: {
-  password?: string;
   redis: MockRedis;
   flow: ReturnType<typeof makeFlowProducer>;
   db?: AppDb;
 }): Hono {
-  const password = opts.password ?? "test-pass";
   const app = new Hono();
-  app.use("/api/runs/*", createPasswordAuth(password));
-  app.use("/api/runs", createPasswordAuth(password));
   const router = createRunsRouter({
     redis: opts.redis as unknown as IORedis,
     flowProducer: opts.flow.producer as unknown as Parameters<
@@ -66,8 +61,6 @@ function makeApp(opts: {
   return app;
 }
 
-const authHeader = { Authorization: "Bearer test-pass" };
-
 describe("POST /api/runs", () => {
   it("REQ-001: returns 201 + runId for a valid payload", async () => {
     const redis = makeRedis();
@@ -75,7 +68,7 @@ describe("POST /api/runs", () => {
     const app = makeApp({ redis, flow });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topN: 10, hn: { sinceDays: 1 } }),
     });
     expect(res.status).toBe(201);
@@ -87,7 +80,7 @@ describe("POST /api/runs", () => {
     const app = makeApp({ redis: makeRedis(), flow: makeFlowProducer() });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topN: 0, hn: { sinceDays: 1 } }),
     });
     expect(res.status).toBe(400);
@@ -97,7 +90,7 @@ describe("POST /api/runs", () => {
     const app = makeApp({ redis: makeRedis(), flow: makeFlowProducer() });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topN: 51, hn: { sinceDays: 1 } }),
     });
     expect(res.status).toBe(400);
@@ -107,7 +100,7 @@ describe("POST /api/runs", () => {
     const app = makeApp({ redis: makeRedis(), flow: makeFlowProducer() });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topN: 10 }),
     });
     expect(res.status).toBe(400);
@@ -117,7 +110,7 @@ describe("POST /api/runs", () => {
     const app = makeApp({ redis: makeRedis(), flow: makeFlowProducer() });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         topN: 10,
         hn: { sinceDays: 1 },
@@ -135,7 +128,7 @@ describe("POST /api/runs", () => {
     const app = makeApp({ redis, flow });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topN: 10, hn: { sinceDays: 1 } }),
     });
     const { runId } = (await res.json()) as { runId: string };
@@ -154,7 +147,7 @@ describe("POST /api/runs", () => {
     const app = makeApp({ redis, flow });
     await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         topN: 10,
         hn: { sinceDays: 1 },
@@ -171,26 +164,6 @@ describe("POST /api/runs", () => {
     }
     const childNames = node.children.map((c) => c.name).sort();
     expect(childNames).toEqual(["hn-collect", "reddit-collect"]);
-  });
-
-  it("REQ-006: rejects request without auth header (401)", async () => {
-    const app = makeApp({ redis: makeRedis(), flow: makeFlowProducer() });
-    const res = await app.request("/api/runs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topN: 10, hn: { sinceDays: 1 } }),
-    });
-    expect(res.status).toBe(401);
-  });
-
-  it("REQ-006: accepts request with correct Bearer token (201)", async () => {
-    const app = makeApp({ redis: makeRedis(), flow: makeFlowProducer() });
-    const res = await app.request("/api/runs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
-      body: JSON.stringify({ topN: 10, hn: { sinceDays: 1 } }),
-    });
-    expect(res.status).toBe(201);
   });
 
   it("REQ-080: logs run.started event with runId after a successful POST", async () => {
@@ -211,13 +184,11 @@ describe("POST /api/runs", () => {
       >[0]["logger"],
     });
     const app = new Hono();
-    app.use("/api/runs/*", createPasswordAuth("test-pass"));
-    app.use("/api/runs", createPasswordAuth("test-pass"));
     app.route("/api/runs", router);
 
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topN: 10, hn: { sinceDays: 1 } }),
     });
     expect(res.status).toBe(201);
@@ -232,7 +203,7 @@ describe("POST /api/runs", () => {
     const app = makeApp({ redis: makeRedis(), flow: makeFlowProducer() });
     const res = await app.request("/api/runs", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: "not-json{",
     });
     expect(res.status).toBe(400);
@@ -263,7 +234,7 @@ describe("GET /api/runs/:runId", () => {
     const state = seededRunState();
     redis.store.set(`run:${state.id}`, { value: JSON.stringify(state), ttl: 3600 });
     const app = makeApp({ redis, flow: makeFlowProducer() });
-    const res = await app.request(`/api/runs/${state.id}`, { headers: authHeader });
+    const res = await app.request(`/api/runs/${state.id}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as RunState;
     expect(body.id).toBe(state.id);
@@ -273,7 +244,7 @@ describe("GET /api/runs/:runId", () => {
   it("REQ-011: returns 404 for an unknown runId", async () => {
     const redis = makeRedis();
     const app = makeApp({ redis, flow: makeFlowProducer() });
-    const res = await app.request("/api/runs/does-not-exist", { headers: authHeader });
+    const res = await app.request("/api/runs/does-not-exist");
     expect(res.status).toBe(404);
   });
 
@@ -309,7 +280,7 @@ describe("GET /api/runs/:runId", () => {
     const db = { select } as unknown as AppDb;
 
     const app = makeApp({ redis, flow: makeFlowProducer(), db });
-    const res = await app.request(`/api/runs/${completedState.id}`, { headers: authHeader });
+    const res = await app.request(`/api/runs/${completedState.id}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as RunState & { rankedItems: { id: number; title: string; score: number; rationale: string }[] };
     expect(body.rankedItems).toHaveLength(1);
@@ -335,7 +306,7 @@ describe("GET /api/runs/:runId", () => {
       ttl: 3600,
     });
     const app = makeApp({ redis, flow: makeFlowProducer() });
-    const res = await app.request(`/api/runs/${completedState.id}`, { headers: authHeader });
+    const res = await app.request(`/api/runs/${completedState.id}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { rankedItems: unknown[] };
     expect(body.rankedItems).toEqual([]);
@@ -344,7 +315,7 @@ describe("GET /api/runs/:runId", () => {
   it("EDGE-012: returns 404 for path traversal attempts", async () => {
     const redis = makeRedis();
     const app = makeApp({ redis, flow: makeFlowProducer() });
-    const res = await app.request("/api/runs/..%2Fetc%2Fpasswd", { headers: authHeader });
+    const res = await app.request("/api/runs/..%2Fetc%2Fpasswd");
     expect(res.status).toBe(404);
   });
 });

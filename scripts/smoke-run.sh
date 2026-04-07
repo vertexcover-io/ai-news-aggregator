@@ -8,14 +8,13 @@
 #
 #   - `pnpm dev` (api + pipeline workers + web) running
 #   - `pnpm infra:up` (Postgres + Redis)
-#   - ADMIN_PASSWORD and GEMINI_API_KEY exported in the calling shell
+#   - GEMINI_API_KEY exported in the calling shell
 #
 # Usage:
-#   ADMIN_PASSWORD=... GEMINI_API_KEY=... ./scripts/smoke-run.sh
+#   GEMINI_API_KEY=... ./scripts/smoke-run.sh
 #
 set -euo pipefail
 
-: "${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}"
 : "${GEMINI_API_KEY:?GEMINI_API_KEY is required (must be set in pipeline env)}"
 
 API_URL="${API_URL:-http://localhost:3000}"
@@ -30,7 +29,6 @@ payload='{
 
 echo "POST ${API_URL}/api/runs"
 response=$(curl -sf -X POST "${API_URL}/api/runs" \
-  -H "Authorization: Bearer ${ADMIN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d "${payload}")
 
@@ -43,8 +41,7 @@ fi
 echo "runId=${runId}"
 
 for attempt in $(seq 1 "${POLL_ATTEMPTS}"); do
-  state=$(curl -sf "${API_URL}/api/runs/${runId}" \
-    -H "Authorization: Bearer ${ADMIN_PASSWORD}")
+  state=$(curl -sf "${API_URL}/api/runs/${runId}")
   status=$(printf '%s' "${state}" | jq -r .status)
   stage=$(printf '%s' "${state}" | jq -r .stage)
   echo "[${attempt}/${POLL_ATTEMPTS}] status=${status} stage=${stage}"
