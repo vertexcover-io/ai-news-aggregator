@@ -1,0 +1,4 @@
+{
+  "envelope": "Title: Example Post\nURL Source: https://example.com/post\n\nMarkdown Content:\n# Hello World\n\nThis is the body.\n\n[A link](https://example.com/other)",
+  "expectedBody": "# Hello World\n\nThis is the body.\n\n[A link](https://example.com/other)"
+}
