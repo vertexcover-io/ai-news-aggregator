@@ -11,7 +11,7 @@ BullMQ workers that collect, process, and prepare newsletter items.
 
 ## Layout
 - `src/collectors/` — one file per source (`hn.ts`, `reddit.ts`, `web.ts`); each is a `(deps, config) => Promise<CollectorResult>`, called directly by the run-process worker
-- `src/processors/` — pure stage functions (`dedup.ts`, `rank.ts`); ranking uses Vercel AI SDK `generateObject` with a Gemini model and inlines its system prompt as a TS const in `rank.ts`
+- `src/processors/` — pure stage functions (`dedup.ts`, `rank.ts`); ranking uses Vercel AI SDK `generateObject` with a Claude model and inlines its system prompt as a TS const in `rank.ts`
 - `src/queues/` — BullMQ `Queue` definitions (`processing.ts` is the only queue the API enqueues to; `collection.ts` is kept in place for rollback and no longer receives new jobs)
 - `src/workers/` — `Worker` instances (`run-process.ts` is the single job per run that collects via `Promise.all` with in-process state-write serialization, dedups, and ranks; `collection.ts` is legacy and left in place for rollback)
 - `src/services/` — `run-state.ts` (Redis-backed per-run status read/write) and `candidate-loader.ts` (loads `raw_items` rows for ranking)
@@ -23,7 +23,7 @@ BullMQ workers that collect, process, and prepare newsletter items.
 - Use `createRawItemsRepo(db)` for DB access, not raw `db.insert()`
 - Jobs must be idempotent — safe to retry
 - Use `@pipeline/*` path aliases, never relative imports
-- `GEMINI_API_KEY` is validated at worker startup (not per job) — ranking always needs it. `RANKING_MODEL` defaults to `gemini-2.5-flash`.
+- `ANTHROPIC_API_KEY` is validated at worker startup (not per job) — ranking always needs it. `RANKING_MODEL` defaults to `claude-haiku-4-5-20251001`.
 
 ## Path Aliases
 - `@pipeline/*` → `src/*` (configured in tsconfig.json, tsup.config.ts, vitest.config.ts)

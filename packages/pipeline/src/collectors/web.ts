@@ -333,8 +333,8 @@ let cachedDefaultModel: LanguageModel | null = null;
 
 async function resolveDefaultModel(): Promise<LanguageModel> {
   if (cachedDefaultModel) return cachedDefaultModel;
-  const { google } = await import("@ai-sdk/google");
-  cachedDefaultModel = google("gemini-2.5-flash");
+  const { anthropic } = await import("@ai-sdk/anthropic");
+  cachedDefaultModel = anthropic("claude-haiku-4-5-20251001");
   return cachedDefaultModel;
 }
 
