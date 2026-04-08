@@ -15,9 +15,9 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@ai-sdk/google": "3.0.59",
+    "@ai-sdk/google": "2.0.67",
     "@newsletter/shared": "workspace:*",
-    "ai": "6.0.149",
+    "ai": "5.0.169",
     "bullmq": "5.51.0",
     "dotenv": "16.5.0",
     "ioredis": "5.6.1",
@@ -27,6 +27,7 @@
   "devDependencies": {
     "@types/node": "22.15.3",
     "drizzle-orm": "0.42.0",
+    "msw": "2.7.0",
     "postgres": "3.4.7",
     "tsup": "8.4.0",
     "tsx": "4.19.4",
