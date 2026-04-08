@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type IORedis from "ioredis";
-import type { FlowProducer } from "bullmq";
+import { Queue } from "bullmq";
 import {
   createLogger,
   createRedisConnection,
@@ -10,11 +10,10 @@ import type { AppDb, RunState } from "@newsletter/shared";
 import { runSubmitSchema } from "../lib/validate.js";
 import { createRun } from "../services/runs.js";
 import { hydrateRankedItems } from "../services/rank-hydration.js";
-import { getFlowProducer } from "../lib/flow.js";
 
 export interface RunsRouterDeps {
   redis: IORedis;
-  flowProducer: FlowProducer;
+  processingQueue: Queue;
   getDb: () => AppDb;
   logger?: ReturnType<typeof createLogger>;
 }
@@ -36,7 +35,11 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       return c.json({ error: parsed.error.message }, 400);
     }
 
-    const { runId } = await createRun(parsed.data, deps.redis, deps.flowProducer);
+    const { runId } = await createRun(
+      parsed.data,
+      deps.redis,
+      deps.processingQueue,
+    );
     const sources = Object.keys(parsed.data).filter((k) => k !== "topN");
     logger.info(
       { event: "run.started", runId, topN: parsed.data.topN, sources },
@@ -62,10 +65,19 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
   return runs;
 }
 
+let defaultProcessingQueue: Queue | null = null;
+
+function getDefaultProcessingQueue(): Queue {
+  defaultProcessingQueue ??= new Queue("processing", {
+    connection: createRedisConnection(),
+  });
+  return defaultProcessingQueue;
+}
+
 export function createDefaultRunsRouter(): Hono {
   return createRunsRouter({
     redis: createRedisConnection(),
-    flowProducer: getFlowProducer(),
+    processingQueue: getDefaultProcessingQueue(),
     getDb: defaultGetDb,
   });
 }

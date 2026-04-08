@@ -1,9 +1,10 @@
 /**
- * Phase 6 e2e tests: real Redis (via createRedisConnection), mocked FlowProducer.
+ * Phase 6 e2e tests: real Redis (via createRedisConnection), mocked processing Queue.
  * Verifies POST/GET /api/runs end-to-end through Hono.
  */
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from "vitest";
 import { Hono } from "hono";
+import type { Queue, JobsOptions } from "bullmq";
 import { createRedisConnection } from "@newsletter/shared";
 import type { AppDb, RunState } from "@newsletter/shared";
 import { createRunsRouter } from "@api/routes/runs.js";
@@ -11,24 +12,25 @@ import { createRunsRouter } from "@api/routes/runs.js";
 const redis = createRedisConnection();
 const seededKeys: string[] = [];
 
-interface FlowAddCall {
+interface QueueAddCall {
   name: string;
-  queueName: string;
-  data: unknown;
-  children: { name: string; queueName: string; data: unknown }[];
+  data: Record<string, unknown>;
+  opts?: JobsOptions;
 }
 
-function makeFlowProducer() {
-  const calls: FlowAddCall[] = [];
-  const add = vi.fn((node: FlowAddCall) => {
-    calls.push(node);
-    return Promise.resolve({ id: "1" });
-  });
-  return { add, calls, producer: { add } };
+function makeQueue() {
+  const calls: QueueAddCall[] = [];
+  const add = vi.fn(
+    (name: string, data: Record<string, unknown>, opts?: JobsOptions) => {
+      calls.push({ name, data, opts });
+      return Promise.resolve({ id: opts?.jobId ?? `job-${name}` });
+    },
+  );
+  return { add, calls, queue: { add, name: "processing" } };
 }
 
 function buildApp(opts: {
-  flow: ReturnType<typeof makeFlowProducer>;
+  q: ReturnType<typeof makeQueue>;
   db?: AppDb;
 }): Hono {
   const app = new Hono();
@@ -36,9 +38,7 @@ function buildApp(opts: {
     "/api/runs",
     createRunsRouter({
       redis,
-      flowProducer: opts.flow.producer as unknown as Parameters<
-        typeof createRunsRouter
-      >[0]["flowProducer"],
+      processingQueue: opts.q.queue as unknown as Queue,
       getDb: () => opts.db ?? ({} as AppDb),
     }),
   );
@@ -66,8 +66,8 @@ function trackRunKey(runId: string): void {
 
 describe("POST /api/runs (e2e)", () => {
   it("REQ-001: returns 201 + runId for a valid payload", async () => {
-    const flow = makeFlowProducer();
-    const app = buildApp({ flow });
+    const q = makeQueue();
+    const app = buildApp({ q });
     const res = await app.request("/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -80,7 +80,7 @@ describe("POST /api/runs (e2e)", () => {
   });
 
   it("REQ-002: rejects topN: 0", async () => {
-    const app = buildApp({ flow: makeFlowProducer() });
+    const app = buildApp({ q: makeQueue() });
     const res = await app.request("/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -90,7 +90,7 @@ describe("POST /api/runs (e2e)", () => {
   });
 
   it("REQ-002: rejects topN: 51", async () => {
-    const app = buildApp({ flow: makeFlowProducer() });
+    const app = buildApp({ q: makeQueue() });
     const res = await app.request("/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -100,7 +100,7 @@ describe("POST /api/runs (e2e)", () => {
   });
 
   it("REQ-002: rejects no source group", async () => {
-    const app = buildApp({ flow: makeFlowProducer() });
+    const app = buildApp({ q: makeQueue() });
     const res = await app.request("/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -110,7 +110,7 @@ describe("POST /api/runs (e2e)", () => {
   });
 
   it("Web deferral: rejects when body.web is present", async () => {
-    const app = buildApp({ flow: makeFlowProducer() });
+    const app = buildApp({ q: makeQueue() });
     const res = await app.request("/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -126,8 +126,8 @@ describe("POST /api/runs (e2e)", () => {
   });
 
   it("REQ-004: seeds Redis run-state with status running, stage queued, TTL ~3600", async () => {
-    const flow = makeFlowProducer();
-    const app = buildApp({ flow });
+    const q = makeQueue();
+    const app = buildApp({ q });
     const res = await app.request("/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -145,9 +145,9 @@ describe("POST /api/runs (e2e)", () => {
     expect(state.stage).toBe("queued");
   });
 
-  it("REQ-005: enqueues parent run-process flow with one child per source", async () => {
-    const flow = makeFlowProducer();
-    const app = buildApp({ flow });
+  it("REQ-005: enqueues a single run-process job carrying both hn and reddit configs", async () => {
+    const q = makeQueue();
+    const app = buildApp({ q });
     const res = await app.request("/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -159,18 +159,20 @@ describe("POST /api/runs (e2e)", () => {
     });
     const { runId } = (await res.json()) as { runId: string };
     trackRunKey(runId);
-    expect(flow.calls).toHaveLength(1);
-    const node = flow.calls[0];
-    expect(node.name).toBe("run-process");
-    expect(node.queueName).toBe("processing");
-    expect(node.children).toHaveLength(2);
-    for (const child of node.children) {
-      expect(child.queueName).toBe("collection");
-    }
+    expect(q.calls).toHaveLength(1);
+    const call = q.calls[0];
+    expect(call.name).toBe("run-process");
+    expect(call.opts?.jobId).toBe(runId);
+    const data = call.data as {
+      sourceTypes: string[];
+      collectors: Record<string, unknown>;
+    };
+    expect(data.sourceTypes.sort()).toEqual(["hn", "reddit"]);
+    expect(Object.keys(data.collectors).sort()).toEqual(["hn", "reddit"]);
   });
 
   it("EDGE-011: returns 400 for malformed JSON body", async () => {
-    const app = buildApp({ flow: makeFlowProducer() });
+    const app = buildApp({ q: makeQueue() });
     const res = await app.request("/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -199,7 +201,7 @@ describe("GET /api/runs/:runId (e2e)", () => {
     await redis.set(`run:${runId}`, JSON.stringify(state), "EX", 3600);
     seededKeys.push(`run:${runId}`);
 
-    const app = buildApp({ flow: makeFlowProducer() });
+    const app = buildApp({ q: makeQueue() });
     const res = await app.request(`/api/runs/${runId}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as RunState;
@@ -208,7 +210,7 @@ describe("GET /api/runs/:runId (e2e)", () => {
   });
 
   it("REQ-011: returns 404 for an unknown runId", async () => {
-    const app = buildApp({ flow: makeFlowProducer() });
+    const app = buildApp({ q: makeQueue() });
     const res = await app.request("/api/runs/no-such-run");
     expect(res.status).toBe(404);
   });
@@ -246,7 +248,7 @@ describe("GET /api/runs/:runId (e2e)", () => {
     const select = vi.fn(() => ({ from }));
     const db = { select } as unknown as AppDb;
 
-    const app = buildApp({ flow: makeFlowProducer(), db });
+    const app = buildApp({ q: makeQueue(), db });
     const res = await app.request(`/api/runs/${runId}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -275,7 +277,7 @@ describe("GET /api/runs/:runId (e2e)", () => {
     await redis.set(`run:${runId}`, JSON.stringify(state), "EX", 3600);
     seededKeys.push(`run:${runId}`);
 
-    const app = buildApp({ flow: makeFlowProducer() });
+    const app = buildApp({ q: makeQueue() });
     const res = await app.request(`/api/runs/${runId}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { rankedItems: unknown[] };
@@ -283,7 +285,7 @@ describe("GET /api/runs/:runId (e2e)", () => {
   });
 
   it("EDGE-012: returns 404 for path traversal attempts", async () => {
-    const app = buildApp({ flow: makeFlowProducer() });
+    const app = buildApp({ q: makeQueue() });
     const res = await app.request("/api/runs/..%2Fetc%2Fpasswd");
     expect(res.status).toBe(404);
   });
