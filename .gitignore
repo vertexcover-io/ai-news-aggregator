@@ -4,6 +4,8 @@ dist/
 .env.test
 *.tsbuildinfo
 .turbo/
-docs/
+docs/*
+!docs/plans/
+!docs/spec/
 .worktrees/
 .harness/
