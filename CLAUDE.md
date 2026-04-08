@@ -72,7 +72,7 @@ pnpm --filter @newsletter/shared db:migrate    # Apply pending Drizzle migration
 - **Pipeline has no HTTP framework** — it's a standalone Node process running BullMQ workers. Don't add Express/Hono/etc to the pipeline package.
 - **Shared package owns the DB schema** — all Drizzle schema definitions and migrations live in `@newsletter/shared`. Both API and pipeline import from there.
 - **No public subscribers for MVP** — recipients are hardcoded (Ritesh, Aman). No subscription management.
-- **Never commit docs or specs** — files under `docs/` and `docs/superpowers/specs/` are working documents and must not be committed to git. Only commit source code, configuration, and infrastructure files.
+- **Always commit spec and design docs** — The spec and design docs generated during brainstorm must always be committed to the PR alongside the code they describe. Per-feature design docs live under `docs/plans/`.
 
 ## Available Tools & When to Use Them
 
