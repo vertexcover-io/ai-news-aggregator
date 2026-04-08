@@ -3,8 +3,10 @@ import type { CollectorResult } from "@newsletter/shared/types";
 import type { HnCollectConfig } from "@pipeline/types.js";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
-import hnFeedFixture from "@pipeline-tests/unit/fixtures/hn-feed.json";
-import hnCommentsFixture from "@pipeline-tests/unit/fixtures/hn-comments.json";
+import hnAlgoliaStoriesFixture from "@pipeline-tests/unit/fixtures/hn-algolia-stories.json";
+import hnAlgoliaCommentsFixture from "@pipeline-tests/unit/fixtures/hn-algolia-comments.json";
+
+const emptyAlgoliaResponse = { hits: [], nbHits: 0 };
 
 const warnSpy = vi.fn<[obj: unknown, msg?: string], undefined>();
 vi.mock("@newsletter/shared/logger", () => ({
@@ -52,11 +54,11 @@ function createMockFetch(responses: { ok: boolean; status: number; body: unknown
   });
 }
 
-function feedResponse(body: unknown = hnFeedFixture): { ok: boolean; status: number; body: unknown } {
+function storiesResponse(body: unknown = hnAlgoliaStoriesFixture): { ok: boolean; status: number; body: unknown } {
   return { ok: true, status: 200, body };
 }
 
-function commentsResponse(body: unknown = hnCommentsFixture): { ok: boolean; status: number; body: unknown } {
+function commentsResponse(body: unknown = hnAlgoliaCommentsFixture): { ok: boolean; status: number; body: unknown } {
   return { ok: true, status: 200, body };
 }
 
@@ -78,28 +80,32 @@ describe("collectHn", () => {
   });
 
   // REQ-002, REQ-010: URL construction with default config
-  it("builds the hnrss.org URL with default keywords and threshold", async () => {
+  it("builds the Algolia search_by_date URL with default keywords and threshold", async () => {
     const mockFetch = createMockFetch([
-      feedResponse({ ...hnFeedFixture, items: [] }),
+      storiesResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     const url = mockFetch.mock.calls[0][0];
-    expect(url).toContain("https://hnrss.org/newest.jsonfeed");
-    expect(url).toContain("q=");
-    expect(url).toContain("AI");
-    expect(url).toContain("+OR+");
-    expect(url).toContain("LLM");
-    expect(url).toContain("points=20");
-    expect(url).toContain("count=100");
+    expect(url).toContain("https://hn.algolia.com/api/v1/search_by_date");
+    expect(url).toContain("tags=story");
+    expect(url).toContain("numericFilters=points");
+    expect(decodeURIComponent(url)).toContain("points>20");
+    expect(url).toContain("hitsPerPage=100");
+    // URLSearchParams encodes spaces as '+', so normalize before string-matching
+    const decoded = decodeURIComponent(url).replace(/\+/g, " ");
+    expect(decoded).toContain("AI");
+    expect(decoded).toContain("LLM");
+    expect(decoded).toContain("GPT");
+    expect(decoded).toContain('"machine learning"');
   });
 
   // REQ-002, REQ-010, REQ-011: URL construction with custom config
   it("builds URL with custom keywords and threshold", async () => {
     const mockFetch = createMockFetch([
-      feedResponse({ ...hnFeedFixture, items: [] }),
+      storiesResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
@@ -109,22 +115,39 @@ describe("collectHn", () => {
     );
 
     const url = mockFetch.mock.calls[0][0];
-    expect(url).toContain("q=Rust+OR+Zig");
-    expect(url).toContain("points=50");
-    expect(url).toContain("count=25");
+    const decoded = decodeURIComponent(url);
+    expect(decoded).toContain("points>50");
+    expect(url).toContain("hitsPerPage=25");
+    expect(decoded).toContain("Rust");
+    expect(decoded).toContain("Zig");
   });
 
-  // REQ-003, REQ-004: Feed parsing with valid fixture
-  it("parses feed items extracting title, url, externalId, author, publishedAt, engagement", async () => {
+  // "best" feed maps to /search (relevance), "newest" maps to /search_by_date
+  it("uses /search endpoint for best feed and /search_by_date for newest feed", async () => {
     const mockFetch = createMockFetch([
-      feedResponse(),
-      commentsResponse(),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
+      storiesResponse(emptyAlgoliaResponse),
+      storiesResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, { feeds: ["newest", "best"] });
+
+    expect(mockFetch.mock.calls[0][0]).toContain("/api/v1/search_by_date");
+    expect(mockFetch.mock.calls[1][0]).toContain("/api/v1/search?");
+    expect(mockFetch.mock.calls[1][0]).not.toContain("/search_by_date");
+  });
+
+  // REQ-003, REQ-004: Story parsing with valid fixture
+  it("parses Algolia hits extracting title, url, externalId, author, publishedAt, engagement", async () => {
+    const mockFetch = createMockFetch([
+      storiesResponse(),
+      commentsResponse(),
+      commentsResponse(emptyAlgoliaResponse),
+      commentsResponse(emptyAlgoliaResponse),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(3);
     expect(result.itemsStored).toBe(3);
@@ -143,94 +166,121 @@ describe("collectHn", () => {
     expect(firstItem.engagement).toEqual({ points: 142, commentCount: 37 });
   });
 
-  // EDGE-002: Malformed item (missing title) is skipped
-  it("skips items missing title and logs warning", async () => {
-    const malformedFeed = {
-      ...hnFeedFixture,
-      items: [
-        { ...hnFeedFixture.items[0], title: undefined },
-        hnFeedFixture.items[1],
+  // EDGE-002: Hit missing title is skipped
+  it("skips hits missing title", async () => {
+    const malformed = {
+      ...hnAlgoliaStoriesFixture,
+      hits: [
+        { ...hnAlgoliaStoriesFixture.hits[0], title: null },
+        hnAlgoliaStoriesFixture.hits[1],
       ],
     };
     const mockFetch = createMockFetch([
-      feedResponse(malformedFeed),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
+      storiesResponse(malformed),
+      commentsResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(1);
   });
 
   // EDGE-006: Missing engagement data defaults to 0
-  it("defaults engagement to 0 when missing from content_html", async () => {
-    const noEngagementFeed = {
-      ...hnFeedFixture,
-      items: [
-        { ...hnFeedFixture.items[0], content_html: "<p>No engagement info here</p>" },
+  it("defaults engagement to 0 when points/num_comments are missing", async () => {
+    const noEngagement = {
+      ...hnAlgoliaStoriesFixture,
+      hits: [
+        { ...hnAlgoliaStoriesFixture.hits[0], points: null, num_comments: null },
       ],
     };
     const mockFetch = createMockFetch([
-      feedResponse(noEngagementFeed),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
+      storiesResponse(noEngagement),
+      commentsResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     expect(rows[0].engagement).toEqual({ points: 0, commentCount: 0 });
   });
 
-  // EDGE-010: HN ID extraction from various URL formats
-  it("extracts HN ID from item id field", async () => {
-    const feed = {
-      ...hnFeedFixture,
-      items: [
-        { ...hnFeedFixture.items[0], id: "https://news.ycombinator.com/item?id=99999" },
+  // Algolia objectID is the HN story ID directly — no parsing needed
+  it("uses Algolia objectID directly as externalId", async () => {
+    const fixture = {
+      ...hnAlgoliaStoriesFixture,
+      hits: [
+        { ...hnAlgoliaStoriesFixture.hits[0], objectID: "99999" },
       ],
     };
     const mockFetch = createMockFetch([
-      feedResponse(feed),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
+      storiesResponse(fixture),
+      commentsResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     expect(rows[0].externalId).toBe("99999");
   });
 
-  // EDGE-010: Unparseable HN ID is skipped
-  it("skips items with unparseable HN ID", async () => {
-    const badIdFeed = {
-      ...hnFeedFixture,
-      items: [
-        { ...hnFeedFixture.items[0], id: "https://example.com/no-id-here" },
+  // Hits with missing objectID are skipped
+  it("skips hits with missing objectID", async () => {
+    const fixture = {
+      ...hnAlgoliaStoriesFixture,
+      hits: [
+        { ...hnAlgoliaStoriesFixture.hits[0], objectID: "" },
       ],
     };
     const mockFetch = createMockFetch([
-      feedResponse(badIdFeed),
+      storiesResponse(fixture),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(0);
   });
 
+  // Ask HN / Show HN self-posts have story_text and null url
+  it("uses story_text as content and empty string url for self-posts", async () => {
+    const askHn = {
+      ...hnAlgoliaStoriesFixture,
+      hits: [
+        {
+          ...hnAlgoliaStoriesFixture.hits[0],
+          objectID: "55555555",
+          title: "Ask HN: How do you handle prompt injection?",
+          url: null,
+          story_text: "I'm building an agent and wondering about defenses...",
+        },
+      ],
+    };
+    const mockFetch = createMockFetch([
+      storiesResponse(askHn),
+      commentsResponse(emptyAlgoliaResponse),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
+
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    expect(rows[0].url).toBe("");
+    expect(rows[0].content).toBe("I'm building an agent and wondering about defenses...");
+  });
+
   // REQ-005: Comment fetching attaches comments with IDs
   it("fetches comments and attaches them to items with comment IDs", async () => {
-    const singleItemFeed = { ...hnFeedFixture, items: [hnFeedFixture.items[0]] };
+    const singleHit = { ...hnAlgoliaStoriesFixture, hits: [hnAlgoliaStoriesFixture.hits[0]] };
     const mockFetch = createMockFetch([
-      feedResponse(singleItemFeed),
+      storiesResponse(singleHit),
       commentsResponse(),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     expect(result.commentsFetched).toBe(2);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
@@ -242,14 +292,14 @@ describe("collectHn", () => {
 
   // EDGE-004: Comment fetch failure stores item without comments
   it("stores item without comments when comment fetch fails", async () => {
-    const singleItemFeed = { ...hnFeedFixture, items: [hnFeedFixture.items[0]] };
+    const singleHit = { ...hnAlgoliaStoriesFixture, hits: [hnAlgoliaStoriesFixture.hits[0]] };
     const mockFetch = createMockFetch([
-      feedResponse(singleItemFeed),
+      storiesResponse(singleHit),
       errorResponse(502),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(1);
     expect(result.commentsFetched).toBe(0);
@@ -258,8 +308,67 @@ describe("collectHn", () => {
     expect(metadata.comments).toEqual([]);
   });
 
+  // Comment fetch retries transient 502 and succeeds on a later attempt
+  it("retries on 502 then succeeds for comment fetch", async () => {
+    const singleHit = { ...hnAlgoliaStoriesFixture, hits: [hnAlgoliaStoriesFixture.hits[0]] };
+    const mockFetch = createMockFetch([
+      storiesResponse(singleHit),
+      errorResponse(502),
+      errorResponse(502),
+      commentsResponse(),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
+
+    expect(result.commentsFetched).toBe(2);
+    expect(mockFetch).toHaveBeenCalledTimes(4);
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    expect(rows[0].metadata.comments).toHaveLength(2);
+    expect(rows[0].metadata.comments[0].author).toBe("dave");
+  });
+
+  // Deleted/dead comments (null author or comment_text) are filtered out
+  it("filters out deleted comments with null author or text", async () => {
+    const singleHit = { ...hnAlgoliaStoriesFixture, hits: [hnAlgoliaStoriesFixture.hits[0]] };
+    const mixedAlgoliaResponse = {
+      hits: [
+        {
+          objectID: "50000001",
+          author: null,
+          comment_text: null,
+          created_at: "2026-04-01T10:00:00Z",
+          story_id: 40001111,
+          parent_id: 40001111,
+        },
+        {
+          objectID: "50000002",
+          author: "frank",
+          comment_text: "<p>Real comment here.</p>",
+          created_at: "2026-04-01T10:05:00Z",
+          story_id: 40001111,
+          parent_id: 40001111,
+        },
+      ],
+      nbHits: 2,
+    };
+    const mockFetch = createMockFetch([
+      storiesResponse(singleHit),
+      commentsResponse(mixedAlgoliaResponse),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
+
+    expect(result.commentsFetched).toBe(1);
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    expect(rows[0].metadata.comments).toHaveLength(1);
+    expect(rows[0].metadata.comments[0].id).toBe("50000002");
+    expect(rows[0].metadata.comments[0].author).toBe("frank");
+  });
+
   // REQ-013, EDGE-001: Retry on 502
-  it("retries on 502 up to 3 times for the main feed fetch", async () => {
+  it("retries on 502 up to 3 times for the main story fetch", async () => {
     const mockFetch = createMockFetch([
       errorResponse(502),
       errorResponse(502),
@@ -288,7 +397,7 @@ describe("collectHn", () => {
     const rawItemsRepo = createMockRepo();
 
     await expect(
-      collectHn({ rawItemsRepo, fetchFn },SINGLE_FEED),
+      collectHn({ rawItemsRepo, fetchFn }, SINGLE_FEED),
     ).rejects.toThrow();
 
     expect(fetchFn).toHaveBeenCalledTimes(3);
@@ -296,29 +405,29 @@ describe("collectHn", () => {
 
   // REQ-006: Rate limiting between requests
   it("enforces 500ms+ delay between consecutive requests", async () => {
-    const twoItemFeed = {
-      ...hnFeedFixture,
-      items: [hnFeedFixture.items[0], hnFeedFixture.items[1]],
+    const twoHit = {
+      ...hnAlgoliaStoriesFixture,
+      hits: [hnAlgoliaStoriesFixture.hits[0], hnAlgoliaStoriesFixture.hits[1]],
     };
     const timestamps: number[] = [];
     const mockFetchFn = vi.fn().mockImplementation((url: string) => {
       timestamps.push(Date.now());
-      if (url.includes(".jsonfeed?q=")) {
+      if (url.includes("tags=story") && !url.includes("tags=comment")) {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: () => Promise.resolve(twoItemFeed),
+          json: () => Promise.resolve(twoHit),
         });
       }
       return Promise.resolve({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ ...hnCommentsFixture, items: [] }),
+        json: () => Promise.resolve(emptyAlgoliaResponse),
       });
     });
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetchFn },SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetchFn }, SINGLE_FEED);
 
     for (let i = 2; i < timestamps.length; i++) {
       const gap = timestamps[i] - timestamps[i - 1];
@@ -326,15 +435,14 @@ describe("collectHn", () => {
     }
   });
 
-  // EDGE-009: Empty feed returns success with 0 items
-  it("handles empty feed with 0 items", async () => {
-    const emptyFeed = { ...hnFeedFixture, items: [] };
+  // EDGE-009: Empty response returns success with 0 items
+  it("handles empty Algolia response with 0 hits", async () => {
     const mockFetch = createMockFetch([
-      feedResponse(emptyFeed),
+      storiesResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     expect(result.itemsFetched).toBe(0);
     expect(result.commentsFetched).toBe(0);
@@ -345,14 +453,14 @@ describe("collectHn", () => {
 
   // REQ-007, EDGE-005: DB upsert with correct shape
   it("calls upsertItems with correct row shape", async () => {
-    const singleItemFeed = { ...hnFeedFixture, items: [hnFeedFixture.items[0]] };
+    const singleHit = { ...hnAlgoliaStoriesFixture, hits: [hnAlgoliaStoriesFixture.hits[0]] };
     const mockFetch = createMockFetch([
-      feedResponse(singleItemFeed),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
+      storiesResponse(singleHit),
+      commentsResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
@@ -365,15 +473,14 @@ describe("collectHn", () => {
 
   // EDGE-003: Item with 0 comments stores empty array
   it("stores empty comments array for item with no comments", async () => {
-    const singleItemFeed = { ...hnFeedFixture, items: [hnFeedFixture.items[0]] };
-    const emptyComments = { ...hnCommentsFixture, items: [] };
+    const singleHit = { ...hnAlgoliaStoriesFixture, hits: [hnAlgoliaStoriesFixture.hits[0]] };
     const mockFetch = createMockFetch([
-      feedResponse(singleItemFeed),
-      commentsResponse(emptyComments),
+      storiesResponse(singleHit),
+      commentsResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     const metadata = rows[0].metadata;
@@ -383,14 +490,14 @@ describe("collectHn", () => {
   // REQ-009: Return metrics
   it("returns CollectorResult with all metric fields", async () => {
     const mockFetch = createMockFetch([
-      feedResponse(),
+      storiesResponse(),
       commentsResponse(),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
+      commentsResponse(emptyAlgoliaResponse),
+      commentsResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },SINGLE_FEED);
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     expect(result).toHaveProperty("itemsFetched");
     expect(result).toHaveProperty("commentsFetched");
@@ -401,145 +508,86 @@ describe("collectHn", () => {
 
   // Multi-feed: fetches both newest and best, deduplicates
   it("fetches multiple feeds and deduplicates items by HN ID", async () => {
-    const newestFeed = { ...hnFeedFixture, items: [hnFeedFixture.items[0], hnFeedFixture.items[1]] };
-    const bestFeed = { ...hnFeedFixture, items: [hnFeedFixture.items[0], hnFeedFixture.items[2]] };
+    const newestResp = {
+      ...hnAlgoliaStoriesFixture,
+      hits: [hnAlgoliaStoriesFixture.hits[0], hnAlgoliaStoriesFixture.hits[1]],
+    };
+    const bestResp = {
+      ...hnAlgoliaStoriesFixture,
+      hits: [hnAlgoliaStoriesFixture.hits[0], hnAlgoliaStoriesFixture.hits[2]],
+    };
     const mockFetch = createMockFetch([
-      feedResponse(newestFeed),
-      feedResponse(bestFeed),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
+      storiesResponse(newestResp),
+      storiesResponse(bestResp),
+      commentsResponse(emptyAlgoliaResponse),
+      commentsResponse(emptyAlgoliaResponse),
+      commentsResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch },{ feeds: ["newest", "best"] });
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, { feeds: ["newest", "best"] });
 
     expect(result.itemsFetched).toBe(3);
 
     const firstUrl = mockFetch.mock.calls[0][0];
     const secondUrl = mockFetch.mock.calls[1][0];
-    expect(firstUrl).toContain("newest.jsonfeed");
-    expect(secondUrl).toContain("best.jsonfeed");
+    expect(firstUrl).toContain("/api/v1/search_by_date");
+    expect(secondUrl).toContain("/api/v1/search?");
+    expect(secondUrl).not.toContain("/search_by_date");
   });
 
   // Configurable comment count
   it("passes commentsPerItem count to comment fetch URL", async () => {
-    const singleItemFeed = { ...hnFeedFixture, items: [hnFeedFixture.items[0]] };
+    const singleHit = { ...hnAlgoliaStoriesFixture, hits: [hnAlgoliaStoriesFixture.hits[0]] };
     const mockFetch = createMockFetch([
-      feedResponse(singleItemFeed),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
+      storiesResponse(singleHit),
+      commentsResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch },{ feeds: ["newest"], commentsPerItem: 50 });
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, { feeds: ["newest"], commentsPerItem: 50 });
 
     const commentUrl = mockFetch.mock.calls[1][0];
-    expect(commentUrl).toContain("count=50");
+    expect(commentUrl).toContain("hn.algolia.com");
+    expect(commentUrl).toContain("tags=comment,story_");
+    expect(commentUrl).toContain("hitsPerPage=50");
   });
 
-  // REQ-021: sinceDays filter drops items older than the cutoff
-  it("drops items older than sinceDays cutoff before upsert", async () => {
-    const now = Date.now();
-    const day = 86_400_000;
-    const makeItem = (id: string, ageDays: number): unknown => ({
-      id: `https://news.ycombinator.com/item?id=${id}`,
-      title: `Item ${id}`,
-      url: `https://example.com/${id}`,
-      external_url: `https://news.ycombinator.com/item?id=${id}`,
-      date_published: new Date(now - ageDays * day).toISOString(),
-      authors: [{ name: "someone" }],
-      content_html: "<p>Points: 100</p><p># Comments: 5</p>",
-    });
-    const feed = {
-      version: "https://jsonfeed.org/version/1",
-      items: [
-        makeItem("50000001", 0),
-        makeItem("50000002", 3),
-        makeItem("50000003", 6),
-        makeItem("50000004", 8),
-        makeItem("50000005", 14),
-      ],
-    };
+  // REQ-021: sinceDays is encoded as a server-side numericFilters created_at_i clause
+  it("encodes sinceDays as a created_at_i numericFilter on the request URL", async () => {
     const mockFetch = createMockFetch([
-      feedResponse(feed),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
+      storiesResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
+    const before = Math.floor((Date.now() - 7 * 86_400_000) / 1000);
     await collectHn(
       { rawItemsRepo, fetchFn: mockFetch },
       { feeds: ["newest"], sinceDays: 7, commentsPerItem: 0 },
     );
+    const after = Math.floor((Date.now() - 7 * 86_400_000) / 1000);
 
-    expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    const ids = rows.map((r) => r.externalId).sort();
-    expect(ids).toEqual(["50000001", "50000002", "50000003"]);
+    const url = mockFetch.mock.calls[0][0];
+    const decoded = decodeURIComponent(url);
+    const match = /created_at_i>(\d+)/.exec(decoded);
+    if (!match) {
+      throw new Error("expected created_at_i in URL");
+    }
+    const cutoff = Number(match[1]);
+    expect(cutoff).toBeGreaterThanOrEqual(before - 1);
+    expect(cutoff).toBeLessThanOrEqual(after + 1);
   });
 
-  // EDGE-004: filter dropping zero items emits warn log
-  it("warns when sinceDays filter drops zero items", async () => {
-    const now = Date.now();
-    const day = 86_400_000;
-    const makeItem = (id: string, ageDays: number): unknown => ({
-      id: `https://news.ycombinator.com/item?id=${id}`,
-      title: `Item ${id}`,
-      url: `https://example.com/${id}`,
-      external_url: `https://news.ycombinator.com/item?id=${id}`,
-      date_published: new Date(now - ageDays * day).toISOString(),
-      authors: [{ name: "someone" }],
-      content_html: "<p>Points: 100</p><p># Comments: 5</p>",
-    });
-    const feed = {
-      version: "https://jsonfeed.org/version/1",
-      items: [makeItem("60000001", 0), makeItem("60000002", 1)],
-    };
+  // REQ-021: sinceDays undefined → no created_at_i clause in the URL
+  it("does not include created_at_i filter when sinceDays is undefined", async () => {
     const mockFetch = createMockFetch([
-      feedResponse(feed),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    await collectHn(
-      { rawItemsRepo, fetchFn: mockFetch },
-      { feeds: ["newest"], sinceDays: 7, commentsPerItem: 0 },
-    );
-
-    const messages = warnSpy.mock.calls.map((c) => c[1] ?? "");
-    const hasDropWarn = messages.some((m) => m.includes("sinceDays filter dropped 0 items"));
-    expect(hasDropWarn).toBe(true);
-  });
-
-  // REQ-021: sinceDays undefined is a no-op
-  it("does not filter when sinceDays is undefined", async () => {
-    const now = Date.now();
-    const day = 86_400_000;
-    const feed = {
-      version: "https://jsonfeed.org/version/1",
-      items: [
-        {
-          id: "https://news.ycombinator.com/item?id=70000001",
-          title: "Old item",
-          url: "https://example.com/old",
-          external_url: "https://news.ycombinator.com/item?id=70000001",
-          date_published: new Date(now - 30 * day).toISOString(),
-          authors: [{ name: "someone" }],
-          content_html: "<p>Points: 100</p><p># Comments: 5</p>",
-        },
-      ],
-    };
-    const mockFetch = createMockFetch([
-      feedResponse(feed),
-      commentsResponse({ ...hnCommentsFixture, items: [] }),
+      storiesResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
     await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    expect(rows).toHaveLength(1);
+    const url = mockFetch.mock.calls[0][0];
+    expect(decodeURIComponent(url)).not.toContain("created_at_i");
   });
 });
