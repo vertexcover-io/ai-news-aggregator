@@ -6,19 +6,31 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "preview": "vite preview",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit"
   },
   "dependencies": {
+    "@newsletter/shared": "workspace:*",
+    "@tanstack/react-query": "5.96.2",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "react-hook-form": "7.72.1",
+    "react-router-dom": "7.14.0"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "4.2.2",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.2",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.1",
+    "jsdom": "29.0.2",
+    "tailwindcss": "4.2.2",
     "typescript": "5.8.3",
-    "vite": "8.0.1"
+    "vite": "8.0.1",
+    "vitest": "3.2.1"
   }
 }

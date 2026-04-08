@@ -6,6 +6,24 @@ import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import hnFeedFixture from "@pipeline-tests/unit/fixtures/hn-feed.json";
 import hnCommentsFixture from "@pipeline-tests/unit/fixtures/hn-comments.json";
 
+const warnSpy = vi.fn<[obj: unknown, msg?: string], undefined>();
+vi.mock("@newsletter/shared/logger", () => ({
+  createLogger: (): {
+    info: (obj: unknown, msg?: string) => undefined;
+    warn: (obj: unknown, msg?: string) => undefined;
+    error: (obj: unknown, msg?: string) => undefined;
+    debug: (obj: unknown, msg?: string) => undefined;
+  } => ({
+    info: () => undefined,
+    warn: (obj: unknown, msg?: string): undefined => {
+      warnSpy(obj, msg);
+      return undefined;
+    },
+    error: () => undefined,
+    debug: () => undefined,
+  }),
+}));
+
 const SINGLE_FEED: HnCollectConfig = { feeds: ["newest"] };
 
 type MockUpsertFn = ReturnType<typeof vi.fn<[items: RawItemInsert[]], Promise<void>>>;
@@ -53,6 +71,7 @@ describe("collectHn", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    warnSpy.mockClear();
     const mod = await import("@pipeline/collectors/hn.js");
     // Mock types are runtime-compatible but structurally incompatible with Drizzle chain types
     collectHn = mod.collectHn as CollectHnFn;
@@ -416,5 +435,111 @@ describe("collectHn", () => {
 
     const commentUrl = mockFetch.mock.calls[1][0];
     expect(commentUrl).toContain("count=50");
+  });
+
+  // REQ-021: sinceDays filter drops items older than the cutoff
+  it("drops items older than sinceDays cutoff before upsert", async () => {
+    const now = Date.now();
+    const day = 86_400_000;
+    const makeItem = (id: string, ageDays: number): unknown => ({
+      id: `https://news.ycombinator.com/item?id=${id}`,
+      title: `Item ${id}`,
+      url: `https://example.com/${id}`,
+      external_url: `https://news.ycombinator.com/item?id=${id}`,
+      date_published: new Date(now - ageDays * day).toISOString(),
+      authors: [{ name: "someone" }],
+      content_html: "<p>Points: 100</p><p># Comments: 5</p>",
+    });
+    const feed = {
+      version: "https://jsonfeed.org/version/1",
+      items: [
+        makeItem("50000001", 0),
+        makeItem("50000002", 3),
+        makeItem("50000003", 6),
+        makeItem("50000004", 8),
+        makeItem("50000005", 14),
+      ],
+    };
+    const mockFetch = createMockFetch([
+      feedResponse(feed),
+      commentsResponse({ ...hnCommentsFixture, items: [] }),
+      commentsResponse({ ...hnCommentsFixture, items: [] }),
+      commentsResponse({ ...hnCommentsFixture, items: [] }),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    await collectHn(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { feeds: ["newest"], sinceDays: 7, commentsPerItem: 0 },
+    );
+
+    expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    const ids = rows.map((r) => r.externalId).sort();
+    expect(ids).toEqual(["50000001", "50000002", "50000003"]);
+  });
+
+  // EDGE-004: filter dropping zero items emits warn log
+  it("warns when sinceDays filter drops zero items", async () => {
+    const now = Date.now();
+    const day = 86_400_000;
+    const makeItem = (id: string, ageDays: number): unknown => ({
+      id: `https://news.ycombinator.com/item?id=${id}`,
+      title: `Item ${id}`,
+      url: `https://example.com/${id}`,
+      external_url: `https://news.ycombinator.com/item?id=${id}`,
+      date_published: new Date(now - ageDays * day).toISOString(),
+      authors: [{ name: "someone" }],
+      content_html: "<p>Points: 100</p><p># Comments: 5</p>",
+    });
+    const feed = {
+      version: "https://jsonfeed.org/version/1",
+      items: [makeItem("60000001", 0), makeItem("60000002", 1)],
+    };
+    const mockFetch = createMockFetch([
+      feedResponse(feed),
+      commentsResponse({ ...hnCommentsFixture, items: [] }),
+      commentsResponse({ ...hnCommentsFixture, items: [] }),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    await collectHn(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { feeds: ["newest"], sinceDays: 7, commentsPerItem: 0 },
+    );
+
+    const messages = warnSpy.mock.calls.map((c) => c[1] ?? "");
+    const hasDropWarn = messages.some((m) => m.includes("sinceDays filter dropped 0 items"));
+    expect(hasDropWarn).toBe(true);
+  });
+
+  // REQ-021: sinceDays undefined is a no-op
+  it("does not filter when sinceDays is undefined", async () => {
+    const now = Date.now();
+    const day = 86_400_000;
+    const feed = {
+      version: "https://jsonfeed.org/version/1",
+      items: [
+        {
+          id: "https://news.ycombinator.com/item?id=70000001",
+          title: "Old item",
+          url: "https://example.com/old",
+          external_url: "https://news.ycombinator.com/item?id=70000001",
+          date_published: new Date(now - 30 * day).toISOString(),
+          authors: [{ name: "someone" }],
+          content_html: "<p>Points: 100</p><p># Comments: 5</p>",
+        },
+      ],
+    };
+    const mockFetch = createMockFetch([
+      feedResponse(feed),
+      commentsResponse({ ...hnCommentsFixture, items: [] }),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
+
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    expect(rows).toHaveLength(1);
   });
 });

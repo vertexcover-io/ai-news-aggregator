@@ -6,6 +6,24 @@ import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import redditListingFixture from "@pipeline-tests/unit/fixtures/reddit-listing.json";
 import redditCommentsFixture from "@pipeline-tests/unit/fixtures/reddit-comments.json";
 
+const warnSpy = vi.fn<[obj: unknown, msg?: string], undefined>();
+vi.mock("@newsletter/shared/logger", () => ({
+  createLogger: (): {
+    info: (obj: unknown, msg?: string) => undefined;
+    warn: (obj: unknown, msg?: string) => undefined;
+    error: (obj: unknown, msg?: string) => undefined;
+    debug: (obj: unknown, msg?: string) => undefined;
+  } => ({
+    info: () => undefined,
+    warn: (obj: unknown, msg?: string): undefined => {
+      warnSpy(obj, msg);
+      return undefined;
+    },
+    error: () => undefined,
+    debug: () => undefined,
+  }),
+}));
+
 const SINGLE_SUB: RedditCollectConfig = { subreddits: ["MachineLearning"] };
 
 type MockUpsertFn = ReturnType<typeof vi.fn<[items: RawItemInsert[]], Promise<void>>>;
@@ -53,6 +71,7 @@ describe("collectReddit", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    warnSpy.mockClear();
     const mod = await import("@pipeline/collectors/reddit.js");
     collectReddit = mod.collectReddit as CollectRedditFn;
   });
@@ -428,5 +447,92 @@ describe("collectReddit", () => {
       const headers = init?.headers as Record<string, string>;
       expect(headers["User-Agent"]).toContain("NewsletterBot/1.0");
     }
+  });
+
+  // REQ-023: sinceDays filter drops items older than the cutoff
+  it("drops items older than sinceDays cutoff before upsert", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const daySec = 86_400;
+    const makeChild = (id: string, ageDays: number): unknown => ({
+      kind: "t3",
+      data: {
+        id,
+        title: `Title ${id}`,
+        url: `https://example.com/${id}`,
+        permalink: `/r/MachineLearning/comments/${id}/slug/`,
+        author: "tester",
+        selftext: "",
+        is_self: false,
+        score: 10,
+        num_comments: 2,
+        created_utc: nowSec - ageDays * daySec,
+        stickied: false,
+        subreddit: "MachineLearning",
+      },
+    });
+    const listing = {
+      kind: "Listing",
+      data: {
+        children: [
+          makeChild("sd001", 0),
+          makeChild("sd002", 3),
+          makeChild("sd003", 6),
+          makeChild("sd004", 10),
+          makeChild("sd005", 30),
+        ],
+      },
+    };
+    const mockFetch = createMockFetch([listingResponse(listing)]);
+    const rawItemsRepo = createMockRepo();
+
+    await collectReddit(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { subreddits: ["MachineLearning"], sinceDays: 7, commentsPerItem: 0 },
+    );
+
+    expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    const ids = rows.map((r) => r.externalId).sort();
+    expect(ids).toEqual(["sd001", "sd002", "sd003"]);
+  });
+
+  // EDGE-004: filter dropping zero items emits warn log
+  it("warns when sinceDays filter drops zero items", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const daySec = 86_400;
+    const makeChild = (id: string, ageDays: number): unknown => ({
+      kind: "t3",
+      data: {
+        id,
+        title: `Title ${id}`,
+        url: `https://example.com/${id}`,
+        permalink: `/r/MachineLearning/comments/${id}/slug/`,
+        author: "tester",
+        selftext: "",
+        is_self: false,
+        score: 10,
+        num_comments: 2,
+        created_utc: nowSec - ageDays * daySec,
+        stickied: false,
+        subreddit: "MachineLearning",
+      },
+    });
+    const listing = {
+      kind: "Listing",
+      data: {
+        children: [makeChild("sw001", 0), makeChild("sw002", 1)],
+      },
+    };
+    const mockFetch = createMockFetch([listingResponse(listing)]);
+    const rawItemsRepo = createMockRepo();
+
+    await collectReddit(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { subreddits: ["MachineLearning"], sinceDays: 7, commentsPerItem: 0 },
+    );
+
+    const messages = warnSpy.mock.calls.map((c) => c[1] ?? "");
+    const hasDropWarn = messages.some((m) => m.includes("sinceDays filter dropped 0 items"));
+    expect(hasDropWarn).toBe(true);
   });
 });

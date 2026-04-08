@@ -20,3 +20,5 @@ export interface CollectorResult {
   itemsStored: number;
   durationMs: number;
 }
+
+export * from "./run.js";

@@ -6,6 +6,7 @@ export interface HnCollectConfig {
   count?: number;
   commentsPerItem?: number;
   feeds?: string[];
+  sinceDays?: number;
 }
 
 export interface HnCollectJobData {
@@ -18,6 +19,7 @@ export interface RedditCollectConfig {
   timeframe?: "hour" | "day" | "week" | "month";
   limit?: number;
   commentsPerItem?: number;
+  sinceDays?: number;
 }
 
 export interface BlogSource {
