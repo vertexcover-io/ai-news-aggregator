@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { SQL } from "drizzle-orm";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items";
-import type { AppDb } from "@newsletter/shared/db";
+import type { AppDb, RawItemInsert } from "@newsletter/shared/db";
 
 interface CapturedQuery {
   whereArg: SQL | undefined;
@@ -98,6 +98,72 @@ describe("createRawItemsRepo.findExistingExternalIds", () => {
     const referencedColumns = collectColumnNames(captured.whereArg);
     expect(referencedColumns).toContain("source_type");
     expect(referencedColumns).toContain("external_id");
+  });
+});
+
+interface CapturedUpsert {
+  setArg: Record<string, unknown> | null;
+  valuesCalled: boolean;
+}
+
+function createUpsertCapturingDb(): {
+  db: Pick<AppDb, "insert" | "select">;
+  captured: CapturedUpsert;
+} {
+  const captured: CapturedUpsert = { setArg: null, valuesCalled: false };
+
+  const valuesBuilder = {
+    onConflictDoUpdate: (
+      arg: { set: Record<string, unknown> },
+    ): Promise<unknown> => {
+      captured.setArg = arg.set;
+      return Promise.resolve();
+    },
+  };
+
+  const insertBuilder = {
+    values: (): typeof valuesBuilder => {
+      captured.valuesCalled = true;
+      return valuesBuilder;
+    },
+  };
+
+  const db = {
+    insert: vi.fn(() => insertBuilder),
+    select: vi.fn(),
+  } as unknown as Pick<AppDb, "insert" | "select">;
+
+  return { db, captured };
+}
+
+// Regression: re-collected items must surface in the next ranking window.
+// Bug: collectedAt was not bumped on conflict, so HN/Reddit re-runs were
+// silently filtered out by loadCandidatesSince's `gte(collectedAt, since)`.
+describe("createRawItemsRepo.upsertItems", () => {
+  it("bumps collectedAt on conflict so re-collected items stay in the loader window", async () => {
+    const { db, captured } = createUpsertCapturingDb();
+    const repo = createRawItemsRepo(db);
+
+    const item: RawItemInsert = {
+      sourceType: "hn",
+      externalId: "12345",
+      title: "Some title",
+      url: "https://news.ycombinator.com/item?id=12345",
+      author: "alice",
+      content: null,
+      publishedAt: new Date("2026-04-01T00:00:00Z"),
+      collectedAt: new Date("2026-04-01T00:00:00Z"),
+      engagement: { points: 10, commentCount: 2 },
+      metadata: { comments: [] },
+      updatedAt: new Date("2026-04-01T00:00:00Z"),
+    };
+
+    await repo.upsertItems([item]);
+
+    expect(captured.valuesCalled).toBe(true);
+    if (captured.setArg === null) throw new Error("expected upsert set arg");
+    expect(Object.keys(captured.setArg)).toContain("collectedAt");
+    expect(captured.setArg.collectedAt).toBeInstanceOf(Date);
   });
 });
 

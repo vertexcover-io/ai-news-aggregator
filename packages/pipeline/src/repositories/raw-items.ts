@@ -16,12 +16,14 @@ export function createRawItemsRepo(
   return {
     async upsertItems(items: RawItemInsert[]): Promise<void> {
       if (items.length === 0) return;
+      const now = new Date();
       await db.insert(rawItems).values(items).onConflictDoUpdate({
         target: [rawItems.sourceType, rawItems.externalId],
         set: {
           engagement: sql.raw(`excluded.${rawItems.engagement.name}`),
           metadata: sql.raw(`excluded.${rawItems.metadata.name}`),
-          updatedAt: new Date(),
+          collectedAt: now,
+          updatedAt: now,
         },
       });
     },
