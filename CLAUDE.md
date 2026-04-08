@@ -26,7 +26,7 @@ packages/
 - Both API and pipeline share PostgreSQL through the shared Drizzle schema
 - Pipeline signals "ready for review" by updating DB status; API sends notification email
 
-**Key data flow (current — Run UI slice):** User submits HN + Reddit config on `/run` -> API enqueues a BullMQ flow (`FlowProducer`) -> Collector children fan out in parallel and write to `raw_items` -> Parent `run-process` worker dedups -> ranks via Vercel AI SDK + Gemini -> writes `rankedItems` to Redis run-state -> Frontend polls `GET /api/runs/:runId` and renders the ranked list with rationale.
+**Key data flow (current — Run UI slice):** User submits HN + Reddit config on `/run` -> API enqueues a single job on the processing queue via `Queue.add` with `jobId: runId` -> The `run-process` worker runs all collectors concurrently in-process (via `Promise.allSettled`), writing to `raw_items` -> dedups -> ranks via Vercel AI SDK + Gemini -> writes `rankedItems` to Redis run-state -> Frontend polls `GET /api/runs/:runId` and renders the ranked list with rationale.
 
 **Future stages (not yet wired):** Filter, Summarize, persistent `pending_review` in DB, `/review` admin approval, daily digest assembly, and Resend email delivery — these belong to later PRs and remain documented in the design specs.
 
@@ -42,7 +42,7 @@ packages/
 | Backend API | Hono |
 | Database | PostgreSQL |
 | ORM | Drizzle + Drizzle Kit (migrations) |
-| Job Queue | BullMQ + Redis (API uses `FlowProducer` to enqueue runs) |
+| Job Queue | BullMQ + Redis (API uses `Queue.add` with `jobId: runId` to enqueue runs) |
 | Ranking LLM | Vercel AI SDK (`ai`) + `@ai-sdk/google` (default `gemini-2.5-flash`) |
 | Validation | zod (API request bodies, ranking structured output) |
 | Email | Resend |

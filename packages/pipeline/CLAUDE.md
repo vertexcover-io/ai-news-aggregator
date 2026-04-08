@@ -5,15 +5,15 @@ BullMQ workers that collect, process, and prepare newsletter items.
 ## Responsibilities
 - Collectors fetch from external sources (HN, Reddit, etc.) and upsert into `raw_items`
 - Processors transform/dedup/rank items as pure functions called from workers
-- Workers dispatch BullMQ jobs to collectors and processors based on job name
+- The `run-process` worker is the single BullMQ job per run — it runs all requested collectors concurrently in-process, then dedups and ranks
 - Services own cross-cutting state (Redis run-state, candidate loading) shared by workers
 - Repository modules handle DB access (via `@newsletter/shared` schema)
 
 ## Layout
-- `src/collectors/` — one file per source (`hn.ts`, `reddit.ts`); each is a `(deps, config) => Promise<CollectorResult>`
+- `src/collectors/` — one file per source (`hn.ts`, `reddit.ts`, `web.ts`); each is a `(deps, config) => Promise<CollectorResult>`, called directly by the run-process worker
 - `src/processors/` — pure stage functions (`dedup.ts`, `rank.ts`); ranking uses Vercel AI SDK `generateObject` with a Gemini model and inlines its system prompt as a TS const in `rank.ts`
-- `src/queues/` — BullMQ `Queue` definitions (`collection.ts`, `processing.ts`); the API enqueues a flow whose parent runs in the processing queue and whose children run in the collection queue
-- `src/workers/` — `Worker` instances that consume each queue (`collection.ts` for collector jobs, `run-process.ts` for the parent that dedups and ranks)
+- `src/queues/` — BullMQ `Queue` definitions (`processing.ts` is the only queue the API enqueues to; `collection.ts` is kept in place for rollback and no longer receives new jobs)
+- `src/workers/` — `Worker` instances (`run-process.ts` is the single job per run that collects via `Promise.all` with in-process state-write serialization, dedups, and ranks; `collection.ts` is legacy and left in place for rollback)
 - `src/services/` — `run-state.ts` (Redis-backed per-run status read/write) and `candidate-loader.ts` (loads `raw_items` rows for ranking)
 - `src/repositories/` — Drizzle wrappers like `createRawItemsRepo(db)`
 
