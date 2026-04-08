@@ -17,8 +17,8 @@
 
 | ID | Type | Requirement | Acceptance Criterion | Priority |
 |----|------|-------------|---------------------|----------|
-| REQ-010 | Event-driven | When processing a source, the collector shall fetch `source.listingUrl` via Jina Reader (`https://r.jina.ai/<url>`) and strip the Jina envelope (`Title:`, `URL Source:`, `Markdown Content:`) before handing the body to the LLM. | Unit test: given a Jina response containing the envelope, the body passed to the LLM begins with the first line of the article and does not contain the literal string `"Markdown Content:"`. | Must |
-| REQ-011 | Event-driven | When the listing markdown is available, the collector shall call Vercel AI SDK `generateText` with `output: Output.object({ schema: DiscoverySchema })` (`{ posts: Array<{ url, title, published_at }> }`) against the configured Gemini model. | Unit test: collector invokes a mocked `LanguageModel` with a schema equal to `DiscoverySchema`. | Must |
+| REQ-010 | Event-driven | When processing a source, the collector shall fetch `source.listingUrl` via Jina Reader (`https://r.jina.ai/<url>`) and pass the full trimmed Jina response — including the envelope header (`Title:`, `URL Source:`, `Published Time:`, `Markdown Content:`) — to the LLM. The envelope header contains authoritative metadata (title, canonical URL, publish time) that downstream extraction relies on; stripping it discards that data. | Unit test: given a Jina response containing the envelope, the string passed to the LLM equals the trimmed raw response and still contains the literal substring `"Markdown Content:"`. | Must |
+| REQ-011 | Event-driven | When the listing markdown is available, the collector shall call Vercel AI SDK `generateObject` with `DiscoverySchema` (`{ posts: Array<{ url, title, published_at }> }`) against the configured Gemini model. | Unit test: collector invokes a mocked `LanguageModel` with a schema equal to `DiscoverySchema`. | Must |
 | REQ-012 | Ubiquitous | The collector shall drop any URL returned by the discovery step that does not appear as a substring of the listing markdown. | Unit test: given a mocked LLM returning 3 URLs where 1 is not a substring of the markdown, only the 2 valid URLs enter the filter pipeline. | Must |
 
 ### Filtering
@@ -42,15 +42,15 @@
 
 | ID | Type | Requirement | Acceptance Criterion | Priority |
 |----|------|-------------|---------------------|----------|
-| REQ-040 | Event-driven | When processing a new post URL, the collector shall fetch the post via Jina Reader and strip the Jina envelope before handing the body to the LLM. | Same as REQ-010 applied to post URLs. | Must |
-| REQ-041 | Event-driven | When the post markdown is available, the collector shall call `generateText` with `output: Output.object({ schema: DetailSchema })` (`{ title, author, published_at }`) against the configured Gemini model. | Unit test: mocked `LanguageModel` is invoked with a schema equal to `DetailSchema`; e2e test against a pinned historical post URL returns a non-empty `title` containing a known substring. | Must |
-| REQ-042 | Ubiquitous | The `generateText` calls for both discovery and detail extraction shall be made with `temperature: 0`. | Unit test: the options passed to `generateText` contain `temperature: 0`. | Must |
+| REQ-040 | Event-driven | When processing a new post URL, the collector shall fetch the post via Jina Reader and pass the full trimmed Jina response — including the envelope header — to the LLM. For many blog platforms (Hugging Face, Anthropic) the article title and publish date exist only in the envelope header; stripping it causes detail extraction to return empty fields. | Same as REQ-010 applied to post URLs. | Must |
+| REQ-041 | Event-driven | When the post markdown is available, the collector shall call `generateObject` with `DetailSchema` (`{ title, author, published_at }`) against the configured Gemini model. | Unit test: mocked `LanguageModel` is invoked with a schema equal to `DetailSchema`; e2e test against a pinned historical post URL returns a non-empty `title` containing a known substring. | Must |
+| REQ-042 | Ubiquitous | The `generateObject` calls for both discovery and detail extraction shall be made with `temperature: 0`. | Unit test: the options passed to `generateObject` contain `temperature: 0`. | Must |
 
 ### Row assembly and persistence
 
 | ID | Type | Requirement | Acceptance Criterion | Priority |
 |----|------|-------------|---------------------|----------|
-| REQ-050 | Event-driven | When detail extraction succeeds for a post, the collector shall assemble a `RawItemInsert` with `sourceType: 'blog'`, `externalId === url === sourceUrl === postUrl`, `content` equal to the stripped Jina markdown body, `author` equal to the extracted author (or `null` if empty), `engagement: { points: 0, commentCount: 0 }`, and `metadata: { comments: [] }`. | Unit test: assert the exact shape on one assembled row. | Must |
+| REQ-050 | Event-driven | When detail extraction succeeds for a post, the collector shall assemble a `RawItemInsert` with `sourceType: 'blog'`, `externalId === url === sourceUrl === postUrl`, `content` equal to the full trimmed Jina response (envelope header + body), `author` equal to the extracted author (or `null` if empty), `engagement: { points: 0, commentCount: 0 }`, and `metadata: { comments: [] }`. | Unit test: assert the exact shape on one assembled row. | Must |
 | REQ-051 | Unwanted | If the extracted `published_at` string does not parse to a valid `Date`, then the assembled row shall set `publishedAt: null`. | Unit test: given `published_at: "not a date"`, assembled row has `publishedAt === null`. | Must |
 | REQ-052 | Event-driven | When the collector finishes assembling the per-job batch, it shall call `deps.rawItemsRepo.upsertItems(items)` exactly once. | Unit test: `upsertItems` mock is called exactly once with the assembled items array. E2E test: after a successful run, `raw_items` contains N rows where N equals the number of items in `result.itemsStored`. | Must |
 
@@ -74,7 +74,8 @@
 | REQ-075 | Ubiquitous | When `newPosts.length === 0` after the dedup pre-check (i.e. all candidates were already stored), the collector shall treat this as a normal successful run for that source — **no** `discovery-empty` failure is recorded and the source contributes zero items. | Unit test: seed DB so `findExistingExternalIds` returns a `Set` containing all candidate URLs; assert `result.failures` is `undefined` and `result.itemsStored === 0`. | Must |
 | REQ-076 | Unwanted | If detail Jina fetch throws for a post, then the collector shall record a post-level `CollectorFailure` (with `postUrl`) and log with `stage: "detail-fetch"`. | Unit test: mocked `fetch` rejects for one post URL; `result.failures` contains one entry with matching `postUrl`; other posts in the same source still succeed. | Must |
 | REQ-077 | Unwanted | If detail LLM extraction throws for a post, then the collector shall record a post-level `CollectorFailure` and log with `stage: "detail-llm"`. | Unit test: mocked LLM throws on the 2nd of 3 posts; `result.failures` contains one entry with `postUrl` of the 2nd post. | Must |
-| REQ-078 | Unwanted | If detail extraction returns an empty `title` for a post, then the collector shall skip the post, record a post-level `CollectorFailure` with `stage: "validate"`, and not write a row to `raw_items`. | Unit test: mocked LLM returns `title: ""`; the post does not appear in the assembled batch; `result.failures` contains one entry with stage `"validate"`. | Must |
+| REQ-078 | Unwanted | If detail extraction returns an empty `title` for a post AND the discovery-stage `post.title` is also empty, then the collector shall skip the post, record a post-level `CollectorFailure` with `stage: "validate"`, and not write a row to `raw_items`. If the detail `title` is empty but the discovery `post.title` is non-empty, the collector shall fall back to the discovery title and proceed normally (see REQ-078a). | Unit test: mocked LLM returns `title: ""` AND the discovery post has `title: ""`; the post does not appear in the assembled batch; `result.failures` contains one entry with stage `"validate"`. | Must |
+| REQ-078a | Event-driven | When detail extraction returns an empty `title` or empty `published_at` for a post, the collector shall fall back to the corresponding field from the discovery-stage `DiscoveredPost` (the result of `discoverPostUrls` against the listing page) before row assembly. This fallback applies field-by-field: a non-empty detail field always wins; a discovery field is used only when the detail field is empty. | Unit test: mocked detail LLM returns `{title: "", author: "X", published_at: ""}` while discovery post has `title: "Fallback T"` and `published_at: "2026-03-30"`; the assembled row has `title: "Fallback T"` and `publishedAt` parsing to `2026-03-30`. | Must |
 | REQ-079 | Unwanted | If *every* source in a job produced a source-level failure (`sourceFailed === true` for all), then `collectWeb` shall throw an `Error`. | Unit test: all sources have failing listing URLs; `collectWeb` throws; no rows are inserted. E2E test 5: running with only the broken source throws. | Must |
 | REQ-080 | Unwanted | If at least one source in a job succeeded, then `collectWeb` shall return a `WebCollectorResult` without throwing, even if other sources failed. | Unit test: one working source + one broken source; `collectWeb` resolves; `result.failures` contains the broken source; the working source's items are upserted. E2E test 4 covers this live. | Must |
 | REQ-081 | Ubiquitous | Every persisted `error` string on a `CollectorFailure` shall be no longer than `MAX_ERROR_LENGTH` (200) chars. | Unit test: mocked error with a 10,000-char message; the resulting `CollectorFailure.error.length === 200`. | Must |
@@ -108,7 +109,9 @@
 | EDGE-007 | All discovered posts are already in `raw_items` | `newPosts.length === 0` after dedup → normal success, `result.failures` is `undefined`, `itemsStored === 0` | REQ-075 |
 | EDGE-008 | Detail page Jina fetch fails for one post while others in the same source succeed | Post-level `CollectorFailure` with matching `postUrl` and `stage: "detail-fetch"`; other posts in the source still produce rows | REQ-076 |
 | EDGE-009 | Detail LLM extraction throws for one post | Post-level `CollectorFailure` with `stage: "detail-llm"` | REQ-077 |
-| EDGE-010 | Detail LLM returns empty `title` | Post-level `CollectorFailure` with `stage: "validate"`; no row written | REQ-078 |
+| EDGE-010 | Detail LLM returns empty `title` but discovery post had a non-empty title | Collector falls back to the discovery title and writes the row; no failure recorded | REQ-078a |
+| EDGE-010a | Detail LLM returns empty `title` AND discovery post title is also empty | Post-level `CollectorFailure` with `stage: "validate"`; no row written | REQ-078 |
+| EDGE-010b | Detail LLM returns empty `published_at` but discovery post had a date | Collector falls back to the discovery `published_at`; row is written with parsed `publishedAt` | REQ-078a |
 | EDGE-011 | Detail LLM returns `published_at: "not a date"` | Row is written with `publishedAt: null` (no failure recorded) | REQ-051 |
 | EDGE-012 | Every source in the job fails | `collectWeb` throws; BullMQ marks the job failed and applies its retry policy | REQ-079 |
 | EDGE-013 | One working source + one broken source in the same job | `collectWeb` resolves; broken source appears in `failures`; working source's rows are upserted | REQ-080 |
@@ -152,7 +155,8 @@
 | REQ-075 | Yes | — | Yes | E2E test 3 second run (dedup) |
 | REQ-076 | Yes | — | — | |
 | REQ-077 | Yes | — | — | |
-| REQ-078 | Yes | — | — | Requires mocked LLM returning empty title |
+| REQ-078 | Yes | — | — | Requires mocked LLM returning empty title AND discovery post with empty title |
+| REQ-078a | Yes | — | — | Covers field-by-field fallback from discovery stage when detail extraction returns empty strings |
 | REQ-079 | Yes | — | Yes | E2E test 5 all-sources-broken |
 | REQ-080 | Yes | — | Yes | E2E test 4 partial failure |
 | REQ-081 | Yes | — | — | |

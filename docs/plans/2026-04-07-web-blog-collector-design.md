@@ -223,8 +223,8 @@ processOnePost(post, source, deps) -> RawItemInsert  (throws on error)
 
 Helpers:
   - fetchMarkdown(url, fetchFn): r.jina.ai/<url>, strip envelope, return body
-  - discoverPostUrls(...):  generateText({ output: Output.object({ schema: DiscoverySchema }) })
-  - extractPostFields(...): generateText({ output: Output.object({ schema: DetailSchema }) })
+  - discoverPostUrls(...):  generateObject({ schema: DiscoverySchema })
+  - extractPostFields(...): generateObject({ schema: DetailSchema })
   - buildRawItem(postUrl, body, fields): RawItemInsert with sourceType 'blog',
       externalId = postUrl, content = body, engagement {0,0}, metadata {comments:[]}
   - applySinceDays(posts, sinceDays): JS-only filter
