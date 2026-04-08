@@ -55,4 +55,56 @@ describe("RunForm", () => {
     });
     expect(onSubmitted).toHaveBeenCalledWith("run-123");
   });
+
+  it("submits a web-only payload when HN is disabled and a web source is filled in", async () => {
+    const onSubmitted = vi.fn();
+    vi.mocked(submitRun).mockResolvedValueOnce({ runId: "run-web" });
+
+    render(<RunForm onSubmitted={onSubmitted} />);
+
+    fireEvent.click(screen.getByLabelText(/hacker news/i));
+    fireEvent.click(screen.getByLabelText(/web sources/i));
+
+    fireEvent.change(screen.getByLabelText(/source 1 name/i), {
+      target: { value: "Anthropic" },
+    });
+    fireEvent.change(screen.getByLabelText(/source 1 listing url/i), {
+      target: { value: "https://www.anthropic.com/research" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+
+    await waitFor(() => {
+      expect(submitRun).toHaveBeenCalledTimes(1);
+    });
+    const payload = vi.mocked(submitRun).mock.calls[0][0];
+    expect(payload.hn).toBeUndefined();
+    expect(payload.reddit).toBeUndefined();
+    expect(payload.web).toEqual({
+      sources: [
+        { name: "Anthropic", listingUrl: "https://www.anthropic.com/research" },
+      ],
+      maxItems: 10,
+      sinceDays: 7,
+    });
+    expect(onSubmitted).toHaveBeenCalledWith("run-web");
+  });
+
+  it("rejects web submission when no source rows have both name and URL", async () => {
+    const onSubmitted = vi.fn();
+    render(<RunForm onSubmitted={onSubmitted} />);
+
+    fireEvent.click(screen.getByLabelText(/hacker news/i));
+    fireEvent.click(screen.getByLabelText(/web sources/i));
+
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent ?? "").toMatch(
+        /add at least one web source/i,
+      );
+    });
+    expect(submitRun).not.toHaveBeenCalled();
+    expect(onSubmitted).not.toHaveBeenCalled();
+  });
 });

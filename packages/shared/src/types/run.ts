@@ -64,6 +64,9 @@ export interface RunSubmitHnConfig {
   keywords?: string[];
   pointsThreshold?: number;
   sinceDays: number;
+  feeds?: ("newest" | "best")[];
+  count?: number;
+  commentsPerItem?: number;
 }
 
 export interface RunSubmitRedditConfig {
@@ -73,8 +76,20 @@ export interface RunSubmitRedditConfig {
   sinceDays: number;
 }
 
+export interface RunSubmitWebSource {
+  name: string;
+  listingUrl: string;
+}
+
+export interface RunSubmitWebConfig {
+  sources: RunSubmitWebSource[];
+  maxItems: number;
+  sinceDays?: number;
+}
+
 export interface RunSubmitPayload {
   topN: number;
   hn?: RunSubmitHnConfig;
   reddit?: RunSubmitRedditConfig;
+  web?: RunSubmitWebConfig;
 }

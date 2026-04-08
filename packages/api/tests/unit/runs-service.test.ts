@@ -91,4 +91,50 @@ describe("createRun (REQ-004, REQ-005)", () => {
     expect(children).toHaveLength(1);
     expect(children[0]?.name).toBe("hn-collect");
   });
+
+  it("seeds sources.blog and enqueues a web-collect child when payload.web is set", async () => {
+    const redis = makeRedis();
+    const flow = makeFlow();
+    const webPayload: RunSubmitPayload = {
+      topN: 5,
+      web: {
+        sources: [
+          { name: "Anthropic", listingUrl: "https://www.anthropic.com/research" },
+        ],
+        maxItems: 3,
+        sinceDays: 7,
+      },
+    };
+    const { runId } = await createRun(
+      webPayload,
+      redis as unknown as IORedis,
+      flow.producer,
+    );
+
+    const entry = redis.store.get(`run:${runId}`);
+    if (!entry) throw new Error("expected redis entry to exist");
+    const state = JSON.parse(entry.value) as RunState;
+    expect(state.sources.blog).toEqual({
+      status: "pending",
+      itemsFetched: 0,
+      errors: [],
+    });
+
+    const node = flow.add.mock.calls[0][0] as FlowJob;
+    const children = node.children ?? [];
+    expect(children).toHaveLength(1);
+    expect(children[0]?.name).toBe("web-collect");
+    expect(children[0]?.queueName).toBe("collection");
+    expect(children[0]?.data).toMatchObject({
+      runId,
+      config: {
+        sources: [
+          { name: "Anthropic", listingUrl: "https://www.anthropic.com/research" },
+        ],
+        maxItems: 3,
+        sinceDays: 7,
+      },
+    });
+    expect((node.data as { sourceTypes: string[] }).sourceTypes).toEqual(["blog"]);
+  });
 });

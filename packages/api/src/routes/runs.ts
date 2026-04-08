@@ -31,15 +31,6 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       return c.json({ error: "invalid json" }, 400);
     }
 
-    if (
-      body !== null &&
-      typeof body === "object" &&
-      "web" in body &&
-      (body as Record<string, unknown>).web !== undefined
-    ) {
-      return c.json({ error: "web sources not yet supported" }, 400);
-    }
-
     const parsed = runSubmitSchema.safeParse(body);
     if (!parsed.success) {
       return c.json({ error: parsed.error.message }, 400);

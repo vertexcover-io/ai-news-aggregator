@@ -106,20 +106,28 @@ describe("POST /api/runs", () => {
     expect(res.status).toBe(400);
   });
 
-  it("Web deferral: returns 400 when body.web is present", async () => {
-    const app = makeApp({ redis: makeRedis(), flow: makeFlowProducer() });
+  it("accepts a payload with web only and enqueues a web-collect child", async () => {
+    const redis = makeRedis();
+    const flow = makeFlowProducer();
+    const app = makeApp({ redis, flow });
     const res = await app.request("/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        topN: 10,
-        hn: { sinceDays: 1 },
-        web: { urls: ["https://example.com"] },
+        topN: 5,
+        web: {
+          sources: [
+            { name: "Anthropic", listingUrl: "https://www.anthropic.com/research" },
+          ],
+          maxItems: 3,
+          sinceDays: 7,
+        },
       }),
     });
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("web sources not yet supported");
+    expect(res.status).toBe(201);
+    expect(flow.calls).toHaveLength(1);
+    const childNames = flow.calls[0].children.map((c) => c.name);
+    expect(childNames).toEqual(["web-collect"]);
   });
 
   it("REQ-004: seeds Redis run-state with status running, stage queued, TTL ~3600", async () => {

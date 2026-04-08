@@ -20,7 +20,7 @@ export function HnSection({ form, enabled }: HnSectionProps): ReactElement {
       <div
         className={`grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2 ${enabled ? "" : "opacity-50"}`}
       >
-        <label className="block text-sm">
+        <label className="block text-sm sm:col-span-3">
           Keywords (comma-separated)
           <input
             type="text"
@@ -45,6 +45,49 @@ export function HnSection({ form, enabled }: HnSectionProps): ReactElement {
             disabled={!enabled}
             className="mt-1 block w-full border border-gray-300 rounded px-3 py-2"
             {...register("hn.sinceDays", { valueAsNumber: true, min: 1 })}
+          />
+        </label>
+        <label className="block text-sm">
+          Max items per feed
+          <input
+            type="number"
+            disabled={!enabled}
+            className="mt-1 block w-full border border-gray-300 rounded px-3 py-2"
+            {...register("hn.count", { valueAsNumber: true, min: 1, max: 1000 })}
+          />
+        </label>
+        <div className="block text-sm sm:col-span-2">
+          Feeds
+          <div className="mt-1 flex gap-4">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                disabled={!enabled}
+                {...register("hn.feedNewest")}
+              />
+              newest
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                disabled={!enabled}
+                {...register("hn.feedBest")}
+              />
+              best
+            </label>
+          </div>
+        </div>
+        <label className="block text-sm">
+          Comments per item
+          <input
+            type="number"
+            disabled={!enabled}
+            className="mt-1 block w-full border border-gray-300 rounded px-3 py-2"
+            {...register("hn.commentsPerItem", {
+              valueAsNumber: true,
+              min: 0,
+              max: 100,
+            })}
           />
         </label>
       </div>

@@ -25,6 +25,9 @@ export async function createRun(
   if (payload.reddit) {
     sources.reddit = { status: "pending", itemsFetched: 0, errors: [] };
   }
+  if (payload.web) {
+    sources.blog = { status: "pending", itemsFetched: 0, errors: [] };
+  }
 
   const initial: RunState = {
     id: runId,
@@ -42,7 +45,7 @@ export async function createRun(
 
   await redis.set(`run:${runId}`, JSON.stringify(initial), "EX", TTL_SECONDS);
 
-  const sourceTypes: ("hn" | "reddit")[] = [];
+  const sourceTypes: ("hn" | "reddit" | "blog")[] = [];
   const children: FlowChildJob[] = [];
   if (payload.hn) {
     sourceTypes.push("hn");
@@ -58,6 +61,14 @@ export async function createRun(
       name: "reddit-collect",
       queueName: "collection",
       data: { runId, config: { ...payload.reddit } },
+    });
+  }
+  if (payload.web) {
+    sourceTypes.push("blog");
+    children.push({
+      name: "web-collect",
+      queueName: "collection",
+      data: { runId, config: { ...payload.web } },
     });
   }
 
