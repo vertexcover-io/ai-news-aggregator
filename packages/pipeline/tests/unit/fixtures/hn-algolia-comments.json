@@ -1,0 +1,17 @@
+{
+  "hits": [
+    {
+      "objectID": "40001112",
+      "author": "dave",
+      "comment_text": "Great article, thanks for sharing!",
+      "created_at": "2026-04-01T10:30:00.000Z"
+    },
+    {
+      "objectID": "40001113",
+      "author": "alice",
+      "comment_text": "I had the same thought — this matches my experience on a different project.",
+      "created_at": "2026-04-01T11:15:00.000Z"
+    }
+  ],
+  "nbHits": 2
+}

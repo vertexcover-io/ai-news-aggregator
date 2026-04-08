@@ -1,0 +1,35 @@
+{
+  "hits": [
+    {
+      "objectID": "40001111",
+      "title": "Show HN: An open-source AI agent framework",
+      "url": "https://example.com/ai-agent-framework",
+      "author": "alice",
+      "points": 142,
+      "num_comments": 37,
+      "created_at": "2026-03-31T12:00:00Z",
+      "story_text": null
+    },
+    {
+      "objectID": "40002222",
+      "title": "GPT-5 benchmark results are in",
+      "url": "https://example.com/gpt5-benchmarks",
+      "author": "bob",
+      "points": 89,
+      "num_comments": 15,
+      "created_at": "2026-03-31T14:30:00Z",
+      "story_text": null
+    },
+    {
+      "objectID": "40003333",
+      "title": "Neural network pruning techniques survey",
+      "url": "https://example.com/nn-pruning",
+      "author": "charlie",
+      "points": 55,
+      "num_comments": 8,
+      "created_at": "2026-03-31T16:00:00Z",
+      "story_text": null
+    }
+  ],
+  "nbHits": 3
+}

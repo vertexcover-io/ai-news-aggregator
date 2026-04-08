@@ -1,5 +1,5 @@
 import type { RawItemInsert } from "@newsletter/shared/db";
-import type { CollectorResult, RawItemComment, RawItemEngagement } from "@newsletter/shared/types";
+import type { CollectorResult, RawItemComment } from "@newsletter/shared/types";
 import type { HnCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -17,74 +17,129 @@ const DEFAULT_FEEDS = ["newest", "best"];
 const MAX_RETRIES = 3;
 const RATE_LIMIT_MS = 500;
 
+const ALGOLIA_BASE = "https://hn.algolia.com/api/v1";
+
 export interface HnCollectorDeps {
   rawItemsRepo: RawItemsRepo;
   fetchFn?: typeof fetch;
 }
 
-interface JsonFeedItem {
-  id?: string;
-  title?: string;
-  url?: string;
-  external_url?: string;
-  date_published?: string;
-  author?: { name: string };
-  authors?: { name: string }[];
-  content_html?: string;
+interface AlgoliaStoryHit {
+  objectID: string;
+  title: string | null;
+  url: string | null;
+  author: string | null;
+  points: number | null;
+  num_comments: number | null;
+  created_at: string;
+  story_text: string | null;
 }
 
-interface JsonFeed {
-  items?: JsonFeedItem[];
+interface AlgoliaStorySearchResponse {
+  hits: AlgoliaStoryHit[];
+  nbHits: number;
 }
 
-function buildFeedUrl(feed: string, config: HnCollectConfig): string {
-  const keywords = config.keywords ?? DEFAULT_KEYWORDS;
-  const points = config.pointsThreshold ?? DEFAULT_POINTS_THRESHOLD;
-  const count = config.count ?? DEFAULT_COUNT;
-  const q = keywords.map((k) => k.replace(/ /g, "+")).join("+OR+");
-  if (feed === "best") {
-    return `https://hnrss.org/best.jsonfeed?q=${q}&points=${points}&count=${count}`;
+interface AlgoliaCommentHit {
+  objectID: string;
+  author: string | null;
+  comment_text: string | null;
+  created_at: string;
+}
+
+interface AlgoliaCommentSearchResponse {
+  hits: AlgoliaCommentHit[];
+  nbHits: number;
+}
+
+function buildKeywordParams(keywords: string[]): { query: string; optionalWords: string } {
+  // For multi-word keywords, quote them so Algolia treats them as a phrase.
+  // For single-word keywords, just include them. optionalWords lists each
+  // single-word token so any one match is sufficient (OR semantics).
+  const queryParts: string[] = [];
+  const optionalSet = new Set<string>();
+
+  for (const kw of keywords) {
+    const trimmed = kw.trim();
+    if (!trimmed) continue;
+    if (/\s/.test(trimmed)) {
+      queryParts.push(`"${trimmed}"`);
+      for (const token of trimmed.split(/\s+/)) {
+        optionalSet.add(token);
+      }
+    } else {
+      queryParts.push(trimmed);
+      optionalSet.add(trimmed);
+    }
   }
-  return `https://hnrss.org/newest.jsonfeed?q=${q}&points=${points}&count=${count}`;
-}
 
-function extractHnId(item: JsonFeedItem): string | null {
-  const idStr = item.id ?? item.external_url ?? "";
-  const match = /[?&]id=(\d+)/.exec(idStr);
-  return match ? match[1] : null;
-}
-
-function extractEngagement(contentHtml: string | undefined): RawItemEngagement {
-  const pointsMatch = /Points:\s*(\d+)/i.exec(contentHtml ?? "");
-  const commentsMatch = /#\s*Comments:\s*(\d+)/i.exec(contentHtml ?? "");
   return {
-    points: pointsMatch ? parseInt(pointsMatch[1], 10) : 0,
-    commentCount: commentsMatch ? parseInt(commentsMatch[1], 10) : 0,
+    query: queryParts.join(" "),
+    optionalWords: Array.from(optionalSet).join(","),
   };
 }
 
-function isJsonFeed(value: unknown): value is JsonFeed {
+function buildSearchUrl(feed: string, config: HnCollectConfig): string {
+  const keywords = config.keywords ?? DEFAULT_KEYWORDS;
+  const points = config.pointsThreshold ?? DEFAULT_POINTS_THRESHOLD;
+  const count = config.count ?? DEFAULT_COUNT;
+
+  const { query, optionalWords } = buildKeywordParams(keywords);
+
+  const numericFilters: string[] = [`points>${points}`];
+  if (config.sinceDays !== undefined && config.sinceDays > 0) {
+    const cutoffSeconds = Math.floor((Date.now() - config.sinceDays * 86_400_000) / 1000);
+    numericFilters.push(`created_at_i>${cutoffSeconds}`);
+  }
+
+  const params = new URLSearchParams({
+    query,
+    tags: "story",
+    optionalWords,
+    numericFilters: numericFilters.join(","),
+    hitsPerPage: String(count),
+  });
+
+  const endpoint = feed === "best" ? "search" : "search_by_date";
+  return `${ALGOLIA_BASE}/${endpoint}?${params.toString()}`;
+}
+
+function isAlgoliaStorySearchResponse(value: unknown): value is AlgoliaStorySearchResponse {
   return (
     typeof value === "object" &&
     value !== null &&
-    "items" in value &&
-    Array.isArray(value.items)
+    "hits" in value &&
+    Array.isArray((value as { hits: unknown }).hits)
   );
 }
 
-function parseJsonFeed(value: unknown): JsonFeed {
-  return isJsonFeed(value) ? value : { items: [] };
+function parseAlgoliaStoryResponse(value: unknown): AlgoliaStorySearchResponse {
+  return isAlgoliaStorySearchResponse(value) ? value : { hits: [], nbHits: 0 };
+}
+
+function isAlgoliaCommentSearchResponse(value: unknown): value is AlgoliaCommentSearchResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "hits" in value &&
+    Array.isArray((value as { hits: unknown }).hits)
+  );
+}
+
+function parseAlgoliaCommentResponse(value: unknown): AlgoliaCommentSearchResponse {
+  return isAlgoliaCommentSearchResponse(value) ? value : { hits: [], nbHits: 0 };
 }
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchWithRetry(
+async function fetchWithRetry<T>(
   fetchFn: typeof fetch,
   url: string,
+  parse: (data: unknown) => T,
   retries: number = MAX_RETRIES,
-): Promise<JsonFeed> {
+): Promise<T> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < retries; attempt++) {
@@ -98,7 +153,7 @@ async function fetchWithRetry(
         throw new Error(`HTTP error: ${status}`);
       }
       const data: unknown = await response.json();
-      return parseJsonFeed(data);
+      return parse(data);
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       if (lastError.message.startsWith("Non-retryable")) {
@@ -119,52 +174,52 @@ async function fetchComments(
   hnId: string,
   count: number,
 ): Promise<RawItemComment[]> {
+  const url = `${ALGOLIA_BASE}/search?tags=comment,story_${hnId}&hitsPerPage=${count}`;
   try {
-    const url = `https://hnrss.org/item.jsonfeed?id=${hnId}&count=${count}`;
-    const response = await fetchFn(url);
-    if (!response.ok) {
-      return [];
-    }
-    const data: unknown = await response.json();
-    const feed = parseJsonFeed(data);
-    return (feed.items ?? []).map((item) => ({
-      id: extractHnId(item) ?? "",
-      author: item.author?.name ?? item.authors?.[0]?.name ?? "unknown",
-      content: item.content_html ?? "",
-      publishedAt: item.date_published ?? "",
-    }));
-  } catch {
+    const response = await fetchWithRetry(fetchFn, url, parseAlgoliaCommentResponse);
+    return response.hits
+      .filter((hit): hit is AlgoliaCommentHit & { author: string; comment_text: string } =>
+        hit.author !== null && hit.comment_text !== null,
+      )
+      .map((hit) => ({
+        id: hit.objectID,
+        author: hit.author,
+        content: hit.comment_text,
+        publishedAt: hit.created_at,
+      }));
+  } catch (err) {
+    logger.warn(
+      { externalId: hnId, err: err instanceof Error ? err.message : String(err) },
+      "comment fetch failed after retries",
+    );
     return [];
   }
 }
 
-function parseItems(feed: JsonFeed): RawItemInsert[] {
+function parseStories(response: AlgoliaStorySearchResponse): RawItemInsert[] {
   const items: RawItemInsert[] = [];
 
-  for (const item of feed.items ?? []) {
-    if (!item.title) {
+  for (const hit of response.hits) {
+    if (!hit.title || !hit.objectID) {
       continue;
     }
 
-    const hnId = extractHnId(item);
-    if (!hnId) {
-      continue;
-    }
-
-    const engagement = extractEngagement(item.content_html);
     const now = new Date();
 
     items.push({
       sourceType: "hn" as const,
-      externalId: hnId,
-      title: item.title,
-      url: item.url ?? "",
-      sourceUrl: `https://news.ycombinator.com/item?id=${hnId}`,
-      author: item.author?.name ?? item.authors?.[0]?.name ?? null,
-      content: item.content_html ?? null,
-      publishedAt: item.date_published ? new Date(item.date_published) : null,
+      externalId: hit.objectID,
+      title: hit.title,
+      url: hit.url ?? "",
+      sourceUrl: `https://news.ycombinator.com/item?id=${hit.objectID}`,
+      author: hit.author ?? null,
+      content: hit.story_text ?? null,
+      publishedAt: hit.created_at ? new Date(hit.created_at) : null,
       collectedAt: now,
-      engagement,
+      engagement: {
+        points: hit.points ?? 0,
+        commentCount: hit.num_comments ?? 0,
+      },
       metadata: { comments: [] },
       updatedAt: now,
     });
@@ -188,9 +243,9 @@ export async function collectHn(
   const allItems: RawItemInsert[] = [];
 
   for (const feed of feeds) {
-    const feedUrl = buildFeedUrl(feed, config);
-    const feedData = await fetchWithRetry(fetchFn, feedUrl);
-    const items = parseItems(feedData);
+    const url = buildSearchUrl(feed, config);
+    const response = await fetchWithRetry(fetchFn, url, parseAlgoliaStoryResponse);
+    const items = parseStories(response);
     for (const item of items) {
       if (!seenIds.has(item.externalId)) {
         seenIds.add(item.externalId);
@@ -216,38 +271,23 @@ export async function collectHn(
       totalComments += comments.length;
 
       if (comments.length === 0 && item.engagement?.commentCount && item.engagement.commentCount > 0) {
-        logger.warn({ externalId: item.externalId, commentCount: item.engagement.commentCount }, "comment fetch returned empty");
+        logger.warn(
+          { externalId: item.externalId, commentCount: item.engagement.commentCount },
+          "story has comments but Algolia returned zero hits",
+        );
       }
-    }
-  }
-
-  let filteredItems = allItems;
-  if (config.sinceDays !== undefined && config.sinceDays > 0) {
-    const cutoff = Date.now() - config.sinceDays * 86_400_000;
-    const before = filteredItems.length;
-    filteredItems = filteredItems.filter((item) => {
-      if (!item.publishedAt) return true;
-      const t = item.publishedAt.getTime();
-      return Number.isFinite(t) && t >= cutoff;
-    });
-    const dropped = before - filteredItems.length;
-    if (dropped === 0 && before > 0) {
-      logger.warn(
-        { sinceDays: config.sinceDays, fetched: before },
-        "sinceDays filter dropped 0 items — feed may be truncated",
-      );
     }
   }
 
   let itemsStored = 0;
 
-  if (filteredItems.length > 0) {
-    await deps.rawItemsRepo.upsertItems(filteredItems);
-    itemsStored = filteredItems.length;
+  if (allItems.length > 0) {
+    await deps.rawItemsRepo.upsertItems(allItems);
+    itemsStored = allItems.length;
   }
 
   const result = {
-    itemsFetched: filteredItems.length,
+    itemsFetched: allItems.length,
     commentsFetched: totalComments,
     itemsStored,
     durationMs: Date.now() - startTime,

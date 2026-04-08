@@ -21,7 +21,7 @@ describe("HN Collector E2E", () => {
     await truncateAll();
   });
 
-  it("fetches items from hnrss.org and stores them in raw_items", async () => {
+  it("fetches items from hn.algolia.com and stores them in raw_items", async () => {
     const cfg: HnCollectConfig = {
       feeds: ["newest"],
       count: 5,
@@ -127,6 +127,27 @@ describe("HN Collector E2E", () => {
     const rows = await db.select().from(rawItems);
     for (const row of rows) {
       expect(row.sourceUrl).toContain("news.ycombinator.com/item?id=");
+    }
+  });
+
+  it("respects sinceDays via server-side created_at_i filter", async () => {
+    const sinceDays = 1;
+    const cfg: HnCollectConfig = {
+      feeds: ["newest"],
+      count: 20,
+      pointsThreshold: 1,
+      commentsPerItem: 0,
+      sinceDays,
+    };
+
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+
+    const rows = await db.select().from(rawItems);
+    const cutoff = Date.now() - sinceDays * 86_400_000;
+    for (const row of rows) {
+      if (row.publishedAt) {
+        expect(row.publishedAt.getTime()).toBeGreaterThanOrEqual(cutoff);
+      }
     }
   });
 
