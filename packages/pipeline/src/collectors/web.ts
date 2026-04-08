@@ -1,5 +1,5 @@
 import pLimit from "p-limit";
-import { generateText, Output } from "ai";
+import { generateObject } from "ai";
 import type { LanguageModel } from "ai";
 import { z } from "zod";
 import type { RawItemInsert } from "@newsletter/shared/db";
@@ -84,9 +84,9 @@ export async function discoverPostUrls(
   model: LanguageModel,
 ): Promise<DiscoveredPost[]> {
   const today = new Date().toISOString().slice(0, 10);
-  const result = await generateText({
+  const result = await generateObject({
     model,
-    output: Output.object({ schema: DiscoverySchema }),
+    schema: DiscoverySchema,
     temperature: 0,
     prompt:
       `You are extracting blog post entries from a listing page that has been ` +
@@ -99,7 +99,7 @@ export async function discoverPostUrls(
       `stated on the page. Never invent data.\n\n` +
       `--- BEGIN LISTING MARKDOWN ---\n${listingMarkdown}\n--- END LISTING MARKDOWN ---`,
   });
-  return result.output.posts;
+  return result.object.posts;
 }
 
 export async function extractPostFields(
@@ -107,9 +107,9 @@ export async function extractPostFields(
   postMarkdown: string,
   model: LanguageModel,
 ): Promise<ExtractedFields> {
-  const result = await generateText({
+  const result = await generateObject({
     model,
-    output: Output.object({ schema: DetailSchema }),
+    schema: DetailSchema,
     temperature: 0,
     prompt:
       `Extract title, author, and publish date from this blog post markdown. ` +
@@ -117,7 +117,7 @@ export async function extractPostFields(
       `Use empty strings for fields not stated on the page \u2014 never invent data.\n\n` +
       `--- BEGIN ARTICLE ---\n${postMarkdown}\n--- END ARTICLE ---`,
   });
-  return result.output;
+  return result.object;
 }
 
 export function validateDiscoveredUrls(
@@ -182,12 +182,21 @@ function truncateError(err: unknown): string {
 
 function logFailure(
   source: string,
+  listingUrl: string,
   stage: FailureStage,
   error: string,
   postUrl?: string,
 ): void {
   logger.warn(
-    { event: "collector_failure", collector: "web", source, stage, postUrl, error },
+    {
+      event: "collector_failure",
+      collector: "web",
+      source,
+      listingUrl,
+      stage,
+      postUrl,
+      error,
+    },
     "collector failure",
   );
 }
@@ -244,7 +253,7 @@ export async function processSource(
     listingMarkdown = await fetchMarkdown(source.listingUrl, deps.fetchFn);
   } catch (err) {
     const error = truncateError(err);
-    logFailure(source.name, "discovery-fetch", error);
+    logFailure(source.name, source.listingUrl, "discovery-fetch", error);
     return {
       items: [],
       failures: [{ source: source.name, error }],
@@ -257,7 +266,7 @@ export async function processSource(
     discovered = await discoverPostUrls(source.listingUrl, listingMarkdown, deps.llmModel);
   } catch (err) {
     const error = truncateError(err);
-    logFailure(source.name, "discovery-llm", error);
+    logFailure(source.name, source.listingUrl, "discovery-llm", error);
     return {
       items: [],
       failures: [{ source: source.name, error }],
@@ -272,7 +281,7 @@ export async function processSource(
 
   if (capped.length === 0) {
     const error = "no posts after filter";
-    logFailure(source.name, "discovery-empty", error);
+    logFailure(source.name, source.listingUrl, "discovery-empty", error);
     return {
       items: [],
       failures: [{ source: source.name, error }],
@@ -306,7 +315,7 @@ export async function processSource(
       const err: unknown = result.reason;
       const stage: FailureStage = err instanceof CollectorError ? err.stage : "detail-llm";
       const error = truncateError(err instanceof Error ? err.message : String(err));
-      logFailure(source.name, stage, error, post.url);
+      logFailure(source.name, source.listingUrl, stage, error, post.url);
       failures.push({ source: source.name, postUrl: post.url, error });
     }
   }

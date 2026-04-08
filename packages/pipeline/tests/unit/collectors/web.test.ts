@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { MockLanguageModelV3 } from "ai/test";
-import type { LanguageModelV3CallOptions } from "@ai-sdk/provider";
+import { MockLanguageModelV2 } from "ai/test";
+import type { LanguageModelV2CallOptions } from "@ai-sdk/provider";
 import jinaEnvelopeFixture from "@pipeline-tests/unit/fixtures/web-jina-envelope.json";
 import webListingFixture from "@pipeline-tests/unit/fixtures/web-listing.json";
 import webPostFixture from "@pipeline-tests/unit/fixtures/web-post.json";
@@ -183,36 +183,32 @@ interface PostFixture {
 const listing = webListingFixture as ListingFixture;
 const post = webPostFixture as PostFixture;
 
-function makeDiscoveryMockModel(jsonObject: unknown): MockLanguageModelV3 {
-  return new MockLanguageModelV3({
+function makeDiscoveryMockModel(jsonObject: unknown): MockLanguageModelV2 {
+  return new MockLanguageModelV2({
     doGenerate: () =>
       Promise.resolve({
         content: [{ type: "text", text: JSON.stringify(jsonObject) }],
-        finishReason: { unified: "stop", raw: "stop" },
+        finishReason: "stop" as const,
         usage: {
-          inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
-          outputTokens: {
-            total: 20,
-            text: 20,
-            reasoning: undefined,
-            cached: undefined,
-          },
+          inputTokens: 10,
+          outputTokens: 20,
+          totalTokens: 30,
         },
         warnings: [],
       }),
   });
 }
 
-function makeThrowingModel(message: string): MockLanguageModelV3 {
-  return new MockLanguageModelV3({
+function makeThrowingModel(message: string): MockLanguageModelV2 {
+  return new MockLanguageModelV2({
     doGenerate: () => Promise.reject(new Error(message)),
   });
 }
 
 function getCallOrThrow(
-  calls: readonly LanguageModelV3CallOptions[],
+  calls: readonly LanguageModelV2CallOptions[],
   index: number,
-): LanguageModelV3CallOptions {
+): LanguageModelV2CallOptions {
   const call = calls[index];
   if (!call) throw new Error(`expected call at index ${String(index)}`);
   return call;
@@ -563,23 +559,24 @@ describe("processOnePost and processSource", () => {
     });
   }
 
-  function makeNeverCalledModel(): MockLanguageModelV3 {
-    return new MockLanguageModelV3({
+  function makeNeverCalledModel(): MockLanguageModelV2 {
+    return new MockLanguageModelV2({
       doGenerate: () => {
         throw new Error("LLM should not be called in this test");
       },
     });
   }
 
-  function makeExtractModel(fields: { title: string; author: string; published_at: string }): MockLanguageModelV3 {
-    return new MockLanguageModelV3({
+  function makeExtractModel(fields: { title: string; author: string; published_at: string }): MockLanguageModelV2 {
+    return new MockLanguageModelV2({
       doGenerate: () =>
         Promise.resolve({
           content: [{ type: "text", text: JSON.stringify(fields) }],
-          finishReason: { unified: "stop", raw: "stop" },
+          finishReason: "stop" as const,
           usage: {
-            inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
-            outputTokens: { total: 20, text: 20, reasoning: undefined, cached: undefined },
+            inputTokens: 10,
+            outputTokens: 20,
+            totalTokens: 30,
           },
           warnings: [],
         }),
@@ -628,7 +625,7 @@ describe("processOnePost and processSource", () => {
     // REQ-077
     it("throws CollectorError with stage 'detail-llm' when extractPostFields throws", async () => {
       const fetchFn = makeFetch(POST_BODY);
-      const model = new MockLanguageModelV3({
+      const model = new MockLanguageModelV2({
         doGenerate: () => Promise.reject(new Error("LLM down")),
       });
 
@@ -740,19 +737,20 @@ describe("processOnePost and processSource", () => {
     function makeDiscoveryThenExtractModel(
       discovery: { posts: { url: string; title: string; published_at: string }[] },
       extract: { title: string; author: string; published_at: string },
-    ): MockLanguageModelV3 {
+    ): MockLanguageModelV2 {
       let calls = 0;
-      return new MockLanguageModelV3({
+      return new MockLanguageModelV2({
         doGenerate: () => {
           const isDiscovery = calls === 0;
           calls++;
           const payload = isDiscovery ? discovery : extract;
           return Promise.resolve({
             content: [{ type: "text", text: JSON.stringify(payload) }],
-            finishReason: { unified: "stop" as const, raw: "stop" },
+            finishReason: "stop" as const,
             usage: {
-              inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
-              outputTokens: { total: 20, text: 20, reasoning: undefined, cached: undefined },
+              inputTokens: 10,
+              outputTokens: 20,
+              totalTokens: 30,
             },
             warnings: [],
           });
@@ -783,7 +781,7 @@ describe("processOnePost and processSource", () => {
     // REQ-073
     it("records source-level failure when discoverPostUrls throws", async () => {
       const fetchFn = makeListingFetch();
-      const model = new MockLanguageModelV3({
+      const model = new MockLanguageModelV2({
         doGenerate: () => Promise.reject(new Error("llm discovery failed")),
       });
       const repo = makeRepo();
@@ -1028,7 +1026,7 @@ describe("processOnePost and processSource", () => {
       const longMessage = "x".repeat(10_000);
       const fetchFn = makeListingFetch();
       let calls = 0;
-      const model = new MockLanguageModelV3({
+      const model = new MockLanguageModelV2({
         doGenerate: () => {
           const isDiscovery = calls === 0;
           calls++;
@@ -1044,10 +1042,11 @@ describe("processOnePost and processSource", () => {
                   }),
                 },
               ],
-              finishReason: { unified: "stop" as const, raw: "stop" },
+              finishReason: "stop" as const,
               usage: {
-                inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 20, text: 20, reasoning: undefined, cached: undefined },
+                inputTokens: 10,
+                outputTokens: 20,
+                totalTokens: 30,
               },
               warnings: [],
             });
@@ -1134,19 +1133,20 @@ describe("collectWeb", () => {
   function makeDiscoveryThenExtractModel(
     discovery: { posts: { url: string; title: string; published_at: string }[] },
     extract: { title: string; author: string; published_at: string },
-  ): MockLanguageModelV3 {
+  ): MockLanguageModelV2 {
     let calls = 0;
-    return new MockLanguageModelV3({
+    return new MockLanguageModelV2({
       doGenerate: () => {
         const isDiscovery = calls === 0;
         calls++;
         const payload = isDiscovery ? discovery : extract;
         return Promise.resolve({
           content: [{ type: "text" as const, text: JSON.stringify(payload) }],
-          finishReason: { unified: "stop" as const, raw: "stop" },
+          finishReason: "stop" as const,
           usage: {
-            inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
-            outputTokens: { total: 20, text: 20, reasoning: undefined, cached: undefined },
+            inputTokens: 10,
+            outputTokens: 20,
+            totalTokens: 30,
           },
           warnings: [],
         });
@@ -1191,7 +1191,7 @@ describe("collectWeb", () => {
   it("returns empty result without throwing when sources is []", async () => {
     const repo = makeRepo();
     const fetchFn = vi.fn();
-    const model = new MockLanguageModelV3({
+    const model = new MockLanguageModelV2({
       doGenerate: () => {
         throw new Error("LLM should not be called");
       },
@@ -1253,7 +1253,7 @@ describe("collectWeb", () => {
       status: 404,
       text: () => Promise.resolve("not found"),
     });
-    const model = new MockLanguageModelV3({
+    const model = new MockLanguageModelV2({
       doGenerate: () => {
         throw new Error("LLM should not be called");
       },
