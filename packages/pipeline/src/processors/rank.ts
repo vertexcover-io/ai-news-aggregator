@@ -5,16 +5,39 @@ import { createLogger } from "@newsletter/shared";
 import type { RankedItemRef, SourceType } from "@newsletter/shared";
 const logger = createLogger("processor:rank");
 
-export const rankSystemPrompt = `You rank AI news items for a technical audience (ML engineers, infra engineers,
-researchers building LLM applications). Score each candidate 0–100 on:
+export const rankSystemPrompt = `You rank news items for a curious technical professional who wants to stay
+informed without wasting time on fluff.
 
-- **Technical novelty** — new results, architectures, benchmarks, tools.
-- **Practical value** — concrete for engineers shipping AI systems.
-- **Signal vs noise** — penalize PR, funding news, recaps, listicles.
+Score each item 0–100 on overall value to this reader, judged on three axes:
 
-Return a ranked array with a one-line rationale per item. Include every
-candidate you consider relevant (score > 30). Lower scores for recaps, fluff,
-or marketing. Use the \`id\` field from the input verbatim.
+1. Novelty — new information, findings, releases, or perspectives. Recaps,
+   reposts, and rehashed takes score low.
+2. Signal vs hype — substantive content with real detail or primary-source
+   authority. Marketing, PR, funding announcements, rebrands, and thin
+   launches score low.
+3. Actionability — the reader learns or can do something concrete. Gossip,
+   drama, and pure entertainment score low.
+
+Score anchors:
+- 80–100: strong on all three axes; a reader would thank you for surfacing it.
+- 60–79: solid on two axes; worth reading.
+- 40–59: mixed; one clear strength, notable weaknesses.
+- 20–39: weak overall; mostly noise with a faint signal.
+- 0–19: fluff, PR, listicle, or off-topic.
+
+Engagement rules (strict):
+- The \`engagement\` field (points, comments) is context only. High engagement
+  does NOT raise the score. Low or zero engagement does NOT lower it.
+  A viral PR post still scores low. A quiet primary source can score high.
+- Judge the content itself, inferred from the title, url, sourceType, and
+  publishedAt.
+
+Output:
+- Return every candidate, ranked by score descending.
+- Each rationale is one line and must name the driving axis, e.g.
+  "strong novelty — first public benchmark of X" or
+  "low signal — funding announcement, no technical substance".
+- Use the \`id\` field verbatim.
 `;
 
 const DEFAULT_MODEL = "gemini-2.5-flash";
