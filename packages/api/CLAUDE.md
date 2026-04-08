@@ -4,14 +4,14 @@ Hono REST API for job enqueueing and email delivery.
 
 ## Responsibilities
 - HTTP route handlers and middleware
-- Enqueue collection/processing flows to Redis using a BullMQ `FlowProducer`
+- Enqueue `run-process` jobs to the Redis `processing` queue via `Queue.add` with `jobId: runId`
 - Send digest emails via Resend (future)
 - Serve as the backend for the React frontend
 
 ## Layout
 - `src/routes/` — Hono route modules (e.g. `runs.ts` for `/api/runs`)
-- `src/services/` — business logic invoked by routes (`runs.ts` enqueues runs and reads run-state; `rank-hydration.ts` joins ranked IDs to `raw_items`)
-- `src/lib/` — package-private helpers (`flow.ts` builds the BullMQ flow tree, `validate.ts` is the zod request-schema layer)
+- `src/services/` — business logic invoked by routes (`runs.ts` seeds Redis run-state and enqueues the single run-process job; `rank-hydration.ts` joins ranked IDs to `raw_items`)
+- `src/lib/` — package-private helpers (`validate.ts` is the zod request-schema layer; `flow.ts` is a legacy `FlowProducer` helper kept in place for rollback and no longer used by `runs.ts`)
 
 ## Rules
 - No direct scraping or processing logic — that belongs in pipeline

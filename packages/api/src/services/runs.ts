@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type IORedis from "ioredis";
-import type { FlowChildJob, FlowProducer } from "bullmq";
+import { Queue } from "bullmq";
 import { createRedisConnection } from "@newsletter/shared";
 import type { RunState, RunSubmitPayload } from "@newsletter/shared";
-import { getFlowProducer } from "../lib/flow.js";
 
 const TTL_SECONDS = 3600;
 
@@ -11,10 +10,30 @@ export interface CreatedRun {
   runId: string;
 }
 
+let defaultQueue: Queue | null = null;
+
+function getDefaultProcessingQueue(): Queue {
+  defaultQueue ??= new Queue("processing", {
+    connection: createRedisConnection(),
+  });
+  return defaultQueue;
+}
+
+interface RunProcessJobPayload {
+  runId: string;
+  topN: number;
+  sourceTypes: ("hn" | "reddit" | "blog")[];
+  collectors: {
+    hn?: RunSubmitPayload["hn"];
+    reddit?: RunSubmitPayload["reddit"];
+    web?: RunSubmitPayload["web"];
+  };
+}
+
 export async function createRun(
   payload: RunSubmitPayload,
   redis: IORedis = createRedisConnection(),
-  flowProducer: FlowProducer = getFlowProducer(),
+  processingQueue: Queue = getDefaultProcessingQueue(),
 ): Promise<CreatedRun> {
   const runId = randomUUID();
   const now = new Date().toISOString();
@@ -46,38 +65,28 @@ export async function createRun(
   await redis.set(`run:${runId}`, JSON.stringify(initial), "EX", TTL_SECONDS);
 
   const sourceTypes: ("hn" | "reddit" | "blog")[] = [];
-  const children: FlowChildJob[] = [];
+  const collectors: RunProcessJobPayload["collectors"] = {};
   if (payload.hn) {
     sourceTypes.push("hn");
-    children.push({
-      name: "hn-collect",
-      queueName: "collection",
-      data: { runId, config: { ...payload.hn } },
-    });
+    collectors.hn = payload.hn;
   }
   if (payload.reddit) {
     sourceTypes.push("reddit");
-    children.push({
-      name: "reddit-collect",
-      queueName: "collection",
-      data: { runId, config: { ...payload.reddit } },
-    });
+    collectors.reddit = payload.reddit;
   }
   if (payload.web) {
     sourceTypes.push("blog");
-    children.push({
-      name: "web-collect",
-      queueName: "collection",
-      data: { runId, config: { ...payload.web } },
-    });
+    collectors.web = payload.web;
   }
 
-  await flowProducer.add({
-    name: "run-process",
-    queueName: "processing",
-    data: { runId, topN: payload.topN, sourceTypes },
-    children,
-  });
+  const jobPayload: RunProcessJobPayload = {
+    runId,
+    topN: payload.topN,
+    sourceTypes,
+    collectors,
+  };
+
+  await processingQueue.add("run-process", jobPayload, { jobId: runId });
 
   return { runId };
 }
