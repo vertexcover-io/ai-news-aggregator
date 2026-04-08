@@ -93,6 +93,115 @@ export interface RunProcessDeps {
   collectFns: CollectFns;
 }
 
+interface CollectingOutcome {
+  successCount: number;
+  failureCount: number;
+  errors: string[];
+}
+
+async function runCollecting(
+  deps: RunProcessDeps,
+  runId: string,
+  collectors: RunCollectorsPayload,
+): Promise<CollectingOutcome> {
+  // In-process serializer for state writes: replicates the old
+  // `concurrency: 1` invariant from the collection worker. Without this,
+  // two near-simultaneous updateSource calls can interleave their
+  // read-modify-write cycles on the shared run:{runId} JSON blob and the
+  // second writer will clobber the first. If run-state.ts ever becomes
+  // atomic internally, this becomes a no-op but stays correct.
+  let writeChain: Promise<unknown> = Promise.resolve();
+  const writeSerial = <T>(fn: () => Promise<T>): Promise<T> => {
+    const next = writeChain.then(fn);
+    writeChain = next.catch(() => undefined);
+    return next;
+  };
+
+  const rawItemsRepo = createRawItemsRepo(deps.db);
+  const collectorDeps = { rawItemsRepo };
+
+  type SourceKey = "hn" | "reddit" | "blog";
+  interface Task {
+    sourceKey: SourceKey;
+    run: () => Promise<CollectorResult>;
+  }
+
+  const tasks: Task[] = [];
+  if (collectors.hn) {
+    const config = collectors.hn;
+    tasks.push({
+      sourceKey: "hn",
+      run: () => deps.collectFns.hn(collectorDeps, config),
+    });
+  }
+  if (collectors.reddit) {
+    const config = collectors.reddit;
+    tasks.push({
+      sourceKey: "reddit",
+      run: () => deps.collectFns.reddit(collectorDeps, config),
+    });
+  }
+  if (collectors.web) {
+    const config = collectors.web;
+    tasks.push({
+      sourceKey: "blog",
+      run: () => deps.collectFns.web(collectorDeps, config),
+    });
+  }
+
+  const errors: string[] = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  const runTask = async (task: Task): Promise<void> => {
+    const started = Date.now();
+    try {
+      const result = await task.run();
+      await writeSerial(() =>
+        deps.runState.updateSource(runId, task.sourceKey, {
+          status: "completed",
+          itemsFetched: result.itemsStored,
+        }),
+      );
+      logger.info(
+        {
+          event: "run.source.completed",
+          runId,
+          sourceType: task.sourceKey,
+          itemsFetched: result.itemsStored,
+          durationMs: Date.now() - started,
+        },
+        "run.source.completed",
+      );
+      successCount += 1;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await writeSerial(() =>
+        deps.runState.updateSource(runId, task.sourceKey, {
+          status: "failed",
+          errors: [message],
+        }),
+      );
+      logger.error(
+        {
+          event: "run.source.failed",
+          runId,
+          sourceType: task.sourceKey,
+          error: message,
+          durationMs: Date.now() - started,
+        },
+        "run.source.failed",
+      );
+      errors.push(`${task.sourceKey}: ${message}`);
+      failureCount += 1;
+    }
+  };
+
+  await Promise.all(tasks.map(runTask));
+
+  return { successCount, failureCount, errors };
+}
+
 export async function handleRunProcessJob(
   deps: RunProcessDeps,
   job: RunProcessJobLike,
@@ -100,9 +209,36 @@ export async function handleRunProcessJob(
   if (job.name !== "run-process") {
     throw new Error(`unknown job: ${job.name}`);
   }
-  const { runId, topN, sourceTypes } = job.data;
+  const { runId, topN, sourceTypes, collectors } = job.data;
   const started = Date.now();
 
+  // Stage 1: collecting
+  await deps.runState.setStage(runId, "collecting");
+  const collecting = await runCollecting(deps, runId, collectors);
+
+  // All collectors failed → terminal failure, skip dedup/rank
+  if (collecting.failureCount > 0 && collecting.successCount === 0) {
+    const errorMessage = collecting.errors.join("; ");
+    await deps.runState.update(runId, (prev) => ({
+      ...prev,
+      stage: "failed",
+      status: "failed",
+      error: errorMessage,
+      completedAt: new Date().toISOString(),
+    }));
+    logger.error(
+      {
+        event: "run.failed",
+        runId,
+        totalDurationMs: Date.now() - started,
+        error: errorMessage,
+      },
+      "run.failed",
+    );
+    return { rankedCount: 0 };
+  }
+
+  // Stage 2: processing (dedup)
   await deps.runState.setStage(runId, "processing");
 
   const state = await deps.runState.get(runId);
