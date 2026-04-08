@@ -40,7 +40,8 @@ interface JobLike {
   data: {
     runId: string;
     topN: number;
-    sourceTypes: ("hn" | "reddit")[];
+    sourceTypes: ("hn" | "reddit" | "blog")[];
+    collectors: { hn?: unknown; reddit?: unknown; web?: unknown };
   };
 }
 
@@ -116,6 +117,7 @@ const baseJob: JobLike = {
     runId: "run-1",
     topN: 3,
     sourceTypes: ["hn", "reddit"],
+    collectors: {},
   },
 };
 
@@ -338,5 +340,20 @@ describe("run-process worker", () => {
     await expect(
       worker.handler({ ...baseJob, name: "other" }),
     ).rejects.toThrow(/unknown job/);
+  });
+
+  // REQ-015: collectFns injection seam exists on RunProcessDeps
+  it("REQ-015: createRunProcessWorker accepts collectFns option", () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const hn = vi.fn();
+    const reddit = vi.fn();
+    const web = vi.fn();
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+      collectFns: { hn, reddit, web },
+    });
+    expect(worker).toBeDefined();
   });
 });

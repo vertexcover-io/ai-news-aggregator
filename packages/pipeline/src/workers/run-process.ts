@@ -23,13 +23,30 @@ import {
   type LoadCandidatesFn,
   type Candidate,
 } from "@pipeline/services/candidate-loader.js";
+import { collectHn } from "@pipeline/collectors/hn.js";
+import { collectReddit } from "@pipeline/collectors/reddit.js";
+import { collectWeb } from "@pipeline/collectors/web.js";
+import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import type {
+  HnCollectConfig,
+  RedditCollectConfig,
+  WebCollectConfig,
+} from "@pipeline/types.js";
+import type { CollectorResult } from "@newsletter/shared";
 
 const logger = createLogger("worker:run-process");
+
+export interface RunCollectorsPayload {
+  hn?: HnCollectConfig;
+  reddit?: RedditCollectConfig;
+  web?: WebCollectConfig;
+}
 
 export interface RunProcessJobData {
   runId: string;
   topN: number;
-  sourceTypes: ("hn" | "reddit")[];
+  sourceTypes: ("hn" | "reddit" | "blog")[];
+  collectors: RunCollectorsPayload;
 }
 
 export interface RunProcessJobLike {
@@ -47,11 +64,33 @@ export type RankFn = (
   options: RankOptions,
 ) => Promise<RankResult>;
 
+export type HnCollectFn = (
+  deps: { rawItemsRepo: ReturnType<typeof createRawItemsRepo> },
+  config: HnCollectConfig,
+) => Promise<CollectorResult>;
+
+export type RedditCollectFn = (
+  deps: { rawItemsRepo: ReturnType<typeof createRawItemsRepo> },
+  config: RedditCollectConfig,
+) => Promise<CollectorResult>;
+
+export type WebCollectFn = (
+  deps: { rawItemsRepo: ReturnType<typeof createRawItemsRepo> },
+  config: WebCollectConfig,
+) => Promise<CollectorResult>;
+
+export interface CollectFns {
+  hn: HnCollectFn;
+  reddit: RedditCollectFn;
+  web: WebCollectFn;
+}
+
 export interface RunProcessDeps {
   runState: RunStateService;
   db: AppDb;
   loadFn: LoadCandidatesFn;
   rankFn: RankFn;
+  collectFns: CollectFns;
 }
 
 export async function handleRunProcessJob(
@@ -169,6 +208,7 @@ export interface CreateRunProcessWorkerOptions {
   db?: AppDb;
   loadFn?: LoadCandidatesFn;
   rankFn?: RankFn;
+  collectFns?: Partial<CollectFns>;
 }
 
 export function createRunProcessWorker(
@@ -180,8 +220,13 @@ export function createRunProcessWorker(
   const loadFn = options.loadFn ?? loadCandidatesSince;
   const rankFn: RankFn =
     options.rankFn ?? ((candidates, opts) => rankCandidates(candidates, opts));
+  const collectFns: CollectFns = {
+    hn: options.collectFns?.hn ?? collectHn,
+    reddit: options.collectFns?.reddit ?? collectReddit,
+    web: options.collectFns?.web ?? collectWeb,
+  };
 
-  const deps: RunProcessDeps = { runState, db, loadFn, rankFn };
+  const deps: RunProcessDeps = { runState, db, loadFn, rankFn, collectFns };
 
   return new Worker<RunProcessJobData, RunProcessResult>(
     "processing",
