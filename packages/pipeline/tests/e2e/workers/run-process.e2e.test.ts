@@ -6,9 +6,11 @@ import { rawItems } from "@newsletter/shared/db";
 import type { RunState } from "@newsletter/shared/types";
 import {
   handleRunProcessJob,
+  type CollectFns,
   type RunProcessJobLike,
   type RunProcessResult,
 } from "@pipeline/workers/run-process.js";
+import type { CollectorResult } from "@newsletter/shared/types";
 import { loadCandidatesSince } from "@pipeline/services/candidate-loader.js";
 import { createRunStateService } from "@pipeline/services/run-state.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
@@ -33,6 +35,18 @@ describe("run-process worker E2E", () => {
 
     queue = new Queue("run-process-e2e-test", { connection });
     queueEvents = new QueueEvents("run-process-e2e-test", { connection });
+    const noopCollect: CollectFns["hn"] = (): Promise<CollectorResult> =>
+      Promise.resolve({
+        itemsFetched: 0,
+        itemsStored: 0,
+        failures: 0,
+        durationMs: 0,
+      });
+    const noopCollectFns: CollectFns = {
+      hn: noopCollect,
+      reddit: noopCollect,
+      web: noopCollect,
+    };
     worker = new Worker<unknown, RunProcessResult>(
       "run-process-e2e-test",
       (job) =>
@@ -51,6 +65,7 @@ describe("run-process worker E2E", () => {
                 candidateCount: deduped.length,
                 rankedCount: Math.min(deduped.length, opts.topN),
               }),
+            collectFns: noopCollectFns,
           },
           job as unknown as RunProcessJobLike,
         ),
@@ -136,6 +151,7 @@ describe("run-process worker E2E", () => {
       runId,
       topN: 3,
       sourceTypes: ["hn", "reddit"],
+      collectors: {},
     });
 
     await job.waitUntilFinished(queueEvents, 30000);
@@ -173,6 +189,7 @@ describe("run-process worker E2E", () => {
       runId,
       topN: 3,
       sourceTypes: ["hn", "reddit"],
+      collectors: {},
     });
 
     await job.waitUntilFinished(queueEvents, 30000);
