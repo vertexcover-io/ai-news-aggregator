@@ -9,8 +9,8 @@ Hono REST API for job enqueueing and email delivery.
 - Serve as the backend for the React frontend
 
 ## Layout
-- `src/routes/` — Hono route modules (e.g. `runs.ts` for `/api/runs`)
-- `src/services/` — business logic invoked by routes (`runs.ts` seeds Redis run-state and enqueues the single run-process job; `rank-hydration.ts` joins ranked IDs to `raw_items`)
+- `src/routes/` — Hono route modules (`runs.ts` for `POST /api/runs` and `GET /api/runs/:runId`; `profiles.ts` for `GET /api/profiles`, which lists available user profiles for the Run form)
+- `src/services/` — business logic invoked by routes (`runs.ts` seeds Redis run-state and enqueues the single run-process job; `rank-hydration.ts` joins ranked IDs to `raw_items`; `profiles.ts` loads and parses `profiles/*.yaml` from `PROFILES_DIR` if set, else from `<repo-root>/profiles` resolved relative to the source file)
 - `src/lib/` — package-private helpers (`validate.ts` is the zod request-schema layer; `flow.ts` is a legacy `FlowProducer` helper kept in place for rollback and no longer used by `runs.ts`)
 
 ## Rules
@@ -19,6 +19,7 @@ Hono REST API for job enqueueing and email delivery.
 - Validate all API request input at the boundary with zod
 - Use `@newsletter/shared` for DB access, types, Redis connection, and the logger factory
 - Reuse `createRedisConnection()` from shared rather than instantiating ioredis directly
+- User profiles are YAML files under `profiles/` at the repo root; override the lookup directory with `PROFILES_DIR` in deployed environments where the bundled source tree is not available. `POST /api/runs` accepts optional `profileName` and `halfLifeHours` fields that flow through to the pipeline's two-stage ranking.
 
 ## Commands
 pnpm dev          # Start dev server
