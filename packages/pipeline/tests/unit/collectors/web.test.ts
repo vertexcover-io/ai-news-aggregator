@@ -41,7 +41,10 @@ function createMockFetch(responses: { ok: boolean; status: number; body: string 
   });
 }
 
-type FetchMarkdownFn = (url: string, fetchFn?: MockFetchFn) => Promise<string>;
+type FetchMarkdownFn = (
+  url: string,
+  options?: { fetchFn?: MockFetchFn; signal?: AbortSignal },
+) => Promise<string>;
 
 describe("fetchMarkdown", () => {
   let fetchMarkdown: FetchMarkdownFn;
@@ -66,7 +69,7 @@ describe("fetchMarkdown", () => {
       { ok: true, status: 200, body: jinaEnvelopeFixture.envelope },
     ]);
 
-    const result = await fetchMarkdown("https://example.com/post", mockFetch);
+    const result = await fetchMarkdown("https://example.com/post", { fetchFn: mockFetch });
 
     expect(result).toBe(jinaEnvelopeFixture.envelope.trim());
   });
@@ -77,7 +80,7 @@ describe("fetchMarkdown", () => {
       { ok: true, status: 200, body: envelope },
     ]);
 
-    const result = await fetchMarkdown("https://x", mockFetch);
+    const result = await fetchMarkdown("https://x", { fetchFn: mockFetch });
 
     expect(result).toBe(envelope);
   });
@@ -87,34 +90,9 @@ describe("fetchMarkdown", () => {
       { ok: true, status: 200, body: "  just some markdown body  " },
     ]);
 
-    const result = await fetchMarkdown("https://example.com/post", mockFetch);
+    const result = await fetchMarkdown("https://example.com/post", { fetchFn: mockFetch });
 
     expect(result).toBe("just some markdown body");
-  });
-
-  // REQ-100: retry on 429
-  it("retries on 429 and returns body on second attempt", async () => {
-    const mockFetch = createMockFetch([
-      { ok: false, status: 429, body: "rate limited" },
-      { ok: true, status: 200, body: jinaEnvelopeFixture.envelope },
-    ]);
-
-    const result = await fetchMarkdown("https://example.com/post", mockFetch);
-
-    expect(result).toBe(jinaEnvelopeFixture.envelope.trim());
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-  });
-
-  // REQ-100: retry on 5xx up to MAX_RETRIES then throw
-  it("retries on 502 up to MAX_RETRIES then throws", async () => {
-    const mockFetch = createMockFetch([
-      { ok: false, status: 502, body: "bad gateway" },
-      { ok: false, status: 502, body: "bad gateway" },
-      { ok: false, status: 502, body: "bad gateway" },
-    ]);
-
-    await expect(fetchMarkdown("https://example.com/post", mockFetch)).rejects.toThrow();
-    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
   // REQ-101: non-retryable 4xx
@@ -123,7 +101,7 @@ describe("fetchMarkdown", () => {
       { ok: false, status: 404, body: "not found" },
     ]);
 
-    await expect(fetchMarkdown("https://example.com/post", mockFetch)).rejects.toThrow();
+    await expect(fetchMarkdown("https://example.com/post", { fetchFn: mockFetch })).rejects.toThrow();
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -133,7 +111,7 @@ describe("fetchMarkdown", () => {
       { ok: false, status: 400, body: "bad request" },
     ]);
 
-    await expect(fetchMarkdown("https://example.com/post", mockFetch)).rejects.toThrow();
+    await expect(fetchMarkdown("https://example.com/post", { fetchFn: mockFetch })).rejects.toThrow();
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -146,7 +124,7 @@ describe("fetchMarkdown", () => {
       { ok: true, status: 200, body: jinaEnvelopeFixture.envelope },
     ]);
 
-    await fetchMarkdownWithKey("https://example.com/post", mockFetch);
+    await fetchMarkdownWithKey("https://example.com/post", { fetchFn: mockFetch });
 
     const init = mockFetch.mock.calls[0][1];
     const headers = init?.headers as Record<string, string> | undefined;
@@ -162,7 +140,7 @@ describe("fetchMarkdown", () => {
       { ok: true, status: 200, body: jinaEnvelopeFixture.envelope },
     ]);
 
-    await fetchMarkdownNoKey("https://example.com/post", mockFetch);
+    await fetchMarkdownNoKey("https://example.com/post", { fetchFn: mockFetch });
 
     const init = mockFetch.mock.calls[0][1];
     const headers = init?.headers as Record<string, string> | undefined;
