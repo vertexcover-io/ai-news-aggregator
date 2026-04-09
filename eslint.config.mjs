@@ -1,6 +1,7 @@
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
 import globals from "globals";
+import newsletter from "@newsletter/eslint-plugin";
 
 export default tseslint.config(
   {
@@ -10,6 +11,11 @@ export default tseslint.config(
       "**/*.config.*",
       ".worktrees/",
     ],
+  },
+  {
+    plugins: {
+      newsletter,
+    },
   },
   eslint.configs.recommended,
   tseslint.configs.strictTypeChecked,

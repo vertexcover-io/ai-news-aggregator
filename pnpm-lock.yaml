@@ -11,6 +11,9 @@ importers:
       '@eslint/js':
         specifier: 10.0.1
         version: 10.0.1(eslint@10.1.0(jiti@2.6.1))
+      '@newsletter/eslint-plugin':
+        specifier: workspace:*
+        version: link:packages/eslint-plugin
       '@types/node':
         specifier: 22.15.3
         version: 22.15.3
@@ -81,6 +84,30 @@ importers:
       tsx:
         specifier: 4.19.4
         version: 4.19.4
+      typescript:
+        specifier: 5.8.3
+        version: 5.8.3
+      vitest:
+        specifier: 3.2.1
+        version: 3.2.1(@types/node@22.15.3)(jiti@2.6.1)(jsdom@29.0.2)(lightningcss@1.32.0)(msw@2.7.0(@types/node@22.15.3)(typescript@5.8.3))(tsx@4.19.4)(yaml@2.8.3)
+
+  packages/eslint-plugin:
+    devDependencies:
+      '@types/node':
+        specifier: 22.15.3
+        version: 22.15.3
+      '@typescript-eslint/rule-tester':
+        specifier: 8.58.0
+        version: 8.58.0(eslint@10.1.0(jiti@2.6.1))(typescript@5.8.3)
+      '@typescript-eslint/utils':
+        specifier: 8.58.0
+        version: 8.58.0(eslint@10.1.0(jiti@2.6.1))(typescript@5.8.3)
+      eslint:
+        specifier: 10.1.0
+        version: 10.1.0(jiti@2.6.1)
+      tsup:
+        specifier: 8.4.0
+        version: 8.4.0(jiti@2.6.1)(postcss@8.5.8)(tsx@4.19.4)(typescript@5.8.3)(yaml@2.8.3)
       typescript:
         specifier: 5.8.3
         version: 5.8.3
@@ -1450,6 +1477,12 @@ packages:
     peerDependencies:
       typescript: '>=4.8.4 <6.1.0'
 
+  '@typescript-eslint/rule-tester@8.58.0':
+    resolution: {integrity: sha512-a/J72Cxeo5ug5sbey7+Dcna6tMBc4Z4eYwBEKM6MVuBqbxnROpLm8yn/j00lPZc75joPZJVR5oiTZxbK95zp+w==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    peerDependencies:
+      eslint: ^8.57.0 || ^9.0.0 || ^10.0.0
+
   '@typescript-eslint/scope-manager@8.58.0':
     resolution: {integrity: sha512-W1Lur1oF50FxSnNdGp3Vs6P+yBRSmZiw4IIjEeYxd8UQJwhUF0gDgDD/W/Tgmh73mxgEU3qX0Bzdl/NGuSPEpQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
@@ -2255,6 +2288,9 @@ packages:
 
   lodash.isarguments@3.1.0:
     resolution: {integrity: sha512-chi4NHZlZqZD18a0imDHnZPrDeBbTtVN7GXMwuGdRH9qotxAjYs3aVLKc7zNOG9eddR5Ksd8rvFEBc9SsggPpg==}
+
+  lodash.merge@4.6.2:
+    resolution: {integrity: sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ==}
 
   lodash.sortby@4.7.0:
     resolution: {integrity: sha512-HDWXG8isMntAyRF5vZ7xKuEvOhT4AhlRt/3czTSjvGUxjYCBVRQY48ViDHyfYz9VIoBkW4TMGQNapx+l3RUwdA==}
@@ -3948,6 +3984,20 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@typescript-eslint/rule-tester@8.58.0(eslint@10.1.0(jiti@2.6.1))(typescript@5.8.3)':
+    dependencies:
+      '@typescript-eslint/parser': 8.58.0(eslint@10.1.0(jiti@2.6.1))(typescript@5.8.3)
+      '@typescript-eslint/typescript-estree': 8.58.0(typescript@5.8.3)
+      '@typescript-eslint/utils': 8.58.0(eslint@10.1.0(jiti@2.6.1))(typescript@5.8.3)
+      ajv: 6.14.0
+      eslint: 10.1.0(jiti@2.6.1)
+      json-stable-stringify-without-jsonify: 1.0.1
+      lodash.merge: 4.6.2
+      semver: 7.7.4
+    transitivePeerDependencies:
+      - supports-color
+      - typescript
+
   '@typescript-eslint/scope-manager@8.58.0':
     dependencies:
       '@typescript-eslint/types': 8.58.0
@@ -4698,6 +4748,8 @@ snapshots:
   lodash.defaults@4.2.0: {}
 
   lodash.isarguments@3.1.0: {}
+
+  lodash.merge@4.6.2: {}
 
   lodash.sortby@4.7.0: {}
 
