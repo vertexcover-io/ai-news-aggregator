@@ -1,14 +1,13 @@
-import { inArray } from "drizzle-orm";
-import { rawItems, type AppDb } from "@newsletter/shared";
 import type { RankedItem, RankedItemRef } from "@newsletter/shared";
+import type { RawItemsRepo } from "../repositories/raw-items.js";
 
 export async function hydrateRankedItems(
-  db: AppDb,
+  repo: RawItemsRepo,
   refs: RankedItemRef[],
 ): Promise<RankedItem[]> {
   if (refs.length === 0) return [];
   const ids = refs.map((r) => r.rawItemId);
-  const rows = await db.select().from(rawItems).where(inArray(rawItems.id, ids));
+  const rows = await repo.findByIds(ids);
   const byId = new Map(rows.map((r) => [r.id, r]));
   const hydrated: RankedItem[] = [];
   for (const ref of refs) {

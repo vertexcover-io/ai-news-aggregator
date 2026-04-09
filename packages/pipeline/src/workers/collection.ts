@@ -1,14 +1,19 @@
 import { Worker } from "bullmq";
-import { getDb, createRedisConnection } from "@newsletter/shared/db";
+import { createRedisConnection } from "@newsletter/shared/redis";
+import { getDb } from "@newsletter/shared";
 import { createLogger } from "@newsletter/shared/logger";
 import type { CollectorResult } from "@newsletter/shared";
 import { collectHn } from "@pipeline/collectors/hn.js";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
-import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import {
+  createRawItemsRepo,
+  type RawItemsRepo,
+} from "@pipeline/repositories/raw-items.js";
 import {
   createRunStateService,
   type RunSourceType,
+  type RunStateService,
 } from "@pipeline/services/run-state.js";
 import type {
   HnCollectConfig,
@@ -24,8 +29,22 @@ export interface CollectionJobLike {
   };
 }
 
+export interface CollectionWorkerDeps {
+  rawItemsRepo: RawItemsRepo;
+  runState: RunStateService;
+}
+
 const logger = createLogger("worker:collection");
-const runState = createRunStateService(createRedisConnection());
+
+let defaultDepsInstance: CollectionWorkerDeps | null = null;
+
+function getDefaultDeps(): CollectionWorkerDeps {
+  defaultDepsInstance ??= {
+    rawItemsRepo: createRawItemsRepo(getDb()),
+    runState: createRunStateService(createRedisConnection()),
+  };
+  return defaultDepsInstance;
+}
 
 function jobNameToSourceType(name: string): RunSourceType {
   switch (name) {
@@ -41,26 +60,27 @@ function jobNameToSourceType(name: string): RunSourceType {
 }
 
 async function dispatchCollector(
+  deps: CollectionWorkerDeps,
   job: CollectionJobLike,
 ): Promise<CollectorResult> {
   switch (job.name) {
     case "hn-collect": {
-      const db = getDb();
-      const rawItemsRepo = createRawItemsRepo(db);
-      return collectHn({ rawItemsRepo }, job.data.config as HnCollectConfig);
+      return collectHn(
+        { rawItemsRepo: deps.rawItemsRepo },
+        job.data.config as HnCollectConfig,
+      );
     }
     case "reddit-collect": {
-      const db = getDb();
-      const rawItemsRepo = createRawItemsRepo(db);
       return collectReddit(
-        { rawItemsRepo },
+        { rawItemsRepo: deps.rawItemsRepo },
         job.data.config as RedditCollectConfig,
       );
     }
     case "web-collect": {
-      const db = getDb();
-      const rawItemsRepo = createRawItemsRepo(db);
-      return collectWeb({ rawItemsRepo }, job.data.config as WebCollectConfig);
+      return collectWeb(
+        { rawItemsRepo: deps.rawItemsRepo },
+        job.data.config as WebCollectConfig,
+      );
     }
     default:
       throw new Error(`Unknown collector: ${job.name}`);
@@ -69,6 +89,7 @@ async function dispatchCollector(
 
 export async function handleCollectionJob(
   job: CollectionJobLike,
+  deps: CollectionWorkerDeps = getDefaultDeps(),
 ): Promise<CollectorResult> {
   const runId = job.data.runId;
   const startedAt = Date.now();
@@ -76,14 +97,14 @@ export async function handleCollectionJob(
   let sourceType: RunSourceType | null = null;
   if (runId) {
     sourceType = jobNameToSourceType(job.name);
-    await runState.updateSource(runId, sourceType, { status: "running" });
-    await runState.setStage(runId, "collecting");
+    await deps.runState.updateSource(runId, sourceType, { status: "running" });
+    await deps.runState.setStage(runId, "collecting");
   }
 
   try {
-    const result = await dispatchCollector(job);
+    const result = await dispatchCollector(deps, job);
     if (runId && sourceType) {
-      await runState.updateSource(runId, sourceType, {
+      await deps.runState.updateSource(runId, sourceType, {
         status: "completed",
         itemsFetched: result.itemsStored,
       });
@@ -102,7 +123,7 @@ export async function handleCollectionJob(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (runId && sourceType) {
-      await runState.updateSource(runId, sourceType, {
+      await deps.runState.updateSource(runId, sourceType, {
         status: "failed",
         errors: [message],
       });
@@ -122,7 +143,7 @@ export async function handleCollectionJob(
 
 export const collectionWorker = new Worker(
   "collection",
-  handleCollectionJob,
+  (job) => handleCollectionJob(job as CollectionJobLike),
   {
     connection: createRedisConnection(),
     stalledInterval: 30000,

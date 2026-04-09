@@ -1,34 +1,27 @@
 import { describe, it, expect, vi } from "vitest";
-import type { AppDb, RankedItemRef } from "@newsletter/shared";
+import type { RankedItemRef } from "@newsletter/shared";
 import { hydrateRankedItems } from "@api/services/rank-hydration.js";
+import type {
+  RawItemRow,
+  RawItemsRepo,
+} from "@api/repositories/raw-items.js";
 
-interface RawRow {
-  id: number;
-  sourceType: "hn" | "reddit";
-  title: string;
-  url: string;
-  author: string | null;
-  publishedAt: Date | null;
-  engagement: { points: number; commentCount: number };
-}
-
-function makeDb(rows: RawRow[]): AppDb {
-  const where = vi.fn().mockResolvedValue(rows);
-  const from = vi.fn(() => ({ where }));
-  const select = vi.fn(() => ({ from }));
-  return { select } as unknown as AppDb;
+function makeRepo(rows: RawItemRow[]): RawItemsRepo {
+  return {
+    findByIds: vi.fn(() => Promise.resolve(rows)),
+  };
 }
 
 describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
   it("returns empty array for empty refs (REQ-013)", async () => {
-    const db = makeDb([]);
-    const result = await hydrateRankedItems(db, []);
+    const repo = makeRepo([]);
+    const result = await hydrateRankedItems(repo, []);
     expect(result).toEqual([]);
   });
 
   it("merges score and rationale onto raw item rows (REQ-012)", async () => {
     const publishedAt = new Date("2026-04-01T12:00:00Z");
-    const db = makeDb([
+    const repo = makeRepo([
       {
         id: 42,
         sourceType: "hn",
@@ -42,7 +35,7 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
     const refs: RankedItemRef[] = [
       { rawItemId: 42, score: 0.95, rationale: "high engagement & relevance" },
     ];
-    const result = await hydrateRankedItems(db, refs);
+    const result = await hydrateRankedItems(repo, refs);
     expect(result).toEqual([
       {
         id: 42,
@@ -60,11 +53,11 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
   });
 
   it("skips refs whose raw item rows are missing", async () => {
-    const db = makeDb([]);
+    const repo = makeRepo([]);
     const refs: RankedItemRef[] = [
       { rawItemId: 99, score: 0.5, rationale: "x" },
     ];
-    const result = await hydrateRankedItems(db, refs);
+    const result = await hydrateRankedItems(repo, refs);
     expect(result).toEqual([]);
   });
 });

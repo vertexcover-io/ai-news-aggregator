@@ -6,15 +6,19 @@ import {
   createRedisConnection,
   getDb as defaultGetDb,
 } from "@newsletter/shared";
-import type { AppDb, RunState } from "@newsletter/shared";
+import type { RunState } from "@newsletter/shared";
 import { runSubmitSchema } from "../lib/validate.js";
 import { createRun } from "../services/runs.js";
 import { hydrateRankedItems } from "../services/rank-hydration.js";
+import {
+  createRawItemsRepo,
+  type RawItemsRepo,
+} from "../repositories/raw-items.js";
 
 export interface RunsRouterDeps {
   redis: IORedis;
   processingQueue: Queue;
-  getDb: () => AppDb;
+  getRawItemsRepo: () => RawItemsRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -56,7 +60,10 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     }
     const state = JSON.parse(raw) as RunState;
     if (state.status === "completed" && Array.isArray(state.rankedItems)) {
-      const hydrated = await hydrateRankedItems(deps.getDb(), state.rankedItems);
+      const hydrated = await hydrateRankedItems(
+        deps.getRawItemsRepo(),
+        state.rankedItems,
+      );
       return c.json({ ...state, rankedItems: hydrated });
     }
     return c.json(state);
@@ -78,6 +85,6 @@ export function createDefaultRunsRouter(): Hono {
   return createRunsRouter({
     redis: createRedisConnection(),
     processingQueue: getDefaultProcessingQueue(),
-    getDb: defaultGetDb,
+    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
   });
 }

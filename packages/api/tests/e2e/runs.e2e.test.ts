@@ -6,8 +6,12 @@ import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from "vitest
 import { Hono } from "hono";
 import type { Queue, JobsOptions } from "bullmq";
 import { createRedisConnection } from "@newsletter/shared";
-import type { AppDb, RunState } from "@newsletter/shared";
+import type { RunState } from "@newsletter/shared";
 import { createRunsRouter } from "@api/routes/runs.js";
+import type {
+  RawItemRow,
+  RawItemsRepo,
+} from "@api/repositories/raw-items.js";
 
 const redis = createRedisConnection();
 const seededKeys: string[] = [];
@@ -29,9 +33,15 @@ function makeQueue() {
   return { add, calls, queue: { add, name: "processing" } };
 }
 
+function makeRepo(rows: RawItemRow[] = []): RawItemsRepo {
+  return {
+    findByIds: vi.fn(() => Promise.resolve(rows)),
+  };
+}
+
 function buildApp(opts: {
   q: ReturnType<typeof makeQueue>;
-  db?: AppDb;
+  repo?: RawItemsRepo;
 }): Hono {
   const app = new Hono();
   app.route(
@@ -39,7 +49,7 @@ function buildApp(opts: {
     createRunsRouter({
       redis,
       processingQueue: opts.q.queue as unknown as Queue,
-      getDb: () => opts.db ?? ({} as AppDb),
+      getRawItemsRepo: () => opts.repo ?? makeRepo(),
     }),
   );
   return app;
@@ -233,7 +243,7 @@ describe("GET /api/runs/:runId (e2e)", () => {
     await redis.set(`run:${runId}`, JSON.stringify(state), "EX", 3600);
     seededKeys.push(`run:${runId}`);
 
-    const where = vi.fn().mockResolvedValue([
+    const repo = makeRepo([
       {
         id: 11,
         sourceType: "hn",
@@ -244,11 +254,8 @@ describe("GET /api/runs/:runId (e2e)", () => {
         engagement: { points: 12, commentCount: 3 },
       },
     ]);
-    const from = vi.fn(() => ({ where }));
-    const select = vi.fn(() => ({ from }));
-    const db = { select } as unknown as AppDb;
 
-    const app = buildApp({ q: makeQueue(), db });
+    const app = buildApp({ q: makeQueue(), repo });
     const res = await app.request(`/api/runs/${runId}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {

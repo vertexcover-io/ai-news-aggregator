@@ -1,5 +1,5 @@
 import { Queue } from "bullmq";
-import { createRedisConnection } from "@newsletter/shared/db";
+import { createRedisConnection } from "@newsletter/shared/redis";
 
 export const PROCESSING_QUEUE_NAME = "processing";
 
