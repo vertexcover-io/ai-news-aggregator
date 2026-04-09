@@ -211,6 +211,32 @@ describe("rankCandidates", () => {
     ).rejects.toThrow(/axis/i);
   });
 
+  it("accepts lowercase axis names in rationales (REQ-065 case-insensitive)", async () => {
+    // Regression: Claude naturally writes "Strong relevance — ..." mid-sentence
+    // rather than "Strong Relevance — ...". The validator must be case-insensitive
+    // so grammatically natural rationales don't trip the guard.
+    const generateObject = makeGenerate({
+      ranked: [
+        {
+          id: 1,
+          score: 80,
+          rationale:
+            "Strong relevance — matches the profile topics well. Good signal-vs-hype, real actionability, moderate novelty.",
+        },
+      ],
+    });
+
+    const result = await rankCandidates([makeCandidate(1)], {
+      profile,
+      topN: 5,
+      generateObject,
+      loadBodies: stubLoadBodies,
+    });
+
+    expect(result.rankedItems).toHaveLength(1);
+    expect(result.rankedItems[0].rawItemId).toBe(1);
+  });
+
   it("multiplies LLM score by recencyDecay for a 48h-old item (REQ-066)", async () => {
     const publishedAt = new Date("2026-04-05T00:00:00Z");
     const now = new Date("2026-04-07T00:00:00Z"); // 48 h later

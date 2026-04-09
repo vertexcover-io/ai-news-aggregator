@@ -204,7 +204,10 @@ export async function rankCandidates(
   }
 
   for (const entry of result.object.ranked) {
-    const mentionsAxis = axes.some((axis) => entry.rationale.includes(axis));
+    const rationaleLower = entry.rationale.toLowerCase();
+    const mentionsAxis = axes.some((axis) =>
+      rationaleLower.includes(axis.toLowerCase()),
+    );
     if (!mentionsAxis) {
       throw new Error(
         `rationale for id=${entry.id} does not name a scoring axis: "${entry.rationale}"`,
