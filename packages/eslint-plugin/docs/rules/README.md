@@ -16,5 +16,6 @@
 | Rule | Description |
 |------|-------------|
 | [`dotenv-bootstrap`](./dotenv-bootstrap.md) | Package entrypoints must load the root `.env` before any other code runs. |
+| [`enforce-repository-access`](./enforce-repository-access.md) | Value imports of `@newsletter/shared/db` and `drizzle-orm` are only allowed inside repository modules. Type-only imports are allowed everywhere. |
 | [`no-bundled-readfilesync`](./no-bundled-readfilesync.md) | Disallow `readFileSync` calls that resolve paths via `import.meta.url` or `__dirname` — these break after tsup bundling. |
 | [`no-raw-alter-table`](./no-raw-alter-table.md) | Disallow raw `ALTER TABLE` statements via `.execute()` — use a Drizzle Kit migration instead. |

@@ -1,5 +1,6 @@
 import type { TSESLint } from "@typescript-eslint/utils";
 import dotenvBootstrap from "./rules/dotenv-bootstrap.js";
+import enforceRepositoryAccess from "./rules/enforce-repository-access.js";
 import noBundledReadfilesync from "./rules/no-bundled-readfilesync.js";
 import noRawAlterTable from "./rules/no-raw-alter-table.js";
 
@@ -13,6 +14,10 @@ export type PluginRules = Record<
 
 export const rules: PluginRules = {
   "dotenv-bootstrap": dotenvBootstrap as TSESLint.RuleModule<
+    string,
+    readonly unknown[]
+  >,
+  "enforce-repository-access": enforceRepositoryAccess as TSESLint.RuleModule<
     string,
     readonly unknown[]
   >,

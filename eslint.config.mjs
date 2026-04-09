@@ -155,4 +155,20 @@ export default tseslint.config(
       "newsletter/no-raw-alter-table": "warn",
     },
   },
+  // newsletter/enforce-repository-access: value imports of
+  // @newsletter/shared/db and drizzle-orm are only allowed inside repository
+  // modules. Scoped to api + pipeline service source, excluding repositories
+  // themselves and all test files.
+  {
+    files: ["packages/api/src/**/*.ts", "packages/pipeline/src/**/*.ts"],
+    ignores: [
+      "packages/api/src/repositories/**",
+      "packages/pipeline/src/repositories/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "packages/*/tests/**",
+    ],
+    plugins: { newsletter },
+    rules: { "newsletter/enforce-repository-access": "warn" },
+  },
 );
