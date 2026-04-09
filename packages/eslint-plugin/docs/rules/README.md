@@ -16,3 +16,5 @@
 | Rule | Description |
 |------|-------------|
 | [`dotenv-bootstrap`](./dotenv-bootstrap.md) | Package entrypoints must load the root `.env` before any other code runs. |
+| [`no-bundled-readfilesync`](./no-bundled-readfilesync.md) | Disallow `readFileSync` calls that resolve paths via `import.meta.url` or `__dirname` — these break after tsup bundling. |
+| [`no-raw-alter-table`](./no-raw-alter-table.md) | Disallow raw `ALTER TABLE` statements via `.execute()` — use a Drizzle Kit migration instead. |

@@ -144,4 +144,15 @@ export default tseslint.config(
       "newsletter/dotenv-bootstrap": "warn",
     },
   },
+  // newsletter/no-bundled-readfilesync + newsletter/no-raw-alter-table
+  // on all bundled service source. These rules catch recurring runtime
+  // traps documented in .claude/rules/learnings/.
+  {
+    files: ["packages/pipeline/src/**/*.ts", "packages/api/src/**/*.ts"],
+    plugins: { newsletter },
+    rules: {
+      "newsletter/no-bundled-readfilesync": "warn",
+      "newsletter/no-raw-alter-table": "warn",
+    },
+  },
 );
