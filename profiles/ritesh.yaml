@@ -1,9 +1,14 @@
 name: ritesh
 topics:
-  - AI product design and applied ML
-  - Engineering leadership
-  - Startups and go-to-market
-  - Observability and developer experience
+  - Breaking AI news and frontier model releases
+  - AI startup funding rounds and acquisitions
+  - Applied AI product launches and real customer case studies
+  - Competitive moves from OpenAI, Anthropic, Google DeepMind, Meta
+  - Enterprise AI adoption, pricing strategy, and ROI signals
+  - Founder playbooks for building and scaling AI companies
+  - AI policy, regulation, and market shifts that affect early-stage startups
 antiTopics:
+  - Low-level framework internals and boilerplate tutorials
   - Cryptocurrency and NFTs
-  - Low-effort aggregator content
+  - Opinion pieces with no concrete signal
+  - Celebrity tech drama
