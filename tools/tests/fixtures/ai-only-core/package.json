@@ -1,7 +1,0 @@
-{
-  "name": "ai-only-core",
-  "private": true,
-  "dependencies": {
-    "ai": "5.0.169"
-  }
-}

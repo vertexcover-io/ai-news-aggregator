@@ -79,22 +79,11 @@
 | REQ-070 | Unwanted | If a `db.execute(...)` call is invoked with a template literal or string argument whose value matches the case-insensitive pattern `/ALTER\s+TABLE/`, then the rule shall report messageId `rawAlterTable`. | RuleTester invalid case covers both template literal and string literal forms. | Must |
 | REQ-071 | Ubiquitous | The rule shall be scoped via `eslint.config.mjs` to `packages/api/src/**` and `packages/pipeline/src/**`. | `eslint.config.mjs` files block matches. | Must |
 
-### Layer 3 — `tools/check-repo-invariants.ts` script
-
-| ID | Type | Requirement | Acceptance Criterion | Priority |
-|----|------|-------------|---------------------|----------|
-| REQ-080 | Ubiquitous | The system shall provide an executable script at `tools/check-repo-invariants.ts` runnable via `pnpm check:invariants`. | `pnpm check:invariants` exits 0 on a clean tree. | Must |
-| REQ-081 | Unwanted | If any `package.json` in the workspace contains a dependency version range starting with `^` or `~`, then the script shall print the offending file and key and exit with code 1. | Fixture: temporarily edit a `package.json` to use `^1.0.0` and run the script; exit code is 1 and stderr names the file+key. | Must |
-| REQ-082 | Unwanted | If the `ai` package version differs in major from any `@ai-sdk/*` package version across the workspace, then the script shall print the mismatch and exit with code 1. | Fixture: inject mismatched versions; exit code is 1. | Must |
-| REQ-083 | Unwanted | If a package has a `vitest.config.ts` but its `tsconfig.json` `exclude` array does not include `"vitest.config.ts"`, then the script shall print the offending package path and exit with code 1. | Fixture: remove the exclude entry and run; exit code is 1. | Must |
-| REQ-084 | Unwanted | If any file under `packages/**`, `tools/**`, or `docs/**` contains the strings `docker-compose` or `docker ` (outside of explicit allowlist comments), then the script shall print the offending file+line and exit with code 1. | Fixture: add a `docker-compose up` line in a script; exit code is 1. | Should | <!-- invariants:allow docker -->
-| REQ-085 | Event-driven | When `pnpm lint` runs at the repository root, the system shall also execute `pnpm check:invariants`. | `turbo.json` declares `check:invariants` as a dependency of the `lint` task (or the root `lint` script chains them). A failing invariant causes `pnpm lint` to exit non-zero. | Must |
-
 ### Documentation and workflow
 
 | ID | Type | Requirement | Acceptance Criterion | Priority |
 |----|------|-------------|---------------------|----------|
-| REQ-090 | Ubiquitous | The system shall provide `packages/eslint-plugin/docs/rules/README.md` with a decision tree explaining when to use `no-restricted-imports`, a custom rule, or `check-repo-invariants.ts`. | File exists and contains the three-branch decision tree. | Must |
+| REQ-090 | Ubiquitous | The system shall provide `packages/eslint-plugin/docs/rules/README.md` with a decision tree explaining when to use `no-restricted-imports` vs. a custom rule. | File exists and contains the two-branch decision tree. | Must |
 | REQ-091 | Ubiquitous | Each `.claude/rules/learnings/*.md` file whose content is enforced by a rule shall gain a footer line of the form `Enforced by: newsletter/<rule-name>`. | Grep check: for every file listed in the design doc's "Layer 2" mapping, the corresponding learning file contains the footer. | Should |
 | REQ-092 | Ubiquitous | The `/extract-learnings` skill shall be updated to draft a rule stub in `packages/eslint-plugin/src/rules/` when a new learning is mechanically enforceable. | The skill file under `.claude/skills/extract-learnings` (or wherever it lives) shows a commit modifying its instructions to include this step. | Should |
 
@@ -108,11 +97,7 @@
 | EDGE-004 | A dev script at `packages/pipeline/src/scripts/demo-web-collector.ts` legitimately calls `readFileSync` on a fixture path built from `import.meta.url`. | Author adds `// eslint-disable-next-line newsletter/no-bundled-readfilesync -- dev-only script, not bundled` with the rationale required by the rule docs. | REQ-040 |
 | EDGE-005 | A collector function's return type is an alias that resolves to `Promise<CollectorResult>` via a `type Foo = CollectorResult`. | `services.getTypeAtLocation` resolves the alias; the rule accepts it. | REQ-060 |
 | EDGE-006 | A repository file under `packages/pipeline/src/repositories/` accidentally imports `hono`. | The repository-access rule says nothing, but the pipeline-wide `no-restricted-imports` for `hono` still fires. | REQ-020 |
-| EDGE-007 | `package.json` uses the `workspace:*` protocol for internal deps. | The invariants script treats `workspace:*` as exact (not caret/tilde) and does not flag it. | REQ-081 |
-| EDGE-008 | A `package.json` pins `ai@5.0.169` but has no `@ai-sdk/*` deps at all. | The invariants script does not flag the absence; it only checks mismatch when both `ai` and at least one `@ai-sdk/*` are present. | REQ-082 |
-| EDGE-009 | A documentation file legitimately mentions `docker-compose` in a migration-away-from-docker note. | The file contains an explicit allowlist comment (`<!-- invariants:allow docker -->`) that the invariants script recognizes and skips. | REQ-084 |
 | EDGE-010 | A `db.execute` call passes a variable (not a literal) whose value contains `ALTER TABLE` at runtime. | `no-raw-alter-table` only checks literal/template arguments; variable-tracking is out of scope. Runtime remains unprotected by this rule. | REQ-070 |
-| EDGE-011 | A newly scaffolded package has no `vitest.config.ts`. | The invariants script treats "no vitest.config.ts" as "nothing to exclude" and does not flag the package. | REQ-083 |
 | EDGE-012 | Flat-config `files` glob accidentally matches a `.d.ts` declaration file inside `packages/pipeline/src/collectors/`. | The `collector-return-shape` rule bails out early if the file extension is `.d.ts` (no executable code to check). | REQ-060 |
 | EDGE-013 | A custom rule added to `eslint.config.mjs` accidentally at severity `"error"` before passing the promotion sprint. | REQ-014 forbids this; review catches it via the grep check described in the acceptance criterion. | REQ-014 |
 | EDGE-014 | The `@newsletter/eslint-plugin` package is modified but not rebuilt, and the root lint picks up stale `dist/`. | Root lint depends on the plugin's `build` task via Turborepo's task graph, ensuring rebuild before lint. | REQ-003, REQ-004 |
@@ -152,12 +137,6 @@
 | REQ-062 | No | Yes | No | Config grep |
 | REQ-070 | Yes | No | No | RuleTester |
 | REQ-071 | No | Yes | No | Config grep |
-| REQ-080 | No | Yes | No | Script executes |
-| REQ-081 | Yes | Yes | No | Unit: parse logic. Integration: script run on fixture. |
-| REQ-082 | Yes | Yes | No | Same split |
-| REQ-083 | Yes | Yes | No | Same split |
-| REQ-084 | Yes | Yes | No | Same split |
-| REQ-085 | No | Yes | No | `pnpm lint` chains both |
 | REQ-090 | No | No | Yes | File existence + content review |
 | REQ-091 | No | Yes | No | Grep check in CI |
 | REQ-092 | No | No | Yes | Skill file review |
@@ -167,11 +146,7 @@
 | EDGE-004 | Yes | No | No | RuleTester valid case with disable comment |
 | EDGE-005 | Yes | No | No | Type-aware RuleTester |
 | EDGE-006 | No | Yes | No | Fixture lint |
-| EDGE-007 | Yes | No | No | Invariants script unit test |
-| EDGE-008 | Yes | No | No | Invariants script unit test |
-| EDGE-009 | Yes | No | No | Invariants script unit test |
 | EDGE-010 | Yes | No | No | RuleTester valid case with variable arg |
-| EDGE-011 | Yes | No | No | Invariants script unit test |
 | EDGE-012 | Yes | No | No | RuleTester valid case on `.d.ts` |
 | EDGE-013 | No | Yes | Yes | Grep + review |
 | EDGE-014 | No | Yes | No | Turborepo task graph |
@@ -185,6 +160,7 @@
 - Frontend-specific rules for `packages/web/**` beyond the single `no-restricted-imports` on `drizzle-orm`/`@newsletter/shared/db`.
 - Repository function naming conventions (`findX`, `upsertX`, etc.).
 - Variable-tracking / data-flow analysis for `no-raw-alter-table` — only literal and template-literal arguments are inspected.
+- Non-AST invariant checks (`package.json` version pinning, AI SDK alignment, `vitest.config.ts` excluded from `tsc -b`, `docker`/`docker-compose` string ban). These were considered as a separate `tools/check-repo-invariants.ts` script but dropped from v1 — none of them had a forcing incident worth the tooling cost. Revisit if any of those failures actually happen.
 - Publishing `@newsletter/eslint-plugin` to npm — it is a workspace-only package.
 - Auto-fixing rules. Every v1 custom rule is report-only; no `fixable` metadata, no `fix` function. Auto-fix is a future enhancement.
 - Rule authoring by agents without human review. Per the ownership decision, humans approve every rule PR.

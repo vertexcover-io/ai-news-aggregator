@@ -105,7 +105,7 @@ pnpm --filter @newsletter/shared db:migrate    # Apply pending Drizzle migration
 
 ### Custom lint rules
 
-Custom lint rules live in `@newsletter/eslint-plugin` and enforce project-specific patterns (dotenv bootstrap, repository pattern, bundled assets, etc). Non-AST invariants (package.json pinning, vitest config exclusion) live in `tools/check-repo-invariants.ts`. Both run under `pnpm lint`. See `packages/eslint-plugin/docs/rules/README.md` for the rule index and the decision tree for adding new rules.
+Custom lint rules live in `@newsletter/eslint-plugin` and enforce project-specific patterns (dotenv bootstrap, repository pattern, bundled assets, collector return shape, raw ALTER TABLE). They run under `pnpm lint`. See `packages/eslint-plugin/docs/rules/README.md` for the rule index and the decision tree for adding new rules.
 
 ### When to reach for what
 

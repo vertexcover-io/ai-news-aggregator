@@ -1,9 +1,0 @@
-{
-  "name": "ai-bad",
-  "private": true,
-  "dependencies": {
-    "ai": "5.0.169",
-    "@ai-sdk/openai": "5.0.0",
-    "@ai-sdk/google": "2.0.67"
-  }
-}

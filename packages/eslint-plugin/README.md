@@ -4,7 +4,7 @@ Custom ESLint rules enforcing project conventions for the AI Newsletter Aggregat
 
 ## Rules
 
-See [`docs/rules/README.md`](./docs/rules/README.md) for the full rule index, per-rule documentation pages, and the decision tree for where new enforcement logic should live (flat-config `no-restricted-imports` vs. custom AST rule vs. `tools/check-repo-invariants.ts`).
+See [`docs/rules/README.md`](./docs/rules/README.md) for the full rule index, per-rule documentation pages, and the decision tree for where new enforcement logic should live (flat-config `no-restricted-imports` vs. custom AST rule).
 
 Current rules:
 

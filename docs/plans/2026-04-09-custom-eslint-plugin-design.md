@@ -87,14 +87,10 @@ trap is hit, so the feedback loop runs during coding, not during review.
    Hono in pipeline" type rules, ESLint core's `no-restricted-imports` and
    `eslint-plugin-boundaries` already handle the job declaratively. The custom
    plugin should cover only what those cannot express.
-2. **Not every rule belongs in ESLint.** `package.json` version pinning and
-   "`vitest.config.ts` excluded from `tsc -b`" are file-shape checks, not AST
-   checks. A small `tools/check-repo-invariants.ts` script running in Turborepo
-   alongside lint fits those better.
-3. **The repository pattern is the highest-leverage rule.** It subsumes several
+2. **The repository pattern is the highest-leverage rule.** It subsumes several
    smaller concerns (thin route handlers, no DB in workers, no drizzle in web) by
    forcing all DB access through a single layer.
-4. **Warn first, error later.** Promotion from `warn` → `error` is the single
+3. **Warn first, error later.** Promotion from `warn` → `error` is the single
    biggest protection against false-positive backlash.
 
 ## Architectural Challenges
@@ -183,8 +179,7 @@ repository pattern, tests, tooling — the lot.
 Stand up the plugin package with the plumbing + one proof rule, then add rules
 over successive PRs, each at `warn` first. Use `no-restricted-imports` for
 simple boundary rules; reach for custom code only when a rule genuinely needs
-AST or type information. Use a separate `tools/check-repo-invariants.ts` script
-for non-code checks (package.json version pinning, vitest config exclusion).
+AST or type information.
 
 - ✅ Small, verifiable PRs. Each new rule can be validated on real code before
   promotion.
@@ -225,9 +220,6 @@ packages/eslint-plugin/
   package.json
   tsconfig.json
   eslint.config.mjs           // lints the plugin itself
-
-tools/
-  check-repo-invariants.ts    // package.json pinning, vitest config, etc.
 ```
 
 Root `eslint.config.mjs` imports the plugin and applies rules under path-scoped
@@ -295,22 +287,6 @@ them in the same PR that scaffolds the plugin.
 Each rule ships in its own PR with: code + RuleTester fixtures + docs page +
 addition to `eslint.config.mjs` at `"warn"` severity.
 
-#### Layer 3 — `tools/check-repo-invariants.ts` script (not ESLint)
-
-A small `tsx` script run as part of `pnpm lint` (added to the `turbo.json`
-pipeline). Exits non-zero on violation. Checks:
-
-| Check | Source |
-|---|---|
-| No `^` or `~` version ranges in any `package.json` | `.claude/rules/tooling.md` |
-| `ai` and `@ai-sdk/*` exist at exact matching major across workspace | `lock-ai-sdk-versions-explicitly.md` |
-| Every package with a `vitest.config.ts` excludes it from its `tsconfig.json` `exclude` | `exclude-vitest-config-from-tsc-build.md` |
-| No `docker` or `docker-compose` references in scripts, docs, or `compose.yml` top-level keys | `tooling.md` | <!-- invariants:allow docker -->
-| `.env.example` and `.env` have the same keys (warn on drift) | implicit from tooling.md |
-
-These can run in milliseconds and give immediate feedback. Shipping them as a
-plain script sidesteps ESLint's JSON/YAML awkwardness.
-
 ### What's explicitly out of scope for v1
 
 - API "thin route handlers" rule (too fuzzy; repository-access rule covers the
@@ -320,8 +296,9 @@ plain script sidesteps ESLint's JSON/YAML awkwardness.
   defer until we have a stable SPEC-linking convention).
 - Repository function naming conventions (`findX`, `upsertX`) — too opinionated.
 - Frontend-specific rules — none in v1.
+- Non-AST workspace invariants (`package.json` version pinning, AI SDK alignment, `vitest.config.ts` excluded from `tsc -b`, `docker`/`docker-compose` string ban). These were originally scoped as a separate `tools/check-repo-invariants.ts` script but dropped from v1 — none had a forcing incident worth the tooling cost. Revisit if one of those failures actually happens.
 
-These can be added later in Layer 2 once the plumbing is proven.
+These can be added later once the plumbing is proven.
 
 ## Rollout plan (sketch — belongs to a later planning stage)
 
@@ -333,13 +310,11 @@ These can be added later in Layer 2 once the plumbing is proven.
 3. **PR 3 — `enforce-repository-access`** (the user's priority rule).
 4. **PR 4 — `collector-return-shape`** (first type-aware rule; validates we can
    use parserServices cheaply).
-5. **PR 5 — `tools/check-repo-invariants.ts`** with the Layer 3 checks, wired
-   into the `lint` task in `turbo.json`.
-6. **Promotion PRs** — one per rule, flipping severity from `"warn"` to
+5. **Promotion PRs** — one per rule, flipping severity from `"warn"` to
    `"error"` after observed clean.
-7. **Docs update** — `.claude/rules/learnings/` files get a "Enforced by:
+6. **Docs update** — `.claude/rules/learnings/` files get a "Enforced by:
    `newsletter/<rule-name>`" footer once a rule covers them.
-8. **Workflow update** — `/extract-learnings` skill gains a step: "if the
+7. **Workflow update** — `/extract-learnings` skill gains a step: "if the
    learning can be mechanically enforced, draft a rule stub in
    `packages/eslint-plugin/src/rules/` alongside the markdown".
 
@@ -374,7 +349,7 @@ These can be added later in Layer 2 once the plumbing is proven.
 | Type-aware rules slow down lint noticeably | Low | Medium | `projectService` is already enabled, so parserServices are free. Benchmark each rule and bail out of expensive selectors fast. |
 | Rule logic encodes paths that move (e.g. `src/repositories`) | Medium | Low | Scope via flat-config globs, not in-rule path checks. |
 | The plugin diverges from `.claude/rules/learnings/` — one side says one thing, the other says the opposite | Medium | Medium | Each rule doc links to its originating learning. `/extract-learnings` skill updated to draft rule stubs; reviewers check for contradictions. |
-| Contributors don't know where to add a new rule vs a learning vs the invariants script | High | Low | Add `packages/eslint-plugin/docs/rules/README.md` with a decision tree: "Can you express it as `no-restricted-imports`? → config. Does it need AST? → custom rule. Is it a file-shape / package.json / env check? → invariants script." |
+| Contributors don't know where to add a new rule vs a learning | Medium | Low | Add `packages/eslint-plugin/docs/rules/README.md` with a decision tree: "Can you express it as `no-restricted-imports`? → config. Does it need AST? → custom rule." |
 | Review bottleneck if every new rule needs a human PR approver (per ownership decision) | Medium | Low | Keep rule additions small (single rule per PR) so review is quick. Humans review; agents do the work. |
 
 ## Assumptions

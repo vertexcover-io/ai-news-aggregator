@@ -12,9 +12,6 @@ Use this decision tree before writing any new enforcement logic:
 2. **Does it need AST matching or type information?**
    → Add a custom rule under `packages/eslint-plugin/src/rules/<name>.ts`. Include a docs page at `docs/rules/<name>.md` and a RuleTester test at `tests/rules/<name>.test.ts`.
 
-3. **Is it a file-shape / package.json / env / directory structure check?** (not source code)
-   → Add a check to `tools/check-repo-invariants.ts`. Not an ESLint rule.
-
 ## Rule index
 
 | Rule | Description |
@@ -46,4 +43,3 @@ Checklist for a new rule PR:
 ## Related enforcement layers
 
 - **`eslint.config.mjs` `no-restricted-imports` blocks** — declarative boundary rules (pipeline→hono, pipeline→@newsletter/api, web→drizzle-orm, api/routes→@newsletter/shared/db).
-- **`tools/check-repo-invariants.ts`** — file-shape and package.json invariants (exact version pinning, `@ai-sdk/*` provider alignment, `vitest.config.ts` excluded from `tsc -b`, `docker-compose` string ban). Runs under `pnpm check:invariants` and is chained into `pnpm lint`. <!-- invariants:allow docker -->
