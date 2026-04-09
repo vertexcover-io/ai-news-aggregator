@@ -5,11 +5,13 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
-    "lint": "turbo lint",
+    "lint": "turbo lint && pnpm check:invariants",
+    "check:invariants": "tsx tools/check-repo-invariants.ts",
     "infra:up": "podman-compose up -d",
     "infra:down": "podman-compose down",
     "infra:reset": "podman-compose down -v && podman-compose up -d",
-    "test:unit": "turbo test:unit",
+    "test:unit": "turbo test:unit && pnpm test:tools",
+    "test:tools": "vitest run --config=tools/vitest.config.ts",
     "test:e2e": "turbo test:e2e",
     "prepare": "husky"
   },
@@ -24,9 +26,11 @@
     "husky": "9.1.7",
     "lint-staged": "16.4.0",
     "tsup": "8.4.0",
+    "tsx": "4.20.3",
     "turbo": "2.5.4",
     "typescript": "5.8.3",
-    "typescript-eslint": "8.58.0"
+    "typescript-eslint": "8.58.0",
+    "vitest": "3.2.1"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

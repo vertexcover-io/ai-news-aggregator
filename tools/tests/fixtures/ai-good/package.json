@@ -1,0 +1,8 @@
+{
+  "name": "ai-good",
+  "private": true,
+  "dependencies": {
+    "ai": "5.0.169",
+    "@ai-sdk/openai": "5.0.0"
+  }
+}

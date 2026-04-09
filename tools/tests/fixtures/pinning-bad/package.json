@@ -1,0 +1,11 @@
+{
+  "name": "pinning-bad",
+  "private": true,
+  "dependencies": {
+    "lodash": "^4.17.21",
+    "zod": "~3.22.4"
+  },
+  "devDependencies": {
+    "vitest": "3.2.1"
+  }
+}
