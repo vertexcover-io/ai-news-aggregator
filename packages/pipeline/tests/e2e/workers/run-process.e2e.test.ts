@@ -55,6 +55,8 @@ describe("run-process worker E2E", () => {
             runState: runStateService,
             db,
             loadFn: loadCandidatesSince,
+            shortlistFn: (candidates) =>
+              Promise.resolve({ shortlist: candidates, breakdowns: [] }),
             rankFn: (deduped, opts) =>
               Promise.resolve({
                 rankedItems: deduped.slice(0, opts.topN).map((c, idx) => ({
