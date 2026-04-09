@@ -13,4 +13,6 @@
 
 ## Rule index
 
-(Populated as rules are added.)
+| Rule | Description |
+|------|-------------|
+| [`dotenv-bootstrap`](./dotenv-bootstrap.md) | Package entrypoints must load the root `.env` before any other code runs. |
