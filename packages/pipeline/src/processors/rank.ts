@@ -1,44 +1,60 @@
-import { generateObject } from "ai";
+import { generateObject as defaultGenerateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { createLogger } from "@newsletter/shared";
-import type { RankedItemRef, SourceType } from "@newsletter/shared";
+import type {
+  Candidate,
+  RankedItemRef,
+  UserProfile,
+  RawItemComment,
+} from "@newsletter/shared";
+import {
+  RANK_SYSTEM_PROMPT_NO_PROFILE,
+  composeProfiledPrompt,
+} from "@pipeline/processors/rank-prompts.js";
+import { loadBodiesForShortlist as defaultLoadBodies } from "@pipeline/processors/rank-body-loader.js";
+import {
+  ageHoursFromPublishedAt,
+  recencyDecay,
+  DEFAULT_HALF_LIFE_HOURS,
+} from "@pipeline/services/recency.js";
+
 const logger = createLogger("processor:rank");
 
-export const rankSystemPrompt = `You rank AI news items for a technical audience (ML engineers, infra engineers,
-researchers building LLM applications). Score each candidate 0–100 on:
-
-- **Technical novelty** — new results, architectures, benchmarks, tools.
-- **Practical value** — concrete for engineers shipping AI systems.
-- **Signal vs noise** — penalize PR, funding news, recaps, listicles.
-
-Return a ranked array with a one-line rationale per item. Include every
-candidate you consider relevant (score > 30). Lower scores for recaps, fluff,
-or marketing. Use the \`id\` field from the input verbatim.
-`;
-
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
-const MAX_CANDIDATES = 100;
+const DEFAULT_BODY_TOKEN_BUDGET = 2000;
+const DEFAULT_COMMENTS_PER_ITEM = 5;
+const DEFAULT_COMMENT_TOKEN_BUDGET = 200;
 
-export interface RankCandidate {
+// Phase 5 will export a matching type from shortlist.ts. Declaring it locally
+// here keeps rank.ts decoupled during parallel development; the shape is a
+// structural subset so interop will be trivial once phase 5 lands.
+export interface ShortlistBreakdown {
   id: number;
-  title: string;
-  url: string;
-  sourceType: SourceType;
-  publishedAt: string | null;
-  engagement: { points: number; commentCount: number };
+  relevance: number;
+  recency: number;
+  combined: number;
+}
+
+export interface RankOptions {
+  profile: UserProfile | null;
+  topN: number;
+  halfLifeHours?: number;
+  shortlistBreakdowns?: ShortlistBreakdown[];
+  bodyTokenBudget?: number;
+  commentsPerItem?: number;
+  commentTokenBudget?: number;
+  modelId?: string;
+  runId?: string;
+  generateObject?: typeof defaultGenerateObject;
+  loadBodies?: typeof defaultLoadBodies;
+  now?: Date;
 }
 
 export interface RankResult {
   rankedItems: RankedItemRef[];
   candidateCount: number;
   rankedCount: number;
-}
-
-export interface RankOptions {
-  topN: number;
-  modelId?: string;
-  runId?: string;
 }
 
 const rankedEntrySchema = z.object({
@@ -51,85 +67,189 @@ export const rankedResponseSchema = z.object({
   ranked: z.array(rankedEntrySchema),
 });
 
-function engagementOf(c: RankCandidate): number {
-  return c.engagement.points + c.engagement.commentCount;
+const PROFILED_AXES = [
+  "Relevance",
+  "Novelty",
+  "Signal-vs-hype",
+  "Actionability",
+] as const;
+const NO_PROFILE_AXES = ["Novelty", "Signal-vs-hype", "Actionability"] as const;
+
+// Approximate token count as ceil(chars / 4). This is coarse but good enough
+// for a truncation budget; swap in a real tokenizer if precision ever matters.
+function truncateByTokenBudget(text: string, tokenBudget: number): string {
+  const charBudget = tokenBudget * 4;
+  if (text.length <= charBudget) return text;
+  return text.slice(0, charBudget);
 }
 
-function capCandidates(items: RankCandidate[]): RankCandidate[] {
-  if (items.length <= MAX_CANDIDATES) return items;
-  return [...items]
-    .sort((a, b) => engagementOf(b) - engagementOf(a))
-    .slice(0, MAX_CANDIDATES);
+function humanAge(ageHours: number): string {
+  if (ageHours < 1) return `${Math.round(ageHours * 60)}m ago`;
+  if (ageHours < 24) return `${Math.round(ageHours)}h ago`;
+  return `${Math.round(ageHours / 24)}d ago`;
+}
+
+interface PromptItem {
+  id: number;
+  title: string;
+  url: string;
+  sourceType: string;
+  publishedAt: string | null;
+  ageHuman: string;
+  stage1Score: number | null;
+  body: string | null;
+  comments?: string[];
+}
+
+function buildPromptItem(
+  candidate: Candidate,
+  body: string | null,
+  stage1Score: number | null,
+  now: Date,
+  bodyTokenBudget: number,
+  commentsPerItem: number,
+  commentTokenBudget: number,
+): PromptItem {
+  const ageHours = ageHoursFromPublishedAt(candidate.publishedAt, now);
+  const truncatedBody =
+    body === null ? null : truncateByTokenBudget(body, bodyTokenBudget);
+
+  const item: PromptItem = {
+    id: candidate.id,
+    title: candidate.title,
+    url: candidate.url,
+    sourceType: candidate.sourceType,
+    publishedAt: candidate.publishedAt
+      ? candidate.publishedAt.toISOString()
+      : null,
+    ageHuman: humanAge(ageHours),
+    stage1Score,
+    body: truncatedBody,
+  };
+
+  if (candidate.comments.length > 0) {
+    const topComments = candidate.comments.slice(0, commentsPerItem);
+    item.comments = topComments.map((c: RawItemComment) =>
+      truncateByTokenBudget(c.content, commentTokenBudget),
+    );
+  }
+
+  return item;
 }
 
 export async function rankCandidates(
-  candidates: RankCandidate[],
+  shortlist: Candidate[],
   options: RankOptions,
-  generate: typeof generateObject = generateObject,
 ): Promise<RankResult> {
-  if (candidates.length === 0) {
+  const started = Date.now();
+
+  if (shortlist.length === 0) {
     return { rankedItems: [], candidateCount: 0, rankedCount: 0 };
   }
 
-  const capped = capCandidates(candidates);
+  const generate = options.generateObject ?? defaultGenerateObject;
+  const loadBodies = options.loadBodies ?? defaultLoadBodies;
+  const now = options.now ?? new Date();
+  const halfLifeHours = options.halfLifeHours ?? DEFAULT_HALF_LIFE_HOURS;
+  const bodyTokenBudget = options.bodyTokenBudget ?? DEFAULT_BODY_TOKEN_BUDGET;
+  const commentsPerItem = options.commentsPerItem ?? DEFAULT_COMMENTS_PER_ITEM;
+  const commentTokenBudget =
+    options.commentTokenBudget ?? DEFAULT_COMMENT_TOKEN_BUDGET;
   const modelId =
     options.modelId ?? process.env.RANKING_MODEL ?? DEFAULT_MODEL;
 
-  const userPayload = capped.map((c) => ({
-    id: c.id,
-    title: c.title,
-    url: c.url,
-    sourceType: c.sourceType,
-    publishedAt: c.publishedAt,
-    engagement: c.engagement,
-  }));
+  const bodies = await loadBodies(shortlist);
+  const stage1Scores = new Map<number, number>();
+  if (options.shortlistBreakdowns) {
+    for (const b of options.shortlistBreakdowns) {
+      stage1Scores.set(b.id, b.combined);
+    }
+  }
+
+  const promptItems = shortlist.map((c) =>
+    buildPromptItem(
+      c,
+      bodies.get(c.id) ?? null,
+      stage1Scores.get(c.id) ?? null,
+      now,
+      bodyTokenBudget,
+      commentsPerItem,
+      commentTokenBudget,
+    ),
+  );
+
+  const systemPrompt =
+    options.profile !== null
+      ? composeProfiledPrompt(options.profile)
+      : RANK_SYSTEM_PROMPT_NO_PROFILE;
+
+  const axes = options.profile !== null ? PROFILED_AXES : NO_PROFILE_AXES;
 
   let result: { object: z.infer<typeof rankedResponseSchema> };
   try {
     result = (await generate({
       model: anthropic(modelId),
-      system: rankSystemPrompt,
-      prompt: JSON.stringify({ candidates: userPayload }),
+      system: systemPrompt,
+      prompt: JSON.stringify({ items: promptItems }, null, 2),
       schema: rankedResponseSchema,
+      temperature: 0,
     })) as { object: z.infer<typeof rankedResponseSchema> };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error(
-      { event: "run.rank.failed", error: message },
+      { event: "run.rank.failed", runId: options.runId, error: message },
       "run.rank.failed",
     );
     throw new Error(`ranking failed: ${message}`, { cause: err });
   }
 
-  const validIds = new Set(capped.map((c) => c.id));
-  const valid = result.object.ranked.filter((r) => validIds.has(r.id));
-  if (valid.length === 0) {
+  for (const entry of result.object.ranked) {
+    const mentionsAxis = axes.some((axis) => entry.rationale.includes(axis));
+    if (!mentionsAxis) {
+      throw new Error(
+        `rationale for id=${entry.id} does not name a scoring axis: "${entry.rationale}"`,
+      );
+    }
+  }
+
+  const byId = new Map(shortlist.map((c) => [c.id, c]));
+  const validEntries = result.object.ranked.filter((r) => byId.has(r.id));
+  if (validEntries.length === 0) {
     throw new Error("ranking returned no valid items");
   }
 
-  const sorted = [...valid]
-    .sort((a, b) => b.score - a.score)
-    .slice(0, options.topN);
+  const adjusted = validEntries.map((r) => {
+    const cand = byId.get(r.id);
+    const ageHours = ageHoursFromPublishedAt(
+      cand?.publishedAt ?? null,
+      now,
+    );
+    const factor = recencyDecay(ageHours, halfLifeHours);
+    return {
+      rawItemId: r.id,
+      score: r.score * factor,
+      rationale: r.rationale,
+    };
+  });
 
-  const rankedItems: RankedItemRef[] = sorted.map((r) => ({
-    rawItemId: r.id,
-    score: r.score,
-    rationale: r.rationale,
-  }));
+  adjusted.sort((a, b) => b.score - a.score);
+  const rankedItems: RankedItemRef[] = adjusted.slice(0, options.topN);
 
   logger.info(
     {
       event: "run.rank",
       runId: options.runId,
-      candidateCount: capped.length,
-      rankedCount: rankedItems.length,
+      stage: "rank",
+      inputCount: shortlist.length,
+      outputCount: rankedItems.length,
+      durationMs: Date.now() - started,
     },
     "run.rank",
   );
 
   return {
     rankedItems,
-    candidateCount: capped.length,
+    candidateCount: shortlist.length,
     rankedCount: rankedItems.length,
   };
 }
