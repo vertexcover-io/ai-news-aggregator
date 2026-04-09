@@ -1,12 +1,15 @@
 import { useState, type ReactElement } from "react";
 import { useForm, useWatch, type SubmitHandler } from "react-hook-form";
+import { useQuery } from "@tanstack/react-query";
 import type { RunSubmitPayload } from "@newsletter/shared";
 import { submitRun } from "../../api/runs";
+import { fetchProfiles } from "../../api/profiles";
 import { HnSection } from "./HnSection";
 import { RedditSection } from "./RedditSection";
 import { WebSection } from "./WebSection";
 
 export interface RunFormValues {
+  profileName: string;
   topN: number;
   hnEnabled: boolean;
   hn: {
@@ -34,6 +37,7 @@ export interface RunFormValues {
 }
 
 const DEFAULT_VALUES: RunFormValues = {
+  profileName: "",
   topN: 10,
   hnEnabled: true,
   hn: {
@@ -68,7 +72,10 @@ function splitCsv(value: string): string[] {
 }
 
 function buildPayload(values: RunFormValues): RunSubmitPayload {
-  const payload: RunSubmitPayload = { topN: values.topN };
+  const payload: RunSubmitPayload = {
+    topN: values.topN,
+    profileName: values.profileName === "" ? null : values.profileName,
+  };
   if (values.hnEnabled) {
     const keywords = splitCsv(values.hn.keywords);
     const feeds: ("newest" | "best")[] = [];
@@ -120,6 +127,12 @@ export function RunForm({ onSubmitted }: RunFormProps): ReactElement {
   } = form;
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const { data: profiles = [], isLoading: profilesLoading } = useQuery<
+    string[]
+  >({
+    queryKey: ["profiles"],
+    queryFn: fetchProfiles,
+  });
 
   const onValid: SubmitHandler<RunFormValues> = async (values) => {
     setSourceError(null);
@@ -157,6 +170,29 @@ export function RunForm({ onSubmitted }: RunFormProps): ReactElement {
       className="space-y-6"
       noValidate
     >
+      <div>
+        <label
+          htmlFor="profileName"
+          className="block text-sm font-medium text-gray-700"
+        >
+          Profile
+        </label>
+        <select
+          id="profileName"
+          aria-label="Profile"
+          disabled={profilesLoading}
+          className="mt-1 block w-48 border border-gray-300 rounded px-3 py-2"
+          {...register("profileName")}
+        >
+          <option value="">No profile</option>
+          {profiles.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <div>
         <label className="block text-sm font-medium text-gray-700">
           Top N
