@@ -1,4 +1,5 @@
 import type { TSESLint } from "@typescript-eslint/utils";
+import collectorReturnShape from "./rules/collector-return-shape.js";
 import dotenvBootstrap from "./rules/dotenv-bootstrap.js";
 import enforceRepositoryAccess from "./rules/enforce-repository-access.js";
 import noBundledReadfilesync from "./rules/no-bundled-readfilesync.js";
@@ -13,6 +14,10 @@ export type PluginRules = Record<
 >;
 
 export const rules: PluginRules = {
+  "collector-return-shape": collectorReturnShape as TSESLint.RuleModule<
+    string,
+    readonly unknown[]
+  >,
   "dotenv-bootstrap": dotenvBootstrap as TSESLint.RuleModule<
     string,
     readonly unknown[]

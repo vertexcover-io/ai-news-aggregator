@@ -155,6 +155,15 @@ export default tseslint.config(
       "newsletter/no-raw-alter-table": "warn",
     },
   },
+  // newsletter/collector-return-shape: type-aware rule that pins every
+  // exported function in pipeline collectors to Promise<CollectorResult>.
+  {
+    files: ["packages/pipeline/src/collectors/**/*.ts"],
+    plugins: { newsletter },
+    rules: {
+      "newsletter/collector-return-shape": "warn",
+    },
+  },
   // newsletter/enforce-repository-access: value imports of
   // @newsletter/shared/db and drizzle-orm are only allowed inside repository
   // modules. Scoped to api + pipeline service source, excluding repositories
