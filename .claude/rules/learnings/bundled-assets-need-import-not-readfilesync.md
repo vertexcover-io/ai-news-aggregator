@@ -16,3 +16,5 @@ import { SUMMARIZER_PROMPT } from "./prompts/summarizer.js";
 ```
 
 Why: Recurring bug pattern (hit again in the run-ui run as the C1 issue). `import.meta.url` resolves relative to the bundled output file, not the original source, so the asset path no longer points at anything. Inlining via TS constants is the only reliable fix in a tsup/esbuild context.
+
+Enforced by: newsletter/no-bundled-readfilesync

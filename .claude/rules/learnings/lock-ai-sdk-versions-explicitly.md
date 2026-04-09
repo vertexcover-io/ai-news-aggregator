@@ -8,3 +8,5 @@ Rules:
 3. Provider packages (`@ai-sdk/*`) and the core `ai` package must move together — mixing major versions across them is unsupported.
 
 Why: In the run-ui run, the phase 4 agent picked up AI SDK v6 by default and had to downgrade to `5.0.169` after `generateObject` failed. Exact pinning + a deliberate upgrade workflow prevents this from recurring.
+
+Enforced by: tools/check-repo-invariants.ts (ai-sdk-alignment + package-json-pinning). Note: the ai-sdk-alignment check flags major-version drift *among* `@ai-sdk/*` providers rather than strict major-matching with the core `ai` package, reflecting Vercel's actual versioning model where the core and provider packages version independently.

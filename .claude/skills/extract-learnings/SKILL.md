@@ -93,6 +93,19 @@ Rules:
 - Always include a "Why:" line
 - Be concise and specific — avoid vague guidance
 
+## Step 4b: Draft Enforcement Stub (if mechanically enforceable)
+
+After writing the learning file, evaluate whether the rule it encodes is **mechanically enforceable** — detectable via AST matching, type checking, file-shape check, or literal string matching in source code.
+
+If yes, draft a stub in the same commit:
+
+- **AST/type-aware rules** → create `packages/eslint-plugin/src/rules/<slug>.ts` as a skeleton rule (meta block + TODO-only `create()`), plus a docs stub at `packages/eslint-plugin/docs/rules/<slug>.md` and an empty RuleTester file at `packages/eslint-plugin/tests/rules/<slug>.test.ts`. Leave a `// TODO: implement — see .claude/rules/learnings/<slug>.md` comment in the rule body.
+- **File-shape / package.json / env checks** → add a stub check function under `tools/invariants/<slug>.ts` (or inside `tools/check-repo-invariants.ts` as a new named check) with a TODO linking back to the learning file.
+
+Do NOT wire the stub into `eslint.config.mjs` or `check-repo-invariants.ts` as an active check — leave that for a human reviewer to promote once the implementation lands. The stub exists only so the next maintainer has a starting point and a breadcrumb back to the learning.
+
+If the learning is purely behavioral (process, orchestration, testing habits, review workflow), skip this step — there is no automated check to draft.
+
 ## Step 5: Report
 
 After writing all files (or finding no new patterns), report:

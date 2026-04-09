@@ -15,6 +15,8 @@ Each package has a clear responsibility. Don't leak concerns across boundaries:
 
 Import shared code through workspace references (`@newsletter/shared`), never via relative paths across package boundaries.
 
+> Enforced by: no-restricted-imports in eslint.config.mjs (pipeline→hono, pipeline→@newsletter/api, web→drizzle-orm, api/routes→@newsletter/shared/db) + newsletter/enforce-repository-access.
+
 ## Deferred decisions
 
 The following have NOT been decided yet. Do not assume or introduce:
@@ -33,6 +35,8 @@ Every collector maps directly from source API response to `RawItemInsert[]` — 
 - **`RawItemInsert`** from `@newsletter/shared` is the only output type — collectors never define their own `ParsedItem` or equivalent
 - Use `RawItemEngagement` and `RawItemComment` from shared types for the jsonb fields
 - Each collector is a function: fetch → transform to `RawItemInsert[]` → upsert via repo → return `CollectorResult`
+
+> Enforced by: newsletter/collector-return-shape (type-aware).
 
 ## No scope creep
 
