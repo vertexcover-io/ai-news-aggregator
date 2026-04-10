@@ -137,5 +137,29 @@ ruleTester.run("no-relative-imports", rule, {
       ],
       output: `import { validate } from "@pipeline/lib/validate.js";`,
     },
+    {
+      name: "cross-package: ../../../shared/src/db in api repo file → @newsletter/shared/db",
+      filename: apiRepoFile,
+      code: `import { rawItems } from "../../../shared/src/db";`,
+      errors: [
+        {
+          messageId: "useAlias",
+          data: { alias: "@newsletter/shared/db" },
+        },
+      ],
+      output: `import { rawItems } from "@newsletter/shared/db";`,
+    },
+    {
+      name: "cross-package: ../../../shared/src/types/index.js in api file → @newsletter/shared/types/index.js",
+      filename: apiRouteFile,
+      code: `import type { Foo } from "../../../shared/src/types/index.js";`,
+      errors: [
+        {
+          messageId: "useAlias",
+          data: { alias: "@newsletter/shared/types/index.js" },
+        },
+      ],
+      output: `import type { Foo } from "@newsletter/shared/types/index.js";`,
+    },
   ],
 });
