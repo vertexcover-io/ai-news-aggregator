@@ -213,7 +213,12 @@ function buildHarness(db: AppDb): TestHarness {
   const stubGenerateObject = (
     args: GenerateArgs,
   ): Promise<{
-    object: { ranked: { id: number; score: number; rationale: string }[] };
+    object: {
+      ranked: (
+        | { id: number; relevance: number; novelty: number; signalVsHype: number; actionability: number; rationale: string }
+        | { id: number; novelty: number; signalVsHype: number; actionability: number; rationale: string }
+      )[];
+    };
   }> => {
     harness.generateCalls += 1;
     const parsed = JSON.parse(args.prompt) as {
@@ -221,16 +226,17 @@ function buildHarness(db: AppDb): TestHarness {
     };
     // Pick a rationale axis that matches whichever system prompt was sent.
     // Profiled prompt uses Relevance; no-profile prompt uses Novelty.
-    const axisRationale = args.system.includes("Relevance")
+    const isProfiled = args.system.includes("Relevance");
+    const axisRationale = isProfiled
       ? "strong Relevance — topic match"
       : "strong Novelty — new angle";
     return Promise.resolve({
       object: {
-        ranked: parsed.items.map((it, idx) => ({
-          id: it.id,
-          score: 80 - idx,
-          rationale: axisRationale,
-        })),
+        ranked: parsed.items.map((it) =>
+          isProfiled
+            ? { id: it.id, relevance: 4, novelty: 4, signalVsHype: 4, actionability: 4, rationale: axisRationale }
+            : { id: it.id, novelty: 4, signalVsHype: 4, actionability: 4, rationale: axisRationale },
+        ),
       },
     });
   };

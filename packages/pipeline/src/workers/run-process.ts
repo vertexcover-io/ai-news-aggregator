@@ -230,7 +230,6 @@ export async function handleRunProcessJob(
   }
   const { runId, topN, sourceTypes, collectors } = job.data;
   const profile = job.data.profile ?? null;
-  const halfLifeHours = job.data.halfLifeHours;
   const started = Date.now();
 
   // Stage 1: collecting
@@ -313,9 +312,8 @@ export async function handleRunProcessJob(
   );
 
   await deps.runState.setStage(runId, "shortlisting");
-  const { shortlist, breakdowns } = await deps.shortlistFn(deduped, {
+  const { shortlist } = await deps.shortlistFn(deduped, {
     profile,
-    halfLifeHours,
     runId,
   });
 
@@ -351,8 +349,6 @@ export async function handleRunProcessJob(
       topN,
       runId,
       profile,
-      halfLifeHours,
-      shortlistBreakdowns: breakdowns,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

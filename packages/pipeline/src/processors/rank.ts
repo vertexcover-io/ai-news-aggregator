@@ -14,9 +14,8 @@ import {
 } from "@pipeline/processors/rank-prompts.js";
 import { loadBodiesForShortlist as defaultLoadBodies } from "@pipeline/processors/rank-body-loader.js";
 import {
+  recencyGravity,
   ageHoursFromPublishedAt,
-  recencyDecay,
-  DEFAULT_HALF_LIFE_HOURS,
 } from "@pipeline/services/recency.js";
 
 const logger = createLogger("processor:rank");
@@ -26,21 +25,31 @@ const DEFAULT_BODY_TOKEN_BUDGET = 2000;
 const DEFAULT_COMMENTS_PER_ITEM = 5;
 const DEFAULT_COMMENT_TOKEN_BUDGET = 200;
 
-// Phase 5 will export a matching type from shortlist.ts. Declaring it locally
-// here keeps rank.ts decoupled during parallel development; the shape is a
-// structural subset so interop will be trivial once phase 5 lands.
-export interface ShortlistBreakdown {
-  id: number;
-  relevance: number;
-  recency: number;
-  combined: number;
+// Authority weights (REQ-019)
+export const AUTHORITY_WEIGHTS: Record<string, number> = {
+  blog: 1.0,
+  reddit: 0.85,
+  hn: 0.75,
+};
+
+// Engagement normalisation maxima (REQ-018)
+export const ENGAGEMENT_SOURCE_MAX: Record<string, number> = {
+  hn: 2000,
+  reddit: 10000,
+  blog: 0,
+};
+
+export function normalizeEngagement(candidate: Candidate): number {
+  const sourceMax = ENGAGEMENT_SOURCE_MAX[candidate.sourceType] ?? 0;
+  if (sourceMax === 0) return 0;
+  const merged = candidate.engagement.points + candidate.engagement.commentCount;
+  const norm = Math.log(1 + merged) / Math.log(1 + sourceMax);
+  return Math.min(1, norm);
 }
 
 export interface RankOptions {
   profile: UserProfile | null;
   topN: number;
-  halfLifeHours?: number;
-  shortlistBreakdowns?: ShortlistBreakdown[];
   bodyTokenBudget?: number;
   commentsPerItem?: number;
   commentTokenBudget?: number;
@@ -57,15 +66,27 @@ export interface RankResult {
   rankedCount: number;
 }
 
-const rankedEntrySchema = z.object({
+const axisSchema = z.number().int().min(1).max(5);
+
+const profiledEntrySchema = z.object({
   id: z.number().int(),
-  score: z.number(),
+  relevance: axisSchema,
+  novelty: axisSchema,
+  signalVsHype: axisSchema,
+  actionability: axisSchema,
   rationale: z.string().min(1),
 });
 
-export const rankedResponseSchema = z.object({
-  ranked: z.array(rankedEntrySchema),
+const noProfileEntrySchema = z.object({
+  id: z.number().int(),
+  novelty: axisSchema,
+  signalVsHype: axisSchema,
+  actionability: axisSchema,
+  rationale: z.string().min(1),
 });
+
+const profiledResponseSchema = z.object({ ranked: z.array(profiledEntrySchema) });
+const noProfileResponseSchema = z.object({ ranked: z.array(noProfileEntrySchema) });
 
 const PROFILED_AXES = [
   "Relevance",
@@ -75,8 +96,10 @@ const PROFILED_AXES = [
 ] as const;
 const NO_PROFILE_AXES = ["Novelty", "Signal-vs-hype", "Actionability"] as const;
 
-// Approximate token count as ceil(chars / 4). This is coarse but good enough
-// for a truncation budget; swap in a real tokenizer if precision ever matters.
+const PROFILED_WEIGHTS = { llm: 0.40, engagement: 0.25, recency: 0.20, authority: 0.15 };
+const NO_PROFILE_WEIGHTS = { llm: 0.50, engagement: 0.30, recency: 0.20 };
+
+// Approximate token count as ceil(chars / 4).
 function truncateByTokenBudget(text: string, tokenBudget: number): string {
   const charBudget = tokenBudget * 4;
   if (text.length <= charBudget) return text;
@@ -96,7 +119,6 @@ interface PromptItem {
   sourceType: string;
   publishedAt: string | null;
   ageHuman: string;
-  stage1Score: number | null;
   body: string | null;
   comments?: string[];
 }
@@ -104,7 +126,6 @@ interface PromptItem {
 function buildPromptItem(
   candidate: Candidate,
   body: string | null,
-  stage1Score: number | null,
   now: Date,
   bodyTokenBudget: number,
   commentsPerItem: number,
@@ -123,7 +144,6 @@ function buildPromptItem(
       ? candidate.publishedAt.toISOString()
       : null,
     ageHuman: humanAge(ageHours),
-    stage1Score,
     body: truncatedBody,
   };
 
@@ -135,6 +155,23 @@ function buildPromptItem(
   }
 
   return item;
+}
+
+type ProfiledEntry = z.infer<typeof profiledEntrySchema>;
+type NoProfileEntry = z.infer<typeof noProfileEntrySchema>;
+
+interface ScoredEntry {
+  rawItemId: number;
+  meanAxis: number;
+  rationale: string;
+  candidate: Candidate;
+}
+
+function applyQualityGate(entries: ScoredEntry[]): ScoredEntry[] {
+  const passing = entries.filter((e) => e.meanAxis >= 2.0);
+  if (passing.length > 0) return passing;
+  const best = entries.reduce((a, b) => (b.meanAxis > a.meanAxis ? b : a));
+  return [best];
 }
 
 export async function rankCandidates(
@@ -150,7 +187,6 @@ export async function rankCandidates(
   const generate = options.generateObject ?? defaultGenerateObject;
   const loadBodies = options.loadBodies ?? defaultLoadBodies;
   const now = options.now ?? new Date();
-  const halfLifeHours = options.halfLifeHours ?? DEFAULT_HALF_LIFE_HOURS;
   const bodyTokenBudget = options.bodyTokenBudget ?? DEFAULT_BODY_TOKEN_BUDGET;
   const commentsPerItem = options.commentsPerItem ?? DEFAULT_COMMENTS_PER_ITEM;
   const commentTokenBudget =
@@ -159,18 +195,11 @@ export async function rankCandidates(
     options.modelId ?? process.env.RANKING_MODEL ?? DEFAULT_MODEL;
 
   const bodies = await loadBodies(shortlist);
-  const stage1Scores = new Map<number, number>();
-  if (options.shortlistBreakdowns) {
-    for (const b of options.shortlistBreakdowns) {
-      stage1Scores.set(b.id, b.combined);
-    }
-  }
 
   const promptItems = shortlist.map((c) =>
     buildPromptItem(
       c,
       bodies.get(c.id) ?? null,
-      stage1Scores.get(c.id) ?? null,
       now,
       bodyTokenBudget,
       commentsPerItem,
@@ -184,16 +213,18 @@ export async function rankCandidates(
       : RANK_SYSTEM_PROMPT_NO_PROFILE;
 
   const axes = options.profile !== null ? PROFILED_AXES : NO_PROFILE_AXES;
+  const schema = options.profile !== null ? profiledResponseSchema : noProfileResponseSchema;
 
-  let result: { object: z.infer<typeof rankedResponseSchema> };
+  let ranked: (ProfiledEntry | NoProfileEntry)[];
   try {
-    result = (await generate({
+    const res = (await generate({
       model: anthropic(modelId),
       system: systemPrompt,
       prompt: JSON.stringify({ items: promptItems }, null, 2),
-      schema: rankedResponseSchema,
+      schema,
       temperature: 0,
-    })) as { object: z.infer<typeof rankedResponseSchema> };
+    })) as { object: { ranked: (ProfiledEntry | NoProfileEntry)[] } };
+    ranked = res.object.ranked;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error(
@@ -203,7 +234,7 @@ export async function rankCandidates(
     throw new Error(`ranking failed: ${message}`, { cause: err });
   }
 
-  for (const entry of result.object.ranked) {
+  for (const entry of ranked) {
     const rationaleLower = entry.rationale.toLowerCase();
     const mentionsAxis = axes.some((axis) =>
       rationaleLower.includes(axis.toLowerCase()),
@@ -216,22 +247,45 @@ export async function rankCandidates(
   }
 
   const byId = new Map(shortlist.map((c) => [c.id, c]));
-  const validEntries = result.object.ranked.filter((r) => byId.has(r.id));
+  const validEntries = ranked.filter((r) => byId.has(r.id));
   if (validEntries.length === 0) {
     throw new Error("ranking returned no valid items");
   }
 
-  const adjusted = validEntries.map((r) => {
+  const scored: ScoredEntry[] = validEntries.flatMap((r) => {
     const cand = byId.get(r.id);
-    const ageHours = ageHoursFromPublishedAt(
-      cand?.publishedAt ?? null,
-      now,
-    );
-    const factor = recencyDecay(ageHours, halfLifeHours);
+    if (cand === undefined) return [];
+    const meanAxis =
+      "relevance" in r
+        ? (r.relevance + r.novelty + r.signalVsHype + r.actionability) / 4
+        : (r.novelty + r.signalVsHype + r.actionability) / 3;
+    return [{ rawItemId: r.id, meanAxis, rationale: r.rationale, candidate: cand }];
+  });
+
+  const passing = applyQualityGate(scored);
+
+  const adjusted = passing.map((entry) => {
+    const cand = entry.candidate;
+    const llmSignal = entry.meanAxis / 5;
+    const engagementSignal = normalizeEngagement(cand);
+    const ageHours = ageHoursFromPublishedAt(cand.publishedAt, now);
+    const recencySignal = recencyGravity(ageHours);
+    const authoritySignal = AUTHORITY_WEIGHTS[cand.sourceType] ?? 0.75;
+
+    const fusionScore =
+      options.profile !== null
+        ? PROFILED_WEIGHTS.llm * llmSignal +
+          PROFILED_WEIGHTS.engagement * engagementSignal +
+          PROFILED_WEIGHTS.recency * recencySignal +
+          PROFILED_WEIGHTS.authority * authoritySignal
+        : NO_PROFILE_WEIGHTS.llm * llmSignal +
+          NO_PROFILE_WEIGHTS.engagement * engagementSignal +
+          NO_PROFILE_WEIGHTS.recency * recencySignal;
+
     return {
-      rawItemId: r.id,
-      score: r.score * factor,
-      rationale: r.rationale,
+      rawItemId: entry.rawItemId,
+      score: fusionScore,
+      rationale: entry.rationale,
     };
   });
 
