@@ -6,6 +6,13 @@ import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
 import type { UserProfile } from "@newsletter/shared";
 import { dedupCandidates } from "@pipeline/processors/dedup.js";
+import { filterNoise } from "@pipeline/processors/noise.js";
+import { semanticDedupCandidates } from "@pipeline/processors/semantic-dedup.js";
+import { mmrSelect, type MmrItem } from "@pipeline/processors/mmr.js";
+import type { NoiseFilterOptions } from "@pipeline/processors/noise.js";
+import type { SemanticDedupOptions, SemanticDedupResult } from "@pipeline/processors/semantic-dedup.js";
+import type { MmrOptions } from "@pipeline/processors/mmr.js";
+import type { RankedItemRef } from "@newsletter/shared";
 import {
   createCandidatesRepo,
   type CandidatesRepo,
@@ -82,6 +89,18 @@ export type ShortlistFn = (
   options: ShortlistOptions,
 ) => Promise<ShortlistResult>;
 
+export type NoiseFn = (
+  candidates: readonly Candidate[],
+  options: NoiseFilterOptions,
+) => Candidate[];
+
+export type SemanticDedupFn = (
+  candidates: readonly Candidate[],
+  options: SemanticDedupOptions,
+) => Promise<SemanticDedupResult>;
+
+export type MmrFn = (items: MmrItem[], options: MmrOptions) => RankedItemRef[];
+
 export type HnCollectFn = (
   deps: { rawItemsRepo: ReturnType<typeof createRawItemsRepo> },
   config: HnCollectConfig,
@@ -108,8 +127,11 @@ export interface RunProcessDeps {
   rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
   candidatesRepo: CandidatesRepo;
   loadFn: LoadCandidatesFn;
+  noiseFn: NoiseFn;
+  semanticDedupFn: SemanticDedupFn;
   shortlistFn: ShortlistFn;
   rankFn: RankFn;
+  mmrFn: MmrFn;
   collectFns: CollectFns;
 }
 
@@ -300,21 +322,96 @@ export async function handleRunProcessJob(
     return { rankedCount: 0 };
   }
 
-  const deduped = dedupCandidates(raw);
+  // 2a: URL dedup (exact, fast, cheap)
+  const urlDeduped = dedupCandidates(raw);
   logger.info(
     {
       event: "run.dedup",
       runId,
       inputCount: raw.length,
-      outputCount: deduped.length,
+      outputCount: urlDeduped.length,
     },
     "run.dedup",
   );
 
+  // 2b: Noise pre-filter (REQ-001, REQ-002)
+  const noiseFiltered = deps.noiseFn(urlDeduped, { runId });
+  logger.info(
+    {
+      event: "run.noise",
+      runId,
+      inputCount: urlDeduped.length,
+      outputCount: noiseFiltered.length,
+    },
+    "run.noise",
+  );
+
+  if (noiseFiltered.length === 0) {
+    await deps.runState.update(runId, (prev) => ({
+      ...prev,
+      stage: "completed",
+      status: "completed",
+      rankedItems: [],
+      completedAt: new Date().toISOString(),
+      warnings: [...prev.warnings, "all candidates filtered by noise filter"],
+    }));
+    logger.info(
+      {
+        event: "run.completed",
+        runId,
+        totalDurationMs: Date.now() - started,
+        rankedItemCount: 0,
+      },
+      "run.completed",
+    );
+    return { rankedCount: 0 };
+  }
+
+  // 2c: Semantic dedup — returns candidates + titleEmbeds (REQ-003 to REQ-008)
+  const { candidates: semanticDeduped, titleEmbeds } = await deps.semanticDedupFn(
+    noiseFiltered,
+    { runId },
+  );
+  logger.info(
+    {
+      event: "run.semantic-dedup",
+      runId,
+      inputCount: noiseFiltered.length,
+      outputCount: semanticDeduped.length,
+    },
+    "run.semantic-dedup",
+  );
+
+  if (semanticDeduped.length === 0) {
+    await deps.runState.update(runId, (prev) => ({
+      ...prev,
+      stage: "completed",
+      status: "completed",
+      rankedItems: [],
+      completedAt: new Date().toISOString(),
+      warnings: [...prev.warnings, "all candidates removed by semantic dedup"],
+    }));
+    logger.info(
+      {
+        event: "run.completed",
+        runId,
+        totalDurationMs: Date.now() - started,
+        rankedItemCount: 0,
+      },
+      "run.completed",
+    );
+    return { rankedCount: 0 };
+  }
+
+  // Stage 3: shortlisting — reuses titleEmbeds from semantic dedup (REQ-009)
   await deps.runState.setStage(runId, "shortlisting");
-  const { shortlist } = await deps.shortlistFn(deduped, {
+  const {
+    shortlist,
+    titleEmbeds: shortlistEmbeds,
+  } = await deps.shortlistFn(semanticDeduped, {
     profile,
     runId,
+    titleEmbeds,
   });
 
   if (shortlist.length === 0) {
@@ -341,12 +438,13 @@ export async function handleRunProcessJob(
     return { rankedCount: 0 };
   }
 
+  // Stage 4: ranking with 4-signal fusion (over-select before MMR source caps)
   await deps.runState.setStage(runId, "ranking");
 
   let rankResult: RankResult;
   try {
     rankResult = await deps.rankFn(shortlist, {
-      topN,
+      topN: topN * 3,
       runId,
       profile,
     });
@@ -362,11 +460,34 @@ export async function handleRunProcessJob(
     throw err;
   }
 
+  // Stage 5: MMR diversity selection (REQ-022 to REQ-025)
+  // Build lookup maps from the shortlist for O(1) access
+  const shortlistById = new Map(shortlist.map((c) => [c.id, c]));
+  const idxMap = new Map(shortlist.map((c, i) => [c.id, i]));
+  const mmrItems: MmrItem[] = rankResult.rankedItems.map((ref) => {
+    const c = shortlistById.get(ref.rawItemId);
+    return {
+      ref,
+      title: c?.title ?? "",
+      sourceType: c?.sourceType ?? "hn",
+    };
+  });
+  const mmrTitleEmbeds = mmrItems.map((item) => {
+    const idx = idxMap.get(item.ref.rawItemId);
+    return idx !== undefined ? (shortlistEmbeds[idx] ?? []) : [];
+  });
+
+  const finalRanked = deps.mmrFn(mmrItems, {
+    topN,
+    titleEmbeds: mmrTitleEmbeds,
+    runId,
+  });
+
   await deps.runState.update(runId, (prev) => ({
     ...prev,
     stage: "completed",
     status: "completed",
-    rankedItems: rankResult.rankedItems,
+    rankedItems: finalRanked,
     completedAt: new Date().toISOString(),
   }));
 
@@ -375,12 +496,12 @@ export async function handleRunProcessJob(
       event: "run.completed",
       runId,
       totalDurationMs: Date.now() - started,
-      rankedItemCount: rankResult.rankedItems.length,
+      rankedItemCount: finalRanked.length,
     },
     "run.completed",
   );
 
-  return { rankedCount: rankResult.rankedItems.length };
+  return { rankedCount: finalRanked.length };
 }
 
 export interface CreateRunProcessWorkerOptions {
@@ -389,8 +510,11 @@ export interface CreateRunProcessWorkerOptions {
   rawItemsRepo?: ReturnType<typeof createRawItemsRepo>;
   candidatesRepo?: CandidatesRepo;
   loadFn?: LoadCandidatesFn;
+  noiseFn?: NoiseFn;
+  semanticDedupFn?: SemanticDedupFn;
   shortlistFn?: ShortlistFn;
   rankFn?: RankFn;
+  mmrFn?: MmrFn;
   collectFns?: Partial<CollectFns>;
 }
 
@@ -406,11 +530,14 @@ export function createRunProcessWorker(
   const candidatesRepo =
     options.candidatesRepo ?? createCandidatesRepo(ensureDb(db));
   const loadFn = options.loadFn ?? loadCandidatesSince;
+  const noiseFn: NoiseFn = options.noiseFn ?? filterNoise;
+  const semanticDedupFn: SemanticDedupFn = options.semanticDedupFn ?? semanticDedupCandidates;
   const shortlistFn: ShortlistFn =
     options.shortlistFn ??
     ((candidates, opts) => shortlistCandidates(candidates, opts));
   const rankFn: RankFn =
     options.rankFn ?? ((candidates, opts) => rankCandidates(candidates, opts));
+  const mmrFn: MmrFn = options.mmrFn ?? mmrSelect;
   const collectFns: CollectFns = {
     hn: options.collectFns?.hn ?? collectHn,
     reddit: options.collectFns?.reddit ?? collectReddit,
@@ -422,8 +549,11 @@ export function createRunProcessWorker(
     rawItemsRepo,
     candidatesRepo,
     loadFn,
+    noiseFn,
+    semanticDedupFn,
     shortlistFn,
     rankFn,
+    mmrFn,
     collectFns,
   };
 

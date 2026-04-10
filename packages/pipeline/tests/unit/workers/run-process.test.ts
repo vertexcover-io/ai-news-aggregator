@@ -17,6 +17,10 @@ import type {
   RedditCollectConfig,
   WebCollectConfig,
 } from "@pipeline/types.js";
+import type { NoiseFilterOptions } from "@pipeline/processors/noise.js";
+import type { SemanticDedupOptions, SemanticDedupResult } from "@pipeline/processors/semantic-dedup.js";
+import type { MmrItem, MmrOptions } from "@pipeline/processors/mmr.js";
+import type { NoiseFn, SemanticDedupFn, MmrFn } from "@pipeline/workers/run-process.js";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -75,6 +79,29 @@ vi.mock("@newsletter/shared/logger", () => ({
   })),
 }));
 
+// Mock new processors so unit tests don't call real Voyage/LLM APIs
+vi.mock("@pipeline/processors/noise.js", () => ({
+  filterNoise: vi.fn((candidates: readonly unknown[]) => [...candidates]),
+  MIN_ENGAGEMENT: { hn: 5, reddit: 10, blog: 0 },
+  NOISE_PATTERNS: [],
+}));
+
+vi.mock("@pipeline/processors/semantic-dedup.js", () => ({
+  semanticDedupCandidates: vi.fn((candidates: readonly unknown[]) =>
+    Promise.resolve({
+      candidates: [...candidates],
+      titleEmbeds: (candidates as unknown[]).map(() => []),
+    }),
+  ),
+  SIMILARITY_THRESHOLD: 0.85,
+}));
+
+vi.mock("@pipeline/processors/mmr.js", () => ({
+  mmrSelect: vi.fn((items: { ref: unknown }[]) => items.map((item) => item.ref)),
+  MMR_LAMBDA: 0.7,
+  SOURCE_CAP: 3,
+}));
+
 const { createRunProcessWorker } = await import(
   "@pipeline/workers/run-process.js"
 );
@@ -104,9 +131,10 @@ function passthroughShortlist(cands: Candidate[]): ShortlistResult {
     breakdowns: cands.map((c) => ({
       id: c.id,
       relevance: 0,
-      recency: 1,
-      combined: 1,
+      recency: 0,
+      combined: 0,
     })),
+    titleEmbeds: cands.map(() => []),
   };
 }
 
@@ -331,10 +359,8 @@ describe("run-process worker", () => {
     expect((rankInput as { id: number }[]).length).toBe(2);
     const opts = rankOpts as RankOptions;
     expect(opts.profile).toBeNull();
-    expect(opts.topN).toBe(3);
+    expect(opts.topN).toBe(9); // topN * 3 = 3 * 3 (over-select before MMR)
     expect(opts.runId).toBe("run-1");
-    expect(opts.shortlistBreakdowns).toBeDefined();
-    expect(opts.shortlistBreakdowns?.length).toBe(2);
 
     const last = runStateMock.updates.at(-1);
     expect(last?.status).toBe("completed");
@@ -968,9 +994,10 @@ describe("run-process worker", () => {
           breakdowns: top20.map((c) => ({
             id: c.id,
             relevance: 0.5,
-            recency: 0.9,
-            combined: 0.45,
+            recency: 0,
+            combined: 0.5,
           })),
+          titleEmbeds: top20.map(() => []),
         }),
     );
     const rankFn = vi.fn(
@@ -1005,7 +1032,7 @@ describe("run-process worker", () => {
     );
     const shortlistFn = vi.fn(
       (): Promise<ShortlistResult> =>
-        Promise.resolve({ shortlist: [], breakdowns: [] }),
+        Promise.resolve({ shortlist: [], breakdowns: [], titleEmbeds: [] }),
     );
     const rankFn = vi.fn();
     const worker = createRunProcessWorker({
@@ -1133,8 +1160,8 @@ describe("run-process worker", () => {
     expect(resB.rankProfiles).toEqual([profileB]);
   });
 
-  // REQ-100: halfLifeHours from payload flows through to shortlist and rank options
-  it("REQ-100: halfLifeHours payload propagates to shortlistFn and rankFn options", async () => {
+  // REQ-028: halfLifeHours still accepted in payload but NOT forwarded to rank/shortlist
+  it("REQ-028: halfLifeHours payload accepted but silently ignored (not forwarded)", async () => {
     const runStateMock = makeMockRunState(makeRunState());
     const candidates = [makeCandidate(1)];
     const loadFn = vi.fn(
@@ -1161,9 +1188,377 @@ describe("run-process worker", () => {
       data: { ...baseJob.data, halfLifeHours: 48 },
     });
 
+    // halfLifeHours is no longer forwarded to shortlist or rank (recency moved to fusion stage)
     const [, sOpts] = shortlistFn.mock.calls[0] ?? [];
-    expect(sOpts?.halfLifeHours).toBe(48);
+    expect((sOpts as { halfLifeHours?: number } | undefined)?.halfLifeHours).toBeUndefined();
     const [, rOpts] = rankFn.mock.calls[0] ?? [];
-    expect(rOpts?.halfLifeHours).toBe(48);
+    expect((rOpts as { halfLifeHours?: number } | undefined)?.halfLifeHours).toBeUndefined();
+  });
+
+  // REQ-028: RunProcessJobData shape unchanged — halfLifeHours still accepted
+  it("REQ-028: RunProcessJobData accepts halfLifeHours without requiring it", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const loadFn = vi.fn((): Promise<Candidate[]> => Promise.resolve([]));
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      rankFn: vi.fn(),
+    });
+
+    // halfLifeHours is optional — no type error, run completes
+    const result = await worker.handler({
+      ...baseJob,
+      data: { ...baseJob.data, halfLifeHours: 24 },
+    });
+    expect(result).toEqual({ rankedCount: 0 });
+  });
+
+  // Pipeline order: noiseFn → semanticDedupFn → shortlistFn → rankFn → mmrFn
+  it("pipeline stages called in order: noiseFn → semanticDedupFn → shortlistFn → rankFn → mmrFn", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [
+      makeCandidate(1, "https://example.com/1"),
+      makeCandidate(2, "https://example.com/2"),
+    ];
+    const loadFn = vi.fn((): Promise<Candidate[]> => Promise.resolve(candidates));
+
+    const callOrder: string[] = [];
+    const noiseFn: NoiseFn = vi.fn((cands: readonly Candidate[], _opts: NoiseFilterOptions): Candidate[] => {
+      callOrder.push("noiseFn");
+      return [...cands];
+    });
+    const semanticDedupFn: SemanticDedupFn = vi.fn(
+      (cands: readonly Candidate[], _opts: SemanticDedupOptions): Promise<SemanticDedupResult> => {
+        callOrder.push("semanticDedupFn");
+        return Promise.resolve({ candidates: [...cands], titleEmbeds: cands.map(() => [1, 0]) });
+      },
+    );
+    const shortlistFn = vi.fn(
+      (cands: Candidate[], _opts: ShortlistOptions): Promise<ShortlistResult> => {
+        callOrder.push("shortlistFn");
+        return Promise.resolve({
+          shortlist: cands,
+          breakdowns: cands.map((c) => ({ id: c.id, relevance: 0, recency: 0, combined: 0 })),
+          titleEmbeds: cands.map(() => [1, 0]),
+        });
+      },
+    );
+    const rankFn = vi.fn(
+      (cands: Candidate[], opts: RankOptions): Promise<RankResult> => {
+        callOrder.push("rankFn");
+        return Promise.resolve({
+          rankedItems: cands.slice(0, opts.topN).map((c, i) => ({
+            rawItemId: c.id,
+            score: 1 - i * 0.1,
+            rationale: "test",
+          })),
+          candidateCount: cands.length,
+          rankedCount: Math.min(cands.length, opts.topN),
+        });
+      },
+    );
+    const mmrFn: MmrFn = vi.fn((_items: MmrItem[], _opts: MmrOptions): RankedItemRef[] => {
+      callOrder.push("mmrFn");
+      return [{ rawItemId: 1, score: 0.9, rationale: "mmr" }];
+    });
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      noiseFn,
+      semanticDedupFn,
+      shortlistFn,
+      rankFn,
+      mmrFn,
+    });
+
+    await worker.handler(baseJob);
+
+    expect(callOrder).toEqual(["noiseFn", "semanticDedupFn", "shortlistFn", "rankFn", "mmrFn"]);
+  });
+
+  // EDGE-001: all candidates match noise patterns → empty result
+  it("EDGE-001: all candidates filtered by noiseFn → run completes with rankedItems: []", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1), makeCandidate(2)];
+    const loadFn = vi.fn((): Promise<Candidate[]> => Promise.resolve(candidates));
+    const noiseFn: NoiseFn = vi.fn((): Candidate[] => []);
+    const semanticDedupFn: SemanticDedupFn = vi.fn();
+    const rankFn = vi.fn();
+    const mmrFn: MmrFn = vi.fn();
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      noiseFn,
+      semanticDedupFn,
+      rankFn,
+      mmrFn,
+    });
+
+    const result = await worker.handler(baseJob);
+
+    expect(noiseFn).toHaveBeenCalledOnce();
+    expect(semanticDedupFn).not.toHaveBeenCalled();
+    expect(rankFn).not.toHaveBeenCalled();
+    expect(mmrFn).not.toHaveBeenCalled();
+    const last = runStateMock.updates.at(-1);
+    expect(last?.status).toBe("completed");
+    expect(last?.rankedItems).toEqual([]);
+    expect(result).toEqual({ rankedCount: 0 });
+  });
+
+  // EDGE-015: empty after URL dedup → all stages short-circuit
+  it("EDGE-015: empty candidates after URL dedup → rankedItems: []", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    // All same URL → dedups to 0 after... actually URL dedup keeps one representative.
+    // Use loadFn returning [] to simulate empty after collection.
+    const loadFn = vi.fn((): Promise<Candidate[]> => Promise.resolve([]));
+    const noiseFn: NoiseFn = vi.fn();
+    const rankFn = vi.fn();
+    const mmrFn: MmrFn = vi.fn();
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      noiseFn,
+      rankFn,
+      mmrFn,
+    });
+
+    const result = await worker.handler(baseJob);
+
+    expect(noiseFn).not.toHaveBeenCalled();
+    expect(rankFn).not.toHaveBeenCalled();
+    expect(mmrFn).not.toHaveBeenCalled();
+    expect(result).toEqual({ rankedCount: 0 });
+    const last = runStateMock.updates.at(-1);
+    expect(last?.rankedItems).toEqual([]);
+  });
+
+  // EDGE-016: single candidate propagates through all stages
+  it("EDGE-016: single candidate propagates through all stages to final output", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const single = makeCandidate(42, "https://example.com/unique");
+    const loadFn = vi.fn((): Promise<Candidate[]> => Promise.resolve([single]));
+    const noiseFn: NoiseFn = vi.fn((cands) => [...cands]);
+    const semanticDedupFn: SemanticDedupFn = vi.fn(
+      (cands): Promise<SemanticDedupResult> =>
+        Promise.resolve({ candidates: [...cands], titleEmbeds: [[1, 0]] }),
+    );
+    const shortlistFn = vi.fn(
+      (cands: Candidate[], _opts: ShortlistOptions): Promise<ShortlistResult> =>
+        Promise.resolve({
+          shortlist: cands,
+          breakdowns: cands.map((c) => ({ id: c.id, relevance: 1, recency: 1, combined: 1 })),
+          titleEmbeds: [[1, 0]],
+        }),
+    );
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 42, score: 0.9, rationale: "best" }],
+          candidateCount: 1,
+          rankedCount: 1,
+        }),
+    );
+    const mmrFn: MmrFn = vi.fn(
+      (): RankedItemRef[] => [{ rawItemId: 42, score: 0.9, rationale: "best" }],
+    );
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      noiseFn,
+      semanticDedupFn,
+      shortlistFn,
+      rankFn,
+      mmrFn,
+    });
+
+    const result = await worker.handler(baseJob);
+
+    expect(noiseFn).toHaveBeenCalledOnce();
+    expect(semanticDedupFn).toHaveBeenCalledOnce();
+    expect(shortlistFn).toHaveBeenCalledOnce();
+    expect(rankFn).toHaveBeenCalledOnce();
+    expect(mmrFn).toHaveBeenCalledOnce();
+    const last = runStateMock.updates.at(-1);
+    expect(last?.rankedItems).toEqual([{ rawItemId: 42, score: 0.9, rationale: "best" }]);
+    expect(result).toEqual({ rankedCount: 1 });
+  });
+
+  // noiseFn runId forwarded correctly
+  it("noiseFn receives correct runId in options", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn((): Promise<Candidate[]> => Promise.resolve(candidates));
+    let capturedRunId: string | undefined;
+    const noiseFn: NoiseFn = vi.fn((cands, opts) => {
+      capturedRunId = opts.runId;
+      return [...cands];
+    });
+    const semanticDedupFn: SemanticDedupFn = vi.fn(
+      (cands): Promise<SemanticDedupResult> =>
+        Promise.resolve({ candidates: [...cands], titleEmbeds: cands.map(() => []) }),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({ rankedItems: [], candidateCount: 1, rankedCount: 0 }),
+    );
+    const mmrFn: MmrFn = vi.fn((): RankedItemRef[] => []);
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      noiseFn,
+      semanticDedupFn,
+      shortlistFn,
+      rankFn,
+      mmrFn,
+    });
+
+    await worker.handler(baseJob);
+
+    expect(capturedRunId).toBe("run-1");
+  });
+
+  // semanticDedupFn titleEmbeds forwarded to shortlist (REQ-009)
+  it("titleEmbeds from semanticDedupFn forwarded to shortlistFn (REQ-009)", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1), makeCandidate(2)];
+    const loadFn = vi.fn((): Promise<Candidate[]> => Promise.resolve(candidates));
+    const noiseFn: NoiseFn = vi.fn((cands) => [...cands]);
+    const titleEmbedsFromDedup = [[1, 0, 0], [0, 1, 0]];
+    const semanticDedupFn: SemanticDedupFn = vi.fn(
+      (cands): Promise<SemanticDedupResult> =>
+        Promise.resolve({ candidates: [...cands], titleEmbeds: titleEmbedsFromDedup }),
+    );
+    let capturedTitleEmbeds: number[][] | undefined;
+    const shortlistFn = vi.fn(
+      (cands: Candidate[], opts: ShortlistOptions): Promise<ShortlistResult> => {
+        capturedTitleEmbeds = opts.titleEmbeds;
+        return Promise.resolve({
+          shortlist: cands,
+          breakdowns: cands.map((c) => ({ id: c.id, relevance: 0, recency: 0, combined: 0 })),
+          titleEmbeds: cands.map(() => []),
+        });
+      },
+    );
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({ rankedItems: [], candidateCount: 2, rankedCount: 0 }),
+    );
+    const mmrFn: MmrFn = vi.fn((): RankedItemRef[] => []);
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      noiseFn,
+      semanticDedupFn,
+      shortlistFn,
+      rankFn,
+      mmrFn,
+    });
+
+    await worker.handler(baseJob);
+
+    expect(capturedTitleEmbeds).toEqual(titleEmbedsFromDedup);
+  });
+
+  // shortlist titleEmbeds forwarded to MMR via rank stage (REQ-023)
+  it("shortlist titleEmbeds forwarded to mmrFn aligned to rankResult items (REQ-023)", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const c1 = makeCandidate(1, "https://example.com/1");
+    const c2 = makeCandidate(2, "https://example.com/2");
+    const loadFn = vi.fn((): Promise<Candidate[]> => Promise.resolve([c1, c2]));
+    const noiseFn: NoiseFn = vi.fn((cands) => [...cands]);
+    const semanticDedupFn: SemanticDedupFn = vi.fn(
+      (cands): Promise<SemanticDedupResult> =>
+        Promise.resolve({ candidates: [...cands], titleEmbeds: cands.map(() => []) }),
+    );
+    const shortlistEmbeds = [[0.9, 0.1], [0.2, 0.8]];
+    const shortlistFn = vi.fn(
+      (cands: Candidate[], _opts: ShortlistOptions): Promise<ShortlistResult> =>
+        Promise.resolve({
+          shortlist: cands,
+          breakdowns: cands.map((c) => ({ id: c.id, relevance: 0, recency: 0, combined: 0 })),
+          titleEmbeds: shortlistEmbeds,
+        }),
+    );
+    const ranked: RankedItemRef[] = [
+      { rawItemId: 2, score: 0.8, rationale: "r2" },
+      { rawItemId: 1, score: 0.7, rationale: "r1" },
+    ];
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({ rankedItems: ranked, candidateCount: 2, rankedCount: 2 }),
+    );
+    let capturedMmrEmbeds: number[][] | undefined;
+    const mmrFn: MmrFn = vi.fn((_items, opts): RankedItemRef[] => {
+      capturedMmrEmbeds = opts.titleEmbeds;
+      return ranked.slice(0, 1);
+    });
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      noiseFn,
+      semanticDedupFn,
+      shortlistFn,
+      rankFn,
+      mmrFn,
+    });
+
+    await worker.handler(baseJob);
+
+    // mmrTitleEmbeds should be aligned to mmrItems (ranked order: c2, c1)
+    // c2 is at index 1 in shortlist → shortlistEmbeds[1] = [0.2, 0.8]
+    // c1 is at index 0 in shortlist → shortlistEmbeds[0] = [0.9, 0.1]
+    expect(capturedMmrEmbeds).toEqual([[0.2, 0.8], [0.9, 0.1]]);
+  });
+
+  // mmrFn output stored as rankedItems
+  it("mmrFn output stored as rankedItems in run-state", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1), makeCandidate(2)];
+    const loadFn = vi.fn((): Promise<Candidate[]> => Promise.resolve(candidates));
+    const noiseFn: NoiseFn = vi.fn((cands) => [...cands]);
+    const semanticDedupFn: SemanticDedupFn = vi.fn(
+      (cands): Promise<SemanticDedupResult> =>
+        Promise.resolve({ candidates: [...cands], titleEmbeds: cands.map(() => []) }),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankFn = vi.fn(
+      (cands: Candidate[]): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: cands.map((c, i) => ({
+            rawItemId: c.id,
+            score: 1 - i * 0.1,
+            rationale: "rank",
+          })),
+          candidateCount: cands.length,
+          rankedCount: cands.length,
+        }),
+    );
+    const mmrOutput: RankedItemRef[] = [{ rawItemId: 2, score: 0.95, rationale: "mmr-winner" }];
+    const mmrFn: MmrFn = vi.fn((): RankedItemRef[] => mmrOutput);
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      noiseFn,
+      semanticDedupFn,
+      shortlistFn,
+      rankFn,
+      mmrFn,
+    });
+
+    const result = await worker.handler(baseJob);
+
+    const last = runStateMock.updates.at(-1);
+    expect(last?.rankedItems).toEqual(mmrOutput);
+    expect(result).toEqual({ rankedCount: 1 });
   });
 });

@@ -4,11 +4,6 @@ import {
   embedBatch as defaultEmbedBatch,
   cosineSimilarity,
 } from "@pipeline/services/embeddings.js";
-import {
-  DEFAULT_HALF_LIFE_HOURS,
-  recencyDecay,
-  ageHoursFromPublishedAt,
-} from "@pipeline/services/recency.js";
 
 const logger = createLogger("processor:shortlist");
 
@@ -18,11 +13,11 @@ export const DEFAULT_ANTI_TOPIC_WEIGHT = 0.5;
 export interface ShortlistOptions {
   profile: UserProfile | null;
   shortlistSize?: number;
-  halfLifeHours?: number;
   antiTopicWeight?: number;
   runId?: string;
   now?: Date;
   embedBatch?: typeof defaultEmbedBatch;
+  titleEmbeds?: number[][]; // pre-computed from semantic-dedup (REQ-009)
 }
 
 export interface ShortlistBreakdown {
@@ -35,6 +30,7 @@ export interface ShortlistBreakdown {
 export interface ShortlistResult {
   shortlist: Candidate[];
   breakdowns: ShortlistBreakdown[];
+  titleEmbeds: number[][]; // same order as shortlist — forwarded to MMR (REQ-009)
 }
 
 export async function shortlistCandidates(
@@ -43,9 +39,7 @@ export async function shortlistCandidates(
 ): Promise<ShortlistResult> {
   const startedAt = Date.now();
   const shortlistSize = options.shortlistSize ?? DEFAULT_SHORTLIST_SIZE;
-  const halfLifeHours = options.halfLifeHours ?? DEFAULT_HALF_LIFE_HOURS;
   const antiWeight = options.antiTopicWeight ?? DEFAULT_ANTI_TOPIC_WEIGHT;
-  const now = options.now ?? new Date();
   const embed = options.embedBatch ?? defaultEmbedBatch;
 
   logger.info(
@@ -60,18 +54,28 @@ export async function shortlistCandidates(
   );
 
   if (candidates.length === 0) {
-    const empty: ShortlistResult = { shortlist: [], breakdowns: [] };
+    const empty: ShortlistResult = {
+      shortlist: [],
+      breakdowns: [],
+      titleEmbeds: [],
+    };
     logEnd({ candidates, ordered: empty, startedAt, runId: options.runId });
     return empty;
   }
 
   if (options.profile === null) {
-    const breakdowns: ShortlistBreakdown[] = candidates.map((c) => {
-      const age = ageHoursFromPublishedAt(c.publishedAt, now);
-      const recency = recencyDecay(age, halfLifeHours);
-      return { id: c.id, relevance: 0, recency, combined: recency };
-    });
-    const ordered = sortAndTake(candidates, breakdowns, shortlistSize);
+    // No profile: no cosine, no recency — pass all through, stable id order (REQ-011)
+    const sorted = [...candidates].sort((a, b) => a.id - b.id);
+    const top = sorted.slice(0, shortlistSize);
+    const breakdowns: ShortlistBreakdown[] = top.map((c) => ({
+      id: c.id,
+      relevance: 0,
+      recency: 0,
+      combined: 0,
+    }));
+    // titleEmbeds: empty slices; MMR will use Jaccard in no-profile mode
+    const titleEmbeds: number[][] = top.map(() => []);
+    const ordered: ShortlistResult = { shortlist: top, breakdowns, titleEmbeds };
     logEnd({ candidates, ordered, startedAt, runId: options.runId });
     return ordered;
   }
@@ -83,27 +87,39 @@ export async function shortlistCandidates(
   const topicVecs = topicEmbeds.slice(0, profile.topics.length);
   const antiVecs = topicEmbeds.slice(profile.topics.length);
 
-  const titleEmbeds = await embed(
-    candidates.map((c) => c.title),
-    { inputType: "document" },
-  );
+  // REQ-009: reuse pre-computed title embeddings from semantic-dedup if available
+  const titleEmbedsFull: number[][] =
+    options.titleEmbeds ??
+    (await embed(candidates.map((c) => c.title), { inputType: "document" }));
 
   const breakdowns: ShortlistBreakdown[] = candidates.map((c, i) => {
-    const titleVec = titleEmbeds[i];
+    const titleVec = titleEmbedsFull[i] ?? [];
     const topicSim = topicVecs.length
       ? Math.max(...topicVecs.map((v) => cosineSimilarity(titleVec, v)))
       : 0;
     const antiSim = antiVecs.length
       ? Math.max(...antiVecs.map((v) => cosineSimilarity(titleVec, v)))
       : 0;
+    // REQ-011: combined = relevance only — no recency in shortlist
     const relevance = topicSim - antiWeight * antiSim;
-    const age = ageHoursFromPublishedAt(c.publishedAt, now);
-    const recency = recencyDecay(age, halfLifeHours);
-    return { id: c.id, relevance, recency, combined: relevance * recency };
+    return { id: c.id, relevance, recency: 0, combined: relevance };
   });
 
   const result = sortAndTake(candidates, breakdowns, shortlistSize);
-  logEnd({ candidates, ordered: result, startedAt, runId: options.runId });
+
+  // Build titleEmbeds slice matching the ordered shortlist
+  const indexMap = new Map(candidates.map((c, i) => [c.id, i]));
+  const resultTitleEmbeds = result.shortlist.map((c) => {
+    const idx = indexMap.get(c.id) ?? 0;
+    return titleEmbedsFull[idx] ?? [];
+  });
+
+  logEnd({
+    candidates,
+    ordered: { ...result, titleEmbeds: resultTitleEmbeds },
+    startedAt,
+    runId: options.runId,
+  });
 
   if (result.shortlist.length < shortlistSize) {
     logger.warn(
@@ -127,15 +143,15 @@ export async function shortlistCandidates(
     );
   }
 
-  return result;
+  return { ...result, titleEmbeds: resultTitleEmbeds };
 }
 
 function sortAndTake(
   candidates: Candidate[],
   breakdowns: ShortlistBreakdown[],
   size: number,
-): ShortlistResult {
-  const withCandidates = candidates.map((c, i) => ({ c, b: breakdowns[i] }));
+): Omit<ShortlistResult, "titleEmbeds"> {
+  const withCandidates = candidates.map((c, i) => ({ c, b: breakdowns[i] ?? { id: c.id, relevance: 0, recency: 0, combined: 0 } }));
   withCandidates.sort((a, b) => {
     if (a.b.combined !== b.b.combined) return b.b.combined - a.b.combined;
     return a.c.id - b.c.id;

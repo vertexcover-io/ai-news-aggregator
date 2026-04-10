@@ -28,6 +28,9 @@ import {
   type RunProcessDeps,
   type RunProcessJobData,
   type RunProcessJobLike,
+  type NoiseFn,
+  type SemanticDedupFn,
+  type MmrFn,
 } from "@pipeline/workers/run-process.js";
 import { loadCandidatesSince } from "@pipeline/services/candidate-loader.js";
 import {
@@ -46,12 +49,17 @@ import {
   type RunSourceType,
 } from "@pipeline/services/run-state.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import { createCandidatesRepo } from "@pipeline/repositories/candidates.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import {
   getTestRedis,
   closeTestRedis,
 } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { Candidate } from "@pipeline/services/candidate-loader.js";
+import type { NoiseFilterOptions } from "@pipeline/processors/noise.js";
+import type { SemanticDedupOptions, SemanticDedupResult } from "@pipeline/processors/semantic-dedup.js";
+import type { MmrItem, MmrOptions } from "@pipeline/processors/mmr.js";
+import type { RankedItemRef } from "@newsletter/shared";
 
 config({ path: resolve(import.meta.dirname, "../../../../.env.test") });
 
@@ -276,12 +284,35 @@ function buildHarness(db: AppDb): TestHarness {
     });
   };
 
+  const passthroughNoise: NoiseFn = (
+    candidates: readonly Candidate[],
+    _opts: NoiseFilterOptions,
+  ): Candidate[] => [...candidates];
+
+  const passthroughSemanticDedup: SemanticDedupFn = (
+    candidates: readonly Candidate[],
+    _opts: SemanticDedupOptions,
+  ): Promise<SemanticDedupResult> =>
+    Promise.resolve({
+      candidates: [...candidates],
+      titleEmbeds: candidates.map(() => []),
+    });
+
+  const passthroughMmr: MmrFn = (
+    items: MmrItem[],
+    opts: MmrOptions,
+  ): RankedItemRef[] => items.slice(0, opts.topN).map((item) => item.ref);
+
   harness.deps = {
     runState,
-    db,
+    rawItemsRepo: createRawItemsRepo(db),
+    candidatesRepo: createCandidatesRepo(db),
     loadFn: loadCandidatesSince,
+    noiseFn: passthroughNoise,
+    semanticDedupFn: passthroughSemanticDedup,
     shortlistFn,
     rankFn,
+    mmrFn: passthroughMmr,
     collectFns: { hn: fakeHn, reddit: fakeReddit, web: fakeBlog },
   };
 

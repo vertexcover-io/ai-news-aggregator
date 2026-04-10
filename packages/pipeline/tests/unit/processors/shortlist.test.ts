@@ -65,7 +65,7 @@ beforeEach(() => {
 });
 
 describe("shortlistCandidates", () => {
-  it("REQ-020: combined equals relevance * recency exactly", async () => {
+  it("REQ-011: profiled combined score = relevance only (no recency factor)", async () => {
     // Title 0 matches topic (basis 0), title 1 matches topic (basis 1)
     const profile: UserProfile = {
       name: "alice",
@@ -101,9 +101,12 @@ describe("shortlistCandidates", () => {
     expect(b2).toBeDefined();
     if (!b1 || !b2) throw new Error("unreachable");
     expect(b1.relevance).toBeCloseTo(1, 10);
-    expect(b1.recency).toBeCloseTo(Math.exp(-24 / 48), 10);
-    expect(b1.combined).toBeCloseTo(1 * Math.exp(-24 / 48), 10);
-    expect(b2.combined).toBeCloseTo(1 * Math.exp(-48 / 48), 10);
+    // combined = relevance only, no recency multiplication
+    expect(b1.combined).toBeCloseTo(1, 10);
+    expect(b2.combined).toBeCloseTo(1, 10);
+    // recency field is always 0 in shortlist (moved to fusion)
+    expect(b1.recency).toBe(0);
+    expect(b2.recency).toBe(0);
   });
 
   it("REQ-021: relevance = max(topic sim) - 0.5 * max(antiTopic sim)", async () => {
@@ -130,10 +133,10 @@ describe("shortlistCandidates", () => {
     });
 
     const b = result.breakdowns[0];
-    expect(b.relevance).toBeCloseTo(0.6 - 0.5 * 0.8, 10);
+    expect(b?.relevance).toBeCloseTo(0.6 - 0.5 * 0.8, 10);
   });
 
-  it("REQ-022 + REQ-025: profile null skips embedBatch entirely, sorts by recency", async () => {
+  it("REQ-011: no-profile combined=0 for all items", async () => {
     const embed = vi.fn<EmbedBatchFn>();
     const candidates: Candidate[] = [
       makeCandidate({
@@ -157,7 +160,36 @@ describe("shortlistCandidates", () => {
     });
 
     expect(embed.mock.calls.length).toBe(0);
-    expect(result.shortlist.map((c) => c.id)).toEqual([2, 3, 1]);
+    for (const b of result.breakdowns) {
+      expect(b.combined).toBe(0);
+      expect(b.recency).toBe(0);
+    }
+  });
+
+  it("REQ-011: no-profile items sorted by id ascending", async () => {
+    const embed = vi.fn<EmbedBatchFn>();
+    const candidates: Candidate[] = [
+      makeCandidate({
+        id: 3,
+        publishedAt: new Date(NOW.getTime() - 1 * 3_600_000),
+      }),
+      makeCandidate({
+        id: 1,
+        publishedAt: new Date(NOW.getTime() - 72 * 3_600_000),
+      }),
+      makeCandidate({
+        id: 2,
+        publishedAt: new Date(NOW.getTime() - 12 * 3_600_000),
+      }),
+    ];
+
+    const result = await shortlistCandidates(candidates, {
+      profile: null,
+      now: NOW,
+      embedBatch: embed,
+    });
+
+    expect(result.shortlist.map((c) => c.id)).toEqual([1, 2, 3]);
   });
 
   it("REQ-023: returns top K out of 100 candidates", async () => {
@@ -219,13 +251,13 @@ describe("shortlistCandidates", () => {
       embedBatch: embed,
     });
 
-    expect(result.breakdowns[0].combined).toBeCloseTo(
-      result.breakdowns[1].combined,
+    expect(result.breakdowns[0]?.combined).toBeCloseTo(
+      result.breakdowns[1]?.combined ?? 0,
       12,
     );
   });
 
-  it("REQ-025: exactly 2 embedBatch calls with profile and 50 candidates", async () => {
+  it("REQ-009: when titleEmbeds absent, embedBatch IS called for titles once (2 calls total)", async () => {
     const profile: UserProfile = {
       name: "alice",
       topics: ["ai", "ml"],
@@ -247,7 +279,95 @@ describe("shortlistCandidates", () => {
     expect(embed.mock.calls.length).toBe(2);
   });
 
-  it("REQ-026 / EDGE-007: null publishedAt yields recency = exp(-24/48)", async () => {
+  it("REQ-009: when titleEmbeds provided, embedBatch NOT called for titles (1 call total)", async () => {
+    const profile: UserProfile = {
+      name: "alice",
+      topics: ["ai"],
+      antiTopics: [],
+    };
+    const candidates = [
+      makeCandidate({ id: 1, title: "t1" }),
+      makeCandidate({ id: 2, title: "t2" }),
+    ];
+    const precomputedTitleEmbeds = [basisVector(DIM, 0), basisVector(DIM, 0)];
+    const embed = vi.fn<EmbedBatchFn>((inputs) =>
+      Promise.resolve(inputs.map(() => basisVector(DIM, 0))),
+    );
+
+    await shortlistCandidates(candidates, {
+      profile,
+      now: NOW,
+      embedBatch: embed,
+      titleEmbeds: precomputedTitleEmbeds,
+    });
+
+    // Only 1 call: for the profile topics — NOT for titles
+    expect(embed.mock.calls.length).toBe(1);
+    const firstCallInputs = embed.mock.calls[0]?.[0];
+    expect(firstCallInputs).toContain("ai");
+  });
+
+  it("REQ-009: ShortlistResult.titleEmbeds matches input titleEmbeds slice when pre-computed embeds passed", async () => {
+    const profile: UserProfile = {
+      name: "alice",
+      topics: ["ai"],
+      antiTopics: [],
+    };
+    const candidates = [
+      makeCandidate({ id: 1, title: "t1" }),
+      makeCandidate({ id: 2, title: "t2" }),
+    ];
+    const precomputedTitleEmbeds = [
+      [0.1, 0.2, 0.3, 0.4],
+      [0.5, 0.6, 0.7, 0.8],
+    ];
+    const embed = vi.fn<EmbedBatchFn>((inputs) =>
+      Promise.resolve(inputs.map(() => basisVector(DIM, 0))),
+    );
+
+    const result = await shortlistCandidates(candidates, {
+      profile,
+      shortlistSize: 5,
+      now: NOW,
+      embedBatch: embed,
+      titleEmbeds: precomputedTitleEmbeds,
+    });
+
+    // Both candidates are in the shortlist; their titleEmbeds should match the input order
+    expect(result.titleEmbeds.length).toBe(result.shortlist.length);
+    for (let i = 0; i < result.shortlist.length; i++) {
+      const item = result.shortlist[i];
+      if (!item) continue;
+      const expectedEmbed = precomputedTitleEmbeds[item.id - 1];
+      expect(result.titleEmbeds[i]).toEqual(expectedEmbed);
+    }
+  });
+
+  it("ShortlistResult.titleEmbeds has same length as shortlist", async () => {
+    const profile: UserProfile = {
+      name: "alice",
+      topics: ["ai"],
+      antiTopics: [],
+    };
+    const candidates = Array.from({ length: 30 }, (_, i) =>
+      makeCandidate({ id: i + 1, title: `t${i + 1}` }),
+    );
+    const embed: EmbedBatchFn = vi.fn((inputs) =>
+      Promise.resolve(inputs.map(() => basisVector(DIM, 0))),
+    );
+
+    const result = await shortlistCandidates(candidates, {
+      profile,
+      shortlistSize: 10,
+      now: NOW,
+      embedBatch: embed,
+    });
+
+    expect(result.titleEmbeds.length).toBe(result.shortlist.length);
+    expect(result.shortlist.length).toBe(10);
+  });
+
+  it("REQ-026 / EDGE-007: null publishedAt — no-profile path still sorts by id", async () => {
     const candidates: Candidate[] = [
       makeCandidate({ id: 1, publishedAt: null }),
     ];
@@ -257,7 +377,9 @@ describe("shortlistCandidates", () => {
       now: NOW,
     });
 
-    expect(result.breakdowns[0].recency).toBeCloseTo(Math.exp(-24 / 48), 12);
+    expect(result.breakdowns[0]?.recency).toBe(0);
+    expect(result.breakdowns[0]?.combined).toBe(0);
+    expect(result.shortlist[0]?.id).toBe(1);
   });
 
   it("REQ-027: logs shortlist.start and shortlist.end with required fields", async () => {
@@ -277,11 +399,11 @@ describe("shortlistCandidates", () => {
       (e) => e && typeof e === "object" && e.event === "shortlist.end",
     );
     expect(startEvent).toBeDefined();
-    expect(startEvent.candidateCount).toBe(1);
-    expect(startEvent.shortlistSize).toBe(20);
+    expect(startEvent?.candidateCount).toBe(1);
+    expect(startEvent?.shortlistSize).toBe(20);
     expect(endEvent).toBeDefined();
-    expect(endEvent.candidateCount ?? endEvent.inputCount).toBeDefined();
-    expect(typeof endEvent.durationMs).toBe("number");
+    expect(endEvent?.candidateCount ?? endEvent?.inputCount).toBeDefined();
+    expect(typeof endEvent?.durationMs).toBe("number");
   });
 
   it("REQ-028: deterministic tie-break by ascending id", async () => {
@@ -377,7 +499,7 @@ describe("shortlistCandidates", () => {
       embedBatch: embed,
     });
 
-    expect(result).toEqual({ shortlist: [], breakdowns: [] });
+    expect(result).toEqual({ shortlist: [], breakdowns: [], titleEmbeds: [] });
     expect(embed.mock.calls.length).toBe(0);
   });
 
@@ -433,5 +555,89 @@ describe("shortlistCandidates", () => {
         embedBatch: embed,
       }),
     ).rejects.toThrow("voyage down");
+  });
+
+  it("EDGE-015: empty candidate list → empty shortlist + empty titleEmbeds", async () => {
+    const result = await shortlistCandidates([], {
+      profile: null,
+      now: NOW,
+    });
+
+    expect(result.shortlist).toEqual([]);
+    expect(result.breakdowns).toEqual([]);
+    expect(result.titleEmbeds).toEqual([]);
+  });
+
+  it("EDGE-016: single candidate passes through unchanged", async () => {
+    const profile: UserProfile = {
+      name: "alice",
+      topics: ["ai"],
+      antiTopics: [],
+    };
+    const candidate = makeCandidate({ id: 42, title: "solo" });
+    const embed: EmbedBatchFn = vi
+      .fn()
+      .mockResolvedValueOnce([basisVector(DIM, 0)]) // topic
+      .mockResolvedValueOnce([basisVector(DIM, 0)]); // title
+
+    const result = await shortlistCandidates([candidate], {
+      profile,
+      now: NOW,
+      embedBatch: embed,
+    });
+
+    expect(result.shortlist.length).toBe(1);
+    expect(result.shortlist[0]?.id).toBe(42);
+    expect(result.titleEmbeds.length).toBe(1);
+  });
+
+  it("Profile with no topics → relevance=0 for all, sorted by id", async () => {
+    const profile: UserProfile = {
+      name: "empty",
+      topics: [],
+      antiTopics: [],
+    };
+    const candidates: Candidate[] = [
+      makeCandidate({ id: 5, title: "c" }),
+      makeCandidate({ id: 2, title: "b" }),
+      makeCandidate({ id: 8, title: "a" }),
+    ];
+    // embed returns empty array for zero topics
+    const embed: EmbedBatchFn = vi
+      .fn()
+      .mockResolvedValueOnce([]) // zero topics → empty topicEmbeds
+      .mockResolvedValueOnce([
+        basisVector(DIM, 0),
+        basisVector(DIM, 0),
+        basisVector(DIM, 0),
+      ]);
+
+    const result = await shortlistCandidates(candidates, {
+      profile,
+      now: NOW,
+      embedBatch: embed,
+    });
+
+    for (const b of result.breakdowns) {
+      expect(b.relevance).toBe(0);
+    }
+    expect(result.shortlist.map((c) => c.id)).toEqual([2, 5, 8]);
+  });
+
+  it("no-profile titleEmbeds has empty arrays per item", async () => {
+    const candidates: Candidate[] = [
+      makeCandidate({ id: 1 }),
+      makeCandidate({ id: 2 }),
+    ];
+
+    const result = await shortlistCandidates(candidates, {
+      profile: null,
+      now: NOW,
+    });
+
+    expect(result.titleEmbeds.length).toBe(2);
+    for (const te of result.titleEmbeds) {
+      expect(te).toEqual([]);
+    }
   });
 });

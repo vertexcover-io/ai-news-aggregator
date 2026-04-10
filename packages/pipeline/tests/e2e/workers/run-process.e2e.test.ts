@@ -9,7 +9,15 @@ import {
   type CollectFns,
   type RunProcessJobLike,
   type RunProcessResult,
+  type NoiseFn,
+  type SemanticDedupFn,
+  type MmrFn,
 } from "@pipeline/workers/run-process.js";
+import type { NoiseFilterOptions } from "@pipeline/processors/noise.js";
+import type { SemanticDedupOptions, SemanticDedupResult } from "@pipeline/processors/semantic-dedup.js";
+import type { MmrItem, MmrOptions } from "@pipeline/processors/mmr.js";
+import type { RankedItemRef } from "@newsletter/shared/types";
+import type { Candidate } from "@pipeline/services/candidate-loader.js";
 import type { CollectorResult } from "@newsletter/shared/types";
 import { loadCandidatesSince } from "@pipeline/services/candidate-loader.js";
 import { createRunStateService } from "@pipeline/services/run-state.js";
@@ -49,6 +57,26 @@ describe("run-process worker E2E", () => {
       reddit: noopCollect,
       web: noopCollect,
     };
+    const passthroughNoise: NoiseFn = (
+      candidates: readonly Candidate[],
+      _opts: NoiseFilterOptions,
+    ): Candidate[] => [...candidates];
+
+    const passthroughSemanticDedup: SemanticDedupFn = (
+      candidates: readonly Candidate[],
+      _opts: SemanticDedupOptions,
+    ): Promise<SemanticDedupResult> =>
+      Promise.resolve({
+        candidates: [...candidates],
+        titleEmbeds: candidates.map(() => []),
+      });
+
+    const passthroughMmr: MmrFn = (
+      items: MmrItem[],
+      opts: MmrOptions,
+    ): RankedItemRef[] =>
+      items.slice(0, opts.topN).map((item) => item.ref);
+
     worker = new Worker<unknown, RunProcessResult>(
       "run-process-e2e-test",
       (job) =>
@@ -58,8 +86,14 @@ describe("run-process worker E2E", () => {
             rawItemsRepo: createRawItemsRepo(db),
             candidatesRepo: createCandidatesRepo(db),
             loadFn: loadCandidatesSince,
+            noiseFn: passthroughNoise,
+            semanticDedupFn: passthroughSemanticDedup,
             shortlistFn: (candidates) =>
-              Promise.resolve({ shortlist: candidates, breakdowns: [] }),
+              Promise.resolve({
+                shortlist: candidates,
+                breakdowns: [],
+                titleEmbeds: candidates.map(() => []),
+              }),
             rankFn: (deduped, opts) =>
               Promise.resolve({
                 rankedItems: deduped.slice(0, opts.topN).map((c, idx) => ({
@@ -70,6 +104,7 @@ describe("run-process worker E2E", () => {
                 candidateCount: deduped.length,
                 rankedCount: Math.min(deduped.length, opts.topN),
               }),
+            mmrFn: passthroughMmr,
             collectFns: noopCollectFns,
           },
           job as unknown as RunProcessJobLike,
