@@ -4,8 +4,13 @@ import type {
   RankedItemRef,
   CollectorResult,
 } from "@newsletter/shared/types";
+import type { UserProfile } from "@newsletter/shared";
 import type { Candidate } from "@pipeline/services/candidate-loader.js";
-import type { RankResult } from "@pipeline/processors/rank.js";
+import type { RankResult, RankOptions } from "@pipeline/processors/rank.js";
+import type {
+  ShortlistOptions,
+  ShortlistResult,
+} from "@pipeline/processors/shortlist.js";
 import type { RunStateService } from "@pipeline/services/run-state.js";
 import type {
   HnCollectConfig,
@@ -67,6 +72,26 @@ interface JobLike {
     topN: number;
     sourceTypes: ("hn" | "reddit" | "blog")[];
     collectors: { hn?: unknown; reddit?: unknown; web?: unknown };
+    profile?: UserProfile | null;
+    halfLifeHours?: number;
+  };
+}
+
+function makeShortlistFn(
+  result: (cands: Candidate[]) => ShortlistResult,
+): (cands: Candidate[], opts: ShortlistOptions) => Promise<ShortlistResult> {
+  return (cands) => Promise.resolve(result(cands));
+}
+
+function passthroughShortlist(cands: Candidate[]): ShortlistResult {
+  return {
+    shortlist: cands,
+    breakdowns: cands.map((c) => ({
+      id: c.id,
+      relevance: 0,
+      recency: 1,
+      combined: 1,
+    })),
   };
 }
 
@@ -240,6 +265,7 @@ describe("run-process worker", () => {
       runState: runStateMock.service,
       loadFn,
       rankFn,
+      shortlistFn: makeShortlistFn(passthroughShortlist),
     });
 
     await expect(worker.handler(baseJob)).rejects.toThrow("rank blew up");
@@ -271,21 +297,29 @@ describe("run-process worker", () => {
           rankedCount: 2,
         }),
     );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
     const worker = createRunProcessWorker({
       runState: runStateMock.service,
       loadFn,
       rankFn,
+      shortlistFn,
     });
 
     const result = await worker.handler(baseJob);
 
     expect(loadFn).toHaveBeenCalledOnce();
+    expect(shortlistFn).toHaveBeenCalledOnce();
     expect(rankFn).toHaveBeenCalledOnce();
     const [rankInput, rankOpts] = rankFn.mock.calls[0] ?? [];
     expect(Array.isArray(rankInput)).toBe(true);
     // deduped from 3 → 2 (c1/c2 canonicalize to same URL, c2 has higher engagement)
     expect((rankInput as { id: number }[]).length).toBe(2);
-    expect(rankOpts).toEqual({ topN: 3, runId: "run-1" });
+    const opts = rankOpts as RankOptions;
+    expect(opts.profile).toBeNull();
+    expect(opts.topN).toBe(3);
+    expect(opts.runId).toBe("run-1");
+    expect(opts.shortlistBreakdowns).toBeDefined();
+    expect(opts.shortlistBreakdowns?.length).toBe(2);
 
     const last = runStateMock.updates.at(-1);
     expect(last?.status).toBe("completed");
@@ -294,9 +328,10 @@ describe("run-process worker", () => {
     expect(last?.completedAt).not.toBeNull();
     expect(result).toEqual({ rankedCount: 2 });
 
-    // stage transitions: processing, ranking (via setStage)
+    // stage transitions: processing, shortlisting, ranking (via setStage)
     const stages = runStateMock.stageCalls.map((s) => s.stage);
     expect(stages).toContain("processing");
+    expect(stages).toContain("shortlisting");
     expect(stages).toContain("ranking");
   });
 
@@ -322,6 +357,7 @@ describe("run-process worker", () => {
       runState: runStateMock.service,
       loadFn,
       rankFn,
+      shortlistFn: makeShortlistFn(passthroughShortlist),
     });
 
     await worker.handler(baseJob);
@@ -594,6 +630,7 @@ describe("run-process worker", () => {
       runState: runStateMock.service,
       loadFn,
       rankFn,
+      shortlistFn: makeShortlistFn(passthroughShortlist),
       collectFns: { hn, reddit, web: vi.fn() },
     });
 
@@ -865,5 +902,253 @@ describe("run-process worker", () => {
     };
     expect(failedFields.sourceType).toBe("reddit");
     expect(failedFields.error).toBe("reddit blew up");
+  });
+
+  // REQ-005 + EDGE-015: profile omitted/null propagates as null through shortlist and rank
+  it("REQ-005/EDGE-015: propagates null profile to shortlistFn and rankFn when omitted", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1), makeCandidate(2)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 1, rationale: "ok" }],
+          candidateCount: 2,
+          rankedCount: 1,
+        }),
+    );
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+    });
+
+    await worker.handler(baseJob);
+
+    expect(shortlistFn).toHaveBeenCalledOnce();
+    const [, shortlistOpts] = shortlistFn.mock.calls[0] ?? [];
+    expect(shortlistOpts?.profile).toBeNull();
+
+    expect(rankFn).toHaveBeenCalledOnce();
+    const [, rankOpts] = rankFn.mock.calls[0] ?? [];
+    expect(rankOpts?.profile).toBeNull();
+  });
+
+  // REQ-023: shortlist of 20 candidates is forwarded to rank verbatim
+  it("REQ-023: forwards exactly the shortlist returned by shortlistFn to rankFn", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const all: Candidate[] = Array.from({ length: 50 }, (_, i) =>
+      makeCandidate(i + 1, `https://example.com/${i + 1}`),
+    );
+    const top20 = all.slice(0, 20);
+    const loadFn = vi.fn((): Promise<Candidate[]> => Promise.resolve(all));
+    const shortlistFn = vi.fn(
+      (): Promise<ShortlistResult> =>
+        Promise.resolve({
+          shortlist: top20,
+          breakdowns: top20.map((c) => ({
+            id: c.id,
+            relevance: 0.5,
+            recency: 0.9,
+            combined: 0.45,
+          })),
+        }),
+    );
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [],
+          candidateCount: 20,
+          rankedCount: 0,
+        }),
+    );
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+    });
+
+    await worker.handler(baseJob);
+
+    expect(rankFn).toHaveBeenCalledOnce();
+    const [rankInput] = rankFn.mock.calls[0] ?? [];
+    expect((rankInput as Candidate[]).length).toBe(20);
+    expect((rankInput as Candidate[])[0].id).toBe(top20[0].id);
+  });
+
+  // EDGE-004: empty shortlist → skip rank, write empty rankedItems, status completed
+  it("EDGE-004: short-circuits to completed with empty rankedItems when shortlistFn returns 0", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1), makeCandidate(2)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(
+      (): Promise<ShortlistResult> =>
+        Promise.resolve({ shortlist: [], breakdowns: [] }),
+    );
+    const rankFn = vi.fn();
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+    });
+
+    const result = await worker.handler(baseJob);
+
+    expect(shortlistFn).toHaveBeenCalledOnce();
+    expect(rankFn).not.toHaveBeenCalled();
+    const last = runStateMock.updates.at(-1);
+    expect(last?.status).toBe("completed");
+    expect(last?.stage).toBe("completed");
+    expect(last?.rankedItems).toEqual([]);
+    expect(last?.completedAt).not.toBeNull();
+    expect(result).toEqual({ rankedCount: 0 });
+
+    const emptyLog = mockLoggerInfo.mock.calls.find(
+      (c) => (c[0] as { event?: string }).event === "empty_shortlist",
+    );
+    expect(emptyLog).toBeDefined();
+    expect((emptyLog?.[0] as { runId: string }).runId).toBe("run-1");
+  });
+
+  // REQ-067/REQ-090/REQ-091: Redis final write contains ONLY rankedItems (no shortlistBreakdowns leakage)
+  it("REQ-067/REQ-090/REQ-091: final run-state write persists rankedItems but NOT shortlistBreakdowns", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1), makeCandidate(2)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankedItems: RankedItemRef[] = [
+      { rawItemId: 1, score: 0.9, rationale: "top" },
+      { rawItemId: 2, score: 0.5, rationale: "ok" },
+    ];
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems,
+          candidateCount: 2,
+          rankedCount: 2,
+        }),
+    );
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+    });
+
+    await worker.handler(baseJob);
+
+    const last = runStateMock.updates.at(-1);
+    expect(last).toBeDefined();
+    expect(last?.rankedItems).toEqual(rankedItems);
+    // Wire shape guard: RunState must not grow a shortlistBreakdowns field.
+    expect(last).not.toHaveProperty("shortlistBreakdowns");
+    const json = JSON.stringify(last);
+    expect(json).not.toContain("shortlistBreakdowns");
+  });
+
+  // REQ-104: two concurrent workers with different profiles keep profile state isolated
+  it("REQ-104: concurrent worker invocations with different profiles do not share state", async () => {
+    const profileA: UserProfile = {
+      name: "aman",
+      topics: ["llm"],
+      antiTopics: [],
+    };
+    const profileB: UserProfile = {
+      name: "ritesh",
+      topics: ["rust"],
+      antiTopics: [],
+    };
+
+    const run = async (
+      profile: UserProfile,
+    ): Promise<{
+      shortlistProfiles: (UserProfile | null)[];
+      rankProfiles: (UserProfile | null)[];
+    }> => {
+      const runStateMock = makeMockRunState(makeRunState());
+      const candidates = [makeCandidate(1)];
+      const loadFn = vi.fn(
+        (): Promise<Candidate[]> => Promise.resolve(candidates),
+      );
+      const shortlistProfiles: (UserProfile | null)[] = [];
+      const rankProfiles: (UserProfile | null)[] = [];
+      const shortlistFn = vi.fn(
+        (cands: Candidate[], opts: ShortlistOptions): Promise<ShortlistResult> => {
+          shortlistProfiles.push(opts.profile);
+          return Promise.resolve(passthroughShortlist(cands));
+        },
+      );
+      const rankFn = vi.fn(
+        (_cands: Candidate[], opts: RankOptions): Promise<RankResult> => {
+          rankProfiles.push(opts.profile);
+          return Promise.resolve({
+            rankedItems: [],
+            candidateCount: 1,
+            rankedCount: 0,
+          });
+        },
+      );
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn,
+        shortlistFn,
+        rankFn,
+      });
+      await worker.handler({
+        ...baseJob,
+        data: { ...baseJob.data, profile },
+      });
+      return { shortlistProfiles, rankProfiles };
+    };
+
+    const [resA, resB] = await Promise.all([run(profileA), run(profileB)]);
+    expect(resA.shortlistProfiles).toEqual([profileA]);
+    expect(resA.rankProfiles).toEqual([profileA]);
+    expect(resB.shortlistProfiles).toEqual([profileB]);
+    expect(resB.rankProfiles).toEqual([profileB]);
+  });
+
+  // REQ-100: halfLifeHours from payload flows through to shortlist and rank options
+  it("REQ-100: halfLifeHours payload propagates to shortlistFn and rankFn options", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [],
+          candidateCount: 1,
+          rankedCount: 0,
+        }),
+    );
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: { ...baseJob.data, halfLifeHours: 48 },
+    });
+
+    const [, sOpts] = shortlistFn.mock.calls[0] ?? [];
+    expect(sOpts?.halfLifeHours).toBe(48);
+    const [, rOpts] = rankFn.mock.calls[0] ?? [];
+    expect(rOpts?.halfLifeHours).toBe(48);
   });
 });

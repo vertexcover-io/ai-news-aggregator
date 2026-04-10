@@ -11,53 +11,14 @@ import type {
   WebCollectorResult,
 } from "@pipeline/types.js";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import { fetchMarkdown } from "@pipeline/services/markdown-fetch.js";
+
+export { fetchMarkdown };
 
 const logger = createLogger("collector:web");
 
-const JINA_BASE_URL = "https://r.jina.ai/";
-const MAX_RETRIES = 3;
-const RETRY_BASE_DELAY_MS = 1000;
 const MAX_ERROR_LENGTH = 200;
 const DEFAULT_POST_CONCURRENCY = 3;
-
-export async function fetchMarkdown(
-  url: string,
-  fetchFn: typeof fetch = globalThis.fetch,
-): Promise<string> {
-  const jinaUrl = `${JINA_BASE_URL}${url}`;
-  const headers: Record<string, string> = { Accept: "text/plain" };
-  const apiKey = process.env.JINA_API_KEY;
-  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      const response = await fetchFn(jinaUrl, { headers });
-      if (!response.ok) {
-        const status = response.status;
-        if (status >= 400 && status < 500 && status !== 429) {
-          throw new Error(`Non-retryable HTTP ${status} for ${url}`);
-        }
-        throw new Error(`HTTP ${status} for ${url}`);
-      }
-      const raw = await response.text();
-      return raw.trim();
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (lastError.message.startsWith("Non-retryable")) throw lastError;
-      if (attempt < MAX_RETRIES - 1) {
-        await delay(Math.pow(2, attempt) * RETRY_BASE_DELAY_MS);
-      }
-    }
-  }
-
-  throw lastError ?? new Error(`fetchMarkdown failed after ${MAX_RETRIES} retries`);
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export const DiscoverySchema = z.object({
   posts: z.array(
@@ -214,7 +175,7 @@ export async function processOnePost(
 ): Promise<RawItemInsert> {
   let markdown: string;
   try {
-    markdown = await fetchMarkdown(post.url, fetchFn);
+    markdown = await fetchMarkdown(post.url, { fetchFn });
   } catch (err) {
     throw new CollectorError("detail-fetch", truncateError(err));
   }
@@ -250,7 +211,7 @@ export async function processSource(
 ): Promise<ProcessSourceResult> {
   let listingMarkdown: string;
   try {
-    listingMarkdown = await fetchMarkdown(source.listingUrl, deps.fetchFn);
+    listingMarkdown = await fetchMarkdown(source.listingUrl, { fetchFn: deps.fetchFn });
   } catch (err) {
     const error = truncateError(err);
     logFailure(source.name, source.listingUrl, "discovery-fetch", error);

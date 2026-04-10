@@ -7,13 +7,18 @@ import {
   type SourceType,
 } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
+import type { UserProfile } from "@newsletter/shared";
 import { dedupCandidates } from "@pipeline/processors/dedup.js";
 import {
   rankCandidates,
   type RankResult,
   type RankOptions,
-  type RankCandidate,
 } from "@pipeline/processors/rank.js";
+import {
+  shortlistCandidates,
+  type ShortlistOptions,
+  type ShortlistResult,
+} from "@pipeline/processors/shortlist.js";
 import {
   createRunStateService,
   type RunStateService,
@@ -47,6 +52,8 @@ export interface RunProcessJobData {
   topN: number;
   sourceTypes: ("hn" | "reddit" | "blog")[];
   collectors: RunCollectorsPayload;
+  profile?: UserProfile | null;
+  halfLifeHours?: number;
 }
 
 export interface RunProcessJobLike {
@@ -60,9 +67,14 @@ export interface RunProcessResult {
 }
 
 export type RankFn = (
-  candidates: RankCandidate[],
+  candidates: Candidate[],
   options: RankOptions,
 ) => Promise<RankResult>;
+
+export type ShortlistFn = (
+  candidates: Candidate[],
+  options: ShortlistOptions,
+) => Promise<ShortlistResult>;
 
 export type HnCollectFn = (
   deps: { rawItemsRepo: ReturnType<typeof createRawItemsRepo> },
@@ -89,6 +101,7 @@ export interface RunProcessDeps {
   runState: RunStateService;
   db: AppDb;
   loadFn: LoadCandidatesFn;
+  shortlistFn: ShortlistFn;
   rankFn: RankFn;
   collectFns: CollectFns;
 }
@@ -210,6 +223,8 @@ export async function handleRunProcessJob(
     throw new Error(`unknown job: ${job.name}`);
   }
   const { runId, topN, sourceTypes, collectors } = job.data;
+  const profile = job.data.profile ?? null;
+  const halfLifeHours = job.data.halfLifeHours;
   const started = Date.now();
 
   // Stage 1: collecting
@@ -280,16 +295,7 @@ export async function handleRunProcessJob(
     return { rankedCount: 0 };
   }
 
-  const rankCandidatesInput: RankCandidate[] = raw.map((c) => ({
-    id: c.id,
-    url: c.url,
-    engagement: c.engagement,
-    title: c.title,
-    sourceType: c.sourceType,
-    publishedAt: c.publishedAt ? c.publishedAt.toISOString() : null,
-  }));
-
-  const deduped = dedupCandidates(rankCandidatesInput);
+  const deduped = dedupCandidates(raw);
   logger.info(
     {
       event: "run.dedup",
@@ -300,11 +306,48 @@ export async function handleRunProcessJob(
     "run.dedup",
   );
 
+  await deps.runState.setStage(runId, "shortlisting");
+  const { shortlist, breakdowns } = await deps.shortlistFn(deduped, {
+    profile,
+    halfLifeHours,
+    runId,
+  });
+
+  if (shortlist.length === 0) {
+    logger.info(
+      { event: "empty_shortlist", runId },
+      "shortlist empty — skipping rank stage",
+    );
+    await deps.runState.update(runId, (prev) => ({
+      ...prev,
+      stage: "completed",
+      status: "completed",
+      rankedItems: [],
+      completedAt: new Date().toISOString(),
+    }));
+    logger.info(
+      {
+        event: "run.completed",
+        runId,
+        totalDurationMs: Date.now() - started,
+        rankedItemCount: 0,
+      },
+      "run.completed",
+    );
+    return { rankedCount: 0 };
+  }
+
   await deps.runState.setStage(runId, "ranking");
 
   let rankResult: RankResult;
   try {
-    rankResult = await deps.rankFn(deduped, { topN, runId });
+    rankResult = await deps.rankFn(shortlist, {
+      topN,
+      runId,
+      profile,
+      halfLifeHours,
+      shortlistBreakdowns: breakdowns,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await deps.runState.update(runId, (prev) => ({
@@ -343,6 +386,7 @@ export interface CreateRunProcessWorkerOptions {
   runState?: RunStateService;
   db?: AppDb;
   loadFn?: LoadCandidatesFn;
+  shortlistFn?: ShortlistFn;
   rankFn?: RankFn;
   collectFns?: Partial<CollectFns>;
 }
@@ -354,6 +398,9 @@ export function createRunProcessWorker(
   const runState = options.runState ?? createRunStateService(connection);
   const db = options.db ?? getDb();
   const loadFn = options.loadFn ?? loadCandidatesSince;
+  const shortlistFn: ShortlistFn =
+    options.shortlistFn ??
+    ((candidates, opts) => shortlistCandidates(candidates, opts));
   const rankFn: RankFn =
     options.rankFn ?? ((candidates, opts) => rankCandidates(candidates, opts));
   const collectFns: CollectFns = {
@@ -362,7 +409,14 @@ export function createRunProcessWorker(
     web: options.collectFns?.web ?? collectWeb,
   };
 
-  const deps: RunProcessDeps = { runState, db, loadFn, rankFn, collectFns };
+  const deps: RunProcessDeps = {
+    runState,
+    db,
+    loadFn,
+    shortlistFn,
+    rankFn,
+    collectFns,
+  };
 
   return new Worker<RunProcessJobData, RunProcessResult>(
     "processing",
