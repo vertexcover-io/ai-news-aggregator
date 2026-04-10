@@ -7,18 +7,18 @@ import {
   getDb as defaultGetDb,
 } from "@newsletter/shared";
 import type { RunState, UserProfile } from "@newsletter/shared";
-import { runSubmitSchema } from "../lib/validate.js";
-import { createRun } from "../services/runs.js";
-import { hydrateRankedItems } from "../services/rank-hydration.js";
+import { runSubmitSchema } from "@api/lib/validate.js";
+import { createRun } from "@api/services/runs.js";
+import { hydrateRankedItems } from "@api/services/rank-hydration.js";
 import {
   createRawItemsRepo,
   type RawItemsRepo,
-} from "../repositories/raw-items.js";
+} from "@api/repositories/raw-items.js";
 import {
   loadProfile as defaultLoadProfile,
   ProfileNotFoundError,
   ProfileParseError,
-} from "../services/profiles.js";
+} from "@api/services/profiles.js";
 
 export interface RunsRouterDeps {
   redis: IORedis;

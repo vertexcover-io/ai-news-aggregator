@@ -21,6 +21,7 @@ Use this decision tree before writing any new enforcement logic:
 | [`enforce-repository-access`](./enforce-repository-access.md) | Value imports of `@newsletter/shared/db` and `drizzle-orm` are only allowed inside repository modules. Type-only imports are allowed everywhere. |
 | [`no-bundled-readfilesync`](./no-bundled-readfilesync.md) | Disallow `readFileSync` calls that resolve paths via `import.meta.url` or `__dirname` — these break after tsup bundling. |
 | [`no-raw-alter-table`](./no-raw-alter-table.md) | Disallow raw `ALTER TABLE` statements via `.execute()` — use a Drizzle Kit migration instead. |
+| [`no-relative-imports`](./no-relative-imports.md) | Disallow parent-traversal (`../`) relative imports in service packages; use `@api/*` or `@pipeline/*` path aliases instead. |
 
 ## Shipping a new rule
 

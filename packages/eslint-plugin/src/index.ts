@@ -4,6 +4,7 @@ import dotenvBootstrap from "./rules/dotenv-bootstrap.js";
 import enforceRepositoryAccess from "./rules/enforce-repository-access.js";
 import noBundledReadfilesync from "./rules/no-bundled-readfilesync.js";
 import noRawAlterTable from "./rules/no-raw-alter-table.js";
+import noRelativeImports from "./rules/no-relative-imports.js";
 
 const PLUGIN_NAME = "@newsletter/eslint-plugin";
 const PLUGIN_VERSION = "0.0.1";
@@ -31,6 +32,10 @@ export const rules: PluginRules = {
     readonly unknown[]
   >,
   "no-raw-alter-table": noRawAlterTable as TSESLint.RuleModule<
+    string,
+    readonly unknown[]
+  >,
+  "no-relative-imports": noRelativeImports as TSESLint.RuleModule<
     string,
     readonly unknown[]
   >,

@@ -180,4 +180,10 @@ export default tseslint.config(
     plugins: { newsletter },
     rules: { "newsletter/enforce-repository-access": "warn" },
   },
+  // newsletter/no-relative-imports: ban ../ imports in service packages; use @api/* or @pipeline/* aliases
+  {
+    files: ["packages/api/src/**/*.ts", "packages/pipeline/src/**/*.ts"],
+    plugins: { newsletter },
+    rules: { "newsletter/no-relative-imports": "error" },
+  },
 );
