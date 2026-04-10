@@ -13,12 +13,12 @@
  *     --since 30
  *
  * Requires in .env:
- *   GOOGLE_GENERATIVE_AI_API_KEY  - Gemini API key
+ *   ANTHROPIC_API_KEY              - Anthropic API key
  *   JINA_API_KEY                  - optional, raises Jina rate limits
  */
 
 import "dotenv/config";
-import { google } from "@ai-sdk/google";
+import { anthropic } from "@ai-sdk/anthropic";
 import type { RawItemInsert, SourceType } from "@newsletter/shared/db";
 import { collectWeb } from "@pipeline/collectors/web.js";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -99,17 +99,17 @@ function printItem(item: RawItemInsert, index: number): void {
 }
 
 async function main(): Promise<void> {
-  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-    console.error("ERROR: GOOGLE_GENERATIVE_AI_API_KEY is not set in .env");
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.error("ERROR: ANTHROPIC_API_KEY is not set in .env");
     process.exit(1);
   }
 
   const args = parseArgs(process.argv.slice(2));
   const repo = createInMemoryRawItemsRepo();
-  const llmModel = google("gemini-2.5-flash");
+  const llmModel = anthropic("claude-haiku-4-5-20251001");
 
   console.log("Web collector demo");
-  console.log("  model:     gemini-2.5-flash");
+  console.log("  model:     claude-haiku-4-5-20251001");
   console.log(`  maxItems:  ${args.maxItems}`);
   console.log(`  sinceDays: ${args.sinceDays ?? "(no filter)"}`);
   console.log("  sources:");

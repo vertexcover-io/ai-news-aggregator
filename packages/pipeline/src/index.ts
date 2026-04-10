@@ -20,10 +20,9 @@ type CollectionJobData = CollectionJobLike["data"];
 
 const logger = createLogger("pipeline");
 
-if (!process.env.GEMINI_API_KEY) {
-  throw new Error("GEMINI_API_KEY is required for ranking");
+if (!process.env.ANTHROPIC_API_KEY) {
+  throw new Error("ANTHROPIC_API_KEY is required for ranking");
 }
-process.env.GOOGLE_GENERATIVE_AI_API_KEY ??= process.env.GEMINI_API_KEY;
 
 const runProcessWorker = createRunProcessWorker();
 

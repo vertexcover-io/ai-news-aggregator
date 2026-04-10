@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { google } from "@ai-sdk/google";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { createLogger } from "@newsletter/shared";
 import type { RankedItemRef, SourceType } from "@newsletter/shared";
@@ -17,7 +17,7 @@ candidate you consider relevant (score > 30). Lower scores for recaps, fluff,
 or marketing. Use the \`id\` field from the input verbatim.
 `;
 
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
 const MAX_CANDIDATES = 100;
 
 export interface RankCandidate {
@@ -87,7 +87,7 @@ export async function rankCandidates(
   let result: { object: z.infer<typeof rankedResponseSchema> };
   try {
     result = (await generate({
-      model: google(modelId),
+      model: anthropic(modelId),
       system: rankSystemPrompt,
       prompt: JSON.stringify({ candidates: userPayload }),
       schema: rankedResponseSchema,

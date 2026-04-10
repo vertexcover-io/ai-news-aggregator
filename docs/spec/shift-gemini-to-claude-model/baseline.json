@@ -1,0 +1,16 @@
+{
+  "spec": "shift-gemini-to-claude-model",
+  "capturedAt": "2026-04-08",
+  "branch": "feat/claude-model-switch",
+  "commands": {
+    "typecheck": "pnpm typecheck",
+    "lint": "pnpm lint",
+    "test": "pnpm test:unit"
+  },
+  "results": {
+    "typecheck": { "status": "pass", "errors": 0 },
+    "lint": { "status": "pass", "warnings": 0, "errors": 0 },
+    "test": { "status": "pass", "passed": 178, "failed": 0, "files": 12 }
+  },
+  "notes": "Only @newsletter/pipeline has unit tests in the workspace"
+}

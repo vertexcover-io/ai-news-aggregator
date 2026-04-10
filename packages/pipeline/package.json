@@ -15,7 +15,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@ai-sdk/google": "2.0.67",
+    "@ai-sdk/anthropic": "2.0.74",
     "@newsletter/shared": "workspace:*",
     "ai": "5.0.169",
     "bullmq": "5.51.0",

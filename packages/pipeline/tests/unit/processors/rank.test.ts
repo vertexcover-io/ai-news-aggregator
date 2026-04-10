@@ -60,11 +60,11 @@ function makeCandidate(id: number, points = 0, commentCount = 0): RankCandidate 
 
 describe("rankCandidates", () => {
   const originalModel = process.env.RANKING_MODEL;
-  const originalKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  const originalKey = process.env.ANTHROPIC_API_KEY;
 
   beforeEach(() => {
     delete process.env.RANKING_MODEL;
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY = "test-key";
+    process.env.ANTHROPIC_API_KEY = "test-key";
     mockLoggerInfo.mockClear();
     mockLoggerError.mockClear();
   });
@@ -72,8 +72,8 @@ describe("rankCandidates", () => {
   afterEach(() => {
     if (originalModel === undefined) delete process.env.RANKING_MODEL;
     else process.env.RANKING_MODEL = originalModel;
-    if (originalKey === undefined) delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-    else process.env.GOOGLE_GENERATIVE_AI_API_KEY = originalKey;
+    if (originalKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = originalKey;
   });
 
   it("truncates to 100 candidates by engagement desc before calling generate (REQ-060)", async () => {
@@ -203,17 +203,17 @@ describe("rankCandidates", () => {
       ranked: [{ id: 1, score: 50, rationale: "ok" }],
     });
 
-    process.env.RANKING_MODEL = "gemini-2.5-pro";
+    process.env.RANKING_MODEL = "claude-sonnet-4-5";
     await rankCandidates([makeCandidate(1)], { topN: 5 }, generate);
     const callA = generate.mock.calls[0]?.[0] as GenerateArgs;
     const modelA = callA.model as { modelId?: string };
-    expect(modelA.modelId).toContain("gemini-2.5-pro");
+    expect(modelA.modelId).toBe("claude-sonnet-4-5");
 
     delete process.env.RANKING_MODEL;
     await rankCandidates([makeCandidate(1)], { topN: 5 }, generate);
     const callB = generate.mock.calls[1]?.[0] as GenerateArgs;
     const modelB = callB.model as { modelId?: string };
-    expect(modelB.modelId).toContain("gemini-2.5-flash");
+    expect(modelB.modelId).toBe("claude-haiku-4-5-20251001");
   });
 
   it("loads system prompt from disk as a non-empty string (REQ-066)", () => {
