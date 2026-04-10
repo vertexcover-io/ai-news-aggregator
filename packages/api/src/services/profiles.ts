@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml, YAMLParseError } from "yaml";
 import type { UserProfile } from "@newsletter/shared";
-import { userProfileSchema } from "../lib/validate.js";
+import { userProfileSchema } from "@api/lib/validate.js";
 
 export class ProfileNotFoundError extends Error {
   constructor(name: string) {

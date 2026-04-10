@@ -1,5 +1,5 @@
 import type { RankedItem, RankedItemRef } from "@newsletter/shared";
-import type { RawItemsRepo } from "../repositories/raw-items.js";
+import type { RawItemsRepo } from "@api/repositories/raw-items.js";
 
 export async function hydrateRankedItems(
   repo: RawItemsRepo,

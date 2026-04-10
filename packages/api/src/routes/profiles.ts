@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { listProfiles as defaultListProfiles } from "../services/profiles.js";
+import { listProfiles as defaultListProfiles } from "@api/services/profiles.js";
 
 export interface ProfilesRouterDeps {
   listProfiles?: typeof defaultListProfiles;
