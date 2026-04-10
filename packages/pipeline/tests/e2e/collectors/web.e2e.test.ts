@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
-import { google } from "@ai-sdk/google";
+import { anthropic } from "@ai-sdk/anthropic";
 import { rawItems } from "@newsletter/shared/db";
 import { collectWeb, fetchMarkdown, extractPostFields } from "@pipeline/collectors/web.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -34,7 +34,7 @@ const BROKEN_SOURCE = {
   listingUrl: "https://this-domain-does-not-exist.invalid/foo",
 };
 
-describe.skipIf(!process.env.GOOGLE_GENERATIVE_AI_API_KEY)("Web Collector E2E", () => {
+describe.skipIf(!process.env.ANTHROPIC_API_KEY)("Web Collector E2E", () => {
   let db: AppDb;
 
   beforeAll(() => {
@@ -85,7 +85,7 @@ describe.skipIf(!process.env.GOOGLE_GENERATIVE_AI_API_KEY)("Web Collector E2E", 
       const markdown = await fetchMarkdown(PINNED_POST_URL);
       expect(markdown.length).toBeGreaterThan(1000);
 
-      const model = google("gemini-2.5-flash");
+      const model = anthropic("claude-haiku-4-5-20251001");
       const fields = await extractPostFields(PINNED_POST_URL, markdown, model);
 
       expect(fields.title.toLowerCase()).toContain("constitutional");

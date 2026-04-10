@@ -1,15 +1,8 @@
 import type { SourceType } from "@newsletter/shared/db";
 import type { CandidatesRepo } from "@pipeline/repositories/candidates.js";
+import type { Candidate } from "@newsletter/shared";
 
-export interface Candidate {
-  id: number;
-  title: string;
-  url: string;
-  sourceType: SourceType;
-  author: string | null;
-  publishedAt: Date | null;
-  engagement: { points: number; commentCount: number };
-}
+export type { Candidate };
 
 export type LoadCandidatesFn = (
   repo: CandidatesRepo,
@@ -22,6 +15,7 @@ export const loadCandidatesSince: LoadCandidatesFn = async (
   since,
   sourceTypes,
 ) => {
+  if (sourceTypes.length === 0) return [];
   const rows = await repo.findSince(since, sourceTypes);
   return rows.map((r) => ({
     id: r.id,
@@ -31,5 +25,7 @@ export const loadCandidatesSince: LoadCandidatesFn = async (
     author: r.author,
     publishedAt: r.publishedAt,
     engagement: r.engagement,
+    content: r.content,
+    comments: r.metadata.comments,
   }));
 };

@@ -6,7 +6,7 @@ import {
   createRedisConnection,
   getDb as defaultGetDb,
 } from "@newsletter/shared";
-import type { RunState } from "@newsletter/shared";
+import type { RunState, UserProfile } from "@newsletter/shared";
 import { runSubmitSchema } from "../lib/validate.js";
 import { createRun } from "../services/runs.js";
 import { hydrateRankedItems } from "../services/rank-hydration.js";
@@ -14,16 +14,23 @@ import {
   createRawItemsRepo,
   type RawItemsRepo,
 } from "../repositories/raw-items.js";
+import {
+  loadProfile as defaultLoadProfile,
+  ProfileNotFoundError,
+  ProfileParseError,
+} from "../services/profiles.js";
 
 export interface RunsRouterDeps {
   redis: IORedis;
   processingQueue: Queue;
   getRawItemsRepo: () => RawItemsRepo;
   logger?: ReturnType<typeof createLogger>;
+  loadProfile?: (name: string) => Promise<UserProfile>;
 }
 
 export function createRunsRouter(deps: RunsRouterDeps): Hono {
   const logger = deps.logger ?? createLogger("api:runs");
+  const loadProfile = deps.loadProfile ?? defaultLoadProfile;
   const runs = new Hono();
 
   runs.post("/", async (c) => {
@@ -39,12 +46,30 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       return c.json({ error: parsed.error.message }, 400);
     }
 
+    let profile: UserProfile | null = null;
+    if (parsed.data.profileName != null) {
+      try {
+        profile = await loadProfile(parsed.data.profileName);
+      } catch (err: unknown) {
+        if (err instanceof ProfileNotFoundError) {
+          return c.json({ error: err.message }, 400);
+        }
+        if (err instanceof ProfileParseError) {
+          return c.json({ error: err.message }, 400);
+        }
+        throw err;
+      }
+    }
+
     const { runId } = await createRun(
       parsed.data,
       deps.redis,
       deps.processingQueue,
+      { profile, halfLifeHours: parsed.data.halfLifeHours },
     );
-    const sources = Object.keys(parsed.data).filter((k) => k !== "topN");
+    const sources = Object.keys(parsed.data).filter(
+      (k) => k !== "topN" && k !== "profileName" && k !== "halfLifeHours",
+    );
     logger.info(
       { event: "run.started", runId, topN: parsed.data.topN, sources },
       "run.started",

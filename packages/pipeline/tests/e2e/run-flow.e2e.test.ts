@@ -222,6 +222,8 @@ describe("run flow end-to-end (single-job)", () => {
             rawItemsRepo: createRawItemsRepo(db),
             candidatesRepo: createCandidatesRepo(db),
             loadFn: loadCandidatesSince,
+            shortlistFn: (candidates) =>
+              Promise.resolve({ shortlist: candidates, breakdowns: [] }),
             rankFn: (candidates, options) => rankFnImpl(candidates, options),
             collectFns: { hn: fakeHn, reddit: fakeReddit, web: fakeWeb },
           },

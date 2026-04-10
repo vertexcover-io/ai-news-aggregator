@@ -1,6 +1,7 @@
 import { and, gte, inArray } from "drizzle-orm";
 import { rawItems } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
+import type { RawItemMetadata } from "@newsletter/shared";
 
 export interface CandidateRow {
   id: number;
@@ -10,6 +11,8 @@ export interface CandidateRow {
   author: string | null;
   publishedAt: Date | null;
   engagement: { points: number; commentCount: number };
+  content: string | null;
+  metadata: RawItemMetadata;
 }
 
 export interface CandidatesRepo {
@@ -34,6 +37,8 @@ export function createCandidatesRepo(
           author: rawItems.author,
           publishedAt: rawItems.publishedAt,
           engagement: rawItems.engagement,
+          content: rawItems.content,
+          metadata: rawItems.metadata,
         })
         .from(rawItems)
         .where(

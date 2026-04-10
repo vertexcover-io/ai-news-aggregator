@@ -2,7 +2,11 @@ import { randomUUID } from "node:crypto";
 import type IORedis from "ioredis";
 import { Queue } from "bullmq";
 import { createRedisConnection } from "@newsletter/shared";
-import type { RunState, RunSubmitPayload } from "@newsletter/shared";
+import type {
+  RunState,
+  RunSubmitPayload,
+  UserProfile,
+} from "@newsletter/shared";
 
 const TTL_SECONDS = 3600;
 
@@ -28,12 +32,20 @@ interface RunProcessJobPayload {
     reddit?: RunSubmitPayload["reddit"];
     web?: RunSubmitPayload["web"];
   };
+  profile: UserProfile | null;
+  halfLifeHours?: number;
+}
+
+export interface CreateRunOptions {
+  profile?: UserProfile | null;
+  halfLifeHours?: number;
 }
 
 export async function createRun(
   payload: RunSubmitPayload,
   redis: IORedis = createRedisConnection(),
   processingQueue: Queue = getDefaultProcessingQueue(),
+  options: CreateRunOptions = {},
 ): Promise<CreatedRun> {
   const runId = randomUUID();
   const now = new Date().toISOString();
@@ -84,6 +96,10 @@ export async function createRun(
     topN: payload.topN,
     sourceTypes,
     collectors,
+    profile: options.profile ?? null,
+    ...(options.halfLifeHours !== undefined
+      ? { halfLifeHours: options.halfLifeHours }
+      : {}),
   };
 
   await processingQueue.add("run-process", jobPayload, { jobId: runId });

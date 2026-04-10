@@ -71,6 +71,9 @@ importers:
       ioredis:
         specifier: 5.6.1
         version: 5.6.1
+      yaml:
+        specifier: 2.8.3
+        version: 2.8.3
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -117,9 +120,9 @@ importers:
 
   packages/pipeline:
     dependencies:
-      '@ai-sdk/google':
-        specifier: 2.0.67
-        version: 2.0.67(zod@4.3.6)
+      '@ai-sdk/anthropic':
+        specifier: 2.0.74
+        version: 2.0.74(zod@4.3.6)
       '@newsletter/shared':
         specifier: workspace:*
         version: link:../shared
@@ -255,14 +258,14 @@ importers:
 
 packages:
 
-  '@ai-sdk/gateway@2.0.73':
-    resolution: {integrity: sha512-4c6yRZGvRxaaTeswOpzSWAJixsY16ucSda8PVpLSJC2P5F4MBitPnibkjYLNRgjlK4fqeRouckOiGFq9M3JZpg==}
+  '@ai-sdk/anthropic@2.0.74':
+    resolution: {integrity: sha512-1Z7142GVIF4XkcSvQpL6ij2c7J51dtm4/Z84P+O0bGBDZI1Nbvz897hXkJf2cfNhq5XdpvUYbI+oExXM7Ko8Zw==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/google@2.0.67':
-    resolution: {integrity: sha512-A7iZeJf3RbNIrFBKsskd2s4c52tK0S0nX4rGlehjVHSYBvIZzrX+RW3Oxe7WnpeI0aON+5dVsqfGLFNYNGWEXw==}
+  '@ai-sdk/gateway@2.0.73':
+    resolution: {integrity: sha512-4c6yRZGvRxaaTeswOpzSWAJixsY16ucSda8PVpLSJC2P5F4MBitPnibkjYLNRgjlK4fqeRouckOiGFq9M3JZpg==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -3107,17 +3110,17 @@ packages:
 
 snapshots:
 
+  '@ai-sdk/anthropic@2.0.74(zod@4.3.6)':
+    dependencies:
+      '@ai-sdk/provider': 2.0.1
+      '@ai-sdk/provider-utils': 3.0.23(zod@4.3.6)
+      zod: 4.3.6
+
   '@ai-sdk/gateway@2.0.73(zod@4.3.6)':
     dependencies:
       '@ai-sdk/provider': 2.0.1
       '@ai-sdk/provider-utils': 3.0.23(zod@4.3.6)
       '@vercel/oidc': 3.1.0
-      zod: 4.3.6
-
-  '@ai-sdk/google@2.0.67(zod@4.3.6)':
-    dependencies:
-      '@ai-sdk/provider': 2.0.1
-      '@ai-sdk/provider-utils': 3.0.23(zod@4.3.6)
       zod: 4.3.6
 
   '@ai-sdk/provider-utils@3.0.23(zod@4.3.6)':

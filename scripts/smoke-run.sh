@@ -8,14 +8,14 @@
 #
 #   - `pnpm dev` (api + pipeline workers + web) running
 #   - `pnpm infra:up` (Postgres + Redis)
-#   - GEMINI_API_KEY exported in the calling shell
+#   - ANTHROPIC_API_KEY exported in the calling shell
 #
 # Usage:
-#   GEMINI_API_KEY=... ./scripts/smoke-run.sh
+#   ANTHROPIC_API_KEY=... ./scripts/smoke-run.sh
 #
 set -euo pipefail
 
-: "${GEMINI_API_KEY:?GEMINI_API_KEY is required (must be set in pipeline env)}"
+: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required (must be set in pipeline env)}"
 
 API_URL="${API_URL:-http://localhost:3000}"
 POLL_ATTEMPTS="${POLL_ATTEMPTS:-30}"

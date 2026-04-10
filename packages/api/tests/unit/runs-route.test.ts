@@ -2,12 +2,16 @@ import { describe, it, expect, vi } from "vitest";
 import { Hono } from "hono";
 import type IORedis from "ioredis";
 import type { Queue, JobsOptions } from "bullmq";
-import type { RunState } from "@newsletter/shared";
+import type { RunState, UserProfile } from "@newsletter/shared";
 import { createRunsRouter } from "@api/routes/runs.js";
 import type {
   RawItemRow,
   RawItemsRepo,
 } from "@api/repositories/raw-items.js";
+import {
+  ProfileNotFoundError,
+  ProfileParseError,
+} from "@api/services/profiles.js";
 
 interface MockRedis {
   store: Map<string, { value: string; ttl: number }>;
@@ -60,12 +64,14 @@ function makeApp(opts: {
   redis: MockRedis;
   q: ReturnType<typeof makeQueue>;
   repo?: RawItemsRepo;
+  loadProfile?: (name: string) => Promise<UserProfile>;
 }): Hono {
   const app = new Hono();
   const router = createRunsRouter({
     redis: opts.redis as unknown as IORedis,
     processingQueue: opts.q.queue as unknown as Queue,
     getRawItemsRepo: () => opts.repo ?? makeRepo(),
+    loadProfile: opts.loadProfile,
   });
   app.route("/api/runs", router);
   return app;
@@ -217,6 +223,163 @@ describe("POST /api/runs", () => {
       (call) => call.ctx.event === "run.started" && call.ctx.runId === runId,
     );
     expect(matched).toBeDefined();
+  });
+
+  it("REQ-001/REQ-002: passes parsed profile into the enqueued job when profileName is set", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const profile: UserProfile = {
+      name: "alice",
+      topics: ["llm", "agents"],
+      antiTopics: ["crypto"],
+    };
+    const loadProfile = vi.fn().mockResolvedValue(profile);
+    const app = makeApp({ redis, q, loadProfile });
+    const res = await app.request("/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        topN: 10,
+        hn: { sinceDays: 1 },
+        profileName: "alice",
+      }),
+    });
+    expect(res.status).toBe(201);
+    expect(loadProfile).toHaveBeenCalledWith("alice");
+    expect(q.calls).toHaveLength(1);
+    const data = q.calls[0].data as { profile: UserProfile | null };
+    expect(data.profile).toEqual(profile);
+  });
+
+  it("REQ-005: enqueued job has profile: null when profileName is omitted", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const app = makeApp({ redis, q });
+    const res = await app.request("/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topN: 10, hn: { sinceDays: 1 } }),
+    });
+    expect(res.status).toBe(201);
+    const data = q.calls[0].data as { profile: UserProfile | null };
+    expect(data.profile).toBeNull();
+  });
+
+  it("REQ-005: enqueued job has profile: null when profileName is explicit null", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const loadProfile = vi.fn();
+    const app = makeApp({ redis, q, loadProfile });
+    const res = await app.request("/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        topN: 10,
+        hn: { sinceDays: 1 },
+        profileName: null,
+      }),
+    });
+    expect(res.status).toBe(201);
+    expect(loadProfile).not.toHaveBeenCalled();
+    const data = q.calls[0].data as { profile: UserProfile | null };
+    expect(data.profile).toBeNull();
+  });
+
+  it("REQ-003/EDGE-008: returns 400 with exact message for unknown profile name", async () => {
+    const loadProfile = vi
+      .fn()
+      .mockRejectedValue(new ProfileNotFoundError("ghost"));
+    const app = makeApp({
+      redis: makeRedis(),
+      q: makeQueue(),
+      loadProfile,
+    });
+    const res = await app.request("/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        topN: 10,
+        hn: { sinceDays: 1 },
+        profileName: "ghost",
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body).toEqual({ error: "profile not found: ghost" });
+  });
+
+  it("REQ-004/EDGE-009: returns 400 with structured error for malformed profile, no absolute paths in body", async () => {
+    const loadProfile = vi
+      .fn()
+      .mockRejectedValue(
+        new ProfileParseError("malformed", "yaml parse error: unexpected token"),
+      );
+    const app = makeApp({
+      redis: makeRedis(),
+      q: makeQueue(),
+      loadProfile,
+    });
+    const res = await app.request("/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        topN: 10,
+        hn: { sinceDays: 1 },
+        profileName: "malformed",
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("malformed");
+    expect(body.error).not.toMatch(/^\//);
+    expect(body.error).not.toContain("/home/");
+    expect(body.error).not.toContain("/tmp/");
+  });
+
+  it("EDGE-013: returns 400 for halfLifeHours: 0", async () => {
+    const app = makeApp({ redis: makeRedis(), q: makeQueue() });
+    const res = await app.request("/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        topN: 10,
+        hn: { sinceDays: 1 },
+        halfLifeHours: 0,
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("EDGE-013: returns 400 for halfLifeHours: -5", async () => {
+    const app = makeApp({ redis: makeRedis(), q: makeQueue() });
+    const res = await app.request("/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        topN: 10,
+        hn: { sinceDays: 1 },
+        halfLifeHours: -5,
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("passes halfLifeHours: 24 through to enqueued job payload", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const app = makeApp({ redis, q });
+    const res = await app.request("/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        topN: 10,
+        hn: { sinceDays: 1 },
+        halfLifeHours: 24,
+      }),
+    });
+    expect(res.status).toBe(201);
+    const data = q.calls[0].data as { halfLifeHours?: number };
+    expect(data.halfLifeHours).toBe(24);
   });
 
   it("EDGE-011: returns 400 for malformed JSON body", async () => {
