@@ -1,41 +1,22 @@
-import { and, gte, inArray } from "drizzle-orm";
-import { rawItems } from "@newsletter/shared/db";
-import type { AppDb, SourceType } from "@newsletter/shared/db";
+import type { SourceType } from "@newsletter/shared/db";
+import type { CandidatesRepo } from "@pipeline/repositories/candidates.js";
 import type { Candidate } from "@newsletter/shared";
 
 export type { Candidate };
 
 export type LoadCandidatesFn = (
-  db: AppDb,
+  repo: CandidatesRepo,
   since: Date,
   sourceTypes: SourceType[],
 ) => Promise<Candidate[]>;
 
 export const loadCandidatesSince: LoadCandidatesFn = async (
-  db,
+  repo,
   since,
   sourceTypes,
 ) => {
   if (sourceTypes.length === 0) return [];
-  const rows = await db
-    .select({
-      id: rawItems.id,
-      title: rawItems.title,
-      url: rawItems.url,
-      sourceType: rawItems.sourceType,
-      author: rawItems.author,
-      publishedAt: rawItems.publishedAt,
-      engagement: rawItems.engagement,
-      content: rawItems.content,
-      metadata: rawItems.metadata,
-    })
-    .from(rawItems)
-    .where(
-      and(
-        gte(rawItems.collectedAt, since),
-        inArray(rawItems.sourceType, sourceTypes),
-      ),
-    );
+  const rows = await repo.findSince(since, sourceTypes);
   return rows.map((r) => ({
     id: r.id,
     title: r.title,

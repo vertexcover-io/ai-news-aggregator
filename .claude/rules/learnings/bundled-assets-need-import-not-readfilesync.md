@@ -19,6 +19,10 @@ const profile = readFileSync(join(profilesDir, `${name}.yaml`), "utf8");
 import { SUMMARIZER_PROMPT } from "./prompts/summarizer.js";
 ```
 
+Why: Recurring bug pattern. Hit in the run-ui run as the C1 issue with `import.meta.url` + `readFileSync`, and again in the personalized-ranking run when `profiles.ts` reached for `process.cwd()` to resolve the profiles directory — the pipeline worker launched from the monorepo root happened to work, but any other launch cwd would have crashed. Inlining via TS constants is the fix for static assets; env-var + source-relative fallback is the fix for user-editable runtime config directories.
+
+Enforced by: newsletter/no-bundled-readfilesync
+
 ## Exception: user-editable runtime config (e.g. profile YAMLs)
 
 Some assets are genuinely runtime-editable and cannot be inlined — the user needs to drop a new YAML into a directory without rebuilding. For these, use an **env var with a source-relative fallback**, never `process.cwd()`:
@@ -33,5 +37,3 @@ const profilesDir = process.env.PROFILES_DIR ?? resolve(here, "../../../profiles
 ```
 
 The env var (e.g. `PROFILES_DIR`) is the production contract; the source-relative fallback only fires in dev and must be documented in `.env.example`. `process.cwd()` is never acceptable because whoever starts the process (pnpm, a systemd unit, a Docker entrypoint) controls it and it will not match the developers mental model.
-
-Why: Recurring bug pattern. Hit in the run-ui run as the C1 issue with `import.meta.url` + `readFileSync`, and again in the personalized-ranking run when `profiles.ts` reached for `process.cwd()` to resolve the profiles directory — the pipeline worker launched from the monorepo root happened to work, but any other launch cwd would have crashed. Inlining via TS constants is the fix for static assets; env-var + source-relative fallback is the fix for user-editable runtime config directories.

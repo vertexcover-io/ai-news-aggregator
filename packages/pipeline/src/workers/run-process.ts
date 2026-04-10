@@ -1,14 +1,15 @@
 import { Worker } from "bullmq";
 import type IORedis from "ioredis";
-import {
-  createRedisConnection,
-  getDb,
-  type AppDb,
-  type SourceType,
-} from "@newsletter/shared/db";
+import { createRedisConnection } from "@newsletter/shared/redis";
+import { getDb } from "@newsletter/shared";
+import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
 import type { UserProfile } from "@newsletter/shared";
 import { dedupCandidates } from "@pipeline/processors/dedup.js";
+import {
+  createCandidatesRepo,
+  type CandidatesRepo,
+} from "@pipeline/repositories/candidates.js";
 import {
   rankCandidates,
   type RankResult,
@@ -40,6 +41,11 @@ import type {
 import type { CollectorResult } from "@newsletter/shared";
 
 const logger = createLogger("worker:run-process");
+
+function ensureDb(db: AppDb | undefined): AppDb {
+  if (!db) throw new Error("internal: db required to build default repositories");
+  return db;
+}
 
 export interface RunCollectorsPayload {
   hn?: HnCollectConfig;
@@ -99,7 +105,8 @@ export interface CollectFns {
 
 export interface RunProcessDeps {
   runState: RunStateService;
-  db: AppDb;
+  rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
+  candidatesRepo: CandidatesRepo;
   loadFn: LoadCandidatesFn;
   shortlistFn: ShortlistFn;
   rankFn: RankFn;
@@ -130,8 +137,7 @@ async function runCollecting(
     return next;
   };
 
-  const rawItemsRepo = createRawItemsRepo(deps.db);
-  const collectorDeps = { rawItemsRepo };
+  const collectorDeps = { rawItemsRepo: deps.rawItemsRepo };
 
   type SourceKey = "hn" | "reddit" | "blog";
   interface Task {
@@ -269,7 +275,7 @@ export async function handleRunProcessJob(
   }
 
   const raw: Candidate[] = await deps.loadFn(
-    deps.db,
+    deps.candidatesRepo,
     since,
     sourceTypes as SourceType[],
   );
@@ -384,7 +390,8 @@ export async function handleRunProcessJob(
 export interface CreateRunProcessWorkerOptions {
   connection?: IORedis;
   runState?: RunStateService;
-  db?: AppDb;
+  rawItemsRepo?: ReturnType<typeof createRawItemsRepo>;
+  candidatesRepo?: CandidatesRepo;
   loadFn?: LoadCandidatesFn;
   shortlistFn?: ShortlistFn;
   rankFn?: RankFn;
@@ -396,7 +403,12 @@ export function createRunProcessWorker(
 ): Worker<RunProcessJobData, RunProcessResult> {
   const connection = options.connection ?? createRedisConnection();
   const runState = options.runState ?? createRunStateService(connection);
-  const db = options.db ?? getDb();
+  const needsDb = !options.rawItemsRepo || !options.candidatesRepo;
+  const db: AppDb | undefined = needsDb ? getDb() : undefined;
+  const rawItemsRepo =
+    options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db));
+  const candidatesRepo =
+    options.candidatesRepo ?? createCandidatesRepo(ensureDb(db));
   const loadFn = options.loadFn ?? loadCandidatesSince;
   const shortlistFn: ShortlistFn =
     options.shortlistFn ??
@@ -411,7 +423,8 @@ export function createRunProcessWorker(
 
   const deps: RunProcessDeps = {
     runState,
-    db,
+    rawItemsRepo,
+    candidatesRepo,
     loadFn,
     shortlistFn,
     rankFn,

@@ -20,7 +20,7 @@ BullMQ workers that collect, process, and prepare newsletter items.
 ## Rules
 - No HTTP framework — this is a standalone Node process
 - Workers call plain collector/processor functions — no business logic in workers
-- Use `createRawItemsRepo(db)` for DB access, not raw `db.insert()`
+- Use repository factories (e.g. `createRawItemsRepo(db)`) for DB access — value imports of `@newsletter/shared/db` and `drizzle-orm` are only allowed inside `src/repositories/**` (enforced by `newsletter/enforce-repository-access`)
 - Jobs must be idempotent — safe to retry
 - Use `@pipeline/*` path aliases, never relative imports
 - `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY` are both validated at worker startup (not per job) — stage-2 rerank always needs Anthropic, stage-1 shortlist always needs Voyage. `RANKING_MODEL` defaults to `claude-haiku-4-5-20251001`.

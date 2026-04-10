@@ -46,10 +46,25 @@ vi.mock("bullmq", () => ({
   })),
 }));
 
-vi.mock("@newsletter/shared/db", () => ({
-  getDb: vi.fn(() => ({ fake: "db" })),
+vi.mock("@newsletter/shared", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@newsletter/shared")>();
+  return {
+    ...actual,
+    getDb: vi.fn(() => ({ fake: "db" })),
+  };
+});
+
+vi.mock("@newsletter/shared/redis", () => ({
   createRedisConnection: vi.fn(() => ({ fake: "redis" })),
-  rawItems: {},
+}));
+
+vi.mock("@pipeline/repositories/raw-items.js", () => ({
+  createRawItemsRepo: vi.fn(() => ({ upsertItems: vi.fn() })),
+}));
+
+vi.mock("@pipeline/repositories/candidates.js", () => ({
+  createCandidatesRepo: vi.fn(() => ({ findSince: vi.fn() })),
 }));
 
 vi.mock("@newsletter/shared/logger", () => ({
@@ -210,7 +225,7 @@ describe("run-process worker", () => {
   it("falls back to now-10min window and logs warning when run-state is null", async () => {
     const runStateMock = makeMockRunState(null);
     let capturedSince: Date | undefined;
-    const loadFn = vi.fn((_db, since: Date): Promise<Candidate[]> => {
+    const loadFn = vi.fn((_repo, since: Date): Promise<Candidate[]> => {
       capturedSince = since;
       return Promise.resolve([]);
     });
@@ -237,7 +252,7 @@ describe("run-process worker", () => {
     const state = makeRunState({ startedAt: "2026-04-07T08:00:00.000Z" });
     const runStateMock = makeMockRunState(state);
     let capturedSince: Date | undefined;
-    const loadFn = vi.fn((_db, since: Date): Promise<Candidate[]> => {
+    const loadFn = vi.fn((_repo, since: Date): Promise<Candidate[]> => {
       capturedSince = since;
       return Promise.resolve([]);
     });

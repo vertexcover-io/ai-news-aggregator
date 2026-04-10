@@ -13,6 +13,8 @@ import {
 import type { CollectorResult } from "@newsletter/shared/types";
 import { loadCandidatesSince } from "@pipeline/services/candidate-loader.js";
 import { createRunStateService } from "@pipeline/services/run-state.js";
+import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import { createCandidatesRepo } from "@pipeline/repositories/candidates.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import {
   getTestRedis,
@@ -53,7 +55,8 @@ describe("run-process worker E2E", () => {
         handleRunProcessJob(
           {
             runState: runStateService,
-            db,
+            rawItemsRepo: createRawItemsRepo(db),
+            candidatesRepo: createCandidatesRepo(db),
             loadFn: loadCandidatesSince,
             shortlistFn: (candidates) =>
               Promise.resolve({ shortlist: candidates, breakdowns: [] }),

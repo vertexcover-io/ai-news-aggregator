@@ -1,54 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { loadCandidatesSince } from "@pipeline/services/candidate-loader";
-import type { AppDb } from "@newsletter/shared/db";
+import type { CandidatesRepo, CandidateRow } from "@pipeline/repositories/candidates.js";
 import type { RawItemComment, RawItemMetadata } from "@newsletter/shared";
-
-interface FakeRow {
-  id: number;
-  title: string;
-  url: string;
-  sourceType: "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter";
-  author: string | null;
-  publishedAt: Date | null;
-  engagement: { points: number; commentCount: number };
-  content: string | null;
-  metadata: RawItemMetadata;
-}
-
-interface CapturedSelect {
-  columns: Record<string, unknown> | null;
-}
-
-function createFakeDb(rows: FakeRow[]): {
-  db: Pick<AppDb, "select">;
-  captured: CapturedSelect;
-} {
-  const captured: CapturedSelect = { columns: null };
-
-  const whereThenable = {
-    then: (resolve: (value: FakeRow[]) => unknown): Promise<unknown> =>
-      Promise.resolve(rows).then(resolve),
-  };
-
-  const fromBuilder = {
-    where: (): typeof whereThenable => whereThenable,
-  };
-
-  const selectBuilder = {
-    from: (): typeof fromBuilder => fromBuilder,
-  };
-
-  const selectSpy = vi.fn((cols: Record<string, unknown>) => {
-    captured.columns = cols;
-    return selectBuilder;
-  });
-
-  const db = {
-    select: selectSpy,
-  } as unknown as Pick<AppDb, "select">;
-
-  return { db, captured };
-}
 
 const SAMPLE_COMMENT: RawItemComment = {
   id: "c1",
@@ -57,7 +10,7 @@ const SAMPLE_COMMENT: RawItemComment = {
   publishedAt: "2026-04-01T00:00:00Z",
 };
 
-function baseRow(overrides: Partial<FakeRow> = {}): FakeRow {
+function baseRow(overrides: Partial<CandidateRow> = {}): CandidateRow {
   return {
     id: 1,
     title: "Example",
@@ -72,14 +25,18 @@ function baseRow(overrides: Partial<FakeRow> = {}): FakeRow {
   };
 }
 
+function makeRepo(rows: CandidateRow[]): CandidatesRepo {
+  return {
+    findSince: vi.fn().mockResolvedValue(rows),
+  };
+}
+
 describe("loadCandidatesSince", () => {
   it("REQ-010: maps non-null content through to candidate.content", async () => {
-    const { db } = createFakeDb([
-      baseRow({ content: "article body markdown" }),
-    ]);
+    const repo = makeRepo([baseRow({ content: "article body markdown" })]);
 
     const result = await loadCandidatesSince(
-      db as AppDb,
+      repo,
       new Date("2026-04-01T00:00:00Z"),
       ["hn"],
     );
@@ -89,15 +46,15 @@ describe("loadCandidatesSince", () => {
   });
 
   it("REQ-011: preserves null content and types comments as RawItemComment[]", async () => {
-    const { db } = createFakeDb([
+    const repo = makeRepo([
       baseRow({
         content: null,
-        metadata: { comments: [SAMPLE_COMMENT] },
+        metadata: { comments: [SAMPLE_COMMENT] } as RawItemMetadata,
       }),
     ]);
 
     const result = await loadCandidatesSince(
-      db as AppDb,
+      repo,
       new Date("2026-04-01T00:00:00Z"),
       ["hn"],
     );
@@ -109,12 +66,10 @@ describe("loadCandidatesSince", () => {
   });
 
   it("REQ-012: row with metadata.comments === [] yields empty comments array", async () => {
-    const { db } = createFakeDb([
-      baseRow({ metadata: { comments: [] } }),
-    ]);
+    const repo = makeRepo([baseRow({ metadata: { comments: [] } })]);
 
     const result = await loadCandidatesSince(
-      db as AppDb,
+      repo,
       new Date("2026-04-01T00:00:00Z"),
       ["hn"],
     );
@@ -123,41 +78,34 @@ describe("loadCandidatesSince", () => {
     expect(result[0].comments.length).toBe(0);
   });
 
-  it("selects content and metadata columns in the db.select projection", async () => {
-    const { db, captured } = createFakeDb([baseRow()]);
+  it("delegates to repo.findSince with correct since and sourceTypes", async () => {
+    const repo = makeRepo([baseRow()]);
+    const since = new Date("2026-04-01T00:00:00Z");
 
-    await loadCandidatesSince(
-      db as AppDb,
-      new Date("2026-04-01T00:00:00Z"),
-      ["hn"],
-    );
+    await loadCandidatesSince(repo, since, ["hn"]);
 
-    expect(captured.columns).not.toBeNull();
-    if (captured.columns === null) throw new Error("expected select columns");
-    expect(Object.keys(captured.columns)).toContain("content");
-    expect(Object.keys(captured.columns)).toContain("metadata");
+    expect(repo.findSince).toHaveBeenCalledWith(since, ["hn"]);
   });
 
   it("short-circuits to empty array when sourceTypes is empty", async () => {
-    const { db, captured } = createFakeDb([baseRow()]);
+    const repo = makeRepo([baseRow()]);
 
     const result = await loadCandidatesSince(
-      db as AppDb,
+      repo,
       new Date("2026-04-01T00:00:00Z"),
       [],
     );
 
     expect(result).toEqual([]);
-    expect(captured.columns).toBeNull();
   });
 
   it("maps multiple rows preserving all shared Candidate fields", async () => {
-    const { db } = createFakeDb([
+    const repo = makeRepo([
       baseRow({
         id: 1,
         title: "First",
         content: "body 1",
-        metadata: { comments: [SAMPLE_COMMENT] },
+        metadata: { comments: [SAMPLE_COMMENT] } as RawItemMetadata,
       }),
       baseRow({
         id: 2,
@@ -171,7 +119,7 @@ describe("loadCandidatesSince", () => {
     ]);
 
     const result = await loadCandidatesSince(
-      db as AppDb,
+      repo,
       new Date("2026-04-01T00:00:00Z"),
       ["hn", "reddit"],
     );

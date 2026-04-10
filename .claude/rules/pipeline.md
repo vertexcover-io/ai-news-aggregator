@@ -17,3 +17,5 @@ paths:
 - Workers run in a standalone Node process with no HTTP framework
 - Don't import from `@newsletter/api` — pipeline and API communicate only through the database and Redis queues
 - If a collector fails, log the error and let other collectors continue — partial collection is acceptable
+
+> Enforced by: no-restricted-imports blocks in eslint.config.mjs.

@@ -8,5 +8,6 @@
       "@pipeline/*": ["src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["dist", "node_modules", "vitest.config.ts"]
 }

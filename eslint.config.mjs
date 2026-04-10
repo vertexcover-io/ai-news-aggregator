@@ -1,6 +1,7 @@
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
 import globals from "globals";
+import newsletter from "@newsletter/eslint-plugin";
 
 export default tseslint.config(
   {
@@ -10,6 +11,11 @@ export default tseslint.config(
       "**/*.config.*",
       ".worktrees/",
     ],
+  },
+  {
+    plugins: {
+      newsletter,
+    },
   },
   eslint.configs.recommended,
   tseslint.configs.strictTypeChecked,
@@ -50,5 +56,128 @@ export default tseslint.config(
       "@typescript-eslint/no-redundant-type-constituents": "off",
       "@typescript-eslint/no-unnecessary-condition": "off",
     },
+  },
+  // Layer 1: pipeline must not depend on HTTP frameworks or @newsletter/api
+  {
+    files: ["packages/pipeline/src/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "warn",
+        {
+          patterns: [
+            {
+              group: ["hono", "hono/*"],
+              message: "Pipeline package must not import HTTP frameworks.",
+            },
+            {
+              group: ["express", "fastify"],
+              message: "Pipeline package must not import HTTP frameworks.",
+            },
+          ],
+          paths: [
+            {
+              name: "@newsletter/api",
+              message: "Pipeline cannot depend on @newsletter/api.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  // Layer 1: web must not import the DB layer directly
+  {
+    files: ["packages/web/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "warn",
+        {
+          paths: [
+            {
+              name: "drizzle-orm",
+              message: "Web package must not import drizzle-orm.",
+            },
+            {
+              name: "@newsletter/shared/db",
+              message: "Web package must not import the DB layer.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@newsletter/shared/db/*"],
+              message: "Web package must not import the DB layer.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  // Layer 1: API route handlers must delegate DB access to services/repositories
+  {
+    files: ["packages/api/src/routes/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "warn",
+        {
+          paths: [
+            {
+              name: "drizzle-orm",
+              message:
+                "Route handlers must delegate DB access to services/repositories.",
+            },
+            {
+              name: "@newsletter/shared/db",
+              message:
+                "Route handlers must delegate DB access to services/repositories.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  // newsletter/dotenv-bootstrap on every runnable package entrypoint.
+  // Scoped to api/pipeline (runnable Node services) — shared is a pure
+  // library (re-exports only) and must not be flagged.
+  {
+    files: ["packages/api/src/index.ts", "packages/pipeline/src/index.ts"],
+    plugins: { newsletter },
+    rules: {
+      "newsletter/dotenv-bootstrap": "warn",
+    },
+  },
+  // newsletter/no-bundled-readfilesync + newsletter/no-raw-alter-table
+  // on all bundled service source. These rules catch recurring runtime
+  // traps documented in .claude/rules/learnings/.
+  {
+    files: ["packages/pipeline/src/**/*.ts", "packages/api/src/**/*.ts"],
+    plugins: { newsletter },
+    rules: {
+      "newsletter/no-bundled-readfilesync": "warn",
+      "newsletter/no-raw-alter-table": "warn",
+    },
+  },
+  // newsletter/collector-return-shape: type-aware rule that pins every
+  // exported function in pipeline collectors to Promise<CollectorResult>.
+  {
+    files: ["packages/pipeline/src/collectors/**/*.ts"],
+    plugins: { newsletter },
+    rules: {
+      "newsletter/collector-return-shape": "warn",
+    },
+  },
+  // newsletter/enforce-repository-access: value imports of
+  // @newsletter/shared/db and drizzle-orm are only allowed inside repository
+  // modules. Scoped to api + pipeline service source, excluding repositories
+  // themselves and all test files.
+  {
+    files: ["packages/api/src/**/*.ts", "packages/pipeline/src/**/*.ts"],
+    ignores: [
+      "packages/api/src/repositories/**",
+      "packages/pipeline/src/repositories/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "packages/*/tests/**",
+    ],
+    plugins: { newsletter },
+    rules: { "newsletter/enforce-repository-access": "warn" },
   },
 );

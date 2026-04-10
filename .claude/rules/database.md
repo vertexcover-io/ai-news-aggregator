@@ -17,3 +17,5 @@ paths:
 - Use Drizzle's query builder for standard CRUD operations
 - Only drop to raw SQL via `db.execute()` when Drizzle genuinely cannot express the query (complex aggregations, CTEs, window functions)
 - Keep query logic in the package that needs it (API services or pipeline processors), not in the shared package — shared only exports the schema and client
+
+> Raw ALTER TABLE via db.execute() is enforced by newsletter/no-raw-alter-table.

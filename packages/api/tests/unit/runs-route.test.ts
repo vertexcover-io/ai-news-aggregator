@@ -2,8 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import { Hono } from "hono";
 import type IORedis from "ioredis";
 import type { Queue, JobsOptions } from "bullmq";
-import type { AppDb, RunState, UserProfile } from "@newsletter/shared";
+import type { RunState, UserProfile } from "@newsletter/shared";
 import { createRunsRouter } from "@api/routes/runs.js";
+import type {
+  RawItemRow,
+  RawItemsRepo,
+} from "@api/repositories/raw-items.js";
 import {
   ProfileNotFoundError,
   ProfileParseError,
@@ -50,17 +54,23 @@ function makeQueue() {
   return { add, calls, queue: { add, name: "processing" } };
 }
 
+function makeRepo(rows: RawItemRow[] = []): RawItemsRepo {
+  return {
+    findByIds: vi.fn(() => Promise.resolve(rows)),
+  };
+}
+
 function makeApp(opts: {
   redis: MockRedis;
   q: ReturnType<typeof makeQueue>;
-  db?: AppDb;
+  repo?: RawItemsRepo;
   loadProfile?: (name: string) => Promise<UserProfile>;
 }): Hono {
   const app = new Hono();
   const router = createRunsRouter({
     redis: opts.redis as unknown as IORedis,
     processingQueue: opts.q.queue as unknown as Queue,
-    getDb: () => opts.db ?? ({} as AppDb),
+    getRawItemsRepo: () => opts.repo ?? makeRepo(),
     loadProfile: opts.loadProfile,
   });
   app.route("/api/runs", router);
@@ -194,7 +204,7 @@ describe("POST /api/runs", () => {
     const router = createRunsRouter({
       redis: makeRedis() as unknown as IORedis,
       processingQueue: makeQueue().queue as unknown as Queue,
-      getDb: () => ({}) as AppDb,
+      getRawItemsRepo: () => makeRepo(),
       logger: fakeLogger as unknown as Parameters<
         typeof createRunsRouter
       >[0]["logger"],
@@ -437,7 +447,7 @@ describe("GET /api/runs/:runId", () => {
       ttl: 3600,
     });
 
-    const where = vi.fn().mockResolvedValue([
+    const repo = makeRepo([
       {
         id: 7,
         sourceType: "hn",
@@ -448,11 +458,8 @@ describe("GET /api/runs/:runId", () => {
         engagement: { points: 50, commentCount: 5 },
       },
     ]);
-    const from = vi.fn(() => ({ where }));
-    const select = vi.fn(() => ({ from }));
-    const db = { select } as unknown as AppDb;
 
-    const app = makeApp({ redis, q: makeQueue(), db });
+    const app = makeApp({ redis, q: makeQueue(), repo });
     const res = await app.request(`/api/runs/${completedState.id}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as RunState & { rankedItems: { id: number; title: string; score: number; rationale: string }[] };

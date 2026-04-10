@@ -11,3 +11,5 @@ Fix: add `vitest.config.ts` (and `vitest.workspace.ts` if present) to the `exclu
 ```
 
 Why: Hit during the run-ui run — vitest 3.2.1 bundles vite 7 while the web app uses vite 8, and `tsc -b` surfaced the conflict even though runtime worked. Excluding the config file is the minimal fix; bumping vitest or vite to align majors is a heavier change with no functional benefit.
+
+Enforced by: manual review when adding a new package with vitest

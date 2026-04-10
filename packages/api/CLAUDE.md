@@ -17,8 +17,9 @@ Hono REST API for job enqueueing and email delivery.
 - No direct scraping or processing logic — that belongs in pipeline
 - Communicate with pipeline only through DB and Redis queues / run-state
 - Validate all API request input at the boundary with zod
-- Use `@newsletter/shared` for DB access, types, Redis connection, and the logger factory
+- Use `@newsletter/shared` for types, Redis connection, and the logger factory
 - Reuse `createRedisConnection()` from shared rather than instantiating ioredis directly
+- DB access goes through `src/repositories/` — routes and services import repository factories, not `@newsletter/shared/db` or `drizzle-orm` directly (enforced by `newsletter/enforce-repository-access`)
 - User profiles are YAML files under `profiles/` at the repo root; override the lookup directory with `PROFILES_DIR` in deployed environments where the bundled source tree is not available. `POST /api/runs` accepts optional `profileName` and `halfLifeHours` fields that flow through to the pipeline's two-stage ranking.
 
 ## Commands
