@@ -6,6 +6,6 @@ dist/
 .turbo/
 docs/*
 !docs/plans/
-!docs/spec/
+docs/spec/
 .worktrees/
 .harness/

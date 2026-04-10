@@ -24,6 +24,10 @@ if (!process.env.ANTHROPIC_API_KEY) {
   throw new Error("ANTHROPIC_API_KEY is required for ranking");
 }
 
+if (!process.env.VOYAGE_API_KEY) {
+  throw new Error("VOYAGE_API_KEY is required for personalized ranking");
+}
+
 const runProcessWorker = createRunProcessWorker();
 
 const shutdown = async (): Promise<void> => {

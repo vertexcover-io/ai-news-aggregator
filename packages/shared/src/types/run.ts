@@ -6,6 +6,7 @@ export type RunStage =
   | "queued"
   | "collecting"
   | "processing"
+  | "shortlisting"
   | "ranking"
   | "completed"
   | "failed";
@@ -92,4 +93,5 @@ export interface RunSubmitPayload {
   hn?: RunSubmitHnConfig;
   reddit?: RunSubmitRedditConfig;
   web?: RunSubmitWebConfig;
+  profileName?: string | null;
 }
