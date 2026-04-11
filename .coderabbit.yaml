@@ -1,0 +1,33 @@
+language: "en-US"
+
+reviews:
+  profile: "assertive"
+  high_level_summary: true
+  auto_review:
+    enabled: true
+    drafts: false
+    ignore_title_keywords: ["WIP", "wip", "draft"]
+
+  path_filters:
+    - "!**/dist/**"
+    - "!**/node_modules/**"
+    - "!**/*.lock"
+    - "!**/migrations/**"
+
+  pre_merge_checks:
+    title:
+      mode: "warning"
+      requirements: "Must follow conventional commits format: feat|fix|chore|docs|refactor|test(SCOPE): description"
+
+tools:
+  eslint:
+    enabled: true
+  biome:
+    enabled: false
+  gitleaks:
+    enabled: true
+
+knowledge_base:
+  linear:
+    usage: "auto"
+    team_keys: ["VER"]
