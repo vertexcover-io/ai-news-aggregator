@@ -1,0 +1,75 @@
+language: "en-US"
+tone_instructions: "Be concise and direct. Flag real issues, skip nitpicks."
+
+reviews:
+  profile: "assertive"
+  high_level_summary: true
+  auto_review:
+    enabled: true
+    drafts: false
+    ignore_title_keywords: ["WIP", "wip", "draft"]
+
+  path_filters:
+    - "!**/dist/**"
+    - "!**/node_modules/**"
+    - "!**/*.lock"
+    - "!**/migrations/**"
+
+  path_instructions:
+    - path: "packages/pipeline/src/collectors/**"
+      instructions: |
+        - Every exported function named `collect*` must return `Promise<CollectorResult>` — flag any that return a different shape.
+        - Collectors must NOT define intermediate types (e.g. ParsedItem, ParsedComment). Map directly from source API response to RawItemInsert[].
+        - No HTTP framework imports (no hono, no express) allowed in this package.
+
+    - path: "packages/api/src/**"
+      instructions: |
+        - Route handlers must NOT call db.insert/db.select directly — all DB access must go through repository functions from @newsletter/shared.
+        - No pipeline worker logic in API routes (no BullMQ Worker, no job processing logic).
+        - All request bodies must be validated with zod before use.
+
+    - path: "packages/shared/src/**"
+      instructions: |
+        - This is the only package that should define Drizzle schema tables and migrations.
+        - If a zod schema exists in the api package for the same shape as a type exported from here, verify they stay in sync.
+
+    - path: "packages/web/src/**"
+      instructions: |
+        - No drizzle-orm imports allowed — the frontend communicates through the API only.
+        - No direct database access of any kind.
+
+    - path: "packages/{api,pipeline}/src/index.ts"
+      instructions: |
+        - dotenv must be loaded at the very top of the file before any other imports.
+
+    - path: "**/*.ts"
+      instructions: |
+        - TypeScript strict mode is enforced — flag any `any` types, `@ts-ignore`, or `as unknown as X` casts.
+        - No relative imports that cross package boundaries (e.g. ../../../shared/src/...). Use @newsletter/shared instead.
+        - No readFileSync with import.meta.url or __dirname — assets must be bundled as TypeScript constants.
+        - Use `const` by default. `let` only when reassignment is necessary. Never `var`.
+        - No premature abstractions — don't create helpers or wrapper classes for things used only once.
+        - No speculative features or unnecessary comments on self-explanatory code.
+
+    - path: "**/*.test.ts"
+      instructions: |
+        - When a required field is added to a shared Deps/Options interface, verify ALL test files that construct that type directly are updated — not just ones using a factory function.
+        - Tests must assert exact strings when the spec mandates user-visible copy (error messages, empty states, labels).
+
+  pre_merge_checks:
+    title:
+      mode: "warning"
+      requirements: "Must follow conventional commits format: feat|fix|chore|docs|refactor|test(SCOPE): description. Linear issue ID (e.g. VER-26) should be in scope when applicable."
+
+tools:
+  eslint:
+    enabled: true
+  biome:
+    enabled: false
+  gitleaks:
+    enabled: true
+
+knowledge_base:
+  linear:
+    usage: "auto"
+    team_keys: ["VER"]
