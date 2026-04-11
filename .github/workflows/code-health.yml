@@ -1,6 +1,8 @@
 name: Code Health
 
 on:
+  schedule:
+    - cron: "3 9 * * 1"  # Every Monday at 9:03am UTC
   workflow_dispatch:
     inputs:
       skill:
@@ -34,7 +36,7 @@ jobs:
 
       - name: Run tech-debt finder
         id: tech-debt
-        if: ${{ github.event.inputs.skill == 'all' || github.event.inputs.skill == 'tech-debt' }}
+        if: ${{ github.event_name == 'schedule' || github.event.inputs.skill == 'all' || github.event.inputs.skill == 'tech-debt' }}
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
