@@ -25,6 +25,8 @@ export async function hydrateRankedItems(
       score: ref.score,
       rationale: ref.rationale,
       content: row.content ?? null,
+      imageUrl: row.imageUrl,
+      recap: row.metadata.recap ?? null,
     });
   }
   return hydrated;

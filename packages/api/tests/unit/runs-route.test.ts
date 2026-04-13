@@ -456,6 +456,9 @@ describe("GET /api/runs/:runId", () => {
         author: "alice",
         publishedAt: new Date("2026-04-01T00:00:00Z"),
         engagement: { points: 50, commentCount: 5 },
+        content: null,
+        imageUrl: null,
+        metadata: { comments: [] },
       },
     ]);
 

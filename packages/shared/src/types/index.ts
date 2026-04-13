@@ -10,8 +10,15 @@ export interface RawItemComment {
   publishedAt: string;
 }
 
+export interface RecapContent {
+  summary: string;
+  bullets: string[];
+  bottomLine: string;
+}
+
 export interface RawItemMetadata {
   comments: RawItemComment[];
+  recap?: RecapContent;
 }
 
 export interface CollectorResult {

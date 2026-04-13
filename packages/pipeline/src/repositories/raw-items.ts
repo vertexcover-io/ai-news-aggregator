@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { rawItems } from "@newsletter/shared/db";
 import type { AppDb, RawItemInsert, SourceType } from "@newsletter/shared/db";
+import type { RecapContent } from "@newsletter/shared";
 
 export interface RawItemsRepo {
   upsertItems(items: RawItemInsert[]): Promise<void>;
@@ -8,10 +9,11 @@ export interface RawItemsRepo {
     sourceType: SourceType,
     externalIds: string[],
   ): Promise<Set<string>>;
+  updateRecapData(updates: { id: number; recap: RecapContent }[]): Promise<void>;
 }
 
 export function createRawItemsRepo(
-  db: Pick<AppDb, "insert" | "select">,
+  db: Pick<AppDb, "insert" | "select" | "update">,
 ): RawItemsRepo {
   return {
     async upsertItems(items: RawItemInsert[]): Promise<void> {
@@ -22,6 +24,7 @@ export function createRawItemsRepo(
         set: {
           engagement: sql.raw(`excluded.${rawItems.engagement.name}`),
           metadata: sql.raw(`excluded.${rawItems.metadata.name}`),
+          imageUrl: sql.raw(`excluded.${rawItems.imageUrl.name}`),
           collectedAt: now,
           updatedAt: now,
         },
@@ -45,6 +48,20 @@ export function createRawItemsRepo(
         );
 
       return new Set(rows.map((r) => r.externalId));
+    },
+
+    async updateRecapData(updates: { id: number; recap: RecapContent }[]): Promise<void> {
+      if (updates.length === 0) return;
+      const now = new Date();
+      for (const { id, recap } of updates) {
+        await db
+          .update(rawItems)
+          .set({
+            metadata: sql`jsonb_set(coalesce(${rawItems.metadata}, '{}'), '{recap}', ${JSON.stringify(recap)}::jsonb)`,
+            updatedAt: now,
+          })
+          .where(eq(rawItems.id, id));
+      }
     },
   };
 }

@@ -50,6 +50,8 @@ const baseCompletedRun: RunStateResponse = {
       content: "Some content",
       engagement: { points: 100, commentCount: 20 },
       rationale: "This is very relevant",
+      imageUrl: null,
+      recap: null,
     },
     {
       id: 2,
@@ -63,6 +65,8 @@ const baseCompletedRun: RunStateResponse = {
       content: null,
       engagement: { points: 50, commentCount: 10 },
       rationale: "Also relevant",
+      imageUrl: null,
+      recap: null,
     },
   ],
   warnings: [],

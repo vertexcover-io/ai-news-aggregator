@@ -1,4 +1,5 @@
 import type { SourceType } from "../db/schema.js";
+import type { RecapContent } from "./index.js";
 
 export type RunStatus = "running" | "completed" | "failed";
 
@@ -31,12 +32,17 @@ export interface RankedItem {
   score: number;
   rationale: string;
   content: string | null;
+  imageUrl: string | null;
+  recap: RecapContent | null;
 }
 
 export interface RankedItemRef {
   rawItemId: number;
   score: number;
   rationale: string;
+  summary?: string;
+  bullets?: string[];
+  bottomLine?: string;
 }
 
 export interface RunState {

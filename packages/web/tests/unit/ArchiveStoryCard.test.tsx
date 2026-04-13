@@ -15,6 +15,8 @@ const baseItem: RankedItem = {
   score: 0.9,
   rationale: "This article covers key reasoning improvements in large language models.",
   content: "Full article body text here.",
+  imageUrl: null,
+  recap: null,
 };
 
 describe("ArchiveStoryCard", () => {

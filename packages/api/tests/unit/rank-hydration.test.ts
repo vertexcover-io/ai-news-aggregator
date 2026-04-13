@@ -31,6 +31,8 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
         publishedAt,
         engagement: { points: 1000, commentCount: 250 },
         content: "Full article body text here",
+        imageUrl: null,
+        metadata: { comments: [] },
       },
     ]);
     const refs: RankedItemRef[] = [
@@ -50,6 +52,8 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
         score: 0.95,
         rationale: "high engagement & relevance",
         content: "Full article body text here",
+        imageUrl: null,
+        recap: null,
       },
     ]);
   });
@@ -74,6 +78,8 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
         publishedAt: null,
         engagement: { points: 10, commentCount: 2 },
         content: "Article body content",
+        imageUrl: null,
+        metadata: { comments: [] },
       },
     ]);
     const refs: RankedItemRef[] = [{ rawItemId: 1, score: 0.8, rationale: "relevant" }];
@@ -92,6 +98,8 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
         publishedAt: null,
         engagement: { points: 5, commentCount: 0 },
         content: null,
+        imageUrl: null,
+        metadata: { comments: [] },
       },
     ]);
     const refs: RankedItemRef[] = [{ rawItemId: 2, score: 0.6, rationale: "ok" }];

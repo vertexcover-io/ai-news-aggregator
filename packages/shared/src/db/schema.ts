@@ -12,6 +12,7 @@ export const rawItems = pgTable("raw_items", {
   sourceUrl: text("source_url"),
   author: text("author"),
   content: text("content"),
+  imageUrl: text("image_url"),
   publishedAt: timestamp("published_at"),
   collectedAt: timestamp("collected_at").notNull().defaultNow(),
   engagement: jsonb("engagement").$type<RawItemEngagement>().notNull().default({ points: 0, commentCount: 0 }),
