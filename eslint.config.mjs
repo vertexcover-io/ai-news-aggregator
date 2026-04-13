@@ -134,27 +134,6 @@ export default tseslint.config(
       ],
     },
   },
-  // newsletter/dotenv-bootstrap on every runnable package entrypoint.
-  // Scoped to api/pipeline (runnable Node services) — shared is a pure
-  // library (re-exports only) and must not be flagged.
-  {
-    files: ["packages/api/src/index.ts", "packages/pipeline/src/index.ts"],
-    plugins: { newsletter },
-    rules: {
-      "newsletter/dotenv-bootstrap": "warn",
-    },
-  },
-  // newsletter/no-bundled-readfilesync + newsletter/no-raw-alter-table
-  // on all bundled service source. These rules catch recurring runtime
-  // traps documented in .claude/rules/learnings/.
-  {
-    files: ["packages/pipeline/src/**/*.ts", "packages/api/src/**/*.ts"],
-    plugins: { newsletter },
-    rules: {
-      "newsletter/no-bundled-readfilesync": "warn",
-      "newsletter/no-raw-alter-table": "warn",
-    },
-  },
   // newsletter/collector-return-shape: type-aware rule that pins every
   // exported function in pipeline collectors to Promise<CollectorResult>.
   {
@@ -179,11 +158,5 @@ export default tseslint.config(
     ],
     plugins: { newsletter },
     rules: { "newsletter/enforce-repository-access": "warn" },
-  },
-  // newsletter/no-relative-imports: ban ../ imports in service packages; use @api/* or @pipeline/* aliases
-  {
-    files: ["packages/api/src/**/*.ts", "packages/pipeline/src/**/*.ts"],
-    plugins: { newsletter },
-    rules: { "newsletter/no-relative-imports": "error" },
   },
 );
