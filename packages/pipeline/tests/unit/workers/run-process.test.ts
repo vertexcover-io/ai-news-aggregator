@@ -59,8 +59,9 @@ vi.mock("@newsletter/shared/redis", () => ({
   createRedisConnection: vi.fn(() => ({ fake: "redis" })),
 }));
 
+const mockUpdateRecapData = vi.fn(() => Promise.resolve());
 vi.mock("@pipeline/repositories/raw-items.js", () => ({
-  createRawItemsRepo: vi.fn(() => ({ upsertItems: vi.fn() })),
+  createRawItemsRepo: vi.fn(() => ({ upsertItems: vi.fn(), updateRecapData: mockUpdateRecapData })),
 }));
 
 vi.mock("@pipeline/repositories/candidates.js", () => ({
@@ -191,6 +192,7 @@ describe("run-process worker", () => {
     mockLoggerInfo.mockClear();
     mockLoggerWarn.mockClear();
     mockLoggerError.mockClear();
+    mockUpdateRecapData.mockClear();
   });
 
   // REQ-044 / EDGE-001
@@ -1131,6 +1133,70 @@ describe("run-process worker", () => {
     expect(resA.rankProfiles).toEqual([profileA]);
     expect(resB.shortlistProfiles).toEqual([profileB]);
     expect(resB.rankProfiles).toEqual([profileB]);
+  });
+
+  // REQ-022: recap data written to DB after ranking
+  it("REQ-022: calls updateRecapData with recap fields from ranked items after ranking", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1), makeCandidate(2)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankedItems: RankedItemRef[] = [
+      {
+        rawItemId: 1,
+        score: 0.9,
+        rationale: "top",
+        summary: "Item one summary for testing purposes.",
+        bullets: [
+          "First bullet point with enough detail.",
+          "Second bullet point with analysis.",
+          "Third bullet point with takeaway.",
+        ],
+        bottomLine: "Strategic takeaway for item one.",
+      },
+      {
+        rawItemId: 2,
+        score: 0.5,
+        rationale: "ok",
+        summary: "Item two summary for testing purposes.",
+        bullets: [
+          "First bullet for item two analysis.",
+          "Second bullet for item two details.",
+          "Third bullet for item two impact.",
+        ],
+        bottomLine: "Strategic takeaway for item two.",
+      },
+    ];
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems,
+          candidateCount: 2,
+          rankedCount: 2,
+        }),
+    );
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+    });
+
+    await worker.handler(baseJob);
+
+    expect(mockUpdateRecapData).toHaveBeenCalledOnce();
+    const updates = mockUpdateRecapData.mock.calls[0][0] as {
+      id: number;
+      recap: { summary: string; bullets: string[]; bottomLine: string };
+    }[];
+    expect(updates).toHaveLength(2);
+    expect(updates[0].id).toBe(1);
+    expect(updates[0].recap.summary).toBe("Item one summary for testing purposes.");
+    expect(updates[0].recap.bullets).toHaveLength(3);
+    expect(updates[0].recap.bottomLine).toBe("Strategic takeaway for item one.");
+    expect(updates[1].id).toBe(2);
   });
 
   // REQ-100: halfLifeHours from payload flows through to shortlist and rank options
