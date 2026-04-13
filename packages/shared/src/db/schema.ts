@@ -1,5 +1,5 @@
-import { jsonb, pgTable, serial, text, timestamp, unique } from "drizzle-orm/pg-core";
-import type { RawItemEngagement, RawItemMetadata } from "@shared/types/index.js";
+import { integer, jsonb, pgTable, serial, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import type { RawItemEngagement, RawItemMetadata, RankedItemRef } from "@shared/types/index.js";
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter";
 
@@ -24,3 +24,15 @@ export const rawItems = pgTable("raw_items", {
 ]);
 
 export type RawItemInsert = typeof rawItems.$inferInsert;
+
+export const runArchives = pgTable("run_archives", {
+  id: uuid("id").primaryKey(),
+  status: text("status").$type<"completed" | "failed">().notNull(),
+  rankedItems: jsonb("ranked_items").$type<RankedItemRef[]>().notNull(),
+  topN: integer("top_n").notNull(),
+  profileName: text("profile_name"),
+  completedAt: timestamp("completed_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type RunArchiveInsert = typeof runArchives.$inferInsert;

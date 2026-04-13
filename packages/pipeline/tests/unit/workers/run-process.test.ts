@@ -68,6 +68,10 @@ vi.mock("@pipeline/repositories/candidates.js", () => ({
   createCandidatesRepo: vi.fn(() => ({ findSince: vi.fn() })),
 }));
 
+vi.mock("@pipeline/repositories/run-archives.js", () => ({
+  createRunArchivesRepo: vi.fn(() => ({ upsert: vi.fn() })),
+}));
+
 vi.mock("@newsletter/shared/logger", () => ({
   createLogger: vi.fn(() => ({
     info: mockLoggerInfo,
@@ -1197,6 +1201,170 @@ describe("run-process worker", () => {
     expect(updates[0].recap.bullets).toHaveLength(3);
     expect(updates[0].recap.bottomLine).toBe("Strategic takeaway for item one.");
     expect(updates[1].id).toBe(2);
+  });
+
+  // REQ-002: archive repo is called on successful completion
+  it("REQ-002: calls archiveRepo.upsert with correct args on successful completion", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1), makeCandidate(2)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankedItems: RankedItemRef[] = [
+      { rawItemId: 1, score: 0.9, rationale: "top" },
+      { rawItemId: 2, score: 0.5, rationale: "ok" },
+    ];
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems,
+          candidateCount: 2,
+          rankedCount: 2,
+        }),
+    );
+    const archiveUpsert = vi.fn(() => Promise.resolve());
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+      archiveRepo: { upsert: archiveUpsert },
+    });
+
+    await worker.handler(baseJob);
+
+    expect(archiveUpsert).toHaveBeenCalledOnce();
+    const arg = archiveUpsert.mock.calls[0]?.[0] as {
+      id: string;
+      status: string;
+      rankedItems: RankedItemRef[];
+      topN: number;
+      profileName: string | null;
+      completedAt: Date;
+    };
+    expect(arg.id).toBe("run-1");
+    expect(arg.status).toBe("completed");
+    expect(arg.rankedItems).toEqual(rankedItems);
+    expect(arg.topN).toBe(3);
+    expect(arg.profileName).toBeNull();
+    expect(arg.completedAt).toBeInstanceOf(Date);
+  });
+
+  // REQ-002: archive repo receives profileName when profile is set
+  it("REQ-002: passes profileName from profile to archiveRepo.upsert", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+          candidateCount: 1,
+          rankedCount: 1,
+        }),
+    );
+    const archiveUpsert = vi.fn(() => Promise.resolve());
+    const profile: UserProfile = {
+      name: "aman",
+      topics: ["llm"],
+      antiTopics: [],
+    };
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+      archiveRepo: { upsert: archiveUpsert },
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: { ...baseJob.data, profile },
+    });
+
+    const arg = archiveUpsert.mock.calls[0]?.[0] as { profileName: string | null };
+    expect(arg.profileName).toBe("aman");
+  });
+
+  // EDGE-001: archive write failure does not crash the worker
+  it("EDGE-001: logs error and completes successfully when archiveRepo.upsert throws", async () => {
+    mockLoggerError.mockClear();
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+          candidateCount: 1,
+          rankedCount: 1,
+        }),
+    );
+    const archiveUpsert = vi.fn(() =>
+      Promise.reject(new Error("pg connection lost")),
+    );
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+      archiveRepo: { upsert: archiveUpsert },
+    });
+
+    const result = await worker.handler(baseJob);
+
+    // Worker still completes successfully
+    expect(result).toEqual({ rankedCount: 1 });
+    const last = runStateMock.updates.at(-1);
+    expect(last?.status).toBe("completed");
+
+    // Error was logged
+    const archiveErrorLog = mockLoggerError.mock.calls.find(
+      (c) => (c[0] as { event?: string }).event === "archive.write_failed",
+    );
+    expect(archiveErrorLog).toBeDefined();
+    const payload = archiveErrorLog?.[0] as {
+      event: string;
+      runId: string;
+      error: string;
+    };
+    expect(payload.runId).toBe("run-1");
+    expect(payload.error).toBe("pg connection lost");
+  });
+
+  // REQ-002: archive repo is NOT called when no archiveRepo is provided (backward compat)
+  it("REQ-002: skips archive write when archiveRepo is not provided", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+          candidateCount: 1,
+          rankedCount: 1,
+        }),
+    );
+    // No archiveRepo provided — existing tests don't break
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+    });
+
+    const result = await worker.handler(baseJob);
+    expect(result).toEqual({ rankedCount: 1 });
   });
 
   // REQ-100: halfLifeHours from payload flows through to shortlist and rank options

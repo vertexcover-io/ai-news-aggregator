@@ -1,12 +1,12 @@
 import type { ReactElement } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useRunState } from "../hooks/useRunState";
+import { useArchive } from "../hooks/useArchive";
 import { ArchivePageHeader } from "../components/ArchivePageHeader";
 import { ArchiveStoryCard } from "../components/ArchiveStoryCard";
 
 export function ArchivePage(): ReactElement {
   const { runId } = useParams<{ runId: string }>();
-  const { isLoading, data, isError } = useRunState(runId ?? "");
+  const { isLoading, data, isError } = useArchive(runId ?? "");
 
   if (isLoading) {
     return (

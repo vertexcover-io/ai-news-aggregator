@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { createLogger } from "@newsletter/shared/logger";
 import { createDefaultRunsRouter } from "./routes/runs.js";
 import { createDefaultProfilesRouter } from "./routes/profiles.js";
+import { createDefaultArchivesRouter } from "./routes/archives.js";
 
 const logger = createLogger("api");
 
@@ -15,6 +16,7 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 
 app.route("/api/runs", createDefaultRunsRouter());
 app.route("/api/profiles", createDefaultProfilesRouter());
+app.route("/api/archives", createDefaultArchivesRouter());
 
 const port = Number(process.env.API_PORT ?? 3000);
 

@@ -35,3 +35,10 @@ export async function getRun(runId: string): Promise<RunStateResponse | null> {
   if (!res.ok) throw new Error("Failed to fetch run");
   return (await res.json()) as RunStateResponse;
 }
+
+export async function getArchive(runId: string): Promise<RunStateResponse | null> {
+  const res = await apiFetch(`/api/archives/${runId}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Failed to fetch archive");
+  return (await res.json()) as RunStateResponse;
+}
