@@ -1,4 +1,5 @@
 import { useState, type ReactElement } from "react";
+import { useNavigate } from "react-router-dom";
 import { RunForm } from "../components/RunForm";
 import { StatusPanel } from "../components/StatusPanel";
 import { ResultList } from "../components/ResultList";
@@ -7,6 +8,7 @@ import { useRunPolling } from "../hooks/useRunPolling";
 export function RunPage(): ReactElement {
   const [runId, setRunId] = useState<string | null>(null);
   const { data, error, isLoading } = useRunPolling(runId);
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -36,7 +38,17 @@ export function RunPage(): ReactElement {
               <>
                 <StatusPanel state={data} />
                 {data.status === "completed" && (
-                  <ResultList items={data.rankedItems ?? []} />
+                  <>
+                    <ResultList items={data.rankedItems ?? []} />
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => { void navigate(`/archive/${runId}`); }}
+                        className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800 text-sm font-medium"
+                      >
+                        View Archive
+                      </button>
+                    </div>
+                  </>
                 )}
               </>
             )}
