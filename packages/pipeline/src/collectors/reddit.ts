@@ -38,6 +38,27 @@ interface RedditPostData {
   created_utc: number;
   stickied: boolean;
   subreddit: string;
+  thumbnail: string;
+  preview?: {
+    images: {
+      source: { url: string; width: number; height: number };
+    }[];
+  };
+}
+
+const INVALID_THUMBNAILS = new Set(["self", "default", "nsfw", "", "spoiler"]);
+
+export function extractRedditImageUrl(post: RedditPostData): string | null {
+  const previewUrl = post.preview?.images[0]?.source.url;
+  if (previewUrl) {
+    return previewUrl.replaceAll("&amp;", "&");
+  }
+
+  if (post.thumbnail && !INVALID_THUMBNAILS.has(post.thumbnail) && /^https?:\/\//.test(post.thumbnail)) {
+    return post.thumbnail;
+  }
+
+  return null;
 }
 
 interface RedditCommentData {
@@ -164,6 +185,7 @@ function parseListingItems(data: unknown): RawItemInsert[] {
       collectedAt: new Date(),
       engagement,
       metadata: { comments: [] },
+      imageUrl: extractRedditImageUrl(post),
       updatedAt: new Date(),
     });
   }

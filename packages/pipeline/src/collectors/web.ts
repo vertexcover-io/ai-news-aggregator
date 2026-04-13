@@ -34,6 +34,7 @@ export const DetailSchema = z.object({
   title: z.string(),
   author: z.string(),
   published_at: z.string(),
+  image_url: z.string(),
 });
 
 export type DiscoveredPost = z.infer<typeof DiscoverySchema>["posts"][number];
@@ -73,8 +74,11 @@ export async function extractPostFields(
     schema: DetailSchema,
     temperature: 0,
     prompt:
-      `Extract title, author, and publish date from this blog post markdown. ` +
+      `Extract title, author, publish date, and the most relevant image URL from this blog post markdown. ` +
       `The source URL is ${postUrl}. ` +
+      `For image_url, select the most relevant or representative image from the markdown based on ` +
+      `filename, alt text, and context. Skip icons, logos, tracking pixels, and data URIs. ` +
+      `Return an empty string if no suitable image is found. ` +
       `Use empty strings for fields not stated on the page \u2014 never invent data.\n\n` +
       `--- BEGIN ARTICLE ---\n${postMarkdown}\n--- END ARTICLE ---`,
   });
@@ -191,6 +195,7 @@ export async function processOnePost(
     title: fields.title.trim() || post.title.trim(),
     author: fields.author,
     published_at: fields.published_at.trim() || post.published_at,
+    image_url: fields.image_url,
   };
 
   if (!mergedFields.title) {
@@ -382,6 +387,7 @@ export function buildRawItem(
     collectedAt: now,
     engagement: { points: 0, commentCount: 0 },
     metadata: { comments: [] },
+    imageUrl: fields.image_url.startsWith("http") ? fields.image_url : null,
     updatedAt: now,
   };
 }

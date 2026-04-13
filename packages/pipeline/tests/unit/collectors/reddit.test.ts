@@ -24,6 +24,11 @@ vi.mock("@newsletter/shared/logger", () => ({
   }),
 }));
 
+type ExtractRedditImageUrlFn = (post: {
+  thumbnail: string;
+  preview?: { images: { source: { url: string; width: number; height: number } }[] };
+}) => string | null;
+
 const SINGLE_SUB: RedditCollectConfig = { subreddits: ["MachineLearning"] };
 
 type MockUpsertFn = ReturnType<typeof vi.fn<[items: RawItemInsert[]], Promise<void>>>;
@@ -65,6 +70,80 @@ function errorResponse(status: number): { ok: boolean; status: number; body: unk
 }
 
 type CollectRedditFn = (deps: { rawItemsRepo: RawItemsRepo & { upsertItems: MockUpsertFn }; fetchFn: MockFetchFn }, config: RedditCollectConfig) => Promise<CollectorResult>;
+
+describe("extractRedditImageUrl", () => {
+  let extractRedditImageUrl: ExtractRedditImageUrlFn;
+
+  beforeEach(async () => {
+    const mod = await import("@pipeline/collectors/reddit.js");
+    extractRedditImageUrl = mod.extractRedditImageUrl as ExtractRedditImageUrlFn;
+  });
+
+  it("extracts preview.images[0].source.url when present", () => {
+    const post = {
+      thumbnail: "https://thumb.example.com/img.jpg",
+      preview: {
+        images: [{ source: { url: "https://preview.redd.it/hero.jpg?width=1024&height=768", width: 1024, height: 768 } }],
+      },
+    };
+    expect(extractRedditImageUrl(post)).toBe("https://preview.redd.it/hero.jpg?width=1024&height=768");
+  });
+
+  it("decodes HTML entities in preview URL", () => {
+    const post = {
+      thumbnail: "self",
+      preview: {
+        images: [{ source: { url: "https://preview.redd.it/img.jpg?w=1024&amp;h=768&amp;s=abc", width: 1024, height: 768 } }],
+      },
+    };
+    expect(extractRedditImageUrl(post)).toBe("https://preview.redd.it/img.jpg?w=1024&h=768&s=abc");
+  });
+
+  it("falls back to thumbnail when preview.images is empty", () => {
+    const post = {
+      thumbnail: "https://b.thumbs.redditmedia.com/thumb.jpg",
+      preview: { images: [] },
+    };
+    expect(extractRedditImageUrl(post)).toBe("https://b.thumbs.redditmedia.com/thumb.jpg");
+  });
+
+  it("falls back to thumbnail when preview is undefined", () => {
+    const post = {
+      thumbnail: "https://b.thumbs.redditmedia.com/thumb.jpg",
+    };
+    expect(extractRedditImageUrl(post)).toBe("https://b.thumbs.redditmedia.com/thumb.jpg");
+  });
+
+  it("returns null for thumbnail 'self'", () => {
+    const post = { thumbnail: "self" };
+    expect(extractRedditImageUrl(post)).toBeNull();
+  });
+
+  it("returns null for thumbnail 'default'", () => {
+    const post = { thumbnail: "default" };
+    expect(extractRedditImageUrl(post)).toBeNull();
+  });
+
+  it("returns null for thumbnail 'nsfw'", () => {
+    const post = { thumbnail: "nsfw" };
+    expect(extractRedditImageUrl(post)).toBeNull();
+  });
+
+  it("returns null for thumbnail 'spoiler'", () => {
+    const post = { thumbnail: "spoiler" };
+    expect(extractRedditImageUrl(post)).toBeNull();
+  });
+
+  it("returns null for empty thumbnail", () => {
+    const post = { thumbnail: "" };
+    expect(extractRedditImageUrl(post)).toBeNull();
+  });
+
+  it("returns null when no preview and no valid thumbnail", () => {
+    const post = { thumbnail: "self", preview: undefined };
+    expect(extractRedditImageUrl(post)).toBeNull();
+  });
+});
 
 describe("collectReddit", () => {
   let collectReddit: CollectRedditFn;
@@ -494,6 +573,23 @@ describe("collectReddit", () => {
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     const ids = rows.map((r) => r.externalId).sort();
     expect(ids).toEqual(["sd001", "sd002", "sd003"]);
+  });
+
+  it("extracts imageUrl from preview.images when available", async () => {
+    const mockFetch = createMockFetch([
+      listingResponse(),
+      commentsResponse(),
+      commentsResponse(),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_SUB);
+
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    // post001 has preview with &amp; encoded URL
+    expect(rows[0].imageUrl).toBe("https://preview.redd.it/post001-preview.jpg?width=1024&height=768&crop=smart");
+    // post002 has thumbnail: "self" — should be null
+    expect(rows[1].imageUrl).toBeNull();
   });
 
   // EDGE-004: filter dropping zero items emits warn log

@@ -17,6 +17,11 @@ Source neutrality rule: ${SOURCE_NEUTRALITY_RULE}
 
 Each rationale must name the driving axis (for example, "strong relevance — matches the reader's declared topic") so the reader can see which axis moved the score most.
 
+For each ranked item, also produce:
+- summary: A 1-2 sentence plain-text news summary of what happened. No markdown links.
+- bullets: 3-5 plain-text analysis points explaining why this matters and what it means. No markdown links.
+- bottomLine: A single plain-text strategic takeaway sentence. No markdown links.
+
 Return a ranked array and use the \`id\` field from the input verbatim.
 `;
 
@@ -30,6 +35,11 @@ Score each candidate 0-100 on three axes:
 Source neutrality rule: ${SOURCE_NEUTRALITY_RULE}
 
 Each rationale must name the driving axis so the reader can see why the item was ranked where it was.
+
+For each ranked item, also produce:
+- summary: A 1-2 sentence plain-text news summary of what happened. No markdown links.
+- bullets: 3-5 plain-text analysis points explaining why this matters and what it means. No markdown links.
+- bottomLine: A single plain-text strategic takeaway sentence. No markdown links.
 
 Return a ranked array and use the \`id\` field from the input verbatim.
 `;

@@ -248,11 +248,12 @@ describe("LLM extraction helpers", () => {
   });
 
   describe("extractPostFields", () => {
-    it("returns title/author/published_at from mocked LLM", async () => {
+    it("returns title/author/published_at/image_url from mocked LLM", async () => {
       const fakeFields = {
         title: "Scaling our event pipeline to 10M events/sec",
         author: "Jane Doe",
         published_at: "2026-03-30",
+        image_url: "https://example.com/hero.jpg",
       };
       const model = makeDiscoveryMockModel(fakeFields);
 
@@ -262,7 +263,7 @@ describe("LLM extraction helpers", () => {
     });
 
     it("passes temperature 0 to generateText", async () => {
-      const model = makeDiscoveryMockModel({ title: "", author: "", published_at: "" });
+      const model = makeDiscoveryMockModel({ title: "", author: "", published_at: "", image_url: "" });
 
       await extractPostFields(post.postUrl, post.markdown, model);
 
@@ -271,8 +272,8 @@ describe("LLM extraction helpers", () => {
       expect(call.temperature).toBe(0);
     });
 
-    it("passes DetailSchema to generateText", async () => {
-      const model = makeDiscoveryMockModel({ title: "", author: "", published_at: "" });
+    it("passes DetailSchema with image_url to generateText", async () => {
+      const model = makeDiscoveryMockModel({ title: "", author: "", published_at: "", image_url: "" });
 
       await extractPostFields(post.postUrl, post.markdown, model);
 
@@ -285,6 +286,7 @@ describe("LLM extraction helpers", () => {
       expect(schema?.properties).toHaveProperty("title");
       expect(schema?.properties).toHaveProperty("author");
       expect(schema?.properties).toHaveProperty("published_at");
+      expect(schema?.properties).toHaveProperty("image_url");
     });
   });
 
@@ -354,8 +356,10 @@ describe("LLM extraction helpers", () => {
         title: "T",
         author: "A",
         published_at: "2026-01-01",
+        image_url: "https://example.com/img.jpg",
       });
       expect(parsed.title).toBe("T");
+      expect(parsed.image_url).toBe("https://example.com/img.jpg");
     });
   });
 });
@@ -370,6 +374,7 @@ describe("filters and row assembly", () => {
     title: string;
     author: string;
     published_at: string;
+    image_url: string;
   }
   type ApplySinceDaysFn = (
     posts: DiscoveredPostShape[],
@@ -479,7 +484,7 @@ describe("filters and row assembly", () => {
     const item = buildRawItem(
       "https://example.com/post-1",
       "# Body markdown",
-      { title: "Post 1", author: "Jane Doe", published_at: "2026-04-01T00:00:00Z" },
+      { title: "Post 1", author: "Jane Doe", published_at: "2026-04-01T00:00:00Z", image_url: "https://example.com/hero.jpg" },
     );
     expect(item.sourceType).toBe("blog");
     expect(item.externalId).toBe("https://example.com/post-1");
@@ -488,6 +493,7 @@ describe("filters and row assembly", () => {
     expect(item.title).toBe("Post 1");
     expect(item.author).toBe("Jane Doe");
     expect(item.content).toBe("# Body markdown");
+    expect(item.imageUrl).toBe("https://example.com/hero.jpg");
     if (!(item.publishedAt instanceof Date)) {
       throw new Error("expected publishedAt to be a Date");
     }
@@ -502,7 +508,7 @@ describe("filters and row assembly", () => {
     const item = buildRawItem(
       "https://example.com/post-2",
       "body",
-      { title: "T", author: "   ", published_at: "" },
+      { title: "T", author: "   ", published_at: "", image_url: "" },
     );
     expect(item.author).toBeNull();
   });
@@ -512,9 +518,36 @@ describe("filters and row assembly", () => {
     const item = buildRawItem(
       "https://example.com/post-3",
       "body",
-      { title: "T", author: "A", published_at: "not a date" },
+      { title: "T", author: "A", published_at: "not a date", image_url: "" },
     );
     expect(item.publishedAt).toBeNull();
+  });
+
+  it("buildRawItem sets imageUrl to null when image_url is empty", () => {
+    const item = buildRawItem(
+      "https://example.com/post-4",
+      "body",
+      { title: "T", author: "A", published_at: "", image_url: "" },
+    );
+    expect(item.imageUrl).toBeNull();
+  });
+
+  it("buildRawItem sets imageUrl to null when image_url is a data URI", () => {
+    const item = buildRawItem(
+      "https://example.com/post-5",
+      "body",
+      { title: "T", author: "A", published_at: "", image_url: "data:image/png;base64,abc" },
+    );
+    expect(item.imageUrl).toBeNull();
+  });
+
+  it("buildRawItem sets imageUrl when image_url is a valid http URL", () => {
+    const item = buildRawItem(
+      "https://example.com/post-6",
+      "body",
+      { title: "T", author: "A", published_at: "", image_url: "https://cdn.example.com/img.jpg" },
+    );
+    expect(item.imageUrl).toBe("https://cdn.example.com/img.jpg");
   });
 });
 
@@ -545,11 +578,12 @@ describe("processOnePost and processSource", () => {
     });
   }
 
-  function makeExtractModel(fields: { title: string; author: string; published_at: string }): MockLanguageModelV2 {
+  function makeExtractModel(fields: { title: string; author: string; published_at: string; image_url?: string }): MockLanguageModelV2 {
+    const withDefaults = { image_url: "", ...fields };
     return new MockLanguageModelV2({
       doGenerate: () =>
         Promise.resolve({
-          content: [{ type: "text", text: JSON.stringify(fields) }],
+          content: [{ type: "text", text: JSON.stringify(withDefaults) }],
           finishReason: "stop" as const,
           usage: {
             inputTokens: 10,
@@ -671,6 +705,62 @@ describe("processOnePost and processSource", () => {
       expect(result.externalId).toBe(samplePost.url);
       expect(result.sourceType).toBe("blog");
     });
+
+    it("sets imageUrl when LLM returns a valid http URL", async () => {
+      const fetchFn = makeFetch(POST_BODY);
+      const model = makeExtractModel({
+        title: "Post",
+        author: "Jane",
+        published_at: "2026-03-30",
+        image_url: "https://example.com/hero.jpg",
+      });
+
+      const result = await processOnePost(samplePost, fetchFn as unknown as typeof fetch, model);
+
+      expect(result.imageUrl).toBe("https://example.com/hero.jpg");
+    });
+
+    it("sets imageUrl to null when LLM returns empty string", async () => {
+      const fetchFn = makeFetch(POST_BODY);
+      const model = makeExtractModel({
+        title: "Post",
+        author: "Jane",
+        published_at: "2026-03-30",
+        image_url: "",
+      });
+
+      const result = await processOnePost(samplePost, fetchFn as unknown as typeof fetch, model);
+
+      expect(result.imageUrl).toBeNull();
+    });
+
+    it("sets imageUrl to null when LLM returns a data URI", async () => {
+      const fetchFn = makeFetch(POST_BODY);
+      const model = makeExtractModel({
+        title: "Post",
+        author: "Jane",
+        published_at: "2026-03-30",
+        image_url: "data:image/png;base64,abc123",
+      });
+
+      const result = await processOnePost(samplePost, fetchFn as unknown as typeof fetch, model);
+
+      expect(result.imageUrl).toBeNull();
+    });
+
+    it("sets imageUrl to null when LLM returns a relative URL", async () => {
+      const fetchFn = makeFetch(POST_BODY);
+      const model = makeExtractModel({
+        title: "Post",
+        author: "Jane",
+        published_at: "2026-03-30",
+        image_url: "/images/hero.jpg",
+      });
+
+      const result = await processOnePost(samplePost, fetchFn as unknown as typeof fetch, model);
+
+      expect(result.imageUrl).toBeNull();
+    });
   });
 
   describe("processSource", () => {
@@ -714,14 +804,14 @@ describe("processOnePost and processSource", () => {
 
     function makeDiscoveryThenExtractModel(
       discovery: { posts: { url: string; title: string; published_at: string }[] },
-      extract: { title: string; author: string; published_at: string },
+      extract: { title: string; author: string; published_at: string; image_url?: string },
     ): MockLanguageModelV2 {
       let calls = 0;
       return new MockLanguageModelV2({
         doGenerate: () => {
           const isDiscovery = calls === 0;
           calls++;
-          const payload = isDiscovery ? discovery : extract;
+          const payload = isDiscovery ? discovery : { image_url: "", ...extract };
           return Promise.resolve({
             content: [{ type: "text", text: JSON.stringify(payload) }],
             finishReason: "stop" as const,
@@ -1110,14 +1200,14 @@ describe("collectWeb", () => {
 
   function makeDiscoveryThenExtractModel(
     discovery: { posts: { url: string; title: string; published_at: string }[] },
-    extract: { title: string; author: string; published_at: string },
+    extract: { title: string; author: string; published_at: string; image_url?: string },
   ): MockLanguageModelV2 {
     let calls = 0;
     return new MockLanguageModelV2({
       doGenerate: () => {
         const isDiscovery = calls === 0;
         calls++;
-        const payload = isDiscovery ? discovery : extract;
+        const payload = isDiscovery ? discovery : { image_url: "", ...extract };
         return Promise.resolve({
           content: [{ type: "text" as const, text: JSON.stringify(payload) }],
           finishReason: "stop" as const,

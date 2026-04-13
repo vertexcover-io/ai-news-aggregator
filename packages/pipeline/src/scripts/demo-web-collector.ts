@@ -82,6 +82,9 @@ function createInMemoryRawItemsRepo(): DemoRepo {
     ): Promise<Set<string>> {
       return Promise.resolve(new Set());
     },
+    updateRecapData(): Promise<void> {
+      return Promise.resolve();
+    },
   };
 }
 

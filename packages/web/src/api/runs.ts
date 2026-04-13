@@ -9,7 +9,7 @@ export interface SubmitRunResponse {
   runId: string;
 }
 
-export type RunStateResponse = RunState & { rankedItems: RankedItem[] | null };
+export type RunStateResponse = Omit<RunState, "rankedItems"> & { rankedItems: RankedItem[] | null };
 
 interface ApiErrorBody {
   error?: string;

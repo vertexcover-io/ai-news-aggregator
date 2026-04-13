@@ -61,6 +61,9 @@ const rankedEntrySchema = z.object({
   id: z.number().int(),
   score: z.number(),
   rationale: z.string().min(1),
+  summary: z.string().min(10),
+  bullets: z.array(z.string().min(10)).min(3).max(5),
+  bottomLine: z.string().min(10),
 });
 
 export const rankedResponseSchema = z.object({
@@ -193,6 +196,9 @@ export async function rankCandidates(
       prompt: JSON.stringify({ items: promptItems }, null, 2),
       schema: rankedResponseSchema,
       temperature: 0,
+      providerOptions: {
+        anthropic: { maxTokens: 16384 },
+      },
     })) as { object: z.infer<typeof rankedResponseSchema> };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -232,6 +238,9 @@ export async function rankCandidates(
       rawItemId: r.id,
       score: r.score * factor,
       rationale: r.rationale,
+      summary: r.summary,
+      bullets: r.bullets,
+      bottomLine: r.bottomLine,
     };
   });
 

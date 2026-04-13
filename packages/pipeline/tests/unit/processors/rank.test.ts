@@ -37,6 +37,22 @@ interface RankedEntry {
   id: number;
   score: number;
   rationale: string;
+  summary: string;
+  bullets: string[];
+  bottomLine: string;
+}
+
+function makeRankedEntry(overrides: { id: number; score: number; rationale: string } & Partial<RankedEntry>): RankedEntry {
+  return {
+    summary: "This is a test summary for the ranked item.",
+    bullets: [
+      "First analysis point explaining significance.",
+      "Second analysis point about broader impact.",
+      "Third analysis point on practical implications.",
+    ],
+    bottomLine: "This is the strategic takeaway for readers.",
+    ...overrides,
+  };
 }
 
 function makeGenerate(
@@ -132,7 +148,7 @@ describe("rankCandidates", () => {
       comments: [makeComment("c1", "first comment")],
     });
     const generateObject = makeGenerate({
-      ranked: [{ id: 1, score: 80, rationale: "strong Relevance" }],
+      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Relevance" })],
     });
     const now = new Date("2026-04-07T04:00:00Z");
 
@@ -161,7 +177,7 @@ describe("rankCandidates", () => {
 
   it("uses RANK_SYSTEM_PROMPT_PROFILED when profile is non-null (REQ-061)", async () => {
     const generateObject = makeGenerate({
-      ranked: [{ id: 1, score: 50, rationale: "strong Relevance axis" }],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance axis" })],
     });
 
     await rankCandidates([makeCandidate(1)], {
@@ -182,7 +198,7 @@ describe("rankCandidates", () => {
 
   it("calls generateObject with temperature 0 (REQ-064)", async () => {
     const generateObject = makeGenerate({
-      ranked: [{ id: 1, score: 50, rationale: "strong Relevance" }],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })],
     });
 
     await rankCandidates([makeCandidate(1)], {
@@ -198,7 +214,7 @@ describe("rankCandidates", () => {
 
   it("throws if a rationale does not name any scoring axis (REQ-065)", async () => {
     const generateObject = makeGenerate({
-      ranked: [{ id: 1, score: 50, rationale: "just because" }],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "just because" })],
     });
 
     await expect(
@@ -217,12 +233,12 @@ describe("rankCandidates", () => {
     // so grammatically natural rationales don't trip the guard.
     const generateObject = makeGenerate({
       ranked: [
-        {
+        makeRankedEntry({
           id: 1,
           score: 80,
           rationale:
             "Strong relevance — matches the profile topics well. Good signal-vs-hype, real actionability, moderate novelty.",
-        },
+        }),
       ],
     });
 
@@ -243,7 +259,7 @@ describe("rankCandidates", () => {
     const candidate = makeCandidate(1, { publishedAt });
 
     const generateObject = makeGenerate({
-      ranked: [{ id: 1, score: 90, rationale: "strong Relevance" }],
+      ranked: [makeRankedEntry({ id: 1, score: 90, rationale: "strong Relevance" })],
     });
 
     const result = await rankCandidates([candidate], {
@@ -266,7 +282,7 @@ describe("rankCandidates", () => {
       const parsed = args.schema.safeParse(bad);
       expect(parsed.success).toBe(false);
       return Promise.resolve({
-        object: { ranked: [{ id: 1, score: 50, rationale: "strong Relevance" }] },
+        object: { ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })] },
       });
     });
 
@@ -280,7 +296,7 @@ describe("rankCandidates", () => {
 
   it("uses no-profile prompt when profile is null (REQ-070)", async () => {
     const generateObject = makeGenerate({
-      ranked: [{ id: 1, score: 50, rationale: "strong Novelty" }],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
     });
 
     await rankCandidates([makeCandidate(1)], {
@@ -303,7 +319,7 @@ describe("rankCandidates", () => {
     const candidate = makeCandidate(1, { publishedAt });
 
     const generateObject = makeGenerate({
-      ranked: [{ id: 1, score: 80, rationale: "strong Novelty" }],
+      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" })],
     });
 
     const result = await rankCandidates([candidate], {
@@ -337,7 +353,7 @@ describe("rankCandidates", () => {
     const candidate = makeCandidate(1, { content: hugeBody });
 
     const generateObject = makeGenerate({
-      ranked: [{ id: 1, score: 50, rationale: "strong Relevance" }],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })],
     });
 
     await rankCandidates([candidate], {
@@ -357,7 +373,7 @@ describe("rankCandidates", () => {
   it("omits the comments section for candidates with zero comments (REQ-053, EDGE-016)", async () => {
     const candidate = makeCandidate(1, { comments: [] });
     const generateObject = makeGenerate({
-      ranked: [{ id: 1, score: 50, rationale: "strong Relevance" }],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })],
     });
 
     await rankCandidates([candidate], {
@@ -378,7 +394,7 @@ describe("rankCandidates", () => {
     );
     const candidate = makeCandidate(1, { comments });
     const generateObject = makeGenerate({
-      ranked: [{ id: 1, score: 50, rationale: "strong Relevance" }],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })],
     });
 
     await rankCandidates([candidate], {
@@ -405,10 +421,10 @@ describe("rankCandidates", () => {
     ];
     const generateObject = makeGenerate({
       ranked: [
-        { id: 1, score: 10, rationale: "Relevance" },
-        { id: 2, score: 90, rationale: "Relevance" },
-        { id: 3, score: 50, rationale: "Relevance" },
-        { id: 4, score: 80, rationale: "Relevance" },
+        makeRankedEntry({ id: 1, score: 10, rationale: "Relevance" }),
+        makeRankedEntry({ id: 2, score: 90, rationale: "Relevance" }),
+        makeRankedEntry({ id: 3, score: 50, rationale: "Relevance" }),
+        makeRankedEntry({ id: 4, score: 80, rationale: "Relevance" }),
       ],
     });
 
@@ -427,8 +443,8 @@ describe("rankCandidates", () => {
   it("emits run.rank INFO log with runId and counts (REQ-103)", async () => {
     const generateObject = makeGenerate({
       ranked: [
-        { id: 1, score: 50, rationale: "Relevance" },
-        { id: 2, score: 70, rationale: "Relevance" },
+        makeRankedEntry({ id: 1, score: 50, rationale: "Relevance" }),
+        makeRankedEntry({ id: 2, score: 70, rationale: "Relevance" }),
       ],
     });
 
@@ -452,5 +468,97 @@ describe("rankCandidates", () => {
     expect(payload.runId).toBe("run-xyz");
     expect(payload.inputCount).toBe(2);
     expect(payload.outputCount).toBe(2);
+  });
+
+  it("returns recap fields (summary, bullets, bottomLine) in RankedItemRef", async () => {
+    const generateObject = makeGenerate({
+      ranked: [makeRankedEntry({
+        id: 1,
+        score: 80,
+        rationale: "strong Relevance",
+        summary: "OpenAI released a new model with improved reasoning.",
+        bullets: [
+          "The new model shows 30% improvement on benchmarks.",
+          "Pricing remains competitive with existing options.",
+          "Early adopters report faster response times overall.",
+        ],
+        bottomLine: "This release raises the bar for reasoning-focused models.",
+      })],
+    });
+
+    const result = await rankCandidates([makeCandidate(1)], {
+      profile,
+      topN: 5,
+      generateObject,
+      loadBodies: stubLoadBodies,
+    });
+
+    expect(result.rankedItems).toHaveLength(1);
+    const item = result.rankedItems[0];
+    expect(item.summary).toBe("OpenAI released a new model with improved reasoning.");
+    expect(item.bullets).toHaveLength(3);
+    expect(item.bullets?.[0]).toBe("The new model shows 30% improvement on benchmarks.");
+    expect(item.bottomLine).toBe("This release raises the bar for reasoning-focused models.");
+  });
+
+  it("zod rejects fewer than 3 bullets", async () => {
+    const generateObject = vi.fn((args: GenerateArgs) => {
+      const bad = {
+        ranked: [{
+          id: 1,
+          score: 50,
+          rationale: "strong Relevance",
+          summary: "This is a valid summary for the test.",
+          bullets: [
+            "Only one bullet point here.",
+            "And a second bullet point.",
+          ],
+          bottomLine: "This is the strategic takeaway.",
+        }],
+      };
+      const parsed = args.schema.safeParse(bad);
+      expect(parsed.success).toBe(false);
+      return Promise.resolve({
+        object: { ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })] },
+      });
+    });
+
+    await rankCandidates([makeCandidate(1)], {
+      profile,
+      topN: 5,
+      generateObject,
+      loadBodies: stubLoadBodies,
+    });
+  });
+
+  it("zod rejects summary shorter than 10 characters", async () => {
+    const generateObject = vi.fn((args: GenerateArgs) => {
+      const bad = {
+        ranked: [{
+          id: 1,
+          score: 50,
+          rationale: "strong Relevance",
+          summary: "Short",
+          bullets: [
+            "First analysis point explaining significance.",
+            "Second analysis point about broader impact.",
+            "Third analysis point on practical implications.",
+          ],
+          bottomLine: "This is the strategic takeaway.",
+        }],
+      };
+      const parsed = args.schema.safeParse(bad);
+      expect(parsed.success).toBe(false);
+      return Promise.resolve({
+        object: { ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })] },
+      });
+    });
+
+    await rankCandidates([makeCandidate(1)], {
+      profile,
+      topN: 5,
+      generateObject,
+      loadBodies: stubLoadBodies,
+    });
   });
 });

@@ -18,6 +18,48 @@ const MAX_RETRIES = 3;
 const RATE_LIMIT_MS = 500;
 
 const ALGOLIA_BASE = "https://hn.algolia.com/api/v1";
+const OG_IMAGE_TIMEOUT_MS = 5000;
+const OG_IMAGE_MAX_BYTES = 50_000;
+
+const OG_IMAGE_REGEX = /<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/i;
+const OG_IMAGE_REGEX_ALT = /<meta\s+content="([^"]+)"\s+(?:property|name)="og:image"/i;
+
+export async function fetchOgImage(articleUrl: string, fetchFn: typeof fetch): Promise<string | null> {
+  if (!articleUrl.startsWith("http")) return null;
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      controller.abort();
+    }, OG_IMAGE_TIMEOUT_MS);
+
+    const response = await fetchFn(articleUrl, { signal: controller.signal });
+    clearTimeout(timer);
+
+    if (!response.ok) return null;
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType && !contentType.includes("html")) return null;
+
+    const text = await response.text();
+    const html = text.slice(0, OG_IMAGE_MAX_BYTES);
+
+    const match = OG_IMAGE_REGEX.exec(html) ?? OG_IMAGE_REGEX_ALT.exec(html);
+    if (!match?.[1]) return null;
+
+    const ogUrl = match[1].replaceAll("&amp;", "&");
+
+    if (ogUrl.startsWith("http")) return ogUrl;
+
+    try {
+      return new URL(ogUrl, articleUrl).href;
+    } catch {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+}
 
 export interface HnCollectorDeps {
   rawItemsRepo: RawItemsRepo;
@@ -276,6 +318,16 @@ export async function collectHn(
           "story has comments but Algolia returned zero hits",
         );
       }
+    }
+  }
+
+  const ogResults = await Promise.allSettled(
+    allItems.map((item) => fetchOgImage(item.url, fetchFn)),
+  );
+  for (let i = 0; i < ogResults.length; i++) {
+    const result = ogResults[i];
+    if (result.status === "fulfilled" && result.value) {
+      allItems[i].imageUrl = result.value;
     }
   }
 
