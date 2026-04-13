@@ -21,7 +21,19 @@
           "subreddit": "MachineLearning",
           "link_flair_text": "[R]",
           "over_18": false,
-          "domain": "example.com"
+          "domain": "example.com",
+          "thumbnail": "https://b.thumbs.redditmedia.com/post001-thumb.jpg",
+          "preview": {
+            "images": [
+              {
+                "source": {
+                  "url": "https://preview.redd.it/post001-preview.jpg?width=1024&amp;height=768&amp;crop=smart",
+                  "width": 1024,
+                  "height": 768
+                }
+              }
+            ]
+          }
         }
       },
       {
@@ -42,7 +54,8 @@
           "subreddit": "MachineLearning",
           "link_flair_text": "[D]",
           "over_18": false,
-          "domain": "self.MachineLearning"
+          "domain": "self.MachineLearning",
+          "thumbnail": "self"
         }
       },
       {
@@ -62,7 +75,8 @@
           "subreddit": "MachineLearning",
           "link_flair_text": null,
           "over_18": false,
-          "domain": "self.MachineLearning"
+          "domain": "self.MachineLearning",
+          "thumbnail": "self"
         }
       }
     ]
