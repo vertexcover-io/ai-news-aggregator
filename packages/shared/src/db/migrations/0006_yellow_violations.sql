@@ -1,0 +1,1 @@
+ALTER TABLE "run_archives" ADD COLUMN "status" text NOT NULL;

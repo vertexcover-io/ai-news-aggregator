@@ -6,11 +6,11 @@ import type { ReactElement, ReactNode } from "react";
 import { ArchivePage } from "../../src/pages/ArchivePage";
 import type { RunStateResponse } from "../../src/api/runs";
 
-vi.mock("../../src/hooks/useRunState", () => ({
-  useRunState: vi.fn(),
+vi.mock("../../src/hooks/useArchive", () => ({
+  useArchive: vi.fn(),
 }));
 
-import { useRunState } from "../../src/hooks/useRunState";
+import { useArchive } from "../../src/hooks/useArchive";
 
 function renderWithClient(ui: ReactElement, runId = "run-123"): ReturnType<typeof render> {
   const client = new QueryClient({
@@ -83,7 +83,7 @@ describe("ArchivePage", () => {
   });
 
   it("shows loading state while fetching (REQ-005)", () => {
-    vi.mocked(useRunState).mockReturnValue({
+    vi.mocked(useArchive).mockReturnValue({
       isLoading: true,
       data: undefined,
       error: null,
@@ -92,14 +92,14 @@ describe("ArchivePage", () => {
       isFetching: true,
       isSuccess: false,
       status: "pending",
-    } as ReturnType<typeof useRunState>);
+    } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
     expect(screen.getByText(/loading/i)).toBeTruthy();
   });
 
   it("shows 'Run not found — it may have expired.' when data is null (REQ-006)", () => {
-    vi.mocked(useRunState).mockReturnValue({
+    vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: null,
       error: null,
@@ -108,7 +108,7 @@ describe("ArchivePage", () => {
       isFetching: false,
       isSuccess: true,
       status: "success",
-    } as ReturnType<typeof useRunState>);
+    } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
     expect(
@@ -124,7 +124,7 @@ describe("ArchivePage", () => {
       completedAt: null,
       rankedItems: null,
     };
-    vi.mocked(useRunState).mockReturnValue({
+    vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: runningRun,
       error: null,
@@ -133,7 +133,7 @@ describe("ArchivePage", () => {
       isFetching: false,
       isSuccess: true,
       status: "success",
-    } as ReturnType<typeof useRunState>);
+    } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
     expect(
@@ -149,7 +149,7 @@ describe("ArchivePage", () => {
       completedAt: null,
       rankedItems: null,
     };
-    vi.mocked(useRunState).mockReturnValue({
+    vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: failedRun,
       error: null,
@@ -158,7 +158,7 @@ describe("ArchivePage", () => {
       isFetching: false,
       isSuccess: true,
       status: "success",
-    } as ReturnType<typeof useRunState>);
+    } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
     expect(
@@ -174,7 +174,7 @@ describe("ArchivePage", () => {
       completedAt: null,
       rankedItems: null,
     };
-    vi.mocked(useRunState).mockReturnValue({
+    vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: runningRun,
       error: null,
@@ -183,7 +183,7 @@ describe("ArchivePage", () => {
       isFetching: false,
       isSuccess: true,
       status: "success",
-    } as ReturnType<typeof useRunState>);
+    } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
     const backLink = screen.getByRole("link", { name: /back/i });
@@ -192,7 +192,7 @@ describe("ArchivePage", () => {
   });
 
   it("renders ArchivePageHeader and story cards when completed (REQ-008, REQ-009)", () => {
-    vi.mocked(useRunState).mockReturnValue({
+    vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: baseCompletedRun,
       error: null,
@@ -201,7 +201,7 @@ describe("ArchivePage", () => {
       isFetching: false,
       isSuccess: true,
       status: "success",
-    } as ReturnType<typeof useRunState>);
+    } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
     expect(screen.getByRole("heading", { name: "AI Newsletter" })).toBeTruthy();
@@ -210,7 +210,7 @@ describe("ArchivePage", () => {
   });
 
   it("renders correct number of cards matching rankedItems length (REQ-009)", () => {
-    vi.mocked(useRunState).mockReturnValue({
+    vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: baseCompletedRun,
       error: null,
@@ -219,7 +219,7 @@ describe("ArchivePage", () => {
       isFetching: false,
       isSuccess: true,
       status: "success",
-    } as ReturnType<typeof useRunState>);
+    } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
     const articles = screen.getAllByRole("article");
@@ -233,7 +233,7 @@ describe("ArchivePage", () => {
       ...baseCompletedRun,
       rankedItems: [],
     };
-    vi.mocked(useRunState).mockReturnValue({
+    vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: emptyRun,
       error: null,
@@ -242,7 +242,7 @@ describe("ArchivePage", () => {
       isFetching: false,
       isSuccess: true,
       status: "success",
-    } as ReturnType<typeof useRunState>);
+    } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
     expect(screen.getByText(/0 stories/)).toBeTruthy();
@@ -250,7 +250,7 @@ describe("ArchivePage", () => {
   });
 
   it("uses max-w-2xl centered layout when completed (REQ-021)", () => {
-    vi.mocked(useRunState).mockReturnValue({
+    vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: baseCompletedRun,
       error: null,
@@ -259,7 +259,7 @@ describe("ArchivePage", () => {
       isFetching: false,
       isSuccess: true,
       status: "success",
-    } as ReturnType<typeof useRunState>);
+    } as ReturnType<typeof useArchive>);
 
     const { container } = renderWithClient(<ArchivePage />);
     const centeredDiv = container.querySelector(".max-w-2xl.mx-auto");
@@ -267,7 +267,7 @@ describe("ArchivePage", () => {
   });
 
   it("shows generic error when network request throws (EDGE-008)", () => {
-    vi.mocked(useRunState).mockReturnValue({
+    vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: undefined,
       error: new Error("Network failure"),
@@ -276,7 +276,7 @@ describe("ArchivePage", () => {
       isFetching: false,
       isSuccess: false,
       status: "error",
-    } as ReturnType<typeof useRunState>);
+    } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
     expect(screen.getByRole("alert")).toBeTruthy();

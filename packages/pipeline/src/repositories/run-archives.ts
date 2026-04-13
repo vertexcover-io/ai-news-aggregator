@@ -1,0 +1,46 @@
+import { sql } from "drizzle-orm";
+import { runArchives } from "@newsletter/shared/db";
+import type { AppDb } from "@newsletter/shared/db";
+import type { RankedItemRef } from "@newsletter/shared";
+
+export interface RunArchiveUpsertInput {
+  id: string;
+  status: "completed" | "failed";
+  rankedItems: RankedItemRef[];
+  topN: number;
+  profileName: string | null;
+  completedAt: Date;
+}
+
+export interface RunArchivesRepo {
+  upsert(input: RunArchiveUpsertInput): Promise<void>;
+}
+
+export function createRunArchivesRepo(
+  db: Pick<AppDb, "insert">,
+): RunArchivesRepo {
+  return {
+    async upsert(input: RunArchiveUpsertInput): Promise<void> {
+      await db
+        .insert(runArchives)
+        .values({
+          id: input.id,
+          status: input.status,
+          rankedItems: input.rankedItems,
+          topN: input.topN,
+          profileName: input.profileName,
+          completedAt: input.completedAt,
+        })
+        .onConflictDoUpdate({
+          target: runArchives.id,
+          set: {
+            status: sql.raw(`excluded.${runArchives.status.name}`),
+            rankedItems: sql.raw(`excluded.${runArchives.rankedItems.name}`),
+            topN: sql.raw(`excluded.${runArchives.topN.name}`),
+            profileName: sql.raw(`excluded.${runArchives.profileName.name}`),
+            completedAt: sql.raw(`excluded.${runArchives.completedAt.name}`),
+          },
+        });
+    },
+  };
+}

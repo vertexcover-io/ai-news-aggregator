@@ -33,6 +33,10 @@ import { collectHn } from "@pipeline/collectors/hn.js";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import {
+  createRunArchivesRepo,
+  type RunArchivesRepo,
+} from "@pipeline/repositories/run-archives.js";
 import type {
   HnCollectConfig,
   RedditCollectConfig,
@@ -111,6 +115,7 @@ export interface RunProcessDeps {
   shortlistFn: ShortlistFn;
   rankFn: RankFn;
   collectFns: CollectFns;
+  archiveRepo?: RunArchivesRepo;
 }
 
 interface CollectingOutcome {
@@ -387,6 +392,28 @@ export async function handleRunProcessJob(
     completedAt: new Date().toISOString(),
   }));
 
+  if (deps.archiveRepo) {
+    try {
+      await deps.archiveRepo.upsert({
+        id: runId,
+        status: "completed",
+        rankedItems: rankResult.rankedItems,
+        topN,
+        profileName: profile?.name ?? null,
+        completedAt: new Date(),
+      });
+    } catch (err) {
+      logger.error(
+        {
+          event: "archive.write_failed",
+          runId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "archive.write_failed",
+      );
+    }
+  }
+
   logger.info(
     {
       event: "run.completed",
@@ -409,6 +436,7 @@ export interface CreateRunProcessWorkerOptions {
   shortlistFn?: ShortlistFn;
   rankFn?: RankFn;
   collectFns?: Partial<CollectFns>;
+  archiveRepo?: RunArchivesRepo;
 }
 
 export function createRunProcessWorker(
@@ -416,7 +444,7 @@ export function createRunProcessWorker(
 ): Worker<RunProcessJobData, RunProcessResult> {
   const connection = options.connection ?? createRedisConnection();
   const runState = options.runState ?? createRunStateService(connection);
-  const needsDb = !options.rawItemsRepo || !options.candidatesRepo;
+  const needsDb = !options.rawItemsRepo || !options.candidatesRepo || !options.archiveRepo;
   const db: AppDb | undefined = needsDb ? getDb() : undefined;
   const rawItemsRepo =
     options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db));
@@ -434,6 +462,9 @@ export function createRunProcessWorker(
     web: options.collectFns?.web ?? collectWeb,
   };
 
+  const archiveRepo =
+    options.archiveRepo ?? createRunArchivesRepo(ensureDb(db));
+
   const deps: RunProcessDeps = {
     runState,
     rawItemsRepo,
@@ -442,6 +473,7 @@ export function createRunProcessWorker(
     shortlistFn,
     rankFn,
     collectFns,
+    archiveRepo,
   };
 
   return new Worker<RunProcessJobData, RunProcessResult>(
