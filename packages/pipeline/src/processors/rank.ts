@@ -196,6 +196,9 @@ export async function rankCandidates(
       prompt: JSON.stringify({ items: promptItems }, null, 2),
       schema: rankedResponseSchema,
       temperature: 0,
+      providerOptions: {
+        anthropic: { maxTokens: 16384 },
+      },
     })) as { object: z.infer<typeof rankedResponseSchema> };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

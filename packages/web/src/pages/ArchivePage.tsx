@@ -57,18 +57,16 @@ export function ArchivePage(): ReactElement {
   const items = data.rankedItems ?? [];
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
+    <div className="min-h-screen bg-white py-12 px-4">
       <div className="max-w-2xl mx-auto">
         <ArchivePageHeader
           startedAt={data.startedAt}
           storyCount={items.length}
           profileName={null}
         />
-        <div className="space-y-10 divide-y divide-gray-200">
+        <div className="space-y-8">
           {items.map((item, index) => (
-            <div key={item.id} className={index > 0 ? "pt-10" : ""}>
-              <ArchiveStoryCard item={item} rank={index + 1} />
-            </div>
+            <ArchiveStoryCard key={item.id} item={item} rank={index + 1} />
           ))}
         </div>
       </div>

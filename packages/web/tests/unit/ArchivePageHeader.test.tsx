@@ -25,37 +25,42 @@ describe("ArchivePageHeader", () => {
     expect(screen.getByRole("heading", { name: "AI Newsletter" })).toBeTruthy();
   });
 
-  it("renders formatted date from startedAt (REQ-008, REQ-014)", () => {
+  it("renders tagline 'Your AI News Digest'", () => {
+    renderHeader({ startedAt: "2026-04-13T10:00:00Z", storyCount: 10, profileName: null });
+    expect(screen.getByText("Your AI News Digest")).toBeTruthy();
+  });
+
+  it("renders formatted date from startedAt", () => {
     renderHeader({ startedAt: "2026-04-13T10:00:00Z", storyCount: 10, profileName: "aman" });
     expect(screen.getByText(/April 13, 2026/)).toBeTruthy();
   });
 
-  it("renders story count as 'N stories' (REQ-008)", () => {
+  it("renders story count as 'N stories'", () => {
     renderHeader({ startedAt: "2026-04-13T10:00:00Z", storyCount: 10, profileName: "aman" });
     expect(screen.getByText(/10 stories/)).toBeTruthy();
   });
 
-  it("renders '1 story' for singular count (REQ-008)", () => {
+  it("renders '1 story' for singular count", () => {
     renderHeader({ startedAt: "2026-04-13T10:00:00Z", storyCount: 1, profileName: "aman" });
     expect(screen.getByText(/1 story/)).toBeTruthy();
   });
 
-  it("renders '0 stories' for zero count (EDGE-002 related)", () => {
+  it("renders '0 stories' for zero count", () => {
     renderHeader({ startedAt: "2026-04-13T10:00:00Z", storyCount: 0, profileName: "aman" });
     expect(screen.getByText(/0 stories/)).toBeTruthy();
   });
 
-  it("renders profile name when provided (REQ-008)", () => {
+  it("renders profile name when provided", () => {
     renderHeader({ startedAt: "2026-04-13T10:00:00Z", storyCount: 10, profileName: "aman" });
-    expect(screen.getByText(/profile: aman/)).toBeTruthy();
+    expect(screen.getByText(/aman/)).toBeTruthy();
   });
 
-  it("renders 'default' when profileName is null (EDGE-007)", () => {
+  it("omits profile name when null", () => {
     renderHeader({ startedAt: "2026-04-13T10:00:00Z", storyCount: 10, profileName: null });
-    expect(screen.getByText(/profile: default/)).toBeTruthy();
+    expect(screen.queryByText(/profile/)).toBeNull();
   });
 
-  it("renders '← Back to Run' link pointing to /run (REQ-013)", () => {
+  it("renders '← Back to Run' link pointing to /run", () => {
     renderHeader({ startedAt: "2026-04-13T10:00:00Z", storyCount: 10, profileName: "aman" });
     const link = screen.getByRole("link", { name: "← Back to Run" });
     expect(link.getAttribute("href")).toBe("/run");
