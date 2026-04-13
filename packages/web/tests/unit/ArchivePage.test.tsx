@@ -12,7 +12,7 @@ vi.mock("../../src/hooks/useRunState", () => ({
 
 import { useRunState } from "../../src/hooks/useRunState";
 
-function renderWithClient(ui: ReactElement, runId = "run-123"): void {
+function renderWithClient(ui: ReactElement, runId = "run-123"): ReturnType<typeof render> {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
@@ -25,7 +25,7 @@ function renderWithClient(ui: ReactElement, runId = "run-123"): void {
       </MemoryRouter>
     </QueryClientProvider>
   );
-  render(ui, { wrapper });
+  return render(ui, { wrapper });
 }
 
 const baseCompletedRun: RunStateResponse = {
@@ -247,6 +247,23 @@ describe("ArchivePage", () => {
     renderWithClient(<ArchivePage />);
     expect(screen.getByText(/0 stories/)).toBeTruthy();
     expect(screen.queryAllByRole("article")).toHaveLength(0);
+  });
+
+  it("uses max-w-2xl centered layout when completed (REQ-021)", () => {
+    vi.mocked(useRunState).mockReturnValue({
+      isLoading: false,
+      data: baseCompletedRun,
+      error: null,
+      isError: false,
+      isPending: false,
+      isFetching: false,
+      isSuccess: true,
+      status: "success",
+    } as ReturnType<typeof useRunState>);
+
+    const { container } = renderWithClient(<ArchivePage />);
+    const centeredDiv = container.querySelector(".max-w-2xl.mx-auto");
+    expect(centeredDiv).not.toBeNull();
   });
 
   it("shows generic error when network request throws (EDGE-008)", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { ArchiveStoryCard } from "../../src/components/ArchiveStoryCard";
 import type { RankedItem } from "@newsletter/shared";
 
@@ -19,6 +19,16 @@ const baseItem: RankedItem = {
   recap: null,
 };
 
+const itemWithRecap: RankedItem = {
+  ...baseItem,
+  imageUrl: "https://example.com/image.jpg",
+  recap: {
+    summary: "Test summary of the article",
+    bullets: ["Point 1", "Point 2", "Point 3"],
+    bottomLine: "Test bottom line takeaway",
+  },
+};
+
 describe("ArchiveStoryCard", () => {
   afterEach(() => {
     cleanup();
@@ -26,7 +36,6 @@ describe("ArchiveStoryCard", () => {
 
   it("renders rank number (REQ-010)", () => {
     render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    // getByText throws if not found — proves element exists
     expect(screen.getByText("1")).toBeTruthy();
   });
 
@@ -37,7 +46,6 @@ describe("ArchiveStoryCard", () => {
 
   it("renders formatted publication date when publishedAt is set (REQ-010)", () => {
     render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    // Should render a date string from April 13, 2026
     expect(screen.getByText(/Apr 13, 2026/)).toBeTruthy();
   });
 
@@ -81,12 +89,6 @@ describe("ArchiveStoryCard", () => {
     expect(link.getAttribute("href")).toBe("https://example.com/article");
   });
 
-  it("renders rationale prefixed with 'The Recap: ' (REQ-010)", () => {
-    render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    expect(screen.getByText("The Recap:")).toBeTruthy();
-    expect(screen.getByText(/This article covers key reasoning improvements/)).toBeTruthy();
-  });
-
   it("renders 'Read more →' link to item URL (REQ-010)", () => {
     render(<ArchiveStoryCard item={baseItem} rank={1} />);
     const link = screen.getByRole("link", { name: "Read more →" });
@@ -96,5 +98,61 @@ describe("ArchiveStoryCard", () => {
   it("does not crash when content is null (EDGE-006)", () => {
     const item = { ...baseItem, content: null };
     expect(() => render(<ArchiveStoryCard item={item} rank={1} />)).not.toThrow();
+  });
+
+  // Image tests (REQ-015, REQ-016)
+
+  it("renders image when imageUrl is present (REQ-015)", () => {
+    const { container } = render(<ArchiveStoryCard item={itemWithRecap} rank={1} />);
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute("src")).toBe("https://example.com/image.jpg");
+  });
+
+  it("does not render image when imageUrl is null (REQ-016)", () => {
+    const { container } = render(<ArchiveStoryCard item={baseItem} rank={1} />);
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("hides image when onError fires (EDGE-006)", () => {
+    const { container } = render(<ArchiveStoryCard item={itemWithRecap} rank={1} />);
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    if (img) fireEvent.error(img);
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  // Recap section tests (REQ-017, REQ-018, REQ-019, REQ-020)
+
+  it("shows recap.summary in 'The Recap:' section when recap exists (REQ-017)", () => {
+    render(<ArchiveStoryCard item={itemWithRecap} rank={1} />);
+    expect(screen.getByText("The Recap:")).toBeTruthy();
+    expect(screen.getByText("Test summary of the article")).toBeTruthy();
+  });
+
+  it("shows 'Unpacked:' heading and bullet list when recap exists (REQ-018)", () => {
+    render(<ArchiveStoryCard item={itemWithRecap} rank={1} />);
+    expect(screen.getByText("Unpacked:")).toBeTruthy();
+    expect(screen.getByText("Point 1")).toBeTruthy();
+    expect(screen.getByText("Point 2")).toBeTruthy();
+    expect(screen.getByText("Point 3")).toBeTruthy();
+    const listItems = screen.getAllByRole("listitem");
+    expect(listItems).toHaveLength(3);
+  });
+
+  it("shows 'Bottom line:' when recap exists (REQ-020)", () => {
+    render(<ArchiveStoryCard item={itemWithRecap} rank={1} />);
+    expect(screen.getByText("Bottom line:")).toBeTruthy();
+    expect(screen.getByText("Test bottom line takeaway")).toBeTruthy();
+  });
+
+  it("falls back to rationale when recap is null (REQ-019)", () => {
+    render(<ArchiveStoryCard item={baseItem} rank={1} />);
+    expect(screen.getByText("The Recap:")).toBeTruthy();
+    expect(
+      screen.getByText("This article covers key reasoning improvements in large language models."),
+    ).toBeTruthy();
+    expect(screen.queryByText("Unpacked:")).toBeNull();
+    expect(screen.queryByText("Bottom line:")).toBeNull();
   });
 });

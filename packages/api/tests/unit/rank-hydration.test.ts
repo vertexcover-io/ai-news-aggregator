@@ -106,4 +106,77 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
     const result = await hydrateRankedItems(repo, refs);
     expect(result[0].content).toBeNull();
   });
+
+  it("populates imageUrl from the DB row (REQ-013)", async () => {
+    const repo = makeRepo([
+      {
+        id: 3,
+        sourceType: "hn",
+        title: "Image story",
+        url: "https://example.com/3",
+        author: null,
+        publishedAt: null,
+        engagement: { points: 10, commentCount: 0 },
+        content: null,
+        imageUrl: "https://example.com/img.jpg",
+        metadata: { comments: [] },
+      },
+    ]);
+    const refs: RankedItemRef[] = [{ rawItemId: 3, score: 0.7, rationale: "ok" }];
+    const result = await hydrateRankedItems(repo, refs);
+    expect(result[0].imageUrl).toBe("https://example.com/img.jpg");
+  });
+
+  it("populates recap from RankedItemRef when summary is present (REQ-014)", async () => {
+    const repo = makeRepo([
+      {
+        id: 4,
+        sourceType: "reddit",
+        title: "Recap story",
+        url: "https://example.com/4",
+        author: "bob",
+        publishedAt: null,
+        engagement: { points: 20, commentCount: 5 },
+        content: "Some body",
+        imageUrl: null,
+        metadata: { comments: [] },
+      },
+    ]);
+    const refs: RankedItemRef[] = [
+      {
+        rawItemId: 4,
+        score: 0.85,
+        rationale: "interesting",
+        summary: "A concise summary",
+        bullets: ["Point 1", "Point 2"],
+        bottomLine: "Key takeaway",
+      },
+    ];
+    const result = await hydrateRankedItems(repo, refs);
+    expect(result[0].recap).toEqual({
+      summary: "A concise summary",
+      bullets: ["Point 1", "Point 2"],
+      bottomLine: "Key takeaway",
+    });
+  });
+
+  it("sets recap to null when ref has no summary (old runs) (EDGE-010)", async () => {
+    const repo = makeRepo([
+      {
+        id: 5,
+        sourceType: "hn",
+        title: "Old run story",
+        url: "https://example.com/5",
+        author: null,
+        publishedAt: null,
+        engagement: { points: 5, commentCount: 0 },
+        content: null,
+        imageUrl: null,
+        metadata: { comments: [] },
+      },
+    ]);
+    const refs: RankedItemRef[] = [{ rawItemId: 5, score: 0.5, rationale: "legacy" }];
+    const result = await hydrateRankedItems(repo, refs);
+    expect(result[0].recap).toBeNull();
+  });
 });

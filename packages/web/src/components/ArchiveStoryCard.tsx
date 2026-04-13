@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import type { RankedItem } from "@newsletter/shared";
 
 interface ArchiveStoryCardProps {
@@ -15,8 +15,31 @@ function formatDate(value: string | null): string {
 }
 
 export function ArchiveStoryCard({ item, rank }: ArchiveStoryCardProps): ReactElement {
+  const [imgError, setImgError] = useState(false);
+  const showImage = Boolean(item.imageUrl) && !imgError;
+
   return (
-    <article className="border border-gray-200 rounded-lg p-5 space-y-3 bg-white">
+    <article className="space-y-4">
+      {showImage && item.imageUrl && (
+        <img
+          src={item.imageUrl}
+          alt=""
+          className="w-full rounded-lg object-cover max-h-80"
+          onError={() => { setImgError(true); }}
+        />
+      )}
+
+      <h2 className="text-xl font-bold leading-snug">
+        <a
+          href={item.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gray-900 hover:text-blue-700 hover:underline"
+        >
+          {item.title}
+        </a>
+      </h2>
+
       <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
         <span className="font-bold text-gray-400 w-6 text-right">{rank}</span>
         <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700 uppercase font-medium">
@@ -28,21 +51,28 @@ export function ArchiveStoryCard({ item, rank }: ArchiveStoryCardProps): ReactEl
         <span>💬 {item.engagement.commentCount}</span>
       </div>
 
-      <h2 className="text-lg font-semibold leading-snug">
-        <a
-          href={item.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-800 hover:underline"
-        >
-          {item.title}
-        </a>
-      </h2>
-
-      <p className="text-sm text-gray-700">
+      <p className="text-sm text-gray-700 leading-relaxed">
         <span className="font-semibold">The Recap: </span>
-        {item.rationale}
+        {item.recap ? item.recap.summary : item.rationale}
       </p>
+
+      {item.recap && (
+        <>
+          <div>
+            <p className="text-sm font-semibold text-gray-900 mb-1">Unpacked:</p>
+            <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
+              {item.recap.bullets.map((bullet) => (
+                <li key={bullet}>{bullet}</li>
+              ))}
+            </ul>
+          </div>
+
+          <p className="text-sm text-gray-700 italic">
+            <span className="font-semibold not-italic">Bottom line: </span>
+            {item.recap.bottomLine}
+          </p>
+        </>
+      )}
 
       <a
         href={item.url}
