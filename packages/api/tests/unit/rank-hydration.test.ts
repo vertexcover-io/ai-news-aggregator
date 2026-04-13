@@ -30,6 +30,7 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
         author: "sama",
         publishedAt,
         engagement: { points: 1000, commentCount: 250 },
+        content: "Full article body text here",
       },
     ]);
     const refs: RankedItemRef[] = [
@@ -48,6 +49,7 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
         engagement: { points: 1000, commentCount: 250 },
         score: 0.95,
         rationale: "high engagement & relevance",
+        content: "Full article body text here",
       },
     ]);
   });
@@ -59,5 +61,41 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
     ];
     const result = await hydrateRankedItems(repo, refs);
     expect(result).toEqual([]);
+  });
+
+  it("populates content from the row when it has a value (REQ-012)", async () => {
+    const repo = makeRepo([
+      {
+        id: 1,
+        sourceType: "hn",
+        title: "Some title",
+        url: "https://example.com",
+        author: null,
+        publishedAt: null,
+        engagement: { points: 10, commentCount: 2 },
+        content: "Article body content",
+      },
+    ]);
+    const refs: RankedItemRef[] = [{ rawItemId: 1, score: 0.8, rationale: "relevant" }];
+    const result = await hydrateRankedItems(repo, refs);
+    expect(result[0].content).toBe("Article body content");
+  });
+
+  it("sets content to null when row content is null (EDGE-006)", async () => {
+    const repo = makeRepo([
+      {
+        id: 2,
+        sourceType: "hn",
+        title: "Title-only HN item",
+        url: "https://example.com/2",
+        author: null,
+        publishedAt: null,
+        engagement: { points: 5, commentCount: 0 },
+        content: null,
+      },
+    ]);
+    const refs: RankedItemRef[] = [{ rawItemId: 2, score: 0.6, rationale: "ok" }];
+    const result = await hydrateRankedItems(repo, refs);
+    expect(result[0].content).toBeNull();
   });
 });

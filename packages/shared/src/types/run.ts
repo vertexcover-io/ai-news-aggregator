@@ -30,6 +30,7 @@ export interface RankedItem {
   engagement: { points: number; commentCount: number };
   score: number;
   rationale: string;
+  content: string | null;
 }
 
 export interface RankedItemRef {

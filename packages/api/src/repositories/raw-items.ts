@@ -10,6 +10,7 @@ export interface RawItemRow {
   author: string | null;
   publishedAt: Date | null;
   engagement: { points: number; commentCount: number };
+  content: string | null;
 }
 
 export interface RawItemsRepo {
@@ -31,6 +32,7 @@ export function createRawItemsRepo(
           author: rawItems.author,
           publishedAt: rawItems.publishedAt,
           engagement: rawItems.engagement,
+          content: rawItems.content,
         })
         .from(rawItems)
         .where(inArray(rawItems.id, ids));
