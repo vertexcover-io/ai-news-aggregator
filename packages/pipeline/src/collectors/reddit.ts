@@ -46,19 +46,22 @@ interface RedditPostData {
   };
 }
 
-const INVALID_THUMBNAILS = new Set(["self", "default", "nsfw", "", "spoiler"]);
+const REDDIT_THUMBNAIL_SENTINELS = new Set([
+  "self", "default", "nsfw", "image", "spoiler", "",
+]);
+
+function decodeAmp(url: string): string {
+  return url.replaceAll("&amp;", "&");
+}
 
 export function extractRedditImageUrl(post: RedditPostData): string | null {
   const previewUrl = post.preview?.images[0]?.source.url;
-  if (previewUrl) {
-    return previewUrl.replaceAll("&amp;", "&");
-  }
-
-  if (post.thumbnail && !INVALID_THUMBNAILS.has(post.thumbnail) && /^https?:\/\//.test(post.thumbnail)) {
-    return post.thumbnail;
-  }
-
-  return null;
+  if (previewUrl) return decodeAmp(previewUrl);
+  const thumb = post.thumbnail;
+  if (!thumb) return null;
+  if (REDDIT_THUMBNAIL_SENTINELS.has(thumb)) return null;
+  if (!thumb.startsWith("http")) return null;
+  return decodeAmp(thumb);
 }
 
 interface RedditCommentData {
