@@ -761,6 +761,86 @@ describe("processOnePost and processSource", () => {
 
       expect(result.imageUrl).toBeNull();
     });
+
+    // REQ-030: when LLM extracts no image, fetchFn is called with post.url for fallback
+    it("REQ-030: calls fetchFn with post.url for fallback when LLM returns empty image_url", async () => {
+      const fallbackHtml = `<html><head><meta property="og:image" content="https://example.com/fallback.png"></head></html>`;
+      const fetchFn = vi.fn().mockImplementation((url: string) => {
+        if (url === samplePost.url) {
+          return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(fallbackHtml) });
+        }
+        return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(POST_BODY) });
+      });
+      const model = makeExtractModel({ title: "Post", author: "Jane", published_at: "2026-03-30", image_url: "" });
+
+      const result = await processOnePost(samplePost, fetchFn as unknown as typeof fetch, model);
+
+      const fallbackCall = fetchFn.mock.calls.find(([url]: [string]) => url === samplePost.url);
+      expect(fallbackCall).toBeDefined();
+      expect(result.imageUrl).toBe("https://example.com/fallback.png");
+    });
+
+    // REQ-031: when LLM extracts a valid image_url, no second fetch for post.url
+    it("REQ-031: does not call fetchFn with post.url when LLM returns valid image_url", async () => {
+      const fetchFn = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve(POST_BODY) });
+      const model = makeExtractModel({ title: "Post", author: "Jane", published_at: "2026-03-30", image_url: "https://img.com/a.png" });
+
+      await processOnePost(samplePost, fetchFn as unknown as typeof fetch, model);
+
+      const fallbackCall = fetchFn.mock.calls.find(([url]: [string]) => url === samplePost.url);
+      expect(fallbackCall).toBeUndefined();
+    });
+
+    // REQ-039: fetchFn throwing on fallback call → processOnePost resolves with imageUrl: null
+    it("REQ-039: returns imageUrl null when fallback fetchFn throws, does not propagate error", async () => {
+      let callCount = 0;
+      const fetchFn = vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount >= 2) {
+          return Promise.reject(new Error("network"));
+        }
+        return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(POST_BODY) });
+      });
+      const model = makeExtractModel({ title: "Post", author: "Jane", published_at: "2026-03-30", image_url: "" });
+
+      const result = await processOnePost(samplePost, fetchFn as unknown as typeof fetch, model);
+
+      expect(result.imageUrl).toBeNull();
+    });
+
+    // REQ-040: AbortSignal is forwarded to the fallback fetch
+    it("REQ-040: passes AbortSignal to fallback fetchFn invocation", async () => {
+      const ac = new AbortController();
+      const recordedInits: RequestInit[] = [];
+      const fetchFn = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        if (init?.signal) recordedInits.push(init);
+        return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(POST_BODY) });
+      });
+      const model = makeExtractModel({ title: "Post", author: "Jane", published_at: "2026-03-30", image_url: "" });
+
+      await processOnePost(samplePost, fetchFn as unknown as typeof fetch, model, ac.signal);
+
+      const fallbackInit = recordedInits.find((init) => init.signal === ac.signal);
+      expect(fallbackInit).toBeDefined();
+      expect(fallbackInit?.signal).toBe(ac.signal);
+    });
+
+    // EDGE-035: triggered AbortSignal → processOnePost resolves with imageUrl null, does not throw
+    it("EDGE-035: resolves with imageUrl null when AbortSignal is triggered on fallback fetch", async () => {
+      const ac = new AbortController();
+      const fetchFn = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        if (init?.signal) {
+          return Promise.reject(new DOMException("Aborted", "AbortError"));
+        }
+        return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(POST_BODY) });
+      });
+      const model = makeExtractModel({ title: "Post", author: "Jane", published_at: "2026-03-30", image_url: "" });
+
+      ac.abort();
+      const result = await processOnePost(samplePost, fetchFn as unknown as typeof fetch, model, ac.signal);
+
+      expect(result.imageUrl).toBeNull();
+    });
   });
 
   describe("processSource", () => {
