@@ -78,6 +78,7 @@ export function ReviewCard({
           <img
             src={item.imageUrl}
             alt=""
+            referrerPolicy="no-referrer"
             className="size-full object-cover"
           />
         ) : null}
