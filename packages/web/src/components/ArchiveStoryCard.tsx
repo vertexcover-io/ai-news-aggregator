@@ -41,6 +41,7 @@ export function ArchiveStoryCard({
         <img
           src={item.imageUrl}
           alt=""
+          referrerPolicy="no-referrer"
           className="w-full object-cover max-h-64"
           onError={() => {
             setImgError(true);

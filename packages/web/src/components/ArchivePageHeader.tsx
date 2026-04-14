@@ -34,10 +34,10 @@ export function ArchivePageHeader({
           <p className="text-base text-gray-400 mt-1">Your AI News Digest</p>
         </div>
         <Link
-          to="/run"
+          to="/"
           className="text-sm text-gray-400 hover:text-gray-600 hover:underline mt-2"
         >
-          ← Back to Run
+          ← Dashboard
         </Link>
       </div>
       <p className="text-sm text-gray-500 mt-4">

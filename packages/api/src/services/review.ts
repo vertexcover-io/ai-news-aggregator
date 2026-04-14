@@ -73,7 +73,6 @@ export async function patchArchive(
 }
 
 export interface AddPostInput {
-  sourceType: AddPostSourceType;
   url: string;
 }
 
@@ -104,7 +103,7 @@ export async function addPostToArchive(
     ac.abort();
   }, options.timeoutMs ?? ADD_POST_TIMEOUT_MS);
   try {
-    return await deps.hydrateAddedPost(input.url, input.sourceType, {
+    return await deps.hydrateAddedPost(input.url, "web", {
       signal: ac.signal,
     });
   } finally {

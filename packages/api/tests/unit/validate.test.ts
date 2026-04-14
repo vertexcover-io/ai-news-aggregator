@@ -306,44 +306,44 @@ describe("archivePatchSchema (REQ-160 – REQ-162, EDGE-110)", () => {
   });
 });
 
-describe("addPostSchema (REQ-131, REQ-144)", () => {
-  it("accepts a valid hn payload", () => {
+describe("addPostSchema (REQ-024, REQ-144)", () => {
+  it("accepts a valid URL payload", () => {
     const r = addPostSchema.safeParse({
-      sourceType: "hn",
-      url: "https://news.ycombinator.com/item?id=12345",
-    });
-    expect(r.success).toBe(true);
-  });
-
-  it("accepts a valid reddit payload", () => {
-    const r = addPostSchema.safeParse({
-      sourceType: "reddit",
-      url: "https://www.reddit.com/r/x/comments/abc/",
-    });
-    expect(r.success).toBe(true);
-  });
-
-  it("accepts a valid web payload", () => {
-    const r = addPostSchema.safeParse({
-      sourceType: "web",
       url: "https://example.com/post",
     });
     expect(r.success).toBe(true);
   });
 
-  it("rejects unknown sourceType", () => {
+  it("accepts HN URL", () => {
     const r = addPostSchema.safeParse({
-      sourceType: "twitter",
-      url: "https://example.com",
+      url: "https://news.ycombinator.com/item?id=12345",
     });
+    expect(r.success).toBe(true);
+  });
+
+  it("REQ-024: rejects empty body {}", () => {
+    const r = addPostSchema.safeParse({});
     expect(r.success).toBe(false);
   });
 
-  it("rejects malformed url", () => {
-    const r = addPostSchema.safeParse({
-      sourceType: "web",
-      url: "not-a-url",
-    });
+  it("REQ-024: rejects empty string url", () => {
+    const r = addPostSchema.safeParse({ url: "" });
     expect(r.success).toBe(false);
+  });
+
+  it("REQ-144: rejects malformed url", () => {
+    const r = addPostSchema.safeParse({ url: "not-a-url" });
+    expect(r.success).toBe(false);
+  });
+
+  it("EDGE-022: ignores extra sourceType field (zod strips unknowns)", () => {
+    const r = addPostSchema.safeParse({
+      url: "https://example.com",
+      sourceType: "hn",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data).not.toHaveProperty("sourceType");
+    }
   });
 });

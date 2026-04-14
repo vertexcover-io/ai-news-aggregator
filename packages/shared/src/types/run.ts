@@ -102,3 +102,7 @@ export interface RunSubmitPayload {
   web?: RunSubmitWebConfig;
   profileName?: string | null;
 }
+
+export interface AddPostPayload {
+  url: string;
+}

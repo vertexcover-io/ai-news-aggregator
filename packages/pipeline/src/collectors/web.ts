@@ -12,6 +12,7 @@ import type {
 } from "@pipeline/types.js";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { fetchMarkdown } from "@pipeline/services/markdown-fetch.js";
+import { extractFallbackImage } from "@pipeline/collectors/web-image-fallback.js";
 
 export { fetchMarkdown };
 
@@ -176,6 +177,7 @@ export async function processOnePost(
   post: DiscoveredPost,
   fetchFn: typeof fetch,
   llmModel: LanguageModel,
+  signal?: AbortSignal,
 ): Promise<RawItemInsert> {
   let markdown: string;
   try {
@@ -202,7 +204,23 @@ export async function processOnePost(
     throw new CollectorError("validate", "empty title");
   }
 
-  return buildRawItem(post.url, markdown, mergedFields);
+  let imageUrl: string | null = null;
+  const llmImage = mergedFields.image_url.trim();
+  if (llmImage.startsWith("http")) {
+    imageUrl = llmImage;
+  } else {
+    try {
+      const response = await fetchFn(post.url, { signal });
+      if (response.ok) {
+        const html = await response.text();
+        imageUrl = extractFallbackImage(html, post.url);
+      }
+    } catch {
+      // Best-effort; leave imageUrl null.
+    }
+  }
+
+  return buildRawItem(post.url, markdown, { ...mergedFields, image_url: imageUrl ?? "" });
 }
 
 export async function processSource(

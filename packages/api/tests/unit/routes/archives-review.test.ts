@@ -188,12 +188,34 @@ describe("POST /api/archives/:runId/add-post", () => {
     const res = await app.request("/api/archives/run-1/add-post", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sourceType: "web", url: ranked.url }),
+      body: JSON.stringify({ url: ranked.url }),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as RankedItem;
     expect(body.url).toBe(ranked.url);
     expect(hydrate).toHaveBeenCalledOnce();
+  });
+
+  it("REQ-024: returns 400 when body is empty {}", async () => {
+    const archiveRepo = makeArchiveRepo(makeArchiveRow([]));
+    const app = makeApp({ archiveRepo });
+    const res = await app.request("/api/archives/run-1/add-post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("REQ-024: returns 400 when url is empty string", async () => {
+    const archiveRepo = makeArchiveRepo(makeArchiveRow([]));
+    const app = makeApp({ archiveRepo });
+    const res = await app.request("/api/archives/run-1/add-post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "" }),
+    });
+    expect(res.status).toBe(400);
   });
 
   it("REQ-144: returns 400 for malformed URL", async () => {
@@ -202,9 +224,44 @@ describe("POST /api/archives/:runId/add-post", () => {
     const res = await app.request("/api/archives/run-1/add-post", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sourceType: "web", url: "not-a-url" }),
+      body: JSON.stringify({ url: "not-a-url" }),
     });
     expect(res.status).toBe(400);
+  });
+
+  it("EDGE-022/EDGE-036: ignores extra sourceType field, still returns 200 using web collector", async () => {
+    const archiveRepo = makeArchiveRepo(makeArchiveRow([]));
+    const ranked = makeRanked();
+    const hydrate = vi.fn().mockResolvedValue(ranked);
+    const app = makeApp({ archiveRepo, hydrateAddedPost: hydrate });
+    const res = await app.request("/api/archives/run-1/add-post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com", sourceType: "hn" }),
+    });
+    expect(res.status).toBe(200);
+    // hydrate is always called with 'web' regardless of any sourceType in body
+    expect(hydrate).toHaveBeenCalledOnce();
+    const [, calledSourceType] = hydrate.mock.calls[0] as [string, string];
+    expect(calledSourceType).toBe("web");
+  });
+
+  it("REQ-025: HN URL is always handled by web collector (not HN collector)", async () => {
+    const archiveRepo = makeArchiveRepo(makeArchiveRow([]));
+    const ranked = makeRanked();
+    const hydrate = vi.fn().mockResolvedValue(ranked);
+    const app = makeApp({ archiveRepo, hydrateAddedPost: hydrate });
+    const res = await app.request("/api/archives/run-1/add-post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: "https://news.ycombinator.com/item?id=1",
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(hydrate).toHaveBeenCalledOnce();
+    const [, calledSourceType] = hydrate.mock.calls[0] as [string, string];
+    expect(calledSourceType).toBe("web");
   });
 
   it("REQ-146: returns 409 when URL already in archive", async () => {
@@ -225,22 +282,19 @@ describe("POST /api/archives/:runId/add-post", () => {
     const res = await app.request("/api/archives/run-1/add-post", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sourceType: "web", url }),
+      body: JSON.stringify({ url }),
     });
     expect(res.status).toBe(409);
   });
 
   it("REQ-145: returns 502 when upstream hydration fails", async () => {
     const archiveRepo = makeArchiveRepo(makeArchiveRow([]));
-    const hydrate = vi.fn().mockRejectedValue(new Error("upstream HN 503"));
+    const hydrate = vi.fn().mockRejectedValue(new Error("upstream fetch 503"));
     const app = makeApp({ archiveRepo, hydrateAddedPost: hydrate });
     const res = await app.request("/api/archives/run-1/add-post", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sourceType: "hn",
-        url: "https://news.ycombinator.com/item?id=1",
-      }),
+      body: JSON.stringify({ url: "https://news.ycombinator.com/item?id=1" }),
     });
     expect(res.status).toBe(502);
   });
@@ -251,10 +305,7 @@ describe("POST /api/archives/:runId/add-post", () => {
     const res = await app.request("/api/archives/missing/add-post", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sourceType: "web",
-        url: "https://example.com",
-      }),
+      body: JSON.stringify({ url: "https://example.com" }),
     });
     expect(res.status).toBe(404);
   });

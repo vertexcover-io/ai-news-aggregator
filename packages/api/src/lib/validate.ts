@@ -118,7 +118,6 @@ export const archivePatchSchema = z
 export type ArchivePatchBody = z.infer<typeof archivePatchSchema>;
 
 export const addPostSchema = z.object({
-  sourceType: z.enum(["hn", "reddit", "web"]),
   url: z.url(),
 });
 
