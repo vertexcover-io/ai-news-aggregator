@@ -19,6 +19,7 @@ export interface RecapContent {
 export interface RawItemMetadata {
   comments: RawItemComment[];
   recap?: RecapContent;
+  addedInReview?: boolean;
 }
 
 export interface CollectorResult {

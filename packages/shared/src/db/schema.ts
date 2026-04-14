@@ -1,5 +1,12 @@
-import { integer, jsonb, pgTable, serial, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
-import type { RawItemEngagement, RawItemMetadata, RankedItemRef } from "@shared/types/index.js";
+import { boolean, integer, jsonb, pgTable, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import type {
+  RawItemEngagement,
+  RawItemMetadata,
+  RankedItemRef,
+  RunSubmitHnConfig,
+  RunSubmitRedditConfig,
+  RunSubmitWebConfig,
+} from "@shared/types/index.js";
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter";
 
@@ -31,8 +38,32 @@ export const runArchives = pgTable("run_archives", {
   rankedItems: jsonb("ranked_items").$type<RankedItemRef[]>().notNull(),
   topN: integer("top_n").notNull(),
   profileName: text("profile_name"),
+  reviewed: boolean("reviewed").notNull().default(false),
   completedAt: timestamp("completed_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type RunArchiveInsert = typeof runArchives.$inferInsert;
+
+export const userSettings = pgTable(
+  "user_settings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    singleton: boolean("singleton").notNull().default(true),
+    profileName: text("profile_name"),
+    topN: integer("top_n").notNull(),
+    halfLifeHours: integer("half_life_hours"),
+    hnConfig: jsonb("hn_config").$type<RunSubmitHnConfig | null>(),
+    redditConfig: jsonb("reddit_config").$type<RunSubmitRedditConfig | null>(),
+    webConfig: jsonb("web_config").$type<RunSubmitWebConfig | null>(),
+    scheduleTime: text("schedule_time").notNull(),
+    scheduleTimezone: text("schedule_timezone").notNull(),
+    scheduleEnabled: boolean("schedule_enabled").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("user_settings_singleton_uq").on(t.singleton)],
+);
+
+export type UserSettingsInsert = typeof userSettings.$inferInsert;
+export type UserSettingsSelect = typeof userSettings.$inferSelect;
