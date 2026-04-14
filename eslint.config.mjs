@@ -62,7 +62,7 @@ export default tseslint.config(
     files: ["packages/pipeline/src/**/*.ts"],
     rules: {
       "no-restricted-imports": [
-        "warn",
+        "error",
         {
           patterns: [
             {
@@ -89,7 +89,7 @@ export default tseslint.config(
     files: ["packages/web/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": [
-        "warn",
+        "error",
         {
           paths: [
             {
@@ -116,7 +116,7 @@ export default tseslint.config(
     files: ["packages/api/src/routes/**/*.ts"],
     rules: {
       "no-restricted-imports": [
-        "warn",
+        "error",
         {
           paths: [
             {
@@ -140,7 +140,7 @@ export default tseslint.config(
     files: ["packages/pipeline/src/collectors/**/*.ts"],
     plugins: { newsletter },
     rules: {
-      "newsletter/collector-return-shape": "warn",
+      "newsletter/collector-return-shape": "error",
     },
   },
   // newsletter/enforce-repository-access: value imports of
@@ -157,6 +157,6 @@ export default tseslint.config(
       "packages/*/tests/**",
     ],
     plugins: { newsletter },
-    rules: { "newsletter/enforce-repository-access": "warn" },
+    rules: { "newsletter/enforce-repository-access": "error" },
   },
 );

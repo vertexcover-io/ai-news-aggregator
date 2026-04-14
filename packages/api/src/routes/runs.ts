@@ -5,6 +5,7 @@ import {
   createLogger,
   createRedisConnection,
   getDb as defaultGetDb,
+  runKey,
 } from "@newsletter/shared";
 import type { RunState, UserProfile } from "@newsletter/shared";
 import { runSubmitSchema } from "@api/lib/validate.js";
@@ -79,7 +80,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
 
   runs.get("/:runId", async (c) => {
     const runId = c.req.param("runId");
-    const raw = await deps.redis.get(`run:${runId}`);
+    const raw = await deps.redis.get(runKey(runId));
     if (raw === null) {
       return c.json({ error: "not found" }, 404);
     }

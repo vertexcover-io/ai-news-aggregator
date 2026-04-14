@@ -21,6 +21,8 @@ import type {
   WebCollectConfig,
 } from "@pipeline/types.js";
 
+const STALLED_INTERVAL_MS = 30_000; // 30-second BullMQ stalled job check interval
+
 export interface CollectionJobLike {
   name: string;
   data: {
@@ -146,7 +148,7 @@ export const collectionWorker = new Worker(
   (job) => handleCollectionJob(job as CollectionJobLike),
   {
     connection: createRedisConnection(),
-    stalledInterval: 30000,
+    stalledInterval: STALLED_INTERVAL_MS,
     maxStalledCount: 2,
   },
 );

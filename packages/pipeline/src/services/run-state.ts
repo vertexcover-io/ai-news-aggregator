@@ -9,6 +9,10 @@
  * sufficient.
  */
 import type IORedis from "ioredis";
+import {
+  RUN_STATE_TTL_SECONDS,
+  runKey,
+} from "@newsletter/shared";
 import type {
   RunStage,
   RunState,
@@ -18,9 +22,9 @@ import type {
 
 export type RunSourceType = keyof RunState["sources"];
 
-export const RUN_STATE_TTL_SECONDS = 3600;
+export { RUN_STATE_TTL_SECONDS };
 
-const keyOf = (runId: string): string => `run:${runId}`;
+const keyOf = runKey;
 
 type RedisLike = Pick<IORedis, "get" | "set">;
 

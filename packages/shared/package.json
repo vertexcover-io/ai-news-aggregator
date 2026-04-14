@@ -21,7 +21,6 @@
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
-    "dotenv": "16.5.0",
     "drizzle-orm": "0.42.0",
     "ioredis": "5.6.1",
     "pino": "9.6.0",

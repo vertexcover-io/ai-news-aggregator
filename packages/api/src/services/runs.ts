@@ -1,32 +1,25 @@
 import { randomUUID } from "node:crypto";
 import type IORedis from "ioredis";
-import { Queue } from "bullmq";
-import { createRedisConnection } from "@newsletter/shared";
+import type { Queue } from "bullmq";
+import {
+  RUN_STATE_TTL_SECONDS,
+  runKey,
+} from "@newsletter/shared";
 import type {
   RunState,
   RunSubmitPayload,
+  SourceType,
   UserProfile,
 } from "@newsletter/shared";
-
-const TTL_SECONDS = 3600;
 
 export interface CreatedRun {
   runId: string;
 }
 
-let defaultQueue: Queue | null = null;
-
-function getDefaultProcessingQueue(): Queue {
-  defaultQueue ??= new Queue("processing", {
-    connection: createRedisConnection(),
-  });
-  return defaultQueue;
-}
-
 interface RunProcessJobPayload {
   runId: string;
   topN: number;
-  sourceTypes: ("hn" | "reddit" | "blog")[];
+  sourceTypes: SourceType[];
   collectors: {
     hn?: RunSubmitPayload["hn"];
     reddit?: RunSubmitPayload["reddit"];
@@ -43,8 +36,8 @@ export interface CreateRunOptions {
 
 export async function createRun(
   payload: RunSubmitPayload,
-  redis: IORedis = createRedisConnection(),
-  processingQueue: Queue = getDefaultProcessingQueue(),
+  redis: IORedis,
+  processingQueue: Queue,
   options: CreateRunOptions = {},
 ): Promise<CreatedRun> {
   const runId = randomUUID();
@@ -74,9 +67,9 @@ export async function createRun(
     error: null,
   };
 
-  await redis.set(`run:${runId}`, JSON.stringify(initial), "EX", TTL_SECONDS);
+  await redis.set(runKey(runId), JSON.stringify(initial), "EX", RUN_STATE_TTL_SECONDS);
 
-  const sourceTypes: ("hn" | "reddit" | "blog")[] = [];
+  const sourceTypes: SourceType[] = [];
   const collectors: RunProcessJobPayload["collectors"] = {};
   if (payload.hn) {
     sourceTypes.push("hn");

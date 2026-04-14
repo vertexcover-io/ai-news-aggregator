@@ -46,6 +46,8 @@ import type { CollectorResult } from "@newsletter/shared";
 
 const logger = createLogger("worker:run-process");
 
+const FALLBACK_WINDOW_MS = 10 * 60 * 1000; // 10-minute dedup lookback fallback
+
 function ensureDb(db: AppDb | undefined): AppDb {
   if (!db) throw new Error("internal: db required to build default repositories");
   return db;
@@ -60,7 +62,7 @@ export interface RunCollectorsPayload {
 export interface RunProcessJobData {
   runId: string;
   topN: number;
-  sourceTypes: ("hn" | "reddit" | "blog")[];
+  sourceTypes: SourceType[];
   collectors: RunCollectorsPayload;
   profile?: UserProfile | null;
   halfLifeHours?: number;
@@ -115,7 +117,7 @@ export interface RunProcessDeps {
   shortlistFn: ShortlistFn;
   rankFn: RankFn;
   collectFns: CollectFns;
-  archiveRepo?: RunArchivesRepo;
+  archiveRepo: RunArchivesRepo;
 }
 
 interface CollectingOutcome {
@@ -272,7 +274,7 @@ export async function handleRunProcessJob(
   if (state?.startedAt) {
     since = new Date(state.startedAt);
   } else {
-    since = new Date(Date.now() - 10 * 60 * 1000);
+    since = new Date(Date.now() - FALLBACK_WINDOW_MS);
     logger.warn(
       { runId },
       "run-state missing; using 10-minute fallback window",
@@ -282,7 +284,7 @@ export async function handleRunProcessJob(
   const raw: Candidate[] = await deps.loadFn(
     deps.candidatesRepo,
     since,
-    sourceTypes as SourceType[],
+    sourceTypes,
   );
 
   if (raw.length === 0) {
@@ -392,26 +394,24 @@ export async function handleRunProcessJob(
     completedAt: new Date().toISOString(),
   }));
 
-  if (deps.archiveRepo) {
-    try {
-      await deps.archiveRepo.upsert({
-        id: runId,
-        status: "completed",
-        rankedItems: rankResult.rankedItems,
-        topN,
-        profileName: profile?.name ?? null,
-        completedAt: new Date(),
-      });
-    } catch (err) {
-      logger.error(
-        {
-          event: "archive.write_failed",
-          runId,
-          error: err instanceof Error ? err.message : String(err),
-        },
-        "archive.write_failed",
-      );
-    }
+  try {
+    await deps.archiveRepo.upsert({
+      id: runId,
+      status: "completed",
+      rankedItems: rankResult.rankedItems,
+      topN,
+      profileName: profile?.name ?? null,
+      completedAt: new Date(),
+    });
+  } catch (err) {
+    logger.error(
+      {
+        event: "archive.write_failed",
+        runId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      "archive.write_failed",
+    );
   }
 
   logger.info(
