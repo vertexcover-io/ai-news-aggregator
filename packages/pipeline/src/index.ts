@@ -3,11 +3,7 @@ config({ path: "../../.env" });
 import type { Job } from "bullmq";
 import type { CollectionJobLike } from "@pipeline/workers/collection.js";
 import { collectionWorker } from "@pipeline/workers/collection.js";
-import {
-  createRunProcessWorker,
-  type RunProcessJobData,
-  type RunProcessResult,
-} from "@pipeline/workers/run-process.js";
+import { createProcessingWorker } from "@pipeline/workers/processing.js";
 import { createLogger } from "@newsletter/shared/logger";
 
 export {
@@ -28,14 +24,14 @@ if (!process.env.VOYAGE_API_KEY) {
   throw new Error("VOYAGE_API_KEY is required for personalized ranking");
 }
 
-const runProcessWorker = createRunProcessWorker();
+const processingWorker = createProcessingWorker();
 
 const shutdown = async (): Promise<void> => {
   logger.info({ queue: "collection" }, "worker shutting down");
   await collectionWorker.close();
   logger.info({ queue: "collection" }, "worker shut down");
   logger.info({ queue: "processing" }, "worker shutting down");
-  await runProcessWorker.close();
+  await processingWorker.close();
   logger.info({ queue: "processing" }, "worker shut down");
   process.exit(0);
 };
@@ -56,26 +52,21 @@ collectionWorker.on("failed", (job: Job<CollectionJobData> | undefined, err: Err
   logger.error({ jobId: job?.id, jobName: job?.name, error: err.message }, "job failed");
 });
 
-runProcessWorker.on("ready", () => {
+processingWorker.on("ready", () => {
   logger.info({ queue: "processing" }, "worker ready");
 });
 
-runProcessWorker.on(
-  "completed",
-  (job: Job<RunProcessJobData, RunProcessResult>) => {
-    logger.info(
-      { jobId: job.id, jobName: job.name, result: job.returnvalue },
-      "job completed",
-    );
-  },
-);
+processingWorker.on("completed", (job: Job) => {
+  logger.info(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- BullMQ types returnvalue as any
+    { jobId: job.id, jobName: job.name, result: job.returnvalue },
+    "job completed",
+  );
+});
 
-runProcessWorker.on(
-  "failed",
-  (job: Job<RunProcessJobData, RunProcessResult> | undefined, err: Error) => {
-    logger.error(
-      { jobId: job?.id, jobName: job?.name, error: err.message },
-      "job failed",
-    );
-  },
-);
+processingWorker.on("failed", (job: Job | undefined, err: Error) => {
+  logger.error(
+    { jobId: job?.id, jobName: job?.name, error: err.message },
+    "job failed",
+  );
+});

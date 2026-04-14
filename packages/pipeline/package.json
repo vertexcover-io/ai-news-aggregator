@@ -3,6 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./add-post": "./dist/add-post-entry.js"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsup",

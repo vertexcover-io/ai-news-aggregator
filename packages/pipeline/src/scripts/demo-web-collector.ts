@@ -85,6 +85,9 @@ function createInMemoryRawItemsRepo(): DemoRepo {
     updateRecapData(): Promise<void> {
       return Promise.resolve();
     },
+    findBySourceAndExternalId(): Promise<null> {
+      return Promise.resolve(null);
+    },
   };
 }
 
