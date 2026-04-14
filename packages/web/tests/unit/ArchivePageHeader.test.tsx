@@ -60,9 +60,9 @@ describe("ArchivePageHeader", () => {
     expect(screen.queryByText(/profile/)).toBeNull();
   });
 
-  it("renders '← Back to Run' link pointing to /run", () => {
+  it("renders '← Dashboard' link pointing to /", () => {
     renderHeader({ startedAt: "2026-04-13T10:00:00Z", storyCount: 10, profileName: "aman" });
-    const link = screen.getByRole("link", { name: "← Back to Run" });
-    expect(link.getAttribute("href")).toBe("/run");
+    const link = screen.getByRole("link", { name: "← Dashboard" });
+    expect(link.getAttribute("href")).toBe("/");
   });
 });

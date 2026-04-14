@@ -23,8 +23,8 @@ export function ArchivePage(): ReactElement {
           <p role="alert" className="text-red-600">
             Something went wrong. Please try again.
           </p>
-          <Link to="/run" className="text-sm text-blue-600 hover:underline">
-            ← Back to Run
+          <Link to="/" className="text-sm text-blue-600 hover:underline">
+            ← Dashboard
           </Link>
         </div>
       </div>
@@ -46,8 +46,8 @@ export function ArchivePage(): ReactElement {
           <p className="text-gray-600">
             Run is still in progress — check back soon.
           </p>
-          <Link to="/run" className="text-sm text-blue-600 hover:underline">
-            ← Back to Run
+          <Link to="/" className="text-sm text-blue-600 hover:underline">
+            ← Dashboard
           </Link>
         </div>
       </div>
