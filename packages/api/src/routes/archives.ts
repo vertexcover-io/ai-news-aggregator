@@ -119,7 +119,7 @@ export function createArchivesRouter(deps: ArchivesRouterDeps): Hono {
         hydrateAddedPost: deps.hydrateAddedPost,
       });
       logger.info(
-        { event: "archive.add-post", runId, sourceType: parsed.data.sourceType },
+        { event: "archive.add-post", runId },
         "archive.add-post",
       );
       return c.json(ranked);
@@ -138,13 +138,12 @@ export function createArchivesRouter(deps: ArchivesRouterDeps): Hono {
         {
           event: "archive.add-post.upstream-failure",
           runId,
-          sourceType: parsed.data.sourceType,
           error: message,
         },
         "archive.add-post.upstream-failure",
       );
       return c.json(
-        { error: `upstream ${parsed.data.sourceType} fetch failed: ${message}` },
+        { error: `upstream fetch failed: ${message}` },
         502,
       );
     }

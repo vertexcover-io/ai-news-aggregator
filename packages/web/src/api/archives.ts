@@ -1,14 +1,11 @@
 import type { RankedItem } from "@newsletter/shared";
 import { apiFetch } from "./client";
 
-export type AddPostSourceType = "hn" | "reddit" | "web";
-
 export interface PatchArchiveBody {
   rankedItems: { id: number; sourceType: string }[];
 }
 
 export interface AddPostBody {
-  sourceType: AddPostSourceType;
   url: string;
 }
 

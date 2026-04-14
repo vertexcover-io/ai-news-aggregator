@@ -150,7 +150,7 @@ describe("addPostToArchive (REQ-140 – REQ-146)", () => {
       hydrateAddedPost: vi.fn(),
     };
     await expect(
-      addPostToArchive("missing", { sourceType: "web", url: "https://x" }, deps),
+      addPostToArchive("missing", { url: "https://x" }, deps),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
@@ -177,11 +177,7 @@ describe("addPostToArchive (REQ-140 – REQ-146)", () => {
       hydrateAddedPost: vi.fn(),
     };
     await expect(
-      addPostToArchive(
-        "run-1",
-        { sourceType: "web", url: ranked.url },
-        deps,
-      ),
+      addPostToArchive("run-1", { url: ranked.url }, deps),
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
@@ -194,12 +190,11 @@ describe("addPostToArchive (REQ-140 – REQ-146)", () => {
       rawItemsRepo: makeRawRepo([]),
       hydrateAddedPost: hydrate,
     };
-    const result = await addPostToArchive(
-      "run-1",
-      { sourceType: "web", url: ranked.url },
-      deps,
-    );
+    const result = await addPostToArchive("run-1", { url: ranked.url }, deps);
     expect(result).toEqual(ranked);
     expect(hydrate).toHaveBeenCalledOnce();
+    // verify always called with 'web' sourceType
+    const [, calledSourceType] = hydrate.mock.calls[0] as [string, string];
+    expect(calledSourceType).toBe("web");
   });
 });

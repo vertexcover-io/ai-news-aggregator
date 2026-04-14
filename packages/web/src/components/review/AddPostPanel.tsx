@@ -3,27 +3,26 @@ import { Plus } from "lucide-react";
 import type { RankedItem } from "@newsletter/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import { addPost, type AddPostSourceType } from "../../api/archives";
+import { addPost } from "../../api/archives";
 
 interface AddPostPanelProps {
   runId: string;
   hasUrl: (url: string) => boolean;
-  onPending: (p: {
-    tempId: string;
-    sourceType: AddPostSourceType;
-    url: string;
-  }) => void;
+  onPending: (p: { tempId: string; url: string }) => void;
   onResolved: (tempId: string, item: RankedItem) => void;
   onFailed: (tempId: string) => void;
 }
 
 const DUPLICATE_ERROR = "This post is already in the list.";
+
+function isValidUrl(value: string): boolean {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function AddPostPanel({
   runId,
@@ -32,27 +31,25 @@ export function AddPostPanel({
   onResolved,
   onFailed,
 }: AddPostPanelProps): ReactElement {
-  const [source, setSource] = useState<AddPostSourceType>("hn");
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const trimmed = url.trim();
+  const canSubmit = trimmed !== "" && isValidUrl(trimmed) && !submitting;
+
   async function submit(): Promise<void> {
     setError(null);
-    const trimmed = url.trim();
-    if (trimmed === "") {
-      setError("URL is required.");
-      return;
-    }
+    if (trimmed === "" || !isValidUrl(trimmed)) return;
     if (hasUrl(trimmed)) {
       setError(DUPLICATE_ERROR);
       return;
     }
     const tempId = `pending-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`;
-    onPending({ tempId, sourceType: source, url: trimmed });
+    onPending({ tempId, url: trimmed });
     setSubmitting(true);
     try {
-      const item = await addPost(runId, { sourceType: source, url: trimmed });
+      const item = await addPost(runId, { url: trimmed });
       onResolved(tempId, item);
       setUrl("");
     } catch (e) {
@@ -74,26 +71,11 @@ export function AddPostPanel({
         <Plus className="size-4" />
         Add a post
       </div>
-      <Tabs
-        value={source}
-        onValueChange={(v) => {
-          setSource(v as AddPostSourceType);
-        }}
-      >
-        <TabsList>
-          <TabsTrigger value="hn">Hacker News</TabsTrigger>
-          <TabsTrigger value="reddit">Reddit</TabsTrigger>
-          <TabsTrigger value="web">Web</TabsTrigger>
-        </TabsList>
-        <TabsContent value="hn" />
-        <TabsContent value="reddit" />
-        <TabsContent value="web" />
-      </Tabs>
       <form onSubmit={handleSubmit} className="flex items-center gap-2">
         <Input
           type="url"
-          aria-label="URL"
-          placeholder="https://news.ycombinator.com/item?id=..."
+          aria-label="Article URL"
+          placeholder="https://example.com/article"
           value={url}
           onChange={(e) => {
             setUrl(e.target.value);
@@ -103,10 +85,10 @@ export function AddPostPanel({
         />
         <Button
           type="submit"
-          disabled={submitting}
+          disabled={!canSubmit}
           className="bg-black text-white hover:bg-black/90"
         >
-          Fetch &amp; add
+          Add post
         </Button>
       </form>
       {error !== null && (

@@ -56,22 +56,20 @@ describe("patchArchive", () => {
 });
 
 describe("addPost", () => {
-  it("POSTs /api/archives/:runId/add-post and returns RankedItem", async () => {
+  it("POSTs /api/archives/:runId/add-post with { url } only and returns RankedItem", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(sampleItem), { status: 200 }),
     );
     const out = await addPost("run-1", {
-      sourceType: "hn",
-      url: "https://news.ycombinator.com/item?id=1",
+      url: "https://example.com/article",
     });
     expect(out).toEqual(sampleItem);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/archives/run-1/add-post");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({
-      sourceType: "hn",
-      url: "https://news.ycombinator.com/item?id=1",
-    });
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body).toEqual({ url: "https://example.com/article" });
+    expect(body).not.toHaveProperty("sourceType");
   });
 
   it("throws server error message on failure", async () => {
@@ -81,7 +79,7 @@ describe("addPost", () => {
       }),
     );
     await expect(
-      addPost("run-1", { sourceType: "hn", url: "https://x" }),
+      addPost("run-1", { url: "https://x.com" }),
     ).rejects.toThrow("upstream failed");
   });
 });

@@ -2,11 +2,9 @@ import { useCallback, useMemo, useState } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { RankedItem } from "@newsletter/shared";
 import { getArchive, type RunStateResponse } from "../api/runs";
-import type { AddPostSourceType } from "../api/archives";
 
 export interface PendingAdd {
   tempId: string;
-  sourceType: AddPostSourceType;
   url: string;
 }
 

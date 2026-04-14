@@ -135,7 +135,6 @@ describe("useReview", () => {
     act(() => {
       result.current.addPending({
         tempId: "t1",
-        sourceType: "hn",
         url: "https://x.com",
       });
     });
@@ -161,7 +160,6 @@ describe("useReview", () => {
     act(() => {
       result.current.addPending({
         tempId: "t1",
-        sourceType: "hn",
         url: "https://y.com",
       });
     });
@@ -205,7 +203,6 @@ describe("useReview", () => {
     act(() => {
       result.current.addPending({
         tempId: "t1",
-        sourceType: "hn",
         url: "https://pending.com",
       });
     });
