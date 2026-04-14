@@ -10,11 +10,11 @@ BullMQ workers that collect, process, and prepare newsletter items.
 - Repository modules handle DB access (via `@newsletter/shared` schema)
 
 ## Layout
-- `src/collectors/` — one file per source (`hn.ts`, `reddit.ts`, `web.ts`); each is a `(deps, config) => Promise<CollectorResult>`, called directly by the run-process worker
-- `src/processors/` — pure stage functions (`dedup.ts`, `shortlist.ts`, `rank.ts`); `shortlist.ts` is the stage-1 Voyage-embedding cosine shortlist with recency decay, and `rank.ts` is the stage-2 Claude Haiku reranker using Vercel AI SDK `generateObject`, with prompts inlined as TS consts in `rank-prompts.ts`
+- `src/collectors/` — one file per source (`hn.ts`, `reddit.ts`, `web.ts`); each is a `(deps, config) => Promise<CollectorResult>`, called directly by the run-process worker. Single-post variants (`hn-single.ts`, `reddit-single.ts`, `web-single.ts`) fetch one item by URL for the add-post flow.
+- `src/processors/` — pure stage functions (`dedup.ts`, `shortlist.ts`, `rank.ts`); `shortlist.ts` is the stage-1 Voyage-embedding cosine shortlist with recency decay, and `rank.ts` is the stage-2 Claude Haiku reranker using Vercel AI SDK `generateObject`, with prompts inlined as TS consts in `rank-prompts.ts`; `recap.ts` is a standalone `generateRecap()` helper used by the add-post flow to generate recap content for a single added item.
 - `src/queues/` — BullMQ `Queue` definitions (`processing.ts` is the only queue the API enqueues to; `collection.ts` is kept in place for rollback and no longer receives new jobs)
-- `src/workers/` — `Worker` instances (`run-process.ts` is the single job per run that collects via `Promise.all` with in-process state-write serialization, dedups, and ranks; `collection.ts` is legacy and left in place for rollback)
-- `src/services/` — `run-state.ts` (Redis-backed per-run status read/write), `candidate-loader.ts` (loads `raw_items` rows for ranking; the `Candidate` type lives in `@newsletter/shared/types`), `embeddings.ts` (Voyage AI client for stage-1), `recency.ts` (half-life decay helper), and `markdown-fetch.ts` (shared Jina-backed `fetchMarkdown({ signal?: AbortSignal })`, used by the web collector and stage-2 body loader)
+- `src/workers/` — a single dispatching `Worker` in `processing.ts` that routes jobs by `job.name` to processor functions; `run-process.ts` exports `handleRunProcessJob()` (collects via `Promise.allSettled`, dedups, ranks); `daily-run.ts` exports `handleDailyRunJob()` (loads saved settings and calls `startRun()`). `collection.ts` is legacy and left in place for rollback.
+- `src/services/` — `run-state.ts` (Redis-backed per-run status read/write), `candidate-loader.ts` (loads `raw_items` rows for ranking), `embeddings.ts` (Voyage AI client for stage-1), `recency.ts` (half-life decay helper), `markdown-fetch.ts` (shared Jina-backed `fetchMarkdown({ signal?: AbortSignal })`), and `add-post-helper.ts` (`hydrateAddedPost()` orchestrates single-item fetch + recap; `dispatchFetch()` forwards both `signal` and `fetchFn` to the appropriate single-post collector)
 - `src/repositories/` — Drizzle wrappers like `createRawItemsRepo(db)`
 
 ## Rules
