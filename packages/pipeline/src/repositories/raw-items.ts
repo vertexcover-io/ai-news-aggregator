@@ -1,7 +1,22 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { rawItems } from "@newsletter/shared/db";
 import type { AppDb, RawItemInsert, SourceType } from "@newsletter/shared/db";
-import type { RecapContent } from "@newsletter/shared";
+import type { RawItemMetadata, RecapContent } from "@newsletter/shared";
+
+export interface RawItemRow {
+  id: number;
+  sourceType: SourceType;
+  externalId: string;
+  title: string;
+  url: string;
+  sourceUrl: string | null;
+  author: string | null;
+  content: string | null;
+  imageUrl: string | null;
+  publishedAt: Date | null;
+  engagement: { points: number; commentCount: number };
+  metadata: RawItemMetadata;
+}
 
 export interface RawItemsRepo {
   upsertItems(items: RawItemInsert[]): Promise<void>;
@@ -9,6 +24,10 @@ export interface RawItemsRepo {
     sourceType: SourceType,
     externalIds: string[],
   ): Promise<Set<string>>;
+  findBySourceAndExternalId(
+    sourceType: SourceType,
+    externalId: string,
+  ): Promise<RawItemRow | null>;
   updateRecapData(updates: { id: number; recap: RecapContent }[]): Promise<void>;
 }
 
@@ -48,6 +67,36 @@ export function createRawItemsRepo(
         );
 
       return new Set(rows.map((r) => r.externalId));
+    },
+
+    async findBySourceAndExternalId(
+      sourceType: SourceType,
+      externalId: string,
+    ): Promise<RawItemRow | null> {
+      const rows = await db
+        .select({
+          id: rawItems.id,
+          sourceType: rawItems.sourceType,
+          externalId: rawItems.externalId,
+          title: rawItems.title,
+          url: rawItems.url,
+          sourceUrl: rawItems.sourceUrl,
+          author: rawItems.author,
+          content: rawItems.content,
+          imageUrl: rawItems.imageUrl,
+          publishedAt: rawItems.publishedAt,
+          engagement: rawItems.engagement,
+          metadata: rawItems.metadata,
+        })
+        .from(rawItems)
+        .where(
+          and(
+            eq(rawItems.sourceType, sourceType),
+            eq(rawItems.externalId, externalId),
+          ),
+        )
+        .limit(1);
+      return rows[0] ?? null;
     },
 
     async updateRecapData(updates: { id: number; recap: RecapContent }[]): Promise<void> {

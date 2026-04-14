@@ -13,10 +13,23 @@ import {
   createRunArchivesRepo,
   type RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
+import {
+  archivePatchSchema,
+  addPostSchema,
+} from "@api/lib/validate.js";
+import {
+  patchArchive,
+  addPostToArchive,
+  NotFoundError,
+  ValidationError,
+  ConflictError,
+  type HydrateAddedPostFn,
+} from "@api/services/review.js";
 
 export interface ArchivesRouterDeps {
   getRawItemsRepo: () => RawItemsRepo;
   getArchiveRepo: () => RunArchivesRepo;
+  hydrateAddedPost?: HydrateAddedPostFn;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -59,6 +72,88 @@ export function createArchivesRouter(deps: ArchivesRouterDeps): Hono {
     }
   });
 
+  archives.patch("/:runId", async (c) => {
+    const runId = c.req.param("runId");
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid json" }, 400);
+    }
+    const parsed = archivePatchSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.message }, 400);
+    }
+    try {
+      const updated = await patchArchive(runId, parsed.data, {
+        archiveRepo: deps.getArchiveRepo(),
+        rawItemsRepo: deps.getRawItemsRepo(),
+      });
+      logger.info(
+        { event: "archive.patched", runId, count: parsed.data.rankedItems.length },
+        "archive.patched",
+      );
+      return c.json(updated);
+    } catch (err) {
+      if (err instanceof NotFoundError) {
+        return c.json({ error: err.message }, 404);
+      }
+      if (err instanceof ValidationError) {
+        return c.json({ error: err.message, missingIds: err.missingIds }, 400);
+      }
+      throw err;
+    }
+  });
+
+  archives.post("/:runId/add-post", async (c) => {
+    const runId = c.req.param("runId");
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid json" }, 400);
+    }
+    const parsed = addPostSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.message }, 400);
+    }
+    try {
+      const ranked = await addPostToArchive(runId, parsed.data, {
+        archiveRepo: deps.getArchiveRepo(),
+        rawItemsRepo: deps.getRawItemsRepo(),
+        hydrateAddedPost: deps.hydrateAddedPost,
+      });
+      logger.info(
+        { event: "archive.add-post", runId },
+        "archive.add-post",
+      );
+      return c.json(ranked);
+    } catch (err) {
+      if (err instanceof NotFoundError) {
+        return c.json({ error: err.message }, 404);
+      }
+      if (err instanceof ConflictError) {
+        return c.json({ error: err.message }, 409);
+      }
+      if (err instanceof ValidationError) {
+        return c.json({ error: err.message }, 400);
+      }
+      const message = err instanceof Error ? err.message : "upstream error";
+      logger.warn(
+        {
+          event: "archive.add-post.upstream-failure",
+          runId,
+          error: message,
+        },
+        "archive.add-post.upstream-failure",
+      );
+      return c.json(
+        { error: `upstream fetch failed: ${message}` },
+        502,
+      );
+    }
+  });
+
   return archives;
 }
 
@@ -66,5 +161,19 @@ export function createDefaultArchivesRouter(): Hono {
   return createArchivesRouter({
     getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
     getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
+    hydrateAddedPost: createDefaultHydrateAddedPost(),
   });
+}
+
+function createDefaultHydrateAddedPost(): HydrateAddedPostFn {
+  return async (url, sourceType, options) => {
+    const { hydrateAddedPost } = await import("@newsletter/pipeline/add-post");
+    const { createRawItemsRepo: createPipelineRawItemsRepo } = await import(
+      "@newsletter/pipeline/add-post"
+    );
+    return hydrateAddedPost(url, sourceType, {
+      rawItemsRepo: createPipelineRawItemsRepo(defaultGetDb()),
+      signal: options?.signal,
+    });
+  };
 }

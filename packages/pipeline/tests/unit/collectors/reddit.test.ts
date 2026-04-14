@@ -143,6 +143,48 @@ describe("extractRedditImageUrl", () => {
     const post = { thumbnail: "self", preview: undefined };
     expect(extractRedditImageUrl(post)).toBeNull();
   });
+
+  // REQ-010: thumbnail path decodes &amp; entities
+  it("decodes &amp; entities in thumbnail URL when no preview", () => {
+    const post = {
+      thumbnail: "https://b.thumbs.redditmedia.com/x.jpg?width=140&amp;height=90&amp;s=abc",
+    };
+    expect(extractRedditImageUrl(post)).toBe(
+      "https://b.thumbs.redditmedia.com/x.jpg?width=140&height=90&s=abc",
+    );
+  });
+
+  // REQ-010 (preview regression): preview URL with &amp; is decoded
+  it("decodes &amp; entities in preview URL (regression)", () => {
+    const post = {
+      thumbnail: "https://b.thumbs.redditmedia.com/thumb.jpg",
+      preview: {
+        images: [{ source: { url: "https://preview.redd.it/img.jpg?w=640&amp;h=480&amp;s=xyz", width: 640, height: 480 } }],
+      },
+    };
+    expect(extractRedditImageUrl(post)).toBe(
+      "https://preview.redd.it/img.jpg?w=640&h=480&s=xyz",
+    );
+  });
+
+  // REQ-012: sentinel values return null
+  it.each(["self", "default", "nsfw", "image", "spoiler", ""])(
+    "returns null for sentinel thumbnail %j",
+    (sentinel) => {
+      const post = { thumbnail: sentinel };
+      expect(extractRedditImageUrl(post)).toBeNull();
+    },
+  );
+
+  // EDGE-010: thumbnail with no &amp; is returned verbatim
+  it("returns thumbnail verbatim when it contains no &amp; entities", () => {
+    const post = {
+      thumbnail: "https://b.thumbs.redditmedia.com/x.jpg?width=140&height=90&s=abc",
+    };
+    expect(extractRedditImageUrl(post)).toBe(
+      "https://b.thumbs.redditmedia.com/x.jpg?width=140&height=90&s=abc",
+    );
+  });
 });
 
 describe("collectReddit", () => {

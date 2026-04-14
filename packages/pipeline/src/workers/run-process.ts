@@ -233,7 +233,7 @@ export async function handleRunProcessJob(
   job: RunProcessJobLike,
 ): Promise<RunProcessResult> {
   if (job.name !== "run-process") {
-    throw new Error(`unknown job: ${job.name}`);
+    return { rankedCount: 0 };
   }
   const { runId, topN, sourceTypes, collectors } = job.data;
   const profile = job.data.profile ?? null;

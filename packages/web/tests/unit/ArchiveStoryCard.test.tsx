@@ -109,6 +109,14 @@ describe("ArchiveStoryCard", () => {
     expect(container.querySelector("img")).toBeNull();
   });
 
+  // REQ-011: img must have referrerpolicy="no-referrer"
+  it("sets referrerpolicy=no-referrer on the image element (REQ-011)", () => {
+    const { container } = render(<ArchiveStoryCard item={itemWithRecap} rank={1} />);
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute("referrerpolicy")).toBe("no-referrer");
+  });
+
   it("hides image when onError fires", () => {
     const { container } = render(<ArchiveStoryCard item={itemWithRecap} rank={1} />);
     const img = container.querySelector("img");

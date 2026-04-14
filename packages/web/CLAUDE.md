@@ -3,19 +3,27 @@
 React + Vite frontend for the admin review dashboard and public archive.
 
 ## Responsibilities
-- `/run` page (currently the only implemented page): user configures HN + Reddit, submits, polls, and views ranked results with rationale
-- Future: admin review/approval UI and public archive of past digests
+- Dashboard (`/`): shows recent runs table, schedule status banner, and "Run Now" button
+- Settings (`/settings`): configure schedule, default profile, and HN/Reddit source config
+- Review (`/review/:runId`): curate ranked items before publishing — reorder (DnD), remove, add by URL
+- Run page (`/run`): legacy ad-hoc run with custom config; kept for backwards compat
+- Archive (`/archive/:runId`): recap-style read-only view of a completed run
 - Communicates with `@newsletter/api` via HTTP only
 
 ## Layout
-- `src/pages/` — top-level route components (`RunPage.tsx`)
-- `src/components/` — presentational pieces (`RunForm/`, `StatusPanel.tsx`, `ResultList.tsx`)
-- `src/api/` — typed API client (`client.ts` for the fetch wrapper, `runs.ts` for run endpoints)
-- `src/hooks/` — custom hooks (`useRunPolling.ts` wraps react-query polling against `GET /api/runs/:runId`)
+- `src/pages/` — top-level route components (`DashboardPage.tsx`, `SettingsPage.tsx`, `ReviewPage.tsx`, `RunPage.tsx`, `ArchivePage.tsx`)
+- `src/components/` — presentational pieces:
+  - `RunForm/`, `StatusPanel.tsx`, `ResultList.tsx` — existing run-page components
+  - `review/` — `ReviewList.tsx` (DnD list), `ReviewCard.tsx`, `AddPostPanel.tsx`, `SaveBar.tsx`
+  - `dashboard/` — dashboard-specific components
+  - `settings/` — settings-specific components
+  - `ui/` — shadcn base components (Button, Input, etc.)
+- `src/api/` — typed API client (`client.ts` for the fetch wrapper, `runs.ts`, `settings.ts`, `archives.ts`)
+- `src/hooks/` — custom hooks (`useRunPolling.ts`, and hooks for settings and review mutations)
 
 ## Stack notes
 - Tailwind CSS via `@tailwindcss/vite`; global styles in `src/index.css`
-- Routing via `react-router-dom` (root redirects `/` -> `/run`)
+- Routing via `react-router-dom` using `createBrowserRouter` + `RouterProvider` (required for `useBlocker` in the review page); root route is DashboardPage (`/`)
 - Data fetching/polling via `@tanstack/react-query`
 - Forms via `react-hook-form`
 

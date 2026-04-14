@@ -412,16 +412,17 @@ describe("run-process worker", () => {
     expect(payload.rankedItemCount).toBe(1);
   });
 
-  it("throws on unknown job name", async () => {
+  it("noops for non run-process job names so daily-run can share the queue", async () => {
     const runStateMock = makeMockRunState(makeRunState());
+    const loadFn = vi.fn(() => Promise.resolve([]));
     const worker = createRunProcessWorker({
       runState: runStateMock.service,
-      loadFn: vi.fn(() => Promise.resolve([])),
+      loadFn,
       rankFn: vi.fn(),
     });
-    await expect(
-      worker.handler({ ...baseJob, name: "other" }),
-    ).rejects.toThrow(/unknown job/);
+    const result = await worker.handler({ ...baseJob, name: "daily-run" });
+    expect(result).toEqual({ rankedCount: 0 });
+    expect(loadFn).not.toHaveBeenCalled();
   });
 
   // REQ-015: collectFns injection seam exists on RunProcessDeps

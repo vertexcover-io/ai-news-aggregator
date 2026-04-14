@@ -6,6 +6,8 @@ export default defineConfig((options) => ({
     "src/db/index.ts",
     "src/redis.ts",
     "src/types/index.ts",
+    "src/types/settings.ts",
+    "src/run-start.ts",
     "src/constants/index.ts",
     "src/utils/index.ts",
     "src/logger.ts",

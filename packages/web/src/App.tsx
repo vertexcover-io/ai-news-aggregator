@@ -1,16 +1,12 @@
-import type { ReactElement } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
-import { RunPage } from "./pages/RunPage";
+import type { RouteObject } from "react-router-dom";
+import { DashboardPage } from "./pages/DashboardPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { ArchivePage } from "./pages/ArchivePage";
+import { ReviewPage } from "./pages/ReviewPage";
 
-function App(): ReactElement {
-  return (
-    <Routes>
-      <Route path="/" element={<Navigate to="/run" replace />} />
-      <Route path="/run" element={<RunPage />} />
-      <Route path="/archive/:runId" element={<ArchivePage />} />
-    </Routes>
-  );
-}
-
-export default App;
+export const routes: RouteObject[] = [
+  { path: "/", element: <DashboardPage /> },
+  { path: "/settings", element: <SettingsPage /> },
+  { path: "/archive/:runId", element: <ArchivePage /> },
+  { path: "/review/:runId", element: <ReviewPage /> },
+];

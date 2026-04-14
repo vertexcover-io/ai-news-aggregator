@@ -5,9 +5,14 @@ import {
   createLogger,
   createRedisConnection,
   getDb as defaultGetDb,
+  startRun,
   runKey,
 } from "@newsletter/shared";
-import type { RunState, UserProfile } from "@newsletter/shared";
+import type {
+  RunProcessJobPayload,
+  RunState,
+  UserProfile,
+} from "@newsletter/shared";
 import { runSubmitSchema } from "@api/lib/validate.js";
 import { createRun } from "@api/services/runs.js";
 import { hydrateRankedItems } from "@api/services/rank-hydration.js";
@@ -16,6 +21,15 @@ import {
   type RawItemsRepo,
 } from "@api/repositories/raw-items.js";
 import {
+  createRunArchivesRepo,
+  type RunArchivesRepo,
+} from "@api/repositories/run-archives.js";
+import {
+  createUserSettingsRepo,
+  type UserSettingsRepo,
+} from "@api/repositories/user-settings.js";
+import { listRuns } from "@api/services/run-list.js";
+import {
   loadProfile as defaultLoadProfile,
   ProfileNotFoundError,
   ProfileParseError,
@@ -23,8 +37,10 @@ import {
 
 export interface RunsRouterDeps {
   redis: IORedis;
-  processingQueue: Queue;
+  processingQueue: Queue<RunProcessJobPayload>;
   getRawItemsRepo: () => RawItemsRepo;
+  getSettingsRepo?: () => UserSettingsRepo;
+  getArchiveRepo?: () => RunArchivesRepo;
   logger?: ReturnType<typeof createLogger>;
   loadProfile?: (name: string) => Promise<UserProfile>;
 }
@@ -78,6 +94,57 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     return c.json({ runId }, 201);
   });
 
+  runs.post("/now", async (c) => {
+    const settingsRepo = deps.getSettingsRepo?.();
+    if (!settingsRepo) {
+      return c.json({ error: "settings repository not configured" }, 500);
+    }
+    const settings = await settingsRepo.get();
+    if (!settings) {
+      return c.json({ error: "settings not configured" }, 409);
+    }
+    const anySource =
+      settings.hnConfig !== null ||
+      settings.redditConfig !== null ||
+      settings.webConfig !== null;
+    if (!anySource) {
+      return c.json({ error: "no sources enabled" }, 409);
+    }
+    const { runId } = await startRun(settings, {
+      redis: deps.redis,
+      queue: deps.processingQueue,
+    });
+    logger.info(
+      { event: "run.now", runId, topN: settings.topN },
+      "run.now",
+    );
+    return c.json({ runId }, 202);
+  });
+
+  runs.get("/", async (c) => {
+    const limitRaw = c.req.query("limit");
+    let limit = 30;
+    if (limitRaw !== undefined) {
+      const parsed = Number(limitRaw);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+        return c.json(
+          { error: "limit must be an integer between 1 and 100" },
+          400,
+        );
+      }
+      limit = parsed;
+    }
+    const archiveRepo = deps.getArchiveRepo?.();
+    if (!archiveRepo) {
+      return c.json({ error: "archive repository not configured" }, 500);
+    }
+    const runsList = await listRuns(limit, {
+      redis: deps.redis,
+      archiveRepo,
+    });
+    return c.json({ runs: runsList });
+  });
+
   runs.get("/:runId", async (c) => {
     const runId = c.req.param("runId");
     const raw = await deps.redis.get(runKey(runId));
@@ -98,10 +165,10 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
   return runs;
 }
 
-let defaultProcessingQueue: Queue | null = null;
+let defaultProcessingQueue: Queue<RunProcessJobPayload> | null = null;
 
-function getDefaultProcessingQueue(): Queue {
-  defaultProcessingQueue ??= new Queue("processing", {
+function getDefaultProcessingQueue(): Queue<RunProcessJobPayload> {
+  defaultProcessingQueue ??= new Queue<RunProcessJobPayload>("processing", {
     connection: createRedisConnection(),
   });
   return defaultProcessingQueue;
@@ -112,5 +179,7 @@ export function createDefaultRunsRouter(): Hono {
     redis: createRedisConnection(),
     processingQueue: getDefaultProcessingQueue(),
     getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
+    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
   });
 }

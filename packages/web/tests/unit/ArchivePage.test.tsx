@@ -166,7 +166,7 @@ describe("ArchivePage", () => {
     ).toBeTruthy();
   });
 
-  it("shows back link to /run when run is not completed (REQ-007)", () => {
+  it("shows dashboard link when run is not completed (REQ-007)", () => {
     const runningRun: RunStateResponse = {
       ...baseCompletedRun,
       status: "running",
@@ -186,9 +186,9 @@ describe("ArchivePage", () => {
     } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
-    const backLink = screen.getByRole("link", { name: /back/i });
-    expect(backLink).toBeTruthy();
-    expect(backLink.getAttribute("href")).toBe("/run");
+    const dashLink = screen.getByRole("link", { name: /dashboard/i });
+    expect(dashLink).toBeTruthy();
+    expect(dashLink.getAttribute("href")).toBe("/");
   });
 
   it("renders ArchivePageHeader and story cards when completed (REQ-008, REQ-009)", () => {
@@ -281,7 +281,7 @@ describe("ArchivePage", () => {
     renderWithClient(<ArchivePage />);
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(
-      screen.getByRole("link", { name: /back/i }),
+      screen.getByRole("link", { name: /dashboard/i }),
     ).toBeTruthy();
   });
 });

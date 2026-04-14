@@ -2,6 +2,7 @@ import type {
   RankedItem,
   RunState,
   RunSubmitPayload,
+  RunSummary,
 } from "@newsletter/shared";
 import { apiFetch } from "./client";
 
@@ -41,4 +42,33 @@ export async function getArchive(runId: string): Promise<RunStateResponse | null
   if (res.status === 404) return null;
   if (!res.ok) throw new Error("Failed to fetch archive");
   return (await res.json()) as RunStateResponse;
+}
+
+interface ListRunsResponse {
+  runs: RunSummary[];
+}
+
+export async function listRuns(limit?: number): Promise<RunSummary[]> {
+  const path =
+    limit === undefined ? "/api/runs" : `/api/runs?limit=${String(limit)}`;
+  const res = await apiFetch(path);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(body.error ?? "Failed to fetch runs");
+  }
+  const data = (await res.json()) as ListRunsResponse;
+  return data.runs;
+}
+
+export interface TriggerRunNowResponse {
+  runId: string;
+}
+
+export async function triggerRunNow(): Promise<TriggerRunNowResponse> {
+  const res = await apiFetch("/api/runs/now", { method: "POST" });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(body.error ?? "Failed to start run");
+  }
+  return (await res.json()) as TriggerRunNowResponse;
 }
