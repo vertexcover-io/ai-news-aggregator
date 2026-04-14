@@ -16,13 +16,21 @@ test("drag reorder updates the rendered order (REQ-121, REQ-122)", async ({
   const before = await articles.allTextContents();
   expect(before.length).toBeGreaterThanOrEqual(2);
 
-  // Keyboard-only reorder: focus first handle, Space, ArrowDown, Space.
+  // Drag the first card down past the second card using mouse drag.
   const firstHandle = page.getByLabel("Drag to reorder").first();
-  await firstHandle.focus();
-  await page.keyboard.press("Space");
-  await page.keyboard.press("ArrowDown");
-  await page.keyboard.press("Space");
+  const secondHandle = page.getByLabel("Drag to reorder").nth(1);
+  const firstBox = await firstHandle.boundingBox();
+  const secondBox = await secondHandle.boundingBox();
+  if (!firstBox || !secondBox) throw new Error("Could not get bounding boxes");
 
+  await page.mouse.move(firstBox.x + firstBox.width / 2, firstBox.y + firstBox.height / 2);
+  await page.mouse.down();
+  // Slow move to give dnd-kit time to activate the pointer sensor.
+  await page.mouse.move(firstBox.x + firstBox.width / 2, secondBox.y + secondBox.height, { steps: 20 });
+  await page.mouse.up();
+
+  // Wait for dnd-kit to commit the drop and re-render.
+  await expect(page.locator("article.opacity-70")).toHaveCount(0, { timeout: 3_000 });
   const after = await articles.allTextContents();
   expect(after[0]).not.toBe(before[0]);
 });

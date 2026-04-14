@@ -28,6 +28,11 @@ export function createRunArchivesRepo(
 ): RunArchivesRepo {
   return {
     async findById(id: string): Promise<RunArchiveRow | null> {
+      // Postgres throws "invalid input syntax for type uuid" when id is not a
+      // valid UUID — treat that as not-found rather than a 500.
+      const UUID_RE =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_RE.test(id)) return null;
       const rows = await db
         .select({
           id: runArchives.id,
