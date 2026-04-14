@@ -1340,8 +1340,8 @@ describe("run-process worker", () => {
     expect(payload.error).toBe("pg connection lost");
   });
 
-  // REQ-002: archive repo is NOT called when no archiveRepo is provided (backward compat)
-  it("REQ-002: skips archive write when archiveRepo is not provided", async () => {
+  // REQ-002: factory falls back to default archiveRepo when none is injected
+  it("REQ-002: uses default archiveRepo when none is provided", async () => {
     const runStateMock = makeMockRunState(makeRunState());
     const candidates = [makeCandidate(1)];
     const loadFn = vi.fn(
@@ -1356,7 +1356,7 @@ describe("run-process worker", () => {
           rankedCount: 1,
         }),
     );
-    // No archiveRepo provided — existing tests don't break
+    // No archiveRepo injected — factory creates one from the default DB connection
     const worker = createRunProcessWorker({
       runState: runStateMock.service,
       loadFn,

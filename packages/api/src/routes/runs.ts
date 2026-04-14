@@ -6,6 +6,7 @@ import {
   createRedisConnection,
   getDb as defaultGetDb,
   startRun,
+  runKey,
 } from "@newsletter/shared";
 import type {
   RunProcessJobPayload,
@@ -146,7 +147,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
 
   runs.get("/:runId", async (c) => {
     const runId = c.req.param("runId");
-    const raw = await deps.redis.get(`run:${runId}`);
+    const raw = await deps.redis.get(runKey(runId));
     if (raw === null) {
       return c.json({ error: "not found" }, 404);
     }

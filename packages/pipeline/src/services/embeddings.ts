@@ -52,6 +52,9 @@ export async function embedBatch(
   }
 
   const json = (await res.json()) as VoyageResponse;
+  if (!Array.isArray(json.data)) {
+    throw new Error(`Voyage API error: ${JSON.stringify(json)}`);
+  }
   return json.data
     .slice()
     .sort((a, b) => a.index - b.index)

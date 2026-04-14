@@ -18,23 +18,15 @@ import {
   recencyDecay,
   DEFAULT_HALF_LIFE_HOURS,
 } from "@pipeline/services/recency.js";
+import type { ShortlistBreakdown } from "@pipeline/processors/shortlist.js";
 
 const logger = createLogger("processor:rank");
 
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
+const RANK_MAX_TOKENS = 16_384; // claude-haiku-4-5 context ceiling
 const DEFAULT_BODY_TOKEN_BUDGET = 2000;
 const DEFAULT_COMMENTS_PER_ITEM = 5;
 const DEFAULT_COMMENT_TOKEN_BUDGET = 200;
-
-// Phase 5 will export a matching type from shortlist.ts. Declaring it locally
-// here keeps rank.ts decoupled during parallel development; the shape is a
-// structural subset so interop will be trivial once phase 5 lands.
-export interface ShortlistBreakdown {
-  id: number;
-  relevance: number;
-  recency: number;
-  combined: number;
-}
 
 export interface RankOptions {
   profile: UserProfile | null;
@@ -197,7 +189,7 @@ export async function rankCandidates(
       schema: rankedResponseSchema,
       temperature: 0,
       providerOptions: {
-        anthropic: { maxTokens: 16384 },
+        anthropic: { maxTokens: RANK_MAX_TOKENS },
       },
     })) as { object: z.infer<typeof rankedResponseSchema> };
   } catch (err) {

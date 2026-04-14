@@ -3,6 +3,7 @@ import type { CollectorResult, RawItemComment, RawItemEngagement } from "@newsle
 import type { RedditCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import { delay } from "@pipeline/services/markdown-fetch.js";
 import { UrlParseError } from "@pipeline/collectors/hn.js";
 
 const logger = createLogger("collector:reddit");
@@ -82,10 +83,6 @@ interface RedditListing<T> {
   data: {
     children: RedditChild<T>[];
   };
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isRedditListing(value: unknown): value is RedditListing<RedditPostData> {
