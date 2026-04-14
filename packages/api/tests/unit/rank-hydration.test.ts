@@ -127,7 +127,7 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
     expect(result[0].imageUrl).toBe("https://example.com/img.jpg");
   });
 
-  it("populates recap from RankedItemRef when summary is present (REQ-014)", async () => {
+  it("populates recap from raw_items metadata when present (REQ-014)", async () => {
     const repo = makeRepo([
       {
         id: 4,
@@ -139,18 +139,18 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
         engagement: { points: 20, commentCount: 5 },
         content: "Some body",
         imageUrl: null,
-        metadata: { comments: [] },
+        metadata: {
+          comments: [],
+          recap: {
+            summary: "A concise summary",
+            bullets: ["Point 1", "Point 2"],
+            bottomLine: "Key takeaway",
+          },
+        },
       },
     ]);
     const refs: RankedItemRef[] = [
-      {
-        rawItemId: 4,
-        score: 0.85,
-        rationale: "interesting",
-        summary: "A concise summary",
-        bullets: ["Point 1", "Point 2"],
-        bottomLine: "Key takeaway",
-      },
+      { rawItemId: 4, score: 0.85, rationale: "interesting" },
     ];
     const result = await hydrateRankedItems(repo, refs);
     expect(result[0].recap).toEqual({
@@ -160,7 +160,7 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
     });
   });
 
-  it("sets recap to null when ref has no summary (old runs) (EDGE-010)", async () => {
+  it("sets recap to null when metadata has no recap (EDGE-010)", async () => {
     const repo = makeRepo([
       {
         id: 5,
