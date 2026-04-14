@@ -118,8 +118,14 @@ function RunActionCell({
   }
   // running
   return (
-    <Button asChild variant="outline" size="sm">
-      <Link to={`/archive/${run.runId}`}>Open</Link>
+    <Button
+      variant="outline"
+      size="sm"
+      disabled
+      aria-disabled="true"
+      title="Available when the run completes."
+    >
+      Open
     </Button>
   );
 }
