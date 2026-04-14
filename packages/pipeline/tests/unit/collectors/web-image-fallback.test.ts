@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractFallbackImage } from "@pipeline/collectors/web-image-fallback.js";
+import { extractFallbackImage } from "@pipeline/collectors/web.js";
 
 // EDGE-031: JS-rendered pages return no image, by design — no automated test
 

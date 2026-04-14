@@ -8,15 +8,15 @@ import type {
 import {
   fetchHnPost as defaultFetchHnPost,
   type FetchHnPostDeps,
-} from "@pipeline/collectors/hn-single.js";
+} from "@pipeline/collectors/hn.js";
 import {
   fetchRedditPost as defaultFetchRedditPost,
   type FetchRedditPostDeps,
-} from "@pipeline/collectors/reddit-single.js";
+} from "@pipeline/collectors/reddit.js";
 import {
   fetchWebPost as defaultFetchWebPost,
   type FetchWebPostDeps,
-} from "@pipeline/collectors/web-single.js";
+} from "@pipeline/collectors/web.js";
 import {
   generateRecap as defaultGenerateRecap,
   type GenerateRecapOptions,

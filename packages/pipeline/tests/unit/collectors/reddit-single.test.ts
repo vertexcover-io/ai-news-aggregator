@@ -17,8 +17,8 @@ vi.mock("@newsletter/shared/logger", () => ({
 import {
   fetchRedditPost,
   parseRedditPostUrl,
-} from "@pipeline/collectors/reddit-single.js";
-import { UrlParseError } from "@pipeline/collectors/hn-single.js";
+} from "@pipeline/collectors/reddit.js";
+import { UrlParseError } from "@pipeline/collectors/hn.js";
 
 interface MockCall {
   url: string;

@@ -14,7 +14,7 @@ vi.mock("@newsletter/shared/logger", () => ({
   }),
 }));
 
-import { fetchWebPost } from "@pipeline/collectors/web-single.js";
+import { fetchWebPost } from "@pipeline/collectors/web.js";
 
 describe("fetchWebPost", () => {
   it("fetches markdown body and returns a RawItemInsert", async () => {

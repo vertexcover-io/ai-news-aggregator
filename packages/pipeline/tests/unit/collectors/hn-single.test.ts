@@ -18,7 +18,7 @@ import {
   fetchHnPost,
   parseHnItemIdFromUrl,
   UrlParseError,
-} from "@pipeline/collectors/hn-single.js";
+} from "@pipeline/collectors/hn.js";
 
 interface MockResp {
   ok: boolean;
