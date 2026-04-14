@@ -44,8 +44,7 @@ collectionWorker.on("ready", () => {
 });
 
 collectionWorker.on("completed", (job: Job<CollectionJobData>) => {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- BullMQ types returnvalue as any
-  logger.info({ jobId: job.id, jobName: job.name, result: job.returnvalue }, "job completed");
+  logger.info({ jobId: job.id, jobName: job.name, result: job.returnvalue as unknown }, "job completed");
 });
 
 collectionWorker.on("failed", (job: Job<CollectionJobData> | undefined, err: Error) => {

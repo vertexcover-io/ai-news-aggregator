@@ -3,6 +3,7 @@ import type { CollectorResult, RawItemComment } from "@newsletter/shared/types";
 import type { HnCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import { delay } from "@pipeline/services/markdown-fetch.js";
 
 const logger = createLogger("collector:hn");
 
@@ -56,7 +57,8 @@ export async function fetchOgImage(articleUrl: string, fetchFn: typeof fetch): P
     } catch {
       return null;
     }
-  } catch {
+  } catch (err) {
+    logger.debug({ url: articleUrl, err }, "og_image_fetch_failed");
     return null;
   }
 }
@@ -170,10 +172,6 @@ function isAlgoliaCommentSearchResponse(value: unknown): value is AlgoliaComment
 
 function parseAlgoliaCommentResponse(value: unknown): AlgoliaCommentSearchResponse {
   return isAlgoliaCommentSearchResponse(value) ? value : { hits: [], nbHits: 0 };
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function fetchWithRetry<T>(

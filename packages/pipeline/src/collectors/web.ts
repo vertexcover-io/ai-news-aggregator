@@ -143,7 +143,7 @@ class CollectorError extends Error {
 
 function truncateError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
-  return msg.length > MAX_ERROR_LENGTH ? msg.slice(0, MAX_ERROR_LENGTH) : msg;
+  return msg.length > MAX_ERROR_LENGTH ? `${msg.slice(0, MAX_ERROR_LENGTH - 3)}...` : msg;
 }
 
 function logFailure(

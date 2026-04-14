@@ -12,6 +12,8 @@ on:
           - tech-debt
           - docs
           - coverage
+  schedule:
+    - cron: "3 9 * * 1"
 
 concurrency:
   group: code-health-${{ github.run_id }}
@@ -34,7 +36,7 @@ jobs:
 
       - name: Run tech-debt finder
         id: tech-debt
-        if: ${{ github.event.inputs.skill == 'all' || github.event.inputs.skill == 'tech-debt' }}
+        if: ${{ (github.event.inputs.skill || 'all') == 'all' || github.event.inputs.skill == 'tech-debt' }}
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -45,6 +47,7 @@ jobs:
             actions: read
           claude_args: |
             --permission-mode bypassPermissions
+            --json-schema '{"type":"object","properties":{"pr_url":{"type":"string","description":"Full URL of the PR created, or empty string if none"},"pr_number":{"type":"integer","description":"PR number, or 0 if none"},"summary":{"type":"string","description":"2-4 sentence high-level summary of what was done. If no changes, explain why."},"changes_made":{"type":"boolean"},"files_changed":{"type":"integer"}},"required":["pr_url","summary","changes_made"]}'
           prompt: |
             You have access to the harness plugin with skills including `harness:tech-debt-finder` and `harness:orchestrate`.
 
@@ -54,11 +57,18 @@ jobs:
             The orchestrate skill will fix all issues from the report in auto mode (no interactive approval needed).
 
             Step 3: After orchestrate completes, if there are code changes, commit them and create a PR with title prefix `chore(tech-debt):`. If no changes were needed, skip PR creation.
+
+            Step 4: Return a structured output matching the schema with:
+              - pr_url: the full PR URL (or "" if none created)
+              - pr_number: the PR number (or 0)
+              - summary: a crisp 2-4 sentence description of the concrete issues fixed (or why nothing was changed). Avoid generic phrasing.
+              - changes_made: true/false
+              - files_changed: number of files modified
           branch_prefix: 'code-health/'
 
       - name: Run docs sync
         id: docs-sync
-        if: ${{ github.event.inputs.skill == 'all' || github.event.inputs.skill == 'docs' }}
+        if: ${{ (github.event.inputs.skill || 'all') == 'all' || github.event.inputs.skill == 'docs' }}
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -69,6 +79,7 @@ jobs:
             actions: read
           claude_args: |
             --permission-mode bypassPermissions
+            --json-schema '{"type":"object","properties":{"pr_url":{"type":"string"},"pr_number":{"type":"integer"},"summary":{"type":"string"},"changes_made":{"type":"boolean"},"files_changed":{"type":"integer"}},"required":["pr_url","summary","changes_made"]}'
           prompt: |
             You have access to the harness plugin with skills including `harness:sync-docs` and `harness:orchestrate`.
 
@@ -78,11 +89,13 @@ jobs:
             The orchestrate skill will fix all documentation issues in auto mode.
 
             Step 3: After orchestrate completes, if there are changes, commit and create a PR with title prefix `docs:`. If no changes, skip PR creation.
+
+            Step 4: Return structured output with pr_url, pr_number, summary (2-4 sentences naming the docs updated and why), changes_made, and files_changed.
           branch_prefix: 'code-health/'
 
       - name: Run coverage guard
         id: coverage
-        if: ${{ github.event.inputs.skill == 'all' || github.event.inputs.skill == 'coverage' }}
+        if: ${{ (github.event.inputs.skill || 'all') == 'all' || github.event.inputs.skill == 'coverage' }}
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -93,6 +106,7 @@ jobs:
             actions: read
           claude_args: |
             --permission-mode bypassPermissions
+            --json-schema '{"type":"object","properties":{"pr_url":{"type":"string"},"pr_number":{"type":"integer"},"summary":{"type":"string"},"changes_made":{"type":"boolean"},"files_changed":{"type":"integer"}},"required":["pr_url","summary","changes_made"]}'
           prompt: |
             You have access to the harness plugin with skills including `harness:coverage-guard` and `harness:orchestrate`.
 
@@ -102,53 +116,87 @@ jobs:
             The orchestrate skill will add missing tests in auto mode.
 
             Step 3: After orchestrate completes, if there are changes, commit and create a PR with title prefix `test(coverage):`. If no changes, skip PR creation.
+
+            Step 4: Return structured output with pr_url, pr_number, summary (2-4 sentences listing which modules got new tests and the coverage delta), changes_made, and files_changed.
           branch_prefix: 'code-health/'
 
-      - name: Collect PR links
-        id: collect-prs
+      - name: Resolve PRs and build Slack payload
+        id: build-payload
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_START: ${{ github.event.repository.updated_at }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SKILL_INPUT: ${{ github.event.inputs.skill || 'all (scheduled)' }}
+          JOB_STATUS: ${{ job.status }}
+          TECH_DEBT_OUTCOME: ${{ steps.tech-debt.outcome }}
+          TECH_DEBT_BRANCH: ${{ steps.tech-debt.outputs.branch_name }}
+          TECH_DEBT_STRUCT: ${{ steps.tech-debt.outputs.structured_output }}
+          DOCS_OUTCOME: ${{ steps.docs-sync.outcome }}
+          DOCS_BRANCH: ${{ steps.docs-sync.outputs.branch_name }}
+          DOCS_STRUCT: ${{ steps.docs-sync.outputs.structured_output }}
+          COVERAGE_OUTCOME: ${{ steps.coverage.outcome }}
+          COVERAGE_BRANCH: ${{ steps.coverage.outputs.branch_name }}
+          COVERAGE_STRUCT: ${{ steps.coverage.outputs.structured_output }}
         run: |
-          PRS=""
-          # Find all open PRs created in this run by searching for recent PRs
-          # Claude/orchestrate creates branches with patterns like chore/tech-debt-*, docs/*, test/coverage-*, code-health/*
-          RECENT_PRS=$(gh pr list --state open --json url,title,createdAt --jq '.[].url' 2>/dev/null || echo "")
-          # Also check PRs created in the last 30 minutes to catch ones from this run
-          for PR_URL in $RECENT_PRS; do
-            PR_CREATED=$(gh pr view "$PR_URL" --json createdAt --jq '.createdAt' 2>/dev/null || echo "")
-            if [ -n "$PR_CREATED" ]; then
-              # Check if PR was created within the last 30 minutes
-              PR_TS=$(date -d "$PR_CREATED" +%s 2>/dev/null || echo "0")
-              NOW_TS=$(date +%s)
-              DIFF=$(( NOW_TS - PR_TS ))
-              if [ "$DIFF" -lt 1800 ]; then
-                PR_TITLE=$(gh pr view "$PR_URL" --json title --jq '.title' 2>/dev/null || echo "")
-                PRS="${PRS}\n• *${PR_TITLE}:* ${PR_URL}"
-              fi
+          set -euo pipefail
+
+          # Resolve PR URL and summary for a single skill.
+          # Priority: structured_output.pr_url -> `gh pr list --head <branch>` -> empty.
+          # Summary falls back to first 400 chars of PR body if structured_output missing.
+          resolve_block() {
+            local label="$1" outcome="$2" branch="$3" struct="$4"
+
+            if [ "$outcome" = "skipped" ] || [ -z "$outcome" ]; then
+              return 0
             fi
-          done
-          if [ -z "$PRS" ]; then
-            PRS="No PRs created — nothing to fix."
-          fi
-          echo "pr_summary<<EOF" >> "$GITHUB_OUTPUT"
-          echo -e "$PRS" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+
+            local url="" summary=""
+            if [ -n "$struct" ]; then
+              url=$(printf '%s' "$struct" | jq -r '.pr_url // ""' 2>/dev/null || true)
+              summary=$(printf '%s' "$struct" | jq -r '.summary // ""' 2>/dev/null || true)
+            fi
+
+            if [ -z "$url" ] && [ -n "$branch" ]; then
+              url=$(gh pr list --head "$branch" --state all --json url --jq '.[0].url // ""' 2>/dev/null || true)
+            fi
+
+            if [ -z "$summary" ] && [ -n "$url" ]; then
+              summary=$(gh pr view "$url" --json body --jq '.body' 2>/dev/null | head -c 400 || true)
+            fi
+
+            [ -z "$summary" ] && summary="_No summary returned by agent._"
+
+            local icon=":white_check_mark:"
+            [ "$outcome" != "success" ] && icon=":x:"
+
+            local pr_line="_No PR created_"
+            [ -n "$url" ] && pr_line="<${url}|View PR>"
+
+            # Prefix summary lines with `> ` for Slack blockquote
+            local quoted
+            quoted=$(printf '%s\n' "$summary" | sed 's/^/> /')
+
+            printf '\n*%s %s* (%s)\n%s\n%s\n' "$icon" "$label" "$outcome" "$pr_line" "$quoted"
+          }
+
+          {
+            printf 'text<<SLACK_EOF\n'
+            printf ':wrench: *Code Health Run Complete* — <%s|Run log>\n' "$RUN_URL"
+            printf '*Repo:* `%s` · *Skill:* `%s` · *Job:* %s\n' "$REPO" "$SKILL_INPUT" "$JOB_STATUS"
+            resolve_block "Tech Debt"      "$TECH_DEBT_OUTCOME" "$TECH_DEBT_BRANCH" "$TECH_DEBT_STRUCT"
+            resolve_block "Docs Sync"      "$DOCS_OUTCOME"      "$DOCS_BRANCH"      "$DOCS_STRUCT"
+            resolve_block "Coverage Guard" "$COVERAGE_OUTCOME"  "$COVERAGE_BRANCH"  "$COVERAGE_STRUCT"
+            printf 'SLACK_EOF\n'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack
         if: always() && vars.SLACK_NOTIFICATIONS_ENABLED == 'true'
         uses: slackapi/slack-github-action@v2.1.0
-        env:
-          SKILL_INPUT: ${{ github.event.inputs.skill }}
-          JOB_STATUS: ${{ job.status }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          PR_SUMMARY: ${{ steps.collect-prs.outputs.pr_summary }}
-          REPO_NAME: ${{ github.repository }}
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": ":wrench: *Code Health Run Complete*\n\n*Repo:* ${{ env.REPO_NAME }}\n*Skill:* `${{ env.SKILL_INPUT }}`\n*Status:* ${{ env.JOB_STATUS }}\n*Run:* ${{ env.RUN_URL }}\n\n*PRs:*\n${{ env.PR_SUMMARY }}"
+              "text": ${{ toJSON(steps.build-payload.outputs.text) }}
             }
