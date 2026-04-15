@@ -13,6 +13,7 @@ import {
   type RunProcessResult,
   type CollectFns,
 } from "@pipeline/workers/run-process.js";
+import { createCancelSubscriber } from "@pipeline/services/cancel-subscriber.js";
 import {
   handleDailyRunJob,
   type DailyRunDeps,
@@ -124,6 +125,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     rankFn: (candidates, opts) => rankCandidates(candidates, opts),
     collectFns,
     archiveRepo,
+    cancelSubscriber: createCancelSubscriber(connection),
   };
 }
 

@@ -5,7 +5,7 @@ import type { RankedItemRef } from "@newsletter/shared";
 
 export interface RunArchiveRow {
   id: string;
-  status: "completed" | "failed";
+  status: "completed" | "failed" | "cancelled";
   rankedItems: RankedItemRef[];
   topN: number;
   profileName: string | null;

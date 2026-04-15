@@ -43,6 +43,11 @@ import type {
   WebCollectConfig,
 } from "@pipeline/types.js";
 import type { CollectorResult } from "@newsletter/shared";
+import { CancelledError } from "@pipeline/lib/cancelled-error.js";
+import {
+  createCancelSubscriber,
+  type CancelSubscriberFactory,
+} from "@pipeline/services/cancel-subscriber.js";
 
 const logger = createLogger("worker:run-process");
 
@@ -118,6 +123,7 @@ export interface RunProcessDeps {
   rankFn: RankFn;
   collectFns: CollectFns;
   archiveRepo: RunArchivesRepo;
+  cancelSubscriber?: CancelSubscriberFactory;
 }
 
 interface CollectingOutcome {
@@ -228,6 +234,12 @@ async function runCollecting(
   return { successCount, failureCount, errors };
 }
 
+function throwIfAborted(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw signal.reason instanceof Error ? signal.reason : new Error("aborted");
+  }
+}
+
 export async function handleRunProcessJob(
   deps: RunProcessDeps,
   job: RunProcessJobLike,
@@ -240,191 +252,258 @@ export async function handleRunProcessJob(
   const halfLifeHours = job.data.halfLifeHours;
   const started = Date.now();
 
-  // Stage 1: collecting
-  await deps.runState.setStage(runId, "collecting");
-  const collecting = await runCollecting(deps, runId, collectors);
+  // REQ-05: create AbortController and subscribe to cancellation channel
+  const controller = new AbortController();
+  const { signal } = controller;
 
-  // All collectors failed → terminal failure, skip dedup/rank
-  if (collecting.failureCount > 0 && collecting.successCount === 0) {
-    const errorMessage = collecting.errors.join("; ");
-    await deps.runState.update(runId, (prev) => ({
-      ...prev,
-      stage: "failed",
-      status: "failed",
-      error: errorMessage,
-      completedAt: new Date().toISOString(),
-    }));
-    logger.error(
-      {
-        event: "run.failed",
-        runId,
-        totalDurationMs: Date.now() - started,
-        error: errorMessage,
-      },
-      "run.failed",
-    );
-    return { rankedCount: 0 };
-  }
+  const subscriberFactory = deps.cancelSubscriber;
+  const subscriber = subscriberFactory
+    ? await subscriberFactory.subscribe(runId, () => {
+        controller.abort(new CancelledError(runId));
+      })
+    : null;
 
-  // Stage 2: processing (dedup)
-  await deps.runState.setStage(runId, "processing");
-
-  const state = await deps.runState.get(runId);
-  let since: Date;
-  if (state?.startedAt) {
-    since = new Date(state.startedAt);
-  } else {
-    since = new Date(Date.now() - FALLBACK_WINDOW_MS);
-    logger.warn(
-      { runId },
-      "run-state missing; using 10-minute fallback window",
-    );
-  }
-
-  const raw: Candidate[] = await deps.loadFn(
-    deps.candidatesRepo,
-    since,
-    sourceTypes,
-  );
-
-  if (raw.length === 0) {
-    await deps.runState.update(runId, (prev) => ({
-      ...prev,
-      stage: "completed",
-      status: "completed",
-      rankedItems: [],
-      completedAt: new Date().toISOString(),
-      warnings: [...prev.warnings, "no items collected"],
-    }));
-    logger.info(
-      {
-        event: "run.completed",
-        runId,
-        totalDurationMs: Date.now() - started,
-        rankedItemCount: 0,
-      },
-      "run.completed",
-    );
-    return { rankedCount: 0 };
-  }
-
-  const deduped = dedupCandidates(raw);
-  logger.info(
-    {
-      event: "run.dedup",
-      runId,
-      inputCount: raw.length,
-      outputCount: deduped.length,
-    },
-    "run.dedup",
-  );
-
-  await deps.runState.setStage(runId, "shortlisting");
-  const { shortlist, breakdowns } = await deps.shortlistFn(deduped, {
-    profile,
-    halfLifeHours,
-    runId,
-  });
-
-  if (shortlist.length === 0) {
-    logger.info(
-      { event: "empty_shortlist", runId },
-      "shortlist empty — skipping rank stage",
-    );
-    await deps.runState.update(runId, (prev) => ({
-      ...prev,
-      stage: "completed",
-      status: "completed",
-      rankedItems: [],
-      completedAt: new Date().toISOString(),
-    }));
-    logger.info(
-      {
-        event: "run.completed",
-        runId,
-        totalDurationMs: Date.now() - started,
-        rankedItemCount: 0,
-      },
-      "run.completed",
-    );
-    return { rankedCount: 0 };
-  }
-
-  await deps.runState.setStage(runId, "ranking");
-
-  let rankResult: RankResult;
+  // REQ-09: always close subscriber in a finally block
   try {
-    rankResult = await deps.rankFn(shortlist, {
-      topN,
-      runId,
+    // EDGE-04: re-check Redis run-state after subscribing — if already cancelling, abort immediately
+    if (subscriberFactory) {
+      const currentState = await deps.runState.get(runId);
+      if (currentState?.status === "cancelling") {
+        controller.abort(new CancelledError(runId));
+      }
+    }
+
+    // Stage 1: collecting
+    throwIfAborted(signal);
+    await deps.runState.setStage(runId, "collecting");
+    const collecting = await runCollecting(deps, runId, collectors);
+
+    // All collectors failed → terminal failure, skip dedup/rank
+    if (collecting.failureCount > 0 && collecting.successCount === 0) {
+      const errorMessage = collecting.errors.join("; ");
+      await deps.runState.update(runId, (prev) => ({
+        ...prev,
+        stage: "failed",
+        status: "failed",
+        error: errorMessage,
+        completedAt: new Date().toISOString(),
+      }));
+      logger.error(
+        {
+          event: "run.failed",
+          runId,
+          totalDurationMs: Date.now() - started,
+          error: errorMessage,
+        },
+        "run.failed",
+      );
+      return { rankedCount: 0 };
+    }
+
+    // Stage 2: processing (dedup)
+    throwIfAborted(signal);
+    await deps.runState.setStage(runId, "processing");
+
+    const state = await deps.runState.get(runId);
+    let since: Date;
+    if (state?.startedAt) {
+      since = new Date(state.startedAt);
+    } else {
+      since = new Date(Date.now() - FALLBACK_WINDOW_MS);
+      logger.warn(
+        { runId },
+        "run-state missing; using 10-minute fallback window",
+      );
+    }
+
+    const raw: Candidate[] = await deps.loadFn(
+      deps.candidatesRepo,
+      since,
+      sourceTypes,
+    );
+
+    if (raw.length === 0) {
+      await deps.runState.update(runId, (prev) => ({
+        ...prev,
+        stage: "completed",
+        status: "completed",
+        rankedItems: [],
+        completedAt: new Date().toISOString(),
+        warnings: [...prev.warnings, "no items collected"],
+      }));
+      logger.info(
+        {
+          event: "run.completed",
+          runId,
+          totalDurationMs: Date.now() - started,
+          rankedItemCount: 0,
+        },
+        "run.completed",
+      );
+      return { rankedCount: 0 };
+    }
+
+    const deduped = dedupCandidates(raw);
+    logger.info(
+      {
+        event: "run.dedup",
+        runId,
+        inputCount: raw.length,
+        outputCount: deduped.length,
+      },
+      "run.dedup",
+    );
+
+    // Stage 3: shortlisting
+    throwIfAborted(signal);
+    await deps.runState.setStage(runId, "shortlisting");
+    const { shortlist, breakdowns } = await deps.shortlistFn(deduped, {
       profile,
       halfLifeHours,
-      shortlistBreakdowns: breakdowns,
+      runId,
     });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+
+    if (shortlist.length === 0) {
+      logger.info(
+        { event: "empty_shortlist", runId },
+        "shortlist empty — skipping rank stage",
+      );
+      await deps.runState.update(runId, (prev) => ({
+        ...prev,
+        stage: "completed",
+        status: "completed",
+        rankedItems: [],
+        completedAt: new Date().toISOString(),
+      }));
+      logger.info(
+        {
+          event: "run.completed",
+          runId,
+          totalDurationMs: Date.now() - started,
+          rankedItemCount: 0,
+        },
+        "run.completed",
+      );
+      return { rankedCount: 0 };
+    }
+
+    // Stage 4: ranking
+    throwIfAborted(signal);
+    await deps.runState.setStage(runId, "ranking");
+
+    let rankResult: RankResult;
+    try {
+      rankResult = await deps.rankFn(shortlist, {
+        topN,
+        runId,
+        profile,
+        halfLifeHours,
+        shortlistBreakdowns: breakdowns,
+      });
+    } catch (err) {
+      // Re-throw CancelledError to be handled by the outer catch
+      if (err instanceof CancelledError) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      await deps.runState.update(runId, (prev) => ({
+        ...prev,
+        stage: "failed",
+        status: "failed",
+        error: message,
+        completedAt: new Date().toISOString(),
+      }));
+      throw err;
+    }
+
+    const recapUpdates = rankResult.rankedItems
+      .filter(
+        (item): item is typeof item & { summary: string; bullets: string[]; bottomLine: string } =>
+          !!item.summary && !!item.bullets && !!item.bottomLine,
+      )
+      .map((item) => ({
+        id: item.rawItemId,
+        recap: { summary: item.summary, bullets: item.bullets, bottomLine: item.bottomLine },
+      }));
+    if (recapUpdates.length > 0) {
+      await deps.rawItemsRepo.updateRecapData(recapUpdates);
+    }
+
     await deps.runState.update(runId, (prev) => ({
       ...prev,
-      stage: "failed",
-      status: "failed",
-      error: message,
-      completedAt: new Date().toISOString(),
-    }));
-    throw err;
-  }
-
-  const recapUpdates = rankResult.rankedItems
-    .filter(
-      (item): item is typeof item & { summary: string; bullets: string[]; bottomLine: string } =>
-        !!item.summary && !!item.bullets && !!item.bottomLine,
-    )
-    .map((item) => ({
-      id: item.rawItemId,
-      recap: { summary: item.summary, bullets: item.bullets, bottomLine: item.bottomLine },
-    }));
-  if (recapUpdates.length > 0) {
-    await deps.rawItemsRepo.updateRecapData(recapUpdates);
-  }
-
-  await deps.runState.update(runId, (prev) => ({
-    ...prev,
-    stage: "completed",
-    status: "completed",
-    rankedItems: rankResult.rankedItems,
-    completedAt: new Date().toISOString(),
-  }));
-
-  try {
-    await deps.archiveRepo.upsert({
-      id: runId,
+      stage: "completed",
       status: "completed",
       rankedItems: rankResult.rankedItems,
-      topN,
-      profileName: profile?.name ?? null,
-      completedAt: new Date(),
-    });
-  } catch (err) {
-    logger.error(
+      completedAt: new Date().toISOString(),
+    }));
+
+    try {
+      await deps.archiveRepo.upsert({
+        id: runId,
+        status: "completed",
+        rankedItems: rankResult.rankedItems,
+        topN,
+        profileName: profile?.name ?? null,
+        completedAt: new Date(),
+      });
+    } catch (err) {
+      logger.error(
+        {
+          event: "archive.write_failed",
+          runId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "archive.write_failed",
+      );
+    }
+
+    logger.info(
       {
-        event: "archive.write_failed",
+        event: "run.completed",
         runId,
-        error: err instanceof Error ? err.message : String(err),
+        totalDurationMs: Date.now() - started,
+        rankedItemCount: rankResult.rankedItems.length,
       },
-      "archive.write_failed",
+      "run.completed",
     );
+
+    return { rankedCount: rankResult.rankedItems.length };
+  } catch (err) {
+    // REQ-08: handle CancelledError — write cancelled state, archive, return normally
+    if (err instanceof CancelledError) {
+      await deps.runState.update(runId, (prev) => ({
+        ...prev,
+        stage: "cancelled",
+        status: "cancelled",
+        error: "Cancelled by user",
+        completedAt: new Date().toISOString(),
+      }));
+      try {
+        await deps.archiveRepo.upsert({
+          id: runId,
+          status: "cancelled",
+          rankedItems: [],
+          topN,
+          profileName: profile?.name ?? null,
+          completedAt: new Date(),
+        });
+      } catch (archiveErr) {
+        logger.error(
+          {
+            event: "archive.write_failed",
+            runId,
+            error: archiveErr instanceof Error ? archiveErr.message : String(archiveErr),
+          },
+          "archive.write_failed",
+        );
+      }
+      logger.info({ event: "run.cancelled", runId }, "run.cancelled");
+      return { rankedCount: 0 };
+    }
+    throw err;
+  } finally {
+    if (subscriber) {
+      await subscriber.close();
+    }
   }
-
-  logger.info(
-    {
-      event: "run.completed",
-      runId,
-      totalDurationMs: Date.now() - started,
-      rankedItemCount: rankResult.rankedItems.length,
-    },
-    "run.completed",
-  );
-
-  return { rankedCount: rankResult.rankedItems.length };
 }
 
 export interface CreateRunProcessWorkerOptions {
@@ -437,6 +516,7 @@ export interface CreateRunProcessWorkerOptions {
   rankFn?: RankFn;
   collectFns?: Partial<CollectFns>;
   archiveRepo?: RunArchivesRepo;
+  cancelSubscriber?: CancelSubscriberFactory;
 }
 
 export function createRunProcessWorker(
@@ -465,6 +545,9 @@ export function createRunProcessWorker(
   const archiveRepo =
     options.archiveRepo ?? createRunArchivesRepo(ensureDb(db));
 
+  const cancelSubscriber =
+    options.cancelSubscriber ?? createCancelSubscriber(connection);
+
   const deps: RunProcessDeps = {
     runState,
     rawItemsRepo,
@@ -474,6 +557,7 @@ export function createRunProcessWorker(
     rankFn,
     collectFns,
     archiveRepo,
+    cancelSubscriber,
   };
 
   return new Worker<RunProcessJobData, RunProcessResult>(

@@ -80,9 +80,18 @@ vi.mock("@newsletter/shared/logger", () => ({
   })),
 }));
 
+// Default no-op cancel subscriber so tests don't need real Redis
+vi.mock("@pipeline/services/cancel-subscriber.js", () => ({
+  createCancelSubscriber: vi.fn(() => ({
+    subscribe: vi.fn(() => Promise.resolve({ close: vi.fn(() => Promise.resolve()) })),
+  })),
+}));
+
 const { createRunProcessWorker } = await import(
   "@pipeline/workers/run-process.js"
 );
+const { CancelledError } = await import("@pipeline/lib/cancelled-error.js");
+import type { CancelSubscriberFactory } from "@pipeline/services/cancel-subscriber.js";
 
 interface JobLike {
   name: string;
@@ -1400,5 +1409,252 @@ describe("run-process worker", () => {
     expect(sOpts?.halfLifeHours).toBe(48);
     const [, rOpts] = rankFn.mock.calls[0] ?? [];
     expect(rOpts?.halfLifeHours).toBe(48);
+  });
+});
+
+// ---- Cancellation tests (REQ-05 through REQ-09, EDGE-03/04/05) ----
+
+function makeNoopArchiveRepo() {
+  return { upsert: vi.fn(() => Promise.resolve()) };
+}
+
+function makeInstantCancelSubscriber(triggerImmediately = false): {
+  factory: CancelSubscriberFactory;
+  closeSpy: ReturnType<typeof vi.fn>;
+  triggerCancel: () => void;
+} {
+  let savedOnCancel: (() => void) | null = null;
+  const closeSpy = vi.fn(() => Promise.resolve());
+  const factory: CancelSubscriberFactory = {
+    subscribe: vi.fn((_runId: string, onCancel: () => void) => {
+      savedOnCancel = onCancel;
+      if (triggerImmediately) onCancel();
+      return Promise.resolve({ close: closeSpy });
+    }),
+  };
+  return {
+    factory,
+    closeSpy,
+    triggerCancel: () => { savedOnCancel?.(); },
+  };
+}
+
+describe("run-process cancellation (REQ-05 through REQ-09)", () => {
+  beforeEach(() => {
+    mockLoggerInfo.mockClear();
+    mockLoggerWarn.mockClear();
+    mockLoggerError.mockClear();
+  });
+
+  // REQ-08 + EDGE-03: cancel fires during collecting stage
+  it("cancel during collecting → status 'cancelled', archive written, no rethrow", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const archiveRepo = makeNoopArchiveRepo();
+    const { factory, triggerCancel } = makeInstantCancelSubscriber();
+
+    const hnFn = vi.fn(() => {
+      // Signal cancel after collector starts
+      triggerCancel();
+      return Promise.resolve({
+        itemsFetched: 0,
+        itemsStored: 0,
+        failures: 0,
+        durationMs: 1,
+      });
+    });
+
+    const loadFn = vi.fn(() => Promise.resolve([]));
+    const rankFn = vi.fn();
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      rankFn,
+      collectFns: { hn: hnFn, reddit: vi.fn(), web: vi.fn() },
+      archiveRepo,
+      cancelSubscriber: factory,
+    });
+
+    const result = await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["hn"],
+        collectors: { hn: { sinceDays: 1 } as unknown as HnCollectConfig },
+      },
+    });
+
+    expect(result).toEqual({ rankedCount: 0 });
+
+    const last = runStateMock.updates.at(-1);
+    expect(last?.status).toBe("cancelled");
+    expect(last?.stage).toBe("cancelled");
+    expect(last?.error).toBe("Cancelled by user");
+
+    expect(archiveRepo.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "cancelled" }),
+    );
+    expect(rankFn).not.toHaveBeenCalled();
+  });
+
+  // REQ-08 + EDGE-03: cancel fires during shortlisting stage
+  it("cancel during shortlisting → status 'cancelled', archive written, no rethrow", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const archiveRepo = makeNoopArchiveRepo();
+    const { factory, triggerCancel } = makeInstantCancelSubscriber();
+    const candidates = [makeCandidate(1), makeCandidate(2)];
+    const loadFn = vi.fn(() => Promise.resolve(candidates));
+
+    const shortlistFn = vi.fn(
+      (cands: Candidate[]): Promise<ShortlistResult> => {
+        triggerCancel();
+        return Promise.resolve({ shortlist: cands, breakdowns: [] });
+      },
+    );
+    const rankFn = vi.fn();
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      rankFn,
+      shortlistFn,
+      archiveRepo,
+      cancelSubscriber: factory,
+    });
+
+    const result = await worker.handler(baseJob);
+
+    expect(result).toEqual({ rankedCount: 0 });
+    const last = runStateMock.updates.at(-1);
+    expect(last?.status).toBe("cancelled");
+    expect(archiveRepo.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "cancelled" }),
+    );
+    expect(rankFn).not.toHaveBeenCalled();
+  });
+
+  // REQ-08 + EDGE-03: cancel fires during ranking stage
+  it("cancel during ranking → status 'cancelled', archive written, no rethrow", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const archiveRepo = makeNoopArchiveRepo();
+    const { factory, triggerCancel } = makeInstantCancelSubscriber();
+    const candidates = [makeCandidate(1), makeCandidate(2)];
+    const loadFn = vi.fn(() => Promise.resolve(candidates));
+
+    const rankFn = vi.fn((): Promise<RankResult> => {
+      triggerCancel();
+      // Throw a CancelledError (extends Error) to simulate cancel during rank
+      const err: Error = new CancelledError("run-1");
+      return Promise.reject(err);
+    });
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      rankFn,
+      shortlistFn: makeShortlistFn(passthroughShortlist),
+      archiveRepo,
+      cancelSubscriber: factory,
+    });
+
+    const result = await worker.handler(baseJob);
+
+    expect(result).toEqual({ rankedCount: 0 });
+    const last = runStateMock.updates.at(-1);
+    expect(last?.status).toBe("cancelled");
+    expect(archiveRepo.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "cancelled" }),
+    );
+  });
+
+  // EDGE-04: Redis status already "cancelling" when subscriber attaches
+  it("EDGE-04: already cancelling at subscribe time → aborts without pubsub message", async () => {
+    const runStateMock = makeMockRunState(
+      makeRunState({ status: "cancelling" }),
+    );
+    const archiveRepo = makeNoopArchiveRepo();
+    // Subscriber that never fires onCancel via pubsub — relies on EDGE-04 re-check
+    const closeSpy = vi.fn(() => Promise.resolve());
+    const factory: CancelSubscriberFactory = {
+      subscribe: vi.fn((_runId: string, _onCancel: () => void) =>
+        Promise.resolve({ close: closeSpy }),
+      ),
+    };
+
+    const loadFn = vi.fn(() => Promise.resolve([]));
+    const rankFn = vi.fn();
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      rankFn,
+      archiveRepo,
+      cancelSubscriber: factory,
+    });
+
+    const result = await worker.handler(baseJob);
+
+    expect(result).toEqual({ rankedCount: 0 });
+    const last = runStateMock.updates.at(-1);
+    expect(last?.status).toBe("cancelled");
+    expect(loadFn).not.toHaveBeenCalled();
+  });
+
+  // REQ-09: subscriber.close() called in success path
+  it("REQ-09: subscriber.close() is called in the success path", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const archiveRepo = makeNoopArchiveRepo();
+    const closeSpy = vi.fn(() => Promise.resolve());
+    const factory: CancelSubscriberFactory = {
+      subscribe: vi.fn(() => Promise.resolve({ close: closeSpy })),
+    };
+
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(() => Promise.resolve(candidates));
+    const rankFn = vi.fn(() =>
+      Promise.resolve({
+        rankedItems: [{ rawItemId: 1, score: 1, rationale: "Novelty" }],
+        candidateCount: 1,
+        rankedCount: 1,
+      }),
+    );
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      rankFn,
+      shortlistFn: makeShortlistFn(passthroughShortlist),
+      archiveRepo,
+      cancelSubscriber: factory,
+    });
+
+    await worker.handler(baseJob);
+    expect(closeSpy).toHaveBeenCalledOnce();
+  });
+
+  // REQ-09: subscriber.close() called even when rank throws (non-cancel error)
+  it("REQ-09: subscriber.close() is called even when rank throws a non-cancel error", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const archiveRepo = makeNoopArchiveRepo();
+    const closeSpy = vi.fn(() => Promise.resolve());
+    const factory: CancelSubscriberFactory = {
+      subscribe: vi.fn(() => Promise.resolve({ close: closeSpy })),
+    };
+
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(() => Promise.resolve(candidates));
+    const rankFn = vi.fn(() => Promise.reject(new Error("boom")));
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      rankFn,
+      shortlistFn: makeShortlistFn(passthroughShortlist),
+      archiveRepo,
+      cancelSubscriber: factory,
+    });
+
+    await expect(worker.handler(baseJob)).rejects.toThrow("boom");
+    expect(closeSpy).toHaveBeenCalledOnce();
   });
 });

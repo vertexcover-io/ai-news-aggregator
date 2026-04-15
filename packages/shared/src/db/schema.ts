@@ -34,7 +34,7 @@ export type RawItemInsert = typeof rawItems.$inferInsert;
 
 export const runArchives = pgTable("run_archives", {
   id: uuid("id").primaryKey(),
-  status: text("status").$type<"completed" | "failed">().notNull(),
+  status: text("status").$type<"completed" | "failed" | "cancelled">().notNull(),
   rankedItems: jsonb("ranked_items").$type<RankedItemRef[]>().notNull(),
   topN: integer("top_n").notNull(),
   profileName: text("profile_name"),
