@@ -23,6 +23,7 @@ export interface ShortlistOptions {
   runId?: string;
   now?: Date;
   embedBatch?: typeof defaultEmbedBatch;
+  signal?: AbortSignal;
 }
 
 export interface ShortlistBreakdown {
@@ -79,13 +80,13 @@ export async function shortlistCandidates(
   const profile = options.profile;
   const antiTopics = profile.antiTopics ?? [];
   const topicInputs = [...profile.topics, ...antiTopics];
-  const topicEmbeds = await embed(topicInputs, { inputType: "query" });
+  const topicEmbeds = await embed(topicInputs, { inputType: "query", signal: options.signal });
   const topicVecs = topicEmbeds.slice(0, profile.topics.length);
   const antiVecs = topicEmbeds.slice(profile.topics.length);
 
   const titleEmbeds = await embed(
     candidates.map((c) => c.title),
-    { inputType: "document" },
+    { inputType: "document", signal: options.signal },
   );
 
   const breakdowns: ShortlistBreakdown[] = candidates.map((c, i) => {

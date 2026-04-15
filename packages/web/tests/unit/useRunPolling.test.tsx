@@ -62,6 +62,38 @@ describe("useRunPolling", () => {
     expect(vi.mocked(getRun).mock.calls.length).toBe(callsAfterFirstResolve);
   });
 
+  it("stops polling when status is terminal (cancelled) (REQ-13)", async () => {
+    vi.mocked(getRun).mockResolvedValue({ ...baseRunState, status: "cancelled", stage: "cancelled" });
+
+    const { result } = renderHook(() => useRunPolling("run-1"), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.data?.status).toBe("cancelled");
+    });
+
+    const callsAfterFirstResolve = vi.mocked(getRun).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(vi.mocked(getRun).mock.calls.length).toBe(callsAfterFirstResolve);
+  });
+
+  it("continues polling while status is cancelling (REQ-13)", async () => {
+    vi.mocked(getRun).mockResolvedValue({ ...baseRunState, status: "cancelling", stage: "collecting" });
+
+    const { result } = renderHook(() => useRunPolling("run-1"), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.data?.status).toBe("cancelling");
+    });
+
+    const callsBefore = vi.mocked(getRun).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(vi.mocked(getRun).mock.calls.length).toBeGreaterThan(callsBefore);
+  });
+
   it("stops polling when getRun returns null (404, REQ-114)", async () => {
     vi.mocked(getRun).mockResolvedValue(null);
 

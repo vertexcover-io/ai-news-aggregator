@@ -18,7 +18,7 @@ export interface UserSettings {
   updatedAt: string;
 }
 
-export type RunSummaryStatus = "running" | "completed" | "failed";
+export type RunSummaryStatus = "running" | "completed" | "failed" | "cancelling" | "cancelled";
 
 export interface RunSummary {
   runId: string;

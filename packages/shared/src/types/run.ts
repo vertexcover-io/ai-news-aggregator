@@ -1,7 +1,7 @@
 import type { SourceType } from "../db/schema.js";
 import type { RecapContent } from "./index.js";
 
-export type RunStatus = "running" | "completed" | "failed";
+export type RunStatus = "running" | "completed" | "failed" | "cancelling" | "cancelled";
 
 export type RunStage =
   | "queued"
@@ -10,7 +10,8 @@ export type RunStage =
   | "shortlisting"
   | "ranking"
   | "completed"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export type SourceStatus = "pending" | "running" | "completed" | "failed";
 

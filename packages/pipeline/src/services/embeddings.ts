@@ -13,6 +13,7 @@ interface VoyageResponse {
 
 interface EmbedBatchOptions {
   inputType?: "query" | "document";
+  signal?: AbortSignal;
 }
 
 export async function embedBatch(
@@ -42,6 +43,7 @@ export async function embedBatch(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
+    signal: options?.signal,
   });
 
   if (!res.ok) {

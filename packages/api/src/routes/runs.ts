@@ -15,6 +15,11 @@ import type {
 } from "@newsletter/shared";
 import { runSubmitSchema } from "@api/lib/validate.js";
 import { createRun } from "@api/services/runs.js";
+import {
+  cancelRun,
+  CancelNotFoundError,
+  CancelConflictError,
+} from "@api/services/cancel-run.js";
 import { hydrateRankedItems } from "@api/services/rank-hydration.js";
 import {
   createRawItemsRepo,
@@ -37,6 +42,7 @@ import {
 
 export interface RunsRouterDeps {
   redis: IORedis;
+  publisher?: IORedis;
   processingQueue: Queue<RunProcessJobPayload>;
   getRawItemsRepo: () => RawItemsRepo;
   getSettingsRepo?: () => UserSettingsRepo;
@@ -48,6 +54,7 @@ export interface RunsRouterDeps {
 export function createRunsRouter(deps: RunsRouterDeps): Hono {
   const logger = deps.logger ?? createLogger("api:runs");
   const loadProfile = deps.loadProfile ?? defaultLoadProfile;
+  const publisher = deps.publisher ?? deps.redis;
   const runs = new Hono();
 
   runs.post("/", async (c) => {
@@ -162,6 +169,34 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     return c.json(state);
   });
 
+  runs.post("/:runId/cancel", async (c) => {
+    const runId = c.req.param("runId");
+    const archiveRepo = deps.getArchiveRepo?.();
+    if (!archiveRepo) {
+      return c.json({ error: "archive repository not configured" }, 500);
+    }
+    try {
+      const run = await cancelRun(runId, {
+        redis: deps.redis,
+        publisher,
+        archiveRepo,
+      });
+      logger.info({ event: "run.cancelling", runId }, "run.cancelling");
+      return c.json({ run });
+    } catch (err) {
+      if (err instanceof CancelNotFoundError) {
+        return c.json({ error: "not found" }, 404);
+      }
+      if (err instanceof CancelConflictError) {
+        return c.json(
+          { error: "run is not cancellable", status: err.currentStatus },
+          409,
+        );
+      }
+      throw err;
+    }
+  });
+
   return runs;
 }
 
@@ -177,6 +212,7 @@ function getDefaultProcessingQueue(): Queue<RunProcessJobPayload> {
 export function createDefaultRunsRouter(): Hono {
   return createRunsRouter({
     redis: createRedisConnection(),
+    publisher: createRedisConnection(),
     processingQueue: getDefaultProcessingQueue(),
     getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),

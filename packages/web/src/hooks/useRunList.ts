@@ -12,7 +12,9 @@ export function useRunList(limit?: number): UseQueryResult<RunSummary[]> {
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return false;
-      const hasActive = data.some((r) => r.status === "running");
+      const hasActive = data.some(
+        (r) => r.status === "running" || r.status === "cancelling",
+      );
       return hasActive ? POLL_INTERVAL_MS : false;
     },
   });

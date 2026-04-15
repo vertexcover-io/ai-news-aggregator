@@ -525,4 +525,28 @@ describe("rankCandidates", () => {
     });
     expect(result.rankedCount).toBe(1);
   });
+
+  it("REQ-06: forwards abortSignal to generateObject call", async () => {
+    const controller = new AbortController();
+    let capturedAbortSignal: AbortSignal | undefined;
+
+    const generateObject = vi.fn((args: GenerateArgs & { abortSignal?: AbortSignal }) => {
+      capturedAbortSignal = args.abortSignal;
+      return Promise.resolve({
+        object: {
+          ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Relevance" })],
+        },
+      });
+    });
+
+    await rankCandidates([makeCandidate(1)], {
+      profile,
+      topN: 5,
+      generateObject,
+      loadBodies: stubLoadBodies,
+      abortSignal: controller.signal,
+    });
+
+    expect(capturedAbortSignal).toBe(controller.signal);
+  });
 });

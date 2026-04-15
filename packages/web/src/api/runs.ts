@@ -72,3 +72,21 @@ export async function triggerRunNow(): Promise<TriggerRunNowResponse> {
   }
   return (await res.json()) as TriggerRunNowResponse;
 }
+
+export type CancelRunResult =
+  | { status: "ok"; run: RunState }
+  | { status: "already-terminal" };
+
+export async function cancelRun(runId: string): Promise<CancelRunResult> {
+  const res = await apiFetch(`/api/runs/${runId}/cancel`, { method: "POST" });
+  // 409 means the run is already in a terminal state — not an error from UI perspective
+  if (res.status === 409) {
+    return { status: "already-terminal" };
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(body.error ?? "Failed to cancel run");
+  }
+  const data = (await res.json()) as { run: RunState };
+  return { status: "ok", run: data.run };
+}
