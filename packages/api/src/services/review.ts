@@ -4,7 +4,8 @@ import type {
   RunArchiveRow,
   RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
-export type AddPostSourceType = "hn" | "reddit" | "web";
+import { detectAddPostSourceType, type AddPostSourceType } from "@newsletter/pipeline/add-post";
+export type { AddPostSourceType };
 
 export class NotFoundError extends Error {
   constructor(message = "not found") {
@@ -98,12 +99,13 @@ export async function addPostToArchive(
     throw new Error("hydrateAddedPost dependency not configured");
   }
 
+  const sourceType = detectAddPostSourceType(input.url);
   const ac = new AbortController();
   const timer = setTimeout(() => {
     ac.abort();
   }, options.timeoutMs ?? ADD_POST_TIMEOUT_MS);
   try {
-    return await deps.hydrateAddedPost(input.url, "web", {
+    return await deps.hydrateAddedPost(input.url, sourceType, {
       signal: ac.signal,
     });
   } finally {

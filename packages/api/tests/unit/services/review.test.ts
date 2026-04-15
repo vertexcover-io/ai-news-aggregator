@@ -181,7 +181,7 @@ describe("addPostToArchive (REQ-140 – REQ-146)", () => {
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
-  it("REQ-140: returns the hydrated RankedItem on happy path", async () => {
+  it("REQ-140: returns the hydrated RankedItem on happy path with a blog URL", async () => {
     const ranked = makeRanked();
     const archiveRow = makeArchiveRow([]);
     const hydrate = vi.fn().mockResolvedValue(ranked);
@@ -190,10 +190,53 @@ describe("addPostToArchive (REQ-140 – REQ-146)", () => {
       rawItemsRepo: makeRawRepo([]),
       hydrateAddedPost: hydrate,
     };
-    const result = await addPostToArchive("run-1", { url: ranked.url }, deps);
+    const result = await addPostToArchive("run-1", { url: "https://example.com/blog" }, deps);
     expect(result).toEqual(ranked);
     expect(hydrate).toHaveBeenCalledOnce();
-    // verify always called with 'web' sourceType
+    // blog URL → detected as "web"
+    const [, calledSourceType] = hydrate.mock.calls[0] as [string, string];
+    expect(calledSourceType).toBe("web");
+  });
+
+  // REQ-005: source type is detected from URL and passed to hydrateAddedPost
+  it("REQ-005: passes sourceType 'hn' to hydrateAddedPost for HN URL", async () => {
+    const ranked = makeRanked();
+    const archiveRow = makeArchiveRow([]);
+    const hydrate = vi.fn().mockResolvedValue(ranked);
+    const deps: ReviewDeps = {
+      archiveRepo: makeArchiveRepo(archiveRow),
+      rawItemsRepo: makeRawRepo([]),
+      hydrateAddedPost: hydrate,
+    };
+    await addPostToArchive("run-1", { url: "https://news.ycombinator.com/item?id=12345" }, deps);
+    const [, calledSourceType] = hydrate.mock.calls[0] as [string, string];
+    expect(calledSourceType).toBe("hn");
+  });
+
+  it("REQ-005: passes sourceType 'reddit' to hydrateAddedPost for Reddit URL", async () => {
+    const ranked = makeRanked();
+    const archiveRow = makeArchiveRow([]);
+    const hydrate = vi.fn().mockResolvedValue(ranked);
+    const deps: ReviewDeps = {
+      archiveRepo: makeArchiveRepo(archiveRow),
+      rawItemsRepo: makeRawRepo([]),
+      hydrateAddedPost: hydrate,
+    };
+    await addPostToArchive("run-1", { url: "https://www.reddit.com/r/test/comments/abc/foo/" }, deps);
+    const [, calledSourceType] = hydrate.mock.calls[0] as [string, string];
+    expect(calledSourceType).toBe("reddit");
+  });
+
+  it("REQ-005: passes sourceType 'web' to hydrateAddedPost for arbitrary blog URL", async () => {
+    const ranked = makeRanked();
+    const archiveRow = makeArchiveRow([]);
+    const hydrate = vi.fn().mockResolvedValue(ranked);
+    const deps: ReviewDeps = {
+      archiveRepo: makeArchiveRepo(archiveRow),
+      rawItemsRepo: makeRawRepo([]),
+      hydrateAddedPost: hydrate,
+    };
+    await addPostToArchive("run-1", { url: "https://example.com/blog" }, deps);
     const [, calledSourceType] = hydrate.mock.calls[0] as [string, string];
     expect(calledSourceType).toBe("web");
   });

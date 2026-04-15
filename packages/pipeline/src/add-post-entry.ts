@@ -5,6 +5,7 @@
  */
 export {
   hydrateAddedPost,
+  detectAddPostSourceType,
   type AddPostDeps,
   type AddPostSourceType,
 } from "@pipeline/services/add-post-helper.js";
