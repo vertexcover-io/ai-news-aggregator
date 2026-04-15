@@ -16,7 +16,7 @@ vi.mock("@newsletter/shared/logger", () => ({
   }),
 }));
 
-import { hydrateAddedPost } from "@pipeline/services/add-post-helper.js";
+import { hydrateAddedPost, detectAddPostSourceType } from "@pipeline/services/add-post-helper.js";
 import type { AddPostDeps } from "@pipeline/services/add-post-helper.js";
 
 function validRecap(): RecapContent {
@@ -60,6 +60,70 @@ function makeRepo(saved: { id: number } & RawItemInsert): {
     updateRecapData: vi.fn().mockResolvedValue(undefined),
   };
 }
+
+describe("detectAddPostSourceType", () => {
+  // REQ-002: HN item URL → "hn"
+  it('REQ-002: returns "hn" for an HN item URL', () => {
+    expect(detectAddPostSourceType("https://news.ycombinator.com/item?id=12345")).toBe("hn");
+  });
+
+  // EDGE-006: HN Algolia URL → "hn"
+  it('EDGE-006: returns "hn" for an HN Algolia URL', () => {
+    expect(detectAddPostSourceType("https://hn.algolia.com/#/story/comment/12345/67890")).toBe("hn");
+  });
+
+  // EDGE-001: HN URL with no id param → "web"
+  it('EDGE-001: returns "web" for HN URL with no id param', () => {
+    expect(detectAddPostSourceType("https://news.ycombinator.com/newest")).toBe("web");
+  });
+
+  // EDGE-002: HN URL with wrong param → "web"
+  it('EDGE-002: returns "web" for malformed HN URL with wrong param', () => {
+    expect(detectAddPostSourceType("https://news.ycombinator.com/item?foo=bar")).toBe("web");
+  });
+
+  // REQ-003: Reddit post URL → "reddit"
+  it('REQ-003: returns "reddit" for a Reddit post URL', () => {
+    expect(detectAddPostSourceType("https://www.reddit.com/r/MachineLearning/comments/abc123/title/")).toBe("reddit");
+  });
+
+  // EDGE-003: old.reddit.com → "reddit"
+  it('EDGE-003: returns "reddit" for old.reddit.com post URL', () => {
+    expect(detectAddPostSourceType("https://old.reddit.com/r/MachineLearning/comments/abc123/title/")).toBe("reddit");
+  });
+
+  // EDGE-004: Reddit subreddit URL (not a post) → "web"
+  it('EDGE-004: returns "web" for Reddit subreddit URL without comments', () => {
+    expect(detectAddPostSourceType("https://www.reddit.com/r/MachineLearning/")).toBe("web");
+  });
+
+  // EDGE-005: redd.it short URL → "web"
+  it('EDGE-005: returns "web" for redd.it short URL', () => {
+    expect(detectAddPostSourceType("https://redd.it/abc123")).toBe("web");
+  });
+
+  // EDGE-007: Reddit user URL → "web"
+  it('EDGE-007: returns "web" for Reddit user URL', () => {
+    expect(detectAddPostSourceType("https://www.reddit.com/user/foo")).toBe("web");
+  });
+
+  // EDGE-008: Empty string → "web"
+  it('EDGE-008: returns "web" for empty string', () => {
+    expect(detectAddPostSourceType("")).toBe("web");
+  });
+
+  // REQ-004: Arbitrary blog URL → "web"
+  it('REQ-004: returns "web" for an arbitrary blog URL', () => {
+    expect(detectAddPostSourceType("https://example.com/blog/post")).toBe("web");
+  });
+
+  // REQ-009: Function is synchronous (not a Promise)
+  it("REQ-009: returns a string synchronously (not a Promise)", () => {
+    const result = detectAddPostSourceType("https://example.com/blog");
+    expect(typeof result).toBe("string");
+    expect(result instanceof Promise).toBe(false);
+  });
+});
 
 describe("hydrateAddedPost", () => {
   it("composes fetch + upsert + recap and returns a RankedItem", async () => {

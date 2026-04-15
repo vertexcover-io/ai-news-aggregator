@@ -229,7 +229,7 @@ describe("POST /api/archives/:runId/add-post", () => {
     expect(res.status).toBe(400);
   });
 
-  it("EDGE-022/EDGE-036: ignores extra sourceType field, still returns 200 using web collector", async () => {
+  it("EDGE-022/EDGE-036: ignores extra sourceType field in body, uses detected source type from URL", async () => {
     const archiveRepo = makeArchiveRepo(makeArchiveRow([]));
     const ranked = makeRanked();
     const hydrate = vi.fn().mockResolvedValue(ranked);
@@ -240,13 +240,14 @@ describe("POST /api/archives/:runId/add-post", () => {
       body: JSON.stringify({ url: "https://example.com", sourceType: "hn" }),
     });
     expect(res.status).toBe(200);
-    // hydrate is always called with 'web' regardless of any sourceType in body
+    // sourceType in body is ignored; URL is a generic web URL → detected as "web"
     expect(hydrate).toHaveBeenCalledOnce();
     const [, calledSourceType] = hydrate.mock.calls[0] as [string, string];
     expect(calledSourceType).toBe("web");
   });
 
-  it("REQ-025: HN URL is always handled by web collector (not HN collector)", async () => {
+  // REQ-005: HN URL is now detected as "hn" (source-aware detection)
+  it("REQ-005: HN URL is detected and passed to hydrateAddedPost as 'hn'", async () => {
     const archiveRepo = makeArchiveRepo(makeArchiveRow([]));
     const ranked = makeRanked();
     const hydrate = vi.fn().mockResolvedValue(ranked);
@@ -261,7 +262,7 @@ describe("POST /api/archives/:runId/add-post", () => {
     expect(res.status).toBe(200);
     expect(hydrate).toHaveBeenCalledOnce();
     const [, calledSourceType] = hydrate.mock.calls[0] as [string, string];
-    expect(calledSourceType).toBe("web");
+    expect(calledSourceType).toBe("hn");
   });
 
   it("REQ-146: returns 409 when URL already in archive", async () => {
