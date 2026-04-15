@@ -29,7 +29,7 @@ import { shortlistCandidates } from "@pipeline/processors/shortlist.js";
 
 type EmbedBatchFn = (
   inputs: string[],
-  options?: { inputType?: "query" | "document" },
+  options?: { inputType?: "query" | "document"; signal?: AbortSignal },
 ) => Promise<number[][]>;
 
 const NOW = new Date("2026-04-09T12:00:00Z");
@@ -433,5 +433,33 @@ describe("shortlistCandidates", () => {
         embedBatch: embed,
       }),
     ).rejects.toThrow("voyage down");
+  });
+
+  it("REQ-06: forwards signal to embedBatch calls when provided", async () => {
+    const profile: UserProfile = {
+      name: "alice",
+      topics: ["ai"],
+      antiTopics: [],
+    };
+    const candidates = [makeCandidate({ id: 1 })];
+    const controller = new AbortController();
+    const capturedSignals: (AbortSignal | undefined)[] = [];
+
+    const embed: EmbedBatchFn = vi.fn((_, opts) => {
+      capturedSignals.push(opts?.signal);
+      return Promise.resolve([new Array<number>(4).fill(0)]);
+    });
+
+    await shortlistCandidates(candidates, {
+      profile,
+      now: NOW,
+      embedBatch: embed,
+      signal: controller.signal,
+    });
+
+    expect(capturedSignals.length).toBeGreaterThan(0);
+    for (const sig of capturedSignals) {
+      expect(sig).toBe(controller.signal);
+    }
   });
 });

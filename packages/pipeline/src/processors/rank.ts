@@ -41,6 +41,7 @@ export interface RankOptions {
   generateObject?: typeof defaultGenerateObject;
   loadBodies?: typeof defaultLoadBodies;
   now?: Date;
+  abortSignal?: AbortSignal;
 }
 
 export interface RankResult {
@@ -192,6 +193,7 @@ export async function rankCandidates(
       providerOptions: {
         anthropic: { maxTokens: RANK_MAX_TOKENS },
       },
+      abortSignal: options.abortSignal,
     })) as { object: z.infer<typeof rankedResponseSchema> };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

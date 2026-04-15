@@ -15,12 +15,14 @@ import { loadCandidatesSince } from "@pipeline/services/candidate-loader.js";
 import { createRunStateService } from "@pipeline/services/run-state.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { createCandidatesRepo } from "@pipeline/repositories/candidates.js";
+import { createRunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import {
   getTestRedis,
   closeTestRedis,
 } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { AppDb } from "@newsletter/shared/db";
+import type { CancelSubscriberFactory } from "@pipeline/services/cancel-subscriber.js";
 
 config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
 
@@ -49,6 +51,10 @@ describe("run-process worker E2E", () => {
       reddit: noopCollect,
       web: noopCollect,
     };
+    const noopCancelSubscriber: CancelSubscriberFactory = {
+      subscribe: () => Promise.resolve({ close: () => Promise.resolve() }),
+    };
+
     worker = new Worker<unknown, RunProcessResult>(
       "run-process-e2e-test",
       (job) =>
@@ -57,6 +63,7 @@ describe("run-process worker E2E", () => {
             runState: runStateService,
             rawItemsRepo: createRawItemsRepo(db),
             candidatesRepo: createCandidatesRepo(db),
+            archiveRepo: createRunArchivesRepo(db),
             loadFn: loadCandidatesSince,
             shortlistFn: (candidates) =>
               Promise.resolve({ shortlist: candidates, breakdowns: [] }),
@@ -71,6 +78,7 @@ describe("run-process worker E2E", () => {
                 rankedCount: Math.min(deduped.length, opts.topN),
               }),
             collectFns: noopCollectFns,
+            cancelSubscriber: noopCancelSubscriber,
           },
           job as unknown as RunProcessJobLike,
         ),

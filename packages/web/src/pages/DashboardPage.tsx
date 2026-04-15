@@ -6,7 +6,7 @@ import { Newspaper, Play, Settings as SettingsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRunList } from "../hooks/useRunList";
 import { useSettings } from "../hooks/useSettings";
-import { triggerRunNow } from "../api/runs";
+import { cancelRun, triggerRunNow } from "../api/runs";
 import { RunsTable } from "../components/dashboard/RunsTable";
 import { ScheduleBanner } from "../components/dashboard/ScheduleBanner";
 import { EmptyState } from "../components/dashboard/EmptyState";
@@ -34,6 +34,17 @@ export function DashboardPage(): ReactElement {
     } finally {
       setPending(false);
     }
+  }
+
+  async function handleCancel(runId: string): Promise<void> {
+    try {
+      await cancelRun(runId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to cancel run";
+      toast.error(message);
+    }
+    await queryClient.invalidateQueries({ queryKey: ["runs", { limit: null }] });
+    await queryClient.invalidateQueries({ queryKey: ["run", runId] });
   }
 
   const runNowDisabled = pending || hasActive;
@@ -90,6 +101,7 @@ export function DashboardPage(): ReactElement {
               void handleRunNow();
             }}
             retrying={pending}
+            onCancel={handleCancel}
           />
         )}
 

@@ -123,7 +123,7 @@ export interface RunProcessDeps {
   rankFn: RankFn;
   collectFns: CollectFns;
   archiveRepo: RunArchivesRepo;
-  cancelSubscriber?: CancelSubscriberFactory;
+  cancelSubscriber: CancelSubscriberFactory;
 }
 
 interface CollectingOutcome {
@@ -256,21 +256,16 @@ export async function handleRunProcessJob(
   const controller = new AbortController();
   const { signal } = controller;
 
-  const subscriberFactory = deps.cancelSubscriber;
-  const subscriber = subscriberFactory
-    ? await subscriberFactory.subscribe(runId, () => {
-        controller.abort(new CancelledError(runId));
-      })
-    : null;
+  const subscriber = await deps.cancelSubscriber.subscribe(runId, () => {
+    controller.abort(new CancelledError(runId));
+  });
 
   // REQ-09: always close subscriber in a finally block
   try {
     // EDGE-04: re-check Redis run-state after subscribing — if already cancelling, abort immediately
-    if (subscriberFactory) {
-      const currentState = await deps.runState.get(runId);
-      if (currentState?.status === "cancelling") {
-        controller.abort(new CancelledError(runId));
-      }
+    const currentState = await deps.runState.get(runId);
+    if (currentState?.status === "cancelling") {
+      controller.abort(new CancelledError(runId));
     }
 
     // Stage 1: collecting
@@ -361,6 +356,7 @@ export async function handleRunProcessJob(
       profile,
       halfLifeHours,
       runId,
+      signal,
     });
 
     if (shortlist.length === 0) {
@@ -399,6 +395,7 @@ export async function handleRunProcessJob(
         profile,
         halfLifeHours,
         shortlistBreakdowns: breakdowns,
+        abortSignal: signal,
       });
     } catch (err) {
       // Re-throw CancelledError to be handled by the outer catch
@@ -500,9 +497,7 @@ export async function handleRunProcessJob(
     }
     throw err;
   } finally {
-    if (subscriber) {
-      await subscriber.close();
-    }
+    await subscriber.close();
   }
 }
 

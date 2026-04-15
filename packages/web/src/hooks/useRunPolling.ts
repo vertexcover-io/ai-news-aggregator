@@ -6,6 +6,7 @@ const POLL_INTERVAL_MS = 2000;
 const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>([
   "completed",
   "failed",
+  "cancelled",
 ]);
 
 export function useRunPolling(

@@ -140,6 +140,34 @@ describe("embedBatch (REQ-009, REQ-025a, EDGE-012)", () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("REQ-06: forwards AbortSignal to fetch init when signal is provided", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ data: [{ embedding: [0.1], index: 0 }] }),
+    );
+
+    const controller = new AbortController();
+    await embedBatch(["hello"], { signal: controller.signal });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init?.signal).toBe(controller.signal);
+  });
+
+  it("REQ-06: fetch receives an already-aborted signal and propagates abort", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("cancelled"));
+
+    fetchMock.mockImplementationOnce((_url: string, init?: RequestInit) => {
+      if (init?.signal?.aborted) {
+        return Promise.reject(new Error("The operation was aborted"));
+      }
+      return Promise.resolve(jsonResponse({ data: [] }));
+    });
+
+    await expect(embedBatch(["hello"], { signal: controller.signal })).rejects.toThrow();
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init?.signal?.aborted).toBe(true);
+  });
 });
 
 describe("cosineSimilarity", () => {

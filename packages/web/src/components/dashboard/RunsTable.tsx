@@ -1,9 +1,17 @@
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 import type { RunSummary } from "@newsletter/shared";
 import { ArrowRight, ExternalLink, RotateCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -18,16 +26,21 @@ interface RunsTableProps {
   runs: RunSummary[];
   onRetry: () => void;
   retrying: boolean;
+  onCancel: (runId: string) => Promise<void>;
 }
 
 type DerivedStatus =
   | "running"
+  | "cancelling"
+  | "cancelled"
   | "ready-to-review"
   | "reviewed"
   | "failed";
 
 function deriveStatus(run: RunSummary): DerivedStatus {
   if (run.status === "running") return "running";
+  if (run.status === "cancelling") return "cancelling";
+  if (run.status === "cancelled") return "cancelled";
   if (run.status === "failed") return "failed";
   return run.reviewed ? "reviewed" : "ready-to-review";
 }
@@ -37,6 +50,14 @@ function StatusBadge({ status }: { status: DerivedStatus }): ReactElement {
     running: {
       label: "Running",
       className: "bg-sky-100 text-sky-700 border-transparent",
+    },
+    cancelling: {
+      label: "Cancelling",
+      className: "bg-orange-100 text-orange-700 border-transparent",
+    },
+    cancelled: {
+      label: "Cancelled",
+      className: "bg-gray-100 text-gray-600 border-transparent",
     },
     "ready-to-review": {
       label: "Ready to review",
@@ -77,11 +98,13 @@ function RunActionCell({
   derived,
   onRetry,
   retrying,
+  onCancelClick,
 }: {
   run: RunSummary;
   derived: DerivedStatus;
   onRetry: () => void;
   retrying: boolean;
+  onCancelClick: () => void;
 }): ReactElement | null {
   if (derived === "ready-to-review") {
     return (
@@ -116,16 +139,20 @@ function RunActionCell({
       </Button>
     );
   }
+  if (derived === "cancelled") {
+    return null;
+  }
+  if (derived === "cancelling") {
+    return (
+      <Button variant="destructive" size="sm" disabled>
+        Cancelling…
+      </Button>
+    );
+  }
   // running
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      disabled
-      aria-disabled="true"
-      title="Available when the run completes."
-    >
-      Open
+    <Button variant="destructive" size="sm" onClick={onCancelClick}>
+      Cancel
     </Button>
   );
 }
@@ -134,7 +161,11 @@ export function RunsTable({
   runs,
   onRetry,
   retrying,
+  onCancel,
 }: RunsTableProps): ReactElement {
+  const [confirmRunId, setConfirmRunId] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+
   if (runs.length === 0) {
     return (
       <div className="rounded-lg border bg-white p-8 text-center text-sm text-muted-foreground">
@@ -143,46 +174,96 @@ export function RunsTable({
     );
   }
 
+  async function handleConfirmCancel(): Promise<void> {
+    if (confirmRunId === null) return;
+    setCancelling(true);
+    try {
+      await onCancel(confirmRunId);
+    } finally {
+      setCancelling(false);
+      setConfirmRunId(null);
+    }
+  }
+
   return (
-    <div className="rounded-lg border bg-white">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="px-6 py-3">Date</TableHead>
-            <TableHead className="px-6 py-3">Status</TableHead>
-            <TableHead className="px-6 py-3">Items</TableHead>
-            <TableHead className="px-6 py-3 text-right">Action</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {runs.map((run) => {
-            const derived = deriveStatus(run);
-            const { date, time } = formatStartedAt(run.startedAt);
-            return (
-              <TableRow key={run.runId}>
-                <TableCell className="px-6 py-4 align-middle">
-                  <div className="font-medium">{date}</div>
-                  <div className="text-xs text-muted-foreground">{time}</div>
-                </TableCell>
-                <TableCell className="px-6 py-4 align-middle">
-                  <StatusBadge status={derived} />
-                </TableCell>
-                <TableCell className="px-6 py-4 align-middle text-sm text-muted-foreground">
-                  {derived === "failed" ? "—" : `${String(run.itemCount)} posts`}
-                </TableCell>
-                <TableCell className="px-6 py-4 align-middle text-right">
-                  <RunActionCell
-                    run={run}
-                    derived={derived}
-                    onRetry={onRetry}
-                    retrying={retrying}
-                  />
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
+    <>
+      <Dialog
+        open={confirmRunId !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRunId(null);
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Cancel this run?</DialogTitle>
+            <DialogDescription>
+              Items already collected will be discarded.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setConfirmRunId(null); }}
+              disabled={cancelling}
+            >
+              Keep running
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                void handleConfirmCancel();
+              }}
+              disabled={cancelling}
+            >
+              {cancelling ? "Cancelling…" : "Cancel run"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <div className="rounded-lg border bg-white">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="px-6 py-3">Date</TableHead>
+              <TableHead className="px-6 py-3">Status</TableHead>
+              <TableHead className="px-6 py-3">Items</TableHead>
+              <TableHead className="px-6 py-3 text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {runs.map((run) => {
+              const derived = deriveStatus(run);
+              const { date, time } = formatStartedAt(run.startedAt);
+              return (
+                <TableRow key={run.runId}>
+                  <TableCell className="px-6 py-4 align-middle">
+                    <div className="font-medium">{date}</div>
+                    <div className="text-xs text-muted-foreground">{time}</div>
+                  </TableCell>
+                  <TableCell className="px-6 py-4 align-middle">
+                    <StatusBadge status={derived} />
+                  </TableCell>
+                  <TableCell className="px-6 py-4 align-middle text-sm text-muted-foreground">
+                    {derived === "failed" || derived === "cancelled"
+                      ? "—"
+                      : `${String(run.itemCount)} posts`}
+                  </TableCell>
+                  <TableCell className="px-6 py-4 align-middle text-right">
+                    <RunActionCell
+                      run={run}
+                      derived={derived}
+                      onRetry={onRetry}
+                      retrying={retrying}
+                      onCancelClick={() => { setConfirmRunId(run.runId); }}
+                    />
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    </>
   );
 }

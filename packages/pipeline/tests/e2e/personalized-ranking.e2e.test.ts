@@ -46,6 +46,9 @@ import {
   type RunSourceType,
 } from "@pipeline/services/run-state.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import { createCandidatesRepo } from "@pipeline/repositories/candidates.js";
+import { createRunArchivesRepo } from "@pipeline/repositories/run-archives.js";
+import type { CancelSubscriberFactory } from "@pipeline/services/cancel-subscriber.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import {
   getTestRedis,
@@ -270,13 +273,20 @@ function buildHarness(db: AppDb): TestHarness {
     });
   };
 
+  const noopCancelSubscriber: CancelSubscriberFactory = {
+    subscribe: () => Promise.resolve({ close: () => Promise.resolve() }),
+  };
+
   harness.deps = {
     runState,
-    db,
+    rawItemsRepo: createRawItemsRepo(db),
+    candidatesRepo: createCandidatesRepo(db),
+    archiveRepo: createRunArchivesRepo(db),
     loadFn: loadCandidatesSince,
     shortlistFn,
     rankFn,
     collectFns: { hn: fakeHn, reddit: fakeReddit, web: fakeBlog },
+    cancelSubscriber: noopCancelSubscriber,
   };
 
   return harness;

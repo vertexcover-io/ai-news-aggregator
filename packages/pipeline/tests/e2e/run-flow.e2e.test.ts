@@ -38,11 +38,13 @@ import { loadCandidatesSince } from "@pipeline/services/candidate-loader.js";
 import { createRunStateService } from "@pipeline/services/run-state.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { createCandidatesRepo } from "@pipeline/repositories/candidates.js";
+import { createRunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import {
   getTestRedis,
   closeTestRedis,
 } from "@pipeline-tests/e2e/setup/test-redis.js";
+import type { CancelSubscriberFactory } from "@pipeline/services/cancel-subscriber.js";
 
 config({ path: resolve(import.meta.dirname, "../../../../.env.test") });
 
@@ -213,6 +215,10 @@ describe("run flow end-to-end (single-job)", () => {
         durationMs: 0,
       });
 
+    const noopCancelSubscriber: CancelSubscriberFactory = {
+      subscribe: () => Promise.resolve({ close: () => Promise.resolve() }),
+    };
+
     processWorker = new Worker<RunProcessJobData, RunProcessResult>(
       PROCESS_QUEUE,
       (job) =>
@@ -221,11 +227,13 @@ describe("run flow end-to-end (single-job)", () => {
             runState: runStateService,
             rawItemsRepo: createRawItemsRepo(db),
             candidatesRepo: createCandidatesRepo(db),
+            archiveRepo: createRunArchivesRepo(db),
             loadFn: loadCandidatesSince,
             shortlistFn: (candidates) =>
               Promise.resolve({ shortlist: candidates, breakdowns: [] }),
             rankFn: (candidates, options) => rankFnImpl(candidates, options),
             collectFns: { hn: fakeHn, reddit: fakeReddit, web: fakeWeb },
+            cancelSubscriber: noopCancelSubscriber,
           },
           job as unknown as RunProcessJobLike,
         ),

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import type { RunSummary } from "@newsletter/shared";
 import { RunsTable } from "../../../../src/components/dashboard/RunsTable";
 
@@ -20,58 +20,20 @@ function makeRun(overrides: Partial<RunSummary>): RunSummary {
   };
 }
 
-function LocationCapture({ onLocation }: { onLocation: (path: string) => void }): null {
-  const location = useLocation();
-  onLocation(location.pathname);
-  return null;
-}
-
 describe("RunsTable running state (REQ-001..REQ-005)", () => {
-  it("REQ-001: clicking the Open button on a running run does not navigate", () => {
-    const locations: string[] = [];
+  it("REQ-001: running row renders Cancel button, not Open button (REQ-11)", () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <LocationCapture onLocation={(p) => locations.push(p)} />
         <RunsTable
           runs={[makeRun({ runId: "run-123", status: "running" })]}
           onRetry={vi.fn()}
           retrying={false}
+          onCancel={vi.fn()}
         />
       </MemoryRouter>,
     );
-    const initialSnapshot = [...locations];
-    const btn = screen.getByRole("button", { name: "Open" });
-    fireEvent.click(btn);
-    // Location should be unchanged after clicking the disabled button
-    expect(locations).toEqual(initialSnapshot);
-  });
-
-  it("REQ-002: running run Open button has aria-disabled='true'", () => {
-    render(
-      <MemoryRouter>
-        <RunsTable
-          runs={[makeRun({ runId: "run-123", status: "running" })]}
-          onRetry={vi.fn()}
-          retrying={false}
-        />
-      </MemoryRouter>,
-    );
-    const btn = screen.getByRole("button", { name: "Open" });
-    expect(btn.getAttribute("aria-disabled")).toBe("true");
-  });
-
-  it("REQ-003: running run Open button has title='Available when the run completes.'", () => {
-    render(
-      <MemoryRouter>
-        <RunsTable
-          runs={[makeRun({ runId: "run-123", status: "running" })]}
-          onRetry={vi.fn()}
-          retrying={false}
-        />
-      </MemoryRouter>,
-    );
-    const btn = screen.getByRole("button", { name: "Open" });
-    expect(btn.getAttribute("title")).toBe("Available when the run completes.");
+    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
   });
 
   it("REQ-004: completed run renders 'View archive' link to /archive/:runId", () => {
@@ -81,6 +43,7 @@ describe("RunsTable running state (REQ-001..REQ-005)", () => {
           runs={[makeRun({ runId: "run-done", status: "completed", reviewed: true })]}
           onRetry={vi.fn()}
           retrying={false}
+          onCancel={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -95,6 +58,7 @@ describe("RunsTable running state (REQ-001..REQ-005)", () => {
           runs={[makeRun({ runId: "run-fail", status: "failed" })]}
           onRetry={vi.fn()}
           retrying={false}
+          onCancel={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -116,6 +80,7 @@ describe("RunsTable CTA routing (REQ-110, REQ-111)", () => {
           ]}
           onRetry={vi.fn()}
           retrying={false}
+          onCancel={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -136,10 +101,124 @@ describe("RunsTable CTA routing (REQ-110, REQ-111)", () => {
           ]}
           onRetry={vi.fn()}
           retrying={false}
+          onCancel={vi.fn()}
         />
       </MemoryRouter>,
     );
     const link = screen.getByRole("link", { name: /view archive/i });
     expect(link.getAttribute("href")).toBe("/archive/run-done");
+  });
+});
+
+describe("RunsTable cancel button (REQ-11, REQ-12)", () => {
+  it("REQ-11: renders destructive Cancel button for running row", () => {
+    render(
+      <MemoryRouter>
+        <RunsTable
+          runs={[makeRun({ runId: "run-active", status: "running" })]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const btn = screen.getByRole("button", { name: "Cancel" });
+    expect(btn).toBeTruthy();
+  });
+
+  it("REQ-11: renders disabled 'Cancelling…' button for cancelling row", () => {
+    render(
+      <MemoryRouter>
+        <RunsTable
+          runs={[makeRun({ runId: "run-cancelling", status: "cancelling" })]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const btn = screen.getByRole("button", { name: "Cancelling…" });
+    expect(btn).toBeTruthy();
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("REQ-11: renders Cancelled badge with no action button for cancelled row", () => {
+    render(
+      <MemoryRouter>
+        <RunsTable
+          runs={[makeRun({ runId: "run-cancelled", status: "cancelled" })]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Cancelled")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("REQ-12: clicking Cancel opens confirmation dialog with correct title and description", async () => {
+    render(
+      <MemoryRouter>
+        <RunsTable
+          runs={[makeRun({ runId: "run-active", status: "running" })]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const cancelBtn = screen.getByRole("button", { name: "Cancel" });
+    fireEvent.click(cancelBtn);
+    await waitFor(() => {
+      expect(screen.getByText("Cancel this run?")).toBeTruthy();
+      expect(screen.getByText("Items already collected will be discarded.")).toBeTruthy();
+    });
+  });
+
+  it("REQ-12: confirming dialog triggers onCancel with the runId", async () => {
+    const onCancel = vi.fn().mockResolvedValue(undefined);
+    render(
+      <MemoryRouter>
+        <RunsTable
+          runs={[makeRun({ runId: "run-active", status: "running" })]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={onCancel}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(screen.getByText("Cancel this run?")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel run" }));
+    await waitFor(() => {
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(onCancel).toHaveBeenCalledWith("run-active");
+    });
+  });
+
+  it("REQ-12: dismissing dialog does NOT trigger onCancel", async () => {
+    const onCancel = vi.fn();
+    render(
+      <MemoryRouter>
+        <RunsTable
+          runs={[makeRun({ runId: "run-active", status: "running" })]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={onCancel}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(screen.getByText("Cancel this run?")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Keep running" }));
+    await waitFor(() => {
+      expect(screen.queryByText("Cancel this run?")).toBeNull();
+    });
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });
