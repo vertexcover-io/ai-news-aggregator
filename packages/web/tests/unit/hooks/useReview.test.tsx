@@ -208,4 +208,116 @@ describe("useReview", () => {
     });
     expect(result.current.hasUrl("https://pending.com")).toBe(true);
   });
+
+  // REQ-009: updateItemField updates recap.summary
+  it("updateItemField summary updates current item recap.summary", async () => {
+    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    const { result } = renderHook(() => useReview("run-1"), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.state.current).toHaveLength(3);
+    });
+    act(() => {
+      result.current.updateItemField(1, "summary", "new summary");
+    });
+    expect(result.current.state.current[0]?.recap?.summary).toBe("new summary");
+  });
+
+  // REQ-009: updateItemField sets isDirty = true
+  it("updateItemField on any field sets isDirty = true", async () => {
+    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    const { result } = renderHook(() => useReview("run-1"), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.state.current).toHaveLength(3);
+    });
+    expect(result.current.isDirty).toBe(false);
+    act(() => {
+      result.current.updateItemField(2, "bottomLine", "updated bottom line");
+    });
+    expect(result.current.isDirty).toBe(true);
+  });
+
+  // REQ-016: field edit survives reorder
+  it("updateItemField edit is preserved after reorder", async () => {
+    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    const { result } = renderHook(() => useReview("run-1"), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.state.current).toHaveLength(3);
+    });
+    act(() => {
+      result.current.updateItemField(1, "summary", "edited summary");
+    });
+    act(() => {
+      result.current.reorder(0, 2);
+    });
+    // item with id=1 should now be at index 2 (moved from 0 to 2)
+    const editedItem = result.current.state.current.find((i) => i.id === 1);
+    expect(editedItem?.recap?.summary).toBe("edited summary");
+  });
+
+  // discard reverts field edits
+  it("discard reverts field edits back to initial", async () => {
+    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    const { result } = renderHook(() => useReview("run-1"), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.state.current).toHaveLength(3);
+    });
+    act(() => {
+      result.current.updateItemField(1, "summary", "temporary edit");
+    });
+    expect(result.current.isDirty).toBe(true);
+    act(() => {
+      result.current.discard();
+    });
+    expect(result.current.state.current[0]?.recap).toBeNull();
+    expect(result.current.isDirty).toBe(false);
+  });
+
+  // EDGE-003: empty string summary is a valid edit (isDirty = true)
+  it("EDGE-003: empty string summary is a valid edit that sets isDirty = true", async () => {
+    const itemWithRecap = { ...makeItem(1, "https://a.com"), recap: { summary: "original", bullets: [], bottomLine: "" } };
+    const responseWithRecap: RunStateResponse = {
+      ...completedResponse,
+      rankedItems: [
+        itemWithRecap,
+        makeItem(2, "https://b.com"),
+        makeItem(3, "https://c.com"),
+      ],
+    };
+    vi.mocked(getArchive).mockResolvedValue(responseWithRecap);
+    const { result } = renderHook(() => useReview("run-1"), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.state.current).toHaveLength(3);
+    });
+    expect(result.current.isDirty).toBe(false);
+    act(() => {
+      result.current.updateItemField(1, "summary", "");
+    });
+    expect(result.current.isDirty).toBe(true);
+  });
+
+  // updateItemField imageUrl
+  it("updateItemField imageUrl updates item.imageUrl", async () => {
+    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    const { result } = renderHook(() => useReview("run-1"), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.state.current).toHaveLength(3);
+    });
+    act(() => {
+      result.current.updateItemField(1, "imageUrl", "https://img.example.com/photo.jpg");
+    });
+    expect(result.current.state.current[0]?.imageUrl).toBe("https://img.example.com/photo.jpg");
+    expect(result.current.isDirty).toBe(true);
+  });
 });

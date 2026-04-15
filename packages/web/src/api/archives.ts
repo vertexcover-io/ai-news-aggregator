@@ -2,7 +2,14 @@ import type { RankedItem } from "@newsletter/shared";
 import { apiFetch } from "./client";
 
 export interface PatchArchiveBody {
-  rankedItems: { id: number; sourceType: string }[];
+  rankedItems: {
+    id: number;
+    sourceType: string;
+    summary?: string;
+    bullets?: string[];
+    bottomLine?: string;
+    imageUrl?: string | null;
+  }[];
 }
 
 export interface AddPostBody {

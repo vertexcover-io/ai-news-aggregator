@@ -33,6 +33,7 @@ describe("ReviewList", () => {
         addedIds={new Set()}
         onReorder={vi.fn()}
         onDelete={vi.fn()}
+        onUpdateField={vi.fn()}
         pendingCount={0}
       />,
     );
@@ -53,6 +54,7 @@ describe("ReviewList", () => {
         addedIds={new Set()}
         onReorder={vi.fn()}
         onDelete={onDelete}
+        onUpdateField={vi.fn()}
         pendingCount={0}
       />,
     );
@@ -68,6 +70,7 @@ describe("ReviewList", () => {
         addedIds={new Set()}
         onReorder={vi.fn()}
         onDelete={vi.fn()}
+        onUpdateField={vi.fn()}
         pendingCount={1}
       />,
     );
@@ -82,6 +85,7 @@ describe("ReviewList", () => {
         addedIds={new Set([99])}
         onReorder={vi.fn()}
         onDelete={vi.fn()}
+        onUpdateField={vi.fn()}
         pendingCount={0}
       />,
     );

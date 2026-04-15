@@ -33,6 +33,7 @@ export function ReviewPage(): ReactElement {
     failPending,
     discard,
     hasUrl,
+    updateItemField,
   } = useReview(runId);
   const [saving, setSaving] = useState(false);
 
@@ -125,6 +126,12 @@ export function ReviewPage(): ReactElement {
         rankedItems: state.current.map((it) => ({
           id: it.id,
           sourceType: it.sourceType,
+          ...(it.recap !== null && {
+            summary: it.recap.summary,
+            bullets: it.recap.bullets,
+            bottomLine: it.recap.bottomLine,
+          }),
+          imageUrl: it.imageUrl,
         })),
       });
       void navigate(`/archive/${runId}`);
@@ -175,6 +182,7 @@ export function ReviewPage(): ReactElement {
           addedIds={state.addedIds}
           onReorder={reorder}
           onDelete={remove}
+          onUpdateField={updateItemField}
           pendingCount={state.pending.length}
         />
       </main>

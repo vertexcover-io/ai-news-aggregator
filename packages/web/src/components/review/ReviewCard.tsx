@@ -1,9 +1,12 @@
+import { useState } from "react";
 import type { ReactElement } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Trash2 } from "lucide-react";
+import { GripVertical, Pencil, Trash2 } from "lucide-react";
 import type { RankedItem } from "@newsletter/shared";
 import { cn } from "@/lib/utils";
+import { EditableField } from "./EditableField";
+import { EditableBulletList } from "./EditableBulletList";
 
 const SOURCE_COLORS: Record<string, string> = {
   hn: "bg-orange-100 text-orange-700",
@@ -21,6 +24,11 @@ interface ReviewCardProps {
   rank: number;
   isAdded: boolean;
   onDelete: (id: number) => void;
+  onUpdateField: (
+    id: number,
+    field: "summary" | "bullets" | "bottomLine" | "imageUrl",
+    value: string | string[] | null,
+  ) => void;
 }
 
 export function ReviewCard({
@@ -28,6 +36,7 @@ export function ReviewCard({
   rank,
   isAdded,
   onDelete,
+  onUpdateField,
 }: ReviewCardProps): ReactElement {
   const {
     attributes,
@@ -37,6 +46,9 @@ export function ReviewCard({
     transition,
     isDragging,
   } = useSortable({ id: item.id });
+
+  const [editingImageUrl, setEditingImageUrl] = useState(false);
+  const [imageUrlDraft, setImageUrlDraft] = useState(item.imageUrl ?? "");
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -51,7 +63,7 @@ export function ReviewCard({
       style={style}
       data-added={isAdded ? "true" : undefined}
       className={cn(
-        "flex items-start gap-4 rounded-lg border bg-white px-4 py-3 shadow-sm",
+        "relative flex items-start gap-4 rounded-lg border bg-white px-4 py-3 shadow-sm",
         isAdded && "border-l-4 border-l-emerald-400",
         isDragging && "opacity-70",
       )}
@@ -73,7 +85,7 @@ export function ReviewCard({
         {rank}
       </div>
 
-      <div className="size-12 shrink-0 overflow-hidden rounded bg-gray-100">
+      <div className="relative size-12 shrink-0 overflow-hidden rounded bg-gray-100 group/thumb">
         {item.imageUrl ? (
           <img
             src={item.imageUrl}
@@ -82,7 +94,47 @@ export function ReviewCard({
             className="size-full object-cover"
           />
         ) : null}
+        {!editingImageUrl && (
+          <button
+            type="button"
+            aria-label="Edit image URL"
+            className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover/thumb:opacity-100 transition-opacity"
+            onClick={() => {
+              setImageUrlDraft(item.imageUrl ?? "");
+              setEditingImageUrl(true);
+            }}
+          >
+            <Pencil className="size-3 text-white" />
+          </button>
+        )}
       </div>
+      {editingImageUrl && (
+        <div className="absolute top-full left-0 z-10 mt-1 w-64 rounded border bg-white p-2 shadow-md">
+          <input
+            autoFocus
+            type="text"
+            value={imageUrlDraft}
+            onChange={(e) => { setImageUrlDraft(e.target.value); }}
+            onBlur={() => {
+              onUpdateField(item.id, "imageUrl", imageUrlDraft || null);
+              setEditingImageUrl(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                onUpdateField(item.id, "imageUrl", imageUrlDraft || null);
+                setEditingImageUrl(false);
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setEditingImageUrl(false);
+              }
+            }}
+            placeholder="Image URL..."
+            className="w-full text-xs border-b border-blue-400 focus:outline-none"
+          />
+        </div>
+      )}
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -114,9 +166,29 @@ export function ReviewCard({
         >
           {item.title}
         </a>
-        <p className="mt-1 text-sm text-gray-600 line-clamp-2">
-          {item.rationale}
-        </p>
+        {item.recap ? (
+          <div className="mt-1 space-y-1">
+            <EditableField
+              value={item.recap.summary}
+              onCommit={(v) => { onUpdateField(item.id, "summary", v); }}
+              placeholder="Summary..."
+              multiline
+            />
+            <EditableBulletList
+              bullets={item.recap.bullets}
+              onCommit={(newBullets) => { onUpdateField(item.id, "bullets", newBullets); }}
+            />
+            <EditableField
+              value={item.recap.bottomLine}
+              onCommit={(v) => { onUpdateField(item.id, "bottomLine", v); }}
+              placeholder="Bottom line..."
+            />
+          </div>
+        ) : (
+          <p className="mt-1 text-sm text-gray-600 line-clamp-2">
+            {item.rationale}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col items-end gap-2">
