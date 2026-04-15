@@ -57,7 +57,7 @@ Applies to: `quality-gate`, `tdd`, `testing`, `code-review`.
 Does NOT apply to: `orchestrate` itself (no recursive override).
 
 When a local override is found, orchestrate logs:  
-`"Using local skill override: .claude/skills/quality-gate.md"`
+`"Using local skill override: .claude/skills/quality-gate/SKILL.md"`
 
 ### Compatibility Contract
 
@@ -287,7 +287,7 @@ This design produces the following artifacts:
 
 | Artifact | Action | Notes |
 |----------|--------|-------|
-| `.claude/skills/quality-gate.md` | Create | Full local override skill |
+| `.claude/skills/quality-gate/SKILL.md` | Create | Full local override skill |
 | `harness-engineering/skills/orchestrate/SKILL.md` | Edit | Add override resolution block |
 | `packages/pipeline/tests/e2e/seam/` | Create + move files | Reorganize existing seam tests |
 | `packages/pipeline/tests/e2e/network/` | Create + move files | Reorganize existing network tests |

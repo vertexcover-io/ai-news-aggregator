@@ -4,7 +4,7 @@
 
 **Goal:** Upgrade the newsletter project's orchestrate pipeline with a human-simulator quality gate: spec-driven requirement verification (Check 8) and exploratory Playwright QA (Check 9), backed by a project-local skill override and a reorganized e2e test suite.
 
-**Architecture:** A project-local `.claude/skills/quality-gate.md` overrides the global harness skill for all quality gate runs in this project. The global orchestrate skill gets a 3-line override resolution block so it checks for local skill overrides before using global ones. The pipeline's Vitest e2e tests are reorganized into `seam/` (always run, real DB+Redis) and `network/` (opt-in, live external APIs) subdirectories.
+**Architecture:** A project-local `.claude/skills/quality-gate/SKILL.md` overrides the global harness skill for all quality gate runs in this project. The global orchestrate skill gets a 3-line override resolution block so it checks for local skill overrides before using global ones. The pipeline's Vitest e2e tests are reorganized into `seam/` (always run, real DB+Redis) and `network/` (opt-in, live external APIs) subdirectories.
 
 **Tech Stack:** TypeScript, Vitest 3, Playwright, BullMQ/Redis MCP, PostgreSQL MCP, Playwright MCP, Hono (API), Vite (web), pnpm/Turborepo
 
@@ -16,7 +16,7 @@
 
 | Action | Path | Purpose |
 |--------|------|---------|
-| Create | `.claude/skills/quality-gate.md` | Full local quality-gate skill override |
+| Create | `.claude/skills/quality-gate/SKILL.md` | Full local quality-gate skill override |
 | Modify | `harness-engineering/skills/orchestrate/SKILL.md` (line ~213) | Add override resolution block before Sub-Agent Dispatch section |
 | Create | `packages/pipeline/tests/e2e/seam/` | Destination for seam tests |
 | Move | `packages/pipeline/tests/e2e/run-flow.e2e.test.ts` → `seam/` | Reorganize |
