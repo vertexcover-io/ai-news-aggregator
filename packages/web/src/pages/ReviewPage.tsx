@@ -77,7 +77,19 @@ export function ReviewPage(): ReactElement {
     const kept = currentIds.filter((id) => initialSet.has(id));
     const keptInitialOrder = initialIds.filter((id) => currentSet.has(id));
     const reordered = kept.some((id, i) => keptInitialOrder[i] !== id) ? 1 : 0;
-    return added + removed + reordered + state.pending.length;
+    const initialMap = new Map(state.initial.map((i) => [i.id, i]));
+    const fieldEdits = state.current.filter((it) => {
+      const orig = initialMap.get(it.id);
+      if (!orig) return false;
+      if (it.imageUrl !== orig.imageUrl) return true;
+      if (it.recap?.summary !== orig.recap?.summary) return true;
+      if (it.recap?.bottomLine !== orig.recap?.bottomLine) return true;
+      const ab = it.recap?.bullets ?? [];
+      const bb = orig.recap?.bullets ?? [];
+      if (ab.length !== bb.length) return true;
+      return ab.some((b, i) => b !== bb[i]);
+    }).length;
+    return added + removed + reordered + state.pending.length + fieldEdits;
   }, [state]);
 
   if (query.isLoading) {
