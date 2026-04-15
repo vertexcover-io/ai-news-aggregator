@@ -106,6 +106,10 @@ export const archivePatchSchema = z
         z.object({
           id: z.number().int(),
           sourceType: z.string().min(1),
+          summary: z.string().optional(),
+          bullets: z.array(z.string()).optional(),
+          bottomLine: z.string().optional(),
+          imageUrl: z.string().nullable().optional(),
         }),
       )
       .min(1, { message: "rankedItems cannot be empty" })
