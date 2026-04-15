@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { Controller, type Control, useWatch } from "react-hook-form";
-import { Pencil, ChevronUp } from "lucide-react";
+import { Pencil, ChevronUp, Trash2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -512,82 +512,113 @@ function WebEditPanel({
   control: Control<SettingsFormValues>;
 }): ReactElement {
   return (
-    <div className="grid grid-cols-2 gap-3">
-      <div className="col-span-2">
-        <Label htmlFor="web-sources" className="text-xs">
-          Sources — one per line: <code className="font-mono">Name: URL</code>
-        </Label>
-        <Controller
-          control={control}
-          name="webConfig.sources"
-          render={({ field }) => (
-            <textarea
-              id="web-sources"
-              rows={4}
-              className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={field.value
-                .map((s) => `${s.name}: ${s.listingUrl}`)
-                .join("\n")}
-              onChange={(e) => {
-                const sources = e.target.value
-                  .split("\n")
-                  .flatMap((line) => {
-                    const colonIdx = line.indexOf(":");
-                    if (colonIdx === -1) return [];
-                    const name = line.slice(0, colonIdx).trim();
-                    const listingUrl = line.slice(colonIdx + 1).trim();
-                    return name && listingUrl ? [{ name, listingUrl }] : [];
-                  });
-                field.onChange(sources);
-              }}
-            />
-          )}
-        />
+    <div className="space-y-2">
+      <div className="grid grid-cols-[1fr_2fr_auto] gap-2 text-xs text-muted-foreground px-1">
+        <span>Name</span>
+        <span>URL</span>
+        <span />
       </div>
-      <div>
-        <Label htmlFor="web-max" className="text-xs">
-          Max items
-        </Label>
-        <Controller
-          control={control}
-          name="webConfig.maxItems"
-          render={({ field }) => (
-            <Input
-              id="web-max"
-              type="number"
+      <Controller
+        control={control}
+        name="webConfig.sources"
+        render={({ field }) => (
+          <>
+            {field.value.map((source, index) => (
+              <div key={index} className="grid grid-cols-[1fr_2fr_auto] items-center gap-2">
+                <Input
+                  placeholder="Anthropic"
+                  value={source.name}
+                  onChange={(e) => {
+                    const updated = field.value.map((s, i) =>
+                      i === index ? { ...s, name: e.target.value } : s,
+                    );
+                    field.onChange(updated);
+                  }}
+                />
+                <Input
+                  type="url"
+                  placeholder="https://www.anthropic.com/news"
+                  value={source.listingUrl}
+                  onChange={(e) => {
+                    const updated = field.value.map((s, i) =>
+                      i === index ? { ...s, listingUrl: e.target.value } : s,
+                    );
+                    field.onChange(updated);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    field.onChange(field.value.filter((_, i) => i !== index));
+                  }}
+                  aria-label={`Remove ${source.name || "source"}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
               className="mt-1"
-              min={1}
-              max={100}
-              value={field.value}
-              onChange={(e) => {
-                field.onChange(Number(e.target.value));
+              onClick={() => {
+                field.onChange([...field.value, { name: "", listingUrl: "" }]);
               }}
-            />
-          )}
-        />
-      </div>
-      <div>
-        <Label htmlFor="web-since" className="text-xs">
-          Since (days)
-        </Label>
-        <Controller
-          control={control}
-          name="webConfig.sinceDays"
-          render={({ field }) => (
-            <Input
-              id="web-since"
-              type="number"
-              className="mt-1"
-              min={1}
-              value={field.value ?? ""}
-              onChange={(e) => {
-                field.onChange(
-                  e.target.value === "" ? undefined : Number(e.target.value),
-                );
-              }}
-            />
-          )}
-        />
+            >
+              Add source
+            </Button>
+          </>
+        )}
+      />
+      <div className="grid grid-cols-2 gap-3 pt-2">
+        <div>
+          <Label htmlFor="web-max" className="text-xs">
+            Max items
+          </Label>
+          <Controller
+            control={control}
+            name="webConfig.maxItems"
+            render={({ field }) => (
+              <Input
+                id="web-max"
+                type="number"
+                className="mt-1"
+                min={1}
+                max={100}
+                value={field.value}
+                onChange={(e) => {
+                  field.onChange(Number(e.target.value));
+                }}
+              />
+            )}
+          />
+        </div>
+        <div>
+          <Label htmlFor="web-since" className="text-xs">
+            Since (days)
+          </Label>
+          <Controller
+            control={control}
+            name="webConfig.sinceDays"
+            render={({ field }) => (
+              <Input
+                id="web-since"
+                type="number"
+                className="mt-1"
+                min={1}
+                value={field.value ?? ""}
+                onChange={(e) => {
+                  field.onChange(
+                    e.target.value === "" ? undefined : Number(e.target.value),
+                  );
+                }}
+              />
+            )}
+          />
+        </div>
       </div>
     </div>
   );

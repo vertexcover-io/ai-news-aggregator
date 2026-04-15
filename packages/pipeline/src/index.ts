@@ -5,6 +5,8 @@ import type { CollectionJobLike } from "@pipeline/workers/collection.js";
 import { collectionWorker } from "@pipeline/workers/collection.js";
 import { createProcessingWorker } from "@pipeline/workers/processing.js";
 import { createLogger } from "@newsletter/shared/logger";
+import { createRedisConnection } from "@newsletter/shared/redis";
+import { createRunStateService } from "@pipeline/services/run-state.js";
 
 export {
   createRunStateService,
@@ -24,7 +26,17 @@ if (!process.env.VOYAGE_API_KEY) {
   throw new Error("VOYAGE_API_KEY is required for personalized ranking");
 }
 
-const processingWorker = createProcessingWorker();
+export function getRunIdFromJobData(data: unknown): string | undefined {
+  if (typeof data === "object" && data !== null && "runId" in data) {
+    const runId = (data as Record<string, unknown>).runId;
+    return typeof runId === "string" ? runId : undefined;
+  }
+  return undefined;
+}
+
+const processingConnection = createRedisConnection();
+const runState = createRunStateService(processingConnection);
+const processingWorker = createProcessingWorker({ connection: processingConnection });
 
 const shutdown = async (): Promise<void> => {
   logger.info({ queue: "collection" }, "worker shutting down");
@@ -68,4 +80,17 @@ processingWorker.on("failed", (job: Job | undefined, err: Error) => {
     { jobId: job?.id, jobName: job?.name, error: err.message },
     "job failed",
   );
+  if (job?.name === "run-process") {
+    const runId = getRunIdFromJobData(job.data);
+    if (runId !== undefined) {
+      runState.setStage(runId, "failed", "failed").catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        logger.error({ runId, error: msg }, "failed to update run state after job failure");
+      });
+    }
+  }
+});
+
+processingWorker.on("stalled", (jobId: string) => {
+  logger.warn({ jobId }, "processing job stalled — BullMQ will retry");
 });
