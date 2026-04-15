@@ -43,7 +43,14 @@ export interface ReviewDeps {
 }
 
 export interface PatchArchiveInput {
-  rankedItems: { id: number; sourceType: string }[];
+  rankedItems: {
+    id: number;
+    sourceType: string;
+    summary?: string;
+    bullets?: string[];
+    bottomLine?: string;
+    imageUrl?: string | null;
+  }[];
 }
 
 export async function patchArchive(
@@ -65,11 +72,14 @@ export async function patchArchive(
     );
   }
 
-  const refs: RankedItemRef[] = input.rankedItems.map((i) => ({
-    rawItemId: i.id,
-    score: 0,
-    rationale: "",
-  }));
+  const refs: RankedItemRef[] = input.rankedItems.map((i) => {
+    const ref: RankedItemRef = { rawItemId: i.id, score: 0, rationale: "" };
+    if (i.summary !== undefined) ref.summary = i.summary;
+    if (i.bullets !== undefined) ref.bullets = i.bullets;
+    if (i.bottomLine !== undefined) ref.bottomLine = i.bottomLine;
+    if (i.imageUrl !== undefined) ref.imageUrl = i.imageUrl;
+    return ref;
+  });
   return deps.archiveRepo.updateRankedItems(runId, refs);
 }
 

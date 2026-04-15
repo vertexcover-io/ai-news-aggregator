@@ -44,6 +44,7 @@ export interface RankedItemRef {
   summary?: string;
   bullets?: string[];
   bottomLine?: string;
+  imageUrl?: string | null;
 }
 
 export interface RunState {

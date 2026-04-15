@@ -21,6 +21,11 @@ interface ReviewListProps {
   addedIds: Set<number>;
   onReorder: (fromIndex: number, toIndex: number) => void;
   onDelete: (id: number) => void;
+  onUpdateField: (
+    id: number,
+    field: "summary" | "bullets" | "bottomLine" | "imageUrl",
+    value: string | string[] | null,
+  ) => void;
   pendingCount: number;
 }
 
@@ -29,6 +34,7 @@ export function ReviewList({
   addedIds,
   onReorder,
   onDelete,
+  onUpdateField,
   pendingCount,
 }: ReviewListProps): ReactElement {
   const sensors = useSensors(
@@ -66,6 +72,7 @@ export function ReviewList({
                 rank={index + 1}
                 isAdded={addedIds.has(item.id)}
                 onDelete={onDelete}
+                onUpdateField={onUpdateField}
               />
             </li>
           ))}

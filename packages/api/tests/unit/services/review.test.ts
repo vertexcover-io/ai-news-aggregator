@@ -124,6 +124,78 @@ describe("patchArchive (REQ-160, REQ-161, REQ-163)", () => {
   });
 });
 
+describe("patchArchive — optional editable fields (REQ-004, REQ-005, EDGE-007)", () => {
+  function makeRawRow(id: number): RawItemRow {
+    return {
+      id,
+      sourceType: "hn",
+      title: `t${id}`,
+      url: `https://x/${id}`,
+      author: null,
+      publishedAt: null,
+      engagement: { points: 0, commentCount: 0 },
+      content: null,
+      imageUrl: null,
+      metadata: { comments: [] },
+    };
+  }
+
+  it("passes summary, bullets, bottomLine, imageUrl through to RankedItemRef when present", async () => {
+    const archiveRow = makeArchiveRow([]);
+    const archiveRepo = makeArchiveRepo(archiveRow);
+    const deps: ReviewDeps = {
+      archiveRepo,
+      rawItemsRepo: makeRawRepo([makeRawRow(1)]),
+    };
+    await patchArchive(
+      "run-1",
+      {
+        rankedItems: [
+          {
+            id: 1,
+            sourceType: "hn",
+            summary: "my summary",
+            bullets: ["point 1", "point 2"],
+            bottomLine: "final thought",
+            imageUrl: "https://img.example.com/pic.png",
+          },
+        ],
+      },
+      deps,
+    );
+    expect(archiveRepo.updateRankedItems).toHaveBeenCalledWith("run-1", [
+      {
+        rawItemId: 1,
+        score: 0,
+        rationale: "",
+        summary: "my summary",
+        bullets: ["point 1", "point 2"],
+        bottomLine: "final thought",
+        imageUrl: "https://img.example.com/pic.png",
+      },
+    ]);
+  });
+
+  it("EDGE-007: does NOT add optional fields to RankedItemRef when absent from input (backward compat)", async () => {
+    const archiveRow = makeArchiveRow([]);
+    const archiveRepo = makeArchiveRepo(archiveRow);
+    const deps: ReviewDeps = {
+      archiveRepo,
+      rawItemsRepo: makeRawRepo([makeRawRow(2)]),
+    };
+    await patchArchive(
+      "run-1",
+      { rankedItems: [{ id: 2, sourceType: "hn" }] },
+      deps,
+    );
+    const callArg = (archiveRepo.updateRankedItems as ReturnType<typeof vi.fn>).mock.calls[0][1] as RankedItemRef[];
+    expect(callArg[0]).not.toHaveProperty("summary");
+    expect(callArg[0]).not.toHaveProperty("bullets");
+    expect(callArg[0]).not.toHaveProperty("bottomLine");
+    expect(callArg[0]).not.toHaveProperty("imageUrl");
+  });
+});
+
 describe("addPostToArchive (REQ-140 – REQ-146)", () => {
   function makeRanked(): RankedItem {
     return {

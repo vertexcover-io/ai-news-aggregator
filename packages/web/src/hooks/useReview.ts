@@ -27,6 +27,11 @@ export interface UseReviewResult {
   discard: () => void;
   reset: (items: RankedItem[]) => void;
   hasUrl: (url: string) => boolean;
+  updateItemField: (
+    id: number,
+    field: "summary" | "bullets" | "bottomLine" | "imageUrl",
+    value: string | string[] | null,
+  ) => void;
 }
 
 function sameOrder(a: RankedItem[], b: RankedItem[]): boolean {
@@ -35,6 +40,16 @@ function sameOrder(a: RankedItem[], b: RankedItem[]): boolean {
     if (a[i]?.id !== b[i]?.id) return false;
   }
   return true;
+}
+
+function itemFieldsChanged(a: RankedItem, b: RankedItem): boolean {
+  if (a.imageUrl !== b.imageUrl) return true;
+  if (a.recap?.summary !== b.recap?.summary) return true;
+  if (a.recap?.bottomLine !== b.recap?.bottomLine) return true;
+  const ab = a.recap?.bullets ?? [];
+  const bb = b.recap?.bullets ?? [];
+  if (ab.length !== bb.length) return true;
+  return ab.some((bullet, i) => bullet !== bb[i]);
 }
 
 export function useReview(runId: string): UseReviewResult {
@@ -128,10 +143,43 @@ export function useReview(runId: string): UseReviewResult {
     [current, pending],
   );
 
-  const isDirty = useMemo(
-    () => pending.length > 0 || !sameOrder(initial, current),
-    [initial, current, pending],
+  const updateItemField = useCallback(
+    (
+      id: number,
+      field: "summary" | "bullets" | "bottomLine" | "imageUrl",
+      value: string | string[] | null,
+    ) => {
+      setCurrent((prev) =>
+        prev.map((item) => {
+          if (item.id !== id) return item;
+          if (field === "imageUrl") {
+            return { ...item, imageUrl: value as string | null };
+          }
+          return {
+            ...item,
+            recap: {
+              summary: item.recap?.summary ?? "",
+              bullets: item.recap?.bullets ?? [],
+              bottomLine: item.recap?.bottomLine ?? "",
+              [field]: value,
+            },
+          };
+        }),
+      );
+    },
+    [],
   );
+
+  const isDirty = useMemo(() => {
+    if (pending.length > 0) return true;
+    if (!sameOrder(initial, current)) return true;
+    const initialMap = new Map(initial.map((it) => [it.id, it]));
+    return current.some((it) => {
+      const orig = initialMap.get(it.id);
+      if (!orig) return false;
+      return itemFieldsChanged(orig, it);
+    });
+  }, [initial, current, pending]);
 
   return {
     query,
@@ -145,5 +193,6 @@ export function useReview(runId: string): UseReviewResult {
     discard,
     reset,
     hasUrl,
+    updateItemField,
   };
 }

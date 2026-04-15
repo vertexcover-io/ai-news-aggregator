@@ -1,4 +1,4 @@
-import type { RankedItem, RankedItemRef } from "@newsletter/shared";
+import type { RankedItem, RankedItemRef, RecapContent } from "@newsletter/shared";
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
 
 export async function hydrateRankedItems(
@@ -13,6 +13,21 @@ export async function hydrateRankedItems(
   for (const ref of refs) {
     const row = byId.get(ref.rawItemId);
     if (!row) continue;
+    const rawRecap = row.metadata.recap;
+    let recap: RecapContent | null = null;
+    const hasRefRecap =
+      ref.summary !== undefined ||
+      ref.bullets !== undefined ||
+      ref.bottomLine !== undefined;
+    if (hasRefRecap) {
+      recap = {
+        summary: ref.summary ?? rawRecap?.summary ?? "",
+        bullets: ref.bullets ?? rawRecap?.bullets ?? [],
+        bottomLine: ref.bottomLine ?? rawRecap?.bottomLine ?? "",
+      };
+    } else if (rawRecap) {
+      recap = rawRecap;
+    }
     hydrated.push({
       id: row.id,
       rawItemId: row.id,
@@ -25,8 +40,8 @@ export async function hydrateRankedItems(
       score: ref.score,
       rationale: ref.rationale,
       content: row.content ?? null,
-      imageUrl: row.imageUrl,
-      recap: row.metadata.recap ?? null,
+      imageUrl: ref.imageUrl !== undefined ? ref.imageUrl : row.imageUrl,
+      recap,
     });
   }
   return hydrated;

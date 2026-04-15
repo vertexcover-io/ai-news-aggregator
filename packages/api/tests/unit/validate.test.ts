@@ -304,6 +304,49 @@ describe("archivePatchSchema (REQ-160 – REQ-162, EDGE-110)", () => {
     });
     expect(r.success).toBe(false);
   });
+
+  it("accepts item with only id + sourceType (no optional fields)", () => {
+    const r = archivePatchSchema.safeParse({
+      rankedItems: [{ id: 1, sourceType: "hn" }],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("accepts item with all new optional fields", () => {
+    const r = archivePatchSchema.safeParse({
+      rankedItems: [
+        {
+          id: 1,
+          sourceType: "hn",
+          summary: "A summary",
+          bullets: ["Point A", "Point B"],
+          bottomLine: "The bottom line",
+          imageUrl: "https://example.com/img.png",
+        },
+      ],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("accepts item with imageUrl = null", () => {
+    const r = archivePatchSchema.safeParse({
+      rankedItems: [
+        {
+          id: 1,
+          sourceType: "hn",
+          imageUrl: null,
+        },
+      ],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects item missing id", () => {
+    const r = archivePatchSchema.safeParse({
+      rankedItems: [{ sourceType: "hn" }],
+    });
+    expect(r.success).toBe(false);
+  });
 });
 
 describe("addPostSchema (REQ-024, REQ-144)", () => {
