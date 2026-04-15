@@ -12,6 +12,7 @@ import type {
 } from "@pipeline/types.js";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { fetchMarkdown } from "@pipeline/services/markdown-fetch.js";
+import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
 export { fetchMarkdown };
 
 // ── Image fallback extraction (inlined from web-image-fallback) ───────────────
@@ -384,6 +385,7 @@ export interface WebCollectorDeps {
   rawItemsRepo: RawItemsRepo;
   fetchFn?: typeof fetch;
   llmModel?: LanguageModel;
+  signal?: AbortSignal;
 }
 
 let cachedDefaultModel: LanguageModel | null = null;
@@ -400,7 +402,8 @@ export async function collectWeb(
   config: WebCollectConfig,
 ): Promise<WebCollectorResult> {
   const startTime = Date.now();
-  const fetchFn = deps.fetchFn ?? globalThis.fetch;
+  const baseFetch = deps.fetchFn ?? globalThis.fetch;
+  const fetchFn = deps.signal ? withAbortSignal(baseFetch, deps.signal) : baseFetch;
   const llmModel = deps.llmModel ?? (await resolveDefaultModel());
 
   logger.info(

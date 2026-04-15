@@ -733,4 +733,36 @@ describe("collectHn", () => {
     const url = mockFetch.mock.calls[0][0];
     expect(decodeURIComponent(url)).not.toContain("created_at_i");
   });
+
+  // VER-73 follow-up: run-level AbortSignal must reach every inner fetch
+  it("forwards the run-level AbortSignal to every fetch call", async () => {
+    const mockFetch = createMockFetch([
+      storiesResponse(emptyAlgoliaResponse),
+    ]);
+    const rawItemsRepo = createMockRepo();
+    const controller = new AbortController();
+
+    type CollectHnWithSignal = (
+      deps: { rawItemsRepo: RawItemsRepo & { upsertItems: MockUpsertFn }; fetchFn: MockFetchFn; signal: AbortSignal },
+      config: HnCollectConfig,
+    ) => Promise<CollectorResult>;
+    const collectHnWithSignal = collectHn as unknown as CollectHnWithSignal;
+
+    await collectHnWithSignal(
+      { rawItemsRepo, fetchFn: mockFetch, signal: controller.signal },
+      SINGLE_FEED,
+    );
+
+    expect(mockFetch).toHaveBeenCalled();
+    for (const call of mockFetch.mock.calls) {
+      const init = call[1];
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      expect(init?.signal?.aborted).toBe(false);
+    }
+
+    controller.abort(new Error("cancelled"));
+    for (const call of mockFetch.mock.calls) {
+      expect(call[1]?.signal?.aborted).toBe(true);
+    }
+  });
 });

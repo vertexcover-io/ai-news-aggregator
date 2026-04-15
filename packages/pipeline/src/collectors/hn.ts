@@ -4,6 +4,7 @@ import type { HnCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { delay } from "@pipeline/services/markdown-fetch.js";
+import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
 
 const logger = createLogger("collector:hn");
 
@@ -186,6 +187,7 @@ export async function fetchOgImage(articleUrl: string, fetchFn: typeof fetch): P
 export interface HnCollectorDeps {
   rawItemsRepo: RawItemsRepo;
   fetchFn?: typeof fetch;
+  signal?: AbortSignal;
 }
 
 interface AlgoliaStoryHit {
@@ -393,7 +395,8 @@ export async function collectHn(
   config: HnCollectConfig,
 ): Promise<CollectorResult> {
   const startTime = Date.now();
-  const fetchFn = deps.fetchFn ?? fetch;
+  const baseFetch = deps.fetchFn ?? fetch;
+  const fetchFn = deps.signal ? withAbortSignal(baseFetch, deps.signal) : baseFetch;
   const feeds = config.feeds ?? DEFAULT_FEEDS;
   const commentsPerItem = config.commentsPerItem ?? DEFAULT_COMMENTS_PER_ITEM;
 
@@ -413,7 +416,7 @@ export async function collectHn(
       }
     }
     if (feed !== feeds[feeds.length - 1]) {
-      await delay(RATE_LIMIT_MS);
+      await delay(RATE_LIMIT_MS, deps.signal);
     }
   }
 
@@ -421,8 +424,9 @@ export async function collectHn(
 
   if (commentsPerItem > 0) {
     for (let i = 0; i < allItems.length; i++) {
+      if (deps.signal?.aborted) break;
       if (i > 0) {
-        await delay(RATE_LIMIT_MS);
+        await delay(RATE_LIMIT_MS, deps.signal);
       }
 
       const item = allItems[i];
