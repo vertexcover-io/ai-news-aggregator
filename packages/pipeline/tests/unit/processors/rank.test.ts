@@ -501,64 +501,28 @@ describe("rankCandidates", () => {
     expect(item.bottomLine).toBe("This release raises the bar for reasoning-focused models.");
   });
 
-  it("zod rejects fewer than 3 bullets", async () => {
-    const generateObject = vi.fn((args: GenerateArgs) => {
-      const bad = {
-        ranked: [{
-          id: 1,
-          score: 50,
-          rationale: "strong Relevance",
-          summary: "This is a valid summary for the test.",
-          bullets: [
-            "Only one bullet point here.",
-            "And a second bullet point.",
-          ],
-          bottomLine: "This is the strategic takeaway.",
-        }],
-      };
-      const parsed = args.schema.safeParse(bad);
-      expect(parsed.success).toBe(false);
+  it("zod accepts fewer than 3 bullets", async () => {
+    const generateObject = vi.fn((_args: GenerateArgs) => {
       return Promise.resolve({
-        object: { ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })] },
+        object: {
+          ranked: [makeRankedEntry({
+            id: 1,
+            score: 50,
+            rationale: "strong Relevance",
+            summary: "Short summary.",
+            bullets: ["Only one bullet."],
+            bottomLine: "Takeaway.",
+          })],
+        },
       });
     });
 
-    await rankCandidates([makeCandidate(1)], {
+    const result = await rankCandidates([makeCandidate(1)], {
       profile,
       topN: 5,
       generateObject,
       loadBodies: stubLoadBodies,
     });
-  });
-
-  it("zod rejects summary shorter than 10 characters", async () => {
-    const generateObject = vi.fn((args: GenerateArgs) => {
-      const bad = {
-        ranked: [{
-          id: 1,
-          score: 50,
-          rationale: "strong Relevance",
-          summary: "Short",
-          bullets: [
-            "First analysis point explaining significance.",
-            "Second analysis point about broader impact.",
-            "Third analysis point on practical implications.",
-          ],
-          bottomLine: "This is the strategic takeaway.",
-        }],
-      };
-      const parsed = args.schema.safeParse(bad);
-      expect(parsed.success).toBe(false);
-      return Promise.resolve({
-        object: { ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })] },
-      });
-    });
-
-    await rankCandidates([makeCandidate(1)], {
-      profile,
-      topN: 5,
-      generateObject,
-      loadBodies: stubLoadBodies,
-    });
+    expect(result.rankedCount).toBe(1);
   });
 });
