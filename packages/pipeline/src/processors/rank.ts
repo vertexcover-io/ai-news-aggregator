@@ -53,9 +53,9 @@ const rankedEntrySchema = z.object({
   id: z.number().int(),
   score: z.number(),
   rationale: z.string().min(1),
-  summary: z.string().min(10),
-  bullets: z.array(z.string().min(10)).min(3).max(5),
-  bottomLine: z.string().min(10),
+  summary: z.string(),
+  bullets: z.array(z.string()).min(1).max(5),
+  bottomLine: z.string(),
 });
 
 export const rankedResponseSchema = z.object({
@@ -188,14 +188,28 @@ export async function rankCandidates(
       prompt: JSON.stringify({ items: promptItems }, null, 2),
       schema: rankedResponseSchema,
       temperature: 0,
+      maxRetries: 2,
       providerOptions: {
         anthropic: { maxTokens: RANK_MAX_TOKENS },
       },
     })) as { object: z.infer<typeof rankedResponseSchema> };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    // The AI SDK attaches the raw LLM text to the error as `text` when schema validation fails
+    const rawText =
+      err !== null &&
+      typeof err === "object" &&
+      "text" in err &&
+      typeof (err as Record<string, unknown>).text === "string"
+        ? (err as Record<string, unknown>).text
+        : undefined;
     logger.error(
-      { event: "run.rank.failed", runId: options.runId, error: message },
+      {
+        event: "run.rank.failed",
+        runId: options.runId,
+        error: message,
+        rawLlmResponse: rawText,
+      },
       "run.rank.failed",
     );
     throw new Error(`ranking failed: ${message}`, { cause: err });
