@@ -5,6 +5,7 @@ import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { delay } from "@pipeline/services/markdown-fetch.js";
 import { UrlParseError } from "@pipeline/collectors/hn.js";
+import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
 
 const logger = createLogger("collector:reddit");
 
@@ -25,6 +26,7 @@ const USER_AGENT = "Mozilla/5.0 (compatible; NewsletterBot/1.0; +https://vertexc
 export interface RedditCollectorDeps {
   rawItemsRepo: RawItemsRepo;
   fetchFn?: typeof fetch;
+  signal?: AbortSignal;
 }
 
 interface RedditPostData {
@@ -359,7 +361,8 @@ export async function collectReddit(
   config: RedditCollectConfig,
 ): Promise<CollectorResult> {
   const startTime = Date.now();
-  const fetchFn = deps.fetchFn ?? fetch;
+  const baseFetch = deps.fetchFn ?? fetch;
+  const fetchFn = deps.signal ? withAbortSignal(baseFetch, deps.signal) : baseFetch;
   const subreddits = config.subreddits ?? DEFAULT_SUBREDDITS;
   const sort = config.sort ?? DEFAULT_SORT;
   const timeframe = config.timeframe ?? DEFAULT_TIMEFRAME;
@@ -394,7 +397,7 @@ export async function collectReddit(
     }
 
     if (subreddit !== subreddits[subreddits.length - 1]) {
-      await delay(RATE_LIMIT_MS);
+      await delay(RATE_LIMIT_MS, deps.signal);
     }
   }
 
@@ -403,12 +406,13 @@ export async function collectReddit(
   if (commentsPerItem > 0) {
     let commentRequests = 0;
     for (const item of allItems) {
+      if (deps.signal?.aborted) break;
       if (!item.engagement || item.engagement.commentCount < MIN_COMMENTS_FOR_FETCH) {
         continue;
       }
 
       if (commentRequests > 0) {
-        await delay(COMMENT_RATE_LIMIT_MS);
+        await delay(COMMENT_RATE_LIMIT_MS, deps.signal);
       }
       commentRequests++;
 

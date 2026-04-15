@@ -94,17 +94,26 @@ export type ShortlistFn = (
 ) => Promise<ShortlistResult>;
 
 export type HnCollectFn = (
-  deps: { rawItemsRepo: ReturnType<typeof createRawItemsRepo> },
+  deps: {
+    rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
+    signal?: AbortSignal;
+  },
   config: HnCollectConfig,
 ) => Promise<CollectorResult>;
 
 export type RedditCollectFn = (
-  deps: { rawItemsRepo: ReturnType<typeof createRawItemsRepo> },
+  deps: {
+    rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
+    signal?: AbortSignal;
+  },
   config: RedditCollectConfig,
 ) => Promise<CollectorResult>;
 
 export type WebCollectFn = (
-  deps: { rawItemsRepo: ReturnType<typeof createRawItemsRepo> },
+  deps: {
+    rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
+    signal?: AbortSignal;
+  },
   config: WebCollectConfig,
 ) => Promise<CollectorResult>;
 
@@ -136,6 +145,7 @@ async function runCollecting(
   deps: RunProcessDeps,
   runId: string,
   collectors: RunCollectorsPayload,
+  signal: AbortSignal,
 ): Promise<CollectingOutcome> {
   // In-process serializer for state writes: replicates the old
   // `concurrency: 1` invariant from the collection worker. Without this,
@@ -150,7 +160,7 @@ async function runCollecting(
     return next;
   };
 
-  const collectorDeps = { rawItemsRepo: deps.rawItemsRepo };
+  const collectorDeps = { rawItemsRepo: deps.rawItemsRepo, signal };
 
   type SourceKey = "hn" | "reddit" | "blog";
   interface Task {
@@ -271,7 +281,7 @@ export async function handleRunProcessJob(
     // Stage 1: collecting
     throwIfAborted(signal);
     await deps.runState.setStage(runId, "collecting");
-    const collecting = await runCollecting(deps, runId, collectors);
+    const collecting = await runCollecting(deps, runId, collectors, signal);
 
     // All collectors failed → terminal failure, skip dedup/rank
     if (collecting.failureCount > 0 && collecting.successCount === 0) {
