@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
-    "test:e2e": "vitest run --project e2e",
+    "test:e2e": "vitest run --project seam",
     "test:watch": "vitest --project unit",
     "lint": "eslint ."
   },
