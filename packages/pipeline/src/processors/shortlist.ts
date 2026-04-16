@@ -9,12 +9,12 @@ import {
 
 const logger = createLogger("processor:shortlist");
 
-export const DEFAULT_SHORTLIST_SIZE = 20;
+export const DEFAULT_SHORTLIST_SIZE = 30;
 export const MIN_SHORTLIST_SIZE = 10;
 export const MAX_SHORTLIST_SIZE = 30;
 export const DEFAULT_SCORE_FLOOR = 0.15;
-export const DEFAULT_ENGAGEMENT_WEIGHT = 0.4;
-export const DEFAULT_RECENCY_WEIGHT = 0.6;
+export const DEFAULT_ENGAGEMENT_WEIGHT = 0.5;
+export const DEFAULT_RECENCY_WEIGHT = 0.5;
 
 export interface ShortlistOptions {
   shortlistSize?: number;

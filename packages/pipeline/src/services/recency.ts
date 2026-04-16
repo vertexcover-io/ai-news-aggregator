@@ -1,4 +1,4 @@
-export const DEFAULT_HALF_LIFE_HOURS = 48;
+export const DEFAULT_HALF_LIFE_HOURS = 72;
 
 export function recencyDecay(ageHours: number, halfLifeHours: number): number {
   if (halfLifeHours <= 0) {

@@ -107,8 +107,8 @@ describe("shortlistCandidates", () => {
     expect(result.shortlist.length).toBe(2);
     // Blog post with zero engagement should still have a reasonable score
     const blogBreakdown = result.breakdowns.find((b) => b.id === 1);
-    // Score should be at least recencyWeight * recency(2h) ≈ 0.6 * 0.96 = 0.58
-    expect(blogBreakdown?.combined).toBeGreaterThan(0.5);
+    // Score should be at least recencyWeight * recency(2h) ≈ 0.5 * 0.97 = 0.49
+    expect(blogBreakdown?.combined).toBeGreaterThan(0.4);
   });
 
   it("populates relevance field with normalized engagement score", async () => {
@@ -149,7 +149,7 @@ describe("shortlistCandidates", () => {
     const b = result.breakdowns[0];
     // Single candidate → relevance = 1.0 (it's the max)
     expect(b.relevance).toBeCloseTo(1.0);
-    const expectedRecency = Math.exp(-24 / 48);
+    const expectedRecency = Math.exp(-24 / 72);
     const expectedCombined =
       DEFAULT_ENGAGEMENT_WEIGHT * 1.0 + DEFAULT_RECENCY_WEIGHT * expectedRecency;
     expect(b.combined).toBeCloseTo(expectedCombined, 10);
@@ -201,7 +201,7 @@ describe("shortlistCandidates", () => {
 
     const result = await shortlistCandidates(candidates, { now: NOW });
 
-    expect(result.breakdowns[0].recency).toBeCloseTo(Math.exp(-24 / 48), 12);
+    expect(result.breakdowns[0].recency).toBeCloseTo(Math.exp(-24 / 72), 12);
   });
 
   it("REQ-027: logs shortlist.start and shortlist.end with required fields", async () => {

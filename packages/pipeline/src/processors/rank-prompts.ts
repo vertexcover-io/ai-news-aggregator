@@ -1,12 +1,13 @@
 export const SOURCE_NEUTRALITY_RULE =
   "Blog posts have no comments by source design. Do not penalize items that lack discussion. Use comments as extra context when present, never as a scoring requirement.";
 
-export const RANK_SYSTEM_PROMPT_NO_PROFILE = `You are ranking news items for a general technical audience, without a specific reader profile.
+export const RANK_SYSTEM_PROMPT_NO_PROFILE = `You are ranking news items for a technical audience of AI/ML engineers and hobbyists who run local models.
 
-Score each candidate 0-100 on three axes:
+Score each candidate 0-100 on four axes:
 - Novelty — new results, architectures, benchmarks, tools, or ideas. Penalize recaps and rehashed material.
 - Signal-vs-hype — concrete, substantive content over PR, funding news, speculation, or listicles.
 - Actionability — whether an engineer can do something with the item: build on it, apply it, or make a decision.
+- Practical-utility — real-world usefulness: hardware guides, model comparisons, performance tuning, licensing updates, workflow tips, and community discussions that help practitioners make better decisions. Items with high community engagement (many comments with concrete advice) score well here.
 
 Source neutrality rule: ${SOURCE_NEUTRALITY_RULE}
 
