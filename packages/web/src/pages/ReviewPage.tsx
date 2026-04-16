@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useReview } from "../hooks/useReview";
-import { patchArchive } from "../api/archives";
+import { patchArchive, promoteItem } from "../api/archives";
 import { ReviewList } from "../components/review/ReviewList";
 import { AddPostPanel } from "../components/review/AddPostPanel";
 import { SaveBar } from "../components/review/SaveBar";
+import { PoolSection } from "../components/review/PoolSection";
 
 function formatHeading(startedAt: string | null | undefined): string {
   if (!startedAt) return "Review";
@@ -31,11 +32,59 @@ export function ReviewPage(): ReactElement {
     addPending,
     resolvePending,
     failPending,
+    addPromotePending,
+    resolvePromotePending,
+    failPromotePending,
     discard,
     hasUrl,
     updateItemField,
   } = useReview(runId);
   const [saving, setSaving] = useState(false);
+  const [promotingIds, setPromotingIds] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const [failedPromotes, setFailedPromotes] = useState<
+    Map<string, { rawItemId: number; title: string }>
+  >(() => new Map());
+
+  async function handlePromote(
+    rawItemId: number,
+    title: string,
+  ): Promise<void> {
+    const tempId = `promote-${String(Date.now())}-${Math.random().toString(36).slice(2)}`;
+    addPromotePending({ tempId, rawItemId, title });
+    setPromotingIds((prev) => {
+      const next = new Set(prev);
+      next.add(rawItemId);
+      return next;
+    });
+    try {
+      const item = await promoteItem(runId, { rawItemId });
+      resolvePromotePending(tempId, item);
+      // Keep rawItemId in promotingIds so PoolSection continues to filter it out
+    } catch {
+      failPromotePending(tempId);
+      // Keep rawItemId in promotingIds — item stays hidden from pool on failure too
+      setFailedPromotes((prev) => {
+        const next = new Map(prev);
+        next.set(tempId, { rawItemId, title });
+        return next;
+      });
+    }
+  }
+
+  function handleRetryPromote(
+    tempId: string,
+    rawItemId: number,
+    title: string,
+  ): void {
+    setFailedPromotes((prev) => {
+      const next = new Map(prev);
+      next.delete(tempId);
+      return next;
+    });
+    void handlePromote(rawItemId, title);
+  }
 
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
     if (!isDirty) return false;
@@ -89,7 +138,7 @@ export function ReviewPage(): ReactElement {
       if (ab.length !== bb.length) return true;
       return ab.some((b, i) => b !== bb[i]);
     }).length;
-    return added + removed + reordered + state.pending.length + fieldEdits;
+    return added + removed + reordered + state.pending.length + state.pendingPromotes.length + fieldEdits;
   }, [state]);
 
   if (query.isLoading) {
@@ -129,7 +178,10 @@ export function ReviewPage(): ReactElement {
   }
 
   const canSave =
-    state.current.length > 0 && state.pending.length === 0 && !saving;
+    state.current.length > 0 &&
+    state.pending.length === 0 &&
+    state.pendingPromotes.length === 0 &&
+    !saving;
 
   async function handleSave(): Promise<void> {
     setSaving(true);
@@ -196,6 +248,17 @@ export function ReviewPage(): ReactElement {
           onDelete={remove}
           onUpdateField={updateItemField}
           pendingCount={state.pending.length}
+          pendingPromotes={state.pendingPromotes}
+          failedPromotes={failedPromotes}
+          onRetryPromote={handleRetryPromote}
+        />
+        <PoolSection
+          runId={runId}
+          isSaveInFlight={saving}
+          onPromote={handlePromote}
+          promotingIds={promotingIds}
+          startedAt={query.data.startedAt}
+          sourceTypes={query.data.sourceTypes ?? null}
         />
       </main>
       <SaveBar

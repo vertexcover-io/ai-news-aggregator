@@ -51,6 +51,8 @@ describe("run-archives repository", () => {
       rankedItems,
       topN: 5,
       completedAt: new Date("2026-04-13T12:00:00Z"),
+      startedAt: null,
+      sourceTypes: null,
     });
     expect(mockOnConflictDoUpdate).toHaveBeenCalledOnce();
   });

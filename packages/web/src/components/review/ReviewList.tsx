@@ -14,6 +14,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import type { RankedItem } from "@newsletter/shared";
+import type { PendingPromote } from "../../hooks/useReview";
 import { ReviewCard } from "./ReviewCard";
 
 interface ReviewListProps {
@@ -27,6 +28,9 @@ interface ReviewListProps {
     value: string | string[] | null,
   ) => void;
   pendingCount: number;
+  pendingPromotes: PendingPromote[];
+  failedPromotes: Map<string, { rawItemId: number; title: string }>;
+  onRetryPromote: (tempId: string, rawItemId: number, title: string) => void;
 }
 
 export function ReviewList({
@@ -36,6 +40,9 @@ export function ReviewList({
   onDelete,
   onUpdateField,
   pendingCount,
+  pendingPromotes,
+  failedPromotes,
+  onRetryPromote,
 }: ReviewListProps): ReactElement {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -85,6 +92,39 @@ export function ReviewList({
               Fetching post...
             </li>
           ))}
+          {pendingPromotes.map((p) => (
+            <li
+              key={p.tempId}
+              data-pending-promote="true"
+              className="rounded-lg border-2 border-dashed border-blue-300 bg-blue-50 px-4 py-6 text-sm"
+            >
+              <p className="font-medium text-gray-900">{p.title}</p>
+              <p className="text-muted-foreground mt-1">
+                Processing — generating recap...
+              </p>
+            </li>
+          ))}
+          {Array.from(failedPromotes.entries()).map(
+            ([tempId, { rawItemId, title }]) => (
+              <li
+                key={tempId}
+                data-failed-promote="true"
+                className="rounded-lg border-2 border-dashed border-red-300 bg-red-50 px-4 py-6 text-sm"
+              >
+                <p className="font-medium text-gray-900">{title}</p>
+                <p className="text-red-600 mt-1">Recap generation failed</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onRetryPromote(tempId, rawItemId, title);
+                  }}
+                  className="mt-2 rounded-md bg-red-100 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-200 transition-colors"
+                >
+                  Retry
+                </button>
+              </li>
+            ),
+          )}
         </ul>
       </SortableContext>
     </DndContext>

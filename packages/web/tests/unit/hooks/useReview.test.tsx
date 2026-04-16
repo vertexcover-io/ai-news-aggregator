@@ -320,4 +320,92 @@ describe("useReview", () => {
     expect(result.current.state.current[0]?.imageUrl).toBe("https://img.example.com/photo.jpg");
     expect(result.current.isDirty).toBe(true);
   });
+
+  // --- Promote lifecycle tests ---
+
+  it("addPromotePending adds to pendingPromotes array", async () => {
+    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    const { result } = renderHook(() => useReview("run-1"), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.state.current).toHaveLength(3);
+    });
+    act(() => {
+      result.current.addPromotePending({
+        tempId: "p1",
+        rawItemId: 42,
+        title: "Promoted Item",
+      });
+    });
+    expect(result.current.state.pendingPromotes).toHaveLength(1);
+    expect(result.current.state.pendingPromotes[0]?.tempId).toBe("p1");
+    expect(result.current.state.pendingPromotes[0]?.rawItemId).toBe(42);
+    expect(result.current.state.pendingPromotes[0]?.title).toBe("Promoted Item");
+  });
+
+  it("resolvePromotePending removes from pendingPromotes and adds item to current", async () => {
+    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    const { result } = renderHook(() => useReview("run-1"), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.state.current).toHaveLength(3);
+    });
+    act(() => {
+      result.current.addPromotePending({
+        tempId: "p1",
+        rawItemId: 42,
+        title: "Promoted Item",
+      });
+    });
+    expect(result.current.state.pendingPromotes).toHaveLength(1);
+    const promoted = makeItem(42, "https://promoted.com");
+    act(() => {
+      result.current.resolvePromotePending("p1", promoted);
+    });
+    expect(result.current.state.pendingPromotes).toHaveLength(0);
+    expect(result.current.state.current.map((i) => i.id)).toEqual([1, 2, 3, 42]);
+    expect(result.current.state.addedIds.has(42)).toBe(true);
+  });
+
+  it("failPromotePending removes from pendingPromotes", async () => {
+    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    const { result } = renderHook(() => useReview("run-1"), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.state.current).toHaveLength(3);
+    });
+    act(() => {
+      result.current.addPromotePending({
+        tempId: "p1",
+        rawItemId: 42,
+        title: "Promoted Item",
+      });
+    });
+    act(() => {
+      result.current.failPromotePending("p1");
+    });
+    expect(result.current.state.pendingPromotes).toHaveLength(0);
+  });
+
+  it("isDirty is true when pendingPromotes is non-empty", async () => {
+    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    const { result } = renderHook(() => useReview("run-1"), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.state.current).toHaveLength(3);
+    });
+    expect(result.current.isDirty).toBe(false);
+    act(() => {
+      result.current.addPromotePending({
+        tempId: "p1",
+        rawItemId: 42,
+        title: "Promoted Item",
+      });
+    });
+    expect(result.current.isDirty).toBe(true);
+  });
 });

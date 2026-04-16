@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import type { RankedItem, RankedItemRef } from "@newsletter/shared";
+import type { RankedItem, RankedItemRef, PoolResponse } from "@newsletter/shared";
 import type {
   RawItemRow,
   RawItemsRepo,
@@ -11,21 +11,28 @@ import type {
 import {
   patchArchive,
   addPostToArchive,
+  getPool,
+  promoteItem,
   NotFoundError,
   ValidationError,
   ConflictError,
   type ReviewDeps,
+  type PromoteDeps,
 } from "@api/services/review.js";
 
 function makeArchiveRepo(
   row: RunArchiveRow | null,
   updated?: RunArchiveRow,
+  poolResult?: PoolResponse,
 ): RunArchivesRepo {
   return {
     findById: vi.fn(() => Promise.resolve(row)),
     list: vi.fn(() => Promise.resolve([])),
     updateRankedItems: vi.fn(() =>
       Promise.resolve(updated ?? (row as RunArchiveRow)),
+    ),
+    findPoolItems: vi.fn(() =>
+      Promise.resolve(poolResult ?? { items: [], total: 0 }),
     ),
   };
 }
@@ -40,7 +47,7 @@ function makeRawRepo(rows: RawItemRow[]): RawItemsRepo {
 
 const date = new Date("2026-04-10T00:00:00Z");
 
-function makeArchiveRow(refs: RankedItemRef[]): RunArchiveRow {
+function makeArchiveRow(refs: RankedItemRef[], opts: { startedAt?: Date | null; sourceTypes?: string[] | null } = {}): RunArchiveRow {
   return {
     id: "run-1",
     status: "completed",
@@ -49,6 +56,8 @@ function makeArchiveRow(refs: RankedItemRef[]): RunArchiveRow {
     reviewed: false,
     completedAt: date,
     createdAt: date,
+    startedAt: "startedAt" in opts ? (opts.startedAt ?? null) : null,
+    sourceTypes: "sourceTypes" in opts ? (opts.sourceTypes as RunArchiveRow["sourceTypes"] ?? null) : null,
   };
 }
 
@@ -310,5 +319,144 @@ describe("addPostToArchive (REQ-140 – REQ-146)", () => {
     await addPostToArchive("run-1", { url: "https://example.com/blog" }, deps);
     const [, calledSourceType] = hydrate.mock.calls[0] as [string, string];
     expect(calledSourceType).toBe("web");
+  });
+});
+
+describe("getPool (REQ-013, EDGE-006)", () => {
+  const defaultQuery = { sort: "engagement" as const, offset: 0, limit: 20 };
+
+  it("throws NotFoundError when archive not found (REQ-013)", async () => {
+    const archiveRepo = makeArchiveRepo(null);
+    await expect(
+      getPool("missing-run", defaultQuery, { archiveRepo }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("EDGE-006: returns empty pool when startedAt is null (legacy run)", async () => {
+    const archive = makeArchiveRow([], { startedAt: null, sourceTypes: ["hn"] });
+    const archiveRepo = makeArchiveRepo(archive);
+    const result = await getPool("run-1", defaultQuery, { archiveRepo });
+    expect(result).toEqual({ items: [], total: 0 });
+  });
+
+  it("EDGE-006: returns empty pool when sourceTypes is null (legacy run)", async () => {
+    const archive = makeArchiveRow([], { startedAt: new Date(), sourceTypes: null });
+    const archiveRepo = makeArchiveRepo(archive);
+    const result = await getPool("run-1", defaultQuery, { archiveRepo });
+    expect(result).toEqual({ items: [], total: 0 });
+  });
+
+  it("REQ-013: calls findPoolItems with rankedIds, startedAt, sourceTypes from archive", async () => {
+    const startedAt = new Date("2026-04-10T00:00:00Z");
+    const archive = makeArchiveRow(
+      [{ rawItemId: 42, score: 0.9, rationale: "" }],
+      { startedAt, sourceTypes: ["hn", "reddit"] },
+    );
+    const poolResult: PoolResponse = {
+      items: [{ id: 1, title: "Test", url: "https://x.com", sourceType: "hn", author: null, publishedAt: null, engagement: { points: 10, commentCount: 2 }, imageUrl: null }],
+      total: 1,
+    };
+    const archiveRepo = makeArchiveRepo(archive, undefined, poolResult);
+    const result = await getPool("run-1", defaultQuery, { archiveRepo });
+    expect(result).toEqual(poolResult);
+    expect(archiveRepo.findPoolItems).toHaveBeenCalledWith("run-1", expect.objectContaining({
+      rankedIds: [42],
+      startedAt,
+      sourceTypes: ["hn", "reddit"],
+      sort: "engagement",
+      offset: 0,
+      limit: 20,
+    }));
+  });
+});
+
+describe("promoteItem (REQ-010, REQ-011, EDGE-007)", () => {
+  function makeRawRow(id: number): RawItemRow {
+    return {
+      id,
+      sourceType: "hn",
+      title: "Test Item",
+      url: "https://example.com/item",
+      author: null,
+      publishedAt: null,
+      engagement: { points: 5, commentCount: 1 },
+      content: null,
+      imageUrl: null,
+      metadata: { comments: [] },
+    };
+  }
+
+  it("REQ-011: throws NotFoundError when archive not found", async () => {
+    const deps: PromoteDeps = {
+      archiveRepo: makeArchiveRepo(null),
+      rawItemsRepo: makeRawRepo([]),
+      generateRecapFn: vi.fn(),
+    };
+    await expect(
+      promoteItem("missing", { rawItemId: 1 }, deps),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("REQ-011: throws NotFoundError when rawItemId not in raw_items", async () => {
+    const archive = makeArchiveRow([], { startedAt: new Date(), sourceTypes: ["hn"] });
+    const deps: PromoteDeps = {
+      archiveRepo: makeArchiveRepo(archive),
+      rawItemsRepo: makeRawRepo([]),
+      generateRecapFn: vi.fn(),
+    };
+    await expect(
+      promoteItem("run-1", { rawItemId: 999 }, deps),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("REQ-011/EDGE-007: throws ConflictError when rawItemId already in archive.rankedItems", async () => {
+    const archive = makeArchiveRow(
+      [{ rawItemId: 10, score: 0.9, rationale: "" }],
+      { startedAt: new Date(), sourceTypes: ["hn"] },
+    );
+    const deps: PromoteDeps = {
+      archiveRepo: makeArchiveRepo(archive),
+      rawItemsRepo: makeRawRepo([makeRawRow(10)]),
+      generateRecapFn: vi.fn(),
+    };
+    await expect(
+      promoteItem("run-1", { rawItemId: 10 }, deps),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("REQ-011/EDGE-007: ConflictError message is 'Item is already in the ranked list'", async () => {
+    const archive = makeArchiveRow(
+      [{ rawItemId: 10, score: 0.9, rationale: "" }],
+      { startedAt: new Date(), sourceTypes: ["hn"] },
+    );
+    const deps: PromoteDeps = {
+      archiveRepo: makeArchiveRepo(archive),
+      rawItemsRepo: makeRawRepo([makeRawRow(10)]),
+      generateRecapFn: vi.fn(),
+    };
+    await expect(
+      promoteItem("run-1", { rawItemId: 10 }, deps),
+    ).rejects.toThrow("Item is already in the ranked list");
+  });
+
+  it("REQ-010: returns RankedItem with recap when item exists and not yet ranked", async () => {
+    const archive = makeArchiveRow([], { startedAt: new Date(), sourceTypes: ["hn"] });
+    const rawRow = makeRawRow(10);
+    const recap = { summary: "A summary", bullets: ["b1", "b2", "b3"], bottomLine: "The bottom line" };
+    const generateRecapFn = vi.fn().mockResolvedValue(recap);
+    const deps: PromoteDeps = {
+      archiveRepo: makeArchiveRepo(archive),
+      rawItemsRepo: makeRawRepo([rawRow]),
+      generateRecapFn,
+    };
+    const result = await promoteItem("run-1", { rawItemId: 10 }, deps);
+    expect(result.id).toBe(10);
+    expect(result.rawItemId).toBe(10);
+    expect(result.title).toBe(rawRow.title);
+    expect(result.url).toBe(rawRow.url);
+    expect(result.score).toBe(0);
+    expect(result.rationale).toBe("");
+    expect(result.recap).toEqual(recap);
+    expect(generateRecapFn).toHaveBeenCalledOnce();
   });
 });

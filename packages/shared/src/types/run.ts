@@ -107,3 +107,19 @@ export interface RunSubmitPayload {
 export interface AddPostPayload {
   url: string;
 }
+
+export interface PoolItem {
+  id: number;
+  title: string;
+  url: string;
+  sourceType: SourceType;
+  author: string | null;
+  publishedAt: string | null;
+  engagement: { points: number; commentCount: number };
+  imageUrl: string | null;
+}
+
+export interface PoolResponse {
+  items: PoolItem[];
+  total: number;
+}

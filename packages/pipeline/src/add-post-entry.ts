@@ -15,3 +15,9 @@ export {
   type RawItemsRepo,
   type RawItemRow,
 } from "@pipeline/repositories/raw-items.js";
+
+export {
+  generateRecap,
+  type RecapInputItem,
+  type GenerateRecapOptions,
+} from "@pipeline/processors/recap.js";

@@ -1,4 +1,4 @@
-import type { RankedItem, RankedItemRef } from "@newsletter/shared";
+import type { PoolResponse, RankedItem, RankedItemRef } from "@newsletter/shared";
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
 import type {
   RunArchiveRow,
@@ -6,6 +6,32 @@ import type {
 } from "@api/repositories/run-archives.js";
 import { detectAddPostSourceType, type AddPostSourceType } from "@newsletter/pipeline/add-post";
 export type { AddPostSourceType };
+
+export type GenerateRecapFn = (
+  item: RecapInputItem,
+  opts?: GenerateRecapOptions,
+) => Promise<RecapContent>;
+
+// These types are inlined to avoid a hard import (real fn is dynamically loaded)
+interface RecapContent {
+  summary: string;
+  bullets: string[];
+  bottomLine: string;
+}
+
+interface RecapInputItem {
+  id: number;
+  title: string;
+  url: string;
+  sourceType: string;
+  author: string | null;
+  publishedAt: Date | null;
+  content: string | null;
+}
+
+interface GenerateRecapOptions {
+  modelId?: string;
+}
 
 export class NotFoundError extends Error {
   constructor(message = "not found") {
@@ -121,4 +147,88 @@ export async function addPostToArchive(
   } finally {
     clearTimeout(timer);
   }
+}
+
+export interface GetPoolQuery {
+  sort: "engagement" | "recency";
+  source?: string;
+  q?: string;
+  offset: number;
+  limit: number;
+}
+
+export async function getPool(
+  runId: string,
+  query: GetPoolQuery,
+  deps: { archiveRepo: RunArchivesRepo },
+): Promise<PoolResponse> {
+  const archive = await deps.archiveRepo.findById(runId);
+  if (!archive) throw new NotFoundError(`Archive ${runId} not found`);
+  if (!archive.startedAt || !archive.sourceTypes) {
+    return { items: [], total: 0 };
+  }
+  const rankedIds = archive.rankedItems.map((r) => r.rawItemId);
+  return deps.archiveRepo.findPoolItems(runId, {
+    rankedIds,
+    startedAt: archive.startedAt,
+    sourceTypes: archive.sourceTypes,
+    sort: query.sort,
+    source: query.source as (typeof archive.sourceTypes)[number] | undefined,
+    q: query.q,
+    offset: query.offset,
+    limit: query.limit,
+  });
+}
+
+export interface PromoteDeps {
+  archiveRepo: RunArchivesRepo;
+  rawItemsRepo: RawItemsRepo;
+  generateRecapFn: GenerateRecapFn;
+}
+
+export async function promoteItem(
+  runId: string,
+  input: { rawItemId: number },
+  deps: PromoteDeps,
+): Promise<RankedItem> {
+  const archive = await deps.archiveRepo.findById(runId);
+  if (!archive) throw new NotFoundError(`Archive ${runId} not found`);
+
+  const alreadyRanked = archive.rankedItems.some(
+    (r) => r.rawItemId === input.rawItemId,
+  );
+  if (alreadyRanked) throw new ConflictError("Item is already in the ranked list");
+
+  const rows = await deps.rawItemsRepo.findByIds([input.rawItemId]);
+  if (rows.length === 0) {
+    throw new NotFoundError(`raw item not found: ${input.rawItemId}`);
+  }
+  const rawItem = rows[0];
+
+  const recapInput: RecapInputItem = {
+    id: rawItem.id,
+    title: rawItem.title,
+    url: rawItem.url,
+    sourceType: rawItem.sourceType,
+    author: rawItem.author,
+    publishedAt: rawItem.publishedAt,
+    content: rawItem.content,
+  };
+  const recap = await deps.generateRecapFn(recapInput);
+
+  return {
+    id: rawItem.id,
+    rawItemId: rawItem.id,
+    title: rawItem.title,
+    url: rawItem.url,
+    sourceType: rawItem.sourceType,
+    author: rawItem.author,
+    publishedAt: rawItem.publishedAt ? rawItem.publishedAt.toISOString() : null,
+    engagement: rawItem.engagement,
+    score: 0,
+    rationale: "",
+    content: rawItem.content,
+    imageUrl: rawItem.imageUrl,
+    recap,
+  };
 }

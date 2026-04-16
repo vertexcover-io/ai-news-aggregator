@@ -41,6 +41,8 @@ export const runArchives = pgTable("run_archives", {
   completedAt: timestamp("completed_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  startedAt: timestamp("started_at"),
+  sourceTypes: jsonb("source_types").$type<SourceType[]>(),
 });
 
 export type RunArchiveInsert = typeof runArchives.$inferInsert;
