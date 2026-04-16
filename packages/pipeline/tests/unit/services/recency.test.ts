@@ -46,7 +46,7 @@ describe("ageHoursFromPublishedAt (REQ-026)", () => {
 });
 
 describe("DEFAULT_HALF_LIFE_HOURS", () => {
-  it("is 48", () => {
-    expect(DEFAULT_HALF_LIFE_HOURS).toBe(48);
+  it("is 72", () => {
+    expect(DEFAULT_HALF_LIFE_HOURS).toBe(72);
   });
 });
