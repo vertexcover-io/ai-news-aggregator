@@ -102,7 +102,6 @@ export interface RunSubmitPayload {
   hn?: RunSubmitHnConfig;
   reddit?: RunSubmitRedditConfig;
   web?: RunSubmitWebConfig;
-  profileName?: string | null;
 }
 
 export interface AddPostPayload {

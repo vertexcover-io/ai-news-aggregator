@@ -37,7 +37,6 @@ export const runArchives = pgTable("run_archives", {
   status: text("status").$type<"completed" | "failed" | "cancelled">().notNull(),
   rankedItems: jsonb("ranked_items").$type<RankedItemRef[]>().notNull(),
   topN: integer("top_n").notNull(),
-  profileName: text("profile_name"),
   reviewed: boolean("reviewed").notNull().default(false),
   completedAt: timestamp("completed_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -51,7 +50,6 @@ export const userSettings = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     singleton: boolean("singleton").notNull().default(true),
-    profileName: text("profile_name"),
     topN: integer("top_n").notNull(),
     halfLifeHours: integer("half_life_hours"),
     hnConfig: jsonb("hn_config").$type<RunSubmitHnConfig | null>(),
