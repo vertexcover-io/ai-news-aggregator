@@ -57,7 +57,7 @@ export const rankedResponseSchema = z.object({
   ranked: z.array(rankedEntrySchema),
 });
 
-const AXES = ["Novelty", "Signal-vs-hype", "Actionability"] as const;
+const AXES = ["Novelty", "Signal-vs-hype", "Actionability", "Practical-utility"] as const;
 
 // Approximate token count as ceil(chars / 4). This is coarse but good enough
 // for a truncation budget; swap in a real tokenizer if precision ever matters.

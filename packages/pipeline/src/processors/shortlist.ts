@@ -4,15 +4,24 @@ import {
   DEFAULT_HALF_LIFE_HOURS,
   recencyDecay,
   ageHoursFromPublishedAt,
+  engagementScore,
 } from "@pipeline/services/recency.js";
 
 const logger = createLogger("processor:shortlist");
 
-export const DEFAULT_SHORTLIST_SIZE = 20;
+export const DEFAULT_SHORTLIST_SIZE = 30;
+export const MIN_SHORTLIST_SIZE = 10;
+export const MAX_SHORTLIST_SIZE = 30;
+export const DEFAULT_SCORE_FLOOR = 0.15;
+export const DEFAULT_ENGAGEMENT_WEIGHT = 0.5;
+export const DEFAULT_RECENCY_WEIGHT = 0.5;
 
 export interface ShortlistOptions {
   shortlistSize?: number;
   halfLifeHours?: number;
+  engagementWeight?: number;
+  recencyWeight?: number;
+  scoreFloor?: number;
   runId?: string;
   now?: Date;
   signal?: AbortSignal;
@@ -37,6 +46,9 @@ export function shortlistCandidates(
   const startedAt = Date.now();
   const shortlistSize = options.shortlistSize ?? DEFAULT_SHORTLIST_SIZE;
   const halfLifeHours = options.halfLifeHours ?? DEFAULT_HALF_LIFE_HOURS;
+  const eWeight = options.engagementWeight ?? DEFAULT_ENGAGEMENT_WEIGHT;
+  const rWeight = options.recencyWeight ?? DEFAULT_RECENCY_WEIGHT;
+  const scoreFloor = options.scoreFloor ?? DEFAULT_SCORE_FLOOR;
   const now = options.now ?? new Date();
 
   logger.info(
@@ -55,14 +67,35 @@ export function shortlistCandidates(
     return Promise.resolve(empty);
   }
 
-  const breakdowns: ShortlistBreakdown[] = candidates.map((c) => {
+  const rawEngagements = candidates.map((c) =>
+    engagementScore(c.engagement.points, c.engagement.commentCount),
+  );
+  const maxEngagement = Math.max(...rawEngagements);
+
+  const breakdowns: ShortlistBreakdown[] = candidates.map((c, i) => {
     const age = ageHoursFromPublishedAt(c.publishedAt, now);
     const recency = recencyDecay(age, halfLifeHours);
-    return { id: c.id, relevance: 0, recency, combined: recency };
+    const relevance = maxEngagement > 0 ? rawEngagements[i] / maxEngagement : 0;
+    const combined = eWeight * relevance + rWeight * recency;
+    return { id: c.id, relevance, recency, combined };
   });
-  const ordered = sortAndTake(candidates, breakdowns, shortlistSize);
+
+  const effectiveSize = dynamicShortlistSize(breakdowns, scoreFloor, shortlistSize);
+  const ordered = sortAndTake(candidates, breakdowns, effectiveSize);
   logEnd({ candidates, ordered, startedAt, runId: options.runId });
   return Promise.resolve(ordered);
+}
+
+function dynamicShortlistSize(
+  breakdowns: ShortlistBreakdown[],
+  scoreFloor: number,
+  configuredSize: number,
+): number {
+  const aboveFloor = breakdowns.filter((b) => b.combined >= scoreFloor).length;
+  return Math.min(
+    MAX_SHORTLIST_SIZE,
+    Math.max(MIN_SHORTLIST_SIZE, Math.min(aboveFloor, configuredSize)),
+  );
 }
 
 function sortAndTake(
