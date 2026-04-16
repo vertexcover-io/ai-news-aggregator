@@ -4,7 +4,6 @@ import { createRedisConnection, startRun } from "@newsletter/shared";
 import type {
   RunProcessJobPayload,
   RunSubmitPayload,
-  UserProfile,
   UserSettings,
 } from "@newsletter/shared";
 
@@ -22,7 +21,6 @@ function getDefaultProcessingQueue(): Queue<RunProcessJobPayload> {
 }
 
 export interface CreateRunOptions {
-  profile?: UserProfile | null;
   halfLifeHours?: number;
 }
 
@@ -34,7 +32,6 @@ export async function createRun(
 ): Promise<CreatedRun> {
   const settings: UserSettings = {
     id: "adhoc",
-    profileName: options.profile?.name ?? payload.profileName ?? null,
     topN: payload.topN,
     halfLifeHours: options.halfLifeHours ?? null,
     hnConfig: payload.hn ?? null,
@@ -46,9 +43,5 @@ export async function createRun(
     updatedAt: new Date().toISOString(),
   };
 
-  return startRun(
-    settings,
-    { redis, queue: processingQueue },
-    { profile: options.profile ?? null },
-  );
+  return startRun(settings, { redis, queue: processingQueue });
 }

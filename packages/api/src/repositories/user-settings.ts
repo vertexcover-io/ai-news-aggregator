@@ -15,7 +15,6 @@ function toDomain(
 ): UserSettings {
   return {
     id: row.id,
-    profileName: row.profileName,
     topN: row.topN,
     halfLifeHours: row.halfLifeHours,
     hnConfig: row.hnConfig ?? null,
@@ -48,7 +47,6 @@ export function createUserSettingsRepo(
         .insert(userSettings)
         .values({
           singleton: true,
-          profileName: input.profileName,
           topN: input.topN,
           halfLifeHours: input.halfLifeHours,
           hnConfig: input.hnConfig ?? null,
@@ -62,7 +60,6 @@ export function createUserSettingsRepo(
         .onConflictDoUpdate({
           target: userSettings.singleton,
           set: {
-            profileName: input.profileName,
             topN: input.topN,
             halfLifeHours: input.halfLifeHours,
             hnConfig: input.hnConfig,

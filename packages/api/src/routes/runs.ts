@@ -11,7 +11,6 @@ import {
 import type {
   RunProcessJobPayload,
   RunState,
-  UserProfile,
 } from "@newsletter/shared";
 import { runSubmitSchema } from "@api/lib/validate.js";
 import { createRun } from "@api/services/runs.js";
@@ -34,11 +33,6 @@ import {
   type UserSettingsRepo,
 } from "@api/repositories/user-settings.js";
 import { listRuns } from "@api/services/run-list.js";
-import {
-  loadProfile as defaultLoadProfile,
-  ProfileNotFoundError,
-  ProfileParseError,
-} from "@api/services/profiles.js";
 
 export interface RunsRouterDeps {
   redis: IORedis;
@@ -48,12 +42,10 @@ export interface RunsRouterDeps {
   getSettingsRepo?: () => UserSettingsRepo;
   getArchiveRepo?: () => RunArchivesRepo;
   logger?: ReturnType<typeof createLogger>;
-  loadProfile?: (name: string) => Promise<UserProfile>;
 }
 
 export function createRunsRouter(deps: RunsRouterDeps): Hono {
   const logger = deps.logger ?? createLogger("api:runs");
-  const loadProfile = deps.loadProfile ?? defaultLoadProfile;
   const publisher = deps.publisher ?? deps.redis;
   const runs = new Hono();
 
@@ -70,29 +62,14 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       return c.json({ error: parsed.error.message }, 400);
     }
 
-    let profile: UserProfile | null = null;
-    if (parsed.data.profileName != null) {
-      try {
-        profile = await loadProfile(parsed.data.profileName);
-      } catch (err: unknown) {
-        if (err instanceof ProfileNotFoundError) {
-          return c.json({ error: err.message }, 400);
-        }
-        if (err instanceof ProfileParseError) {
-          return c.json({ error: err.message }, 400);
-        }
-        throw err;
-      }
-    }
-
     const { runId } = await createRun(
       parsed.data,
       deps.redis,
       deps.processingQueue,
-      { profile, halfLifeHours: parsed.data.halfLifeHours },
+      { halfLifeHours: parsed.data.halfLifeHours },
     );
     const sources = Object.keys(parsed.data).filter(
-      (k) => k !== "topN" && k !== "profileName" && k !== "halfLifeHours",
+      (k) => k !== "topN" && k !== "halfLifeHours",
     );
     logger.info(
       { event: "run.started", runId, topN: parsed.data.topN, sources },

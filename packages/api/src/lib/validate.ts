@@ -1,12 +1,6 @@
 import { z } from "zod";
 import type { UserSettings } from "@newsletter/shared";
 
-export const userProfileSchema = z.object({
-  name: z.string().min(1),
-  topics: z.array(z.string()).min(1),
-  antiTopics: z.array(z.string()).optional(),
-});
-
 const hnConfigSchema = z.object({
   keywords: z.array(z.string()).optional(),
   pointsThreshold: z.number().int().min(0).optional(),
@@ -42,7 +36,6 @@ export const runSubmitSchema = z
     hn: hnConfigSchema.optional(),
     reddit: redditConfigSchema.optional(),
     web: webConfigSchema.optional(),
-    profileName: z.string().min(1).nullable().optional(),
     halfLifeHours: z.number().positive().optional(),
   })
   .refine(
@@ -68,7 +61,6 @@ function isValidIanaTimezone(tz: string): boolean {
 
 export const userSettingsUpsertSchema = z
   .object({
-    profileName: z.string().min(1).nullable(),
     topN: z.number().int().min(1).max(50),
     halfLifeHours: z.number().positive().nullable(),
     hnConfig: hnConfigSchema.nullable(),

@@ -57,7 +57,6 @@ function makeArchiveRepo(exists: boolean) {
               status: "completed" as const,
               rankedItems: [],
               topN: 10,
-              profileName: null,
               reviewed: false,
               completedAt: new Date(),
               createdAt: new Date(),
