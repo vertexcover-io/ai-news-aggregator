@@ -4,7 +4,7 @@ React + Vite frontend for the admin review dashboard and public archive.
 
 ## Responsibilities
 - Dashboard (`/`): shows recent runs table, schedule status banner, and "Run Now" button
-- Settings (`/settings`): configure schedule, default profile, and HN/Reddit source config
+- Settings (`/settings`): configure schedule and HN/Reddit source config
 - Review (`/review/:runId`): curate ranked items before publishing — reorder (DnD), remove, add by URL
 - Run page (`/run`): legacy ad-hoc run with custom config; kept for backwards compat
 - Archive (`/archive/:runId`): recap-style read-only view of a completed run

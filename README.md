@@ -1,6 +1,6 @@
 # AI Newsletter
 
-An AI-powered newsletter engine that scrapes AI news from 34+ sources, ranks stories to your personal taste, and delivers a curated daily digest after human review.
+An AI-powered newsletter engine that scrapes AI news from 34+ sources, ranks stories by novelty, signal, and actionability, and delivers a curated daily digest after human review.
 
 Built for internal use by the [Vertexcover](https://vertexcover.io) team.
 
@@ -10,8 +10,8 @@ Built for internal use by the [Vertexcover](https://vertexcover.io) team.
 
 1. **Collect** — collectors run concurrently, scraping Hacker News, Reddit, RSS feeds, GitHub trending, and company blogs into a `raw_items` table
 2. **Deduplicate** — near-duplicate items are collapsed before ranking
-3. **Shortlist (Stage 1)** — Voyage AI embeds your interest profile + all candidates, selects top-K by cosine similarity with a recency decay
-4. **Rerank (Stage 2)** — Claude Haiku reranks the shortlist and writes a structured recap (summary, bullets, bottom line) per item
+3. **Shortlist (Stage 1)** — candidates are shortlisted by recency decay
+4. **Rerank (Stage 2)** — Claude Haiku reranks the shortlist using a 3-axis prompt (Novelty, Signal-vs-hype, Actionability) and writes a structured recap (summary, bullets, bottom line) per item
 5. **Review** — you drag-to-reorder, remove, or add items on the review page, then save
 6. **Archive** — the curated run is stored and accessible as a beautiful recap-style archive
 
@@ -38,7 +38,6 @@ packages/
 | Database | PostgreSQL 16 + Drizzle ORM |
 | Queue | BullMQ + Redis 7 |
 | Ranking LLM | Vercel AI SDK + Claude Haiku |
-| Embeddings | Voyage AI |
 | Email | Resend |
 | Containers | Podman Compose |
 
@@ -51,7 +50,7 @@ packages/
 - **Node.js** >= 20
 - **pnpm** >= 10.29 — `npm i -g pnpm`
 - **Podman** + **podman-compose** — for PostgreSQL and Redis
-- API keys: `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `JINA_API_KEY`
+- API keys: `ANTHROPIC_API_KEY`, `JINA_API_KEY`
 
 ---
 
@@ -80,12 +79,7 @@ REDIS_URL=redis://localhost:6379
 
 # AI services (required for a full pipeline run)
 ANTHROPIC_API_KEY=sk-ant-...
-VOYAGE_API_KEY=pa-...
 JINA_API_KEY=jina_...
-
-# Optional — absolute path to your profiles directory
-# Defaults to <repo>/profiles if not set
-# PROFILES_DIR=/absolute/path/to/profiles
 
 # Optional — override the ranking model (defaults to claude-haiku-4-5-20251001)
 # RANKING_MODEL=claude-haiku-4-5-20251001
@@ -136,35 +130,7 @@ All migrations applied.
 
 ---
 
-### Step 5 — Configure your interest profiles
-
-Profiles live in `profiles/` — one YAML file per person. Two profiles are included as examples:
-
-```
-profiles/
-  aman.yaml
-  ritesh.yaml
-```
-
-Edit or create your own:
-
-```yaml
-# profiles/yourname.yaml
-name: yourname
-topics:
-  - AI agents and agent frameworks
-  - LLM infrastructure and inference
-  - Developer tools and productivity
-antiTopics:
-  - Cryptocurrency and NFTs
-  - Celebrity tech drama
-```
-
-The profile name (filename without `.yaml`) is what you'll select in Settings.
-
----
-
-### Step 6 — Start the app
+### Step 5 — Start the app
 
 Start all services in dev mode (API + Pipeline workers + Web UI):
 
@@ -181,10 +147,10 @@ Turborepo starts all packages in parallel:
 
 ---
 
-### Step 7 — Configure settings and run
+### Step 6 — Configure settings and run
 
 1. Open **http://localhost:5173**
-2. Go to **Settings** — select your profile, set your preferred daily schedule, and tune HN/Reddit collection parameters
+2. Go to **Settings** — set your preferred daily schedule and tune HN/Reddit collection parameters
 3. Return to the **Dashboard** and click **Run Now** to trigger an immediate pipeline run
 4. Watch the run progress in real time on the dashboard
 
@@ -240,13 +206,13 @@ pnpm migrate:up
 packages/
   api/
     src/
-      routes/        Hono route handlers (runs, archives, settings, profiles)
+      routes/        Hono route handlers (runs, archives, settings)
       services/      Business logic (review, rank hydration, scheduler)
       repositories/  DB access layer
   pipeline/
     src/
       collectors/    Source scrapers (HN, Reddit, RSS, web)
-      processors/    Dedup, shortlist (Voyage), rerank (Claude)
+      processors/    Dedup, shortlist (recency), rerank (Claude)
       workers/       BullMQ worker dispatch
       services/      Scheduler reconciliation
   shared/
@@ -259,7 +225,6 @@ packages/
       pages/         DashboardPage, ReviewPage, ArchivePage, SettingsPage
       components/    UI components (shadcn/radix-based)
       hooks/         React Query hooks
-profiles/            Personal interest profiles (YAML)
 docs/                Design docs, specs, research
 compose.yml          PostgreSQL + Redis via Podman
 ```
@@ -273,9 +238,7 @@ compose.yml          PostgreSQL + Redis via Podman
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `REDIS_URL` | Yes | Redis connection string |
 | `ANTHROPIC_API_KEY` | Yes | Used for stage-2 reranking (Claude Haiku) |
-| `VOYAGE_AI_API_KEY` | Yes | Used for stage-1 embedding shortlist |
 | `JINA_API_KEY` | Yes | Used for web content fetching |
-| `PROFILES_DIR` | No | Absolute path to profiles directory (defaults to `<repo>/profiles`) |
 | `RANKING_MODEL` | No | Override ranking model (default: `claude-haiku-4-5-20251001`) |
 | `PORT` | No | API server port (default: `3000`) |
 | `RESEND_API_KEY` | No | Email delivery (not yet wired in MVP) |
@@ -292,6 +255,3 @@ Check Redis queue state — the project has a `/debug-jobs` skill for inspecting
 
 **`DATABASE_URL environment variable is not set`**
 Each package loads `../../.env` at startup via `dotenv`. Make sure `.env` exists at the repo root (not just inside a package directory).
-
-**Profiles not found**
-Profile YAML files must exist in `profiles/` at the repo root, or at the path set in `PROFILES_DIR`. The filename (without `.yaml`) must match what you select in Settings.
