@@ -43,7 +43,6 @@ const webConfigSchema = z.object({
 
 export const settingsFormSchema = z
   .object({
-    profileName: z.string().min(1).nullable(),
     topN: z.number().int().min(1).max(50),
     halfLifeHours: z.number().positive().nullable(),
     hnConfig: hnConfigSchema.nullable(),

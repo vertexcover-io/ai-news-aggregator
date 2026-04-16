@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 interface ArchivePageHeaderProps {
   startedAt: string;
   storyCount: number;
-  profileName: string | null;
 }
 
 function formatEditionDate(iso: string): string {
@@ -22,7 +21,6 @@ function formatEditionDate(iso: string): string {
 export function ArchivePageHeader({
   startedAt,
   storyCount,
-  profileName,
 }: ArchivePageHeaderProps): ReactElement {
   return (
     <header className="pb-8 mb-10 border-b border-gray-200">
@@ -43,7 +41,6 @@ export function ArchivePageHeader({
       <p className="text-sm text-gray-500 mt-4">
         {formatEditionDate(startedAt)} · {storyCount}{" "}
         {storyCount === 1 ? "story" : "stories"}
-        {profileName ? ` · ${profileName}` : ""}
       </p>
     </header>
   );

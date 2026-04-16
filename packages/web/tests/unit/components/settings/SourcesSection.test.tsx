@@ -12,7 +12,6 @@ interface WrapperProps {
 function TestWrapper({ initialSources = [] }: WrapperProps): ReactElement {
   const { control } = useForm<SettingsFormValues>({
     defaultValues: {
-      profileName: "default",
       topN: 10,
       halfLifeHours: null,
       hnConfig: null,

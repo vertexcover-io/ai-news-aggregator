@@ -2,22 +2,19 @@ import { useEffect, type ReactElement } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, Newspaper } from "lucide-react";
 import { useSettings } from "../hooks/useSettings";
 import { putSettings } from "../api/settings";
 import { triggerRunNow } from "../api/runs";
-import { fetchProfiles } from "../api/profiles";
 import { settingsFormSchema, type SettingsFormValues } from "./settingsSchema";
-import { ProfileSection } from "../components/settings/ProfileSection";
 import { SourcesSection } from "../components/settings/SourcesSection";
 import { ScheduleSection } from "../components/settings/ScheduleSection";
 import { SaveBar } from "../components/settings/SaveBar";
 
 function getDefaults(): SettingsFormValues {
   return {
-    profileName: "aman",
     topN: 12,
     halfLifeHours: 24,
     hnConfig: {
@@ -44,10 +41,6 @@ function getDefaults(): SettingsFormValues {
 
 export function SettingsPage(): ReactElement {
   const settingsQuery = useSettings();
-  const profilesQuery = useQuery({
-    queryKey: ["profiles"],
-    queryFn: fetchProfiles,
-  });
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -93,8 +86,6 @@ export function SettingsPage(): ReactElement {
     }
   }
 
-  const profiles = profilesQuery.data ?? ["aman"];
-
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="flex items-center justify-between border-b bg-white px-8 py-4">
@@ -120,11 +111,6 @@ export function SettingsPage(): ReactElement {
             </p>
           </div>
 
-          <ProfileSection
-            register={form.register}
-            control={form.control}
-            profiles={profiles}
-          />
           <SourcesSection control={form.control} />
           <ScheduleSection
             register={form.register}

@@ -15,7 +15,6 @@ afterEach(() => {
 
 const sample: UserSettings = {
   id: "00000000-0000-0000-0000-000000000001",
-  profileName: "aman",
   topN: 12,
   halfLifeHours: 24,
   hnConfig: null,
@@ -58,7 +57,6 @@ describe("settings api", () => {
       new Response(JSON.stringify(sample), { status: 200 }),
     );
     const input = {
-      profileName: sample.profileName,
       topN: sample.topN,
       halfLifeHours: sample.halfLifeHours,
       hnConfig: sample.hnConfig,
@@ -82,7 +80,6 @@ describe("settings api", () => {
     );
     await expect(
       putSettings({
-        profileName: null,
         topN: 10,
         halfLifeHours: null,
         hnConfig: null,
