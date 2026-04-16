@@ -1,32 +1,9 @@
 import { describe, it, expect } from "vitest";
 import type {
-  UserProfile,
   Candidate,
   RawItemComment,
   RawItemEngagement,
 } from "@newsletter/shared/types";
-
-// REQ-006, REQ-101: UserProfile lives in @newsletter/shared and is importable
-describe("UserProfile", () => {
-  it("accepts a profile with required name + topics and optional antiTopics", () => {
-    const profile: UserProfile = {
-      name: "aman",
-      topics: ["agent frameworks", "rust"],
-      antiTopics: ["crypto"],
-    };
-    expect(profile.name).toBe("aman");
-    expect(profile.topics).toHaveLength(2);
-    expect(profile.antiTopics).toEqual(["crypto"]);
-  });
-
-  it("accepts a profile with antiTopics omitted", () => {
-    const profile: UserProfile = {
-      name: "ritesh",
-      topics: ["llm research"],
-    };
-    expect(profile.antiTopics).toBeUndefined();
-  });
-});
 
 // REQ-011, REQ-101: Candidate lives in @newsletter/shared with content + comments
 describe("Candidate", () => {

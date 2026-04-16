@@ -4,7 +4,6 @@ import type {
   RankedItemRef,
   CollectorResult,
 } from "@newsletter/shared/types";
-import type { UserProfile } from "@newsletter/shared";
 import type { Candidate } from "@pipeline/services/candidate-loader.js";
 import type { RankResult, RankOptions } from "@pipeline/processors/rank.js";
 import type {
@@ -101,7 +100,6 @@ interface JobLike {
     topN: number;
     sourceTypes: ("hn" | "reddit" | "blog")[];
     collectors: { hn?: unknown; reddit?: unknown; web?: unknown };
-    profile?: UserProfile | null;
     halfLifeHours?: number;
   };
 }
@@ -345,7 +343,6 @@ describe("run-process worker", () => {
     // deduped from 3 → 2 (c1/c2 canonicalize to same URL, c2 has higher engagement)
     expect((rankInput as { id: number }[]).length).toBe(2);
     const opts = rankOpts as RankOptions;
-    expect(opts.profile).toBeNull();
     expect(opts.topN).toBe(3);
     expect(opts.runId).toBe("run-1");
     expect(opts.shortlistBreakdowns).toBeDefined();
@@ -935,40 +932,6 @@ describe("run-process worker", () => {
     expect(failedFields.error).toBe("reddit blew up");
   });
 
-  // REQ-005 + EDGE-015: profile omitted/null propagates as null through shortlist and rank
-  it("REQ-005/EDGE-015: propagates null profile to shortlistFn and rankFn when omitted", async () => {
-    const runStateMock = makeMockRunState(makeRunState());
-    const candidates = [makeCandidate(1), makeCandidate(2)];
-    const loadFn = vi.fn(
-      (): Promise<Candidate[]> => Promise.resolve(candidates),
-    );
-    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
-    const rankFn = vi.fn(
-      (): Promise<RankResult> =>
-        Promise.resolve({
-          rankedItems: [{ rawItemId: 1, score: 1, rationale: "ok" }],
-          candidateCount: 2,
-          rankedCount: 1,
-        }),
-    );
-    const worker = createRunProcessWorker({
-      runState: runStateMock.service,
-      loadFn,
-      shortlistFn,
-      rankFn,
-    });
-
-    await worker.handler(baseJob);
-
-    expect(shortlistFn).toHaveBeenCalledOnce();
-    const [, shortlistOpts] = shortlistFn.mock.calls[0] ?? [];
-    expect(shortlistOpts?.profile).toBeNull();
-
-    expect(rankFn).toHaveBeenCalledOnce();
-    const [, rankOpts] = rankFn.mock.calls[0] ?? [];
-    expect(rankOpts?.profile).toBeNull();
-  });
-
   // REQ-023: shortlist of 20 candidates is forwarded to rank verbatim
   it("REQ-023: forwards exactly the shortlist returned by shortlistFn to rankFn", async () => {
     const runStateMock = makeMockRunState(makeRunState());
@@ -1087,68 +1050,6 @@ describe("run-process worker", () => {
     expect(json).not.toContain("shortlistBreakdowns");
   });
 
-  // REQ-104: two concurrent workers with different profiles keep profile state isolated
-  it("REQ-104: concurrent worker invocations with different profiles do not share state", async () => {
-    const profileA: UserProfile = {
-      name: "aman",
-      topics: ["llm"],
-      antiTopics: [],
-    };
-    const profileB: UserProfile = {
-      name: "ritesh",
-      topics: ["rust"],
-      antiTopics: [],
-    };
-
-    const run = async (
-      profile: UserProfile,
-    ): Promise<{
-      shortlistProfiles: (UserProfile | null)[];
-      rankProfiles: (UserProfile | null)[];
-    }> => {
-      const runStateMock = makeMockRunState(makeRunState());
-      const candidates = [makeCandidate(1)];
-      const loadFn = vi.fn(
-        (): Promise<Candidate[]> => Promise.resolve(candidates),
-      );
-      const shortlistProfiles: (UserProfile | null)[] = [];
-      const rankProfiles: (UserProfile | null)[] = [];
-      const shortlistFn = vi.fn(
-        (cands: Candidate[], opts: ShortlistOptions): Promise<ShortlistResult> => {
-          shortlistProfiles.push(opts.profile);
-          return Promise.resolve(passthroughShortlist(cands));
-        },
-      );
-      const rankFn = vi.fn(
-        (_cands: Candidate[], opts: RankOptions): Promise<RankResult> => {
-          rankProfiles.push(opts.profile);
-          return Promise.resolve({
-            rankedItems: [],
-            candidateCount: 1,
-            rankedCount: 0,
-          });
-        },
-      );
-      const worker = createRunProcessWorker({
-        runState: runStateMock.service,
-        loadFn,
-        shortlistFn,
-        rankFn,
-      });
-      await worker.handler({
-        ...baseJob,
-        data: { ...baseJob.data, profile },
-      });
-      return { shortlistProfiles, rankProfiles };
-    };
-
-    const [resA, resB] = await Promise.all([run(profileA), run(profileB)]);
-    expect(resA.shortlistProfiles).toEqual([profileA]);
-    expect(resA.rankProfiles).toEqual([profileA]);
-    expect(resB.shortlistProfiles).toEqual([profileB]);
-    expect(resB.rankProfiles).toEqual([profileB]);
-  });
-
   // REQ-022: recap data written to DB after ranking
   it("REQ-022: calls updateRecapData with recap fields from ranked items after ranking", async () => {
     const runStateMock = makeMockRunState(makeRunState());
@@ -1250,54 +1151,13 @@ describe("run-process worker", () => {
       status: string;
       rankedItems: RankedItemRef[];
       topN: number;
-      profileName: string | null;
       completedAt: Date;
     };
     expect(arg.id).toBe("run-1");
     expect(arg.status).toBe("completed");
     expect(arg.rankedItems).toEqual(rankedItems);
     expect(arg.topN).toBe(3);
-    expect(arg.profileName).toBeNull();
     expect(arg.completedAt).toBeInstanceOf(Date);
-  });
-
-  // REQ-002: archive repo receives profileName when profile is set
-  it("REQ-002: passes profileName from profile to archiveRepo.upsert", async () => {
-    const runStateMock = makeMockRunState(makeRunState());
-    const candidates = [makeCandidate(1)];
-    const loadFn = vi.fn(
-      (): Promise<Candidate[]> => Promise.resolve(candidates),
-    );
-    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
-    const rankFn = vi.fn(
-      (): Promise<RankResult> =>
-        Promise.resolve({
-          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
-          candidateCount: 1,
-          rankedCount: 1,
-        }),
-    );
-    const archiveUpsert = vi.fn(() => Promise.resolve());
-    const profile: UserProfile = {
-      name: "aman",
-      topics: ["llm"],
-      antiTopics: [],
-    };
-    const worker = createRunProcessWorker({
-      runState: runStateMock.service,
-      loadFn,
-      shortlistFn,
-      rankFn,
-      archiveRepo: { upsert: archiveUpsert },
-    });
-
-    await worker.handler({
-      ...baseJob,
-      data: { ...baseJob.data, profile },
-    });
-
-    const arg = archiveUpsert.mock.calls[0]?.[0] as { profileName: string | null };
-    expect(arg.profileName).toBe("aman");
   });
 
   // EDGE-001: archive write failure does not crash the worker

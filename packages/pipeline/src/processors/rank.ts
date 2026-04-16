@@ -5,13 +5,9 @@ import { createLogger } from "@newsletter/shared";
 import type {
   Candidate,
   RankedItemRef,
-  UserProfile,
   RawItemComment,
 } from "@newsletter/shared";
-import {
-  RANK_SYSTEM_PROMPT_NO_PROFILE,
-  composeProfiledPrompt,
-} from "@pipeline/processors/rank-prompts.js";
+import { RANK_SYSTEM_PROMPT_NO_PROFILE } from "@pipeline/processors/rank-prompts.js";
 import { loadBodiesForShortlist as defaultLoadBodies } from "@pipeline/processors/rank-body-loader.js";
 import {
   ageHoursFromPublishedAt,
@@ -28,7 +24,6 @@ const DEFAULT_COMMENTS_PER_ITEM = 5;
 const DEFAULT_COMMENT_TOKEN_BUDGET = 200;
 
 export interface RankOptions {
-  profile: UserProfile | null;
   topN: number;
   halfLifeHours?: number;
   shortlistBreakdowns?: ShortlistBreakdown[];
@@ -62,13 +57,7 @@ export const rankedResponseSchema = z.object({
   ranked: z.array(rankedEntrySchema),
 });
 
-const PROFILED_AXES = [
-  "Relevance",
-  "Novelty",
-  "Signal-vs-hype",
-  "Actionability",
-] as const;
-const NO_PROFILE_AXES = ["Novelty", "Signal-vs-hype", "Actionability"] as const;
+const AXES = ["Novelty", "Signal-vs-hype", "Actionability"] as const;
 
 // Approximate token count as ceil(chars / 4). This is coarse but good enough
 // for a truncation budget; swap in a real tokenizer if precision ever matters.
@@ -173,12 +162,8 @@ export async function rankCandidates(
     ),
   );
 
-  const systemPrompt =
-    options.profile !== null
-      ? composeProfiledPrompt(options.profile)
-      : RANK_SYSTEM_PROMPT_NO_PROFILE;
-
-  const axes = options.profile !== null ? PROFILED_AXES : NO_PROFILE_AXES;
+  const systemPrompt = RANK_SYSTEM_PROMPT_NO_PROFILE;
+  const axes = AXES;
 
   let result: { object: z.infer<typeof rankedResponseSchema> };
   try {

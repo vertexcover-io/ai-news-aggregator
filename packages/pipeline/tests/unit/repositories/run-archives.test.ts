@@ -39,7 +39,6 @@ describe("run-archives repository", () => {
       status: "completed",
       rankedItems,
       topN: 5,
-      profileName: "default",
       completedAt: new Date("2026-04-13T12:00:00Z"),
     });
 
@@ -51,7 +50,6 @@ describe("run-archives repository", () => {
       status: "completed",
       rankedItems,
       topN: 5,
-      profileName: "default",
       completedAt: new Date("2026-04-13T12:00:00Z"),
     });
     expect(mockOnConflictDoUpdate).toHaveBeenCalledOnce();
@@ -71,7 +69,6 @@ describe("run-archives repository", () => {
       status: "completed",
       rankedItems: [],
       topN: 3,
-      profileName: null,
       completedAt: new Date("2026-04-13T14:00:00Z"),
     });
 

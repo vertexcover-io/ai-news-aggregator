@@ -8,7 +8,6 @@ export interface RunArchiveUpsertInput {
   status: "completed" | "failed" | "cancelled";
   rankedItems: RankedItemRef[];
   topN: number;
-  profileName: string | null;
   completedAt: Date;
 }
 
@@ -28,7 +27,6 @@ export function createRunArchivesRepo(
           status: input.status,
           rankedItems: input.rankedItems,
           topN: input.topN,
-          profileName: input.profileName,
           completedAt: input.completedAt,
         })
         .onConflictDoUpdate({
@@ -37,7 +35,6 @@ export function createRunArchivesRepo(
             status: sql.raw(`excluded.${runArchives.status.name}`),
             rankedItems: sql.raw(`excluded.${runArchives.rankedItems.name}`),
             topN: sql.raw(`excluded.${runArchives.topN.name}`),
-            profileName: sql.raw(`excluded.${runArchives.profileName.name}`),
             completedAt: sql.raw(`excluded.${runArchives.completedAt.name}`),
           },
         });

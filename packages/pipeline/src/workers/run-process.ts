@@ -4,7 +4,6 @@ import { createRedisConnection } from "@newsletter/shared/redis";
 import { getDb } from "@newsletter/shared";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
-import type { UserProfile } from "@newsletter/shared";
 import { dedupCandidates } from "@pipeline/processors/dedup.js";
 import {
   createCandidatesRepo,
@@ -69,7 +68,6 @@ export interface RunProcessJobData {
   topN: number;
   sourceTypes: SourceType[];
   collectors: RunCollectorsPayload;
-  profile?: UserProfile | null;
   halfLifeHours?: number;
 }
 
@@ -257,9 +255,7 @@ export async function handleRunProcessJob(
   if (job.name !== "run-process") {
     return { rankedCount: 0 };
   }
-  const { runId, topN, sourceTypes, collectors } = job.data;
-  const profile = job.data.profile ?? null;
-  const halfLifeHours = job.data.halfLifeHours;
+  const { runId, topN, sourceTypes, collectors, halfLifeHours } = job.data;
   const started = Date.now();
 
   // REQ-05: create AbortController and subscribe to cancellation channel
@@ -363,7 +359,6 @@ export async function handleRunProcessJob(
     throwIfAborted(signal);
     await deps.runState.setStage(runId, "shortlisting");
     const { shortlist, breakdowns } = await deps.shortlistFn(deduped, {
-      profile,
       halfLifeHours,
       runId,
       signal,
@@ -402,7 +397,6 @@ export async function handleRunProcessJob(
       rankResult = await deps.rankFn(shortlist, {
         topN,
         runId,
-        profile,
         halfLifeHours,
         shortlistBreakdowns: breakdowns,
         abortSignal: signal,
@@ -448,7 +442,6 @@ export async function handleRunProcessJob(
         status: "completed",
         rankedItems: rankResult.rankedItems,
         topN,
-        profileName: profile?.name ?? null,
         completedAt: new Date(),
       });
     } catch (err) {
@@ -489,7 +482,6 @@ export async function handleRunProcessJob(
           status: "cancelled",
           rankedItems: [],
           topN,
-          profileName: profile?.name ?? null,
           completedAt: new Date(),
         });
       } catch (archiveErr) {
