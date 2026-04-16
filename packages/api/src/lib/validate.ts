@@ -118,3 +118,9 @@ export const addPostSchema = z.object({
 });
 
 export type AddPostBody = z.infer<typeof addPostSchema>;
+
+export const promoteSchema = z.object({
+  rawItemId: z.number().int().positive(),
+});
+
+export type PromoteBody = z.infer<typeof promoteSchema>;

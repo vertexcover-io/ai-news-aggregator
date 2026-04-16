@@ -16,20 +16,25 @@ import {
 import {
   archivePatchSchema,
   addPostSchema,
+  promoteSchema,
 } from "@api/lib/validate.js";
 import {
   patchArchive,
   addPostToArchive,
+  getPool,
+  promoteItem,
   NotFoundError,
   ValidationError,
   ConflictError,
   type HydrateAddedPostFn,
+  type GenerateRecapFn,
 } from "@api/services/review.js";
 
 export interface ArchivesRouterDeps {
   getRawItemsRepo: () => RawItemsRepo;
   getArchiveRepo: () => RunArchivesRepo;
   hydrateAddedPost?: HydrateAddedPostFn;
+  generateRecapFn?: GenerateRecapFn;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -43,18 +48,19 @@ export function createArchivesRouter(deps: ArchivesRouterDeps): Hono {
       const archive = await deps.getArchiveRepo().findById(runId);
       if (!archive) return c.json({ error: "not found" }, 404);
 
-      const state: RunState = {
+      const state: RunState & { sourceTypes: string[] | null } = {
         id: runId,
         status: archive.status,
         stage: archive.status === "completed" ? "completed" : "failed",
         topN: archive.topN,
-        startedAt: archive.completedAt.toISOString(),
+        startedAt: archive.startedAt?.toISOString() ?? archive.completedAt.toISOString(),
         updatedAt: archive.completedAt.toISOString(),
         completedAt: archive.completedAt.toISOString(),
         sources: {},
         rankedItems: archive.rankedItems,
         warnings: [],
         error: null,
+        sourceTypes: archive.sourceTypes,
       };
 
       if (archive.status === "completed" && Array.isArray(archive.rankedItems)) {
@@ -154,7 +160,68 @@ export function createArchivesRouter(deps: ArchivesRouterDeps): Hono {
     }
   });
 
+  archives.get("/:runId/pool", async (c) => {
+    const runId = c.req.param("runId");
+    const sortRaw = c.req.query("sort");
+    const sort: "engagement" | "recency" = sortRaw === "recency" ? "recency" : "engagement";
+    const source = c.req.query("source") ?? undefined;
+    const q = c.req.query("q") ?? undefined;
+    const offset = parseInt(c.req.query("offset") ?? "0", 10);
+    const limit = Math.min(parseInt(c.req.query("limit") ?? "20", 10), 100);
+    try {
+      const result = await getPool(runId, { sort, source, q, offset, limit }, {
+        archiveRepo: deps.getArchiveRepo(),
+      });
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof NotFoundError) return c.json({ error: err.message }, 404);
+      throw err;
+    }
+  });
+
+  archives.post("/:runId/promote", async (c) => {
+    const runId = c.req.param("runId");
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid json" }, 400);
+    }
+    const parsed = promoteSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.message }, 400);
+    }
+    try {
+      const generateRecapFn = deps.generateRecapFn ?? createDefaultGenerateRecapFn();
+      const ranked = await promoteItem(runId, parsed.data, {
+        archiveRepo: deps.getArchiveRepo(),
+        rawItemsRepo: deps.getRawItemsRepo(),
+        generateRecapFn,
+      });
+      logger.info(
+        { event: "archive.promote", runId, rawItemId: parsed.data.rawItemId },
+        "archive.promote",
+      );
+      return c.json(ranked);
+    } catch (err) {
+      if (err instanceof NotFoundError) {
+        return c.json({ error: err.message }, 404);
+      }
+      if (err instanceof ConflictError) {
+        return c.json({ error: err.message }, 409);
+      }
+      throw err;
+    }
+  });
+
   return archives;
+}
+
+function createDefaultGenerateRecapFn(): GenerateRecapFn {
+  return async (item, opts) => {
+    const { generateRecap } = await import("@newsletter/pipeline/add-post");
+    return generateRecap(item, opts);
+  };
 }
 
 export function createDefaultArchivesRouter(): Hono {
@@ -162,6 +229,7 @@ export function createDefaultArchivesRouter(): Hono {
     getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
     getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
     hydrateAddedPost: createDefaultHydrateAddedPost(),
+    generateRecapFn: createDefaultGenerateRecapFn(),
   });
 }
 
