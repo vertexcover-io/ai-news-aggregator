@@ -1492,6 +1492,87 @@ describe("run-process cancellation (REQ-05 through REQ-09)", () => {
     expect(closeSpy).toHaveBeenCalledOnce();
   });
 
+  // REQ-012: archiveRepo.upsert called with startedAt and sourceTypes on successful completion
+  it("REQ-012: archiveRepo.upsert receives startedAt from run-state and sourceTypes from job on success", async () => {
+    const startedAt = "2026-04-07T10:00:00.000Z";
+    const runStateMock = makeMockRunState(makeRunState({ startedAt }));
+    const archiveRepo = makeNoopArchiveRepo();
+    const candidates = [makeCandidate(1), makeCandidate(2)];
+    const loadFn = vi.fn(() => Promise.resolve(candidates));
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "top" }],
+          candidateCount: 2,
+          rankedCount: 1,
+        }),
+    );
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      rankFn,
+      shortlistFn: makeShortlistFn(passthroughShortlist),
+      archiveRepo,
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: { ...baseJob.data, sourceTypes: ["hn", "reddit"] },
+    });
+
+    expect(archiveRepo.upsert).toHaveBeenCalledOnce();
+    const arg = archiveRepo.upsert.mock.calls[0]?.[0] as {
+      startedAt: Date;
+      sourceTypes: string[];
+      status: string;
+    };
+    expect(arg.startedAt).toBeInstanceOf(Date);
+    expect(arg.startedAt.toISOString()).toBe(startedAt);
+    expect(arg.sourceTypes).toEqual(["hn", "reddit"]);
+    expect(arg.status).toBe("completed");
+  });
+
+  // REQ-012: archiveRepo.upsert called with startedAt and sourceTypes on cancellation
+  it("REQ-012: archiveRepo.upsert receives startedAt and sourceTypes on cancellation", async () => {
+    const startedAt = "2026-04-07T10:00:00.000Z";
+    const runStateMock = makeMockRunState(makeRunState({ startedAt }));
+    const archiveRepo = makeNoopArchiveRepo();
+    const { factory, triggerCancel } = makeInstantCancelSubscriber();
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(() => Promise.resolve(candidates));
+    const rankFn = vi.fn((): Promise<RankResult> => {
+      triggerCancel();
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- CancelledError is an Error subclass; lint doesn't detect it through generics
+      return Promise.reject(new CancelledError("run-1"));
+    });
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      rankFn,
+      shortlistFn: makeShortlistFn(passthroughShortlist),
+      archiveRepo,
+      cancelSubscriber: factory,
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: { ...baseJob.data, sourceTypes: ["hn"] },
+    });
+
+    expect(archiveRepo.upsert).toHaveBeenCalledOnce();
+    const arg = archiveRepo.upsert.mock.calls[0]?.[0] as {
+      startedAt: Date;
+      sourceTypes: string[];
+      status: string;
+    };
+    expect(arg.status).toBe("cancelled");
+    expect(arg.startedAt).toBeInstanceOf(Date);
+    expect(arg.startedAt.toISOString()).toBe(startedAt);
+    expect(arg.sourceTypes).toEqual(["hn"]);
+  });
+
   // REQ-09: subscriber.close() called even when rank throws (non-cancel error)
   it("REQ-09: subscriber.close() is called even when rank throws a non-cancel error", async () => {
     const runStateMock = makeMockRunState(makeRunState());

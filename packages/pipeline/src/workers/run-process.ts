@@ -257,6 +257,7 @@ export async function handleRunProcessJob(
   }
   const { runId, topN, sourceTypes, collectors, halfLifeHours } = job.data;
   const started = Date.now();
+  let runStartedAt: Date = new Date(started);
 
   // REQ-05: create AbortController and subscribe to cancellation channel
   const controller = new AbortController();
@@ -309,8 +310,10 @@ export async function handleRunProcessJob(
     let since: Date;
     if (state?.startedAt) {
       since = new Date(state.startedAt);
+      runStartedAt = since;
     } else {
       since = new Date(Date.now() - FALLBACK_WINDOW_MS);
+      runStartedAt = since;
       logger.warn(
         { runId },
         "run-state missing; using 10-minute fallback window",
@@ -443,6 +446,8 @@ export async function handleRunProcessJob(
         rankedItems: rankResult.rankedItems,
         topN,
         completedAt: new Date(),
+        startedAt: runStartedAt,
+        sourceTypes,
       });
     } catch (err) {
       logger.error(
@@ -483,6 +488,8 @@ export async function handleRunProcessJob(
           rankedItems: [],
           topN,
           completedAt: new Date(),
+          startedAt: runStartedAt,
+          sourceTypes,
         });
       } catch (archiveErr) {
         logger.error(
