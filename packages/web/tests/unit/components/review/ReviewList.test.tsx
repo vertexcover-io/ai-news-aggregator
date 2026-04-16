@@ -35,6 +35,9 @@ describe("ReviewList", () => {
         onDelete={vi.fn()}
         onUpdateField={vi.fn()}
         pendingCount={0}
+        pendingPromotes={[]}
+        failedPromotes={new Map()}
+        onRetryPromote={vi.fn()}
       />,
     );
     expect(screen.getAllByRole("article")).toHaveLength(2);
@@ -56,6 +59,9 @@ describe("ReviewList", () => {
         onDelete={onDelete}
         onUpdateField={vi.fn()}
         pendingCount={0}
+        pendingPromotes={[]}
+        failedPromotes={new Map()}
+        onRetryPromote={vi.fn()}
       />,
     );
     const btn = screen.getByLabelText("Remove Target");
@@ -72,6 +78,9 @@ describe("ReviewList", () => {
         onDelete={vi.fn()}
         onUpdateField={vi.fn()}
         pendingCount={1}
+        pendingPromotes={[]}
+        failedPromotes={new Map()}
+        onRetryPromote={vi.fn()}
       />,
     );
     const pendingNodes = container.querySelectorAll('[data-pending="true"]');
@@ -87,6 +96,9 @@ describe("ReviewList", () => {
         onDelete={vi.fn()}
         onUpdateField={vi.fn()}
         pendingCount={0}
+        pendingPromotes={[]}
+        failedPromotes={new Map()}
+        onRetryPromote={vi.fn()}
       />,
     );
     const article = screen.getAllByRole("article")[0];

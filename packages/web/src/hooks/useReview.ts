@@ -8,10 +8,17 @@ export interface PendingAdd {
   url: string;
 }
 
+export interface PendingPromote {
+  tempId: string;
+  rawItemId: number;
+  title: string;
+}
+
 export interface ReviewState {
   initial: RankedItem[];
   current: RankedItem[];
   pending: PendingAdd[];
+  pendingPromotes: PendingPromote[];
   addedIds: Set<number>;
 }
 
@@ -24,6 +31,9 @@ export interface UseReviewResult {
   addPending: (pending: PendingAdd) => void;
   resolvePending: (tempId: string, item: RankedItem) => void;
   failPending: (tempId: string) => void;
+  addPromotePending: (p: PendingPromote) => void;
+  resolvePromotePending: (tempId: string, item: RankedItem) => void;
+  failPromotePending: (tempId: string) => void;
   discard: () => void;
   reset: (items: RankedItem[]) => void;
   hasUrl: (url: string) => boolean;
@@ -63,6 +73,7 @@ export function useReview(runId: string): UseReviewResult {
   const [initial, setInitial] = useState<RankedItem[]>([]);
   const [current, setCurrent] = useState<RankedItem[]>([]);
   const [pending, setPending] = useState<PendingAdd[]>([]);
+  const [pendingPromotes, setPendingPromotes] = useState<PendingPromote[]>([]);
   const [addedIds, setAddedIds] = useState<Set<number>>(() => new Set());
   const [hydratedId, setHydratedId] = useState<string | null>(null);
 
@@ -118,9 +129,31 @@ export function useReview(runId: string): UseReviewResult {
     setPending((prev) => prev.filter((p) => p.tempId !== tempId));
   }, []);
 
+  const addPromotePending = useCallback((p: PendingPromote) => {
+    setPendingPromotes((prev) => [...prev, p]);
+  }, []);
+
+  const resolvePromotePending = useCallback(
+    (tempId: string, item: RankedItem) => {
+      setPendingPromotes((prev) => prev.filter((p) => p.tempId !== tempId));
+      setCurrent((prev) => [...prev, item]);
+      setAddedIds((prev) => {
+        const next = new Set(prev);
+        next.add(item.id);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const failPromotePending = useCallback((tempId: string) => {
+    setPendingPromotes((prev) => prev.filter((p) => p.tempId !== tempId));
+  }, []);
+
   const discard = useCallback(() => {
     setCurrent(initial);
     setPending([]);
+    setPendingPromotes([]);
     setAddedIds(new Set());
   }, [initial]);
 
@@ -128,6 +161,7 @@ export function useReview(runId: string): UseReviewResult {
     setInitial(items);
     setCurrent(items);
     setPending([]);
+    setPendingPromotes([]);
     setAddedIds(new Set());
   }, []);
 
@@ -172,6 +206,7 @@ export function useReview(runId: string): UseReviewResult {
 
   const isDirty = useMemo(() => {
     if (pending.length > 0) return true;
+    if (pendingPromotes.length > 0) return true;
     if (!sameOrder(initial, current)) return true;
     const initialMap = new Map(initial.map((it) => [it.id, it]));
     return current.some((it) => {
@@ -179,17 +214,20 @@ export function useReview(runId: string): UseReviewResult {
       if (!orig) return false;
       return itemFieldsChanged(orig, it);
     });
-  }, [initial, current, pending]);
+  }, [initial, current, pending, pendingPromotes]);
 
   return {
     query,
-    state: { initial, current, pending, addedIds },
+    state: { initial, current, pending, pendingPromotes, addedIds },
     isDirty,
     reorder,
     remove,
     addPending,
     resolvePending,
     failPending,
+    addPromotePending,
+    resolvePromotePending,
+    failPromotePending,
     discard,
     reset,
     hasUrl,
