@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { runArchives } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
-import type { RankedItemRef } from "@newsletter/shared";
+import type { RankedItemRef, SourceType } from "@newsletter/shared";
 
 export interface RunArchiveUpsertInput {
   id: string;
@@ -9,6 +9,8 @@ export interface RunArchiveUpsertInput {
   rankedItems: RankedItemRef[];
   topN: number;
   completedAt: Date;
+  startedAt?: Date;
+  sourceTypes?: SourceType[];
 }
 
 export interface RunArchivesRepo {
@@ -28,6 +30,8 @@ export function createRunArchivesRepo(
           rankedItems: input.rankedItems,
           topN: input.topN,
           completedAt: input.completedAt,
+          startedAt: input.startedAt ?? null,
+          sourceTypes: input.sourceTypes ?? null,
         })
         .onConflictDoUpdate({
           target: runArchives.id,

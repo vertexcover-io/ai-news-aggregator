@@ -64,6 +64,13 @@
       "when": 1776325421026,
       "tag": "0008_massive_sleepwalker",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1776331822490,
+      "tag": "0009_goofy_grey_gargoyle",
+      "breakpoints": true
     }
   ]
 }

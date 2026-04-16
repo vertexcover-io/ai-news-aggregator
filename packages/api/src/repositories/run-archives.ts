@@ -1,7 +1,7 @@
-import { desc, eq } from "drizzle-orm";
-import { runArchives } from "@newsletter/shared/db";
-import type { AppDb } from "@newsletter/shared/db";
-import type { RankedItemRef } from "@newsletter/shared";
+import { and, desc, eq, gte, ilike, inArray, notInArray, sql } from "drizzle-orm";
+import { rawItems, runArchives } from "@newsletter/shared/db";
+import type { AppDb, SourceType } from "@newsletter/shared/db";
+import type { PoolItem, RankedItemRef } from "@newsletter/shared";
 
 export interface RunArchiveRow {
   id: string;
@@ -11,6 +11,19 @@ export interface RunArchiveRow {
   reviewed: boolean;
   completedAt: Date;
   createdAt: Date;
+  startedAt: Date | null;
+  sourceTypes: SourceType[] | null;
+}
+
+export interface FindPoolItemsOpts {
+  rankedIds: number[];
+  startedAt: Date;
+  sourceTypes: SourceType[];
+  sort: "engagement" | "recency";
+  source?: SourceType;
+  q?: string;
+  offset: number;
+  limit: number;
 }
 
 export interface RunArchivesRepo {
@@ -20,11 +33,36 @@ export interface RunArchivesRepo {
     id: string,
     items: RankedItemRef[],
   ): Promise<RunArchiveRow>;
+  findPoolItems(
+    archiveId: string,
+    opts: FindPoolItemsOpts,
+  ): Promise<{ items: PoolItem[]; total: number }>;
 }
 
 export function createRunArchivesRepo(
   db: Pick<AppDb, "select" | "update">,
 ): RunArchivesRepo {
+  function toPoolItem(row: {
+    id: number;
+    title: string;
+    url: string;
+    sourceType: SourceType;
+    author: string | null;
+    publishedAt: Date | null;
+    engagement: { points: number; commentCount: number };
+    imageUrl: string | null;
+  }): PoolItem {
+    return {
+      id: row.id,
+      title: row.title,
+      url: row.url,
+      sourceType: row.sourceType,
+      author: row.author,
+      publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
+      engagement: row.engagement,
+      imageUrl: row.imageUrl,
+    };
+  }
   return {
     async findById(id: string): Promise<RunArchiveRow | null> {
       // Postgres throws "invalid input syntax for type uuid" when id is not a
@@ -41,6 +79,8 @@ export function createRunArchivesRepo(
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
           createdAt: runArchives.createdAt,
+          startedAt: runArchives.startedAt,
+          sourceTypes: runArchives.sourceTypes,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
@@ -56,6 +96,8 @@ export function createRunArchivesRepo(
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
           createdAt: runArchives.createdAt,
+          startedAt: runArchives.startedAt,
+          sourceTypes: runArchives.sourceTypes,
         })
         .from(runArchives)
         .orderBy(desc(runArchives.completedAt))
@@ -81,8 +123,59 @@ export function createRunArchivesRepo(
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
           createdAt: runArchives.createdAt,
+          startedAt: runArchives.startedAt,
+          sourceTypes: runArchives.sourceTypes,
         });
       return row;
+    },
+    async findPoolItems(
+      _archiveId: string,
+      opts: FindPoolItemsOpts,
+    ): Promise<{ items: PoolItem[]; total: number }> {
+      const conditions = [
+        gte(rawItems.collectedAt, opts.startedAt),
+        inArray(rawItems.sourceType, opts.sourceTypes),
+      ];
+      if (opts.rankedIds.length > 0) {
+        conditions.push(notInArray(rawItems.id, opts.rankedIds));
+      }
+      if (opts.source) {
+        conditions.push(eq(rawItems.sourceType, opts.source));
+      }
+      if (opts.q) {
+        const escaped = opts.q.replace(/[%_\\]/g, "\\$&");
+        conditions.push(ilike(rawItems.title, `%${escaped}%`));
+      }
+      const where = and(...conditions);
+
+      const [countRow] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(rawItems)
+        .where(where);
+
+      const orderBy =
+        opts.sort === "recency"
+          ? [sql`${rawItems.publishedAt} DESC NULLS LAST`]
+          : [sql`(${rawItems.engagement}->>'points')::int DESC NULLS LAST`];
+
+      const rows = await db
+        .select({
+          id: rawItems.id,
+          title: rawItems.title,
+          url: rawItems.url,
+          sourceType: rawItems.sourceType,
+          author: rawItems.author,
+          publishedAt: rawItems.publishedAt,
+          engagement: rawItems.engagement,
+          imageUrl: rawItems.imageUrl,
+        })
+        .from(rawItems)
+        .where(where)
+        .orderBy(...orderBy)
+        .limit(opts.limit)
+        .offset(opts.offset);
+
+      return { items: rows.map(toPoolItem), total: countRow.count };
     },
   };
 }
