@@ -6,7 +6,6 @@ import type {
 
 export interface UserSettings {
   id: string;
-  profileName: string | null;
   topN: number;
   halfLifeHours: number | null;
   hnConfig: RunSubmitHnConfig | null;

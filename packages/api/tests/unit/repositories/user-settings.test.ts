@@ -5,7 +5,6 @@ import { createUserSettingsRepo } from "@api/repositories/user-settings.js";
 interface StoredRow {
   id: string;
   singleton: boolean;
-  profileName: string | null;
   topN: number;
   halfLifeHours: number | null;
   hnConfig: unknown;
@@ -36,7 +35,6 @@ function makeFakeDb(): { db: Pick<AppDb, "select" | "insert">; rows: StoredRow[]
               const row: StoredRow = {
                 id: "00000000-0000-0000-0000-000000000001",
                 singleton: true,
-                profileName: v.profileName ?? null,
                 topN: v.topN ?? 0,
                 halfLifeHours: v.halfLifeHours ?? null,
                 hnConfig: v.hnConfig ?? null,
@@ -63,7 +61,6 @@ function makeFakeDb(): { db: Pick<AppDb, "select" | "insert">; rows: StoredRow[]
 }
 
 const baseInput = {
-  profileName: null,
   topN: 10,
   halfLifeHours: null,
   hnConfig: { sinceDays: 1 },

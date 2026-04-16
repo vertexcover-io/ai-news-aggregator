@@ -30,5 +30,4 @@ export interface CollectorResult {
 }
 
 export * from "./run.js";
-export type { UserProfile } from "./profile.js";
 export type { Candidate } from "./candidate.js";

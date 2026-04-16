@@ -41,7 +41,6 @@ describe("GET /api/archives/:runId", () => {
       status: "completed",
       rankedItems: [{ rawItemId: 42, score: 0.85, rationale: "relevant" }],
       topN: 5,
-      profileName: "alice",
       completedAt,
       createdAt: completedAt,
     });
@@ -91,7 +90,6 @@ describe("GET /api/archives/:runId", () => {
       status: "completed",
       rankedItems: [],
       topN: 10,
-      profileName: null,
       completedAt,
       createdAt: completedAt,
     });
@@ -110,7 +108,6 @@ describe("GET /api/archives/:runId", () => {
       status: "failed",
       rankedItems: [],
       topN: 10,
-      profileName: null,
       completedAt,
       createdAt: completedAt,
     });
@@ -132,7 +129,6 @@ describe("GET /api/archives/:runId", () => {
         { rawItemId: 999, score: 0.5, rationale: "gone" },
       ],
       topN: 5,
-      profileName: null,
       completedAt,
       createdAt: completedAt,
     });

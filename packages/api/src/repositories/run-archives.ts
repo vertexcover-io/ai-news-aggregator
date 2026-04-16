@@ -8,7 +8,6 @@ export interface RunArchiveRow {
   status: "completed" | "failed" | "cancelled";
   rankedItems: RankedItemRef[];
   topN: number;
-  profileName: string | null;
   reviewed: boolean;
   completedAt: Date;
   createdAt: Date;
@@ -39,7 +38,6 @@ export function createRunArchivesRepo(
           status: runArchives.status,
           rankedItems: runArchives.rankedItems,
           topN: runArchives.topN,
-          profileName: runArchives.profileName,
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
           createdAt: runArchives.createdAt,
@@ -55,7 +53,6 @@ export function createRunArchivesRepo(
           status: runArchives.status,
           rankedItems: runArchives.rankedItems,
           topN: runArchives.topN,
-          profileName: runArchives.profileName,
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
           createdAt: runArchives.createdAt,
@@ -81,7 +78,6 @@ export function createRunArchivesRepo(
           status: runArchives.status,
           rankedItems: runArchives.rankedItems,
           topN: runArchives.topN,
-          profileName: runArchives.profileName,
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
           createdAt: runArchives.createdAt,

@@ -71,7 +71,6 @@ function buildApp(opts: {
 
 const baseSettings: UserSettings = {
   id: "s1",
-  profileName: null,
   topN: 10,
   halfLifeHours: null,
   hnConfig: { sinceDays: 1 },

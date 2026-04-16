@@ -62,7 +62,6 @@ export function ArchivePage(): ReactElement {
         <ArchivePageHeader
           startedAt={data.startedAt}
           storyCount={items.length}
-          profileName={null}
         />
         <div className="space-y-8">
           {items.map((item, index) => (

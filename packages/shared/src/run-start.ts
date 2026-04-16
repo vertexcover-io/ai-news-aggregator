@@ -7,7 +7,6 @@ import type {
   RunSubmitRedditConfig,
   RunSubmitWebConfig,
 } from "./types/run.js";
-import type { UserProfile } from "./types/profile.js";
 import type { UserSettings } from "./types/settings.js";
 
 const TTL_SECONDS = 3600;
@@ -21,8 +20,6 @@ export interface RunProcessJobPayload {
     reddit?: RunSubmitRedditConfig;
     web?: RunSubmitWebConfig;
   };
-  profileName: string | null;
-  profile?: UserProfile | null;
   halfLifeHours?: number;
 }
 
@@ -33,14 +30,9 @@ export interface StartRunDeps {
   runId?: () => string;
 }
 
-export interface StartRunOptions {
-  profile?: UserProfile | null;
-}
-
 export async function startRun(
   settings: UserSettings,
   deps: StartRunDeps,
-  options: StartRunOptions = {},
 ): Promise<{ runId: string }> {
   const runId = (deps.runId ?? randomUUID)();
   const nowIso = (deps.now ? deps.now() : new Date()).toISOString();
@@ -97,8 +89,6 @@ export async function startRun(
     topN: settings.topN,
     sourceTypes,
     collectors,
-    profileName: settings.profileName,
-    ...(options.profile !== undefined ? { profile: options.profile } : {}),
     ...(settings.halfLifeHours !== null
       ? { halfLifeHours: settings.halfLifeHours }
       : {}),

@@ -9,7 +9,7 @@ async function waitForRunComplete(page: Page): Promise<void> {
 test("submit run and view archive page", async ({ page }) => {
   await page.goto("/run");
 
-  // Wait for form to load profiles
+  // Wait for form to load
   await page.waitForLoadState("networkidle");
 
   // Reduce HN count to minimum to make the run fast

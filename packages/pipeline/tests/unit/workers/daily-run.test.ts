@@ -49,7 +49,6 @@ const { createDailyRunWorker } = await import(
 function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
     id: "settings-1",
-    profileName: "default",
     topN: 5,
     halfLifeHours: 24,
     hnConfig: { limit: 10, minPoints: 5, type: "top" },

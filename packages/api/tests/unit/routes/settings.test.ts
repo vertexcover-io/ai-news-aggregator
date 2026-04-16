@@ -17,7 +17,6 @@ function makeRepo(initial: UserSettings | null = null): {
       upsertCalls += 1;
       const saved: UserSettings = {
         id: "00000000-0000-0000-0000-000000000001",
-        profileName: input.profileName,
         topN: input.topN,
         halfLifeHours: input.halfLifeHours,
         hnConfig: input.hnConfig,
@@ -60,7 +59,6 @@ function buildApp(repo: UserSettingsRepo, queue: ReturnType<typeof makeQueue>) {
 }
 
 const validBody = {
-  profileName: null,
   topN: 10,
   halfLifeHours: null,
   hnConfig: { sinceDays: 1 },
@@ -84,7 +82,6 @@ describe("GET /api/settings", () => {
   it("REQ-010: returns the current settings when a row exists", async () => {
     const existing: UserSettings = {
       id: "id-1",
-      profileName: null,
       topN: 15,
       halfLifeHours: null,
       hnConfig: null,

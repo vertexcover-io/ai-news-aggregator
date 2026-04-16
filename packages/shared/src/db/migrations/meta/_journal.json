@@ -57,6 +57,13 @@
       "when": 1776149699059,
       "tag": "0007_overconfident_pet_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776325421026,
+      "tag": "0008_massive_sleepwalker",
+      "breakpoints": true
     }
   ]
 }

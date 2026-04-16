@@ -11,13 +11,11 @@ Hono REST API for job enqueueing and email delivery.
 ## Layout
 - `src/routes/` — Hono route modules:
   - `runs.ts` — `POST /api/runs`, `GET /api/runs/:runId`, `POST /api/runs/now` (trigger immediate run from saved settings), `GET /api/runs` (list recent runs)
-  - `profiles.ts` — `GET /api/profiles` (list available user profiles for the Run form)
   - `settings.ts` — `GET /api/settings`, `PUT /api/settings` (read/write `user_settings` singleton row)
   - `archives.ts` — `PATCH /api/archives/:runId` (save curated post order, mark reviewed), `POST /api/archives/:runId/add-post` (fetch and add a post by URL)
 - `src/services/` — business logic invoked by routes:
   - `runs.ts` — seeds Redis run-state and enqueues the single run-process job
   - `rank-hydration.ts` — joins ranked IDs to `raw_items`
-  - `profiles.ts` — loads and parses `profiles/*.yaml` from `PROFILES_DIR` if set, else from `<repo-root>/profiles` resolved relative to the source file
   - `scheduler.ts` — `reconcileDailyRunSchedule()` calls BullMQ `upsertJobScheduler` to add/update/remove the daily-run repeatable job whenever settings change
   - `review.ts` — `patchArchive()` and `addPostToArchive()` implement the curation mutations
 - `src/repositories/` — Drizzle wrappers including `user-settings.ts` (`get()` and `upsert()` for the singleton settings row)
@@ -30,7 +28,7 @@ Hono REST API for job enqueueing and email delivery.
 - Use `@newsletter/shared` for types, Redis connection, and the logger factory
 - Reuse `createRedisConnection()` from shared rather than instantiating ioredis directly
 - DB access goes through `src/repositories/` — routes and services import repository factories, not `@newsletter/shared/db` or `drizzle-orm` directly (enforced by `newsletter/enforce-repository-access`)
-- User profiles are YAML files under `profiles/` at the repo root; override the lookup directory with `PROFILES_DIR` in deployed environments where the bundled source tree is not available. `POST /api/runs` accepts optional `profileName` and `halfLifeHours` fields that flow through to the pipeline's two-stage ranking.
+- `POST /api/runs` accepts optional `halfLifeHours` field that flows through to the pipeline's ranking.
 
 ## Commands
 pnpm dev          # Start dev server

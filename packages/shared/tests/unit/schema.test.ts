@@ -6,7 +6,6 @@ describe("schema: userSettings", () => {
     const columns = [
       "id",
       "singleton",
-      "profileName",
       "topN",
       "halfLifeHours",
       "hnConfig",

@@ -43,7 +43,6 @@ function buildApp(queue: ReturnType<typeof makeQueue>) {
 }
 
 const validBody = {
-  profileName: null,
   topN: 10,
   halfLifeHours: null,
   hnConfig: { sinceDays: 1 },

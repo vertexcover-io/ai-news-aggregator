@@ -7,7 +7,6 @@ import {
 } from "@api/lib/validate.js";
 
 const validSettings = {
-  profileName: null,
   topN: 10,
   halfLifeHours: null,
   hnConfig: { sinceDays: 1 },

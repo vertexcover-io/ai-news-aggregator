@@ -43,7 +43,6 @@ function makeQueue(): {
 
 const baseSettings: UserSettings = {
   id: "settings-id",
-  profileName: "aman",
   topN: 10,
   halfLifeHours: 24,
   hnConfig: { sinceDays: 1 },
@@ -122,7 +121,6 @@ describe("startRun", () => {
     });
     expect(payload.collectors.web).toBeUndefined();
     expect(payload.halfLifeHours).toBe(24);
-    expect(payload.profileName).toBe("aman");
   });
 
   it("includes web source when webConfig is set and omits disabled sources", async () => {
@@ -134,7 +132,6 @@ describe("startRun", () => {
       ...baseSettings,
       hnConfig: null,
       redditConfig: null,
-      profileName: null,
       halfLifeHours: null,
       webConfig: {
         sources: [
@@ -169,7 +166,6 @@ describe("startRun", () => {
     expect(payload.collectors.hn).toBeUndefined();
     expect(payload.collectors.reddit).toBeUndefined();
     expect(payload.halfLifeHours).toBeUndefined();
-    expect(payload.profileName).toBeNull();
   });
 
   it("generates a uuid for runId when no generator is injected", async () => {

@@ -46,7 +46,6 @@ function makeArchiveRow(refs: RankedItemRef[]): RunArchiveRow {
     status: "completed",
     rankedItems: refs,
     topN: 5,
-    profileName: null,
     reviewed: false,
     completedAt: date,
     createdAt: date,

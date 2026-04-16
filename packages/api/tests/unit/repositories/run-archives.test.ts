@@ -8,7 +8,6 @@ interface StoredArchive {
   status: "completed" | "failed";
   rankedItems: RankedItemRef[];
   topN: number;
-  profileName: string | null;
   reviewed: boolean;
   completedAt: Date;
   createdAt: Date;
@@ -57,7 +56,6 @@ describe("RunArchivesRepo.updateRankedItems (REQ-160)", () => {
       status: "completed",
       rankedItems: [{ rawItemId: 1, score: 0.5, rationale: "old" }],
       topN: 5,
-      profileName: null,
       reviewed: false,
       completedAt: before,
       createdAt: before,

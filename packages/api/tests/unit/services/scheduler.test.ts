@@ -9,7 +9,6 @@ import {
 function baseSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
     id: "s1",
-    profileName: null,
     topN: 10,
     halfLifeHours: null,
     hnConfig: { sinceDays: 1 },

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { z } from "zod";
-import type { Candidate, UserProfile, RawItemComment } from "@newsletter/shared";
+import type { Candidate, RawItemComment } from "@newsletter/shared";
 
 const { mockLoggerInfo, mockLoggerError, mockLoggerWarn } = vi.hoisted(() => ({
   mockLoggerInfo: vi.fn(),
@@ -87,12 +87,6 @@ function makeComment(id: string, content: string): RawItemComment {
   return { id, author: "anon", content, publishedAt: "2026-04-07T00:00:00Z" };
 }
 
-const profile: UserProfile = {
-  name: "aman",
-  topics: ["agent frameworks", "evals"],
-  antiTopics: ["crypto"],
-};
-
 const stubLoadBodies = (
   candidates: Candidate[],
 ): Promise<Map<number, string | null>> => {
@@ -124,7 +118,6 @@ describe("rankCandidates", () => {
     const generateObject = makeGenerate({ ranked: [] });
 
     const result = await rankCandidates([], {
-      profile,
       topN: 5,
       generateObject,
       loadBodies: stubLoadBodies,
@@ -148,12 +141,11 @@ describe("rankCandidates", () => {
       comments: [makeComment("c1", "first comment")],
     });
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Relevance" })],
+      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" })],
     });
     const now = new Date("2026-04-07T04:00:00Z");
 
     await rankCandidates([candidate], {
-      profile,
       topN: 5,
       generateObject,
       loadBodies: stubLoadBodies,
@@ -175,34 +167,30 @@ describe("rankCandidates", () => {
     expect(call.prompt).toContain("first comment");
   });
 
-  it("uses RANK_SYSTEM_PROMPT_PROFILED when profile is non-null (REQ-061)", async () => {
+  it("uses RANK_SYSTEM_PROMPT_NO_PROFILE (REQ-070)", async () => {
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance axis" })],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
     });
 
     await rankCandidates([makeCandidate(1)], {
-      profile,
       topN: 5,
       generateObject,
       loadBodies: stubLoadBodies,
     });
 
     const call = generateObject.mock.calls[0]?.[0] as GenerateArgs;
-    expect(call.system).toContain("Relevance");
+    expect(call.system).not.toContain("Relevance");
     expect(call.system).toContain("Novelty");
     expect(call.system).toContain("Signal-vs-hype");
     expect(call.system).toContain("Actionability");
-    expect(call.system).toContain("gating");
-    expect(call.system).toContain("agent frameworks");
   });
 
   it("calls generateObject with temperature 0 (REQ-064)", async () => {
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
     });
 
     await rankCandidates([makeCandidate(1)], {
-      profile,
       topN: 5,
       generateObject,
       loadBodies: stubLoadBodies,
@@ -219,7 +207,6 @@ describe("rankCandidates", () => {
 
     await expect(
       rankCandidates([makeCandidate(1)], {
-        profile,
         topN: 5,
         generateObject,
         loadBodies: stubLoadBodies,
@@ -228,8 +215,8 @@ describe("rankCandidates", () => {
   });
 
   it("accepts lowercase axis names in rationales (REQ-065 case-insensitive)", async () => {
-    // Regression: Claude naturally writes "Strong relevance — ..." mid-sentence
-    // rather than "Strong Relevance — ...". The validator must be case-insensitive
+    // Regression: Claude naturally writes "strong novelty — ..." mid-sentence
+    // rather than "Strong Novelty — ...". The validator must be case-insensitive
     // so grammatically natural rationales don't trip the guard.
     const generateObject = makeGenerate({
       ranked: [
@@ -237,13 +224,12 @@ describe("rankCandidates", () => {
           id: 1,
           score: 80,
           rationale:
-            "Strong relevance — matches the profile topics well. Good signal-vs-hype, real actionability, moderate novelty.",
+            "Strong novelty — new research results. Good signal-vs-hype, real actionability.",
         }),
       ],
     });
 
     const result = await rankCandidates([makeCandidate(1)], {
-      profile,
       topN: 5,
       generateObject,
       loadBodies: stubLoadBodies,
@@ -259,11 +245,10 @@ describe("rankCandidates", () => {
     const candidate = makeCandidate(1, { publishedAt });
 
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 90, rationale: "strong Relevance" })],
+      ranked: [makeRankedEntry({ id: 1, score: 90, rationale: "strong Novelty" })],
     });
 
     const result = await rankCandidates([candidate], {
-      profile,
       topN: 5,
       halfLifeHours: 48,
       generateObject,
@@ -282,38 +267,18 @@ describe("rankCandidates", () => {
       const parsed = args.schema.safeParse(bad);
       expect(parsed.success).toBe(false);
       return Promise.resolve({
-        object: { ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })] },
+        object: { ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })] },
       });
     });
 
     await rankCandidates([makeCandidate(1)], {
-      profile,
       topN: 5,
       generateObject,
       loadBodies: stubLoadBodies,
     });
   });
 
-  it("uses no-profile prompt when profile is null (REQ-070)", async () => {
-    const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
-    });
-
-    await rankCandidates([makeCandidate(1)], {
-      profile: null,
-      topN: 5,
-      generateObject,
-      loadBodies: stubLoadBodies,
-    });
-
-    const call = generateObject.mock.calls[0]?.[0] as GenerateArgs;
-    expect(call.system).not.toContain("Relevance");
-    expect(call.system).toContain("Novelty");
-    expect(call.system).toContain("Signal-vs-hype");
-    expect(call.system).toContain("Actionability");
-  });
-
-  it("applies recency decay in profile-null mode (REQ-071)", async () => {
+  it("applies recency decay (REQ-071)", async () => {
     const publishedAt = new Date("2026-04-05T00:00:00Z");
     const now = new Date("2026-04-07T00:00:00Z");
     const candidate = makeCandidate(1, { publishedAt });
@@ -323,7 +288,6 @@ describe("rankCandidates", () => {
     });
 
     const result = await rankCandidates([candidate], {
-      profile: null,
       topN: 5,
       halfLifeHours: 48,
       generateObject,
@@ -340,7 +304,6 @@ describe("rankCandidates", () => {
 
     await expect(
       rankCandidates([makeCandidate(1)], {
-        profile,
         topN: 5,
         generateObject,
         loadBodies: stubLoadBodies,
@@ -353,11 +316,10 @@ describe("rankCandidates", () => {
     const candidate = makeCandidate(1, { content: hugeBody });
 
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
     });
 
     await rankCandidates([candidate], {
-      profile,
       topN: 5,
       bodyTokenBudget: 100,
       generateObject,
@@ -373,11 +335,10 @@ describe("rankCandidates", () => {
   it("omits the comments section for candidates with zero comments (REQ-053, EDGE-016)", async () => {
     const candidate = makeCandidate(1, { comments: [] });
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
     });
 
     await rankCandidates([candidate], {
-      profile,
       topN: 5,
       generateObject,
       loadBodies: stubLoadBodies,
@@ -394,11 +355,10 @@ describe("rankCandidates", () => {
     );
     const candidate = makeCandidate(1, { comments });
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Relevance" })],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
     });
 
     await rankCandidates([candidate], {
-      profile,
       topN: 5,
       commentsPerItem: 3,
       generateObject,
@@ -421,15 +381,14 @@ describe("rankCandidates", () => {
     ];
     const generateObject = makeGenerate({
       ranked: [
-        makeRankedEntry({ id: 1, score: 10, rationale: "Relevance" }),
-        makeRankedEntry({ id: 2, score: 90, rationale: "Relevance" }),
-        makeRankedEntry({ id: 3, score: 50, rationale: "Relevance" }),
-        makeRankedEntry({ id: 4, score: 80, rationale: "Relevance" }),
+        makeRankedEntry({ id: 1, score: 10, rationale: "Novelty" }),
+        makeRankedEntry({ id: 2, score: 90, rationale: "Novelty" }),
+        makeRankedEntry({ id: 3, score: 50, rationale: "Novelty" }),
+        makeRankedEntry({ id: 4, score: 80, rationale: "Novelty" }),
       ],
     });
 
     const result = await rankCandidates(candidates, {
-      profile,
       topN: 2,
       generateObject,
       loadBodies: stubLoadBodies,
@@ -443,13 +402,12 @@ describe("rankCandidates", () => {
   it("emits run.rank INFO log with runId and counts (REQ-103)", async () => {
     const generateObject = makeGenerate({
       ranked: [
-        makeRankedEntry({ id: 1, score: 50, rationale: "Relevance" }),
-        makeRankedEntry({ id: 2, score: 70, rationale: "Relevance" }),
+        makeRankedEntry({ id: 1, score: 50, rationale: "Novelty" }),
+        makeRankedEntry({ id: 2, score: 70, rationale: "Novelty" }),
       ],
     });
 
     await rankCandidates([makeCandidate(1), makeCandidate(2)], {
-      profile,
       topN: 5,
       runId: "run-xyz",
       generateObject,
@@ -475,7 +433,7 @@ describe("rankCandidates", () => {
       ranked: [makeRankedEntry({
         id: 1,
         score: 80,
-        rationale: "strong Relevance",
+        rationale: "strong Novelty",
         summary: "OpenAI released a new model with improved reasoning.",
         bullets: [
           "The new model shows 30% improvement on benchmarks.",
@@ -487,7 +445,6 @@ describe("rankCandidates", () => {
     });
 
     const result = await rankCandidates([makeCandidate(1)], {
-      profile,
       topN: 5,
       generateObject,
       loadBodies: stubLoadBodies,
@@ -508,7 +465,7 @@ describe("rankCandidates", () => {
           ranked: [makeRankedEntry({
             id: 1,
             score: 50,
-            rationale: "strong Relevance",
+            rationale: "strong Novelty",
             summary: "Short summary.",
             bullets: ["Only one bullet."],
             bottomLine: "Takeaway.",
@@ -518,7 +475,6 @@ describe("rankCandidates", () => {
     });
 
     const result = await rankCandidates([makeCandidate(1)], {
-      profile,
       topN: 5,
       generateObject,
       loadBodies: stubLoadBodies,
@@ -534,13 +490,12 @@ describe("rankCandidates", () => {
       capturedAbortSignal = args.abortSignal;
       return Promise.resolve({
         object: {
-          ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Relevance" })],
+          ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" })],
         },
       });
     });
 
     await rankCandidates([makeCandidate(1)], {
-      profile,
       topN: 5,
       generateObject,
       loadBodies: stubLoadBodies,

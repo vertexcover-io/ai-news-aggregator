@@ -21,7 +21,6 @@ export function createUserSettingsRepo(
       const row = rows[0];
       return {
         id: row.id,
-        profileName: row.profileName,
         topN: row.topN,
         halfLifeHours: row.halfLifeHours,
         hnConfig: row.hnConfig,

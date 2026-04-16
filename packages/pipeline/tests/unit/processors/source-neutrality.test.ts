@@ -1,8 +1,8 @@
 /**
  * EDGE-010 / REQ-054: Golden-set regression test for source-neutrality.
  *
- * Two near-identical candidates (same title, body, publishedAt, matching the
- * profile's topics) differing only by sourceType and comment availability
+ * Two near-identical candidates (same title, body, publishedAt) differing
+ * only by sourceType and comment availability
  * (blog with comments: [] vs HN with 5 comments) must receive scores within
  * ±5 points of each other.
  *
@@ -16,7 +16,6 @@ import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import type {
   Candidate,
-  UserProfile,
   RawItemComment,
 } from "@newsletter/shared";
 import { rankCandidates } from "@pipeline/processors/rank.js";
@@ -39,12 +38,6 @@ interface PromptPayload {
     comments?: string[];
   }[];
 }
-
-const profile: UserProfile = {
-  name: "aman",
-  topics: ["agent frameworks", "LLM infrastructure"],
-  antiTopics: ["crypto"],
-};
 
 const SHARED_TITLE = "A deep dive into agent frameworks and LLM infrastructure";
 const SHARED_BODY =
@@ -118,15 +111,10 @@ describe("source-neutrality golden-set (EDGE-010, REQ-054)", () => {
 
       const payload = JSON.parse(args.prompt) as PromptPayload;
 
-      // Heuristic: body length * 0.1, plus a flat "relevance present" bonus
-      // when the prompt contains the profile topics. DOES NOT read comments.
+      // Heuristic: body length * 0.1. DOES NOT read comments.
       // Two items with identical bodies get identical scores.
       const scoreForItem = (item: PromptPayload["items"][number]): number => {
-        const bodyScore = (item.body?.length ?? 0) * 0.1;
-        const hasRelevanceSignal = args.system.includes("agent frameworks")
-          ? 20
-          : 0;
-        return bodyScore + hasRelevanceSignal;
+        return (item.body?.length ?? 0) * 0.1;
       };
 
       return Promise.resolve({
@@ -134,14 +122,16 @@ describe("source-neutrality golden-set (EDGE-010, REQ-054)", () => {
           ranked: payload.items.map((it) => ({
             id: it.id,
             score: scoreForItem(it),
-            rationale: "strong Relevance — body aligns with declared topics",
+            rationale: "strong Novelty — new research results",
+            summary: "Test summary for this item.",
+            bullets: ["First point.", "Second point.", "Third point."],
+            bottomLine: "Strategic takeaway.",
           })),
         },
       });
     };
 
     const result = await rankCandidates([makeBlog(), makeHn()], {
-      profile,
       topN: 5,
       halfLifeHours: 48,
       now: SHARED_PUBLISHED, // age 0 so recency multiplier is 1

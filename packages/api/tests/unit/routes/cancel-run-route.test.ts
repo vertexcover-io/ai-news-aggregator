@@ -182,7 +182,6 @@ describe("POST /api/runs/:runId/cancel", () => {
       status: "completed",
       rankedItems: [],
       topN: 10,
-      profileName: null,
       reviewed: false,
       completedAt: new Date(),
       createdAt: new Date(),
