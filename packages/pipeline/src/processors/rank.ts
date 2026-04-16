@@ -23,7 +23,6 @@ import type { ShortlistBreakdown } from "@pipeline/processors/shortlist.js";
 const logger = createLogger("processor:rank");
 
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
-const RANK_MAX_TOKENS = 16_384; // claude-haiku-4-5 context ceiling
 const DEFAULT_BODY_TOKEN_BUDGET = 2000;
 const DEFAULT_COMMENTS_PER_ITEM = 5;
 const DEFAULT_COMMENT_TOKEN_BUDGET = 200;
@@ -190,9 +189,6 @@ export async function rankCandidates(
       schema: rankedResponseSchema,
       temperature: 0,
       maxRetries: 2,
-      providerOptions: {
-        anthropic: { maxTokens: RANK_MAX_TOKENS },
-      },
       abortSignal: options.abortSignal,
     })) as { object: z.infer<typeof rankedResponseSchema> };
   } catch (err) {

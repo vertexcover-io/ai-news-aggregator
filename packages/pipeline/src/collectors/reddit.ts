@@ -19,7 +19,7 @@ const DEFAULT_LIMIT = 25;
 const DEFAULT_COMMENTS_PER_ITEM = 10;
 const MAX_RETRIES = 3;
 const RATE_LIMIT_MS = 500;
-const COMMENT_RATE_LIMIT_MS = 2000;
+const COMMENT_RATE_LIMIT_MS = 1000;
 const MIN_COMMENTS_FOR_FETCH = 5;
 const USER_AGENT = "Mozilla/5.0 (compatible; NewsletterBot/1.0; +https://vertexcover.io)";
 

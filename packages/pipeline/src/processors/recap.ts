@@ -67,9 +67,6 @@ export async function generateRecap(
       prompt,
       schema: recapContentSchema,
       temperature: 0,
-      providerOptions: {
-        anthropic: { maxTokens: 2048 },
-      },
     })) as { object: RecapContent };
     return result.object;
   } catch (err) {
