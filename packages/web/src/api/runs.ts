@@ -10,7 +10,10 @@ export interface SubmitRunResponse {
   runId: string;
 }
 
-export type RunStateResponse = Omit<RunState, "rankedItems"> & { rankedItems: RankedItem[] | null };
+export type RunStateResponse = Omit<RunState, "rankedItems"> & {
+  rankedItems: RankedItem[] | null;
+  sourceTypes?: string[] | null;
+};
 
 interface ApiErrorBody {
   error?: string;

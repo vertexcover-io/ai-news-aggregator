@@ -1,4 +1,4 @@
-import type { RankedItem } from "@newsletter/shared";
+import type { RankedItem, PoolResponse } from "@newsletter/shared";
 import { apiFetch } from "./client";
 
 export interface PatchArchiveBody {
@@ -45,6 +45,53 @@ export async function addPost(
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as ApiErrorBody;
     throw new Error(data.error ?? "Failed to add post");
+  }
+  return (await res.json()) as RankedItem;
+}
+
+export interface PoolQuery {
+  sort?: "engagement" | "recency";
+  source?: string;
+  q?: string;
+  offset?: number;
+  limit?: number;
+}
+
+export async function getPool(
+  runId: string,
+  query: PoolQuery = {},
+): Promise<PoolResponse> {
+  const params = new URLSearchParams();
+  if (query.sort) params.set("sort", query.sort);
+  if (query.source) params.set("source", query.source);
+  if (query.q) params.set("q", query.q);
+  if (query.offset !== undefined) params.set("offset", String(query.offset));
+  if (query.limit !== undefined) params.set("limit", String(query.limit));
+  const qs = params.toString();
+  const url = `/api/archives/${runId}/pool${qs ? `?${qs}` : ""}`;
+  const res = await apiFetch(url);
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(data.error ?? "Failed to fetch pool");
+  }
+  return (await res.json()) as PoolResponse;
+}
+
+export interface PromoteBody {
+  rawItemId: number;
+}
+
+export async function promoteItem(
+  runId: string,
+  body: PromoteBody,
+): Promise<RankedItem> {
+  const res = await apiFetch(`/api/archives/${runId}/promote`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(data.error ?? "Failed to promote item");
   }
   return (await res.json()) as RankedItem;
 }
