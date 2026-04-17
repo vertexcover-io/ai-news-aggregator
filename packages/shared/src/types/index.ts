@@ -30,4 +30,5 @@ export interface CollectorResult {
 }
 
 export * from "./run.js";
+export * from "./archive.js";
 export type { Candidate } from "./candidate.js";

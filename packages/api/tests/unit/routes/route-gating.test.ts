@@ -1,0 +1,242 @@
+import { describe, it, expect, vi } from "vitest";
+import { Hono } from "hono";
+import { buildApp } from "@api/app.js";
+import {
+  createPublicArchivesRouter,
+  createAdminArchivesRouter,
+  type ArchivesRouterDeps,
+} from "@api/routes/archives.js";
+import { createAdminRouter } from "@api/routes/admin.js";
+import { requireAdmin } from "@api/auth/middleware.js";
+import { COOKIE_NAME } from "@api/auth/session.js";
+import type {
+  ArchiveListItem,
+  RankedItemRef,
+} from "@newsletter/shared";
+import type { RawItemsRepo } from "@api/repositories/raw-items.js";
+import type {
+  RunArchiveRow,
+  RunArchivesRepo,
+} from "@api/repositories/run-archives.js";
+
+const ADMIN_PASSWORD = "shared-password";
+const SESSION_SECRET = "test-session-secret";
+
+function makeRawItemsRepo(): RawItemsRepo {
+  return {
+    findByIds: vi.fn(() => Promise.resolve([])),
+  };
+}
+
+function makeArchiveRepo(options?: {
+  list?: ArchiveListItem[];
+  row?: RunArchiveRow | null;
+}): RunArchivesRepo {
+  return {
+    findById: vi.fn(() => Promise.resolve(options?.row ?? null)),
+    list: vi.fn(() => Promise.resolve([])),
+    listReviewed: vi.fn(() => Promise.resolve(options?.list ?? [])),
+    updateRankedItems: vi.fn(() =>
+      Promise.reject(new Error("not used")),
+    ),
+    findPoolItems: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
+  };
+}
+
+function makeArchivesDeps(
+  archiveRepo: RunArchivesRepo,
+): ArchivesRouterDeps {
+  return {
+    getRawItemsRepo: () => makeRawItemsRepo(),
+    getArchiveRepo: () => archiveRepo,
+  };
+}
+
+function makeStubRunsRouter(): Hono {
+  const app = new Hono();
+  app.get("/", (c) => c.json({ runs: [] }));
+  return app;
+}
+
+function makeStubSettingsRouter(): Hono {
+  const app = new Hono();
+  app.get("/", (c) => c.json(null));
+  return app;
+}
+
+function makeApp(
+  archiveRepo: RunArchivesRepo = makeArchiveRepo(),
+): Hono {
+  const deps = makeArchivesDeps(archiveRepo);
+  return buildApp({
+    sessionSecret: SESSION_SECRET,
+    publicArchivesRouter: createPublicArchivesRouter(deps),
+    adminArchivesRouter: createAdminArchivesRouter(deps),
+    runsRouter: makeStubRunsRouter(),
+    settingsRouter: makeStubSettingsRouter(),
+    adminRouter: createAdminRouter({
+      adminPassword: ADMIN_PASSWORD,
+      sessionSecret: SESSION_SECRET,
+      logger: { info: vi.fn(), warn: vi.fn() },
+    }),
+    requireAdminFactory: requireAdmin,
+  });
+}
+
+function parseSessionCookie(setCookie: string | null): string {
+  if (!setCookie) throw new Error("expected Set-Cookie header");
+  const match = new RegExp(`${COOKIE_NAME}=([^;]+)`).exec(setCookie);
+  if (!match) throw new Error(`no ${COOKIE_NAME} in ${setCookie}`);
+  return `${COOKIE_NAME}=${match[1]}`;
+}
+
+async function loginAndGetCookie(app: Hono): Promise<string> {
+  const res = await app.request("/api/admin/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ password: ADMIN_PASSWORD }),
+  });
+  expect(res.status).toBe(200);
+  return parseSessionCookie(res.headers.get("set-cookie"));
+}
+
+describe("route gating (phase 4)", () => {
+  it("1. GET /api/archives is public (200 without cookie)", async () => {
+    const archiveRepo = makeArchiveRepo({
+      list: [{ runId: "run-1", runDate: "2026-04-15", storyCount: 3 }],
+    });
+    const app = makeApp(archiveRepo);
+    const res = await app.request("/api/archives");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      archives: [{ runId: "run-1", runDate: "2026-04-15", storyCount: 3 }],
+    });
+  });
+
+  it("2. GET /api/archives/:runId is public (200 without cookie)", async () => {
+    const refs: RankedItemRef[] = [];
+    const row: RunArchiveRow = {
+      id: "run-2",
+      status: "completed",
+      rankedItems: refs,
+      topN: 5,
+      reviewed: true,
+      sourceTypes: ["hn"],
+      startedAt: new Date("2026-04-10T00:00:00Z"),
+      completedAt: new Date("2026-04-10T01:00:00Z"),
+      createdAt: new Date("2026-04-10T00:00:00Z"),
+    };
+    const archiveRepo = makeArchiveRepo({ row });
+    const app = makeApp(archiveRepo);
+    const res = await app.request("/api/archives/run-2");
+    expect(res.status).toBe(200);
+  });
+
+  it("3. POST /api/admin/login with correct password sets cookie", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/admin/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: ADMIN_PASSWORD }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    const setCookie = res.headers.get("set-cookie");
+    expect(setCookie).toBeTruthy();
+    expect(setCookie).toContain(`${COOKIE_NAME}=`);
+  });
+
+  it("4. GET /api/admin/me without cookie → 401", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/admin/me");
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("5. GET /api/admin/me with session cookie → 200", async () => {
+    const app = makeApp();
+    const cookie = await loginAndGetCookie(app);
+    const res = await app.request("/api/admin/me", {
+      headers: { cookie },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ admin: true });
+  });
+
+  it("6. GET /api/runs without cookie → 401", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/runs");
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("7. GET /api/runs with cookie is not 401", async () => {
+    const app = makeApp();
+    const cookie = await loginAndGetCookie(app);
+    const res = await app.request("/api/runs", { headers: { cookie } });
+    expect(res.status).not.toBe(401);
+    expect(res.status).toBe(200);
+  });
+
+  it("8. PATCH /api/admin/archives/:runId without cookie → 401", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/admin/archives/run-1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ rankedItems: [] }),
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("9. POST /api/admin/archives/:runId/add-post without cookie → 401", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/admin/archives/run-1/add-post", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com", sourceType: "hn" }),
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("10. POST /api/admin/logout clears cookie; subsequent /me → 401", async () => {
+    const app = makeApp();
+    const cookie = await loginAndGetCookie(app);
+
+    const logoutRes = await app.request("/api/admin/logout", {
+      method: "POST",
+      headers: { cookie },
+    });
+    expect(logoutRes.status).toBe(200);
+    const clearCookie = logoutRes.headers.get("set-cookie");
+    expect(clearCookie).toBeTruthy();
+    expect(clearCookie).toMatch(/Max-Age=0/i);
+
+    // After the browser processes Max-Age=0 the cookie would be gone;
+    // simulate by dropping it from subsequent request.
+    const meRes = await app.request("/api/admin/me");
+    expect(meRes.status).toBe(401);
+  });
+
+  it("settings is also gated", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/settings");
+    expect(res.status).toBe(401);
+    const cookie = await loginAndGetCookie(app);
+    const ok = await app.request("/api/settings", { headers: { cookie } });
+    expect(ok.status).toBe(200);
+  });
+
+  it("POST /api/admin/login remains reachable without a cookie", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/admin/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "wrong-password" }),
+    });
+    // Should hit the handler (not the gate) even without a cookie.
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "invalid_password" });
+  });
+});

@@ -1,5 +1,9 @@
-import type { RankedItem, PoolResponse } from "@newsletter/shared";
-import { apiFetch } from "./client";
+import type {
+  RankedItem,
+  PoolResponse,
+  ArchiveListResponse,
+} from "@newsletter/shared";
+import { apiFetch, apiFetchAdmin } from "./client";
 
 export interface PatchArchiveBody {
   rankedItems: {
@@ -20,11 +24,17 @@ interface ApiErrorBody {
   error?: string;
 }
 
+export async function listArchives(): Promise<ArchiveListResponse> {
+  const res = await apiFetch("/api/archives");
+  if (!res.ok) throw new Error(`listArchives: ${String(res.status)}`);
+  return (await res.json()) as ArchiveListResponse;
+}
+
 export async function patchArchive(
   runId: string,
   body: PatchArchiveBody,
 ): Promise<void> {
-  const res = await apiFetch(`/api/archives/${runId}`, {
+  const res = await apiFetchAdmin(`/api/admin/archives/${runId}`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });
@@ -38,7 +48,7 @@ export async function addPost(
   runId: string,
   body: AddPostBody,
 ): Promise<RankedItem> {
-  const res = await apiFetch(`/api/archives/${runId}/add-post`, {
+  const res = await apiFetchAdmin(`/api/admin/archives/${runId}/add-post`, {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -68,8 +78,8 @@ export async function getPool(
   if (query.offset !== undefined) params.set("offset", String(query.offset));
   if (query.limit !== undefined) params.set("limit", String(query.limit));
   const qs = params.toString();
-  const url = `/api/archives/${runId}/pool${qs ? `?${qs}` : ""}`;
-  const res = await apiFetch(url);
+  const url = `/api/admin/archives/${runId}/pool${qs ? `?${qs}` : ""}`;
+  const res = await apiFetchAdmin(url);
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as ApiErrorBody;
     throw new Error(data.error ?? "Failed to fetch pool");
@@ -85,7 +95,7 @@ export async function promoteItem(
   runId: string,
   body: PromoteBody,
 ): Promise<RankedItem> {
-  const res = await apiFetch(`/api/archives/${runId}/promote`, {
+  const res = await apiFetchAdmin(`/api/admin/archives/${runId}/promote`, {
     method: "POST",
     body: JSON.stringify(body),
   });
