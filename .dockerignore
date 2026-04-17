@@ -47,3 +47,4 @@ README.md
 .husky
 deployment
 !deployment/dockerfiles
+!deployment/migrate.mjs
