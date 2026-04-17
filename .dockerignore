@@ -1,0 +1,49 @@
+# Keep the Docker build context small and free of secrets.
+# This file is read from the repo root (the build context) by every Dockerfile
+# under deployment/dockerfiles/.
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Node build outputs and caches
+**/node_modules
+**/dist
+**/.turbo
+**/*.tsbuildinfo
+
+# Local dev / test state
+.env
+.env.*
+!.env.example
+!.env.test.example
+.playwright-mcp
+.worktrees
+.harness
+packages/web/playwright-report
+packages/web/test-results
+
+# Editor / OS junk
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# Docs and specs — not needed at runtime
+docs
+README.md
+*.md
+!packages/*/README.md
+
+# Screenshots / scratch assets committed to the repo
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# CI / local tooling
+.github
+.husky
+deployment
+!deployment/dockerfiles

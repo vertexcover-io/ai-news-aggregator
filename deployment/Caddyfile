@@ -1,0 +1,26 @@
+# Caddy reverse proxy for the newsletter app.
+# - `/api/*` proxies to the api container on the loopback interface.
+# - Everything else is served from the static React build at /var/www/newsletter/web.
+# - TLS is obtained automatically from Let's Encrypt on first startup.
+
+newsletter.vertexcover.io {
+	encode zstd gzip
+
+	log {
+		output file /var/log/caddy/newsletter.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+		format json
+	}
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	handle {
+		root * /var/www/newsletter/web
+		try_files {path} /index.html
+		file_server
+	}
+}
