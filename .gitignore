@@ -3,6 +3,7 @@ dist/
 .playwright-mcp/
 .env
 .env.test
+deployment/.env.prod
 *.tsbuildinfo
 .turbo/
 docs/*

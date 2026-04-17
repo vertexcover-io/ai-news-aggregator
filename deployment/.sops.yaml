@@ -1,0 +1,8 @@
+# SOPS config for production secrets.
+# The age public key below is the ONLY key authorized to encrypt .env.prod.enc.
+# To generate a new one:  age-keygen -o age-key.txt
+# Replace AGE_PUBLIC_KEY below with the "# public key:" line emitted by age-keygen.
+# Store the private key at /root/.config/sops/age/keys.txt on the production server.
+creation_rules:
+  - path_regex: \.env\.prod(\.enc)?$
+    age: age1jvxw02jpmxl3mv2enrky232wk8pde9refh6znzd5ll495z83cqlqg7pz46

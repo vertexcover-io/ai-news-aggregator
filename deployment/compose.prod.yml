@@ -1,0 +1,67 @@
+# Production compose file — used on the VPS by deployment/deploy.sh.
+# Required env vars at runtime:
+#   GIT_SHA        — image tag for api/pipeline (set by deploy.sh)
+#   GHCR_REPO_OWNER — GitHub owner for GHCR images (e.g. vertexcover-io)
+# Secrets are sourced from /etc/newsletter/.env (written by deploy.sh from SOPS).
+
+name: newsletter
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-newsletter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-newsletter}
+    volumes:
+      - /var/lib/newsletter/pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-newsletter}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - /var/lib/newsletter/redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: ghcr.io/${GHCR_REPO_OWNER:?GHCR_REPO_OWNER must be set}/ai-news-aggregator-api:${GIT_SHA:?GIT_SHA must be set}
+    restart: unless-stopped
+    env_file:
+      - ${NEWSLETTER_ENV_FILE:-/etc/newsletter/.env}
+    ports:
+      # Bind to loopback only — Caddy on the host proxies public traffic to this port.
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  pipeline:
+    image: ghcr.io/${GHCR_REPO_OWNER:?GHCR_REPO_OWNER must be set}/ai-news-aggregator-pipeline:${GIT_SHA:?GIT_SHA must be set}
+    restart: unless-stopped
+    env_file:
+      - ${NEWSLETTER_ENV_FILE:-/etc/newsletter/.env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

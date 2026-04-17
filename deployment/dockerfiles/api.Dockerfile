@@ -1,0 +1,55 @@
+# syntax=docker/dockerfile:1.7
+
+# Build stage — uses the shared base image.
+FROM node:22-alpine AS build
+
+RUN corepack enable
+WORKDIR /app
+
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.json ./
+COPY packages/shared/package.json        packages/shared/package.json
+COPY packages/api/package.json           packages/api/package.json
+COPY packages/pipeline/package.json      packages/pipeline/package.json
+COPY packages/web/package.json           packages/web/package.json
+COPY packages/eslint-plugin/package.json packages/eslint-plugin/package.json
+
+RUN pnpm install --frozen-lockfile
+
+COPY packages/shared ./packages/shared
+COPY packages/pipeline ./packages/pipeline
+COPY packages/api ./packages/api
+
+RUN pnpm --filter @newsletter/shared build \
+ && pnpm --filter @newsletter/pipeline build \
+ && pnpm --filter @newsletter/api build
+
+# Keep only production deps for the runtime image.
+RUN pnpm --filter @newsletter/api --prod deploy /out/api \
+ && pnpm --filter @newsletter/shared --prod deploy /out/shared
+
+# Runtime stage — minimal image with Node + built artifacts.
+FROM node:22-alpine AS runtime
+
+ENV NODE_ENV=production \
+    PORT=3000
+
+RUN addgroup -S app && adduser -S -G app app
+
+WORKDIR /app
+
+# App code + prod node_modules, produced by `pnpm deploy`.
+COPY --from=build --chown=app:app /out/api /app
+
+# Drizzle migrations are run from within the api container by the deploy script:
+# `docker compose exec api node scripts/migrate.js`. Copy migration SQL + runner.
+COPY --from=build --chown=app:app /app/packages/shared/src/db/migrations /app/migrations
+COPY --from=build --chown=app:app /app/packages/shared/drizzle.config.ts /app/drizzle.config.ts
+
+USER app
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:3000/health || exit 1
+
+CMD ["node", "dist/index.js"]
