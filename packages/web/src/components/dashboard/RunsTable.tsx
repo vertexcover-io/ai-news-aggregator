@@ -109,7 +109,7 @@ function RunActionCell({
   if (derived === "ready-to-review") {
     return (
       <Button asChild size="sm">
-        <Link to={`/review/${run.runId}`}>
+        <Link to={`/admin/review/${run.runId}`}>
           Review
           <ArrowRight />
         </Link>

@@ -3,7 +3,7 @@ import {
   createLogger,
   getDb as defaultGetDb,
 } from "@newsletter/shared";
-import type { RunState } from "@newsletter/shared";
+import type { ArchiveListResponse, RunState } from "@newsletter/shared";
 import { hydrateRankedItems } from "@api/services/rank-hydration.js";
 import {
   createRawItemsRepo,
@@ -38,9 +38,14 @@ export interface ArchivesRouterDeps {
   logger?: ReturnType<typeof createLogger>;
 }
 
-export function createArchivesRouter(deps: ArchivesRouterDeps): Hono {
+export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
   const logger = deps.logger ?? createLogger("api:archives");
   const archives = new Hono();
+
+  archives.get("/", async (c) => {
+    const items = await deps.getArchiveRepo().listReviewed();
+    return c.json({ archives: items } satisfies ArchiveListResponse);
+  });
 
   archives.get("/:runId", async (c) => {
     const runId = c.req.param("runId");
@@ -77,6 +82,13 @@ export function createArchivesRouter(deps: ArchivesRouterDeps): Hono {
       return c.json({ error: "internal error" }, 500);
     }
   });
+
+  return archives;
+}
+
+export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
+  const logger = deps.logger ?? createLogger("api:archives");
+  const archives = new Hono();
 
   archives.patch("/:runId", async (c) => {
     const runId = c.req.param("runId");
@@ -224,13 +236,39 @@ function createDefaultGenerateRecapFn(): GenerateRecapFn {
   };
 }
 
+/**
+ * Backward-compat: returns a single Hono app with BOTH public and admin archive
+ * routes mounted. Kept for existing tests/callers that don't split the gate.
+ * New callers in `index.ts` should prefer `createPublicArchivesRouter` +
+ * `createAdminArchivesRouter` so the admin gate can be mounted on the admin
+ * half only.
+ */
+export function createArchivesRouter(deps: ArchivesRouterDeps): Hono {
+  const app = new Hono();
+  app.route("/", createPublicArchivesRouter(deps));
+  app.route("/", createAdminArchivesRouter(deps));
+  return app;
+}
+
 export function createDefaultArchivesRouter(): Hono {
-  return createArchivesRouter({
+  return createArchivesRouter(createDefaultArchivesDeps());
+}
+
+export function createDefaultPublicArchivesRouter(): Hono {
+  return createPublicArchivesRouter(createDefaultArchivesDeps());
+}
+
+export function createDefaultAdminArchivesRouter(): Hono {
+  return createAdminArchivesRouter(createDefaultArchivesDeps());
+}
+
+function createDefaultArchivesDeps(): ArchivesRouterDeps {
+  return {
     getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
     getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
     hydrateAddedPost: createDefaultHydrateAddedPost(),
     generateRecapFn: createDefaultGenerateRecapFn(),
-  });
+  };
 }
 
 function createDefaultHydrateAddedPost(): HydrateAddedPostFn {

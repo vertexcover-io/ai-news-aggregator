@@ -1,5 +1,5 @@
 import type { UserSettings } from "@newsletter/shared";
-import { apiFetch } from "./client";
+import { apiFetchAdmin } from "./client";
 
 export type UserSettingsUpsertInput = Omit<UserSettings, "id" | "updatedAt">;
 
@@ -8,7 +8,7 @@ interface ApiErrorBody {
 }
 
 export async function getSettings(): Promise<UserSettings | null> {
-  const res = await apiFetch("/api/settings");
+  const res = await apiFetchAdmin("/api/settings");
   if (!res.ok) throw new Error("Failed to fetch settings");
   return (await res.json()) as UserSettings | null;
 }
@@ -16,7 +16,7 @@ export async function getSettings(): Promise<UserSettings | null> {
 export async function putSettings(
   input: UserSettingsUpsertInput,
 ): Promise<UserSettings> {
-  const res = await apiFetch("/api/settings", {
+  const res = await apiFetchAdmin("/api/settings", {
     method: "PUT",
     body: JSON.stringify(input),
   });

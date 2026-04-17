@@ -12,7 +12,7 @@ export function EmptyState(): ReactElement {
         schedule to start collecting.
       </p>
       <Button asChild>
-        <Link to="/settings">Configure your newsletter</Link>
+        <Link to="/admin/settings">Configure your newsletter</Link>
       </Button>
     </Card>
   );

@@ -4,7 +4,7 @@ import type {
   RunSubmitPayload,
   RunSummary,
 } from "@newsletter/shared";
-import { apiFetch } from "./client";
+import { apiFetch, apiFetchAdmin } from "./client";
 
 export interface SubmitRunResponse {
   runId: string;
@@ -22,7 +22,7 @@ interface ApiErrorBody {
 export async function submitRun(
   payload: RunSubmitPayload,
 ): Promise<SubmitRunResponse> {
-  const res = await apiFetch("/api/runs", {
+  const res = await apiFetchAdmin("/api/runs", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -34,7 +34,7 @@ export async function submitRun(
 }
 
 export async function getRun(runId: string): Promise<RunStateResponse | null> {
-  const res = await apiFetch(`/api/runs/${runId}`);
+  const res = await apiFetchAdmin(`/api/runs/${runId}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error("Failed to fetch run");
   return (await res.json()) as RunStateResponse;
@@ -54,7 +54,7 @@ interface ListRunsResponse {
 export async function listRuns(limit?: number): Promise<RunSummary[]> {
   const path =
     limit === undefined ? "/api/runs" : `/api/runs?limit=${String(limit)}`;
-  const res = await apiFetch(path);
+  const res = await apiFetchAdmin(path);
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
     throw new Error(body.error ?? "Failed to fetch runs");
@@ -68,7 +68,7 @@ export interface TriggerRunNowResponse {
 }
 
 export async function triggerRunNow(): Promise<TriggerRunNowResponse> {
-  const res = await apiFetch("/api/runs/now", { method: "POST" });
+  const res = await apiFetchAdmin("/api/runs/now", { method: "POST" });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
     throw new Error(body.error ?? "Failed to start run");
@@ -81,7 +81,9 @@ export type CancelRunResult =
   | { status: "already-terminal" };
 
 export async function cancelRun(runId: string): Promise<CancelRunResult> {
-  const res = await apiFetch(`/api/runs/${runId}/cancel`, { method: "POST" });
+  const res = await apiFetchAdmin(`/api/runs/${runId}/cancel`, {
+    method: "POST",
+  });
   // 409 means the run is already in a terminal state — not an error from UI perspective
   if (res.status === 409) {
     return { status: "already-terminal" };

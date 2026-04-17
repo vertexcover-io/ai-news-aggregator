@@ -24,6 +24,7 @@ function makeArchiveRepo(
   return {
     findById: vi.fn(() => Promise.resolve(row)),
     list: vi.fn(() => Promise.resolve([])),
+    listReviewed: vi.fn(() => Promise.resolve([])),
     updateRankedItems: vi.fn(() => Promise.resolve(row as RunArchiveRow)),
     findPoolItems: vi.fn(() =>
       Promise.resolve(poolResult ?? { items: [], total: 0 }),

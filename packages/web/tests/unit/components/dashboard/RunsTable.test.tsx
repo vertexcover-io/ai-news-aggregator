@@ -85,7 +85,7 @@ describe("RunsTable CTA routing (REQ-110, REQ-111)", () => {
       </MemoryRouter>,
     );
     const link = screen.getByRole("link", { name: /review/i });
-    expect(link.getAttribute("href")).toBe("/review/run-pending");
+    expect(link.getAttribute("href")).toBe("/admin/review/run-pending");
   });
 
   it("renders 'View archive' linking to /archive/:runId when reviewed", () => {

@@ -1,7 +1,11 @@
 import { and, desc, eq, gte, ilike, inArray, notInArray, sql } from "drizzle-orm";
 import { rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
-import type { PoolItem, RankedItemRef } from "@newsletter/shared";
+import type {
+  ArchiveListItem,
+  PoolItem,
+  RankedItemRef,
+} from "@newsletter/shared";
 
 export interface RunArchiveRow {
   id: string;
@@ -29,6 +33,7 @@ export interface FindPoolItemsOpts {
 export interface RunArchivesRepo {
   findById(id: string): Promise<RunArchiveRow | null>;
   list(limit: number): Promise<RunArchiveRow[]>;
+  listReviewed(): Promise<ArchiveListItem[]>;
   updateRankedItems(
     id: string,
     items: RankedItemRef[],
@@ -85,6 +90,23 @@ export function createRunArchivesRepo(
         .from(runArchives)
         .where(eq(runArchives.id, id));
       return rows[0] ?? null;
+    },
+    async listReviewed(): Promise<ArchiveListItem[]> {
+      const rows = await db
+        .select({
+          runId: runArchives.id,
+          completedAt: runArchives.completedAt,
+          rankedItems: runArchives.rankedItems,
+        })
+        .from(runArchives)
+        .where(eq(runArchives.reviewed, true))
+        .orderBy(desc(runArchives.completedAt));
+
+      return rows.map((r) => ({
+        runId: r.runId,
+        runDate: r.completedAt.toISOString().slice(0, 10),
+        storyCount: Array.isArray(r.rankedItems) ? r.rankedItems.length : 0,
+      }));
     },
     async list(limit: number): Promise<RunArchiveRow[]> {
       return db

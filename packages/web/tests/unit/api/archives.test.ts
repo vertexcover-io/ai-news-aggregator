@@ -38,7 +38,7 @@ describe("patchArchive", () => {
       rankedItems: [{ id: 1, sourceType: "hn" }],
     });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/archives/run-1");
+    expect(url).toBe("/api/admin/archives/run-1");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body as string)).toEqual({
       rankedItems: [{ id: 1, sourceType: "hn" }],
@@ -65,7 +65,7 @@ describe("addPost", () => {
     });
     expect(out).toEqual(sampleItem);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/archives/run-1/add-post");
+    expect(url).toBe("/api/admin/archives/run-1/add-post");
     expect(init.method).toBe("POST");
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(body).toEqual({ url: "https://example.com/article" });

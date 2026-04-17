@@ -154,7 +154,7 @@ export function ReviewPage(): ReactElement {
       <div className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-4xl mx-auto space-y-4">
           <p className="text-gray-700">This run was not found.</p>
-          <Link to="/" className="text-sm text-blue-600 hover:underline">
+          <Link to="/admin" className="text-sm text-blue-600 hover:underline">
             ← Back to dashboard
           </Link>
         </div>
@@ -169,7 +169,7 @@ export function ReviewPage(): ReactElement {
           <p className="text-gray-700">
             This run is still in progress — check back once it finishes.
           </p>
-          <Link to="/" className="text-sm text-blue-600 hover:underline">
+          <Link to="/admin" className="text-sm text-blue-600 hover:underline">
             ← Back to dashboard
           </Link>
         </div>
@@ -215,7 +215,7 @@ export function ReviewPage(): ReactElement {
           <span className="text-xl">📰</span> Newsletter
         </h1>
         <Link
-          to="/"
+          to="/admin"
           className="text-sm text-muted-foreground hover:text-foreground"
         >
           ← Back to dashboard

@@ -65,7 +65,7 @@ describe("ReviewPage", () => {
     renderAt("missing");
     await screen.findByText("This run was not found.");
     const link = screen.getByRole("link", { name: /back to dashboard/i });
-    expect(link.getAttribute("href")).toBe("/");
+    expect(link.getAttribute("href")).toBe("/admin");
   });
 
   it("renders in-progress message with exact copy for non-completed runs (REQ-103)", async () => {

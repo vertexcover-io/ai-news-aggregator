@@ -52,13 +52,13 @@ export function DashboardPage(): ReactElement {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="flex items-center justify-between border-b bg-white px-8 py-4">
-        <Link to="/" className="flex items-center gap-2 font-semibold">
+        <Link to="/admin" className="flex items-center gap-2 font-semibold">
           <Newspaper className="size-5" />
           Newsletter
         </Link>
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="sm">
-            <Link to="/settings">
+            <Link to="/admin/settings">
               <SettingsIcon />
               Settings
             </Link>
