@@ -11,6 +11,7 @@ export interface RunArchiveUpsertInput {
   completedAt: Date;
   startedAt?: Date;
   sourceTypes?: SourceType[];
+  reviewed?: boolean;
 }
 
 export interface RunArchivesRepo {
@@ -32,6 +33,7 @@ export function createRunArchivesRepo(
           completedAt: input.completedAt,
           startedAt: input.startedAt ?? null,
           sourceTypes: input.sourceTypes ?? null,
+          reviewed: input.reviewed ?? false,
         })
         .onConflictDoUpdate({
           target: runArchives.id,
@@ -40,6 +42,7 @@ export function createRunArchivesRepo(
             rankedItems: sql.raw(`excluded.${runArchives.rankedItems.name}`),
             topN: sql.raw(`excluded.${runArchives.topN.name}`),
             completedAt: sql.raw(`excluded.${runArchives.completedAt.name}`),
+            reviewed: sql.raw(`excluded.${runArchives.reviewed.name}`),
           },
         });
     },
