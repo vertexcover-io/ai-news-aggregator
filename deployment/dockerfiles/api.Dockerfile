@@ -24,8 +24,8 @@ RUN pnpm --filter @newsletter/shared build \
  && pnpm --filter @newsletter/api build
 
 # Keep only production deps for the runtime image.
-RUN pnpm --filter @newsletter/api --prod deploy /out/api \
- && pnpm --filter @newsletter/shared --prod deploy /out/shared
+# --legacy is required on pnpm 10+ for workspaces without inject-workspace-packages.
+RUN pnpm --filter @newsletter/api --prod --legacy deploy /out/api
 
 # Runtime stage — minimal image with Node + built artifacts.
 FROM node:22-alpine AS runtime

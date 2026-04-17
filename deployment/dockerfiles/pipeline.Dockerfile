@@ -20,7 +20,7 @@ COPY packages/pipeline ./packages/pipeline
 RUN pnpm --filter @newsletter/shared build \
  && pnpm --filter @newsletter/pipeline build
 
-RUN pnpm --filter @newsletter/pipeline --prod deploy /out/pipeline
+RUN pnpm --filter @newsletter/pipeline --prod --legacy deploy /out/pipeline
 
 FROM node:22-alpine AS runtime
 
