@@ -108,9 +108,10 @@ if [[ ! -f "$SUDO_FILE" ]]; then
 	cat > "$SUDO_FILE" <<-EOF
 	$DEPLOY_USER ALL=(root) NOPASSWD: /bin/systemctl reload caddy
 	$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/tee /etc/newsletter/.env
-	$DEPLOY_USER ALL=(root) NOPASSWD: /bin/chmod 600 /etc/newsletter/.env
+	$DEPLOY_USER ALL=(root) NOPASSWD: /bin/chmod 640 /etc/newsletter/.env
+	$DEPLOY_USER ALL=(root) NOPASSWD: /bin/chown root\:$DEPLOY_USER /etc/newsletter/.env
 	$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/install -m 644 /opt/newsletter/deployment/Caddyfile /etc/caddy/Caddyfile
-	$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/sops --decrypt /opt/newsletter/deployment/.env.prod.enc
+	$DEPLOY_USER ALL=(root) NOPASSWD: /usr/local/bin/sops --decrypt /opt/newsletter/deployment/.env.prod.enc
 	$DEPLOY_USER ALL=(root) NOPASSWD: /bin/cat /etc/newsletter/.env
 	EOF
 	chmod 440 "$SUDO_FILE"

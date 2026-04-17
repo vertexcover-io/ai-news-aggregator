@@ -37,7 +37,8 @@ log "Decrypting production env file"
 # sudo decrypts as root so it can read /root/.config/sops/age/keys.txt,
 # then pipes into tee (also via sudo) to write /etc/newsletter/.env.
 sudo -n sops --decrypt "$ENV_ENC" | sudo -n tee "$ENV_PLAIN" > /dev/null
-sudo -n chmod 600 "$ENV_PLAIN"
+sudo -n chown root:deploy "$ENV_PLAIN"
+sudo -n chmod 640 "$ENV_PLAIN"
 
 # Make selected vars from the decrypted file available to compose interpolation
 # for non-secret knobs (GIT_SHA override, GHCR_REPO_OWNER, POSTGRES_PASSWORD, etc.).
