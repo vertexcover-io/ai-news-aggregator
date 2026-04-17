@@ -177,7 +177,7 @@ Next steps (perform once, as root):
        \$EDITOR /root/.config/sops/age/keys.txt   # paste AGE-SECRET-KEY-1...
        chmod 600 /root/.config/sops/age/keys.txt
 
-  2. Point DNS: newsletter.vertexcover.io  A  \$(curl -s https://ipv4.icanhazip.com)
+  2. Point DNS: news.vertexcover.io  A  \$(curl -s https://ipv4.icanhazip.com)
 
   3. Trigger the first deploy from GitHub:
        gh workflow run deploy.yml

@@ -3,7 +3,7 @@
 # - Everything else is served from the static React build at /var/www/newsletter/web.
 # - TLS is obtained automatically from Let's Encrypt on first startup.
 
-newsletter.vertexcover.io {
+news.vertexcover.io {
 	encode zstd gzip
 
 	log {

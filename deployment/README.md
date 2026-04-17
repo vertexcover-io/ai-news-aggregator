@@ -57,7 +57,7 @@ All secrets live in `deployment/.env.prod.enc` (SOPS + age). One age private key
 
 5. **Add GitHub Actions secrets** (repo → Settings → Secrets and variables → Actions):
    - `DEPLOY_SSH_KEY` — contents of `deploy-key` (include `-----BEGIN OPENSSH PRIVATE KEY-----` through `-----END OPENSSH PRIVATE KEY-----`)
-   - `DEPLOY_HOST` — the server's hostname or IP (e.g. `newsletter.vertexcover.io`)
+   - `DEPLOY_HOST` — the server's hostname or IP (e.g. `news.vertexcover.io`)
    - `DEPLOY_USER` — `deploy`
 
 ### 1. Provision the server
@@ -69,9 +69,9 @@ All secrets live in `deployment/.env.prod.enc` (SOPS + age). One age private key
 
 ### 2. Point DNS at the server
 
-`newsletter.vertexcover.io  A  <public IP>` (TTL 300 or less).
+`news.vertexcover.io  A  <public IP>` (TTL 300 or less).
 
-Wait for `dig +short newsletter.vertexcover.io` to return the right IP before running bootstrap — Caddy will request a cert during bootstrap and DNS must be live.
+Wait for `dig +short news.vertexcover.io` to return the right IP before running bootstrap — Caddy will request a cert during bootstrap and DNS must be live.
 
 ### 3. Run bootstrap.sh on the server
 
@@ -111,8 +111,8 @@ First deploy is ~5 minutes (no image cache yet). Subsequent deploys are ~90 seco
 ### 6. Verify
 
 ```bash
-curl -sI https://newsletter.vertexcover.io/api/health   # 200
-curl -s  https://newsletter.vertexcover.io/ | head       # React HTML
+curl -sI https://news.vertexcover.io/api/health   # 200
+curl -s  https://news.vertexcover.io/ | head       # React HTML
 ```
 
 ---
@@ -146,7 +146,7 @@ gh workflow run deploy.yml --ref <PREVIOUS_SHA>
 Or SSH in and run:
 
 ```bash
-ssh deploy@newsletter.vertexcover.io
+ssh deploy@news.vertexcover.io
 /opt/newsletter/deployment/deploy.sh <PREVIOUS_SHA>
 ```
 
@@ -155,7 +155,7 @@ Migrations are forward-only; a rollback across a migration requires a manual sch
 ### Check container state
 
 ```bash
-ssh deploy@newsletter.vertexcover.io
+ssh deploy@news.vertexcover.io
 docker compose -f /opt/newsletter/deployment/compose.prod.yml ps
 docker compose -f /opt/newsletter/deployment/compose.prod.yml logs -f api
 ```
@@ -163,7 +163,7 @@ docker compose -f /opt/newsletter/deployment/compose.prod.yml logs -f api
 ### Tail Caddy access log
 
 ```bash
-ssh deploy@newsletter.vertexcover.io 'tail -f /var/log/caddy/newsletter.log'
+ssh deploy@news.vertexcover.io 'tail -f /var/log/caddy/newsletter.log'
 ```
 
 ### Edit the Caddyfile
@@ -173,7 +173,7 @@ Edit `deployment/Caddyfile` and push. Every deploy runs `install + systemctl rel
 ### Postgres: manual one-off dump
 
 ```bash
-ssh deploy@newsletter.vertexcover.io
+ssh deploy@news.vertexcover.io
 docker compose -f /opt/newsletter/deployment/compose.prod.yml exec -T postgres \
   pg_dump -U newsletter newsletter | gzip > ~/backup-$(date +%F).sql.gz
 ```
@@ -221,7 +221,7 @@ Total: ~45 minutes.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Caddy can't obtain a cert | DNS not propagated, or port 80 blocked | `dig +short newsletter.vertexcover.io`; check cloud provider firewall |
+| Caddy can't obtain a cert | DNS not propagated, or port 80 blocked | `dig +short news.vertexcover.io`; check cloud provider firewall |
 | `sops: no key could decrypt the data` | `/root/.config/sops/age/keys.txt` missing or wrong key | Paste the key that matches the `age1...` public key in `.sops.yaml` |
 | `docker login ghcr.io` fails | `GHCR_TOKEN` expired / missing | Generate a new PAT with `read:packages`, update `.env.prod.enc`, re-deploy |
 | GH Action `Permission denied (publickey)` | `DEPLOY_SSH_KEY` wrong format or not in server's `authorized_keys` | Re-run bootstrap with correct `DEPLOY_SSH_PUBKEY`; ensure secret includes BEGIN/END lines |
