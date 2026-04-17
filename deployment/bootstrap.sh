@@ -17,9 +17,10 @@ die() { printf '\n\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "Must run as root. Try: sudo bash bootstrap.sh"
 [[ -n "${DEPLOY_SSH_PUBKEY:-}" ]] || die "DEPLOY_SSH_PUBKEY env var must be set (the public key that GitHub Actions will use to SSH in)"
 
-REPO_URL="${REPO_URL:-https://github.com/vertexcover-io/ai-news-aggregator.git}"
+REPO_URL="${REPO_URL:-git@github.com:vertexcover-io/ai-news-aggregator.git}"
 DEPLOY_USER="deploy"
 APP_DIR="/opt/newsletter"
+GITHUB_DEPLOY_KEY_PATH="/root/.ssh/github-deploy"
 
 # ─── 1. Base packages ─────────────────────────────────────────────────────
 log "Updating apt and installing base packages"
@@ -146,6 +147,21 @@ install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /var/www/newsletter/web
 install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /var/log/caddy
 
 # ─── 10. Clone (or update) the repo ───────────────────────────────────────
+# Uses a GitHub deploy key at $GITHUB_DEPLOY_KEY_PATH for SSH auth.
+# Drop the private key there (chmod 600) BEFORE running bootstrap.
+[[ -f "$GITHUB_DEPLOY_KEY_PATH" ]] \
+	|| die "GitHub deploy private key missing at $GITHUB_DEPLOY_KEY_PATH. Install it first: install -m 600 <path> $GITHUB_DEPLOY_KEY_PATH"
+
+# Trust GitHub's SSH host key so clone doesn't hang on the prompt.
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+ssh-keyscan -t ed25519,rsa github.com 2>/dev/null | sort -u > /root/.ssh/known_hosts.github
+cat /root/.ssh/known_hosts.github >> /root/.ssh/known_hosts || true
+sort -u /root/.ssh/known_hosts -o /root/.ssh/known_hosts
+rm /root/.ssh/known_hosts.github
+
+export GIT_SSH_COMMAND="ssh -i $GITHUB_DEPLOY_KEY_PATH -o IdentitiesOnly=yes"
+
 if [[ ! -d "$APP_DIR/.git" ]]; then
 	log "Cloning $REPO_URL to $APP_DIR"
 	git clone "$REPO_URL" "$APP_DIR"
@@ -153,6 +169,20 @@ else
 	log "Repo already cloned at $APP_DIR — fetching latest"
 	git -C "$APP_DIR" fetch --depth=1 origin main
 fi
+
+# Also make GIT_SSH_COMMAND persistent for the deploy user (deploy.sh runs git fetch).
+install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh"
+install -m 600 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$GITHUB_DEPLOY_KEY_PATH" "/home/$DEPLOY_USER/.ssh/github-deploy"
+cat > "/home/$DEPLOY_USER/.ssh/config" <<EOF
+Host github.com
+    User git
+    IdentityFile ~/.ssh/github-deploy
+    IdentitiesOnly yes
+    StrictHostKeyChecking accept-new
+EOF
+chown "$DEPLOY_USER":"$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh/config"
+chmod 600 "/home/$DEPLOY_USER/.ssh/config"
+
 chown -R "$DEPLOY_USER":"$DEPLOY_USER" "$APP_DIR"
 
 # ─── 11. Caddy config ─────────────────────────────────────────────────────
