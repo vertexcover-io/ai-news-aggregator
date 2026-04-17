@@ -2,9 +2,14 @@
 #
 # bootstrap.sh — one-shot setup for a fresh Ubuntu 24.04 VPS.
 #
+# The server is a dumb target: GitHub Actions rsyncs deployment/* from
+# the repo to /opt/newsletter/deployment/ on every deploy. This script
+# only installs tools, creates the deploy user, hardens SSH, configures
+# UFW, installs Caddy, and creates the empty directories CI will rsync
+# into. NO git operations, no GitHub credentials.
+#
 # Run as root on the target server:
 #   export DEPLOY_SSH_PUBKEY="ssh-ed25519 AAAA... user@laptop"
-#   export REPO_URL="https://github.com/vertexcover-io/ai-news-aggregator.git"
 #   bash bootstrap.sh
 #
 # Idempotent — safe to re-run to pick up changes.
@@ -17,10 +22,7 @@ die() { printf '\n\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "Must run as root. Try: sudo bash bootstrap.sh"
 [[ -n "${DEPLOY_SSH_PUBKEY:-}" ]] || die "DEPLOY_SSH_PUBKEY env var must be set (the public key that GitHub Actions will use to SSH in)"
 
-REPO_URL="${REPO_URL:-git@github.com:vertexcover-io/ai-news-aggregator.git}"
 DEPLOY_USER="deploy"
-APP_DIR="/opt/newsletter"
-GITHUB_DEPLOY_KEY_PATH="/root/.ssh/github-deploy"
 
 # ─── 1. Base packages ─────────────────────────────────────────────────────
 log "Updating apt and installing base packages"
@@ -31,7 +33,6 @@ apt-get install -y \
 	ca-certificates \
 	curl \
 	gnupg \
-	git \
 	ufw \
 	rsync \
 	unattended-upgrades \
@@ -101,21 +102,21 @@ fi
 chown "$DEPLOY_USER":"$DEPLOY_USER" "$AUTH_KEYS"
 chmod 600 "$AUTH_KEYS"
 
-# Allow deploy user to reload caddy and write /etc/newsletter/.env without a password.
+# Restricted sudo so deploy.sh can reload caddy + write /etc/newsletter/.env
+# without a password, and nothing else.
 SUDO_FILE="/etc/sudoers.d/newsletter-deploy"
-if [[ ! -f "$SUDO_FILE" ]]; then
-	log "Granting deploy user restricted sudo for caddy reload + env write"
-	cat > "$SUDO_FILE" <<-EOF
-	$DEPLOY_USER ALL=(root) NOPASSWD: /bin/systemctl reload caddy
-	$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/tee /etc/newsletter/.env
-	$DEPLOY_USER ALL=(root) NOPASSWD: /bin/chmod 640 /etc/newsletter/.env
-	$DEPLOY_USER ALL=(root) NOPASSWD: /bin/chown root\:$DEPLOY_USER /etc/newsletter/.env
-	$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/install -m 644 /opt/newsletter/deployment/Caddyfile /etc/caddy/Caddyfile
-	$DEPLOY_USER ALL=(root) NOPASSWD: /usr/local/bin/sops --decrypt /opt/newsletter/deployment/.env.prod.enc
-	$DEPLOY_USER ALL=(root) NOPASSWD: /bin/cat /etc/newsletter/.env
-	EOF
-	chmod 440 "$SUDO_FILE"
-fi
+log "Writing restricted sudoers rules"
+cat > "$SUDO_FILE" <<-EOF
+$DEPLOY_USER ALL=(root) NOPASSWD: /bin/systemctl reload caddy
+$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/tee /etc/newsletter/.env
+$DEPLOY_USER ALL=(root) NOPASSWD: /bin/chmod 640 /etc/newsletter/.env
+$DEPLOY_USER ALL=(root) NOPASSWD: /bin/chown root\:$DEPLOY_USER /etc/newsletter/.env
+$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/install -m 644 /opt/newsletter/deployment/Caddyfile /etc/caddy/Caddyfile
+$DEPLOY_USER ALL=(root) NOPASSWD: /usr/local/bin/sops --decrypt /opt/newsletter/deployment/.env.prod.enc
+$DEPLOY_USER ALL=(root) NOPASSWD: /bin/cat /etc/newsletter/.env
+EOF
+chmod 440 "$SUDO_FILE"
+visudo -cf "$SUDO_FILE" >/dev/null
 
 # ─── 6. SSH hardening ─────────────────────────────────────────────────────
 log "Hardening SSH (disable password + root login)"
@@ -145,55 +146,26 @@ install -d -m 755 /etc/newsletter
 install -d -m 755 /var/lib/newsletter/pgdata
 install -d -m 755 /var/lib/newsletter/redisdata
 install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /var/www/newsletter/web
-# /var/log/caddy is owned by caddy:caddy because the caddy daemon writes there.
+install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /opt/newsletter
+install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /opt/newsletter/deployment
 install -d -m 755 -o caddy -g caddy /var/log/caddy
 
-# ─── 10. Clone (or update) the repo ───────────────────────────────────────
-# Uses a GitHub deploy key at $GITHUB_DEPLOY_KEY_PATH for SSH auth.
-# Drop the private key there (chmod 600) BEFORE running bootstrap.
-[[ -f "$GITHUB_DEPLOY_KEY_PATH" ]] \
-	|| die "GitHub deploy private key missing at $GITHUB_DEPLOY_KEY_PATH. Install it first: install -m 600 <path> $GITHUB_DEPLOY_KEY_PATH"
-
-# Trust GitHub's SSH host key so clone doesn't hang on the prompt.
-mkdir -p /root/.ssh
-chmod 700 /root/.ssh
-ssh-keyscan -t ed25519,rsa github.com 2>/dev/null | sort -u > /root/.ssh/known_hosts.github
-cat /root/.ssh/known_hosts.github >> /root/.ssh/known_hosts || true
-sort -u /root/.ssh/known_hosts -o /root/.ssh/known_hosts
-rm /root/.ssh/known_hosts.github
-
-export GIT_SSH_COMMAND="ssh -i $GITHUB_DEPLOY_KEY_PATH -o IdentitiesOnly=yes"
-
-if [[ ! -d "$APP_DIR/.git" ]]; then
-	log "Cloning $REPO_URL to $APP_DIR"
-	git clone "$REPO_URL" "$APP_DIR"
-else
-	log "Repo already cloned at $APP_DIR — fetching latest"
-	git -C "$APP_DIR" fetch --depth=1 origin main
+# Minimal placeholder Caddyfile so caddy can start before the first deploy.
+# CI will overwrite /etc/caddy/Caddyfile with the committed version during deploy.
+if [[ ! -f /etc/caddy/Caddyfile.bootstrap-placeholder ]]; then
+	log "Writing placeholder Caddyfile (CI overwrites this on first deploy)"
+	cat > /etc/caddy/Caddyfile <<-'EOF'
+	:80 {
+	    respond "Waiting for first deploy..." 200
+	}
+	EOF
+	touch /etc/caddy/Caddyfile.bootstrap-placeholder
 fi
 
-# Also make GIT_SSH_COMMAND persistent for the deploy user (deploy.sh runs git fetch).
-install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh"
-install -m 600 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$GITHUB_DEPLOY_KEY_PATH" "/home/$DEPLOY_USER/.ssh/github-deploy"
-cat > "/home/$DEPLOY_USER/.ssh/config" <<EOF
-Host github.com
-    User git
-    IdentityFile ~/.ssh/github-deploy
-    IdentitiesOnly yes
-    StrictHostKeyChecking accept-new
-EOF
-chown "$DEPLOY_USER":"$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh/config"
-chmod 600 "/home/$DEPLOY_USER/.ssh/config"
-
-chown -R "$DEPLOY_USER":"$DEPLOY_USER" "$APP_DIR"
-
-# ─── 11. Caddy config ─────────────────────────────────────────────────────
-log "Installing Caddyfile"
-install -m 644 "$APP_DIR/deployment/Caddyfile" /etc/caddy/Caddyfile
 systemctl enable --now caddy
 systemctl reload caddy || true
 
-# ─── 12. Done ─────────────────────────────────────────────────────────────
+# ─── 10. Done ─────────────────────────────────────────────────────────────
 cat <<EOF
 
 ✅ Bootstrap complete.
@@ -209,7 +181,5 @@ Next steps (perform once, as root):
 
   3. Trigger the first deploy from GitHub:
        gh workflow run deploy.yml
-     …or SSH in as 'deploy' and run:
-       /opt/newsletter/deployment/deploy.sh \$(git -C /opt/newsletter rev-parse origin/main)
 
 EOF

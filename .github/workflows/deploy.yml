@@ -77,7 +77,15 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Checkout (deployment/ files only)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            deployment
+          sparse-checkout-cone-mode: false
+
+      - name: Download web bundle
+        uses: actions/download-artifact@v4
         with:
           name: web-dist
           path: web-dist
@@ -92,6 +100,13 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
+      - name: Rsync deployment directory to server
+        run: |
+          rsync -az --delete \
+            --exclude='.env.prod.example' \
+            deployment/ \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/newsletter/deployment/"
+
       - name: Rsync web bundle to server
         run: |
           rsync -az --delete \
@@ -101,4 +116,4 @@ jobs:
       - name: Run deploy.sh on server
         run: |
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "/opt/newsletter/deployment/deploy.sh ${{ github.sha }}"
+            "bash /opt/newsletter/deployment/deploy.sh ${{ github.sha }}"

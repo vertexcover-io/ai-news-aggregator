@@ -40,10 +40,10 @@ WORKDIR /app
 # App code + prod node_modules, produced by `pnpm deploy`.
 COPY --from=build --chown=app:app /out/api /app
 
-# Drizzle migrations are run from within the api container by the deploy script:
-# `docker compose exec api node scripts/migrate.js`. Copy migration SQL + runner.
+# Drizzle migration runner + SQL files. deploy.sh runs:
+#   docker compose exec api node /app/migrate.mjs
 COPY --from=build --chown=app:app /app/packages/shared/src/db/migrations /app/migrations
-COPY --from=build --chown=app:app /app/packages/shared/drizzle.config.ts /app/drizzle.config.ts
+COPY --chown=app:app deployment/migrate.mjs /app/migrate.mjs
 
 USER app
 
