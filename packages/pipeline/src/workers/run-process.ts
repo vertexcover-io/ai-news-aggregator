@@ -448,6 +448,7 @@ export async function handleRunProcessJob(
         completedAt: new Date(),
         startedAt: runStartedAt,
         sourceTypes,
+        reviewed: process.env.AUTO_REVIEW === "true",
       });
     } catch (err) {
       logger.error(

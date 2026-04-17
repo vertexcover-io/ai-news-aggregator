@@ -53,6 +53,7 @@ describe("run-archives repository", () => {
       completedAt: new Date("2026-04-13T12:00:00Z"),
       startedAt: null,
       sourceTypes: null,
+      reviewed: false,
     });
     expect(mockOnConflictDoUpdate).toHaveBeenCalledOnce();
   });
