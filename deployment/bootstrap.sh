@@ -144,7 +144,8 @@ install -d -m 755 /etc/newsletter
 install -d -m 755 /var/lib/newsletter/pgdata
 install -d -m 755 /var/lib/newsletter/redisdata
 install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /var/www/newsletter/web
-install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /var/log/caddy
+# /var/log/caddy is owned by caddy:caddy because the caddy daemon writes there.
+install -d -m 755 -o caddy -g caddy /var/log/caddy
 
 # ─── 10. Clone (or update) the repo ───────────────────────────────────────
 # Uses a GitHub deploy key at $GITHUB_DEPLOY_KEY_PATH for SSH auth.
