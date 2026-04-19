@@ -1,7 +1,17 @@
+import type { SourceType } from "../db/schema.js";
+
+export interface ArchiveTopItem {
+  id: number;
+  title: string;
+  sourceType: SourceType;
+}
+
 export interface ArchiveListItem {
   runId: string;
   runDate: string;
   storyCount: number;
+  topItems: ArchiveTopItem[];
+  leadSummary: string | null;
 }
 
 export interface ArchiveListResponse {

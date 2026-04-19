@@ -43,7 +43,9 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
   const archives = new Hono();
 
   archives.get("/", async (c) => {
-    const items = await deps.getArchiveRepo().listReviewed();
+    const items = await deps.getArchiveRepo().listReviewed({
+      rawItemsRepo: deps.getRawItemsRepo(),
+    });
     return c.json({ archives: items } satisfies ArchiveListResponse);
   });
 

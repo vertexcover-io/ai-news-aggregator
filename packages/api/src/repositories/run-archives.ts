@@ -3,9 +3,11 @@ import { rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import type {
   ArchiveListItem,
+  ArchiveTopItem,
   PoolItem,
   RankedItemRef,
 } from "@newsletter/shared";
+import type { RawItemRow, RawItemsRepo } from "./raw-items.js";
 
 export interface RunArchiveRow {
   id: string;
@@ -30,10 +32,14 @@ export interface FindPoolItemsOpts {
   limit: number;
 }
 
+export interface ListReviewedDeps {
+  rawItemsRepo: RawItemsRepo;
+}
+
 export interface RunArchivesRepo {
   findById(id: string): Promise<RunArchiveRow | null>;
   list(limit: number): Promise<RunArchiveRow[]>;
-  listReviewed(): Promise<ArchiveListItem[]>;
+  listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]>;
   updateRankedItems(
     id: string,
     items: RankedItemRef[],
@@ -91,7 +97,7 @@ export function createRunArchivesRepo(
         .where(eq(runArchives.id, id));
       return rows[0] ?? null;
     },
-    async listReviewed(): Promise<ArchiveListItem[]> {
+    async listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]> {
       const rows = await db
         .select({
           runId: runArchives.id,
@@ -102,11 +108,30 @@ export function createRunArchivesRepo(
         .where(eq(runArchives.reviewed, true))
         .orderBy(desc(runArchives.completedAt));
 
-      return rows.map((r) => ({
-        runId: r.runId,
-        runDate: r.completedAt.toISOString().slice(0, 10),
-        storyCount: Array.isArray(r.rankedItems) ? r.rankedItems.length : 0,
-      }));
+      if (rows.length === 0) return [];
+
+      // Build deduplicated set of first-3 rawItemIds across all rows
+      const idSet = new Set<number>();
+      for (const r of rows) {
+        for (const ref of r.rankedItems.slice(0, 3)) {
+          idSet.add(ref.rawItemId);
+        }
+      }
+
+      const rawRows = await deps.rawItemsRepo.findByIds([...idSet]);
+      const byId = new Map<number, RawItemRow>(rawRows.map((r) => [r.id, r]));
+
+      return rows.map((r) => {
+        const topItems = buildTopItems(r.rankedItems, byId);
+        const leadSummary = computeLeadSummary(r.rankedItems, byId);
+        return {
+          runId: r.runId,
+          runDate: r.completedAt.toISOString().slice(0, 10),
+          storyCount: Array.isArray(r.rankedItems) ? r.rankedItems.length : 0,
+          topItems,
+          leadSummary,
+        };
+      });
     },
     async list(limit: number): Promise<RunArchiveRow[]> {
       return db
@@ -200,4 +225,31 @@ export function createRunArchivesRepo(
       return { items: rows.map(toPoolItem), total: countRow.count };
     },
   };
+}
+
+function buildTopItems(
+  rankedItems: RankedItemRef[],
+  byId: Map<number, RawItemRow>,
+): ArchiveTopItem[] {
+  const top: ArchiveTopItem[] = [];
+  for (const ref of rankedItems.slice(0, 3)) {
+    const raw = byId.get(ref.rawItemId);
+    if (!raw) continue;
+    top.push({ id: raw.id, title: raw.title, sourceType: raw.sourceType });
+  }
+  return top;
+}
+
+function computeLeadSummary(
+  rankedItems: RankedItemRef[],
+  byId: Map<number, RawItemRow>,
+): string | null {
+  if (rankedItems.length === 0) return null;
+  const firstRef = rankedItems[0];
+  // Override takes precedence — even empty string (EDGE-005)
+  if (firstRef.summary !== undefined) return firstRef.summary;
+  const firstRaw = byId.get(firstRef.rawItemId);
+  const summary = firstRaw?.metadata.recap?.summary;
+  if (summary) return summary;
+  return null;
 }
