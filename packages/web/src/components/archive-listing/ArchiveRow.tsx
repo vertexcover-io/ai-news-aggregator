@@ -88,10 +88,9 @@ export function ArchiveRow({
 
   const showDek = featured && typeof leadSummary === "string" && leadSummary.length > 0;
 
-  return (
-    <li
-      data-featured={featured ? "true" : undefined}
-      className={`grid gap-10 border-b border-neutral-200 py-5 grid-cols-[120px_minmax(0,1fr)_120px]${featured ? " py-8" : ""}`}
+  const rowBody = (
+    <div
+      className={`grid grid-cols-[120px_minmax(0,1fr)_120px] gap-10 px-2 py-5${featured ? " py-8" : ""}`}
     >
       <DateBlock runDate={runDate} issueNumber={issueNumber} featured={featured} />
 
@@ -123,14 +122,27 @@ export function ArchiveRow({
           {storyCount} {storyCount === 1 ? "story" : "stories"}
         </span>
         {hasStories ? (
-          <Link
-            to={`/archive/${runId}`}
-            className="font-mono text-xs text-neutral-900 hover:underline"
-          >
-            Read →
-          </Link>
+          <span className="font-mono text-xs text-neutral-900">Read →</span>
         ) : null}
       </div>
+    </div>
+  );
+
+  return (
+    <li
+      data-featured={featured ? "true" : undefined}
+      className="border-b border-neutral-200"
+    >
+      {hasStories ? (
+        <Link
+          to={`/archive/${runId}`}
+          className="block transition-colors hover:bg-neutral-50 focus-visible:bg-neutral-50 focus-visible:outline-none"
+        >
+          {rowBody}
+        </Link>
+      ) : (
+        rowBody
+      )}
     </li>
   );
 }
