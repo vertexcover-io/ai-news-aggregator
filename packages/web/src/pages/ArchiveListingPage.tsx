@@ -1,69 +1,20 @@
-import { useEffect, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { ChevronRight } from "lucide-react";
-import type { ArchiveListItem } from "@newsletter/shared";
 import { listArchives } from "../api/archives";
 import { setMeta } from "../lib/meta";
+import { FilterChip } from "../components/archive-listing/FilterChip";
+import { MonthHeader } from "../components/archive-listing/MonthHeader";
+import { ArchiveRow } from "../components/archive-listing/ArchiveRow";
+import { buildMonthChips, groupVisible, runDateToMonthKey } from "../components/archive-listing/format";
 
 const TAGLINE = "A hand-curated daily digest of what's actually moving in AI.";
-
-const monthFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "long",
-  year: "numeric",
-});
-const rowDateFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
-
-function parseLocalDate(runDate: string): Date {
-  return new Date(`${runDate}T00:00:00`);
-}
-
-function formatMonthLabel(runDate: string): string {
-  return monthFormatter.format(parseLocalDate(runDate));
-}
-
-function formatRowDate(runDate: string): string {
-  return rowDateFormatter.format(parseLocalDate(runDate));
-}
-
-interface MonthGroupData {
-  month: string;
-  items: ArchiveListItem[];
-}
-
-function groupByMonth(items: ArchiveListItem[]): MonthGroupData[] {
-  const groups = new Map<string, ArchiveListItem[]>();
-  for (const item of items) {
-    const key = formatMonthLabel(item.runDate);
-    const bucket = groups.get(key) ?? [];
-    bucket.push(item);
-    groups.set(key, bucket);
-  }
-  return Array.from(groups, ([month, groupItems]) => ({
-    month,
-    items: groupItems,
-  }));
-}
 
 function Nav(): ReactElement {
   return (
     <nav className="border-b border-neutral-200 bg-white">
-      <div className="mx-auto flex max-w-[720px] items-center justify-between px-4 py-4">
-        <span className="text-sm font-semibold text-neutral-900">
-          AI Newsletter
-        </span>
-        <a
-          href="https://vertexcover.io"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded text-sm text-neutral-600 hover:text-neutral-900 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 focus-visible:outline-none"
-        >
-          About
-        </a>
+      <div className="mx-auto flex max-w-[860px] items-center justify-between px-6 py-4">
+        <span className="text-sm font-semibold text-neutral-900">AI Newsletter</span>
+        <a href="https://vertexcover.io" target="_blank" rel="noopener noreferrer" className="text-sm text-neutral-600 hover:text-neutral-900">About</a>
       </div>
     </nav>
   );
@@ -71,121 +22,100 @@ function Nav(): ReactElement {
 
 function Hero(): ReactElement {
   return (
-    <header className="pt-12 pb-10 text-center">
-      <h1 className="text-3xl font-semibold tracking-tight text-neutral-900">
-        The Archive
-      </h1>
-      <p className="mt-3 text-sm text-neutral-600">{TAGLINE}</p>
+    <header className="pt-12 pb-8 text-center">
+      <h1 className="font-serif text-4xl font-medium tracking-tight text-neutral-900">The Archive</h1>
+      <p className="mt-3 font-mono text-xs text-neutral-500 uppercase tracking-widest">{TAGLINE}</p>
     </header>
-  );
-}
-
-function ArchiveRow({
-  runId,
-  runDate,
-  storyCount,
-}: ArchiveListItem): ReactElement {
-  const label = `${formatRowDate(runDate)} — ${String(storyCount)} ${
-    storyCount === 1 ? "story" : "stories"
-  }`;
-  return (
-    <li>
-      <Link
-        to={`/archive/${runId}`}
-        className="group flex items-center justify-between rounded-md border-b border-neutral-200 px-2 py-4 text-sm text-neutral-900 transition-colors hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 focus-visible:outline-none"
-      >
-        <span>{label}</span>
-        <ChevronRight
-          aria-hidden="true"
-          className="h-4 w-4 text-neutral-400 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-        />
-      </Link>
-    </li>
-  );
-}
-
-function MonthGroup({ month, items }: MonthGroupData): ReactElement {
-  return (
-    <section className="mb-10">
-      <h2 className="mb-2 text-lg font-semibold text-neutral-900">{month}</h2>
-      <ul className="flex flex-col">
-        {items.map((item) => (
-          <ArchiveRow key={item.runId} {...item} />
-        ))}
-      </ul>
-    </section>
   );
 }
 
 function SkeletonRows(): ReactElement {
   return (
     <div className="flex flex-col gap-3" aria-hidden="true">
-      {[0, 1, 2].map((i) => (
-        <div
-          key={i}
-          className="h-12 animate-pulse rounded-md bg-neutral-100"
-        />
-      ))}
+      {[0, 1, 2].map((i) => <div key={i} className="h-20 animate-pulse rounded-md bg-neutral-100" />)}
     </div>
-  );
-}
-
-function EmptyState(): ReactElement {
-  return (
-    <p className="py-16 text-center text-sm text-neutral-600">
-      No issues yet. Check back soon.
-    </p>
   );
 }
 
 function Footer(): ReactElement {
-  return (
-    <footer className="mt-16 py-8 text-center text-xs text-neutral-500">
-      Made by Vertexcover
-    </footer>
-  );
+  return <footer className="mt-16 py-8 text-center font-mono text-xs text-neutral-500">Made by Vertexcover</footer>;
 }
 
 export function ArchiveListingPage(): ReactElement {
-  useEffect(() => {
-    document.title = "Newsletter archive";
-    setMeta("description", TAGLINE);
-  }, []);
+  const [activeMonth, setActiveMonth] = useState<string | null>(null);
+  const [visibleState, setVisibleState] = useState<{ month: string | null; count: number }>({ month: null, count: 10 });
+  const visibleCount = visibleState.month === activeMonth ? visibleState.count : 10;
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["archives", "list"],
-    queryFn: listArchives,
-  });
+  useEffect(() => { document.title = "Newsletter archive"; setMeta("description", TAGLINE); }, []);
 
-  const groups = data ? groupByMonth(data.archives) : [];
+  const { data, isLoading, isError } = useQuery({ queryKey: ["archives", "list"], queryFn: listArchives });
 
-  return (
-    <div className="min-h-screen bg-white">
-      <Nav />
-      <main className="mx-auto max-w-[720px] px-4">
-        <Hero />
-        {isLoading ? <SkeletonRows /> : null}
-        {isError ? (
-          <p
-            role="status"
-            aria-live="polite"
-            className="py-16 text-center text-sm text-neutral-600"
-          >
-            Couldn't load issues
-          </p>
-        ) : null}
-        {data?.archives.length === 0 ? <EmptyState /> : null}
-        {data && data.archives.length > 0
-          ? groups.map((group) => (
-              <MonthGroup
-                key={group.month}
-                month={group.month}
-                items={group.items}
-              />
-            ))
-          : null}
-      </main>
-      <Footer />
+  const shell = (content: ReactElement): ReactElement => (
+    <div className="min-h-screen bg-white"><Nav /><main className="mx-auto max-w-[860px] px-6"><Hero />{content}</main><Footer /></div>
+  );
+
+  if (isLoading) return shell(<SkeletonRows />);
+
+  if (isError) return shell(
+    <div className="py-16 text-center">
+      <p className="font-mono text-xs uppercase tracking-widest text-neutral-500">Error</p>
+      <h2 className="mt-2 font-serif text-2xl text-neutral-900">Couldn't load issues</h2>
     </div>
+  );
+
+  if (!data || data.archives.length === 0) return shell(
+    <div className="py-16 text-center">
+      <p className="font-serif text-xl text-neutral-600">No issues yet. Check back soon.</p>
+    </div>
+  );
+
+  const monthChips = buildMonthChips(data.archives);
+  const filtered = activeMonth === null ? data.archives : data.archives.filter((a) => runDateToMonthKey(a.runDate) === activeMonth);
+  const visible = filtered.slice(0, Math.min(visibleCount, filtered.length));
+  const groups = groupVisible(visible);
+
+  const handleChipClick = (id: string): void => {
+    if (id === "all") setActiveMonth(null);
+    else setActiveMonth((prev) => (prev === id ? null : id));
+  };
+
+  const handleLoadMore = (): void => {
+    setVisibleState({ month: activeMonth, count: Math.min(visibleCount + 10, filtered.length) });
+  };
+
+  return shell(
+    <>
+      <div className="flex flex-wrap gap-2 pb-6 border-b border-neutral-100">
+        <FilterChip id="all" label="All" count={data.archives.length} active={activeMonth === null} onClick={handleChipClick} />
+        {monthChips.map((chip) => (
+          <FilterChip key={chip.id} id={chip.id} label={chip.label} count={chip.count} active={activeMonth === chip.id} onClick={handleChipClick} />
+        ))}
+      </div>
+      {groups.map((group) => (
+        <section key={group.month} className="mt-8">
+          <MonthHeader monthLabel={group.month} issueCount={group.items.length} />
+          <ul className="archive-list">
+            {group.items.map((item, localIdx) => {
+              const globalIdx = group.startIndex + localIdx;
+              return (
+                <ArchiveRow
+                  key={item.runId}
+                  item={item}
+                  issueNumber={data.archives.length - globalIdx}
+                  featured={globalIdx === 0 && typeof item.leadSummary === "string" && item.leadSummary.length > 0}
+                />
+              );
+            })}
+          </ul>
+        </section>
+      ))}
+      {visibleCount < filtered.length ? (
+        <div className="mt-8 flex justify-center">
+          <button type="button" onClick={handleLoadMore} className="font-mono text-sm text-neutral-600 hover:text-neutral-900 border border-neutral-300 rounded px-4 py-2">
+            Load more
+          </button>
+        </div>
+      ) : null}
+    </>
   );
 }
