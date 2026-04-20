@@ -87,13 +87,13 @@
 |----|------|-------------|---------------------|----------|
 | REQ-090 | Event-driven | When a job completes, the collector shall return a `WebCollectorResult` containing `itemsFetched`, `itemsStored`, `commentsFetched: 0`, `durationMs`, and `failures` set to the failures array iff `failures.length > 0` (otherwise `undefined`). | Unit test: successful run → `result.failures === undefined`; partial-failure run → `result.failures` is a non-empty array. | Must |
 | REQ-091 | Event-driven | When a job completes, the collector shall emit a pino `info` event with `{ itemsFetched, itemsStored, failures: result.failures?.length ?? 0, durationMs }` and the message `"collection completed"`, mirroring `hn.ts:238`. | Unit test: pino log spy receives the `info` call with exactly those fields. | Must |
-| REQ-092 | Event-driven | When a job begins, the collector shall emit a pino `info` event indicating collection start (mirroring `hn.ts:185`). | Unit test: pino log spy receives a start-of-job info call before any per-source work. | Should |
+| REQ-092 | Event-driven | When a job begins, the collector shall emit a pino `info` event indicating collection start (mirroring `collectHn`'s `"collection started"` log in `hn.ts`). | Unit test: pino log spy receives a start-of-job info call before any per-source work. | Should |
 
 ### Retry and rate-limit
 
 | ID | Type | Requirement | Acceptance Criterion | Priority |
 |----|------|-------------|---------------------|----------|
-| REQ-100 | Unwanted | If Jina Reader returns HTTP 429, then the collector shall retry with exponential backoff up to the retry limit defined by the existing `fetchWithRetry` pattern in `hn.ts:83-115`. | Unit test: mocked `fetch` returns 429 then 200; collector succeeds; retry count matches expected. | Must |
+| REQ-100 | Unwanted | If Jina Reader returns HTTP 429, then the collector shall retry with exponential backoff up to the retry limit defined by `fetchWithRetry` in `packages/pipeline/src/lib/fetch-with-retry.ts` (`MAX_FETCH_RETRIES = 3`). | Unit test: mocked `fetch` returns 429 then 200; collector succeeds; retry count matches expected. | Must |
 | REQ-101 | Unwanted | If Jina Reader returns a non-retryable HTTP 4xx (not 429), then the collector shall treat the fetch as failed and record a source-level or post-level `CollectorFailure` without retrying. | Unit test: mocked fetch returns 404; no retries; `CollectorFailure` recorded. | Must |
 
 ## Edge Cases

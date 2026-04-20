@@ -140,11 +140,10 @@ Testability is preserved by injecting the collector functions through `RunProces
 
 ### Per-source retry
 
-**No new retry helper is needed.** All three collectors already implement exponential-backoff retry internally:
+**No new retry helper is needed.** HN and Reddit collectors share a single `fetchWithRetry` utility; the web collector handles Jina retries inline:
 
-- `collectors/hn.ts:137` — `fetchWithRetry` with non-retryable 4xx detection
-- `collectors/reddit.ts:100` — same pattern
-- `collectors/web.ts:19-50` — same pattern with `RETRY_BASE_DELAY_MS` constant
+- `lib/fetch-with-retry.ts` — `fetchWithRetry<T>` shared utility with non-retryable 4xx detection, used by `collectors/hn.ts` and `collectors/reddit.ts`
+- `collectors/web.ts` — Jina fetch retry is handled inline within `fetchMarkdown`
 
 By the time a collector throws, it has already exhausted its retries for transient errors. The outer layer only needs `try/catch` (via `Promise.allSettled`) to capture the terminal failure and mark the source as `failed`. Adding an outer retry would retry the *entire* collector on top of the inner retries — wrong layer, risks duplicated work on DB upserts, and doesn't improve reliability.
 
