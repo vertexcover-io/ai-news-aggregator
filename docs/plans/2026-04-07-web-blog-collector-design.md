@@ -59,7 +59,7 @@ beyond the URL itself.
   (~$0.30/M input, ~$2.50/M output).
 - **Rate-limit safety:** Bounded source-level parallelism (`Promise.all` over
   sources) plus per-source `pLimit(postConcurrency ?? 3)` on detail extractions.
-  Retry-with-backoff on 429 (mirroring `hn.ts:83-115`). Total in-flight ≈
+  Retry-with-backoff on 429 (via `fetchWithRetry` in `lib/fetch-with-retry.ts`). Total in-flight ≈
   `sources × postConcurrency`, stays under Jina free-tier RPM. The `p-limit(3)`
   choice also keeps per-source worst-case time around ~10s, well under the 30s
   `stalledInterval` on `collectionWorker`.

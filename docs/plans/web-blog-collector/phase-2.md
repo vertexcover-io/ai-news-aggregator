@@ -18,7 +18,7 @@ Nothing else in `web.ts` yet.
 - Create: `packages/pipeline/tests/unit/collectors/web.test.ts` — unit tests for `fetchMarkdown` (this file will grow across phases 2-6)
 - Create: `packages/pipeline/tests/unit/fixtures/web-jina-envelope.json` — one canned Jina response with the full envelope (`Title:`, `URL Source:`, `Markdown Content:` prefix + body)
 
-**Pattern to follow:** `packages/pipeline/src/collectors/hn.ts:83-115` (`fetchWithRetry`). Same shape: explicit retry loop, exponential backoff via `Math.pow(2, attempt) * 1000`, short-circuit on non-retryable 4xx.
+**Pattern to follow:** `packages/pipeline/src/lib/fetch-with-retry.ts` (`fetchWithRetry`). Same shape: explicit retry loop, exponential backoff via `Math.pow(2, attempt) * 1000`, short-circuit on non-retryable 4xx.
 
 **What to test:**
 - Happy path: 200 OK → returns stripped body (envelope headers gone)

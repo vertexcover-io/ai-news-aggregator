@@ -29,12 +29,12 @@ selectors or manual config beyond the listing URL.
 
 ### Existing patterns to follow
 
-- **Collector function shape:** `packages/pipeline/src/collectors/hn.ts:176-241` —
+- **Collector function shape:** `packages/pipeline/src/collectors/hn.ts` (`collectHn`) —
   `collectXxx(deps, config) -> CollectorResult` where `deps` is
   `{ rawItemsRepo, fetchFn? }`. Inject all I/O through deps for testability.
-- **Fetch with retry:** `packages/pipeline/src/collectors/hn.ts:83-115` —
-  `fetchWithRetry` with exponential backoff, non-retryable 4xx short-circuit
-  (not 429), 3-retry max. Our `fetchMarkdown` helper should follow this shape.
+- **Fetch with retry:** `packages/pipeline/src/lib/fetch-with-retry.ts` —
+  `fetchWithRetry<T>(fetchFn, url, parse, retries)` with exponential backoff,
+  non-retryable 4xx short-circuit (not 429), 3-retry max (`MAX_FETCH_RETRIES`). Our `fetchMarkdown` helper should follow this shape.
 - **Repo boundary:** `packages/pipeline/src/repositories/raw-items.ts:12-22` —
   `createRawItemsRepo(db).upsertItems(items)` is the only DB write. Extend
   with `findExistingExternalIds` in Phase 1.
