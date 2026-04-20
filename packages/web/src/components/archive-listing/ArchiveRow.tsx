@@ -90,26 +90,26 @@ export function ArchiveRow({
 
   const rowBody = (
     <div
-      className={`grid grid-cols-[120px_minmax(0,1fr)_120px] gap-10 px-2 py-5${featured ? " py-8" : ""}`}
+      className={`grid grid-cols-[120px_minmax(0,1fr)_120px] gap-12 px-2 ${featured ? "py-12" : "py-7"}`}
     >
       <DateBlock runDate={runDate} issueNumber={issueNumber} featured={featured} />
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         {headlineContent}
         {showDek ? (
-          <p className="font-sans text-sm leading-relaxed text-neutral-600 line-clamp-2">
+          <p className="font-sans text-[15px] leading-relaxed text-neutral-600 line-clamp-2">
             {leadSummary}
           </p>
         ) : null}
         {hasTopItems ? (
-          <ul className="flex flex-wrap gap-2">
+          <ul className="flex flex-wrap gap-x-2 gap-y-1.5 pt-1">
             {topItems.map((t) => (
-              <li key={t.id} title={t.title} className="font-mono text-xs rounded-full border border-neutral-200 px-2 py-0.5 text-neutral-700">
+              <li key={t.id} title={t.title} className="font-mono text-[11px] rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-600">
                 {truncateChip(t.title)}
               </li>
             ))}
             {storyCount > topItems.length ? (
-              <span className="font-mono text-xs text-neutral-500">
+              <span className="font-mono text-[11px] self-center text-neutral-400">
                 {`+ ${String(storyCount - topItems.length)} more`}
               </span>
             ) : null}
