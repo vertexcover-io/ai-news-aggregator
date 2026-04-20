@@ -1,10 +1,11 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { ReactElement } from "react";
 import type { ArchiveListResponse, ArchiveListItem } from "@newsletter/shared";
 import { ArchiveListingPage } from "../../../src/pages/ArchiveListingPage";
+import { PublicLayout } from "../../../src/layouts/PublicLayout";
 
 vi.mock("../../../src/api/archives", () => ({
   listArchives: vi.fn(),
@@ -32,6 +33,29 @@ function renderWithQueryClient(
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+function renderWithLayout(
+  data?: ArchiveListResponse,
+): ReturnType<typeof render> {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  if (data) {
+    qc.setQueryData(["archives", "list"], data);
+    mockListArchives.mockResolvedValue(data);
+  }
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route element={<PublicLayout />}>
+            <Route index element={<ArchiveListingPage />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -95,7 +119,7 @@ describe("ArchiveListingPage", () => {
   // REQ-012: renders nav, hero, filter row, archive list and footer when data loads
   it("REQ-012: renders nav, hero, filter row, archive list and footer when data loads", () => {
     const data = makeArchives(3, "2026-04");
-    renderWithQueryClient(<ArchiveListingPage />, data);
+    renderWithLayout(data);
     expect(screen.getByText("AI Newsletter")).toBeTruthy();
     expect(screen.getByRole("heading", { level: 1 })).toBeTruthy();
     expect(getFilterChipByText("All")).toBeTruthy();
