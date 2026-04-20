@@ -76,13 +76,14 @@ const baseCompletedRun: RunStateResponse = {
 describe("ArchivePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    document.title = "";
   });
 
   afterEach(() => {
     cleanup();
   });
 
-  it("shows loading state while fetching (REQ-005)", () => {
+  it("loading state: element with role=status and aria-busy=true renders (REQ-020, EDGE-016)", () => {
     vi.mocked(useArchive).mockReturnValue({
       isLoading: true,
       data: undefined,
@@ -95,10 +96,31 @@ describe("ArchivePage", () => {
     } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
-    expect(screen.getByText(/loading/i)).toBeTruthy();
+    const skeleton = screen.getByRole("status");
+    expect(skeleton).toBeTruthy();
+    expect(skeleton.getAttribute("aria-busy")).toBe("true");
   });
 
-  it("shows 'Run not found — it may have expired.' when data is null (REQ-006)", () => {
+  it("error state: ERROR eyebrow, Couldn't load this issue headline, and ← All issues link (REQ-021, EDGE-013)", () => {
+    vi.mocked(useArchive).mockReturnValue({
+      isLoading: false,
+      data: undefined,
+      error: new Error("Network failure"),
+      isError: true,
+      isPending: false,
+      isFetching: false,
+      isSuccess: false,
+      status: "error",
+    } as ReturnType<typeof useArchive>);
+
+    renderWithClient(<ArchivePage />);
+    expect(screen.getByText("ERROR")).toBeTruthy();
+    expect(screen.getByText("Couldn't load this issue")).toBeTruthy();
+    const link = screen.getByRole("link", { name: "← All issues" });
+    expect(link.getAttribute("href")).toBe("/");
+  });
+
+  it("not-found state: This issue isn't here and subtitle text (REQ-022, EDGE-017)", () => {
     vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: null,
@@ -111,12 +133,11 @@ describe("ArchivePage", () => {
     } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
-    expect(
-      screen.getByText("Run not found — it may have expired."),
-    ).toBeTruthy();
+    expect(screen.getByText("This issue isn't here")).toBeTruthy();
+    expect(screen.getByText("It may have been removed or never existed.")).toBeTruthy();
   });
 
-  it("shows 'Run is still in progress — check back soon.' when status is 'running' (REQ-007)", () => {
+  it("in-progress state (status=running): IN PROGRESS eyebrow and Today's issue is still being curated. (REQ-023)", () => {
     const runningRun: RunStateResponse = {
       ...baseCompletedRun,
       status: "running",
@@ -136,22 +157,21 @@ describe("ArchivePage", () => {
     } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
-    expect(
-      screen.getByText("Run is still in progress — check back soon."),
-    ).toBeTruthy();
+    expect(screen.getByText("IN PROGRESS")).toBeTruthy();
+    expect(screen.getByText("Today's issue is still being curated.")).toBeTruthy();
   });
 
-  it("shows 'Run is still in progress — check back soon.' when status is 'failed' (EDGE-009)", () => {
-    const failedRun: RunStateResponse = {
+  it("cancelled state: This issue was cancelled. (EDGE-015)", () => {
+    const cancelledRun: RunStateResponse = {
       ...baseCompletedRun,
-      status: "failed",
-      stage: "failed",
+      status: "cancelled",
+      stage: "cancelled",
       completedAt: null,
       rankedItems: null,
     };
     vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
-      data: failedRun,
+      data: cancelledRun,
       error: null,
       isError: false,
       isPending: false,
@@ -161,37 +181,10 @@ describe("ArchivePage", () => {
     } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
-    expect(
-      screen.getByText("Run is still in progress — check back soon."),
-    ).toBeTruthy();
+    expect(screen.getByText("This issue was cancelled.")).toBeTruthy();
   });
 
-  it("shows dashboard link when run is not completed (REQ-007)", () => {
-    const runningRun: RunStateResponse = {
-      ...baseCompletedRun,
-      status: "running",
-      stage: "collecting",
-      completedAt: null,
-      rankedItems: null,
-    };
-    vi.mocked(useArchive).mockReturnValue({
-      isLoading: false,
-      data: runningRun,
-      error: null,
-      isError: false,
-      isPending: false,
-      isFetching: false,
-      isSuccess: true,
-      status: "success",
-    } as ReturnType<typeof useArchive>);
-
-    renderWithClient(<ArchivePage />);
-    const dashLink = screen.getByRole("link", { name: /dashboard/i });
-    expect(dashLink).toBeTruthy();
-    expect(dashLink.getAttribute("href")).toBe("/");
-  });
-
-  it("renders ArchivePageHeader and story cards when completed (REQ-008, REQ-009)", () => {
+  it("completed with 2 stories: getAllByRole(article) length === 2 and rank counters present (REQ-006)", () => {
     vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: baseCompletedRun,
@@ -204,31 +197,13 @@ describe("ArchivePage", () => {
     } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
-    expect(screen.getByRole("heading", { name: "AI Newsletter" })).toBeTruthy();
     const articles = screen.getAllByRole("article");
     expect(articles).toHaveLength(2);
+    expect(screen.getByText("01 / 02")).toBeTruthy();
+    expect(screen.getByText("02 / 02")).toBeTruthy();
   });
 
-  it("renders correct number of cards matching rankedItems length (REQ-009)", () => {
-    vi.mocked(useArchive).mockReturnValue({
-      isLoading: false,
-      data: baseCompletedRun,
-      error: null,
-      isError: false,
-      isPending: false,
-      isFetching: false,
-      isSuccess: true,
-      status: "success",
-    } as ReturnType<typeof useArchive>);
-
-    renderWithClient(<ArchivePage />);
-    const articles = screen.getAllByRole("article");
-    expect(articles).toHaveLength(
-      (baseCompletedRun.rankedItems ?? []).length,
-    );
-  });
-
-  it("renders 0 cards and header shows '0 stories' when rankedItems is [] (EDGE-002)", () => {
+  it("completed with 0 stories: No stories in this issue. rendered; no article roles (EDGE-001)", () => {
     const emptyRun: RunStateResponse = {
       ...baseCompletedRun,
       rankedItems: [],
@@ -245,11 +220,11 @@ describe("ArchivePage", () => {
     } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
-    expect(screen.getByText(/0 stories/)).toBeTruthy();
+    expect(screen.getByText("No stories in this issue.")).toBeTruthy();
     expect(screen.queryAllByRole("article")).toHaveLength(0);
   });
 
-  it("uses max-w-2xl centered layout when completed (REQ-021)", () => {
+  it("document.title updated to Issue — <formatted date> after completed render (REQ-028)", () => {
     vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: baseCompletedRun,
@@ -261,27 +236,28 @@ describe("ArchivePage", () => {
       status: "success",
     } as ReturnType<typeof useArchive>);
 
-    const { container } = renderWithClient(<ArchivePage />);
-    const centeredDiv = container.querySelector(".max-w-2xl.mx-auto");
-    expect(centeredDiv).not.toBeNull();
+    renderWithClient(<ArchivePage />);
+    expect(document.title).toContain("Issue —");
   });
 
-  it("shows generic error when network request throws (EDGE-008)", () => {
+  it("bottom-of-page ← All issues link present on completed state (REQ-024)", () => {
     vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
-      data: undefined,
-      error: new Error("Network failure"),
-      isError: true,
+      data: baseCompletedRun,
+      error: null,
+      isError: false,
       isPending: false,
       isFetching: false,
-      isSuccess: false,
-      status: "error",
+      isSuccess: true,
+      status: "success",
     } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
-    expect(screen.getByRole("alert")).toBeTruthy();
-    expect(
-      screen.getByRole("link", { name: /dashboard/i }),
-    ).toBeTruthy();
+    // There should be at least two ← All issues links (from header + bottom)
+    const allIssuesLinks = screen.getAllByRole("link", { name: "← All issues" });
+    expect(allIssuesLinks.length).toBeGreaterThanOrEqual(2);
+    for (const link of allIssuesLinks) {
+      expect(link.getAttribute("href")).toBe("/");
+    }
   });
 });

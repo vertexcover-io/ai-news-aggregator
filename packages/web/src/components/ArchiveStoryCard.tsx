@@ -4,17 +4,8 @@ import type { RankedItem } from "@newsletter/shared";
 interface ArchiveStoryCardProps {
   item: RankedItem;
   rank: number;
+  totalCount: number;
 }
-
-const SOURCE_COLORS: Record<string, string> = {
-  hn: "bg-orange-100 text-orange-700",
-  reddit: "bg-blue-100 text-blue-700",
-  blog: "bg-emerald-100 text-emerald-700",
-  twitter: "bg-sky-100 text-sky-700",
-  rss: "bg-violet-100 text-violet-700",
-  github: "bg-gray-100 text-gray-700",
-  newsletter: "bg-amber-100 text-amber-700",
-};
 
 function formatDate(value: string | null): string {
   if (!value) return "";
@@ -28,102 +19,162 @@ function formatDate(value: string | null): string {
       });
 }
 
+function formatSourceDate(publishedAt: string | null): string {
+  return formatDate(publishedAt).toUpperCase();
+}
+
+function formatRank(n: number): string {
+  return n < 10 ? `0${String(n)}` : String(n);
+}
+
+function truncateHost(url: string): string {
+  let host: string;
+  try {
+    host = new URL(url).host;
+  } catch {
+    return "";
+  }
+  return host.length <= 28 ? host : host.slice(0, 27) + "\u2026";
+}
+
 export function ArchiveStoryCard({
   item,
+  rank,
+  totalCount,
 }: ArchiveStoryCardProps): ReactElement {
   const [imgError, setImgError] = useState(false);
   const showImage = Boolean(item.imageUrl) && !imgError;
-  const badgeColor = SOURCE_COLORS[item.sourceType] ?? "bg-gray-100 text-gray-700";
+
+  const dateStr = formatSourceDate(item.publishedAt);
+  const parts: string[] = [item.sourceType.toUpperCase(), dateStr];
+  if (item.author) {
+    parts[1] = `${dateStr} · BY ${item.author.toUpperCase()}`;
+  }
+  if (item.engagement.points > 0) parts.push(`▲ ${String(item.engagement.points)}`);
+  if (item.engagement.commentCount > 0)
+    parts.push(`${String(item.engagement.commentCount)} COMMENTS`);
+  const eyebrow = parts.join(" · ");
+
+  const isLead = rank === 1;
+  const py = isLead ? "py-14" : "py-10";
+  const displayNumClass = isLead
+    ? "font-serif font-medium leading-none text-neutral-900 text-5xl"
+    : "font-serif font-medium leading-none text-neutral-900 text-4xl";
+  const headlineClass = isLead
+    ? "font-serif font-medium leading-tight tracking-tight text-neutral-900 text-4xl md:text-5xl"
+    : "font-serif font-medium leading-tight tracking-tight text-neutral-900 text-2xl md:text-3xl";
+  const ledeClass = isLead
+    ? "font-serif text-xl italic leading-relaxed text-neutral-700"
+    : "font-serif text-lg italic leading-relaxed text-neutral-700";
+  const rationaleClass = "font-serif text-lg leading-relaxed text-neutral-700";
 
   return (
-    <article className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-      {showImage && item.imageUrl && (
-        <img
-          src={item.imageUrl}
-          alt=""
-          referrerPolicy="no-referrer"
-          className="w-full object-cover max-h-64"
-          onError={() => {
-            setImgError(true);
-          }}
-        />
-      )}
+    <article
+      className={`grid grid-cols-[120px_minmax(0,1fr)_120px] gap-10 border-b border-[#1A1A1A1A] ${py}`}
+    >
+      {/* Left rail */}
+      <div data-rail="left" className="flex flex-col gap-2">
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-neutral-500">
+          N°
+        </span>
+        <span className={displayNumClass}>{formatRank(rank)}</span>
+        {isLead && (
+          <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8C3A1E]">
+            LEAD STORY
+          </span>
+        )}
+      </div>
 
-      <div className="p-6 space-y-5">
-        <h2 className="text-2xl font-bold leading-snug tracking-tight">
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-gray-900 hover:text-blue-700 transition-colors"
-          >
+      {/* Middle */}
+      <div className="flex flex-col gap-4">
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-neutral-500">
+          {eyebrow}
+        </p>
+
+        <h2 className={headlineClass}>
+          <a href={item.url} target="_blank" rel="noopener noreferrer">
             {item.title}
           </a>
         </h2>
 
-        <div className="flex items-center gap-3 text-sm text-gray-400 flex-wrap">
-          <span
-            className={`px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase ${badgeColor}`}
-          >
-            {item.sourceType}
-          </span>
-          {item.publishedAt && (
-            <span>{formatDate(item.publishedAt)}</span>
-          )}
-          {item.author && <span>by {item.author}</span>}
-          {item.engagement.points > 0 && (
-            <span>▲ {item.engagement.points}</span>
-          )}
-          {item.engagement.commentCount > 0 && (
-            <span>💬 {item.engagement.commentCount}</span>
-          )}
-        </div>
+        {showImage && item.imageUrl && (
+          <img
+            src={item.imageUrl}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="w-full border border-[#1A1A1A14] object-cover"
+            style={{ maxHeight: isLead ? 320 : 220 }}
+            onError={() => {
+              setImgError(true);
+            }}
+          />
+        )}
 
-        <div className="bg-gray-50 rounded-lg p-4">
-          <p className="text-base text-gray-700 leading-relaxed">
-            <span className="font-semibold text-gray-900">The Recap: </span>
-            {item.recap ? item.recap.summary : item.rationale}
-          </p>
-        </div>
-
-        {item.recap && (
+        {item.recap ? (
           <>
-            <div>
-              <p className="text-sm font-semibold text-gray-900 mb-2 uppercase tracking-wide">
-                Unpacked
-              </p>
-              <ul className="space-y-2 pl-1">
-                {item.recap.bullets.map((bullet) => (
-                  <li
-                    key={bullet}
-                    className="text-base text-gray-600 leading-relaxed flex gap-2"
-                  >
-                    <span className="text-gray-300 mt-0.5">•</span>
-                    <span>{bullet}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <p className={ledeClass}>{item.recap.summary}</p>
 
-            <div className="border-l-4 border-gray-200 pl-4 py-1">
-              <p className="text-base text-gray-600 italic">
-                <span className="font-semibold not-italic text-gray-900">
-                  Bottom line:{" "}
-                </span>
-                {item.recap.bottomLine}
-              </p>
-            </div>
+            {item.recap.bullets.length >= 1 && (
+              <div className="pt-2">
+                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8C3A1E]">
+                  UNPACKED
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {item.recap.bullets.map((b) => (
+                    <li
+                      key={b}
+                      className="flex gap-3 font-sans text-sm leading-relaxed text-neutral-700"
+                    >
+                      <span aria-hidden="true" className="text-[#8C3A1E]">
+                        —
+                      </span>
+                      <span>{b}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {item.recap.bottomLine && (
+              <div className="flex gap-4 pt-2">
+                <div aria-hidden="true" className="w-[3px] self-stretch bg-[#8C3A1E]" />
+                <div>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8C3A1E]">
+                    BOTTOM LINE
+                  </p>
+                  <p className="mt-1 font-serif text-lg italic leading-relaxed text-neutral-900">
+                    {item.recap.bottomLine}
+                  </p>
+                </div>
+              </div>
+            )}
           </>
+        ) : (
+          <p className={rationaleClass}>{item.rationale}</p>
         )}
 
         <a
           href={item.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-block text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+          className="inline-flex items-center gap-2 pt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-neutral-900 underline"
         >
-          Read more →
+          READ THE ORIGINAL{" "}
+          <span aria-hidden="true" className="text-[#8C3A1E]">
+            →
+          </span>
         </a>
+      </div>
+
+      {/* Right rail */}
+      <div
+        data-rail="right"
+        className="font-mono text-[11px] text-neutral-500 uppercase tracking-[0.18em] flex flex-col gap-1"
+      >
+        <span>
+          {formatRank(rank)} / {formatRank(totalCount)}
+        </span>
+        <span>{truncateHost(item.url)}</span>
       </div>
     </article>
   );
