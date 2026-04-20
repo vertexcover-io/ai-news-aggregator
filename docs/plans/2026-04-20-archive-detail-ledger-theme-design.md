@@ -11,7 +11,7 @@
 - `eHhn1.png` — Story N°01 (featured, with image plate, UNPACKED list, BOTTOM LINE)
 - `oiQRS.png` — Story N°02 (standard section)
 
-> Export is pending a Save-As of the Pencil document into the mockups directory — the Pencil MCP currently rejects `export_nodes` for the unsaved in-memory `pencil-new.pen`. Once saved to `docs/plans/2026-04-20-archive-detail-ledger-mockups/archive-detail.pen`, re-run `export_nodes` with the four node IDs above. The filenames above are the expected outputs (Pencil writes `<nodeId>.png` per node).
+> Mockup export was not completed — the Pencil document was never saved from the in-memory `pencil-new.pen` to the mockups directory, so the PNG files above do not exist. The mockups directory (`docs/plans/2026-04-20-archive-detail-ledger-mockups/`) is empty. The implementation proceeded from the written design spec and component descriptions; visual reference is the deployed page at `/archive/:runId`.
 
 ## Problem Statement
 

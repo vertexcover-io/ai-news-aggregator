@@ -4,7 +4,7 @@ React + Vite frontend for the admin review dashboard and public archive.
 
 ## Responsibilities
 - Archive listing (`/`): PUBLIC — Ledger-layout listing of reviewed archives, month-grouped, with filter chips, client-side "Load more", and a featured first row when a lead summary is available
-- Archive detail (`/archive/:runId`): PUBLIC — recap-style read-only view of a completed run
+- Archive detail (`/archive/:runId`): PUBLIC — Ledger-aesthetic read-only view of a completed run: serif/mono typography, 3-column story sections with numbered N° rail, image plates, and rust-accented recap blocks; wrapped by `PublicLayout` (shared Nav + Footer)
 - Admin login (`/admin/login`): password gate for operator pages
 - Dashboard (`/admin`): shows recent runs table, schedule status banner, and "Run Now" button
 - Review (`/admin/review/:runId`): curate ranked items before publishing — reorder (DnD), remove, add by URL
