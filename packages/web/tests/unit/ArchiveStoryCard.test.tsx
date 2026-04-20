@@ -242,4 +242,22 @@ describe("ArchiveStoryCard", () => {
     expect(rightRail?.textContent).toContain("12");
     expect(rightRail?.textContent).toContain("20");
   });
+
+  // Test 24: REQ-025, EDGE-014 — responsive collapse: mobile flex + md:grid + N° prefix in eyebrow
+  it("collapses to single-column layout on mobile with rank prefix in eyebrow", () => {
+    const { container } = render(<ArchiveStoryCard item={itemWithRecap} rank={1} totalCount={8} />);
+    // The article should start with mobile flex, switch to grid at md
+    const article = screen.getByRole("article");
+    expect(article.className).toContain("flex");
+    expect(article.className).toContain("flex-col");
+    expect(article.className).toContain("md:grid");
+
+    // Mobile eyebrow prefix "N°01 · " exists in the DOM
+    expect(container.textContent).toContain("N°01 ·");
+
+    // Left rail (the numbered serif) is hidden-on-mobile
+    const leftRail = article.querySelector('[data-rail="left"]');
+    expect(leftRail?.className).toContain("hidden");
+    expect(leftRail?.className).toContain("md:flex");
+  });
 });

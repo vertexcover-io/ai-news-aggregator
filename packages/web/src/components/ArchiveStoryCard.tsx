@@ -70,10 +70,10 @@ export function ArchiveStoryCard({
 
   return (
     <article
-      className={`grid grid-cols-[120px_minmax(0,1fr)_120px] gap-10 border-b border-[#1A1A1A1A] ${py}`}
+      className={`flex flex-col gap-6 border-b border-[#1A1A1A1A] ${py} md:grid md:grid-cols-[120px_minmax(0,1fr)_120px] md:gap-10`}
     >
       {/* Left rail */}
-      <div data-rail="left" className="flex flex-col gap-2">
+      <div data-rail="left" className="hidden md:flex flex-col gap-2">
         <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-neutral-500">
           N°
         </span>
@@ -88,6 +88,7 @@ export function ArchiveStoryCard({
       {/* Middle */}
       <div className="flex flex-col gap-4">
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-neutral-500">
+          <span className="md:hidden">N°{formatRank(rank)} · </span>
           {eyebrow}
         </p>
 
@@ -169,7 +170,7 @@ export function ArchiveStoryCard({
       {/* Right rail */}
       <div
         data-rail="right"
-        className="font-mono text-[11px] text-neutral-500 uppercase tracking-[0.18em] flex flex-col gap-1"
+        className="hidden md:flex font-mono text-[11px] text-neutral-500 uppercase tracking-[0.18em] flex-col gap-1"
       >
         <span>
           {formatRank(rank)} / {formatRank(totalCount)}
