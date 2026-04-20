@@ -10,7 +10,7 @@ const baseItem: RankedItem = {
   url: "https://example.com/article",
   sourceType: "hn",
   author: "jdoe",
-  publishedAt: "2026-04-13T12:00:00Z",
+  publishedAt: "2026-04-18T12:00:00Z",
   engagement: { points: 342, commentCount: 45 },
   score: 0.9,
   rationale: "This article covers key reasoning improvements in large language models.",
@@ -34,126 +34,230 @@ describe("ArchiveStoryCard", () => {
     cleanup();
   });
 
-  it("renders source type badge with color", () => {
-    render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    expect(screen.getByText("hn")).toBeTruthy();
+  // Test 1: REQ-006 — renders inside an <article>
+  it("renders inside an article element (role=article)", () => {
+    render(<ArchiveStoryCard item={baseItem} rank={1} totalCount={8} />);
+    const articles = screen.getAllByRole("article");
+    expect(articles.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders formatted publication date when publishedAt is set", () => {
-    render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    expect(screen.getByText(/Apr 13, 2026/)).toBeTruthy();
+  // Test 2: REQ-008 — left rail shows N° eyebrow + zero-padded rank
+  it("left rail shows N° eyebrow and serif display number for rank 1 (renders 01)", () => {
+    render(<ArchiveStoryCard item={baseItem} rank={1} totalCount={8} />);
+    expect(screen.getByText("N°")).toBeTruthy();
+    expect(screen.getByText("01")).toBeTruthy();
   });
 
-  it("omits date when publishedAt is null — no 'null' text", () => {
-    const item = { ...baseItem, publishedAt: null };
-    render(<ArchiveStoryCard item={item} rank={1} />);
-    expect(screen.queryByText("null")).toBeNull();
+  it("left rail shows 12 for rank 12 (EDGE-009)", () => {
+    render(<ArchiveStoryCard item={baseItem} rank={12} totalCount={20} />);
+    expect(screen.getByText("12")).toBeTruthy();
   });
 
-  it("renders author when present", () => {
-    render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    expect(screen.getByText(/by jdoe/)).toBeTruthy();
+  // Test 3: REQ-009 — LEAD STORY tag for rank 1, absent for rank 2+
+  it("renders LEAD STORY tag when rank === 1", () => {
+    render(<ArchiveStoryCard item={baseItem} rank={1} totalCount={8} />);
+    expect(screen.getByText("LEAD STORY")).toBeTruthy();
   });
 
-  it("omits author when null — no 'null' text", () => {
-    const item = { ...baseItem, author: null };
-    render(<ArchiveStoryCard item={item} rank={1} />);
-    expect(screen.queryByText("null")).toBeNull();
+  it("does not render LEAD STORY tag when rank === 2", () => {
+    render(<ArchiveStoryCard item={baseItem} rank={2} totalCount={8} />);
+    expect(screen.queryByText("LEAD STORY")).toBeNull();
   });
 
-  it("renders engagement points when non-zero", () => {
-    render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    expect(screen.getByText(/▲ 342/)).toBeTruthy();
+  // Test 4: REQ-010 — mono eyebrow contains HN · APR 18, 2026
+  it("mono eyebrow contains source and formatted date uppercase (e.g. HN · APR 18, 2026)", () => {
+    const { container } = render(<ArchiveStoryCard item={baseItem} rank={1} totalCount={8} />);
+    expect(container.textContent).toContain("HN");
+    expect(container.textContent).toContain("APR 18, 2026");
   });
 
-  it("renders engagement comment count when non-zero", () => {
-    render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    expect(screen.getByText(/💬 45/)).toBeTruthy();
+  // Test 5: REQ-010 — eyebrow contains ▲ 342 when points === 342
+  it("eyebrow contains ▲ 342 when points === 342", () => {
+    const { container } = render(<ArchiveStoryCard item={baseItem} rank={1} totalCount={8} />);
+    expect(container.textContent).toContain("▲ 342");
   });
 
-  it("hides engagement when both are zero", () => {
+  // Test 6: REQ-010 — eyebrow contains 45 COMMENTS when commentCount === 45
+  it("eyebrow contains 45 COMMENTS when commentCount === 45", () => {
+    const { container } = render(<ArchiveStoryCard item={baseItem} rank={1} totalCount={8} />);
+    expect(container.textContent).toContain("45 COMMENTS");
+  });
+
+  // Test 7: EDGE-007 — both zero: no ▲ and no COMMENTS
+  it("eyebrow has no ▲ and no COMMENTS when both are zero (EDGE-007)", () => {
     const item = { ...baseItem, engagement: { points: 0, commentCount: 0 } };
-    render(<ArchiveStoryCard item={item} rank={1} />);
-    expect(screen.queryByText(/▲/)).toBeNull();
-    expect(screen.queryByText(/💬/)).toBeNull();
+    const { container } = render(<ArchiveStoryCard item={item} rank={1} totalCount={8} />);
+    expect(container.textContent).not.toContain("▲");
+    expect(container.textContent).not.toContain("COMMENTS");
   });
 
-  it("renders title as a link to item URL", () => {
-    render(<ArchiveStoryCard item={baseItem} rank={1} />);
+  // Test 8: EDGE-008 — points only, no COMMENTS
+  it("eyebrow includes ▲ POINTS but no COMMENTS when commentCount === 0 (EDGE-008)", () => {
+    const item = { ...baseItem, engagement: { points: 100, commentCount: 0 } };
+    const { container } = render(<ArchiveStoryCard item={item} rank={1} totalCount={8} />);
+    expect(container.textContent).toContain("▲ 100");
+    expect(container.textContent).not.toContain("COMMENTS");
+  });
+
+  // Test 9: REQ-011 — headline anchor href, target, rel
+  it("headline anchor has href=item.url, target=_blank, rel=noopener noreferrer", () => {
+    render(<ArchiveStoryCard item={baseItem} rank={1} totalCount={8} />);
     const link = screen.getByRole("link", { name: "Advances in LLM Reasoning" });
     expect(link.getAttribute("href")).toBe("https://example.com/article");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
-  it("renders 'Read more →' link to item URL", () => {
-    render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    const link = screen.getByRole("link", { name: "Read more →" });
-    expect(link.getAttribute("href")).toBe("https://example.com/article");
-  });
-
-  it("does not crash when content is null", () => {
-    const item = { ...baseItem, content: null };
-    expect(() => render(<ArchiveStoryCard item={item} rank={1} />)).not.toThrow();
-  });
-
-  // Image tests
-
-  it("renders image when imageUrl is present", () => {
-    const { container } = render(<ArchiveStoryCard item={itemWithRecap} rank={1} />);
+  // Test 10: REQ-012 — image plate renders when imageUrl set
+  it("image plate renders when imageUrl is set", () => {
+    const { container } = render(<ArchiveStoryCard item={itemWithRecap} rank={1} totalCount={8} />);
     const img = container.querySelector("img");
     expect(img).not.toBeNull();
     expect(img?.getAttribute("src")).toBe("https://example.com/image.jpg");
   });
 
-  it("does not render image when imageUrl is null", () => {
-    const { container } = render(<ArchiveStoryCard item={baseItem} rank={1} />);
+  // Test 11: EDGE-002 — image plate absent when imageUrl === null
+  it("image plate absent when imageUrl === null (EDGE-002)", () => {
+    const { container } = render(<ArchiveStoryCard item={baseItem} rank={1} totalCount={8} />);
     expect(container.querySelector("img")).toBeNull();
   });
 
-  // REQ-011: img must have referrerpolicy="no-referrer"
-  it("sets referrerpolicy=no-referrer on the image element (REQ-011)", () => {
-    const { container } = render(<ArchiveStoryCard item={itemWithRecap} rank={1} />);
-    const img = container.querySelector("img");
-    expect(img).not.toBeNull();
-    expect(img?.getAttribute("referrerpolicy")).toBe("no-referrer");
-  });
-
-  it("hides image when onError fires", () => {
-    const { container } = render(<ArchiveStoryCard item={itemWithRecap} rank={1} />);
+  // Test 12: EDGE-003 — image unmounts after onError fires
+  it("image unmounts after onError fires (EDGE-003)", () => {
+    const { container } = render(<ArchiveStoryCard item={itemWithRecap} rank={1} totalCount={8} />);
     const img = container.querySelector("img");
     expect(img).not.toBeNull();
     if (img) fireEvent.error(img);
     expect(container.querySelector("img")).toBeNull();
   });
 
-  // Recap section tests
-
-  it("shows recap.summary in 'The Recap:' section when recap exists", () => {
-    render(<ArchiveStoryCard item={itemWithRecap} rank={1} />);
-    expect(screen.getByText("The Recap:")).toBeTruthy();
-    expect(screen.getByText("Test summary of the article")).toBeTruthy();
+  // Test 13: REQ-014 — italic lede renders when recap.summary set
+  it("italic lede renders when recap.summary set (assert italic class present)", () => {
+    const { container } = render(
+      <ArchiveStoryCard item={itemWithRecap} rank={1} totalCount={8} />,
+    );
+    const italicEl = container.querySelector(".italic");
+    expect(italicEl).not.toBeNull();
+    expect(italicEl?.textContent).toContain("Test summary of the article");
   });
 
-  it("shows 'Unpacked' heading and bullet points when recap exists", () => {
-    render(<ArchiveStoryCard item={itemWithRecap} rank={1} />);
-    expect(screen.getByText("Unpacked")).toBeTruthy();
+  // Test 14: EDGE-006 — with recap === null, renders rationale non-italic; no UNPACKED, no BOTTOM LINE
+  it("with recap === null, renders rationale in non-italic serif; no UNPACKED, no BOTTOM LINE (EDGE-006)", () => {
+    const { container } = render(<ArchiveStoryCard item={baseItem} rank={1} totalCount={8} />);
+    expect(container.textContent).toContain(
+      "This article covers key reasoning improvements in large language models.",
+    );
+    expect(screen.queryByText("UNPACKED")).toBeNull();
+    expect(screen.queryByText("BOTTOM LINE")).toBeNull();
+  });
+
+  // Test 15: REQ-016 — UNPACKED section + em-dash list renders when bullets.length >= 1
+  it("UNPACKED section and em-dash bullet list renders when bullets.length >= 1", () => {
+    render(<ArchiveStoryCard item={itemWithRecap} rank={1} totalCount={8} />);
+    expect(screen.getByText("UNPACKED")).toBeTruthy();
     expect(screen.getByText("Point 1")).toBeTruthy();
     expect(screen.getByText("Point 2")).toBeTruthy();
     expect(screen.getByText("Point 3")).toBeTruthy();
   });
 
-  it("shows 'Bottom line:' when recap exists", () => {
-    render(<ArchiveStoryCard item={itemWithRecap} rank={1} />);
-    expect(screen.getByText("Bottom line:")).toBeTruthy();
+  // Test 16: EDGE-004 — with empty bullets array, UNPACKED not present
+  it("with empty bullets array, UNPACKED is not present (EDGE-004)", () => {
+    const item: RankedItem = {
+      ...itemWithRecap,
+      recap: { summary: "Some summary", bullets: [], bottomLine: "bottom line" },
+    };
+    render(<ArchiveStoryCard item={item} rank={1} totalCount={8} />);
+    expect(screen.queryByText("UNPACKED")).toBeNull();
+  });
+
+  // Test 17: REQ-017 — BOTTOM LINE present when bottomLine non-empty string
+  it("BOTTOM LINE present when bottomLine is a non-empty string", () => {
+    render(<ArchiveStoryCard item={itemWithRecap} rank={1} totalCount={8} />);
+    expect(screen.getByText("BOTTOM LINE")).toBeTruthy();
     expect(screen.getByText("Test bottom line takeaway")).toBeTruthy();
   });
 
-  it("falls back to rationale when recap is null", () => {
-    render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    expect(screen.getByText("The Recap:")).toBeTruthy();
-    expect(
-      screen.getByText("This article covers key reasoning improvements in large language models."),
-    ).toBeTruthy();
-    expect(screen.queryByText("Unpacked")).toBeNull();
-    expect(screen.queryByText("Bottom line:")).toBeNull();
+  // Test 18: EDGE-005 — with bottomLine === "" (empty string), BOTTOM LINE block absent
+  it("with bottomLine empty string, BOTTOM LINE block absent (EDGE-005)", () => {
+    const item: RankedItem = {
+      ...itemWithRecap,
+      recap: { summary: "Some summary", bullets: ["A bullet"], bottomLine: "" },
+    };
+    render(<ArchiveStoryCard item={item} rank={1} totalCount={8} />);
+    expect(screen.queryByText("BOTTOM LINE")).toBeNull();
+  });
+
+  // Test 19: REQ-018 — READ THE ORIGINAL link present with correct attrs
+  it("READ THE ORIGINAL link present; href matches item.url; target=_blank; rel=noopener noreferrer", () => {
+    render(<ArchiveStoryCard item={baseItem} rank={1} totalCount={8} />);
+    const link = screen.getByText("READ THE ORIGINAL", { exact: false }).closest("a");
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute("href")).toBe("https://example.com/article");
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  // Test 20: REQ-019 — no colored pill backgrounds
+  it("rendered markup contains none of the old colored pill bg classes (REQ-019)", () => {
+    const { container } = render(<ArchiveStoryCard item={baseItem} rank={1} totalCount={8} />);
+    const html = container.innerHTML;
+    const forbiddenClasses = [
+      "bg-orange-100",
+      "bg-blue-100",
+      "bg-emerald-100",
+      "bg-sky-100",
+      "bg-violet-100",
+      "bg-amber-100",
+      "bg-gray-100",
+    ];
+    for (const cls of forbiddenClasses) {
+      expect(html).not.toContain(cls);
+    }
+  });
+
+  // Test 21: REQ-019 spirit — no text-blue-6xx / text-blue-7xx / text-blue-8xx
+  it("rendered markup contains no text-blue-600 / text-blue-700 / text-blue-800 classes (REQ-019 spirit)", () => {
+    const { container } = render(<ArchiveStoryCard item={baseItem} rank={1} totalCount={8} />);
+    const html = container.innerHTML;
+    expect(html).not.toContain("text-blue-600");
+    expect(html).not.toContain("text-blue-700");
+    expect(html).not.toContain("text-blue-800");
+  });
+
+  // Test 22: REQ-007 right rail — shows 01 / 08 when rank=1, totalCount=8
+  it("right rail shows 01 / 08 when rank=1 and totalCount=8", () => {
+    const { container } = render(<ArchiveStoryCard item={baseItem} rank={1} totalCount={8} />);
+    // Look in the right rail specifically
+    const rightRail = container.querySelector('[data-rail="right"]');
+    expect(rightRail).not.toBeNull();
+    expect(rightRail?.textContent).toContain("01");
+    expect(rightRail?.textContent).toContain("08");
+  });
+
+  // Test 23: EDGE-009 — right rail shows 12 / 20 when rank=12, totalCount=20
+  it("right rail shows 12 / 20 when rank=12 and totalCount=20 (EDGE-009)", () => {
+    const { container } = render(<ArchiveStoryCard item={baseItem} rank={12} totalCount={20} />);
+    const rightRail = container.querySelector('[data-rail="right"]');
+    expect(rightRail).not.toBeNull();
+    expect(rightRail?.textContent).toContain("12");
+    expect(rightRail?.textContent).toContain("20");
+  });
+
+  // Test 24: REQ-025, EDGE-014 — responsive collapse: mobile flex + md:grid + N° prefix in eyebrow
+  it("collapses to single-column layout on mobile with rank prefix in eyebrow", () => {
+    const { container } = render(<ArchiveStoryCard item={itemWithRecap} rank={1} totalCount={8} />);
+    // The article should start with mobile flex, switch to grid at md
+    const article = screen.getByRole("article");
+    expect(article.className).toContain("flex");
+    expect(article.className).toContain("flex-col");
+    expect(article.className).toContain("md:grid");
+
+    // Mobile eyebrow prefix "N°01 · " exists in the DOM
+    expect(container.textContent).toContain("N°01 ·");
+
+    // Left rail (the numbered serif) is hidden-on-mobile
+    const leftRail = article.querySelector('[data-rail="left"]');
+    expect(leftRail?.className).toContain("hidden");
+    expect(leftRail?.className).toContain("md:flex");
   });
 });

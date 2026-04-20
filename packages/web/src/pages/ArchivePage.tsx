@@ -1,74 +1,157 @@
-import type { ReactElement } from "react";
+import { useEffect, type ReactElement } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useArchive } from "../hooks/useArchive";
-import { ArchivePageHeader } from "../components/ArchivePageHeader";
+import { ArchivePageHeader, pickHeadline } from "../components/ArchivePageHeader";
 import { ArchiveStoryCard } from "../components/ArchiveStoryCard";
+import { setMeta } from "../lib/meta";
+
+function formatIssueDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
 
 export function ArchivePage(): ReactElement {
   const { runId } = useParams<{ runId: string }>();
   const { isLoading, data, isError } = useArchive(runId ?? "");
 
+  const items = data?.status === "completed" ? (data.rankedItems ?? []) : [];
+  const topStoryTitle = items[0]?.title ?? null;
+
+  useEffect(() => {
+    if (data?.status === "completed") {
+      document.title = `Issue — ${formatIssueDate(data.startedAt)}`;
+      setMeta("description", pickHeadline(null, topStoryTitle));
+    }
+  }, [data, topStoryTitle]);
+
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <p className="text-gray-600">Loading...</p>
-      </div>
+      <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
+        <div className="mx-auto max-w-[1120px] px-6 md:px-20">
+          <div role="status" aria-busy="true" aria-label="Loading issue" className="py-12 space-y-6">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="grid grid-cols-[120px_minmax(0,1fr)_120px] gap-10 animate-pulse">
+                <div className="h-16 rounded bg-[#1A1A1A0A]" />
+                <div className="h-24 rounded bg-[#1A1A1A0A]" />
+                <div className="h-8 rounded bg-[#1A1A1A0A]" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
     );
   }
 
   if (isError) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-4xl mx-auto space-y-4">
-          <p role="alert" className="text-red-600">
-            Something went wrong. Please try again.
-          </p>
-          <Link to="/" className="text-sm text-blue-600 hover:underline">
-            ← Dashboard
-          </Link>
+      <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
+        <div className="mx-auto max-w-[1120px] px-6 md:px-20">
+          <div className="py-16">
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8C3A1E]">ERROR</p>
+            <h2 className="mt-3 font-serif text-3xl font-medium text-neutral-900">Couldn't load this issue</h2>
+            <Link
+              to="/"
+              className="mt-6 inline-block font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
+            >
+              ← All issues
+            </Link>
+          </div>
         </div>
-      </div>
+      </main>
     );
   }
 
   if (data === null || data === undefined) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <p className="text-gray-600">Run not found — it may have expired.</p>
-      </div>
+      <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
+        <div className="mx-auto max-w-[1120px] px-6 md:px-20">
+          <div className="py-16">
+            <h2 className="font-serif text-3xl font-medium text-neutral-900">This issue isn't here</h2>
+            <p className="mt-3 font-mono text-xs uppercase tracking-widest text-neutral-600">
+              It may have been removed or never existed.
+            </p>
+            <Link
+              to="/"
+              className="mt-6 inline-block font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
+            >
+              ← All issues
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (data.status === "cancelled") {
+    return (
+      <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
+        <div className="mx-auto max-w-[1120px] px-6 md:px-20">
+          <div className="py-16">
+            <h2 className="font-serif text-3xl font-medium text-neutral-900">This issue was cancelled.</h2>
+            <Link
+              to="/"
+              className="mt-6 inline-block font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
+            >
+              ← All issues
+            </Link>
+          </div>
+        </div>
+      </main>
     );
   }
 
   if (data.status !== "completed") {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-4xl mx-auto space-y-4">
-          <p className="text-gray-600">
-            Run is still in progress — check back soon.
-          </p>
-          <Link to="/" className="text-sm text-blue-600 hover:underline">
-            ← Dashboard
-          </Link>
+      <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
+        <div className="mx-auto max-w-[1120px] px-6 md:px-20">
+          <div className="py-16">
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8C3A1E]">IN PROGRESS</p>
+            <h2 className="mt-3 font-serif text-3xl font-medium text-neutral-900">
+              Today's issue is still being curated.
+            </h2>
+            <Link
+              to="/"
+              className="mt-6 inline-block font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
+            >
+              ← All issues
+            </Link>
+          </div>
         </div>
-      </div>
+      </main>
     );
   }
 
-  const items = data.rankedItems ?? [];
-
   return (
-    <div className="min-h-screen bg-white py-12 px-4">
-      <div className="max-w-2xl mx-auto">
+    <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
+      <div className="mx-auto max-w-[1120px] px-6 md:px-20">
         <ArchivePageHeader
           startedAt={data.startedAt}
           storyCount={items.length}
+          leadSummary={null}
+          topStoryTitle={topStoryTitle}
         />
-        <div className="space-y-8">
-          {items.map((item, index) => (
-            <ArchiveStoryCard key={item.id} item={item} rank={index + 1} />
-          ))}
+        {items.length === 0 ? (
+          <p className="py-8 font-serif text-xl text-neutral-600">No stories in this issue.</p>
+        ) : (
+          <div>
+            {items.map((item, idx) => (
+              <ArchiveStoryCard key={item.id} item={item} rank={idx + 1} totalCount={items.length} />
+            ))}
+          </div>
+        )}
+        <div className="py-16">
+          <Link
+            to="/"
+            className="font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
+          >
+            ← All issues
+          </Link>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

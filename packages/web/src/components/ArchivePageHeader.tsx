@@ -4,44 +4,59 @@ import { Link } from "react-router-dom";
 interface ArchivePageHeaderProps {
   startedAt: string;
   storyCount: number;
+  leadSummary: string | null;
+  topStoryTitle: string | null;
 }
 
-function formatEditionDate(iso: string): string {
+export function formatLedgerEyebrow(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? iso
-    : d.toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
+  const parts = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).formatToParts(d);
+
+  const weekday = (parts.find((p) => p.type === "weekday")?.value ?? "").toUpperCase();
+  const month = (parts.find((p) => p.type === "month")?.value ?? "").toUpperCase();
+  const day = parts.find((p) => p.type === "day")?.value ?? "";
+  const year = parts.find((p) => p.type === "year")?.value ?? "";
+
+  return `${weekday} · ${month} ${day}, ${year}`;
+}
+
+export function pickHeadline(
+  leadSummary: string | null,
+  topStoryTitle: string | null,
+): string {
+  if (leadSummary !== null && leadSummary !== "") return leadSummary;
+  if (topStoryTitle !== null && topStoryTitle !== "") return topStoryTitle;
+  return "An archived issue";
 }
 
 export function ArchivePageHeader({
   startedAt,
   storyCount,
+  leadSummary,
+  topStoryTitle,
 }: ArchivePageHeaderProps): ReactElement {
   return (
-    <header className="pb-8 mb-10 border-b border-gray-200">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
-            AI Newsletter
-          </h1>
-          <p className="text-base text-gray-400 mt-1">Your AI News Digest</p>
-        </div>
-        <Link
-          to="/"
-          className="text-sm text-gray-400 hover:text-gray-600 hover:underline mt-2"
-        >
-          ← Dashboard
-        </Link>
-      </div>
-      <p className="text-sm text-gray-500 mt-4">
-        {formatEditionDate(startedAt)} · {storyCount}{" "}
-        {storyCount === 1 ? "story" : "stories"}
+    <header className="pt-12 pb-8">
+      <p className="font-mono text-xs text-[#8C3A1E] uppercase tracking-widest">
+        {formatLedgerEyebrow(startedAt)}
       </p>
+      <h1 className="mt-4 font-serif text-4xl font-medium leading-tight tracking-tight text-neutral-900 md:text-5xl">
+        {pickHeadline(leadSummary, topStoryTitle)}
+      </h1>
+      <p className="mt-4 font-mono text-xs text-neutral-500 uppercase tracking-widest">
+        {storyCount === 1 ? "1 story" : `${String(storyCount)} stories`}
+      </p>
+      <Link
+        to="/"
+        className="mt-6 inline-block font-mono text-xs text-neutral-600 uppercase tracking-widest hover:text-neutral-900"
+      >
+        ← All issues
+      </Link>
     </header>
   );
 }

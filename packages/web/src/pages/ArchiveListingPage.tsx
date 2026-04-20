@@ -9,17 +9,6 @@ import { buildMonthChips, groupVisible, runDateToMonthKey } from "../components/
 
 const TAGLINE = "A hand-curated daily digest of what's actually moving in AI.";
 
-function Nav(): ReactElement {
-  return (
-    <nav className="border-b border-neutral-200 bg-white">
-      <div className="mx-auto flex max-w-[860px] items-center justify-between px-6 py-4">
-        <span className="text-sm font-semibold text-neutral-900">AI Newsletter</span>
-        <a href="https://vertexcover.io" target="_blank" rel="noopener noreferrer" className="text-sm text-neutral-600 hover:text-neutral-900">About</a>
-      </div>
-    </nav>
-  );
-}
-
 function Hero(): ReactElement {
   return (
     <header className="pt-12 pb-8 text-center">
@@ -37,10 +26,6 @@ function SkeletonRows(): ReactElement {
   );
 }
 
-function Footer(): ReactElement {
-  return <footer className="mt-16 py-8 text-center font-mono text-xs text-neutral-500">Made by Vertexcover</footer>;
-}
-
 export function ArchiveListingPage(): ReactElement {
   const [activeMonth, setActiveMonth] = useState<string | null>(null);
   const [visibleState, setVisibleState] = useState<{ month: string | null; count: number }>({ month: null, count: 10 });
@@ -51,7 +36,7 @@ export function ArchiveListingPage(): ReactElement {
   const { data, isLoading, isError } = useQuery({ queryKey: ["archives", "list"], queryFn: listArchives });
 
   const shell = (content: ReactElement): ReactElement => (
-    <div className="min-h-screen bg-white"><Nav /><main className="mx-auto max-w-[860px] px-6"><Hero />{content}</main><Footer /></div>
+    <main className="mx-auto max-w-[860px] px-6"><Hero />{content}</main>
   );
 
   if (isLoading) return shell(<SkeletonRows />);

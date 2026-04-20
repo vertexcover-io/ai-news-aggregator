@@ -37,7 +37,7 @@ function DateBlock({
   return (
     <div className="flex flex-col gap-1">
       <span
-        className={`font-mono text-xs font-medium tracking-widest ${featured ? "text-amber-700" : "text-neutral-500"}`}
+        className={`font-mono text-xs font-medium tracking-widest ${featured ? "text-[#8C3A1E]" : "text-neutral-500"}`}
       >
         {dayOfWeek}
       </span>
