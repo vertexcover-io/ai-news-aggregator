@@ -6,6 +6,8 @@ import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { delay } from "@pipeline/services/markdown-fetch.js";
 import { UrlParseError } from "@pipeline/collectors/hn.js";
 import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
+import { fetchWithRetry } from "@pipeline/lib/fetch-with-retry.js";
+import { filterBySinceDays } from "@pipeline/lib/date-filter.js";
 
 const logger = createLogger("collector:reddit");
 
@@ -17,7 +19,6 @@ const DEFAULT_SORT = "top";
 const DEFAULT_TIMEFRAME = "day";
 const DEFAULT_LIMIT = 25;
 const DEFAULT_COMMENTS_PER_ITEM = 10;
-const MAX_RETRIES = 3;
 const RATE_LIMIT_MS = 500;
 const COMMENT_RATE_LIMIT_MS = 1000;
 const MIN_COMMENTS_FOR_FETCH = 5;
@@ -121,39 +122,15 @@ function buildCommentsUrl(
   return `https://www.reddit.com/r/${subreddit}/comments/${postId}.json?limit=${limit}`;
 }
 
-async function fetchWithRetry(
-  fetchFn: typeof fetch,
-  url: string,
-  retries: number = MAX_RETRIES,
-): Promise<unknown> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const response = await fetchFn(url, {
-        headers: { "User-Agent": USER_AGENT, "Accept": "application/json" },
-      });
-      if (!response.ok) {
-        const status = response.status;
-        if (status >= 400 && status < 500 && status !== 429) {
-          throw new Error(`Non-retryable HTTP error: ${status}`);
-        }
-        throw new Error(`HTTP error: ${status}`);
-      }
-      return await response.json();
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (lastError.message.startsWith("Non-retryable")) {
-        throw lastError;
-      }
-      if (attempt < retries - 1) {
-        const backoffMs = Math.pow(2, attempt) * 1000;
-        await delay(backoffMs);
-      }
-    }
-  }
-
-  throw lastError ?? new Error("Fetch failed after retries");
+function withRedditHeaders(fetchFn: typeof fetch): typeof fetch {
+  return (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const headers = {
+      "User-Agent": USER_AGENT,
+      "Accept": "application/json",
+      ...(init?.headers as Record<string, string> | undefined),
+    };
+    return fetchFn(url as string, { ...init, headers });
+  };
 }
 
 function parseListingItems(data: unknown): RawItemInsert[] {
@@ -204,7 +181,7 @@ async function fetchComments(
 ): Promise<RawItemComment[]> {
   try {
     const url = buildCommentsUrl(subreddit, postId, limit);
-    const data = await fetchWithRetry(fetchFn, url);
+    const data = await fetchWithRetry(withRedditHeaders(fetchFn), url, (d) => d);
 
     if (!isRedditCommentsResponse(data)) {
       return [];
@@ -356,6 +333,66 @@ export async function fetchRedditPost(
 
 // ── Batch collection ──────────────────────────────────────────────────────────
 
+async function collectSubreddit(
+  fetchFn: typeof fetch,
+  subreddit: string,
+  sort: string,
+  timeframe: string,
+  limit: number,
+  seenIds: Set<string>,
+): Promise<{ items: RawItemInsert[]; added: number }> {
+  const url = buildListingUrl(subreddit, sort, timeframe, limit);
+  const data = await fetchWithRetry(withRedditHeaders(fetchFn), url, (d) => d);
+  const fetched = parseListingItems(data);
+
+  const items: RawItemInsert[] = [];
+  for (const item of fetched) {
+    if (!seenIds.has(item.externalId)) {
+      seenIds.add(item.externalId);
+      items.push(item);
+    }
+  }
+
+  return { items, added: items.length };
+}
+
+async function enrichWithComments(
+  items: RawItemInsert[],
+  subredditByExternalId: Map<string, string>,
+  fetchFn: typeof fetch,
+  signal: AbortSignal | undefined,
+  commentsPerItem: number,
+): Promise<number> {
+  let totalComments = 0;
+  let commentRequests = 0;
+
+  for (const item of items) {
+    if (signal?.aborted) break;
+    if (!item.engagement || item.engagement.commentCount < MIN_COMMENTS_FOR_FETCH) {
+      continue;
+    }
+
+    if (commentRequests > 0) {
+      await delay(COMMENT_RATE_LIMIT_MS, signal);
+    }
+    commentRequests++;
+
+    const itemSubreddit = subredditByExternalId.get(item.externalId) ?? "";
+    const comments = await fetchComments(fetchFn, itemSubreddit, item.externalId, commentsPerItem);
+    item.metadata = { comments };
+    totalComments += comments.length;
+
+    if (comments.length === 0 && item.engagement.commentCount > 0) {
+      logger.warn(
+        { externalId: item.externalId, commentCount: item.engagement.commentCount },
+        "comment fetch returned empty",
+      );
+    }
+  }
+
+  return totalComments;
+}
+
 export async function collectReddit(
   deps: RedditCollectorDeps,
   config: RedditCollectConfig,
@@ -376,20 +413,11 @@ export async function collectReddit(
   const subredditByExternalId = new Map<string, string>();
 
   for (const subreddit of subreddits) {
-    const url = buildListingUrl(subreddit, sort, timeframe, limit);
-
     try {
-      const data = await fetchWithRetry(fetchFn, url);
-      const items = parseListingItems(data);
-
-      let added = 0;
+      const { items, added } = await collectSubreddit(fetchFn, subreddit, sort, timeframe, limit, seenIds);
       for (const item of items) {
-        if (!seenIds.has(item.externalId)) {
-          seenIds.add(item.externalId);
-          subredditByExternalId.set(item.externalId, subreddit);
-          allItems.push(item);
-          added++;
-        }
+        subredditByExternalId.set(item.externalId, subreddit);
+        allItems.push(item);
       }
       logger.info({ subreddit, fetched: items.length, added }, "subreddit fetched");
     } catch (err) {
@@ -401,57 +429,15 @@ export async function collectReddit(
     }
   }
 
-  let totalComments = 0;
+  const totalComments =
+    commentsPerItem > 0
+      ? await enrichWithComments(allItems, subredditByExternalId, fetchFn, deps.signal, commentsPerItem)
+      : 0;
 
-  if (commentsPerItem > 0) {
-    let commentRequests = 0;
-    for (const item of allItems) {
-      if (deps.signal?.aborted) break;
-      if (!item.engagement || item.engagement.commentCount < MIN_COMMENTS_FOR_FETCH) {
-        continue;
-      }
-
-      if (commentRequests > 0) {
-        await delay(COMMENT_RATE_LIMIT_MS, deps.signal);
-      }
-      commentRequests++;
-
-      const itemSubreddit = subredditByExternalId.get(item.externalId) ?? "";
-      const comments = await fetchComments(
-        fetchFn,
-        itemSubreddit,
-        item.externalId,
-        commentsPerItem,
-      );
-      item.metadata = { comments };
-      totalComments += comments.length;
-
-      if (comments.length === 0 && item.engagement.commentCount > 0) {
-        logger.warn(
-          { externalId: item.externalId, commentCount: item.engagement.commentCount },
-          "comment fetch returned empty",
-        );
-      }
-    }
-  }
-
-  let filteredItems = allItems;
-  if (config.sinceDays !== undefined && config.sinceDays > 0) {
-    const cutoff = Date.now() - config.sinceDays * 86_400_000;
-    const before = filteredItems.length;
-    filteredItems = filteredItems.filter((item) => {
-      if (!item.publishedAt) return true;
-      const t = item.publishedAt.getTime();
-      return Number.isFinite(t) && t >= cutoff;
-    });
-    const dropped = before - filteredItems.length;
-    if (dropped === 0 && before > 0) {
-      logger.warn(
-        { sinceDays: config.sinceDays, fetched: before },
-        "sinceDays filter dropped 0 items — feed may be truncated",
-      );
-    }
-  }
+  const filteredItems =
+    config.sinceDays !== undefined && config.sinceDays > 0
+      ? filterBySinceDays(allItems, config.sinceDays, "reddit")
+      : allItems;
 
   let itemsStored = 0;
 

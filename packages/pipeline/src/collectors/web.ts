@@ -45,18 +45,7 @@ function resolveAbsolute(raw: string, baseUrl: string): string | null {
   }
 }
 
-export function extractFallbackImage(html: string, baseUrl: string): string | null {
-  const baseMatch = BASE_TAG_RE.exec(html);
-  let effectiveBase = baseUrl;
-  if (baseMatch) {
-    const baseHref = baseMatch[2];
-    if (baseHref) {
-      try {
-        effectiveBase = new URL(baseHref, baseUrl).toString();
-      } catch { /* keep baseUrl */ }
-    }
-  }
-
+function extractMetaImage(html: string, effectiveBase: string): string | null {
   const metas = html.match(META_TAG_RE) ?? [];
   let ogImage: string | null = null;
   let twImage: string | null = null;
@@ -72,9 +61,10 @@ export function extractFallbackImage(html: string, baseUrl: string): string | nu
       twImage = resolveAbsolute(content, effectiveBase);
     }
   }
-  if (ogImage) return ogImage;
-  if (twImage) return twImage;
+  return ogImage ?? twImage;
+}
 
+function extractIconFallback(html: string, effectiveBase: string): string | null {
   const links = html.match(LINK_TAG_RE) ?? [];
   for (const tag of links) {
     const rel = attr(tag, "rel")?.toLowerCase();
@@ -86,8 +76,24 @@ export function extractFallbackImage(html: string, baseUrl: string): string | nu
       }
     }
   }
-
   return null;
+}
+
+export function extractFallbackImage(html: string, baseUrl: string): string | null {
+  const baseMatch = BASE_TAG_RE.exec(html);
+  let effectiveBase = baseUrl;
+  if (baseMatch) {
+    const baseHref = baseMatch[2];
+    if (baseHref) {
+      try {
+        effectiveBase = new URL(baseHref, baseUrl).toString();
+      } catch { /* keep baseUrl */ }
+    }
+  }
+
+  const metaImage = extractMetaImage(html, effectiveBase);
+  if (metaImage) return metaImage;
+  return extractIconFallback(html, effectiveBase);
 }
 
 const logger = createLogger("collector:web");
