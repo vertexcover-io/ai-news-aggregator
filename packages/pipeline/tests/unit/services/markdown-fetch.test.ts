@@ -110,6 +110,85 @@ describe("fetchMarkdown (relocated to services/markdown-fetch)", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Abort path tests
+// ---------------------------------------------------------------------------
+
+describe("fetchMarkdown abort paths", () => {
+  let fetchMarkdown: FetchMarkdownFn;
+
+  beforeEach(async () => {
+    vi.stubEnv("JINA_API_KEY", "");
+    const mod = await import("@pipeline/services/markdown-fetch.js");
+    fetchMarkdown = mod.fetchMarkdown as FetchMarkdownFn;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+  });
+
+  it("throws immediately when signal is already aborted before call", async () => {
+    const ac = new AbortController();
+    ac.abort(new Error("pre-aborted"));
+    const mockFetch = vi.fn();
+    await expect(
+      fetchMarkdown("https://example.com", { fetchFn: mockFetch, signal: ac.signal }),
+    ).rejects.toThrow();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("throws when signal is aborted during an in-flight fetch", async () => {
+    const ac = new AbortController();
+    const mockFetch = vi.fn().mockImplementation(() =>
+      new Promise((_res, rej) => {
+        ac.signal.addEventListener(
+          "abort",
+          () => {
+            const reason = ac.signal.reason;
+            rej(reason instanceof Error ? reason : new Error("aborted"));
+          },
+          { once: true },
+        );
+      }),
+    );
+    const fetchPromise = fetchMarkdown("https://example.com", {
+      fetchFn: mockFetch,
+      signal: ac.signal,
+    });
+    ac.abort(new Error("mid-fetch abort"));
+    await expect(fetchPromise).rejects.toThrow();
+  });
+});
+
+describe("delay abort paths", () => {
+  let delayFn: (ms: number, signal?: AbortSignal) => Promise<void>;
+
+  beforeEach(async () => {
+    const mod = await import("@pipeline/services/markdown-fetch.js");
+    delayFn = mod.delay;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("delay rejects immediately when signal is already aborted", async () => {
+    const ac = new AbortController();
+    ac.abort(new Error("aborted"));
+    await expect(delayFn(1000, ac.signal)).rejects.toThrow();
+  });
+
+  it("delay rejects when signal fires during the delay", async () => {
+    vi.useFakeTimers();
+    const ac = new AbortController();
+    const p = delayFn(5000, ac.signal);
+    ac.abort(new Error("fired"));
+    await expect(p).rejects.toThrow();
+    vi.useRealTimers();
+  });
+});
+
 // REQ-047: Jina URL string is no longer present in web.ts or rank.ts
 describe("REQ-047: Jina URL string isolation", () => {
   const webSrc = readFileSync(

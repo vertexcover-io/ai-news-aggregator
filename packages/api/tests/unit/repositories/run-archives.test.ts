@@ -459,3 +459,132 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     expect(result[0].topItems).toHaveLength(3);
   });
 });
+
+// ---------------------------------------------------------------------------
+// RunArchivesRepo.findPoolItems
+// ---------------------------------------------------------------------------
+
+interface PoolRow {
+  id: number;
+  title: string;
+  url: string;
+  sourceType: SourceType;
+  author: string | null;
+  publishedAt: Date | null;
+  engagement: { points: number; commentCount: number };
+  imageUrl: string | null;
+}
+
+function makeFakeDbForPool(
+  countValue: number,
+  poolRows: PoolRow[],
+): Pick<AppDb, "select" | "update"> {
+  // findPoolItems calls db.select() twice: once for count, once for rows.
+  // We use mockReturnValueOnce to return different chains.
+  const selectSpy = vi.fn()
+    .mockReturnValueOnce({
+      // First call: count query
+      from: vi.fn(() => ({
+        where: vi.fn(() => Promise.resolve([{ count: countValue }])),
+      })),
+    })
+    .mockReturnValueOnce({
+      // Second call: rows query
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          orderBy: vi.fn(() => ({
+            limit: vi.fn(() => ({
+              offset: vi.fn(() => Promise.resolve(poolRows)),
+            })),
+          })),
+        })),
+      })),
+    });
+
+  return {
+    select: selectSpy,
+    update: vi.fn(),
+  } as unknown as Pick<AppDb, "select" | "update">;
+}
+
+import type { FindPoolItemsOpts } from "@api/repositories/run-archives.js";
+
+const basePoolOpts: FindPoolItemsOpts = {
+  rankedIds: [],
+  startedAt: new Date("2026-04-01T00:00:00Z"),
+  sourceTypes: ["hn", "reddit"],
+  sort: "recency",
+  offset: 0,
+  limit: 10,
+};
+
+describe("RunArchivesRepo.findPoolItems", () => {
+  it("returns { items: [], total: 0 } when DB returns no rows", async () => {
+    const db = makeFakeDbForPool(0, []);
+    const repo = createRunArchivesRepo(db);
+
+    const result = await repo.findPoolItems("archive-1", basePoolOpts);
+
+    expect(result.total).toBe(0);
+    expect(result.items).toEqual([]);
+  });
+
+  it("makes two db.select() calls: one for count, one for rows", async () => {
+    const db = makeFakeDbForPool(0, []);
+    const selectSpy = vi.mocked(db.select);
+    const repo = createRunArchivesRepo(db);
+
+    await repo.findPoolItems("archive-1", basePoolOpts);
+
+    expect(selectSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("maps rows to PoolItem with correct field shapes including publishedAt: null", async () => {
+    const poolRow: PoolRow = {
+      id: 42,
+      title: "Pool Story",
+      url: "https://example.com/pool",
+      sourceType: "hn",
+      author: "carol",
+      publishedAt: null,
+      engagement: { points: 77, commentCount: 5 },
+      imageUrl: null,
+    };
+    const db = makeFakeDbForPool(1, [poolRow]);
+    const repo = createRunArchivesRepo(db);
+
+    const result = await repo.findPoolItems("archive-1", basePoolOpts);
+
+    expect(result.total).toBe(1);
+    expect(result.items).toHaveLength(1);
+    const item = result.items[0];
+    expect(item.id).toBe(42);
+    expect(item.title).toBe("Pool Story");
+    expect(item.url).toBe("https://example.com/pool");
+    expect(item.sourceType).toBe("hn");
+    expect(item.author).toBe("carol");
+    expect(item.publishedAt).toBeNull();
+    expect(item.engagement).toEqual({ points: 77, commentCount: 5 });
+    expect(item.imageUrl).toBeNull();
+  });
+
+  it("maps publishedAt Date to ISO string when present", async () => {
+    const publishedAt = new Date("2026-04-10T09:00:00Z");
+    const poolRow: PoolRow = {
+      id: 55,
+      title: "Dated Story",
+      url: "https://example.com/dated",
+      sourceType: "reddit",
+      author: null,
+      publishedAt,
+      engagement: { points: 10, commentCount: 0 },
+      imageUrl: null,
+    };
+    const db = makeFakeDbForPool(1, [poolRow]);
+    const repo = createRunArchivesRepo(db);
+
+    const result = await repo.findPoolItems("archive-1", basePoolOpts);
+
+    expect(result.items[0].publishedAt).toBe(publishedAt.toISOString());
+  });
+});

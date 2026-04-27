@@ -197,3 +197,147 @@ function collectColumnNames(
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// findBySourceAndExternalId
+// ---------------------------------------------------------------------------
+
+interface FindBySourceRow {
+  id: number;
+  sourceType: string;
+  externalId: string;
+  title: string;
+  url: string;
+  sourceUrl: string | null;
+  author: string | null;
+  content: string | null;
+  imageUrl: string | null;
+  publishedAt: Date | null;
+  engagement: { points: number; commentCount: number };
+  metadata: { comments: [] };
+}
+
+function createFindBySourceDb(rows: FindBySourceRow[]): Pick<AppDb, "insert" | "select" | "update"> {
+  const whereBuilder = {
+    limit: vi.fn(() => Promise.resolve(rows)),
+  };
+  const fromBuilder = {
+    where: vi.fn(() => whereBuilder),
+  };
+  const selectSpy = vi.fn(() => ({ from: vi.fn(() => fromBuilder) }));
+  return {
+    select: selectSpy,
+    insert: vi.fn(),
+    update: vi.fn(),
+  } as unknown as Pick<AppDb, "insert" | "select" | "update">;
+}
+
+describe("createRawItemsRepo.findBySourceAndExternalId", () => {
+  it("returns null when DB returns no rows (empty array)", async () => {
+    const db = createFindBySourceDb([]);
+    const repo = createRawItemsRepo(db);
+
+    const result = await repo.findBySourceAndExternalId("hn", "abc123");
+
+    expect(result).toBeNull();
+  });
+
+  it("returns the mapped RawItemRow when DB returns a row", async () => {
+    const engagement = { points: 55, commentCount: 3 };
+    const metadata = { comments: [] as [] };
+    const publishedAt = new Date("2026-04-01T00:00:00Z");
+    const row: FindBySourceRow = {
+      id: 99,
+      sourceType: "hn",
+      externalId: "abc123",
+      title: "Found Story",
+      url: "https://example.com/found",
+      sourceUrl: "https://hn.example.com/item?id=99",
+      author: "bob",
+      content: "article content",
+      imageUrl: "https://example.com/image.png",
+      publishedAt,
+      engagement,
+      metadata,
+    };
+    const db = createFindBySourceDb([row]);
+    const repo = createRawItemsRepo(db);
+
+    const result = await repo.findBySourceAndExternalId("hn", "abc123");
+
+    expect(result).not.toBeNull();
+    if (result === null) return;
+    expect(result.id).toBe(99);
+    expect(result.sourceType).toBe("hn");
+    expect(result.externalId).toBe("abc123");
+    expect(result.title).toBe("Found Story");
+    expect(result.url).toBe("https://example.com/found");
+    expect(result.sourceUrl).toBe("https://hn.example.com/item?id=99");
+    expect(result.author).toBe("bob");
+    expect(result.content).toBe("article content");
+    expect(result.imageUrl).toBe("https://example.com/image.png");
+    expect(result.publishedAt).toEqual(publishedAt);
+    expect(result.engagement).toEqual(engagement);
+    expect(result.metadata).toEqual(metadata);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateRecapData
+// ---------------------------------------------------------------------------
+
+interface CapturedUpdate {
+  calls: { id: number; setArg: Record<string, unknown> }[];
+}
+
+function createUpdateCapturingDb(): {
+  db: Pick<AppDb, "insert" | "select" | "update">;
+  captured: CapturedUpdate;
+} {
+  const captured: CapturedUpdate = { calls: [] };
+
+  const db = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(() => ({
+      set: vi.fn((setArg: Record<string, unknown>) => ({
+        where: vi.fn((whereArg: unknown) => {
+          captured.calls.push({ id: whereArg as number, setArg });
+          return Promise.resolve();
+        }),
+      })),
+    })),
+  } as unknown as Pick<AppDb, "insert" | "select" | "update">;
+
+  return { db, captured };
+}
+
+describe("createRawItemsRepo.updateRecapData", () => {
+  it("returns without calling db.update when the updates array is empty", async () => {
+    const { db, captured } = createUpdateCapturingDb();
+    const repo = createRawItemsRepo(db);
+
+    await repo.updateRecapData([]);
+
+    expect(captured.calls).toHaveLength(0);
+    expect((db.update as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+  });
+
+  it("calls db.update once per item with correct id and sets metadata via jsonb_set", async () => {
+    const { db, captured } = createUpdateCapturingDb();
+    const repo = createRawItemsRepo(db);
+
+    const updates = [
+      { id: 1, recap: { summary: "Summary 1", bullets: ["Bullet 1"], bottomLine: "Bottom 1" } },
+      { id: 2, recap: { summary: "Summary 2", bullets: ["Bullet 2"], bottomLine: "Bottom 2" } },
+    ];
+
+    await repo.updateRecapData(updates);
+
+    expect((db.update as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
+    expect(captured.calls).toHaveLength(2);
+    // Check that the set args contain metadata key with sql content
+    expect(captured.calls[0].setArg).toHaveProperty("metadata");
+    expect(captured.calls[1].setArg).toHaveProperty("metadata");
+  });
+})
