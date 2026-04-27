@@ -15,9 +15,11 @@ const shortDateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
+const MAX_CHIP_DISPLAY_LEN = 28;
+
 function truncateChip(title: string): string {
-  if (title.length <= 28) return title;
-  return title.slice(0, 27) + "\u2026";
+  if (title.length <= MAX_CHIP_DISPLAY_LEN) return title;
+  return title.slice(0, MAX_CHIP_DISPLAY_LEN - 1) + "\u2026";
 }
 
 function DateBlock({
