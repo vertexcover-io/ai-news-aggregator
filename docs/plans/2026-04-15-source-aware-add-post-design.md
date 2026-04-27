@@ -101,11 +101,16 @@ swapped in tests.
 
 ## Chosen Approach
 
-**Approach B** — `detectAddPostSourceType(url)` utility in `add-post-helper.ts`.
+**Approach D** — `detectAddPostSourceType(url)` utility in `@newsletter/shared`.
 
-Pure function, no injection needed, lives alongside `dispatchFetch`, easy to unit
-test. The API layer (`review.ts`) calls it before passing the source type to
-`hydrateAddedPost`.
+Pure function, no injection needed, lives in the shared package so both `api` and
+`pipeline` can import it without cross-package coupling. The API layer (`review.ts`)
+calls it before passing the source type to `hydrateAddedPost`.
+
+Approach B (placing the function in `add-post-helper.ts`) was considered but rejected:
+the API package would need to import a pipeline-internal module, which creates an
+unusual dependency direction even if not technically circular. Moving the utility to
+`@newsletter/shared` follows the established pattern for cross-cutting pure functions.
 
 ## High-Level Design
 
@@ -114,7 +119,7 @@ User submits URL via POST /api/archives/:runId/add-post
   │
   ▼
 review.ts :: addPostToArchive()
-  │  calls detectAddPostSourceType(url)           ← new utility
+  │  calls detectAddPostSourceType(url)           ← from @newsletter/shared
   │  returns "hn" | "reddit" | "web"
   │
   ▼
@@ -127,14 +132,18 @@ add-post-helper.ts :: dispatchFetch(url, sourceType, deps)   ← unchanged
   └── "web"    → fetchWebPost(url)
 ```
 
-**New utility** (`add-post-helper.ts` or sibling):
+**New utility** (`packages/shared/src/utils/source-type.ts`):
 
 ```
 detectAddPostSourceType(url: string): AddPostSourceType
-  1. if parseHnItemIdFromUrl(url) != null → return "hn"
-  2. if parseRedditPostUrl(url) != null   → return "reddit"
-  3. else                                 → return "web"
+  1. isHnUrl(url)     → return "hn"     (news.ycombinator.com/item or hn.algolia.com)
+  2. isRedditUrl(url) → return "reddit" (reddit.com, www.reddit.com, old.reddit.com)
+  3. else             → return "web"
 ```
+
+The helper functions `isHnUrl` and `isRedditUrl` are private to `source-type.ts`; they
+use standalone URL parsing rather than re-using the collector-level parsers, keeping the
+shared package free of pipeline dependencies.
 
 **Changed call site** (`review.ts`):
 
@@ -142,6 +151,9 @@ detectAddPostSourceType(url: string): AddPostSourceType
 Before: deps.hydrateAddedPost(input.url, "web", {...})
 After:  deps.hydrateAddedPost(input.url, detectAddPostSourceType(input.url), {...})
 ```
+
+`add-post-helper.ts` re-exports `detectAddPostSourceType` and `AddPostSourceType` for
+any callers that previously imported from the pipeline module.
 
 No schema changes. No new packages. No API contract changes.
 
@@ -154,13 +166,11 @@ No schema changes. No new packages. No API contract changes.
 
 | Risk | Likelihood | Mitigation |
 |------|-----------|------------|
-| `parseHnItemIdFromUrl` / `parseRedditPostUrl` not exported from their modules | Low — already used by `dispatchFetch` | Import directly |
 | HN/Reddit fetch fails for a valid URL | Medium | Existing error handling in `hydrateAddedPost` already surfaces fetch errors |
-| `detectAddPostSourceType` imported in API package creates pipeline → API circular dep | Low — function lives in pipeline, API imports from pipeline already | Verify import direction |
+| New URL patterns (e.g. `redd.it` short URLs) not detected | Low — fall back to `"web"` gracefully | Extend `isRedditUrl` in a follow-up |
 
 ## Assumptions
 
-- `parseHnItemIdFromUrl` and `parseRedditPostUrl` are stable and already exported.
 - `AddPostSourceType` (`"hn" | "reddit" | "web"`) continues to be the union used
   by `dispatchFetch`.
 - No change to the API request/response contract is needed.

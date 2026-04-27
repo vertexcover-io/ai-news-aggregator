@@ -1,4 +1,6 @@
 export const DEFAULT_HALF_LIFE_HOURS = 72;
+export const DEFAULT_MISSING_AGE_HOURS = 24;
+const COMMENT_WEIGHT = 0.5;
 
 export function recencyDecay(ageHours: number, halfLifeHours: number): number {
   if (halfLifeHours <= 0) {
@@ -11,7 +13,7 @@ export function ageHoursFromPublishedAt(
   publishedAt: Date | null,
   now: Date = new Date(),
 ): number {
-  if (publishedAt === null) return 24;
+  if (publishedAt === null) return DEFAULT_MISSING_AGE_HOURS;
   const diffMs = now.getTime() - publishedAt.getTime();
   return Math.max(0, diffMs / 3_600_000);
 }
@@ -23,5 +25,5 @@ export function ageHoursFromPublishedAt(
  * Comments are weighted at 0.5x since they're a weaker signal than points.
  */
 export function engagementScore(points: number, commentCount: number): number {
-  return Math.log1p(points) + 0.5 * Math.log1p(commentCount);
+  return Math.log1p(points) + COMMENT_WEIGHT * Math.log1p(commentCount);
 }

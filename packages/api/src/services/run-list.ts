@@ -1,6 +1,9 @@
 import type IORedis from "ioredis";
 import type { RunState, RunSummary } from "@newsletter/shared";
+import { createLogger } from "@newsletter/shared";
 import type { RunArchivesRepo } from "@api/repositories/run-archives.js";
+
+const logger = createLogger("api:run-list");
 
 export interface RunListDeps {
   redis: Pick<IORedis, "scanStream" | "get" | "mget">;
@@ -28,7 +31,8 @@ function parseRunState(raw: string | null): RunState | null {
   if (raw === null) return null;
   try {
     return JSON.parse(raw) as RunState;
-  } catch {
+  } catch (err) {
+    logger.warn({ err, raw }, "run-list: failed to parse run state");
     return null;
   }
 }

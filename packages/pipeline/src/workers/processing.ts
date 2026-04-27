@@ -60,6 +60,18 @@ export interface CreateProcessingWorkerOptions {
 // Discriminated by job.name; payload shape is heterogeneous between routes.
 type ProcessingJobData = Record<string, unknown>;
 
+function isRunProcessJobData(data: unknown): data is RunProcessJobData {
+  if (typeof data !== "object" || data === null) return false;
+  const d = data as Record<string, unknown>;
+  return (
+    typeof d.runId === "string" &&
+    typeof d.topN === "number" &&
+    Array.isArray(d.sourceTypes) &&
+    typeof d.collectors === "object" &&
+    d.collectors !== null
+  );
+}
+
 export function createProcessingWorker(
   options: CreateProcessingWorkerOptions = {},
 ): Worker<ProcessingJobData, unknown> {
@@ -75,10 +87,17 @@ export function createProcessingWorker(
     async (job: Job<ProcessingJobData, unknown>) => {
       switch (job.name) {
         case "run-process": {
+          if (!isRunProcessJobData(job.data)) {
+            logger.error(
+              { event: "processing.invalid_job_data", jobId: job.id },
+              "processing.invalid_job_data",
+            );
+            return undefined;
+          }
           const typed: RunProcessJobLike = {
             name: job.name,
             id: job.id,
-            data: job.data as unknown as RunProcessJobData,
+            data: job.data,
           };
           return handleRunProcessJob(runProcessDeps, typed);
         }

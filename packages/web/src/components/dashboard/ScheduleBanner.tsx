@@ -1,6 +1,9 @@
 import type { ReactElement } from "react";
 import { Clock } from "lucide-react";
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const MS_PER_MINUTE = 60_000;
+
 interface ScheduleBannerProps {
   scheduleTime: string;
   scheduleTimezone: string;
@@ -56,7 +59,7 @@ function computeNextFire(
 
   let next = wallTodayTarget - offsetMs;
   if (next <= now.getTime()) {
-    next += 24 * 60 * 60 * 1000;
+    next += MS_PER_DAY;
   }
   return new Date(next);
 }
@@ -64,7 +67,7 @@ function computeNextFire(
 function formatRelative(target: Date, now: Date): string {
   const diffMs = target.getTime() - now.getTime();
   if (diffMs <= 0) return "now";
-  const totalMinutes = Math.round(diffMs / 60000);
+  const totalMinutes = Math.round(diffMs / MS_PER_MINUTE);
   const days = Math.floor(totalMinutes / (60 * 24));
   const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
   const minutes = totalMinutes % 60;

@@ -1,7 +1,9 @@
 import type IORedis from "ioredis";
-import { runKey, runCancelChannel } from "@newsletter/shared";
+import { runKey, runCancelChannel, createLogger } from "@newsletter/shared";
 import type { RunState, RunStatus } from "@newsletter/shared";
 import type { RunArchivesRepo } from "@api/repositories/run-archives.js";
+
+const logger = createLogger("api:cancel-run");
 
 export class CancelNotFoundError extends Error {
   constructor(runId: string) {
@@ -41,7 +43,13 @@ export async function cancelRun(
     throw new CancelConflictError(archive.status);
   }
 
-  const state = JSON.parse(raw) as RunState;
+  let state: RunState;
+  try {
+    state = JSON.parse(raw) as RunState;
+  } catch (err) {
+    logger.error({ err, runId, raw }, "cancel-run: failed to parse run state");
+    throw new Error(`failed to parse run state for run: ${runId}`, { cause: err });
+  }
 
   if (state.status === "cancelling") {
     // Already cancelling — idempotent, no re-publish

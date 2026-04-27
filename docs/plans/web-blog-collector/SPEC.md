@@ -93,7 +93,7 @@
 
 | ID | Type | Requirement | Acceptance Criterion | Priority |
 |----|------|-------------|---------------------|----------|
-| REQ-100 | Unwanted | If Jina Reader returns HTTP 429, then the collector shall retry with exponential backoff up to the retry limit defined by the existing `fetchWithRetry` pattern in `hn.ts:83-115`. | Unit test: mocked `fetch` returns 429 then 200; collector succeeds; retry count matches expected. | Must |
+| REQ-100 | Unwanted | If Jina Reader returns HTTP 429, then the collector shall retry with exponential backoff up to the retry limit defined by the shared `fetchWithRetry` utility in `packages/pipeline/src/lib/fetch-with-retry.ts`. | Unit test: mocked `fetch` returns 429 then 200; collector succeeds; retry count matches expected. | Must |
 | REQ-101 | Unwanted | If Jina Reader returns a non-retryable HTTP 4xx (not 429), then the collector shall treat the fetch as failed and record a source-level or post-level `CollectorFailure` without retrying. | Unit test: mocked fetch returns 404; no retries; `CollectorFailure` recorded. | Must |
 
 ## Edge Cases

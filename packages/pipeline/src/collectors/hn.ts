@@ -5,6 +5,7 @@ import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { delay } from "@pipeline/services/markdown-fetch.js";
 import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
+import { fetchWithRetry } from "@pipeline/lib/fetch-with-retry.js";
 
 const logger = createLogger("collector:hn");
 
@@ -136,7 +137,6 @@ const DEFAULT_POINTS_THRESHOLD = 20;
 const DEFAULT_COUNT = 100;
 const DEFAULT_COMMENTS_PER_ITEM = 20;
 const DEFAULT_FEEDS = ["newest", "best"];
-const MAX_RETRIES = 3;
 const RATE_LIMIT_MS = 500;
 
 const ALGOLIA_BASE = "https://hn.algolia.com/api/v1";
@@ -296,40 +296,6 @@ function parseAlgoliaCommentResponse(value: unknown): AlgoliaCommentSearchRespon
   return isAlgoliaCommentSearchResponse(value) ? value : { hits: [], nbHits: 0 };
 }
 
-async function fetchWithRetry<T>(
-  fetchFn: typeof fetch,
-  url: string,
-  parse: (data: unknown) => T,
-  retries: number = MAX_RETRIES,
-): Promise<T> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const response = await fetchFn(url);
-      if (!response.ok) {
-        const status = response.status;
-        if (status >= 400 && status < 500 && status !== 429) {
-          throw new Error(`Non-retryable HTTP error: ${status}`);
-        }
-        throw new Error(`HTTP error: ${status}`);
-      }
-      const data: unknown = await response.json();
-      return parse(data);
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (lastError.message.startsWith("Non-retryable")) {
-        throw lastError;
-      }
-      if (attempt < retries - 1) {
-        const backoffMs = Math.pow(2, attempt) * 1000;
-        await delay(backoffMs);
-      }
-    }
-  }
-
-  throw lastError ?? new Error("Fetch failed after retries");
-}
 
 async function fetchComments(
   fetchFn: typeof fetch,

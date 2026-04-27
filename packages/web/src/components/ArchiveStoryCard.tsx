@@ -27,6 +27,8 @@ function formatRank(n: number): string {
   return n < 10 ? `0${String(n)}` : String(n);
 }
 
+const MAX_HOST_DISPLAY_LEN = 28;
+
 function truncateHost(url: string): string {
   let host: string;
   try {
@@ -34,7 +36,7 @@ function truncateHost(url: string): string {
   } catch {
     return "";
   }
-  return host.length <= 28 ? host : host.slice(0, 27) + "\u2026";
+  return host.length <= MAX_HOST_DISPLAY_LEN ? host : host.slice(0, MAX_HOST_DISPLAY_LEN - 1) + "\u2026";
 }
 
 export function ArchiveStoryCard({

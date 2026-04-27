@@ -2,6 +2,27 @@ import { describe, it, expect, vi } from "vitest";
 import type IORedis from "ioredis";
 import type { Queue, JobsOptions } from "bullmq";
 import type { RunState, RunSubmitPayload } from "@newsletter/shared";
+
+vi.mock("bullmq", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("bullmq")>();
+  return {
+    ...actual,
+    Queue: vi.fn().mockImplementation((_name: string, _opts: unknown) => ({
+      name: _name,
+      add: vi.fn().mockResolvedValue({ id: "mock-job-id" }),
+      close: vi.fn(),
+    })),
+  };
+});
+
+vi.mock("@newsletter/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@newsletter/shared")>();
+  return {
+    ...actual,
+    createRedisConnection: vi.fn(() => ({ fake: "redis-connection" })),
+  };
+});
+
 import { createRun } from "@api/services/runs.js";
 
 interface MockRedis {
@@ -181,5 +202,20 @@ describe("createRun — single-job shape", () => {
       maxItems: 3,
       sinceDays: 7,
     });
+  });
+});
+
+describe("createRun — lazy queue construction", () => {
+  it("creates a Queue lazily when no processingQueue is provided", async () => {
+    const redis = makeRedis();
+    // Call createRun with only payload and redis — no processingQueue argument.
+    // This triggers getDefaultProcessingQueue() internally, which calls new Queue(...).
+    const { runId } = await createRun(
+      basePayload,
+      redis as unknown as IORedis,
+    );
+    expect(runId).toMatch(/^[0-9a-f-]{36}$/);
+    const { Queue: QueueMock } = await import("bullmq");
+    expect(QueueMock).toHaveBeenCalled();
   });
 });

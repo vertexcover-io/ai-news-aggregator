@@ -1,18 +1,16 @@
 import type { RawItemInsert } from "@newsletter/shared/db";
 import type { RankedItem } from "@newsletter/shared";
-import { createLogger } from "@newsletter/shared/logger";
+import { createLogger, detectAddPostSourceType, type AddPostSourceType } from "@newsletter/shared";
 import type {
   RawItemsRepo,
   RawItemRow,
 } from "@pipeline/repositories/raw-items.js";
 import {
   fetchHnPost as defaultFetchHnPost,
-  parseHnItemIdFromUrl,
   type FetchHnPostDeps,
 } from "@pipeline/collectors/hn.js";
 import {
   fetchRedditPost as defaultFetchRedditPost,
-  parseRedditPostUrl,
   type FetchRedditPostDeps,
 } from "@pipeline/collectors/reddit.js";
 import {
@@ -24,15 +22,10 @@ import {
   type GenerateRecapOptions,
 } from "@pipeline/processors/recap.js";
 
+export { detectAddPostSourceType };
+export type { AddPostSourceType };
+
 const logger = createLogger("service:add-post-helper");
-
-export type AddPostSourceType = "hn" | "reddit" | "web";
-
-export function detectAddPostSourceType(url: string): AddPostSourceType {
-  if (parseHnItemIdFromUrl(url) !== null) return "hn";
-  if (parseRedditPostUrl(url) !== null) return "reddit";
-  return "web";
-}
 
 export interface AddPostDeps {
   rawItemsRepo: RawItemsRepo;

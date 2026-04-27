@@ -24,6 +24,14 @@ vi.mock("@newsletter/shared/redis", () => ({
   createRedisConnection: vi.fn(() => ({ fake: "redis" })),
 }));
 
+vi.mock("@newsletter/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@newsletter/shared")>();
+  return {
+    ...actual,
+    getDb: vi.fn(() => ({ fake: "db" })),
+  };
+});
+
 vi.mock("@newsletter/shared/logger", () => ({
   createLogger: vi.fn(() => ({
     info: mockLoggerInfo,
@@ -63,7 +71,16 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
   it("routes job.name === 'run-process' to handleRunProcessJob", async () => {
     mockHandleRunProcessJob.mockResolvedValue({ rankedCount: 5 });
     const worker = makeWorker();
-    const job = { name: "run-process", id: "j1", data: { runId: "r1" } };
+    const job = {
+      name: "run-process",
+      id: "j1",
+      data: {
+        runId: "r1",
+        topN: 10,
+        sourceTypes: ["hn"],
+        collectors: { hn: { topStories: 30 } },
+      },
+    };
     const result = await worker.handler(job);
     expect(mockHandleRunProcessJob).toHaveBeenCalledOnce();
     expect(mockHandleDailyRunJob).not.toHaveBeenCalled();
@@ -87,5 +104,33 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
     expect(mockHandleDailyRunJob).not.toHaveBeenCalled();
     expect(mockLoggerWarn).toHaveBeenCalled();
     expect(result).toBeUndefined();
+  });
+
+  it("does NOT call handleRunProcessJob and calls logger.error when job.name === 'run-process' but data is invalid", async () => {
+    const worker = makeWorker();
+    // topN is a string (not a number) — fails isRunProcessJobData guard
+    const job = {
+      name: "run-process",
+      id: "j4",
+      data: {
+        runId: "r1",
+        topN: "not-a-number",
+        sourceTypes: ["hn"],
+        collectors: { hn: {} },
+      },
+    };
+    const result = await worker.handler(job);
+    expect(mockHandleRunProcessJob).not.toHaveBeenCalled();
+    expect(mockLoggerError).toHaveBeenCalledOnce();
+    expect(result).toBeUndefined();
+  });
+
+  it("does not throw and constructs a Worker when called with no arguments", async () => {
+    // This triggers buildDefaultRunProcessDeps and buildDefaultDailyRunDeps,
+    // which call getDb() (mocked) and createRedisConnection() (mocked)
+    expect(() => createProcessingWorker()).not.toThrow();
+    const bullmq = await import("bullmq");
+    const WorkerMock = vi.mocked(bullmq.Worker);
+    expect(WorkerMock).toHaveBeenCalled();
   });
 });
