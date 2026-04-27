@@ -6,6 +6,7 @@ import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { delay } from "@pipeline/services/markdown-fetch.js";
 import { UrlParseError } from "@pipeline/collectors/hn.js";
 import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
+import { fetchWithRetry } from "@pipeline/lib/fetch-with-retry.js";
 
 const logger = createLogger("collector:reddit");
 
@@ -22,6 +23,7 @@ const RATE_LIMIT_MS = 500;
 const COMMENT_RATE_LIMIT_MS = 1000;
 const MIN_COMMENTS_FOR_FETCH = 5;
 const USER_AGENT = "Mozilla/5.0 (compatible; NewsletterBot/1.0; +https://vertexcover.io)";
+const REDDIT_REQUEST_HEADERS = { "User-Agent": USER_AGENT, Accept: "application/json" };
 
 export interface RedditCollectorDeps {
   rawItemsRepo: RawItemsRepo;
@@ -121,40 +123,6 @@ function buildCommentsUrl(
   return `https://www.reddit.com/r/${subreddit}/comments/${postId}.json?limit=${limit}`;
 }
 
-async function fetchWithRetry(
-  fetchFn: typeof fetch,
-  url: string,
-  retries: number = MAX_RETRIES,
-): Promise<unknown> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const response = await fetchFn(url, {
-        headers: { "User-Agent": USER_AGENT, "Accept": "application/json" },
-      });
-      if (!response.ok) {
-        const status = response.status;
-        if (status >= 400 && status < 500 && status !== 429) {
-          throw new Error(`Non-retryable HTTP error: ${status}`);
-        }
-        throw new Error(`HTTP error: ${status}`);
-      }
-      return await response.json();
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (lastError.message.startsWith("Non-retryable")) {
-        throw lastError;
-      }
-      if (attempt < retries - 1) {
-        const backoffMs = Math.pow(2, attempt) * 1000;
-        await delay(backoffMs);
-      }
-    }
-  }
-
-  throw lastError ?? new Error("Fetch failed after retries");
-}
 
 function parseListingItems(data: unknown): RawItemInsert[] {
   if (!isRedditListing(data)) {
@@ -204,7 +172,7 @@ async function fetchComments(
 ): Promise<RawItemComment[]> {
   try {
     const url = buildCommentsUrl(subreddit, postId, limit);
-    const data = await fetchWithRetry(fetchFn, url);
+    const data = await fetchWithRetry(fetchFn, url, (d) => d, MAX_RETRIES, { headers: REDDIT_REQUEST_HEADERS });
 
     if (!isRedditCommentsResponse(data)) {
       return [];
@@ -379,7 +347,7 @@ export async function collectReddit(
     const url = buildListingUrl(subreddit, sort, timeframe, limit);
 
     try {
-      const data = await fetchWithRetry(fetchFn, url);
+      const data = await fetchWithRetry(fetchFn, url, (d) => d, MAX_RETRIES, { headers: REDDIT_REQUEST_HEADERS });
       const items = parseListingItems(data);
 
       let added = 0;

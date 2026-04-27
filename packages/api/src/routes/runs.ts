@@ -135,7 +135,13 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     if (raw === null) {
       return c.json({ error: "not found" }, 404);
     }
-    const state = JSON.parse(raw) as RunState;
+    let state: RunState;
+    try {
+      state = JSON.parse(raw) as RunState;
+    } catch (err) {
+      logger.error({ err, runId, raw }, "runs: failed to parse run state");
+      return c.json({ error: "internal server error" }, 500);
+    }
     if (state.status === "completed" && Array.isArray(state.rankedItems)) {
       const hydrated = await hydrateRankedItems(
         deps.getRawItemsRepo(),
