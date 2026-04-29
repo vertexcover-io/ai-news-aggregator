@@ -31,6 +31,7 @@ export function SaveBar({
           variant="outline"
           onClick={onRunNow}
           disabled={runNowDisabled}
+          className="min-h-[44px] px-4"
         >
           <Play />
           Run now
@@ -38,7 +39,7 @@ export function SaveBar({
         <Button
           type="submit"
           disabled={saving}
-          className="bg-black text-white hover:bg-black/90"
+          className="bg-black text-white hover:bg-black/90 min-h-[44px] px-4"
         >
           {saving ? "Saving..." : "Save changes"}
         </Button>

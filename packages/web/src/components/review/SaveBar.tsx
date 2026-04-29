@@ -41,7 +41,7 @@ export function SaveBar({
       <div className="flex items-center gap-2">
         <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <DialogTrigger asChild>
-            <Button type="button" variant="outline" disabled={saving}>
+            <Button type="button" variant="outline" disabled={saving} className="min-h-[44px] px-4">
               Discard
             </Button>
           </DialogTrigger>
@@ -77,7 +77,7 @@ export function SaveBar({
           onClick={onSave}
           disabled={!canSave || saving}
           aria-disabled={!canSave || saving}
-          className="bg-black text-white hover:bg-black/90"
+          className="bg-black text-white hover:bg-black/90 min-h-[44px] px-4"
         >
           {saving ? "Saving..." : "Save & view archive"}
           <ArrowRight />
