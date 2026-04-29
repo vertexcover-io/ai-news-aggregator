@@ -31,6 +31,17 @@ function resolveAbsolute(raw: string, effectiveBase: string): string | null {
   }
 }
 
+function absolutizeUrls(doc: Document): void {
+  for (const a of Array.from(doc.querySelectorAll("a[href]"))) {
+    const href = (a as HTMLAnchorElement).href;
+    if (href) a.setAttribute("href", href);
+  }
+  for (const img of Array.from(doc.querySelectorAll("img[src]"))) {
+    const src = (img as HTMLImageElement).src;
+    if (src) img.setAttribute("src", src);
+  }
+}
+
 function extractImageUrl(doc: Document, baseUrl: string): string | null {
   // Determine effective base from <base href> if present
   let effectiveBase = baseUrl;
@@ -94,8 +105,10 @@ export function convert(input: ConvertInput): ConvertResult {
     // Extract image from ORIGINAL doc before Readability mutates it
     const imageUrl = extractImageUrl(doc, baseUrl);
 
-    // Clone for Readability (Readability.parse() is destructive)
+    // Clone for Readability (Readability.parse() is destructive), then
+    // resolve relative href/src on the clone so Turndown emits absolute URLs.
     const docClone = doc.cloneNode(true) as Document;
+    absolutizeUrls(docClone);
     const parsed = new Readability(docClone).parse();
 
     if (!parsed) {
@@ -127,6 +140,10 @@ export function convert(input: ConvertInput): ConvertResult {
       el.remove();
     }
   }
+
+  // Resolve relative href/src so Turndown emits absolute URLs (matches Jina
+  // output; preserves the bit-for-bit prompt/validate contract downstream).
+  absolutizeUrls(doc);
 
   const bodyHtml = doc.body.innerHTML;
   const markdown = td.turndown(bodyHtml);

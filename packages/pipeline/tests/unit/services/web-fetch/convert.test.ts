@@ -271,3 +271,50 @@ describe("convert — Turndown uses atx headings and GFM", () => {
     expect(result.markdown).toMatch(/^#+ /m);
   });
 });
+
+describe("convert resolves relative URLs to absolute against baseUrl", () => {
+  const htmlWithRelativeLinks = `<!doctype html><html><head><title>Listing</title></head>
+<body>
+  <main>
+    <a href="/news/post-one">First post</a>
+    <a href="/news/post-two">Second post</a>
+    <a href="https://other.example/x">External absolute</a>
+    <img src="/images/foo.png" alt="foo">
+  </main>
+</body></html>`;
+
+  it("listing mode emits absolute URLs for relative href and src", () => {
+    const result = convert({
+      html: htmlWithRelativeLinks,
+      baseUrl: "https://example.com/news",
+      mode: "listing",
+    });
+    expect(result.markdown).toContain("https://example.com/news/post-one");
+    expect(result.markdown).toContain("https://example.com/news/post-two");
+    expect(result.markdown).toContain("https://other.example/x");
+    expect(result.markdown).toContain("https://example.com/images/foo.png");
+    expect(result.markdown).not.toMatch(/]\(\/news\//);
+  });
+
+  const htmlArticleWithRelativeLinks = `<!doctype html><html><head><title>An Article</title></head>
+<body>
+  <article>
+    <h1>Heading One</h1>
+    <p>This article body has plenty of words so that Readability accepts it as
+    a real article. We need at least a couple of sentences to clear the threshold.
+    <a href="/related/post-a">Related post</a> is referenced inline.</p>
+    <p>Another paragraph repeats <a href="/related/post-b">another link</a> for
+    coverage. Readability should keep both anchors in the parsed content output.</p>
+  </article>
+</body></html>`;
+
+  it("article mode emits absolute URLs for relative href in Readability output", () => {
+    const result = convert({
+      html: htmlArticleWithRelativeLinks,
+      baseUrl: "https://example.com/blog/post-1",
+      mode: "article",
+    });
+    expect(result.markdown).toContain("https://example.com/related/post-a");
+    expect(result.markdown).toContain("https://example.com/related/post-b");
+  });
+});
