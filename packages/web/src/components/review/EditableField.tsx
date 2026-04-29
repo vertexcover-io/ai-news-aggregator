@@ -69,7 +69,7 @@ export function EditableField({
 
   return (
     <div
-      className={cn("group relative flex items-start gap-1 cursor-text", className)}
+      className={cn("group relative flex items-start gap-1 cursor-text min-h-[44px]", className)}
       onClick={() => { setEditing(true); }}
       role="button"
       tabIndex={0}

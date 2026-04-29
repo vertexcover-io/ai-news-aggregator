@@ -243,21 +243,23 @@ describe("ArchiveStoryCard", () => {
     expect(rightRail?.textContent).toContain("20");
   });
 
-  // Test 24: REQ-025, EDGE-014 — responsive collapse: mobile flex + md:grid + N° prefix in eyebrow
-  it("collapses to single-column layout on mobile with rank prefix in eyebrow", () => {
-    const { container } = render(<ArchiveStoryCard item={itemWithRecap} rank={1} totalCount={8} />);
-    // The article should start with mobile flex, switch to grid at md
+  // Test 24: REQ-002/REQ-003 — single-DOM responsive collapse: always-grid with rank rail
+  // reflowing inline above the headline on mobile (flex-row) and as a column on desktop (md:flex-col)
+  it("collapses to single-column layout on mobile with rank rail visible inline", () => {
+    render(<ArchiveStoryCard item={itemWithRecap} rank={1} totalCount={8} />);
     const article = screen.getByRole("article");
-    expect(article.className).toContain("flex");
-    expect(article.className).toContain("flex-col");
-    expect(article.className).toContain("md:grid");
+    // Always-grid: one column on mobile, three on md+
+    expect(article.className).toContain("grid");
+    expect(article.className).toContain("grid-cols-1");
+    expect(article.className).toContain("md:grid-cols-[120px_minmax(0,1fr)_120px]");
 
-    // Mobile eyebrow prefix "N°01 · " exists in the DOM
-    expect(container.textContent).toContain("N°01 ·");
-
-    // Left rail (the numbered serif) is hidden-on-mobile
+    // Left rail is visible on both mobile and desktop (single DOM tree, reflows via flex-direction)
     const leftRail = article.querySelector('[data-rail="left"]');
-    expect(leftRail?.className).toContain("hidden");
-    expect(leftRail?.className).toContain("md:flex");
+    expect(leftRail).not.toBeNull();
+    expect(leftRail?.className).not.toContain("hidden");
+    expect(leftRail?.className).toContain("flex-row");
+    expect(leftRail?.className).toContain("md:flex-col");
+    expect(leftRail?.textContent).toContain("N°");
+    expect(leftRail?.textContent).toContain("01");
   });
 });

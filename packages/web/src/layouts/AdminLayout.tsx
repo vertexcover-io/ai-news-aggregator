@@ -21,6 +21,7 @@ export function AdminLayout(): ReactElement {
           type="button"
           variant="ghost"
           size="sm"
+          className="min-h-[44px] min-w-[44px]"
           onClick={() => {
             void handleSignOut();
           }}

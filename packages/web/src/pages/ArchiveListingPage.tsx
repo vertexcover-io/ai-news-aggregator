@@ -12,7 +12,7 @@ const TAGLINE = "A hand-curated daily digest of what's actually moving in AI.";
 function Hero(): ReactElement {
   return (
     <header className="pt-12 pb-8 text-center">
-      <h1 className="font-serif text-4xl font-medium tracking-tight text-neutral-900">The Archive</h1>
+      <h1 className="font-serif text-3xl sm:text-4xl md:text-5xl font-medium tracking-tight text-neutral-900">The Archive</h1>
       <p className="mt-3 font-mono text-xs text-neutral-500 uppercase tracking-widest">{TAGLINE}</p>
     </header>
   );
@@ -36,7 +36,7 @@ export function ArchiveListingPage(): ReactElement {
   const { data, isLoading, isError } = useQuery({ queryKey: ["archives", "list"], queryFn: listArchives });
 
   const shell = (content: ReactElement): ReactElement => (
-    <main className="mx-auto max-w-[860px] px-6"><Hero />{content}</main>
+    <main className="mx-auto max-w-[860px] px-4 sm:px-6"><Hero />{content}</main>
   );
 
   if (isLoading) return shell(<SkeletonRows />);
@@ -96,7 +96,7 @@ export function ArchiveListingPage(): ReactElement {
       ))}
       {visibleCount < filtered.length ? (
         <div className="mt-8 flex justify-center">
-          <button type="button" onClick={handleLoadMore} className="font-mono text-sm text-neutral-600 hover:text-neutral-900 border border-neutral-300 rounded px-4 py-2">
+          <button type="button" onClick={handleLoadMore} className="font-mono text-sm text-neutral-600 hover:text-neutral-900 border border-neutral-300 rounded px-4 min-h-[44px]">
             Load more
           </button>
         </div>

@@ -17,7 +17,7 @@ React + Vite frontend for the admin review dashboard and public archive.
   - `archive-listing/` — `ArchiveRow.tsx`, `FilterChip.tsx`, `MonthHeader.tsx`, `format.ts` (Ledger listing components)
   - `RunForm/`, `StatusPanel.tsx`, `ResultList.tsx` — run-page components
   - `review/` — `ReviewList.tsx` (DnD list), `ReviewCard.tsx`, `AddPostPanel.tsx`, `SaveBar.tsx`
-  - `dashboard/` — dashboard-specific components
+  - `dashboard/` — `RunsTable.tsx` (≥ 640 px tabular layout), `RunsCardList.tsx` (< 640 px stacked card layout), `ScheduleBanner.tsx`, `EmptyState.tsx`
   - `settings/` — settings-specific components
   - `ui/` — shadcn base components (Button, Input, etc.)
 - `src/api/` — typed API client (`client.ts` for the fetch wrapper, `runs.ts`, `settings.ts`, `archives.ts`)
@@ -29,6 +29,16 @@ React + Vite frontend for the admin review dashboard and public archive.
 - Routing via `react-router-dom` using `createBrowserRouter` + `RouterProvider` (required for `useBlocker` in the review page); root route is `ArchiveListingPage` (`/`)
 - Data fetching/polling via `@tanstack/react-query`
 - Forms via `react-hook-form`
+
+## Mobile layout conventions
+
+All in-scope pages and `PublicLayout` use responsive horizontal padding: `px-4 sm:px-6 md:px-8` (with `/` and `/archive/:runId` using `md:px-20` for the wider desktop gutter).
+
+The `120px / 1fr / 120px` three-column grids on `/` (`ArchiveRow`) and `/archive/:runId` (`ArchivePage`, `ArchiveStoryCard`) reflow to a single column at `< md` (768 px) using a single DOM element with responsive `grid-template-columns` — no duplicate markup.
+
+The dashboard runs list uses a two-representation pattern: `RunsTable` is shown at `sm:` and above; `RunsCardList` is shown below 640 px (`sm:hidden` / `block sm:hidden`). Both receive the same `runs` prop.
+
+The DnD review page (`ReviewList`) registers `TouchSensor` alongside `PointerSensor` with `activationConstraint: { delay: 250, tolerance: 5 }` so mobile users can scroll without triggering drag. Each `ReviewCard` exposes a visible `GripVertical` icon button with `data-dnd-handle="true"` and a minimum 44 × 44 px touch target.
 
 ## Rules
 - No direct DB access — all data comes through the API

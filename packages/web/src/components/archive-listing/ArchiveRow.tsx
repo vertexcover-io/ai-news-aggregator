@@ -35,18 +35,20 @@ function DateBlock({
   const year = date.getFullYear();
 
   return (
-    <div className="flex flex-col gap-1">
+    // Mobile: single inline row (flex-row, gap-x-2) above headline.
+    // md+: stacked column (flex-col, gap-1) in the left rail.
+    <div className="mb-2 md:mb-0 flex flex-wrap items-baseline gap-x-2 gap-y-0 md:flex-col md:gap-1">
       <span
-        className={`font-mono text-xs font-medium tracking-widest ${featured ? "text-[#8C3A1E]" : "text-neutral-500"}`}
+        className={`font-mono text-[11px] uppercase tracking-[0.18em] ${featured ? "text-[#8C3A1E]" : "text-neutral-500"}`}
       >
         {dayOfWeek}
       </span>
       <span
-        className={`font-serif font-medium leading-none text-neutral-900 ${featured ? "text-3xl" : "text-xl"}`}
+        className={`font-serif font-medium leading-none text-neutral-900 md:block ${featured ? "text-2xl md:text-3xl" : "text-base md:text-xl"}`}
       >
         {shortDate}
       </span>
-      <span className="font-mono text-xs text-neutral-500">
+      <span className="font-mono text-[11px] text-neutral-500">
         {year} · N°{issueNumber}
       </span>
     </div>
@@ -89,12 +91,23 @@ export function ArchiveRow({
   const showDek = featured && typeof leadSummary === "string" && leadSummary.length > 0;
 
   const rowBody = (
+    // Mobile: single-column grid (date eyebrow → content → meta inline under chips).
+    // md+: three-column grid [120px / 1fr / 120px] with date in left rail, meta in right rail.
+    // grid-template-areas lets the single meta <div> sit in column 3 on md+ without DOM duplication.
     <div
-      className={`grid grid-cols-[120px_minmax(0,1fr)_120px] gap-12 px-2 ${featured ? "py-12" : "py-7"}`}
+      className={[
+        "grid md:px-2",
+        "grid-cols-1 md:grid-cols-[120px_minmax(0,1fr)_120px]",
+        "[grid-template-areas:'date''content''meta'] md:[grid-template-areas:'date_content_meta']",
+        "gap-0 md:gap-12",
+        featured ? "py-8 md:py-12" : "py-6 md:py-7",
+      ].join(" ")}
     >
-      <DateBlock runDate={runDate} issueNumber={issueNumber} featured={featured} />
+      <div className="[grid-area:date]">
+        <DateBlock runDate={runDate} issueNumber={issueNumber} featured={featured} />
+      </div>
 
-      <div className="flex flex-col gap-4">
+      <div className="[grid-area:content] min-w-0 flex flex-col gap-4">
         {headlineContent}
         {showDek ? (
           <p className="font-sans text-[15px] leading-relaxed text-neutral-600 line-clamp-2">
@@ -104,20 +117,21 @@ export function ArchiveRow({
         {hasTopItems ? (
           <ul className="flex flex-wrap gap-x-2 gap-y-1.5 pt-1">
             {topItems.map((t) => (
-              <li key={t.id} title={t.title} className="font-mono text-[11px] rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-600">
+              <li key={t.id} title={t.title} className="inline-flex items-center font-mono text-[11px] rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-600">
                 {truncateChip(t.title)}
               </li>
             ))}
             {storyCount > topItems.length ? (
-              <span className="font-mono text-[11px] self-center text-neutral-400">
+              <li className="inline-flex items-center font-mono text-[11px] py-1 self-center text-neutral-400">
                 {`+ ${String(storyCount - topItems.length)} more`}
-              </span>
+              </li>
             ) : null}
           </ul>
         ) : null}
       </div>
 
-      <div className="flex flex-col items-end gap-1">
+      {/* Single meta block: flows after content column on mobile; placed in right rail on md+ via grid-area */}
+      <div className="[grid-area:meta] flex md:flex-col items-end justify-end gap-1 mt-3 md:mt-0">
         <span className="font-mono text-xs text-neutral-500">
           {storyCount} {storyCount === 1 ? "story" : "stories"}
         </span>

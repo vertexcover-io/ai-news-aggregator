@@ -23,8 +23,8 @@ export function FilterChip({
       onClick={() => { onClick(id); }}
       className={
         active
-          ? "inline-flex items-center gap-1 rounded-full px-3 py-1 font-mono text-xs font-medium bg-neutral-900 text-white"
-          : "inline-flex items-center gap-1 rounded-full border border-neutral-300 px-3 py-1 font-mono text-xs font-medium text-neutral-700 hover:border-neutral-500"
+          ? "inline-flex items-center gap-1 rounded-full px-3 min-h-[44px] font-mono text-xs font-medium bg-neutral-900 text-white"
+          : "inline-flex items-center gap-1 rounded-full border border-neutral-300 px-3 min-h-[44px] font-mono text-xs font-medium text-neutral-700 hover:border-neutral-500"
       }
     >
       {label}

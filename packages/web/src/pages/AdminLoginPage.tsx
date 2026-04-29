@@ -54,7 +54,7 @@ export function AdminLoginPage(): ReactElement {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div
         className="rounded-lg border bg-card shadow-sm p-6 flex flex-col gap-4"
-        style={{ width: "min(360px, 100% - 32px)" }}
+        style={{ width: "min(360px, 100%)" }}
       >
         <h1 className="text-xl font-semibold text-center">Admin</h1>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
@@ -72,7 +72,7 @@ export function AdminLoginPage(): ReactElement {
                 setPassword(e.target.value);
                 if (error) setError(null);
               }}
-              className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+              className="h-11 min-h-[44px] rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]"
             />
           </div>
           {error !== null && (
@@ -84,13 +84,13 @@ export function AdminLoginPage(): ReactElement {
               {error}
             </p>
           )}
-          <Button type="submit" disabled={mutation.isPending}>
+          <Button type="submit" disabled={mutation.isPending} className="min-h-[44px] px-4">
             {mutation.isPending ? "Signing in…" : "Sign in"}
           </Button>
         </form>
         <Link
           to="/"
-          className="text-sm text-muted-foreground hover:text-foreground text-center"
+          className="inline-flex items-center justify-center min-h-[44px] px-2 text-sm text-muted-foreground hover:text-foreground"
         >
           ← Back to archive
         </Link>

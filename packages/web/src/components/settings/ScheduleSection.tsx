@@ -90,7 +90,7 @@ export function ScheduleSection({
                   value={field.value}
                   onValueChange={(v) => { field.onChange(v); }}
                 >
-                  <SelectTrigger id="scheduleTimezone">
+                  <SelectTrigger id="scheduleTimezone" className="min-h-[44px] w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="max-h-72">

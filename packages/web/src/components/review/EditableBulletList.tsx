@@ -76,7 +76,7 @@ export function EditableBulletList({
             <>
               <span className="text-gray-400 shrink-0">•</span>
               <span
-                className="flex-1 cursor-text"
+                className="flex-1 cursor-text inline-flex items-center min-h-[44px]"
                 onClick={() => { startEdit(i, bullet); }}
                 role="button"
                 tabIndex={0}
@@ -95,7 +95,7 @@ export function EditableBulletList({
                 type="button"
                 aria-label={`Delete bullet ${String(i + 1)}`}
                 onClick={() => { deleteBullet(i); }}
-                className="text-gray-300 hover:text-red-400 shrink-0"
+                className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-gray-300 hover:text-red-400 shrink-0"
               >
                 <X className="size-3" />
               </button>
@@ -135,7 +135,7 @@ export function EditableBulletList({
           <button
             type="button"
             onClick={() => { startEdit(bullets.length, ""); }}
-            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600"
+            className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 min-h-[44px]"
           >
             <Plus className="size-3" />
             Add bullet

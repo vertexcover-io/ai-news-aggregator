@@ -210,18 +210,18 @@ export function ReviewPage(): ReactElement {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="border-b bg-white px-8 py-4 flex items-center justify-between">
+      <header className="border-b bg-white px-4 sm:px-6 md:px-8 py-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold flex items-center gap-2">
           <span className="text-xl">📰</span> Newsletter
         </h1>
         <Link
           to="/admin"
-          className="text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex items-center min-h-[44px] px-4 text-sm text-muted-foreground hover:text-foreground"
         >
           ← Back to dashboard
         </Link>
       </header>
-      <main className="flex-1 max-w-4xl w-full mx-auto px-8 py-6 space-y-5">
+      <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 md:px-8 py-4 sm:py-6 space-y-5">
         <div>
           <h2 className="text-2xl font-bold">
             {formatHeading(query.data.startedAt)}

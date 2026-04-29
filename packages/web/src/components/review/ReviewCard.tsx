@@ -63,19 +63,20 @@ export function ReviewCard({
       style={style}
       data-added={isAdded ? "true" : undefined}
       className={cn(
-        "relative flex items-start gap-4 rounded-lg border bg-white px-4 py-3 shadow-sm",
+        "relative flex flex-wrap items-stretch gap-3 sm:gap-4 rounded-lg border bg-white px-4 py-3 shadow-sm",
         isAdded && "border-l-4 border-l-emerald-400",
         isDragging && "opacity-70",
       )}
     >
       <button
         type="button"
+        data-dnd-handle="true"
         aria-label="Drag to reorder"
-        className="cursor-grab touch-none p-1 text-gray-400 hover:text-gray-600"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-stone-500 hover:bg-stone-100 cursor-grab active:cursor-grabbing touch-none"
         {...attributes}
         {...listeners}
       >
-        <GripVertical className="size-4" />
+        <GripVertical className="h-5 w-5" />
       </button>
 
       <div
@@ -136,7 +137,7 @@ export function ReviewCard({
         </div>
       )}
 
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 basis-full sm:basis-auto order-last sm:order-none">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span
             className={cn(
@@ -162,7 +163,7 @@ export function ReviewCard({
           href={item.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-0.5 block font-semibold text-gray-900 hover:underline truncate"
+          className="mt-0.5 inline-flex items-center font-semibold text-gray-900 hover:underline truncate min-h-[44px] w-full"
         >
           {item.title}
         </a>
@@ -212,7 +213,7 @@ export function ReviewCard({
           onClick={() => {
             onDelete(item.id);
           }}
-          className="text-red-500 hover:text-red-700"
+          className="flex h-11 w-11 items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
         >
           <Trash2 className="size-4" />
         </button>

@@ -8,6 +8,7 @@ import { useRunList } from "../hooks/useRunList";
 import { useSettings } from "../hooks/useSettings";
 import { cancelRun, triggerRunNow } from "../api/runs";
 import { RunsTable } from "../components/dashboard/RunsTable";
+import { RunsCardList } from "../components/dashboard/RunsCardList";
 import { ScheduleBanner } from "../components/dashboard/ScheduleBanner";
 import { EmptyState } from "../components/dashboard/EmptyState";
 
@@ -51,13 +52,13 @@ export function DashboardPage(): ReactElement {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="flex items-center justify-between border-b bg-white px-8 py-4">
-        <Link to="/admin" className="flex items-center gap-2 font-semibold">
+      <header className="flex items-center justify-between border-b bg-white px-4 sm:px-6 md:px-8 py-4">
+        <Link to="/admin" className="inline-flex items-center gap-2 font-semibold min-h-[44px]">
           <Newspaper className="size-5" />
           Newsletter
         </Link>
         <div className="flex items-center gap-2">
-          <Button asChild variant="ghost" size="sm">
+          <Button asChild variant="ghost" size="sm" className="min-h-[44px]">
             <Link to="/admin/settings">
               <SettingsIcon />
               Settings
@@ -69,7 +70,7 @@ export function DashboardPage(): ReactElement {
               void handleRunNow();
             }}
             disabled={runNowDisabled}
-            className="bg-black text-white hover:bg-black/90"
+            className="bg-black text-white hover:bg-black/90 min-h-[44px] px-4"
           >
             <Play />
             Run now
@@ -77,7 +78,7 @@ export function DashboardPage(): ReactElement {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-6 p-8">
+      <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6 md:p-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Recent runs</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -95,14 +96,28 @@ export function DashboardPage(): ReactElement {
         {settingsLoaded && settings === null ? (
           <EmptyState />
         ) : (
-          <RunsTable
-            runs={runs}
-            onRetry={() => {
-              void handleRunNow();
-            }}
-            retrying={pending}
-            onCancel={handleCancel}
-          />
+          <>
+            <div className="hidden sm:block">
+              <RunsTable
+                runs={runs}
+                onRetry={() => {
+                  void handleRunNow();
+                }}
+                retrying={pending}
+                onCancel={handleCancel}
+              />
+            </div>
+            <div className="sm:hidden">
+              <RunsCardList
+                runs={runs}
+                onRetry={() => {
+                  void handleRunNow();
+                }}
+                retrying={pending}
+                onCancel={handleCancel}
+              />
+            </div>
+          </>
         )}
 
       </main>
