@@ -1,7 +1,7 @@
 import pLimit from "p-limit";
 import { createLogger } from "@newsletter/shared";
 import type { Candidate } from "@newsletter/shared";
-import { fetchMarkdown } from "@pipeline/services/markdown-fetch.js";
+import { fetchMarkdown } from "@pipeline/services/web-fetch/index.js";
 
 const logger = createLogger("processor:rank-body-loader");
 
@@ -27,7 +27,7 @@ export async function loadBodiesForShortlist(
   options: LoadBodiesOptions = {},
 ): Promise<Map<number, string | null>> {
   const fetchFn: BodyFetchFn =
-    options.fetchFn ?? ((url, signal) => fetchMarkdown(url, { signal }));
+    options.fetchFn ?? ((url, signal) => fetchMarkdown(url, { mode: "article", signal }));
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 

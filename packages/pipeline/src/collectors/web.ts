@@ -1,4 +1,3 @@
-import pLimit from "p-limit";
 import { generateObject } from "ai";
 import type { LanguageModel } from "ai";
 import { z } from "zod";
@@ -11,89 +10,16 @@ import type {
   WebCollectorResult,
 } from "@pipeline/types.js";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
-import { fetchMarkdown } from "@pipeline/services/markdown-fetch.js";
-import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
-export { fetchMarkdown };
-
-// ── Image fallback extraction (inlined from web-image-fallback) ───────────────
-
-const META_TAG_RE = /<meta\b[^>]*>/gi;
-const LINK_TAG_RE = /<link\b[^>]*>/gi;
-const BASE_TAG_RE = /<base\b[^>]*\bhref=(["'])([^"']*)\1[^>]*>/i;
-
-function attr(tag: string, name: string): string | null {
-  const re = new RegExp(`\\b${name}=(["'])([^"']*)\\1`, "i");
-  const m = re.exec(tag);
-  if (!m) return null;
-  return m[2];
-}
-
-function decodeAmpFallback(s: string): string {
-  return s.replaceAll("&amp;", "&");
-}
-
-function resolveAbsolute(raw: string, baseUrl: string): string | null {
-  const decoded = decodeAmpFallback(raw.trim());
-  if (!decoded) return null;
-  if (decoded.startsWith("data:")) return null;
-  try {
-    const u = new URL(decoded, baseUrl);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-    return u.toString();
-  } catch {
-    return null;
-  }
-}
-
-export function extractFallbackImage(html: string, baseUrl: string): string | null {
-  const baseMatch = BASE_TAG_RE.exec(html);
-  let effectiveBase = baseUrl;
-  if (baseMatch) {
-    const baseHref = baseMatch[2];
-    if (baseHref) {
-      try {
-        effectiveBase = new URL(baseHref, baseUrl).toString();
-      } catch { /* keep baseUrl */ }
-    }
-  }
-
-  const metas = html.match(META_TAG_RE) ?? [];
-  let ogImage: string | null = null;
-  let twImage: string | null = null;
-  for (const tag of metas) {
-    const property = attr(tag, "property");
-    const name = attr(tag, "name");
-    const content = attr(tag, "content");
-    if (!content) continue;
-    if (!ogImage && property?.toLowerCase() === "og:image") {
-      ogImage = resolveAbsolute(content, effectiveBase);
-    }
-    if (!twImage && (name?.toLowerCase() === "twitter:image" || name?.toLowerCase() === "twitter:image:src")) {
-      twImage = resolveAbsolute(content, effectiveBase);
-    }
-  }
-  if (ogImage) return ogImage;
-  if (twImage) return twImage;
-
-  const links = html.match(LINK_TAG_RE) ?? [];
-  for (const tag of links) {
-    const rel = attr(tag, "rel")?.toLowerCase();
-    if (rel === "icon" || rel === "shortcut icon") {
-      const href = attr(tag, "href");
-      if (href) {
-        const resolved = resolveAbsolute(href, effectiveBase);
-        if (resolved) return resolved;
-      }
-    }
-  }
-
-  return null;
-}
+import { fetchAdaptive } from "@pipeline/services/web-fetch/index.js";
+import {
+  runWebCrawl,
+  type CrawlJob,
+  type CrawlResult,
+} from "@pipeline/services/web-crawler.js";
 
 const logger = createLogger("collector:web");
 
 const MAX_ERROR_LENGTH = 200;
-const DEFAULT_POST_CONCURRENCY = 3;
 
 export const DiscoverySchema = z.object({
   posts: z.array(
@@ -154,7 +80,7 @@ export async function extractPostFields(
       `For image_url, select the most relevant or representative image from the markdown based on ` +
       `filename, alt text, and context. Skip icons, logos, tracking pixels, and data URIs. ` +
       `Return an empty string if no suitable image is found. ` +
-      `Use empty strings for fields not stated on the page \u2014 never invent data.\n\n` +
+      `Use empty strings for fields not stated on the page - never invent data.\n\n` +
       `--- BEGIN ARTICLE ---\n${postMarkdown}\n--- END ARTICLE ---`,
   });
   return result.object;
@@ -197,195 +123,16 @@ export function parseDateOrNull(raw: string | undefined | null): Date | null {
   return Number.isNaN(t) ? null : new Date(t);
 }
 
-type FailureStage =
-  | "discovery-fetch"
-  | "discovery-llm"
-  | "discovery-empty"
-  | "detail-fetch"
-  | "detail-llm"
-  | "validate";
-
-class CollectorError extends Error {
-  constructor(
-    public readonly stage: FailureStage,
-    message: string,
-  ) {
-    super(message);
-    this.name = "CollectorError";
-  }
-}
-
 function truncateError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   return msg.length > MAX_ERROR_LENGTH ? `${msg.slice(0, MAX_ERROR_LENGTH - 3)}...` : msg;
 }
 
-function logFailure(
-  source: string,
-  listingUrl: string,
-  stage: FailureStage,
-  error: string,
-  postUrl?: string,
-): void {
-  logger.warn(
-    {
-      event: "collector_failure",
-      collector: "web",
-      source,
-      listingUrl,
-      stage,
-      postUrl,
-      error,
-    },
-    "collector failure",
-  );
-}
-
-interface ProcessSourceResult {
-  items: RawItemInsert[];
-  failures: CollectorFailure[];
-  sourceFailed: boolean;
-}
-
-export async function processOnePost(
-  post: DiscoveredPost,
-  fetchFn: typeof fetch,
-  llmModel: LanguageModel,
-  signal?: AbortSignal,
-): Promise<RawItemInsert> {
-  let markdown: string;
-  try {
-    markdown = await fetchMarkdown(post.url, { fetchFn });
-  } catch (err) {
-    throw new CollectorError("detail-fetch", truncateError(err));
-  }
-
-  let fields: ExtractedFields;
-  try {
-    fields = await extractPostFields(post.url, markdown, llmModel);
-  } catch (err) {
-    throw new CollectorError("detail-llm", truncateError(err));
-  }
-
-  const mergedFields: ExtractedFields = {
-    title: fields.title.trim() || post.title.trim(),
-    author: fields.author,
-    published_at: fields.published_at.trim() || post.published_at,
-    image_url: fields.image_url,
-  };
-
-  if (!mergedFields.title) {
-    throw new CollectorError("validate", "empty title");
-  }
-
-  let imageUrl: string | null = null;
-  const llmImage = mergedFields.image_url.trim();
-  if (llmImage.startsWith("http")) {
-    imageUrl = llmImage;
-  } else {
-    try {
-      const response = await fetchFn(post.url, { signal });
-      if (response.ok) {
-        const html = await response.text();
-        imageUrl = extractFallbackImage(html, post.url);
-      }
-    } catch {
-      // Best-effort; leave imageUrl null.
-    }
-  }
-
-  return buildRawItem(post.url, markdown, { ...mergedFields, image_url: imageUrl ?? "" });
-}
-
-export async function processSource(
-  source: BlogSource,
-  config: WebCollectConfig,
-  deps: {
-    rawItemsRepo: RawItemsRepo;
-    fetchFn: typeof fetch;
-    llmModel: LanguageModel;
-  },
-): Promise<ProcessSourceResult> {
-  let listingMarkdown: string;
-  try {
-    listingMarkdown = await fetchMarkdown(source.listingUrl, { fetchFn: deps.fetchFn });
-  } catch (err) {
-    const error = truncateError(err);
-    logFailure(source.name, source.listingUrl, "discovery-fetch", error);
-    return {
-      items: [],
-      failures: [{ source: source.name, error }],
-      sourceFailed: true,
-    };
-  }
-
-  let discovered: DiscoveredPost[];
-  try {
-    discovered = await discoverPostUrls(source.listingUrl, listingMarkdown, deps.llmModel);
-  } catch (err) {
-    const error = truncateError(err);
-    logFailure(source.name, source.listingUrl, "discovery-llm", error);
-    return {
-      items: [],
-      failures: [{ source: source.name, error }],
-      sourceFailed: true,
-    };
-  }
-
-  const validated = validateDiscoveredUrls(discovered, listingMarkdown);
-  const sorted = sortPostsByPublishedAtDesc(validated);
-  const filtered = applySinceDays(sorted, config.sinceDays);
-  const capped = filtered.slice(0, config.maxItems);
-
-  if (capped.length === 0) {
-    const error = "no posts after filter";
-    logFailure(source.name, source.listingUrl, "discovery-empty", error);
-    return {
-      items: [],
-      failures: [{ source: source.name, error }],
-      sourceFailed: true,
-    };
-  }
-
-  const existing = await deps.rawItemsRepo.findExistingExternalIds(
-    "blog",
-    capped.map((p) => p.url),
-  );
-  const newPosts = capped.filter((p) => !existing.has(p.url));
-
-  if (newPosts.length === 0) {
-    return { items: [], failures: [], sourceFailed: false };
-  }
-
-  const limit = pLimit(config.postConcurrency ?? DEFAULT_POST_CONCURRENCY);
-  const settled = await Promise.allSettled(
-    newPosts.map((p) => limit(() => processOnePost(p, deps.fetchFn, deps.llmModel))),
-  );
-
-  const items: RawItemInsert[] = [];
-  const failures: CollectorFailure[] = [];
-  for (let i = 0; i < settled.length; i++) {
-    const result = settled[i];
-    const post = newPosts[i];
-    if (result.status === "fulfilled") {
-      items.push(result.value);
-    } else {
-      const err: unknown = result.reason;
-      const stage: FailureStage = err instanceof CollectorError ? err.stage : "detail-llm";
-      const error = truncateError(err instanceof Error ? err.message : String(err));
-      logFailure(source.name, source.listingUrl, stage, error, post.url);
-      failures.push({ source: source.name, postUrl: post.url, error });
-    }
-  }
-
-  return { items, failures, sourceFailed: false };
-}
-
 export interface WebCollectorDeps {
   rawItemsRepo: RawItemsRepo;
-  fetchFn?: typeof fetch;
   llmModel?: LanguageModel;
   signal?: AbortSignal;
+  runWebCrawl?: typeof runWebCrawl;
 }
 
 let cachedDefaultModel: LanguageModel | null = null;
@@ -402,37 +149,127 @@ export async function collectWeb(
   config: WebCollectConfig,
 ): Promise<WebCollectorResult> {
   const startTime = Date.now();
-  const baseFetch = deps.fetchFn ?? globalThis.fetch;
-  const fetchFn = deps.signal ? withAbortSignal(baseFetch, deps.signal) : baseFetch;
   const llmModel = deps.llmModel ?? (await resolveDefaultModel());
+  const fetcher = deps.runWebCrawl ?? runWebCrawl;
 
-  logger.info(
-    {
-      sourceCount: config.sources.length,
-      maxItems: config.maxItems,
-      sinceDays: config.sinceDays,
-    },
-    "collection started",
-  );
-
-  const results = await Promise.all(
-    config.sources.map((source) =>
-      processSource(source, config, {
-        rawItemsRepo: deps.rawItemsRepo,
-        fetchFn,
-        llmModel,
-      }),
-    ),
-  );
-
-  const allItems: RawItemInsert[] = [];
-  const allFailures: CollectorFailure[] = [];
-  for (const r of results) {
-    allItems.push(...r.items);
-    allFailures.push(...r.failures);
+  if (config.sources.length === 0) {
+    const durationMs = Date.now() - startTime;
+    logger.info(
+      { itemsFetched: 0, itemsStored: 0, failures: 0, durationMs },
+      "collection completed",
+    );
+    return { itemsFetched: 0, itemsStored: 0, commentsFetched: 0, durationMs, failures: undefined };
   }
 
-  if (config.sources.length > 0 && results.every((r) => r.sourceFailed)) {
+  // Pass 1: listings
+  const listingJobs: CrawlJob[] = config.sources.map((s) => ({
+    kind: "listing" as const,
+    sourceName: s.name,
+    url: s.listingUrl,
+  }));
+  const listingResults = await fetcher(listingJobs, { signal: deps.signal });
+
+  // Per source: run discovery LLM + dedup + filter
+  interface PerSource {
+    source: BlogSource;
+    capped: DiscoveredPost[];
+    failure?: string;
+    sourceFailed: boolean;
+  }
+
+  const perSource: PerSource[] = await Promise.all(
+    config.sources.map(async (source) => {
+      const r = listingResults.get(source.listingUrl);
+      if (!r?.ok) {
+        return {
+          source,
+          capped: [],
+          failure: r?.error ?? "no result",
+          sourceFailed: true,
+        };
+      }
+      try {
+        const discovered = await discoverPostUrls(source.listingUrl, r.result.markdown, llmModel);
+        const validated = validateDiscoveredUrls(discovered, r.result.markdown);
+        const sorted = sortPostsByPublishedAtDesc(validated);
+        const filtered = applySinceDays(sorted, config.sinceDays);
+        const capped = filtered.slice(0, config.maxItems);
+        if (capped.length === 0) {
+          return { source, capped: [], failure: "no posts after filter", sourceFailed: true };
+        }
+        return { source, capped, sourceFailed: false };
+      } catch (err) {
+        return { source, capped: [], failure: truncateError(err), sourceFailed: true };
+      }
+    }),
+  );
+
+  // Dedup detail URLs against existing external IDs
+  const allCappedUrls = perSource.flatMap((ps) => ps.capped.map((p) => p.url));
+  const existing = allCappedUrls.length > 0
+    ? await deps.rawItemsRepo.findExistingExternalIds("blog", allCappedUrls)
+    : new Set<string>();
+
+  const detailJobs: CrawlJob[] = [];
+  const postBySource = new Map<string, DiscoveredPost[]>();
+  for (const ps of perSource) {
+    const newPosts = ps.capped.filter((p) => !existing.has(p.url));
+    postBySource.set(ps.source.name, newPosts);
+    for (const p of newPosts) {
+      detailJobs.push({ kind: "detail" as const, sourceName: ps.source.name, postUrl: p.url, url: p.url });
+    }
+  }
+
+  // Pass 2: details (only when there is work)
+  const detailResults: Map<string, CrawlResult> = detailJobs.length > 0
+    ? await fetcher(detailJobs, { signal: deps.signal })
+    : new Map<string, CrawlResult>();
+
+  // Aggregate items and failures
+  const allItems: RawItemInsert[] = [];
+  const allFailures: CollectorFailure[] = [];
+
+  // Source-level failures (listing + LLM-discovery)
+  for (const ps of perSource) {
+    if (ps.sourceFailed) {
+      allFailures.push({ source: ps.source.name, error: ps.failure ?? "unknown" });
+    }
+  }
+
+  // Detail-stage results
+  for (const ps of perSource) {
+    if (ps.sourceFailed) continue;
+    const posts = postBySource.get(ps.source.name) ?? [];
+    for (const post of posts) {
+      const dr = detailResults.get(post.url);
+      if (!dr?.ok) {
+        allFailures.push({
+          source: ps.source.name,
+          postUrl: post.url,
+          error: dr?.error ?? "no result",
+        });
+        continue;
+      }
+      try {
+        const fields = await extractPostFields(post.url, dr.result.markdown, llmModel);
+        const merged: ExtractedFields = {
+          title: fields.title.trim() || post.title.trim(),
+          author: fields.author,
+          published_at: fields.published_at.trim() || post.published_at,
+          image_url: (fields.image_url.trim() || dr.result.imageUrl) ?? "",
+        };
+        if (!merged.title) {
+          allFailures.push({ source: ps.source.name, postUrl: post.url, error: "empty title" });
+          continue;
+        }
+        allItems.push(buildRawItem(post.url, dr.result.markdown, merged));
+      } catch (err) {
+        allFailures.push({ source: ps.source.name, postUrl: post.url, error: truncateError(err) });
+      }
+    }
+  }
+
+  if (config.sources.length > 0 && perSource.every((ps) => ps.sourceFailed)) {
     throw new Error("all sources failed");
   }
 
@@ -458,7 +295,6 @@ export async function collectWeb(
     },
     "collection completed",
   );
-
   return result;
 }
 
@@ -486,10 +322,9 @@ export function buildRawItem(
   };
 }
 
-// ── Single-post fetch (add-post flow) ────────────────────────────────────────
+// -- Single-post fetch (add-post flow) --
 
 export interface FetchWebPostDeps {
-  fetchMarkdownFn?: typeof fetchMarkdown;
   fetchFn?: typeof fetch;
   signal?: AbortSignal;
 }
@@ -513,29 +348,23 @@ export async function fetchWebPost(
   url: string,
   deps: FetchWebPostDeps = {},
 ): Promise<RawItemInsert> {
-  const fetchMarkdownFn = deps.fetchMarkdownFn ?? fetchMarkdown;
-
   logger.info({ event: "web.single.fetch", url }, "web.single.fetch");
-
-  const markdown = await fetchMarkdownFn(url, {
-    signal: deps.signal,
-    fetchFn: deps.fetchFn,
-  });
-  const title = extractTitle(markdown, url);
+  const r = await fetchAdaptive(url, "article", { signal: deps.signal, fetchFn: deps.fetchFn });
+  const title = (r.title?.trim() !== "" ? r.title?.trim() : undefined) ?? extractTitle(r.markdown, url);
   const now = new Date();
-
   return {
     sourceType: "blog",
     externalId: url,
     title,
     url,
     sourceUrl: url,
-    author: null,
-    content: markdown,
+    author: r.byline?.trim() !== "" ? r.byline?.trim() ?? null : null,
+    content: r.markdown,
     publishedAt: null,
     collectedAt: now,
     engagement: { points: 0, commentCount: 0 },
     metadata: { comments: [] },
+    imageUrl: r.imageUrl,
     updatedAt: now,
   };
 }

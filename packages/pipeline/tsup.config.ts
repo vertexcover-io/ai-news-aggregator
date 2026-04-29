@@ -7,6 +7,14 @@ export default defineConfig({
   dts: { entry: { "add-post-entry": "src/add-post-entry.ts" } },
   clean: true,
   sourcemap: true,
+  external: [
+    "playwright",
+    "crawlee",
+    "@mozilla/readability",
+    "jsdom",
+    "turndown",
+    "turndown-plugin-gfm",
+  ],
   esbuildOptions(options) {
     options.alias = {
       "@pipeline": resolve(__dirname, "src"),

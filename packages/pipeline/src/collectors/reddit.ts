@@ -3,7 +3,7 @@ import type { CollectorResult, RawItemComment, RawItemEngagement } from "@newsle
 import type { RedditCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
-import { delay } from "@pipeline/services/markdown-fetch.js";
+import { delay } from "@pipeline/lib/delay.js";
 import { UrlParseError } from "@pipeline/collectors/hn.js";
 import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
 

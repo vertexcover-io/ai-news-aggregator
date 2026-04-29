@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Understanding Transformer Attention Mechanisms</title>
+  <link rel="shortcut icon" href="/icons/site-icon.png">
+</head>
+<body>
+  <header>
+    <a href="/">Research Blog</a>
+  </header>
+  <article>
+    <h1>Understanding Transformer Attention Mechanisms</h1>
+    <p>Attention mechanisms are the core innovation behind the transformer architecture. They allow models to weigh the importance of different tokens when producing an output, enabling long-range dependencies.</p>
+    <p>The self-attention layer computes queries, keys, and values from the input embeddings. Each token attends to every other token in the sequence, producing a weighted sum of values based on query-key similarity.</p>
+    <p>Multi-head attention extends this by running several attention operations in parallel, each with different learned projections. This lets the model attend to different types of relationships simultaneously.</p>
+    <p>Cross-attention, used in encoder-decoder architectures, allows the decoder to attend to encoder outputs while generating predictions. This is fundamental to sequence-to-sequence tasks like translation.</p>
+    <p>Recent efficiency improvements, including sparse attention and linear attention variants, reduce the quadratic complexity of standard attention. These techniques make transformers practical for very long sequences.</p>
+  </article>
+  <footer>
+    <small>Posted in Research</small>
+  </footer>
+</body>
+</html>
