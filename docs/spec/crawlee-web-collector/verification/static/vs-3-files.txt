@@ -1,0 +1,12 @@
+=== VS-3: AC #5-8 — Old files removed, new files created ===
+OK absent: packages/pipeline/src/services/markdown-fetch.ts
+OK absent: packages/pipeline/src/collectors/web-image-fallback.ts
+OK absent: packages/pipeline/tests/unit/services/markdown-fetch.test.ts
+
+OK present: packages/pipeline/src/services/web-fetch/index.ts
+OK present: packages/pipeline/src/services/web-fetch/types.ts
+OK present: packages/pipeline/src/services/web-fetch/convert.ts
+OK present: packages/pipeline/src/services/web-fetch/fetch-static.ts
+OK present: packages/pipeline/src/services/web-fetch/fetch-browser.ts
+OK present: packages/pipeline/src/services/web-fetch/fetch-adaptive.ts
+OK present: packages/pipeline/src/services/web-crawler.ts

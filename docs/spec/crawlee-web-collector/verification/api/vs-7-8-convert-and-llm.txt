@@ -1,0 +1,27 @@
+=== VS-7: Convert emits absolute URLs (post-fix) ===
+
+Sample listing-markdown URL lines after the absolutizeUrls fix:
+anthropic.com/news/anthropic-amazon-compute
+anthropic.com/news/anthropic-nec
+anthropic.com/news/australia-
+anthropic.com/news/claude-design-anthropic-labs
+anthropic.com/news/claude-for-creative-work
+anthropic.com/news/claude-is-a-space-to-think
+anthropic.com/news/claude-opus-4-7
+anthropic.com/news/election-safeguards-update
+anthropic.com/news/google-broadcom-partnership-compute
+anthropic.com/news/narasimhan-board
+
+Markdown lines with absolute URLs (head):
+  ](https://www.anthropic.com/news/claude-opus-4-7)
+  ](https://www.anthropic.com/news/claude-design-anthropic-labs)[
+  ](https://www.anthropic.com/news/claude-is-a-space-to-think)
+
+=== VS-8: Discovery LLM blocked by external API quota ===
+
+APICallError [AI_APICallError]: Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.
+  responseBody: '{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."},"request_id":"req_011CaXtz8x9XnfHbjDz2GTzY"}',
+      type: 'invalid_request_error',
+
+Conclusion: Crawler path is verified. Downstream LLM step would fail
+identically under Jina — unrelated to this PR.

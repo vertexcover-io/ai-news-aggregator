@@ -1,0 +1,27 @@
+=== VS-4: AC #14, #15, #16, #17 — Docs and config strings ===
+AC #14 (README has 'pnpm exec playwright install chromium'):
+1
+
+AC #15 (.env.example has WEB_CRAWLER_CONCURRENCY=4):
+28:WEB_CRAWLER_CONCURRENCY=4
+
+AC #16 (pipeline package.json deps exact-pinned):
+    "crawlee": "3.13.3",
+    "playwright": "1.52.0",
+    "@mozilla/readability": "0.6.0",
+    "jsdom": "26.0.0",
+    "turndown": "7.2.0",
+    "turndown-plugin-gfm": "1.0.2",
+
+AC #17 (tsup externals):
+  external: [
+    "playwright",
+  external: [
+    "playwright",
+    "crawlee",
+    "@mozilla/readability",
+    "jsdom",
+    "turndown",
+    "turndown-plugin-gfm",
+  ],
+  esbuildOptions(options) {

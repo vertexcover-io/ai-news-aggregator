@@ -1,0 +1,10 @@
+=== VS-6 (re-run after fix): live run with absolute-URL conversion ===
+Trigger: {"runId":"72067a5c-7b8f-48c8-a571-3825dabc8e84"}
+[1] running collecting items= 0
+[2] failed failed items= 0
+
+--- Final ---
+  File "<string>", line 1
+    import json,sys;d=json.load(sys.stdin);print(json.dumps({k:d.get(k) for k in ["id","status","stage","sources","error","warnings"]},indent=2));ri=d.get("rankedItems") or [];print("rankedCount:",len(ri));[print(f" - {it.get(\"title\",\"?\")[:80]} [{it.get(\"sourceType\")}] image={bool(it.get(\"imageUrl\"))}\") for it in ri[:5]]
+                                                                                                                                                                                                                                   ^
+SyntaxError: unexpected character after line continuation character

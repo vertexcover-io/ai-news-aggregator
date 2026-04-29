@@ -1,0 +1,38 @@
+=== VS-5: AC #1-4 — typecheck, lint, build ===
+Cached:    4 cached, 7 total
+  Time:    4.634s 
+
+
+--- lint ---
+Cached:    4 cached, 5 total
+  Time:    8.074s 
+
+
+--- build (pipeline) ---
+ESM dist/add-post-entry.js     4.88 KB
+ESM dist/chunk-XNOPOMHP.js     42.32 KB
+ESM dist/index.js              38.58 KB
+ESM dist/add-post-entry.js.map 10.01 KB
+ESM dist/chunk-XNOPOMHP.js.map 88.40 KB
+ESM dist/index.js.map          86.29 KB
+ESM ⚡️ Build success in 23ms
+DTS Build start
+DTS ⚡️ Build success in 1686ms
+DTS dist/add-post-entry.d.ts 2.58 KB
+
+--- bundle does NOT inline native deps ---
+playwright: require references = 0 (require/import OK; deep inlining check)
+crawlee: require references = 0 (require/import OK; deep inlining check)
+
+--- bundle externalization check (ESM imports retained) ---
+playwright: EXTERNAL (kept as import)
+  import { chromium } from "playwright";
+jsdom: EXTERNAL (in chunk)
+crawlee: EXTERNAL (kept as import)
+  import { Configuration } from "crawlee";
+@mozilla/readability: EXTERNAL (in chunk)
+turndown: EXTERNAL (in chunk)
+
+Bundle size index.js: 39502 bytes
+Bundle size chunk: 43334 bytes
+(If crawlee/playwright/jsdom were inlined, bundle would exceed several MB)

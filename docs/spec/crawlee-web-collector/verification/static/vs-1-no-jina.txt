@@ -1,0 +1,4 @@
+=== VS-1 (re-run): REQ-01/13 — No Jina references in production code ===
+Cmd: grep -rin 'jina' packages/pipeline/src .env.example CLAUDE.md README.md packages/pipeline/CLAUDE.md
+
+Exit: 1 (1 = no matches = PASS)
