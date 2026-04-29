@@ -90,7 +90,7 @@ export function PoolSection({
         onChange={(e) => {
           handleSearchChange(e.target.value);
         }}
-        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 min-h-[44px]"
       />
 
       {/* Sort + Filter */}
@@ -103,7 +103,7 @@ export function PoolSection({
               pool.setSort("engagement");
             }}
             className={cn(
-              "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+              "inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] min-w-[44px]",
               pool.sort === "engagement"
                 ? "bg-gray-900 text-white"
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200",
@@ -117,7 +117,7 @@ export function PoolSection({
               pool.setSort("recency");
             }}
             className={cn(
-              "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+              "inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] min-w-[44px]",
               pool.sort === "recency"
                 ? "bg-gray-900 text-white"
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200",
@@ -139,7 +139,7 @@ export function PoolSection({
                 pool.setSource(opt.value);
               }}
               className={cn(
-                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                "inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] min-w-[44px]",
                 pool.source === opt.value
                   ? "bg-blue-600 text-white"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200",

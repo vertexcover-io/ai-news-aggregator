@@ -81,7 +81,7 @@ export function AddPostPanel({
             setUrl(e.target.value);
           }}
           disabled={submitting}
-          className="flex-1"
+          className="flex-1 min-h-[44px]"
         />
         <Button
           type="submit"

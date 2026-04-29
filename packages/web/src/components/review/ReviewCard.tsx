@@ -63,7 +63,7 @@ export function ReviewCard({
       style={style}
       data-added={isAdded ? "true" : undefined}
       className={cn(
-        "relative flex items-stretch gap-3 sm:gap-4 rounded-lg border bg-white px-4 py-3 shadow-sm",
+        "relative flex flex-wrap items-stretch gap-3 sm:gap-4 rounded-lg border bg-white px-4 py-3 shadow-sm",
         isAdded && "border-l-4 border-l-emerald-400",
         isDragging && "opacity-70",
       )}
@@ -137,7 +137,7 @@ export function ReviewCard({
         </div>
       )}
 
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 basis-full sm:basis-auto order-last sm:order-none">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span
             className={cn(
@@ -163,7 +163,7 @@ export function ReviewCard({
           href={item.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-0.5 block font-semibold text-gray-900 hover:underline truncate"
+          className="mt-0.5 inline-flex items-center font-semibold text-gray-900 hover:underline truncate min-h-[44px] w-full"
         >
           {item.title}
         </a>

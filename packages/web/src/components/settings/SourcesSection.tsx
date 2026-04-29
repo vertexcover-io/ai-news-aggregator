@@ -220,6 +220,7 @@ function SourceRow({
           disabled={!enabled}
           onClick={onEdit}
           aria-expanded={expanded}
+          className="min-h-[44px] min-w-[44px]"
         >
           {expanded ? <ChevronUp /> : <Pencil />}
           {expanded ? "Close" : "Edit"}

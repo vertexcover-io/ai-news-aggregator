@@ -60,7 +60,7 @@ export function ArchiveStoryCard({
     ? "font-serif font-medium leading-none text-neutral-900 text-5xl"
     : "font-serif font-medium leading-none text-neutral-900 text-4xl";
   const headlineClass = isLead
-    ? "font-serif font-medium leading-tight tracking-tight text-neutral-900 text-4xl md:text-5xl"
+    ? "font-serif font-medium leading-tight tracking-tight text-neutral-900 text-2xl md:text-5xl"
     : "font-serif font-medium leading-tight tracking-tight text-neutral-900 text-2xl md:text-3xl";
   const ledeClass = isLead
     ? "font-serif text-xl italic leading-relaxed text-neutral-700"
@@ -160,7 +160,7 @@ export function ArchiveStoryCard({
           href={item.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 pt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-neutral-900 underline"
+          className="inline-flex items-center gap-2 pt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-neutral-900 underline min-h-[44px]"
         >
           READ THE ORIGINAL{" "}
           <span aria-hidden="true" className="text-[#8C3A1E]">

@@ -89,13 +89,13 @@ export function SettingsPage(): ReactElement {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="flex items-center justify-between border-b bg-white px-4 sm:px-6 md:px-8 py-4">
-        <Link to="/admin" className="flex items-center gap-2 font-semibold">
+        <Link to="/admin" className="inline-flex items-center gap-2 font-semibold min-h-[44px]">
           <Newspaper className="size-5" />
           Newsletter
         </Link>
         <Link
           to="/admin"
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground min-h-[44px]"
         >
           <ArrowLeft className="size-4" />
           Back to dashboard

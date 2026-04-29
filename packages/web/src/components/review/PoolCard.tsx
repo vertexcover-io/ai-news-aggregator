@@ -72,7 +72,7 @@ export function PoolCard({
           href={item.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-0.5 block font-medium text-gray-900 hover:underline truncate text-sm"
+          className="mt-0.5 inline-flex items-center font-medium text-gray-900 hover:underline truncate text-sm min-h-[44px] w-full"
         >
           {item.title}
         </a>
@@ -86,7 +86,7 @@ export function PoolCard({
           onPromote(item.id, item.title);
         }}
         className={cn(
-          "shrink-0 p-1 rounded transition-colors",
+          "shrink-0 p-1 rounded transition-colors inline-flex items-center justify-center min-h-[44px] min-w-[44px]",
           promoteDisabled
             ? "text-gray-300 cursor-not-allowed"
             : "text-blue-500 hover:text-blue-700 hover:bg-blue-50",
