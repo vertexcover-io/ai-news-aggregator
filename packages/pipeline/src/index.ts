@@ -1,5 +1,7 @@
 import { config } from "dotenv";
 config({ path: "../../.env" });
+import { Configuration } from "crawlee";
+import { assertChromiumInstalled } from "@pipeline/lib/boot.js";
 import type { Job } from "bullmq";
 import type { CollectionJobLike } from "@pipeline/workers/collection.js";
 import { collectionWorker } from "@pipeline/workers/collection.js";
@@ -7,6 +9,12 @@ import { createProcessingWorker } from "@pipeline/workers/processing.js";
 import { createLogger } from "@newsletter/shared/logger";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { createRunStateService } from "@pipeline/services/run-state.js";
+
+// REQ-09: disable on-disk Crawlee storage; never write ./storage/
+Configuration.getGlobalConfig().set("persistStorage", false);
+
+// REQ-10: verify Chromium is present before accepting any jobs
+assertChromiumInstalled();
 
 export {
   createRunStateService,

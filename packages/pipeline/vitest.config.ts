@@ -24,6 +24,7 @@ export default defineConfig({
         test: {
           name: "seam",
           include: ["tests/e2e/seam/**/*.e2e.test.ts"],
+          exclude: ["tests/e2e/seam/web-crawler.e2e.test.ts"],
           testTimeout: 30000,
           globals: false,
           globalSetup: ["tests/e2e/setup/global-setup.ts"],
@@ -44,6 +45,18 @@ export default defineConfig({
           pool: "forks",
           poolOptions: { forks: { singleFork: true } },
           enabled: process.env.RUN_NETWORK_TESTS === "1",
+        },
+      },
+      {
+        resolve: { alias },
+        test: {
+          name: "crawler",
+          include: ["tests/e2e/seam/web-crawler.e2e.test.ts"],
+          testTimeout: 30000,
+          globals: false,
+          fileParallelism: false,
+          pool: "forks",
+          poolOptions: { forks: { singleFork: true } },
         },
       },
     ],

@@ -14,7 +14,12 @@
  *
  * Requires in .env:
  *   ANTHROPIC_API_KEY              - Anthropic API key
- *   JINA_API_KEY                  - optional, raises Jina rate limits
+ *
+ * Optional:
+ *   WEB_CRAWLER_CONCURRENCY        - max concurrent browser pages (default 4)
+ *
+ * Prerequisite (one-time):
+ *   pnpm exec playwright install chromium
  */
 
 import "dotenv/config";

@@ -3,7 +3,7 @@ import type { CollectorResult, RawItemComment } from "@newsletter/shared/types";
 import type { HnCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
-import { delay } from "@pipeline/services/markdown-fetch.js";
+import { delay } from "@pipeline/lib/delay.js";
 import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
 
 const logger = createLogger("collector:hn");

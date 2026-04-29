@@ -50,7 +50,8 @@ packages/
 - **Node.js** >= 20
 - **pnpm** >= 10.29 — `npm i -g pnpm`
 - **Podman** + **podman-compose** — for PostgreSQL and Redis
-- API keys: `ANTHROPIC_API_KEY`, `JINA_API_KEY`
+- API keys: `ANTHROPIC_API_KEY`
+- **Chromium** — `pnpm exec playwright install chromium` (required by Crawlee for JS-rendered pages)
 
 ---
 
@@ -79,7 +80,9 @@ REDIS_URL=redis://localhost:6379
 
 # AI services (required for a full pipeline run)
 ANTHROPIC_API_KEY=sk-ant-...
-JINA_API_KEY=jina_...
+
+# Web crawler
+WEB_CRAWLER_CONCURRENCY=4
 
 # Optional — override the ranking model (defaults to claude-haiku-4-5-20251001)
 # RANKING_MODEL=claude-haiku-4-5-20251001
@@ -238,7 +241,7 @@ compose.yml          PostgreSQL + Redis via Podman
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `REDIS_URL` | Yes | Redis connection string |
 | `ANTHROPIC_API_KEY` | Yes | Used for stage-2 reranking (Claude Haiku) |
-| `JINA_API_KEY` | Yes | Used for web content fetching |
+| `WEB_CRAWLER_CONCURRENCY` | No | Max concurrent pages for web crawler (default: 4) |
 | `RANKING_MODEL` | No | Override ranking model (default: `claude-haiku-4-5-20251001`) |
 | `PORT` | No | API server port (default: `3000`) |
 | `RESEND_API_KEY` | No | Email delivery (not yet wired in MVP) |

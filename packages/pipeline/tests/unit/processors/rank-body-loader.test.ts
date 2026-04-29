@@ -6,7 +6,7 @@ const { mockLoggerWarn, mockFetchMarkdown } = vi.hoisted(() => ({
   mockFetchMarkdown: vi.fn(),
 }));
 
-vi.mock("@pipeline/services/markdown-fetch.js", () => ({
+vi.mock("@pipeline/services/web-fetch/index.js", () => ({
   fetchMarkdown: mockFetchMarkdown,
 }));
 
