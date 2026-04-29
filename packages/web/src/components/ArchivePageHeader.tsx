@@ -45,7 +45,7 @@ export function ArchivePageHeader({
       <p className="font-mono text-xs text-[#8C3A1E] uppercase tracking-widest">
         {formatLedgerEyebrow(startedAt)}
       </p>
-      <h1 className="mt-4 font-serif text-4xl font-medium leading-tight tracking-tight text-neutral-900 md:text-5xl">
+      <h1 className="mt-4 font-serif text-3xl font-medium leading-tight tracking-tight text-neutral-900 md:text-5xl">
         {pickHeadline(leadSummary, topStoryTitle)}
       </h1>
       <p className="mt-4 font-mono text-xs text-neutral-500 uppercase tracking-widest">
@@ -53,7 +53,7 @@ export function ArchivePageHeader({
       </p>
       <Link
         to="/"
-        className="mt-6 inline-block font-mono text-xs text-neutral-600 uppercase tracking-widest hover:text-neutral-900"
+        className="mt-6 inline-flex items-center min-h-[44px] px-2 font-mono text-xs text-neutral-600 uppercase tracking-widest hover:text-neutral-900"
       >
         ← All issues
       </Link>

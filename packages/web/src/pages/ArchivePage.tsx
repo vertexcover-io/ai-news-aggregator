@@ -31,10 +31,10 @@ export function ArchivePage(): ReactElement {
   if (isLoading) {
     return (
       <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
-        <div className="mx-auto max-w-[1120px] px-6 md:px-20">
+        <div className="mx-auto max-w-[1120px] px-4 sm:px-6 md:px-20">
           <div role="status" aria-busy="true" aria-label="Loading issue" className="py-12 space-y-6">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="grid grid-cols-[120px_minmax(0,1fr)_120px] gap-10 animate-pulse">
+              <div key={i} className="grid grid-cols-1 md:grid-cols-[120px_minmax(0,1fr)_120px] gap-4 md:gap-10 animate-pulse">
                 <div className="h-16 rounded bg-[#1A1A1A0A]" />
                 <div className="h-24 rounded bg-[#1A1A1A0A]" />
                 <div className="h-8 rounded bg-[#1A1A1A0A]" />
@@ -49,13 +49,13 @@ export function ArchivePage(): ReactElement {
   if (isError) {
     return (
       <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
-        <div className="mx-auto max-w-[1120px] px-6 md:px-20">
+        <div className="mx-auto max-w-[1120px] px-4 sm:px-6 md:px-20">
           <div className="py-16">
             <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8C3A1E]">ERROR</p>
-            <h2 className="mt-3 font-serif text-3xl font-medium text-neutral-900">Couldn't load this issue</h2>
+            <h2 className="mt-3 font-serif text-3xl md:text-5xl font-medium text-neutral-900">Couldn't load this issue</h2>
             <Link
               to="/"
-              className="mt-6 inline-block font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
+              className="mt-6 inline-flex items-center min-h-[44px] px-2 font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
             >
               ← All issues
             </Link>
@@ -68,15 +68,15 @@ export function ArchivePage(): ReactElement {
   if (data === null || data === undefined) {
     return (
       <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
-        <div className="mx-auto max-w-[1120px] px-6 md:px-20">
+        <div className="mx-auto max-w-[1120px] px-4 sm:px-6 md:px-20">
           <div className="py-16">
-            <h2 className="font-serif text-3xl font-medium text-neutral-900">This issue isn't here</h2>
+            <h2 className="font-serif text-3xl md:text-5xl font-medium text-neutral-900">This issue isn't here</h2>
             <p className="mt-3 font-mono text-xs uppercase tracking-widest text-neutral-600">
               It may have been removed or never existed.
             </p>
             <Link
               to="/"
-              className="mt-6 inline-block font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
+              className="mt-6 inline-flex items-center min-h-[44px] px-2 font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
             >
               ← All issues
             </Link>
@@ -89,12 +89,12 @@ export function ArchivePage(): ReactElement {
   if (data.status === "cancelled") {
     return (
       <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
-        <div className="mx-auto max-w-[1120px] px-6 md:px-20">
+        <div className="mx-auto max-w-[1120px] px-4 sm:px-6 md:px-20">
           <div className="py-16">
-            <h2 className="font-serif text-3xl font-medium text-neutral-900">This issue was cancelled.</h2>
+            <h2 className="font-serif text-3xl md:text-5xl font-medium text-neutral-900">This issue was cancelled.</h2>
             <Link
               to="/"
-              className="mt-6 inline-block font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
+              className="mt-6 inline-flex items-center min-h-[44px] px-2 font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
             >
               ← All issues
             </Link>
@@ -107,15 +107,15 @@ export function ArchivePage(): ReactElement {
   if (data.status !== "completed") {
     return (
       <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
-        <div className="mx-auto max-w-[1120px] px-6 md:px-20">
+        <div className="mx-auto max-w-[1120px] px-4 sm:px-6 md:px-20">
           <div className="py-16">
             <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8C3A1E]">IN PROGRESS</p>
-            <h2 className="mt-3 font-serif text-3xl font-medium text-neutral-900">
+            <h2 className="mt-3 font-serif text-3xl md:text-5xl font-medium text-neutral-900">
               Today's issue is still being curated.
             </h2>
             <Link
               to="/"
-              className="mt-6 inline-block font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
+              className="mt-6 inline-flex items-center min-h-[44px] px-2 font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
             >
               ← All issues
             </Link>
@@ -127,7 +127,7 @@ export function ArchivePage(): ReactElement {
 
   return (
     <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
-      <div className="mx-auto max-w-[1120px] px-6 md:px-20">
+      <div className="mx-auto max-w-[1120px] px-4 sm:px-6 md:px-20">
         <ArchivePageHeader
           startedAt={data.startedAt}
           storyCount={items.length}
@@ -146,7 +146,7 @@ export function ArchivePage(): ReactElement {
         <div className="py-16">
           <Link
             to="/"
-            className="font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
+            className="inline-flex items-center min-h-[44px] px-2 font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
           >
             ← All issues
           </Link>

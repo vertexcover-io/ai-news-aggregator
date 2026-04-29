@@ -56,7 +56,6 @@ export function ArchiveStoryCard({
   const eyebrow = parts.join(" · ");
 
   const isLead = rank === 1;
-  const py = isLead ? "py-14" : "py-10";
   const displayNumClass = isLead
     ? "font-serif font-medium leading-none text-neutral-900 text-5xl"
     : "font-serif font-medium leading-none text-neutral-900 text-4xl";
@@ -70,13 +69,14 @@ export function ArchiveStoryCard({
 
   return (
     <article
-      className={`flex flex-col gap-6 border-b border-[#1A1A1A1A] ${py} md:grid md:grid-cols-[120px_minmax(0,1fr)_120px] md:gap-10`}
+      className={`grid grid-cols-1 md:grid-cols-[120px_minmax(0,1fr)_120px] gap-3 md:gap-10 border-b border-[#1A1A1A1A] py-8 md:py-14`}
     >
-      {/* Left rail */}
-      <div data-rail="left" className="hidden md:flex flex-col gap-2">
-        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-          N°
-        </span>
+      {/* Left rail — inline row on mobile, vertical column on desktop */}
+      <div
+        data-rail="left"
+        className="flex md:flex order-1 md:order-none flex-row md:flex-col items-center md:items-start gap-3 md:gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-stone-500"
+      >
+        <span>N°</span>
         <span className={displayNumClass}>{formatRank(rank)}</span>
         {isLead && (
           <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8C3A1E]">
@@ -86,9 +86,8 @@ export function ArchiveStoryCard({
       </div>
 
       {/* Middle */}
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 min-w-0 order-2 md:order-none">
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-          <span className="md:hidden">N°{formatRank(rank)} · </span>
           {eyebrow}
         </p>
 
@@ -103,8 +102,11 @@ export function ArchiveStoryCard({
             src={item.imageUrl}
             alt=""
             referrerPolicy="no-referrer"
-            className="w-full border border-[#1A1A1A14] object-cover"
-            style={{ maxHeight: isLead ? 320 : 220 }}
+            className={`max-w-full w-full border border-[#1A1A1A14] object-cover ${
+              isLead
+                ? "max-h-[60vw] sm:max-h-[260px] md:max-h-[320px]"
+                : "max-h-[60vw] sm:max-h-[200px] md:max-h-[220px]"
+            }`}
             onError={() => {
               setImgError(true);
             }}
@@ -139,7 +141,7 @@ export function ArchiveStoryCard({
             {item.recap.bottomLine && (
               <div className="flex gap-4 pt-2">
                 <div aria-hidden="true" className="w-[3px] self-stretch bg-[#8C3A1E]" />
-                <div>
+                <div className="px-4 sm:px-6 md:px-8">
                   <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8C3A1E]">
                     BOTTOM LINE
                   </p>
@@ -167,10 +169,10 @@ export function ArchiveStoryCard({
         </a>
       </div>
 
-      {/* Right rail */}
+      {/* Right rail — below body on mobile, vertical column on desktop */}
       <div
         data-rail="right"
-        className="hidden md:flex font-mono text-[11px] text-neutral-500 uppercase tracking-[0.18em] flex-col gap-1"
+        className="flex md:flex order-3 md:order-none mt-2 md:mt-0 font-mono text-[11px] text-neutral-500 uppercase tracking-[0.18em] flex-row md:flex-col items-center md:items-start gap-3 md:gap-1"
       >
         <span>
           {formatRank(rank)} / {formatRank(totalCount)}
