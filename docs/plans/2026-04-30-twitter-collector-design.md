@@ -35,12 +35,20 @@ in an env var (no password login, no 2FA flow inside the worker).
 - **Run dispatch:** `handleRunProcessJob()` in `workers/run-process.ts` invokes all
   enabled collectors via `Promise.allSettled`. Twitter slots in alongside HN/Reddit/Web
   and writes per-source state to `RunState.sources.twitter`.
-- **Library:** `agent-twitter-client` (the GitHub fork the user named is
-  `TreasureProject/twitter-scraper-v2`, but the npm artifact is published as
-  `agent-twitter-client`). The planner is responsible for picking the exact
-  package + version (favor the most actively maintained fork that exposes
-  `setCookies`, `getTweets`, and `fetchListTweets`) and pinning it exactly per
-  the project's "no `^`/`~`" rule.
+- **Library:** `agent-twitter-client@0.0.18` (canonical npm release, exact-pinned).
+  The original brief named the GitHub fork `TreasureProject/twitter-scraper-v2`.
+  Decision: use the canonical npm package instead. Both expose the same scraping
+  surface — `setCookies`, `isLoggedIn`, `getTweets`, `fetchListTweets` — because
+  the fork shares the upstream code path; the fork's primary additions are
+  **outbound write** operations (sending tweets, retweets, polls, likes), which
+  this collector does not use. Trade-offs of using the npm canonical:
+  - ✅ Exact-version pinning (project rule: no `^`/`~`). A git-URL dependency
+    can only be pinned by commit SHA, which fights the lockfile and changelog.
+  - ✅ Type definitions ship with the package; no `*.d.ts` shim required.
+  - ✅ Smaller surface area to audit — read-only API.
+  - ⚠ If `agent-twitter-client` lags behind X breaking changes, switching to the
+    fork later is a one-file change because library access is hidden behind the
+    narrow internal `TwitterClient` interface (test seam).
 
 ## Requirements
 
