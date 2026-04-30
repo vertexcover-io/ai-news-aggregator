@@ -526,9 +526,14 @@ describe("collectTwitter — auth probe", () => {
     expect(probeIdx).toBeLessThan(getTweetsIdx);
   });
 
-  it("REQ-025: probe returning false throws TwitterAuthError and no source fetches occur", async () => {
-    const getTweets = vi.fn();
-    const fetchListTweets = vi.fn();
+  // REQ-025 / EDGE-013 weakened to soft-warn (was hard-fail).
+  // agent-twitter-client@0.0.18 calls a deprecated X v1.1 endpoint
+  // (verify_credentials.json) that 404s for everyone, so isLoggedIn() returns
+  // false even on valid sessions. The collector now logs a warning and
+  // continues; getTweets/fetchListTweets are the authoritative auth tests.
+  it("REQ-025 (revised): probe returning false continues to source fetches (soft-warn)", async () => {
+    const getTweets = vi.fn().mockReturnValue(asyncIter([makeTweet({ id: "t1" })]));
+    const fetchListTweets = vi.fn().mockResolvedValue({ tweets: [] });
     const client = makeClient({
       isLoggedIn: vi.fn().mockResolvedValue(false),
       getTweets: getTweets as unknown as TwitterClient["getTweets"],
@@ -538,20 +543,22 @@ describe("collectTwitter — auth probe", () => {
     const deps = makeDeps({ clientFactory: () => client });
     const config = makeConfig({ users: ["testuser"], listIds: ["123456"] });
 
-    await expect(collectTwitter(deps, config)).rejects.toThrow(TwitterAuthError);
-    await expect(collectTwitter(deps, config)).rejects.toThrow(/^session rejected/);
-    expect(getTweets).not.toHaveBeenCalled();
-    expect(fetchListTweets).not.toHaveBeenCalled();
+    const result = await collectTwitter(deps, config);
+    expect(result.itemsFetched).toBe(1);
+    expect(getTweets).toHaveBeenCalledTimes(1);
+    expect(fetchListTweets).toHaveBeenCalledTimes(1);
   });
 
-  it("EDGE-013: probe throwing is treated same as returning false", async () => {
+  it("EDGE-013 (revised): probe throwing is also soft — collector continues", async () => {
+    const getTweets = vi.fn().mockReturnValue(asyncIter([makeTweet({ id: "t1" })]));
     const client = makeClient({
       isLoggedIn: vi.fn().mockRejectedValue(new Error("network error")),
+      getTweets: getTweets as unknown as TwitterClient["getTweets"],
     });
 
     const deps = makeDeps({ clientFactory: () => client });
-    await expect(collectTwitter(deps, makeConfig())).rejects.toThrow(TwitterAuthError);
-    await expect(collectTwitter(deps, makeConfig())).rejects.toThrow(/^session rejected/);
+    const result = await collectTwitter(deps, makeConfig({ users: ["a"], listIds: [] }));
+    expect(result.itemsFetched).toBe(1);
   });
 });
 

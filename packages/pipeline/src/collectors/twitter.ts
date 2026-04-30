@@ -282,9 +282,27 @@ export async function collectTwitter(
   const client = (deps.clientFactory ?? defaultClientFactory)();
   await client.setCookies(cookies);
 
-  const loggedIn = await probeAuth(client);
-  if (!loggedIn) {
-    throw new TwitterAuthError("session rejected");
+  // Auth probe is a SOFT signal: agent-twitter-client@0.0.18 calls a deprecated
+  // X v1.1 endpoint (verify_credentials.json) that now 404s for everyone, so
+  // isLoggedIn() returns false even on valid sessions. Log the result, but let
+  // the real work (getTweets/fetchListTweets) be the authoritative auth test —
+  // on bad cookies those throw 401, which the per-source catch surfaces.
+  try {
+    const loggedIn = await probeAuth(client);
+    if (!loggedIn) {
+      logger.warn(
+        { event: "twitter.probe.soft_fail" },
+        "isLoggedIn returned false; continuing — getTweets is the authoritative auth check",
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      {
+        event: "twitter.probe.error",
+        error: err instanceof Error ? err.message : String(err),
+      },
+      "isLoggedIn threw; continuing — getTweets is the authoritative auth check",
+    );
   }
 
   const items: RawItemInsert[] = [];
