@@ -22,7 +22,7 @@ import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 function makeTweet(overrides: Partial<TwitterTweet> = {}): TwitterTweet {
   return {
     id: "tweet123",
-    text: "Hello Twitter",
+    text: "Hello Twitter, this is some content",
     permanentUrl: "https://x.com/testuser/status/tweet123",
     username: "testuser",
     name: "Test User",
@@ -228,6 +228,43 @@ describe("toRawItem", () => {
     expect(toRawItem(tweet, { kind: "user", handle: "testuser" })).toBeNull();
   });
 
+  it("drops URL-only tweets (no rankable text content)", () => {
+    const tweet: TwitterTweet = {
+      id: "url-only",
+      text: "https://example.com/some/article",
+      timeParsed: new Date(),
+    };
+    expect(toRawItem(tweet, { kind: "user", handle: "testuser" })).toBeNull();
+  });
+
+  it("drops near-URL-only tweets where stripped text is too short", () => {
+    const tweet: TwitterTweet = {
+      id: "short1",
+      text: "👀 https://example.com/foo",
+      timeParsed: new Date(),
+    };
+    expect(toRawItem(tweet, { kind: "user", handle: "testuser" })).toBeNull();
+  });
+
+  it("keeps URL-only tweets when they carry an image (image plate is content)", () => {
+    const tweet: TwitterTweet = {
+      id: "url-with-image",
+      text: "https://example.com/article",
+      timeParsed: new Date(),
+      photos: [{ id: "p1", url: "https://pbs.twimg.com/media/abc.jpg" }],
+    };
+    expect(toRawItem(tweet, { kind: "user", handle: "testuser" })).not.toBeNull();
+  });
+
+  it("keeps tweets with substantive text alongside a URL", () => {
+    const tweet: TwitterTweet = {
+      id: "rankable1",
+      text: "This new paper completely changes how we think about RAG: https://example.com/paper",
+      timeParsed: new Date(),
+    };
+    expect(toRawItem(tweet, { kind: "user", handle: "testuser" })).not.toBeNull();
+  });
+
   it("REQ-006/009: maps a fully-populated tweet (user origin)", () => {
     const tweet = makeTweet();
     const result = toRawItem(tweet, { kind: "user", handle: "testuser" });
@@ -237,7 +274,7 @@ describe("toRawItem", () => {
     expect(result.url).toBe("https://x.com/testuser/status/tweet123");
     expect(result.sourceUrl).toBe("https://x.com/testuser/status/tweet123");
     expect(result.author).toBe("testuser");
-    expect(result.content).toBe("Hello Twitter");
+    expect(result.content).toBe("Hello Twitter, this is some content");
     expect(result.publishedAt).toEqual(new Date("2026-04-30T12:00:00Z"));
     expect(result.engagement).toEqual({ points: 42, commentCount: 5 });
     expect(result.imageUrl).toBeNull();
@@ -261,7 +298,10 @@ describe("toRawItem", () => {
   });
 
   it("REQ-006: handles sparse tweet with missing fields (fallbacks)", () => {
-    const tweet: TwitterTweet = { id: "sparse1", text: "Sparse tweet" };
+    const tweet: TwitterTweet = {
+      id: "sparse1",
+      text: "Sparse tweet with enough rankable content",
+    };
     const result = toRawItem(tweet, { kind: "user", handle: "unknown" });
     if (!result) throw new Error("expected non-null result");
     expect(result.url).toBe("https://x.com/unknown/status/sparse1");
@@ -278,7 +318,10 @@ describe("toRawItem", () => {
 
   it("EDGE-006: uses new Date() as fallback when timeParsed is missing", () => {
     const before = Date.now();
-    const tweet: TwitterTweet = { id: "notime1", text: "No time" };
+    const tweet: TwitterTweet = {
+      id: "notime1",
+      text: "No time set on this tweet, fallback expected",
+    };
     const result = toRawItem(tweet, { kind: "user", handle: "user1" });
     const after = Date.now();
     if (!result) throw new Error("expected non-null result");
@@ -286,8 +329,11 @@ describe("toRawItem", () => {
     expect(result.publishedAt.getTime()).toBeLessThanOrEqual(after);
   });
 
-  it("EDGE-005: empty text produces title='[media]'", () => {
-    const tweet = makeTweet({ text: "" });
+  it("EDGE-005: empty text + photo produces title='[media]'", () => {
+    const tweet = makeTweet({
+      text: "",
+      photos: [{ id: "p1", url: "https://pbs.twimg.com/media/abc.jpg" }],
+    });
     const result = toRawItem(tweet, { kind: "user", handle: "testuser" });
     if (!result) throw new Error("expected non-null result");
     expect(result.title).toBe("[media]");
@@ -305,10 +351,15 @@ describe("toRawItem", () => {
 
   it("REQ-008: appends quoted tweet text to content", () => {
     const quoted: TwitterTweet = { id: "q1", text: "Quoted content here" };
-    const tweet = makeTweet({ text: "Main tweet", quotedStatus: quoted });
+    const tweet = makeTweet({
+      text: "Main tweet with substantive content",
+      quotedStatus: quoted,
+    });
     const result = toRawItem(tweet, { kind: "user", handle: "testuser" });
     if (!result) throw new Error("expected non-null result");
-    expect(result.content).toBe("Main tweet\n\n> Quoted content here");
+    expect(result.content).toBe(
+      "Main tweet with substantive content\n\n> Quoted content here",
+    );
   });
 });
 

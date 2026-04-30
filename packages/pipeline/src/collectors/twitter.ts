@@ -128,12 +128,30 @@ export function pickImageUrl(tweet: TwitterTweet): string | null {
   return tweet.photos?.[0]?.url ?? null;
 }
 
+const MIN_RANKABLE_TEXT_LENGTH = 20;
+
+// Tweets that are URL-only or near-URL-only have no analytical content for the
+// ranking LLM to score against the (Novelty / Signal-vs-hype / Actionability)
+// axes — the model honestly says "can't assess" and the validator rejects that.
+// Drop them at collection time unless the tweet has an image (image plate
+// carries content even when text is empty/minimal).
+export function hasRankableContent(tweet: TwitterTweet): boolean {
+  const text = tweet.text ?? "";
+  const stripped = text.replace(/https?:\/\/\S+/g, "").trim();
+  const hasPhoto = (tweet.photos?.length ?? 0) > 0;
+  return stripped.length >= MIN_RANKABLE_TEXT_LENGTH || hasPhoto;
+}
+
 export function toRawItem(
   tweet: TwitterTweet,
   origin: RawItemTwitterOrigin,
 ): RawItemInsert | null {
   if (!tweet.id) {
     logger.warn({ origin }, "tweet missing id; dropping");
+    return null;
+  }
+
+  if (!hasRankableContent(tweet)) {
     return null;
   }
 
