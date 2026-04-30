@@ -232,7 +232,7 @@ describe("run flow end-to-end (single-job)", () => {
             shortlistFn: (candidates) =>
               Promise.resolve({ shortlist: candidates, breakdowns: [] }),
             rankFn: (candidates, options) => rankFnImpl(candidates, options),
-            collectFns: { hn: fakeHn, reddit: fakeReddit, web: fakeWeb },
+            collectFns: { hn: fakeHn, reddit: fakeReddit, web: fakeWeb, twitter: () => Promise.resolve({ itemsFetched: 0, itemsStored: 0, commentsFetched: 0, durationMs: 0 }) },
             cancelSubscriber: noopCancelSubscriber,
           },
           job as unknown as RunProcessJobLike,

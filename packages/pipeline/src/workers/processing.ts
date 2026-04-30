@@ -46,6 +46,7 @@ import {
 import { collectHn } from "@pipeline/collectors/hn.js";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
+import { collectTwitter } from "@pipeline/collectors/twitter.js";
 import { rankCandidates } from "@pipeline/processors/rank.js";
 import { shortlistCandidates } from "@pipeline/processors/shortlist.js";
 
@@ -115,6 +116,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     hn: collectHn,
     reddit: collectReddit,
     web: collectWeb,
+    twitter: collectTwitter,
   };
   return {
     runState,
