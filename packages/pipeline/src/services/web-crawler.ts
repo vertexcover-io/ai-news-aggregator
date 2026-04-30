@@ -2,6 +2,7 @@ import {
   AdaptivePlaywrightCrawler,
   type AdaptivePlaywrightCrawlerOptions,
   type RequestHandlerResult,
+  Configuration,
 } from "crawlee";
 import type { ConvertResult, FetchMode } from "@pipeline/services/web-fetch/types.js";
 import { convert, isHealthyResult } from "@pipeline/services/web-fetch/convert.js";
@@ -121,7 +122,11 @@ export async function runWebCrawl(
     },
   };
 
-  const crawler = new AdaptivePlaywrightCrawler(crawlerOptions);
+  // Fresh in-memory storage per call so URLs are not deduped across runs
+  // within the long-running worker process (Crawlee's default RequestQueue
+  // persists to disk and treats already-handled URLs as skippable).
+  const config = new Configuration({ persistStorage: false });
+  const crawler = new AdaptivePlaywrightCrawler(crawlerOptions, config);
 
   const onAbort = (): void => {
     logger.info({ event: "crawler.abort" }, "abort signal received — tearing down crawler");

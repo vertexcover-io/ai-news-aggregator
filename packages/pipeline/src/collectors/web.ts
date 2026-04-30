@@ -237,6 +237,16 @@ export async function collectWeb(
   }
 
   // Detail-stage results
+  const totalToExtract = Array.from(postBySource.values()).reduce(
+    (n, posts) => n + posts.filter((p) => detailResults.get(p.url)?.ok).length,
+    0,
+  );
+  const extractStart = Date.now();
+  logger.info(
+    { event: "web.extract.start", posts: totalToExtract },
+    "extracting post fields via LLM",
+  );
+  let extracted = 0;
   for (const ps of perSource) {
     if (ps.sourceFailed) continue;
     const posts = postBySource.get(ps.source.name) ?? [];
@@ -252,6 +262,17 @@ export async function collectWeb(
       }
       try {
         const fields = await extractPostFields(post.url, dr.result.markdown, llmModel);
+        extracted += 1;
+        logger.info(
+          {
+            event: "web.extract.progress",
+            source: ps.source.name,
+            postUrl: post.url,
+            done: extracted,
+            total: totalToExtract,
+          },
+          "extracted post fields",
+        );
         const merged: ExtractedFields = {
           title: fields.title.trim() || post.title.trim(),
           author: fields.author,
@@ -269,7 +290,21 @@ export async function collectWeb(
     }
   }
 
+  logger.info(
+    {
+      event: "web.extract.done",
+      extracted,
+      total: totalToExtract,
+      durationMs: Date.now() - extractStart,
+    },
+    "post field extraction complete",
+  );
+
   if (config.sources.length > 0 && perSource.every((ps) => ps.sourceFailed)) {
+    logger.error(
+      { event: "collector.web.all_failed", failures: allFailures },
+      "all web sources failed",
+    );
     throw new Error("all sources failed");
   }
 
