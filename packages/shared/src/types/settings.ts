@@ -1,6 +1,7 @@
 import type {
   RunSubmitHnConfig,
   RunSubmitRedditConfig,
+  RunSubmitTwitterConfig,
   RunSubmitWebConfig,
 } from "./run.js";
 
@@ -11,6 +12,7 @@ export interface UserSettings {
   hnConfig: RunSubmitHnConfig | null;
   redditConfig: RunSubmitRedditConfig | null;
   webConfig: RunSubmitWebConfig | null;
+  twitterConfig: RunSubmitTwitterConfig | null;
   scheduleTime: string;
   scheduleTimezone: string;
   scheduleEnabled: boolean;

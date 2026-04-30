@@ -198,20 +198,32 @@ export async function rankCandidates(
     throw new Error(`ranking failed: ${message}`, { cause: err });
   }
 
-  for (const entry of result.object.ranked) {
+  // Items the model declined to score against the rubric (rationale does not
+  // name any scoring axis) are dropped from the ranked output rather than
+  // failing the entire run. The model produces this honestly when content is
+  // unrankable (URL-only tweets, fragments). Keep going with the rest.
+  const axesValidated = result.object.ranked.filter((entry) => {
     const rationaleLower = entry.rationale.toLowerCase();
     const mentionsAxis = axes.some((axis) =>
       rationaleLower.includes(axis.toLowerCase()),
     );
     if (!mentionsAxis) {
-      throw new Error(
-        `rationale for id=${entry.id} does not name a scoring axis: "${entry.rationale}"`,
+      logger.warn(
+        {
+          event: "run.rank.rationale_missing_axis",
+          runId: options.runId,
+          itemId: entry.id,
+          rationale: entry.rationale,
+        },
+        "rationale does not name a scoring axis; dropping item from ranked output",
       );
+      return false;
     }
-  }
+    return true;
+  });
 
   const byId = new Map(shortlist.map((c) => [c.id, c]));
-  const validEntries = result.object.ranked.filter((r) => byId.has(r.id));
+  const validEntries = axesValidated.filter((r) => byId.has(r.id));
   if (validEntries.length === 0) {
     throw new Error("ranking returned no valid items");
   }

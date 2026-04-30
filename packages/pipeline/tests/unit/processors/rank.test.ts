@@ -200,18 +200,40 @@ describe("rankCandidates", () => {
     expect(call.temperature).toBe(0);
   });
 
-  it("throws if a rationale does not name any scoring axis (REQ-065)", async () => {
+  it("REQ-065: drops items whose rationale does not name any scoring axis (instead of failing the run)", async () => {
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "just because" })],
+      ranked: [
+        makeRankedEntry({ id: 1, score: 50, rationale: "just because" }),
+        makeRankedEntry({ id: 2, score: 80, rationale: "strong Novelty" }),
+      ],
+    });
+
+    const result = await rankCandidates([makeCandidate(1), makeCandidate(2)], {
+      topN: 5,
+      generateObject,
+      loadBodies: stubLoadBodies,
+    });
+
+    // id=1 dropped (no axis named); id=2 kept
+    expect(result.rankedItems).toHaveLength(1);
+    expect(result.rankedItems[0].rawItemId).toBe(2);
+  });
+
+  it("REQ-065: throws only when ALL rationales fail axis validation", async () => {
+    const generateObject = makeGenerate({
+      ranked: [
+        makeRankedEntry({ id: 1, score: 50, rationale: "just because" }),
+        makeRankedEntry({ id: 2, score: 80, rationale: "vibes only" }),
+      ],
     });
 
     await expect(
-      rankCandidates([makeCandidate(1)], {
+      rankCandidates([makeCandidate(1), makeCandidate(2)], {
         topN: 5,
         generateObject,
         loadBodies: stubLoadBodies,
       }),
-    ).rejects.toThrow(/axis/i);
+    ).rejects.toThrow(/no valid items/);
   });
 
   it("accepts lowercase axis names in rationales (REQ-065 case-insensitive)", async () => {

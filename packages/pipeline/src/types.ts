@@ -38,6 +38,13 @@ export interface WebCollectJobData {
   config: WebCollectConfig;
 }
 
+export interface TwitterCollectConfig {
+  users: string[];
+  listIds: string[];
+  maxPerSource: number;
+  sinceDays: number;
+}
+
 export interface CollectorFailure {
   source: string;
   postUrl?: string;

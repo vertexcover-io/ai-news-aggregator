@@ -18,7 +18,9 @@ import type {
   RunSubmitHnConfig,
   RunSubmitRedditConfig,
   RunSubmitWebConfig,
+  RunSubmitTwitterConfig,
 } from "@newsletter/shared";
+import { TwitterEditor } from "./TwitterEditor";
 
 const DEFAULT_HN: RunSubmitHnConfig = {
   keywords: ["ai", "llm", "agents"],
@@ -42,6 +44,13 @@ const DEFAULT_WEB: RunSubmitWebConfig = {
   ],
   maxItems: 10,
   sinceDays: 7,
+};
+
+const DEFAULT_TWITTER: RunSubmitTwitterConfig = {
+  users: ["openai", "AnthropicAI"],
+  listIds: [],
+  maxPerSource: 50,
+  sinceDays: 1,
 };
 
 interface SourcesSectionProps {
@@ -76,16 +85,27 @@ function summarizeWeb(c: RunSubmitWebConfig | null): string {
   return `${String(c.sources.length)} blog${c.sources.length === 1 ? "" : "s"} configured: ${names}`;
 }
 
+function summarizeTwitter(c: RunSubmitTwitterConfig | null): string {
+  if (!c) return "Disabled";
+  const parts: string[] = [];
+  if (c.users.length > 0) parts.push(`Users: ${c.users.join(", ")}`);
+  if (c.listIds.length > 0) parts.push(`${String(c.listIds.length)} list${c.listIds.length === 1 ? "" : "s"}`);
+  parts.push(`${String(c.maxPerSource)} per source`);
+  parts.push(`last ${String(c.sinceDays)} day${c.sinceDays === 1 ? "" : "s"}`);
+  return parts.join(" · ");
+}
+
 export function SourcesSection({ control }: SourcesSectionProps): ReactElement {
   const [expandedSource, setExpandedSource] = useState<
-    "hn" | "reddit" | "web" | null
+    "hn" | "reddit" | "web" | "twitter" | null
   >(null);
 
   const hn = useWatch({ control, name: "hnConfig" });
   const reddit = useWatch({ control, name: "redditConfig" });
   const web = useWatch({ control, name: "webConfig" });
+  const twitter = useWatch({ control, name: "twitterConfig" });
 
-  function toggleExpand(source: "hn" | "reddit" | "web"): void {
+  function toggleExpand(source: "hn" | "reddit" | "web" | "twitter"): void {
     setExpandedSource((prev) => (prev === source ? null : source));
   }
 
@@ -173,6 +193,33 @@ export function SourcesSection({ control }: SourcesSectionProps): ReactElement {
                 checked={field.value !== null}
                 onCheckedChange={(checked) => {
                   field.onChange(checked ? DEFAULT_WEB : null);
+                  if (!checked) setExpandedSource(null);
+                }}
+              />
+            )}
+          />
+        </SourceRow>
+        <SourceRow
+          label="Twitter / X"
+          summary={summarizeTwitter(twitter)}
+          enabled={twitter !== null}
+          expanded={expandedSource === "twitter"}
+          onEdit={() => {
+            toggleExpand("twitter");
+          }}
+          editPanel={
+            <TwitterEditor control={control} />
+          }
+        >
+          <Controller
+            control={control}
+            name="twitterConfig"
+            render={({ field }) => (
+              <Switch
+                aria-label="Twitter / X"
+                checked={field.value !== null}
+                onCheckedChange={(checked) => {
+                  field.onChange(checked ? DEFAULT_TWITTER : null);
                   if (!checked) setExpandedSource(null);
                 }}
               />
