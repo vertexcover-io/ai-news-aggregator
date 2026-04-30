@@ -1,3 +1,4 @@
+import { Scraper } from "agent-twitter-client";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import type {
   CollectorResult,
@@ -224,11 +225,37 @@ function isRateLimitError(err: unknown): boolean {
   );
 }
 
+interface CookieJson {
+  name: string;
+  value: string;
+  domain?: string;
+  path?: string;
+  secure?: boolean;
+  httpOnly?: boolean;
+  sameSite?: string;
+}
+
+export function cookiesToStrings(cookies: unknown[]): string[] {
+  return cookies.map((c) => {
+    const cookie = c as CookieJson;
+    const parts = [`${cookie.name}=${cookie.value}`];
+    parts.push("Domain=.twitter.com");
+    parts.push(`Path=${cookie.path ?? "/"}`);
+    if (cookie.secure) parts.push("Secure");
+    if (cookie.httpOnly) parts.push("HttpOnly");
+    if (cookie.sameSite) parts.push(`SameSite=${cookie.sameSite}`);
+    return parts.join("; ");
+  });
+}
+
 function defaultClientFactory(): TwitterClient {
-  // Lazy import to avoid pulling agent-twitter-client into test environments
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Scraper } = require("agent-twitter-client") as { Scraper: new () => TwitterClient };
-  return new Scraper();
+  const scraper = new Scraper();
+  return {
+    setCookies: (cookies) => scraper.setCookies(cookiesToStrings(cookies)),
+    isLoggedIn: () => scraper.isLoggedIn(),
+    getTweets: (handle, max) => scraper.getTweets(handle, max),
+    fetchListTweets: (listId, max) => scraper.fetchListTweets(listId, max),
+  };
 }
 
 // ---------------------------------------------------------------------------
