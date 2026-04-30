@@ -46,6 +46,7 @@ function getInstance(): MockCrawlerInstance {
 
 vi.mock("crawlee", () => {
   return {
+    Configuration: vi.fn().mockImplementation(() => ({})),
     AdaptivePlaywrightCrawler: vi.fn().mockImplementation(
       (options: CapturedCrawlerOptions) => {
         const instance: MockCrawlerInstance = {
