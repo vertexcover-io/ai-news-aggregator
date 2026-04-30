@@ -22,7 +22,6 @@
     "@ai-sdk/anthropic": "2.0.74",
     "@mozilla/readability": "0.6.0",
     "@newsletter/shared": "workspace:*",
-    "agent-twitter-client": "0.0.18",
     "ai": "5.0.169",
     "bullmq": "5.51.0",
     "crawlee": "3.13.3",

@@ -6,7 +6,6 @@ import {
   pickImageUrl,
   toRawItem,
   collectTwitter,
-  cookiesToStrings,
   TwitterAuthError,
   TwitterRateLimitError,
   type TwitterTweet,
@@ -114,63 +113,6 @@ describe("parseCookieEnv", () => {
     const raw = '[{"name":"auth_token","value":"secret"}]';
     const result = parseCookieEnv(raw);
     expect(Array.isArray(result)).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// cookiesToStrings
-// ---------------------------------------------------------------------------
-
-describe("cookiesToStrings", () => {
-  it("converts {name,value} to a Set-Cookie-style string with Domain=.twitter.com", () => {
-    const out = cookiesToStrings([{ name: "auth_token", value: "abc" }]);
-    expect(out).toHaveLength(1);
-    expect(out[0]).toContain("auth_token=abc");
-    expect(out[0]).toContain("Domain=.twitter.com");
-    expect(out[0]).toContain("Path=/");
-  });
-
-  it("forces Domain=.twitter.com even when input cookie has Domain=.x.com", () => {
-    const out = cookiesToStrings([
-      { name: "auth_token", value: "abc", domain: ".x.com", path: "/" },
-    ]);
-    expect(out[0]).toContain("Domain=.twitter.com");
-    expect(out[0]).not.toContain(".x.com");
-  });
-
-  it("preserves Path when provided", () => {
-    const out = cookiesToStrings([
-      { name: "x", value: "y", path: "/foo" },
-    ]);
-    expect(out[0]).toContain("Path=/foo");
-  });
-
-  it("includes Secure / HttpOnly / SameSite when set", () => {
-    const out = cookiesToStrings([
-      { name: "x", value: "y", secure: true, httpOnly: true, sameSite: "None" },
-    ]);
-    expect(out[0]).toContain("Secure");
-    expect(out[0]).toContain("HttpOnly");
-    expect(out[0]).toContain("SameSite=None");
-  });
-
-  it("omits Secure / HttpOnly when falsy", () => {
-    const out = cookiesToStrings([{ name: "x", value: "y" }]);
-    expect(out[0]).not.toContain("Secure");
-    expect(out[0]).not.toContain("HttpOnly");
-    expect(out[0]).not.toContain("SameSite");
-  });
-
-  it("returns one string per input cookie in order", () => {
-    const out = cookiesToStrings([
-      { name: "a", value: "1" },
-      { name: "b", value: "2" },
-      { name: "c", value: "3" },
-    ]);
-    expect(out).toHaveLength(3);
-    expect(out[0]).toContain("a=1");
-    expect(out[1]).toContain("b=2");
-    expect(out[2]).toContain("c=3");
   });
 });
 

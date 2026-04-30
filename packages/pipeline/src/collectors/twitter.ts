@@ -1,4 +1,3 @@
-import { Scraper } from "agent-twitter-client";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import type {
   CollectorResult,
@@ -225,37 +224,301 @@ function isRateLimitError(err: unknown): boolean {
   );
 }
 
-interface CookieJson {
+// ---------------------------------------------------------------------------
+// X GraphQL client — direct fetch against x.com's internal API. Replaces the
+// stale agent-twitter-client whose hardcoded bearer + queryIds returned 401.
+// Bearer is the public X webapp token; override via TWITTER_BEARER if X rotates.
+// QueryIds are extracted from main.js on first call and cached per process.
+// ---------------------------------------------------------------------------
+
+const X_BEARER =
+  process.env.TWITTER_BEARER ??
+  "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
+
+const X_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+const X_FEATURES = {
+  rweb_video_screen_enabled: false,
+  profile_label_improvements_pcf_label_in_post_enabled: true,
+  rweb_tipjar_consumption_enabled: true,
+  responsive_web_graphql_exclude_directive_enabled: true,
+  verified_phone_label_enabled: false,
+  creator_subscriptions_tweet_preview_api_enabled: true,
+  responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
+  responsive_web_graphql_timeline_navigation_enabled: true,
+  premium_content_api_read_enabled: false,
+  communities_web_enable_tweet_community_results_fetch: true,
+  c9s_tweet_anatomy_moderator_badge_enabled: true,
+  responsive_web_grok_analyze_button_fetch_trends_enabled: false,
+  responsive_web_grok_analyze_post_followups_enabled: true,
+  responsive_web_jetfuel_frame: true,
+  responsive_web_grok_share_attachment_enabled: true,
+  responsive_web_grok_analysis_button_from_backend: true,
+  articles_preview_enabled: true,
+  responsive_web_edit_tweet_api_enabled: true,
+  graphql_is_translatable_rweb_tweet_is_translatable_enabled: true,
+  view_counts_everywhere_api_enabled: true,
+  longform_notetweets_consumption_enabled: true,
+  responsive_web_twitter_article_tweet_consumption_enabled: true,
+  tweet_awards_web_tipping_enabled: false,
+  responsive_web_grok_show_grok_translated_post: false,
+  freedom_of_speech_not_reach_fetch_enabled: true,
+  standardized_nudges_misinfo: true,
+  tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true,
+  longform_notetweets_rich_text_read_enabled: true,
+  longform_notetweets_inline_media_enabled: true,
+  responsive_web_grok_image_annotation_enabled: true,
+  responsive_web_grok_imagine_annotation_enabled: true,
+  responsive_web_enhance_cards_enabled: false,
+} as const;
+
+interface CookieRecord {
   name: string;
   value: string;
-  domain?: string;
-  path?: string;
-  secure?: boolean;
-  httpOnly?: boolean;
-  sameSite?: string;
 }
 
-export function cookiesToStrings(cookies: unknown[]): string[] {
-  return cookies.map((c) => {
-    const cookie = c as CookieJson;
-    const parts = [`${cookie.name}=${cookie.value}`];
-    parts.push("Domain=.twitter.com");
-    parts.push(`Path=${cookie.path ?? "/"}`);
-    if (cookie.secure) parts.push("Secure");
-    if (cookie.httpOnly) parts.push("HttpOnly");
-    if (cookie.sameSite) parts.push(`SameSite=${cookie.sameSite}`);
-    return parts.join("; ");
-  });
+interface XQueryIds {
+  UserByScreenName: string;
+  UserTweets: string;
+  ListLatestTweetsTimeline: string;
+}
+
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : null;
+}
+
+function getPath(root: unknown, path: string[]): unknown {
+  let cur: unknown = root;
+  for (const k of path) {
+    const r = asRecord(cur);
+    if (!r) return undefined;
+    cur = r[k];
+  }
+  return cur;
+}
+
+function asString(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+
+function asNumber(v: unknown): number | undefined {
+  return typeof v === "number" ? v : undefined;
+}
+
+function toArray(v: unknown): unknown[] {
+  return Array.isArray(v) ? v : [];
+}
+
+function extractQueryId(js: string, op: string): string | null {
+  const re1 = new RegExp(`queryId:"([a-zA-Z0-9_-]{20,})",operationName:"${op}"`);
+  const re2 = new RegExp(`operationName:"${op}"[^}]{0,200}queryId:"([a-zA-Z0-9_-]{20,})"`);
+  const m1 = re1.exec(js);
+  if (m1?.[1]) return m1[1];
+  const m2 = re2.exec(js);
+  if (m2?.[1]) return m2[1];
+  return null;
+}
+
+function parseTweetResult(result: unknown): TwitterTweet | null {
+  const r = asRecord(result);
+  if (!r) return null;
+  const inner = asRecord(r.tweet) ?? r;
+  const typename = asString(inner.__typename);
+  if (typename !== "Tweet" && typename !== "TweetWithVisibilityResults") return null;
+  const legacy = asRecord(inner.legacy);
+  if (!legacy) return null;
+  const restId = asString(inner.rest_id) ?? asString(legacy.id_str);
+  if (!restId) return null;
+  const note = getPath(inner, ["note_tweet", "note_tweet_results", "result"]);
+  const text = asString(asRecord(note)?.text) ?? asString(legacy.full_text) ?? "";
+  const userResult = asRecord(getPath(inner, ["core", "user_results", "result"]));
+  const screen =
+    asString(asRecord(userResult?.legacy)?.screen_name) ??
+    asString(asRecord(userResult?.core)?.screen_name);
+  const name =
+    asString(asRecord(userResult?.legacy)?.name) ??
+    asString(asRecord(userResult?.core)?.name);
+  const photos: { id: string; url: string }[] = [];
+  const media = toArray(
+    asRecord(legacy.entities)?.media ?? asRecord(legacy.extended_entities)?.media,
+  );
+  for (const m of media) {
+    const mr = asRecord(m);
+    if (asString(mr?.type) === "photo") {
+      const url = asString(mr?.media_url_https);
+      const id = asString(mr?.id_str) ?? url;
+      if (url && id) photos.push({ id, url });
+    }
+  }
+  const quotedRaw = getPath(legacy, ["quoted_status_result", "result"]);
+  const quoted = quotedRaw ? parseTweetResult(quotedRaw) ?? undefined : undefined;
+  const created = asString(legacy.created_at);
+  const timeParsed = created ? new Date(created) : undefined;
+  const viewCount = asString(asRecord(inner.views)?.count);
+  return {
+    id: restId,
+    text,
+    permanentUrl: screen ? `https://x.com/${screen}/status/${restId}` : undefined,
+    username: screen,
+    name,
+    timeParsed,
+    likes: asNumber(legacy.favorite_count) ?? 0,
+    replies: asNumber(legacy.reply_count) ?? 0,
+    retweets: asNumber(legacy.retweet_count) ?? 0,
+    views: viewCount ? Number(viewCount) : undefined,
+    isRetweet: asRecord(legacy.retweeted_status_result) !== null,
+    isReply: typeof legacy.in_reply_to_status_id_str === "string",
+    photos,
+    quotedStatus: quoted,
+  };
+}
+
+function walkTimelineInstructions(instructions: unknown): TwitterTweet[] {
+  const out: TwitterTweet[] = [];
+  for (const ins of toArray(instructions)) {
+    const r = asRecord(ins);
+    if (!r) continue;
+    if (r.type === "TimelineAddEntries") {
+      for (const e of toArray(r.entries)) {
+        const result = getPath(e, ["content", "itemContent", "tweet_results", "result"]);
+        const t = parseTweetResult(result);
+        if (t) out.push(t);
+      }
+    } else if (r.type === "TimelinePinEntry") {
+      const result = getPath(r, ["entry", "content", "itemContent", "tweet_results", "result"]);
+      const t = parseTweetResult(result);
+      if (t) out.push(t);
+    }
+  }
+  return out;
+}
+
+class XGraphQLClient implements TwitterClient {
+  private cookieHeader = "";
+  private csrf = "";
+  private queryIds: XQueryIds | null = null;
+
+  setCookies(cookies: unknown[]): Promise<void> {
+    const records: CookieRecord[] = cookies.map((c) => {
+      const r = asRecord(c);
+      return {
+        name: asString(r?.name) ?? "",
+        value: asString(r?.value) ?? "",
+      };
+    });
+    this.cookieHeader = records.map((c) => `${c.name}=${c.value}`).join("; ");
+    const ct0 = records.find((c) => c.name === "ct0");
+    if (!ct0 || ct0.value === "") {
+      throw new TwitterAuthError("ct0 cookie missing — re-export TWITTER_COOKIES_JSON");
+    }
+    this.csrf = ct0.value;
+    return Promise.resolve();
+  }
+
+  private async ensureQueryIds(): Promise<XQueryIds> {
+    if (this.queryIds) return this.queryIds;
+    const homeRes = await fetch("https://x.com/", {
+      headers: { "user-agent": X_USER_AGENT, cookie: this.cookieHeader },
+    });
+    const html = await homeRes.text();
+    const m = /https:\/\/abs\.twimg\.com\/responsive-web\/client-web\/main\.[a-z0-9]+\.js/.exec(html);
+    if (!m) throw new TwitterFetchError("could not locate main.js URL on x.com");
+    const jsRes = await fetch(m[0], { headers: { "user-agent": X_USER_AGENT } });
+    const js = await jsRes.text();
+    const ids: Partial<XQueryIds> = {
+      UserByScreenName: extractQueryId(js, "UserByScreenName") ?? undefined,
+      UserTweets: extractQueryId(js, "UserTweets") ?? undefined,
+      ListLatestTweetsTimeline: extractQueryId(js, "ListLatestTweetsTimeline") ?? undefined,
+    };
+    if (!ids.UserByScreenName || !ids.UserTweets || !ids.ListLatestTweetsTimeline) {
+      throw new TwitterFetchError(`failed to extract queryIds from main.js: ${JSON.stringify(ids)}`);
+    }
+    this.queryIds = {
+      UserByScreenName: ids.UserByScreenName,
+      UserTweets: ids.UserTweets,
+      ListLatestTweetsTimeline: ids.ListLatestTweetsTimeline,
+    };
+    logger.info({ queryIds: this.queryIds }, "extracted X graphql queryIds from main.js");
+    return this.queryIds;
+  }
+
+  // Calls X's internal GraphQL with the cached queryId for `op`. On HTTP 404
+  // the queryId has rotated since extraction; we invalidate the cache,
+  // re-extract from main.js, and retry the same call once with the fresh id.
+  // Bounded by `_retried` to prevent loops on persistent 404s.
+  private async gql(
+    op: keyof XQueryIds,
+    variables: object,
+    _retried = false,
+  ): Promise<unknown> {
+    const ids = await this.ensureQueryIds();
+    const qid = ids[op];
+    const url =
+      `https://x.com/i/api/graphql/${qid}/${op}` +
+      `?variables=${encodeURIComponent(JSON.stringify(variables))}` +
+      `&features=${encodeURIComponent(JSON.stringify(X_FEATURES))}`;
+    const res = await fetch(url, {
+      headers: {
+        authorization: `Bearer ${X_BEARER}`,
+        "x-csrf-token": this.csrf,
+        cookie: this.cookieHeader,
+        "user-agent": X_USER_AGENT,
+        "x-twitter-active-user": "yes",
+        "x-twitter-auth-type": "OAuth2Session",
+        "x-twitter-client-language": "en",
+        origin: "https://x.com",
+        referer: "https://x.com/",
+      },
+    });
+    const text = await res.text();
+    if (res.status === 404 && !_retried) {
+      logger.warn({ op, qid }, "graphql 404 — queryId rotated, refreshing and retrying once");
+      this.queryIds = null;
+      return this.gql(op, variables, true);
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new TwitterAuthError(`${op} ${res.status}: ${text.slice(0, 200)}`);
+    }
+    if (res.status === 429) {
+      throw new Error(`429 rate limit on ${op}`);
+    }
+    if (res.status !== 200) {
+      throw new TwitterFetchError(`${op} ${res.status}: ${text.slice(0, 300)}`);
+    }
+    return JSON.parse(text);
+  }
+
+  async getTweets(handle: string, max: number): Promise<TwitterTweet[]> {
+    const u = await this.gql("UserByScreenName", {
+      screen_name: handle,
+      withSafetyModeUserFields: true,
+    });
+    const restId = asString(getPath(u, ["data", "user", "result", "rest_id"]));
+    if (!restId) throw new TwitterFetchError(`no rest_id for handle "${handle}"`);
+    const t = await this.gql("UserTweets", {
+      userId: restId,
+      count: max,
+      includePromotedContent: false,
+      withVoice: true,
+      withV2Timeline: true,
+    });
+    const inst = getPath(t, ["data", "user", "result", "timeline", "timeline", "instructions"]);
+    return walkTimelineInstructions(inst);
+  }
+
+  async fetchListTweets(listId: string, max: number): Promise<{ tweets: TwitterTweet[] }> {
+    const r = await this.gql("ListLatestTweetsTimeline", {
+      listId,
+      count: max,
+    });
+    const inst = getPath(r, ["data", "list", "tweets_timeline", "timeline", "instructions"]);
+    return { tweets: walkTimelineInstructions(inst) };
+  }
 }
 
 function defaultClientFactory(): TwitterClient {
-  const scraper = new Scraper();
-  return {
-    setCookies: (cookies) => scraper.setCookies(cookiesToStrings(cookies)),
-    isLoggedIn: () => scraper.isLoggedIn(),
-    getTweets: (handle, max) => scraper.getTweets(handle, max),
-    fetchListTweets: (listId, max) => scraper.fetchListTweets(listId, max),
-  };
+  return new XGraphQLClient();
 }
 
 // ---------------------------------------------------------------------------
