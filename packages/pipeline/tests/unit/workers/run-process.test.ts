@@ -1443,6 +1443,66 @@ describe("run-process cancellation (REQ-05 through REQ-09)", () => {
     expect(rankFn).not.toHaveBeenCalled();
   });
 
+  // VS-5 regression: cancel during a single-source (twitter-only) collecting
+  // stage where the collector THROWS a CancelledError mid-fetch. The
+  // per-source catch in runCollecting must re-throw CancelledError instead
+  // of swallowing it as a per-source failure — otherwise the all-failed
+  // branch writes status: failed instead of cancelled.
+  it("REQ-08 (VS-5): cancel during twitter-only collecting (throwing CancelledError) → status 'cancelled'", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const archiveRepo = makeNoopArchiveRepo();
+    const { factory } = makeInstantCancelSubscriber();
+
+    // Twitter collector throws CancelledError directly (this is what
+    // happens after the 31e2073 collector-side fix when rettiwt aborts
+    // mid-fetch and the worker's signal.reason is a CancelledError).
+    const twitter = vi.fn(
+      (): Promise<CollectorResult> => {
+        throw new CancelledError("test-run-id");
+      },
+    );
+    const stubClient: TwitterClient = {
+      fetchListTweets: vi.fn(() =>
+        Promise.resolve({ tweets: [], nextCursor: null }),
+      ),
+      fetchUserTimeline: vi.fn(() =>
+        Promise.resolve({ tweets: [], nextCursor: null }),
+      ),
+    };
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+      collectFns: { hn: vi.fn(), reddit: vi.fn(), web: vi.fn(), twitter },
+      twitterClient: stubClient,
+      archiveRepo,
+      cancelSubscriber: factory,
+    });
+
+    const result = await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["twitter"],
+        collectors: {
+          twitter: {
+            listIds: ["1585430245762441216"],
+            users: [],
+          } as unknown as TwitterCollectConfig,
+        },
+      },
+    });
+
+    expect(result).toEqual({ rankedCount: 0 });
+    const last = runStateMock.updates.at(-1);
+    expect(last?.status).toBe("cancelled");
+    expect(last?.stage).toBe("cancelled");
+    expect(archiveRepo.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "cancelled" }),
+    );
+  });
+
   // REQ-08 + EDGE-03: cancel fires during shortlisting stage
   it("cancel during shortlisting → status 'cancelled', archive written, no rethrow", async () => {
     const runStateMock = makeMockRunState(makeRunState());

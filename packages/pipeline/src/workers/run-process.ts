@@ -243,6 +243,12 @@ async function runCollecting(
       );
       successCount += 1;
     } catch (err) {
+      // Re-throw CancelledError so the outer worker catch maps the run to
+      // status: cancelled instead of aggregating it as a per-source failure.
+      // Mirrors the rank stage's pattern at line ~437. Without this, a
+      // single-source cancellation hits the all-failed branch and the run
+      // finalises as "failed". Discovered by Stage 5 VS-5.
+      if (err instanceof CancelledError) throw err;
       const message = err instanceof Error ? err.message : String(err);
       await writeSerial(() =>
         deps.runState.updateSource(runId, task.sourceKey, {
