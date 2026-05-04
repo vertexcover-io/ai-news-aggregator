@@ -12,6 +12,7 @@ const validSettings = {
   hnConfig: { sinceDays: 1 },
   redditConfig: null,
   webConfig: null,
+  twitterConfig: null,
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
@@ -29,7 +30,8 @@ describe("userSettingsUpsertSchema (REQ-012/REQ-013/EDGE-004)", () => {
       hnConfig: null,
       redditConfig: null,
       webConfig: null,
-    });
+      twitterConfig: null,
+      });
     expect(r.success).toBe(false);
   });
 
@@ -39,6 +41,7 @@ describe("userSettingsUpsertSchema (REQ-012/REQ-013/EDGE-004)", () => {
       hnConfig: null,
       redditConfig: null,
       webConfig: null,
+      twitterConfig: null,
       scheduleEnabled: false,
     });
     expect(r.success).toBe(true);

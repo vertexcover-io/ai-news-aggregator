@@ -97,11 +97,31 @@ export interface RunSubmitWebConfig {
   sinceDays?: number;
 }
 
+export interface RunSubmitTwitterUser {
+  handle: string;
+  userId: string;
+}
+
+export interface RunSubmitTwitterConfig {
+  listIds: string[];
+  users: RunSubmitTwitterUser[];
+  maxTweetsPerSource?: number;
+  sinceHours?: number;
+}
+
+export interface RunCollectorsPayload {
+  hn?: RunSubmitHnConfig;
+  reddit?: RunSubmitRedditConfig;
+  web?: RunSubmitWebConfig;
+  twitter?: RunSubmitTwitterConfig;
+}
+
 export interface RunSubmitPayload {
   topN: number;
   hn?: RunSubmitHnConfig;
   reddit?: RunSubmitRedditConfig;
   web?: RunSubmitWebConfig;
+  twitter?: RunSubmitTwitterConfig;
 }
 
 export interface AddPostPayload {

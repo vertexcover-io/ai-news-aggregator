@@ -48,6 +48,7 @@ const baseSettings: UserSettings = {
   hnConfig: { sinceDays: 1 },
   redditConfig: { subreddits: ["LocalLLaMA"], sinceDays: 1 },
   webConfig: null,
+  twitterConfig: null,
   scheduleTime: "07:00",
   scheduleTimezone: "America/Los_Angeles",
   scheduleEnabled: false,

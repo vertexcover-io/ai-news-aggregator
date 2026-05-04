@@ -64,6 +64,7 @@ const validBody = {
   hnConfig: { sinceDays: 1 },
   redditConfig: null,
   webConfig: null,
+  twitterConfig: null,
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
@@ -87,6 +88,7 @@ describe("GET /api/settings", () => {
       hnConfig: null,
       redditConfig: null,
       webConfig: null,
+      twitterConfig: null,
       scheduleTime: "08:00",
       scheduleTimezone: "UTC",
       scheduleEnabled: false,
@@ -140,7 +142,8 @@ describe("PUT /api/settings", () => {
         hnConfig: null,
         redditConfig: null,
         webConfig: null,
-      }),
+        twitterConfig: null,
+        }),
     });
     expect(res.status).toBe(400);
   });

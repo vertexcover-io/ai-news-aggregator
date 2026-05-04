@@ -76,6 +76,7 @@ const baseSettings: UserSettings = {
   hnConfig: { sinceDays: 1 },
   redditConfig: null,
   webConfig: null,
+  twitterConfig: null,
   scheduleTime: "09:00",
   scheduleTimezone: "UTC",
   scheduleEnabled: false,
@@ -98,7 +99,8 @@ describe("POST /api/runs/now", () => {
         hnConfig: null,
         redditConfig: null,
         webConfig: null,
-      },
+        twitterConfig: null,
+        },
     });
     const res = await app.request("/api/runs/now", { method: "POST" });
     expect(res.status).toBe(409);

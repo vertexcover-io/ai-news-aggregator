@@ -48,6 +48,7 @@ const validBody = {
   hnConfig: { sinceDays: 1 },
   redditConfig: null,
   webConfig: null,
+  twitterConfig: null,
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
@@ -119,7 +120,8 @@ describe("Settings routes (e2e)", () => {
         hnConfig: null,
         redditConfig: null,
         webConfig: null,
-      }),
+        twitterConfig: null,
+        }),
     });
     expect(res.status).toBe(400);
   });

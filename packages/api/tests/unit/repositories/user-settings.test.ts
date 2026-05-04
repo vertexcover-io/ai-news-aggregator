@@ -10,6 +10,7 @@ interface StoredRow {
   hnConfig: unknown;
   redditConfig: unknown;
   webConfig: unknown;
+  twitterConfig: unknown;
   scheduleTime: string;
   scheduleTimezone: string;
   scheduleEnabled: boolean;
@@ -40,6 +41,7 @@ function makeFakeDb(): { db: Pick<AppDb, "select" | "insert">; rows: StoredRow[]
                 hnConfig: v.hnConfig ?? null,
                 redditConfig: v.redditConfig ?? null,
                 webConfig: v.webConfig ?? null,
+                twitterConfig: v.twitterConfig ?? null,
                 scheduleTime: v.scheduleTime ?? "00:00",
                 scheduleTimezone: v.scheduleTimezone ?? "UTC",
                 scheduleEnabled: v.scheduleEnabled ?? false,
@@ -66,6 +68,7 @@ const baseInput = {
   hnConfig: { sinceDays: 1 },
   redditConfig: null,
   webConfig: null,
+  twitterConfig: null,
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
@@ -87,6 +90,21 @@ describe("UserSettingsRepo", () => {
     expect(saved.scheduleTime).toBe("09:30");
     const got = await repo.get();
     expect(got?.topN).toBe(10);
+  });
+
+  it("REQ-020/REQ-021: upsert() round-trips twitterConfig through get()", async () => {
+    const { db } = makeFakeDb();
+    const repo = createUserSettingsRepo(db);
+    const twitterConfig = {
+      listIds: ["1585430245762441216"],
+      users: [{ handle: "jack", userId: "12" }],
+      maxTweetsPerSource: 50,
+      sinceHours: 24,
+    };
+    const saved = await repo.upsert({ ...baseInput, twitterConfig });
+    expect(saved.twitterConfig).toEqual(twitterConfig);
+    const got = await repo.get();
+    expect(got?.twitterConfig).toEqual(twitterConfig);
   });
 
   it("upsert() twice keeps exactly one row (singleton)", async () => {

@@ -54,6 +54,7 @@ function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
     hnConfig: { limit: 10, minPoints: 5, type: "top" },
     redditConfig: null,
     webConfig: null,
+    twitterConfig: null,
     scheduleTime: "09:00",
     scheduleTimezone: "America/New_York",
     scheduleEnabled: true,
@@ -124,7 +125,8 @@ describe("createDailyRunWorker", () => {
       hnConfig: null,
       redditConfig: null,
       webConfig: null,
-    });
+      twitterConfig: null,
+      });
     const userSettingsRepo = { get: vi.fn(() => Promise.resolve(settings)) };
 
     const worker = createDailyRunWorker({

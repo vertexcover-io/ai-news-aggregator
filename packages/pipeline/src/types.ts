@@ -1,4 +1,6 @@
-import type { CollectorResult } from "@newsletter/shared/types";
+import type { CollectorResult, RunSubmitTwitterConfig } from "@newsletter/shared/types";
+
+export type TwitterCollectConfig = RunSubmitTwitterConfig;
 
 export interface HnCollectConfig {
   keywords?: string[];

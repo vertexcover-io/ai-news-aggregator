@@ -17,6 +17,18 @@ const redditConfigSchema = z.object({
   sinceDays: z.number().int().min(1).max(30),
 });
 
+const twitterUserSchema = z.object({
+  handle: z.string().min(1),
+  userId: z.string().regex(/^\d+$/, { message: "userId must be a digit string" }),
+});
+
+const twitterConfigSchema = z.object({
+  listIds: z.array(z.string().regex(/^\d+$/, { message: "listId must be a digit string" })),
+  users: z.array(twitterUserSchema),
+  maxTweetsPerSource: z.number().int().min(1).max(500).optional(),
+  sinceHours: z.number().int().min(1).max(168).optional(),
+});
+
 const webConfigSchema = z.object({
   sources: z
     .array(
@@ -66,6 +78,7 @@ export const userSettingsUpsertSchema = z
     hnConfig: hnConfigSchema.nullable(),
     redditConfig: redditConfigSchema.nullable(),
     webConfig: webConfigSchema.nullable(),
+    twitterConfig: twitterConfigSchema.nullable(),
     scheduleTime: z
       .string()
       .regex(HH_MM_RE, { message: "scheduleTime must be HH:MM (24h)" }),
