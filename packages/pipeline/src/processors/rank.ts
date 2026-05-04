@@ -183,8 +183,8 @@ export async function rankCandidates(
       err !== null &&
       typeof err === "object" &&
       "text" in err &&
-      typeof (err as Record<string, unknown>).text === "string"
-        ? (err as Record<string, unknown>).text
+      typeof (err as { text: unknown }).text === "string"
+        ? (err as { text: string }).text
         : undefined;
     logger.error(
       {

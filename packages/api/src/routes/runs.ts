@@ -178,6 +178,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
   return runs;
 }
 
+// singleton: one queue connection per process lifetime
 let defaultProcessingQueue: Queue<RunProcessJobPayload> | null = null;
 
 function getDefaultProcessingQueue(): Queue<RunProcessJobPayload> {
