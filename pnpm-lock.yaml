@@ -35,9 +35,6 @@ importers:
       lint-staged:
         specifier: 16.4.0
         version: 16.4.0
-      rettiwt-api:
-        specifier: ^7.0.3
-        version: 7.0.3
       tsup:
         specifier: 8.4.0
         version: 8.4.0(jiti@2.6.1)(postcss@8.5.8)(tsx@4.20.3)(typescript@5.8.3)(yaml@2.8.3)
