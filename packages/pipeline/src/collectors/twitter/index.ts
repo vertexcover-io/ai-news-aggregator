@@ -263,6 +263,13 @@ export async function collectTwitter(
       );
     } catch (err) {
       if (err instanceof AbortError) throw err;
+      // If the signal is aborted, the library may surface a generic Error
+      // (e.g. rettiwt-api throws `Error("Aborted")`). Propagate the signal's
+      // reason so the worker can map it to `cancelled` status — the worker
+      // attaches a CancelledError as the abort reason via controller.abort(reason).
+      if (deps.signal?.aborted) {
+        throw deps.signal.reason ?? new AbortError();
+      }
       if (isAuthError(err)) {
         logger.error(
           {

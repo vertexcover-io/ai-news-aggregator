@@ -376,6 +376,38 @@ describe("collectTwitter", () => {
     expect(client.fetchListTweets).toHaveBeenCalledTimes(1);
   });
 
+  it("REQ-017: when rettiwt throws Error('Aborted') mid-fetch and signal is aborted, propagates signal.reason (Stage-5 VS-5 finding)", async () => {
+    // The library's in-flight request rejects with a generic Error when the
+    // signal aborts mid-call. The collector must recognise this as a
+    // cancellation and propagate signal.reason (a CancelledError set by the
+    // worker via controller.abort(reason)) rather than treating it as a
+    // per-source failure that gets swallowed.
+    class FakeCancelledError extends Error {
+      readonly runId: string;
+      constructor(runId: string) {
+        super(`Run ${runId} was cancelled`);
+        this.name = "CancelledError";
+        this.runId = runId;
+      }
+    }
+    const controller = new AbortController();
+    const cancelReason = new FakeCancelledError("run-xyz");
+    const client = createClientStub();
+    client.fetchListTweets.mockImplementationOnce(() => {
+      controller.abort(cancelReason);
+      return Promise.reject(new Error("Aborted"));
+    });
+    const repo = createMockRepo();
+
+    const promise = collectTwitter(
+      makeDeps(client, repo, { signal: controller.signal }),
+      { listIds: ["L1"], users: [] },
+    );
+    await expect(promise).rejects.toBe(cancelReason);
+    // The collector must NOT have called upsertItems or proceeded to subsequent sources.
+    expect(repo.upsertItems).not.toHaveBeenCalled();
+  });
+
   it("REQ-050: missing RETTIWT_API_KEY returns zeros, logs, no client calls", async () => {
     process.env.RETTIWT_API_KEY = "";
     const client = createClientStub();
