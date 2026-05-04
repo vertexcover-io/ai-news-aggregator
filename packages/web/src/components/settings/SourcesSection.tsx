@@ -1,6 +1,12 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { Controller, type Control, useWatch } from "react-hook-form";
+import {
+  Controller,
+  type Control,
+  type UseFormRegister,
+  useFieldArray,
+  useWatch,
+} from "react-hook-form";
 import { Pencil, ChevronUp, Trash2 } from "lucide-react";
 import {
   Card,
@@ -46,6 +52,30 @@ const DEFAULT_WEB: RunSubmitWebConfig = {
 
 interface SourcesSectionProps {
   control: Control<SettingsFormValues>;
+  register: UseFormRegister<SettingsFormValues>;
+}
+
+const DEFAULT_TWITTER: SettingsFormValues["twitterConfig"] = {
+  listIds: [],
+  users: [],
+  maxTweetsPerSource: 50,
+  sinceHours: 24,
+};
+
+function summarizeTwitter(c: SettingsFormValues["twitterConfig"]): string {
+  if (!c) return "Disabled";
+  const parts: string[] = [];
+  parts.push(
+    `${String(c.listIds.length)} list${c.listIds.length === 1 ? "" : "s"}`,
+  );
+  parts.push(
+    `${String(c.users.length)} user${c.users.length === 1 ? "" : "s"}`,
+  );
+  if (c.maxTweetsPerSource !== undefined)
+    parts.push(`${String(c.maxTweetsPerSource)} tweets/source`);
+  if (c.sinceHours !== undefined)
+    parts.push(`last ${String(c.sinceHours)}h`);
+  return parts.join(" · ");
 }
 
 function summarizeHn(c: RunSubmitHnConfig | null): string {
@@ -76,16 +106,20 @@ function summarizeWeb(c: RunSubmitWebConfig | null): string {
   return `${String(c.sources.length)} blog${c.sources.length === 1 ? "" : "s"} configured: ${names}`;
 }
 
-export function SourcesSection({ control }: SourcesSectionProps): ReactElement {
+export function SourcesSection({
+  control,
+  register,
+}: SourcesSectionProps): ReactElement {
   const [expandedSource, setExpandedSource] = useState<
-    "hn" | "reddit" | "web" | null
+    "hn" | "reddit" | "web" | "twitter" | null
   >(null);
 
   const hn = useWatch({ control, name: "hnConfig" });
   const reddit = useWatch({ control, name: "redditConfig" });
   const web = useWatch({ control, name: "webConfig" });
+  const twitter = useWatch({ control, name: "twitterConfig" });
 
-  function toggleExpand(source: "hn" | "reddit" | "web"): void {
+  function toggleExpand(source: "hn" | "reddit" | "web" | "twitter"): void {
     setExpandedSource((prev) => (prev === source ? null : source));
   }
 
@@ -173,6 +207,33 @@ export function SourcesSection({ control }: SourcesSectionProps): ReactElement {
                 checked={field.value !== null}
                 onCheckedChange={(checked) => {
                   field.onChange(checked ? DEFAULT_WEB : null);
+                  if (!checked) setExpandedSource(null);
+                }}
+              />
+            )}
+          />
+        </SourceRow>
+        <SourceRow
+          label="Twitter / X"
+          summary={summarizeTwitter(twitter)}
+          enabled={twitter !== null}
+          expanded={expandedSource === "twitter"}
+          onEdit={() => {
+            toggleExpand("twitter");
+          }}
+          editPanel={
+            <TwitterEditPanel control={control} register={register} />
+          }
+        >
+          <Controller
+            control={control}
+            name="twitterConfig"
+            render={({ field }) => (
+              <Switch
+                aria-label="Twitter / X"
+                checked={field.value !== null}
+                onCheckedChange={(checked) => {
+                  field.onChange(checked ? { ...DEFAULT_TWITTER } : null);
                   if (!checked) setExpandedSource(null);
                 }}
               />
@@ -610,6 +671,165 @@ function WebEditPanel({
                 type="number"
                 className="mt-1"
                 min={1}
+                value={field.value ?? ""}
+                onChange={(e) => {
+                  field.onChange(
+                    e.target.value === "" ? undefined : Number(e.target.value),
+                  );
+                }}
+              />
+            )}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TwitterEditPanel({
+  control,
+  register,
+}: {
+  control: Control<SettingsFormValues>;
+  register: UseFormRegister<SettingsFormValues>;
+}): ReactElement {
+  const {
+    fields: listFields,
+    append: appendList,
+    remove: removeList,
+  } = useFieldArray({ control, name: "twitterConfig.listIds" });
+
+  const {
+    fields: userFields,
+    append: appendUser,
+    remove: removeUser,
+  } = useFieldArray({ control, name: "twitterConfig.users" });
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="mb-2 text-xs font-medium text-muted-foreground">
+          Twitter Lists
+        </div>
+        <div className="space-y-2">
+          {listFields.map((field, idx) => (
+            <div
+              key={field.id}
+              className="grid grid-cols-[1fr_auto] items-center gap-2"
+            >
+              <Input
+                placeholder="1585430245762441216"
+                aria-label={`Twitter list ${String(idx + 1)}`}
+                {...register(`twitterConfig.listIds.${String(idx)}.value` as `twitterConfig.listIds.${number}.value`)}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  removeList(idx);
+                }}
+                aria-label={`Remove list ${String(idx + 1)}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-2"
+          onClick={() => {
+            appendList({ value: "" });
+          }}
+        >
+          Add list
+        </Button>
+      </div>
+
+      <div>
+        <div className="mb-2 text-xs font-medium text-muted-foreground">
+          Twitter Users
+        </div>
+        <div className="space-y-2">
+          {userFields.map((field, idx) => (
+            <div
+              key={field.id}
+              className="grid grid-cols-[1fr_auto] items-center gap-2"
+            >
+              <Input
+                placeholder="@jack"
+                aria-label={`Twitter handle ${String(idx + 1)}`}
+                {...register(`twitterConfig.users.${String(idx)}.handle` as `twitterConfig.users.${number}.handle`)}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  removeUser(idx);
+                }}
+                aria-label={`Remove handle ${String(idx + 1)}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-2"
+          onClick={() => {
+            appendUser({ handle: "", userId: "" });
+          }}
+        >
+          Add user
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label htmlFor="twitter-max-tweets" className="text-xs">
+            Max tweets per source
+          </Label>
+          <Controller
+            control={control}
+            name="twitterConfig.maxTweetsPerSource"
+            render={({ field }) => (
+              <Input
+                id="twitter-max-tweets"
+                type="number"
+                className="mt-1"
+                min={1}
+                max={500}
+                value={field.value ?? ""}
+                onChange={(e) => {
+                  field.onChange(
+                    e.target.value === "" ? undefined : Number(e.target.value),
+                  );
+                }}
+              />
+            )}
+          />
+        </div>
+        <div>
+          <Label htmlFor="twitter-since-hours" className="text-xs">
+            Since (hours)
+          </Label>
+          <Controller
+            control={control}
+            name="twitterConfig.sinceHours"
+            render={({ field }) => (
+              <Input
+                id="twitter-since-hours"
+                type="number"
+                className="mt-1"
+                min={1}
+                max={168}
                 value={field.value ?? ""}
                 onChange={(e) => {
                   field.onChange(

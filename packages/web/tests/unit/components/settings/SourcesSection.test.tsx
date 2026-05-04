@@ -10,7 +10,7 @@ interface WrapperProps {
 }
 
 function TestWrapper({ initialSources = [] }: WrapperProps): ReactElement {
-  const { control } = useForm<SettingsFormValues>({
+  const { control, register } = useForm<SettingsFormValues>({
     defaultValues: {
       topN: 10,
       halfLifeHours: null,
@@ -28,7 +28,7 @@ function TestWrapper({ initialSources = [] }: WrapperProps): ReactElement {
   });
   return (
     <form>
-      <SourcesSection control={control} />
+      <SourcesSection control={control} register={register} />
     </form>
   );
 }
