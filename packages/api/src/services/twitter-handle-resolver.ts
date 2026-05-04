@@ -4,10 +4,14 @@
 // performs save-time @handle -> numeric userId resolution before the
 // pipeline ever sees the config. Documented in the design doc under
 // "Architectural rule exception".
-import type { Rettiwt, User } from "rettiwt-api";
+import { Rettiwt, type User } from "rettiwt-api";
 
 export interface TwitterHandleResolverDeps {
   rettiwtFactory: () => Rettiwt;
+}
+
+export function defaultRettiwtFactory(): Rettiwt {
+  return new Rettiwt({ apiKey: process.env.RETTIWT_API_KEY });
 }
 
 export interface ResolvedHandle {

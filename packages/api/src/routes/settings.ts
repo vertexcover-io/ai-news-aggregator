@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import type { Queue } from "bullmq";
-import { Rettiwt } from "rettiwt-api";
 import {
   createLogger,
   createRedisConnection,
@@ -23,10 +22,13 @@ import {
 } from "@api/repositories/user-settings.js";
 import { reconcileDailyRunSchedule } from "@api/services/scheduler.js";
 import {
+  defaultRettiwtFactory,
   resolveTwitterHandles,
   TwitterHandleResolutionError,
   type TwitterHandleResolverDeps,
 } from "@api/services/twitter-handle-resolver.js";
+
+type RettiwtFactory = TwitterHandleResolverDeps["rettiwtFactory"];
 
 export interface SettingsRouterDeps {
   getSettingsRepo: () => UserSettingsRepo;
@@ -38,7 +40,7 @@ export interface SettingsRouterDeps {
     handles: string[],
     deps: TwitterHandleResolverDeps,
   ) => Promise<{ handle: string; userId: string }[]>;
-  rettiwtFactory?: () => Rettiwt;
+  rettiwtFactory?: RettiwtFactory;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -48,7 +50,7 @@ async function resolveTwitterConfig(
     handles: string[],
     deps: TwitterHandleResolverDeps,
   ) => Promise<{ handle: string; userId: string }[]>,
-  rettiwtFactory: () => Rettiwt,
+  rettiwtFactory: RettiwtFactory,
 ): Promise<RunSubmitTwitterConfig | null> {
   if (config === null) return null;
 
@@ -86,7 +88,7 @@ async function resolveTwitterConfig(
 export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
   const logger = deps.logger ?? createLogger("api:settings");
   const resolver = deps.resolveHandles ?? resolveTwitterHandles;
-  const rettiwtFactory = deps.rettiwtFactory ?? ((): Rettiwt => new Rettiwt({ apiKey: process.env.RETTIWT_API_KEY }));
+  const rettiwtFactory = deps.rettiwtFactory ?? defaultRettiwtFactory;
   const app = new Hono();
 
   app.get("/", async (c) => {
