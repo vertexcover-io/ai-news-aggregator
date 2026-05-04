@@ -59,6 +59,7 @@ export interface RunState {
     hn?: SourceRunState;
     reddit?: SourceRunState;
     blog?: SourceRunState;
+    twitter?: SourceRunState;
   };
   rankedItems: RankedItemRef[] | null;
   warnings: string[];

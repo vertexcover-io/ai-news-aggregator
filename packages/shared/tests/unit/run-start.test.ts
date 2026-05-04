@@ -169,6 +169,54 @@ describe("startRun", () => {
     expect(payload.halfLifeHours).toBeUndefined();
   });
 
+  // REQ-024: twitterConfig flows from settings to job payload
+  it("REQ-024: puts twitter on payload.collectors when settings has twitterConfig", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "ddddddd1-eeee-ffff-0000-111111111111";
+
+    const twitterSettings: UserSettings = {
+      ...baseSettings,
+      hnConfig: null,
+      redditConfig: null,
+      twitterConfig: {
+        listIds: ["12345"],
+        users: [{ handle: "openai", userId: "9999" }],
+        maxTweetsPerSource: 50,
+        sinceHours: 24,
+      },
+    };
+
+    await startRun(twitterSettings, {
+      redis: redis as unknown as IORedis,
+      queue: q.queue,
+      runId: () => fixedId,
+    });
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as RunProcessJobPayload;
+    expect(payload.collectors.twitter).toEqual(twitterSettings.twitterConfig);
+    expect(payload.sourceTypes).toContain("twitter");
+  });
+
+  // REQ-024: twitter omitted when twitterConfig is null
+  it("REQ-024: omits twitter from payload when twitterConfig is null", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "ddddddd2-eeee-ffff-0000-222222222222";
+
+    await startRun(baseSettings, {
+      redis: redis as unknown as IORedis,
+      queue: q.queue,
+      runId: () => fixedId,
+    });
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as RunProcessJobPayload;
+    expect(payload.collectors.twitter).toBeUndefined();
+    expect(payload.sourceTypes).not.toContain("twitter");
+  });
+
   it("generates a uuid for runId when no generator is injected", async () => {
     const redis = makeRedis();
     const q = makeQueue();

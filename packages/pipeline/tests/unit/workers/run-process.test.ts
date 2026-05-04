@@ -14,8 +14,10 @@ import type { RunStateService } from "@pipeline/services/run-state.js";
 import type {
   HnCollectConfig,
   RedditCollectConfig,
+  TwitterCollectConfig,
   WebCollectConfig,
 } from "@pipeline/types.js";
+import type { TwitterClient } from "@pipeline/collectors/twitter/types.js";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -98,8 +100,8 @@ interface JobLike {
   data: {
     runId: string;
     topN: number;
-    sourceTypes: ("hn" | "reddit" | "blog")[];
-    collectors: { hn?: unknown; reddit?: unknown; web?: unknown };
+    sourceTypes: ("hn" | "reddit" | "blog" | "twitter")[];
+    collectors: { hn?: unknown; reddit?: unknown; web?: unknown; twitter?: unknown };
     halfLifeHours?: number;
   };
 }
@@ -1269,6 +1271,90 @@ describe("run-process worker", () => {
     expect(sOpts?.halfLifeHours).toBe(48);
     const [, rOpts] = rankFn.mock.calls[0] ?? [];
     expect(rOpts?.halfLifeHours).toBe(48);
+  });
+
+  // REQ-032: collectTwitter is invoked exactly once when payload.twitter is present
+  it("REQ-032: invokes collectTwitter exactly once when payload.twitter is present", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const twitter = vi.fn(
+      (): Promise<CollectorResult> =>
+        Promise.resolve({
+          itemsFetched: 4,
+          itemsStored: 4,
+          failures: 0,
+          durationMs: 1,
+        }),
+    );
+    const stubClient: TwitterClient = {
+      fetchListTweets: vi.fn(() =>
+        Promise.resolve({ tweets: [], nextCursor: null }),
+      ),
+      fetchUserTimeline: vi.fn(() =>
+        Promise.resolve({ tweets: [], nextCursor: null }),
+      ),
+    };
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+      collectFns: { hn: vi.fn(), reddit: vi.fn(), web: vi.fn(), twitter },
+      twitterClient: stubClient,
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["twitter"],
+        collectors: {
+          twitter: {
+            listIds: ["12345"],
+            users: [],
+          } as unknown as TwitterCollectConfig,
+        },
+      },
+    });
+
+    expect(twitter).toHaveBeenCalledOnce();
+    const [deps, config] = twitter.mock.calls[0] ?? [];
+    expect((deps as { client: TwitterClient }).client).toBe(stubClient);
+    expect((config as TwitterCollectConfig).listIds).toEqual(["12345"]);
+  });
+
+  // REQ-033: collectTwitter is NOT invoked when payload.twitter is undefined
+  it("REQ-033: does not invoke collectTwitter when payload.twitter is undefined", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const twitter = vi.fn(
+      (): Promise<CollectorResult> =>
+        Promise.reject(new Error("should not be called")),
+    );
+    const hn = vi.fn(
+      (): Promise<CollectorResult> =>
+        Promise.resolve({
+          itemsFetched: 1,
+          itemsStored: 1,
+          failures: 0,
+          durationMs: 1,
+        }),
+    );
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+      collectFns: { hn, reddit: vi.fn(), web: vi.fn(), twitter },
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["hn"],
+        collectors: { hn: { sinceDays: 1 } as unknown as HnCollectConfig },
+      },
+    });
+
+    expect(twitter).not.toHaveBeenCalled();
+    expect(hn).toHaveBeenCalledOnce();
   });
 });
 
