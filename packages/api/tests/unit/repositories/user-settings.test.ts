@@ -10,7 +10,6 @@ interface StoredRow {
   hnConfig: unknown;
   redditConfig: unknown;
   webConfig: unknown;
-  twitterConfig: unknown;
   scheduleTime: string;
   scheduleTimezone: string;
   scheduleEnabled: boolean;
@@ -41,7 +40,6 @@ function makeFakeDb(): { db: Pick<AppDb, "select" | "insert">; rows: StoredRow[]
                 hnConfig: v.hnConfig ?? null,
                 redditConfig: v.redditConfig ?? null,
                 webConfig: v.webConfig ?? null,
-                twitterConfig: v.twitterConfig ?? null,
                 scheduleTime: v.scheduleTime ?? "00:00",
                 scheduleTimezone: v.scheduleTimezone ?? "UTC",
                 scheduleEnabled: v.scheduleEnabled ?? false,
@@ -68,7 +66,6 @@ const baseInput = {
   hnConfig: { sinceDays: 1 },
   redditConfig: null,
   webConfig: null,
-  twitterConfig: null,
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,

@@ -50,7 +50,6 @@ describe("run-process worker E2E", () => {
       hn: noopCollect,
       reddit: noopCollect,
       web: noopCollect,
-      twitter: noopCollect,
     };
     const noopCancelSubscriber: CancelSubscriberFactory = {
       subscribe: () => Promise.resolve({ close: () => Promise.resolve() }),

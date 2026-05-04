@@ -76,7 +76,6 @@ const baseSettings: UserSettings = {
   hnConfig: { sinceDays: 1 },
   redditConfig: null,
   webConfig: null,
-  twitterConfig: null,
   scheduleTime: "09:00",
   scheduleTimezone: "UTC",
   scheduleEnabled: false,

@@ -100,32 +100,11 @@ export default tseslint.config(
               name: "@newsletter/shared/db",
               message: "Web package must not import the DB layer.",
             },
-            {
-              name: "agent-twitter-client",
-              message: "agent-twitter-client must only be imported from @newsletter/pipeline.",
-            },
           ],
           patterns: [
             {
               group: ["@newsletter/shared/db/*"],
               message: "Web package must not import the DB layer.",
-            },
-          ],
-        },
-      ],
-    },
-  },
-  // Layer 1: API must not import agent-twitter-client (pipeline-only dep)
-  {
-    files: ["packages/api/**/*.{ts,tsx}"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          paths: [
-            {
-              name: "agent-twitter-client",
-              message: "agent-twitter-client must only be imported from @newsletter/pipeline.",
             },
           ],
         },

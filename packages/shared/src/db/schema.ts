@@ -5,7 +5,6 @@ import type {
   RankedItemRef,
   RunSubmitHnConfig,
   RunSubmitRedditConfig,
-  RunSubmitTwitterConfig,
   RunSubmitWebConfig,
 } from "@shared/types/index.js";
 
@@ -58,7 +57,6 @@ export const userSettings = pgTable(
     hnConfig: jsonb("hn_config").$type<RunSubmitHnConfig | null>(),
     redditConfig: jsonb("reddit_config").$type<RunSubmitRedditConfig | null>(),
     webConfig: jsonb("web_config").$type<RunSubmitWebConfig | null>(),
-    twitterConfig: jsonb("twitter_config").$type<RunSubmitTwitterConfig | null>(),
     scheduleTime: text("schedule_time").notNull(),
     scheduleTimezone: text("schedule_timezone").notNull(),
     scheduleEnabled: boolean("schedule_enabled").notNull().default(false),

@@ -17,7 +17,6 @@ const SOURCE_FILTER_OPTIONS = [
   { label: "HN", value: "hn" },
   { label: "Reddit", value: "reddit" },
   { label: "Blog", value: "blog" },
-  { label: "Twitter", value: "twitter" },
 ] as const;
 
 export function PoolSection({

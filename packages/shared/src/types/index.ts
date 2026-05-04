@@ -16,23 +16,10 @@ export interface RecapContent {
   bottomLine: string;
 }
 
-export type RawItemTwitterOrigin =
-  | { kind: "user"; handle: string }
-  | { kind: "list"; listId: string };
-
-export interface RawItemTwitterMetadata {
-  origin: RawItemTwitterOrigin;
-  retweetCount: number;
-  viewCount: number | null;
-  displayName: string | null;
-  isReply: boolean;
-}
-
 export interface RawItemMetadata {
   comments: RawItemComment[];
   recap?: RecapContent;
   addedInReview?: boolean;
-  twitter?: RawItemTwitterMetadata;
 }
 
 export interface CollectorResult {

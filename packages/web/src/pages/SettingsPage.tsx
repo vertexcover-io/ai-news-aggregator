@@ -32,7 +32,6 @@ function getDefaults(): SettingsFormValues {
       sinceDays: 1,
     },
     webConfig: null,
-    twitterConfig: null,
     scheduleTime: "07:00",
     scheduleTimezone:
       Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",

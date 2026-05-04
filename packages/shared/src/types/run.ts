@@ -59,7 +59,6 @@ export interface RunState {
     hn?: SourceRunState;
     reddit?: SourceRunState;
     blog?: SourceRunState;
-    twitter?: SourceRunState;
   };
   rankedItems: RankedItemRef[] | null;
   warnings: string[];
@@ -98,19 +97,11 @@ export interface RunSubmitWebConfig {
   sinceDays?: number;
 }
 
-export interface RunSubmitTwitterConfig {
-  users: string[];
-  listIds: string[];
-  maxPerSource: number;
-  sinceDays: number;
-}
-
 export interface RunSubmitPayload {
   topN: number;
   hn?: RunSubmitHnConfig;
   reddit?: RunSubmitRedditConfig;
   web?: RunSubmitWebConfig;
-  twitter?: RunSubmitTwitterConfig;
 }
 
 export interface AddPostPayload {

@@ -12,7 +12,6 @@ const validSettings = {
   hnConfig: { sinceDays: 1 },
   redditConfig: null,
   webConfig: null,
-  twitterConfig: null,
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,

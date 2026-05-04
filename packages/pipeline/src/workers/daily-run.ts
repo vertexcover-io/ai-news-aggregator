@@ -22,8 +22,7 @@ function sourcesEnabled(settings: UserSettings): boolean {
   return (
     settings.hnConfig !== null ||
     settings.redditConfig !== null ||
-    settings.webConfig !== null ||
-    settings.twitterConfig !== null
+    settings.webConfig !== null
   );
 }
 

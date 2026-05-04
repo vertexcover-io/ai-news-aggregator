@@ -31,11 +31,6 @@ import {
 import { collectHn } from "@pipeline/collectors/hn.js";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
-import {
-  collectTwitter,
-  TwitterAuthError,
-  TwitterRateLimitError,
-} from "@pipeline/collectors/twitter.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import {
   createRunArchivesRepo,
@@ -45,7 +40,6 @@ import type {
   HnCollectConfig,
   RedditCollectConfig,
   WebCollectConfig,
-  TwitterCollectConfig,
 } from "@pipeline/types.js";
 import type { CollectorResult } from "@newsletter/shared";
 import { CancelledError } from "@pipeline/lib/cancelled-error.js";
@@ -67,7 +61,6 @@ export interface RunCollectorsPayload {
   hn?: HnCollectConfig;
   reddit?: RedditCollectConfig;
   web?: WebCollectConfig;
-  twitter?: TwitterCollectConfig;
 }
 
 export interface RunProcessJobData {
@@ -122,19 +115,10 @@ export type WebCollectFn = (
   config: WebCollectConfig,
 ) => Promise<CollectorResult>;
 
-export type TwitterCollectFn = (
-  deps: {
-    rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
-    signal?: AbortSignal;
-  },
-  config: TwitterCollectConfig,
-) => Promise<CollectorResult>;
-
 export interface CollectFns {
   hn: HnCollectFn;
   reddit: RedditCollectFn;
   web: WebCollectFn;
-  twitter: TwitterCollectFn;
 }
 
 export interface RunProcessDeps {
@@ -176,7 +160,7 @@ async function runCollecting(
 
   const collectorDeps = { rawItemsRepo: deps.rawItemsRepo, signal };
 
-  type SourceKey = "hn" | "reddit" | "blog" | "twitter";
+  type SourceKey = "hn" | "reddit" | "blog";
   interface Task {
     sourceKey: SourceKey;
     run: () => Promise<CollectorResult>;
@@ -204,13 +188,6 @@ async function runCollecting(
       run: () => deps.collectFns.web(collectorDeps, config),
     });
   }
-  if (collectors.twitter) {
-    const config = collectors.twitter;
-    tasks.push({
-      sourceKey: "twitter",
-      run: () => deps.collectFns.twitter(collectorDeps, config),
-    });
-  }
 
   const errors: string[] = [];
   let successCount = 0;
@@ -218,14 +195,6 @@ async function runCollecting(
 
   const runTask = async (task: Task): Promise<void> => {
     const started = Date.now();
-    // REQ-051: write "running" before the collector executes
-    await writeSerial(() =>
-      deps.runState.updateSource(runId, task.sourceKey, {
-        status: "running",
-        itemsFetched: 0,
-        errors: [],
-      }),
-    );
     try {
       const result = await task.run();
       await writeSerial(() =>
@@ -247,76 +216,6 @@ async function runCollecting(
       successCount += 1;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-
-      // Twitter-specific error classification (REQ-053/054)
-      if (task.sourceKey === "twitter" && err instanceof TwitterRateLimitError) {
-        // REQ-054: if items were already fetched before the rate-limit, mark completed (partial)
-        if (err.partialItemCount > 0) {
-          await writeSerial(() =>
-            deps.runState.updateSource(runId, task.sourceKey, {
-              status: "completed",
-              itemsFetched: err.partialItemCount,
-              errors: [message],
-            }),
-          );
-          logger.warn(
-            {
-              event: "run.source.rate_limited_partial",
-              runId,
-              sourceType: task.sourceKey,
-              itemsFetched: err.partialItemCount,
-              error: message,
-              durationMs: Date.now() - started,
-            },
-            "run.source.rate_limited_partial",
-          );
-          successCount += 1;
-        } else {
-          // Rate-limited before any fetch — mark failed
-          await writeSerial(() =>
-            deps.runState.updateSource(runId, task.sourceKey, {
-              status: "failed",
-              errors: [message],
-            }),
-          );
-          logger.warn(
-            {
-              event: "run.source.rate_limited",
-              runId,
-              sourceType: task.sourceKey,
-              error: message,
-              durationMs: Date.now() - started,
-            },
-            "run.source.rate_limited",
-          );
-          errors.push(`${task.sourceKey}: ${message}`);
-          failureCount += 1;
-        }
-        return;
-      }
-
-      if (task.sourceKey === "twitter" && err instanceof TwitterAuthError) {
-        await writeSerial(() =>
-          deps.runState.updateSource(runId, task.sourceKey, {
-            status: "failed",
-            errors: [message],
-          }),
-        );
-        logger.error(
-          {
-            event: "run.source.auth_failed",
-            runId,
-            sourceType: task.sourceKey,
-            error: message,
-            durationMs: Date.now() - started,
-          },
-          "run.source.auth_failed",
-        );
-        errors.push(`${task.sourceKey}: ${message}`);
-        failureCount += 1;
-        return;
-      }
-
       await writeSerial(() =>
         deps.runState.updateSource(runId, task.sourceKey, {
           status: "failed",
@@ -646,7 +545,6 @@ export function createRunProcessWorker(
     hn: options.collectFns?.hn ?? collectHn,
     reddit: options.collectFns?.reddit ?? collectReddit,
     web: options.collectFns?.web ?? collectWeb,
-    twitter: options.collectFns?.twitter ?? collectTwitter,
   };
 
   const archiveRepo =

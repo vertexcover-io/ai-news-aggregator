@@ -90,8 +90,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     const anySource =
       settings.hnConfig !== null ||
       settings.redditConfig !== null ||
-      settings.webConfig !== null ||
-      settings.twitterConfig !== null;
+      settings.webConfig !== null;
     if (!anySource) {
       return c.json({ error: "no sources enabled" }, 409);
     }

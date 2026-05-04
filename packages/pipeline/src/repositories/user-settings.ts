@@ -26,7 +26,6 @@ export function createUserSettingsRepo(
         hnConfig: row.hnConfig,
         redditConfig: row.redditConfig,
         webConfig: row.webConfig,
-        twitterConfig: row.twitterConfig ?? null,
         scheduleTime: row.scheduleTime,
         scheduleTimezone: row.scheduleTimezone,
         scheduleEnabled: row.scheduleEnabled,

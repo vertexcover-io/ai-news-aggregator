@@ -37,7 +37,6 @@ export async function createRun(
     hnConfig: payload.hn ?? null,
     redditConfig: payload.reddit ?? null,
     webConfig: payload.web ?? null,
-    twitterConfig: payload.twitter ?? null,
     scheduleTime: "00:00",
     scheduleTimezone: "UTC",
     scheduleEnabled: false,

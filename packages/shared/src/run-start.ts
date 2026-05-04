@@ -6,7 +6,6 @@ import type {
   RunSubmitHnConfig,
   RunSubmitRedditConfig,
   RunSubmitWebConfig,
-  RunSubmitTwitterConfig,
 } from "./types/run.js";
 import type { UserSettings } from "./types/settings.js";
 
@@ -15,12 +14,11 @@ const TTL_SECONDS = 3600;
 export interface RunProcessJobPayload {
   runId: string;
   topN: number;
-  sourceTypes: ("hn" | "reddit" | "blog" | "twitter")[];
+  sourceTypes: ("hn" | "reddit" | "blog")[];
   collectors: {
     hn?: RunSubmitHnConfig;
     reddit?: RunSubmitRedditConfig;
     web?: RunSubmitWebConfig;
-    twitter?: RunSubmitTwitterConfig;
   };
   halfLifeHours?: number;
 }
@@ -48,9 +46,6 @@ export async function startRun(
   }
   if (settings.webConfig) {
     sources.blog = { status: "pending", itemsFetched: 0, errors: [] };
-  }
-  if (settings.twitterConfig) {
-    sources.twitter = { status: "pending", itemsFetched: 0, errors: [] };
   }
 
   const initial: RunState = {
@@ -87,10 +82,6 @@ export async function startRun(
   if (settings.webConfig) {
     sourceTypes.push("blog");
     collectors.web = settings.webConfig;
-  }
-  if (settings.twitterConfig) {
-    sourceTypes.push("twitter");
-    collectors.twitter = settings.twitterConfig;
   }
 
   const jobPayload: RunProcessJobPayload = {

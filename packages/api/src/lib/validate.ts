@@ -1,59 +1,6 @@
 import { z } from "zod";
 import type { UserSettings } from "@newsletter/shared";
 
-const NUMERIC_LIST_ID_RE = /^\d{6,}$/;
-
-function parseListInput(value: string): string {
-  const trimmed = value.trim();
-  if (NUMERIC_LIST_ID_RE.test(trimmed)) return trimmed;
-  let u: URL;
-  try {
-    u = new URL(trimmed);
-  } catch {
-    throw new Error(`invalid list input: ${value}`);
-  }
-  const allowedHosts = new Set([
-    "x.com", "www.x.com", "twitter.com", "www.twitter.com",
-  ]);
-  if (!allowedHosts.has(u.hostname)) {
-    throw new Error(`unrecognised host: ${u.hostname}`);
-  }
-  const parts = u.pathname.split("/").filter(Boolean);
-  const idx = parts.indexOf("lists");
-  if (idx === -1) throw new Error(`no lists segment in URL: ${trimmed}`);
-  for (const part of parts.slice(idx + 1)) {
-    if (NUMERIC_LIST_ID_RE.test(part)) return part;
-  }
-  throw new Error(`no numeric list id in URL: ${trimmed}`);
-}
-
-const twitterListInputSchema = z
-  .string()
-  .min(1)
-  .transform((v, ctx) => {
-    try {
-      return parseListInput(v);
-    } catch (err) {
-      ctx.addIssue({
-        code: "custom",
-        message: err instanceof Error ? err.message : String(err),
-      });
-      return z.NEVER;
-    }
-  });
-
-const twitterUserSchema = z
-  .string()
-  .min(1)
-  .transform((v) => v.trim().replace(/^@/, "").toLowerCase());
-
-const twitterConfigSchema = z.object({
-  users: z.array(twitterUserSchema),
-  listIds: z.array(twitterListInputSchema),
-  maxPerSource: z.number().int().min(1).max(200),
-  sinceDays: z.number().int().min(1).max(30),
-});
-
 const hnConfigSchema = z.object({
   keywords: z.array(z.string()).optional(),
   pointsThreshold: z.number().int().min(0).optional(),
@@ -89,16 +36,14 @@ export const runSubmitSchema = z
     hn: hnConfigSchema.optional(),
     reddit: redditConfigSchema.optional(),
     web: webConfigSchema.optional(),
-    twitter: twitterConfigSchema.optional(),
     halfLifeHours: z.number().positive().optional(),
   })
   .refine(
     (payload) =>
       payload.hn !== undefined ||
       payload.reddit !== undefined ||
-      payload.web !== undefined ||
-      payload.twitter !== undefined,
-    { message: "at least one of hn, reddit, web, twitter is required" },
+      payload.web !== undefined,
+    { message: "at least one of hn, reddit, web is required" },
   );
 
 export type RunSubmitBody = z.infer<typeof runSubmitSchema>;
@@ -121,7 +66,6 @@ export const userSettingsUpsertSchema = z
     hnConfig: hnConfigSchema.nullable(),
     redditConfig: redditConfigSchema.nullable(),
     webConfig: webConfigSchema.nullable(),
-    twitterConfig: twitterConfigSchema.nullable(),
     scheduleTime: z
       .string()
       .regex(HH_MM_RE, { message: "scheduleTime must be HH:MM (24h)" }),
@@ -138,8 +82,7 @@ export const userSettingsUpsertSchema = z
       !payload.scheduleEnabled ||
       payload.hnConfig !== null ||
       payload.redditConfig !== null ||
-      payload.webConfig !== null ||
-      payload.twitterConfig !== null,
+      payload.webConfig !== null,
     {
       message:
         "at least one source must be enabled when scheduleEnabled is true",

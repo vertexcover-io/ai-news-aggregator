@@ -437,12 +437,11 @@ describe("run-process worker", () => {
     const hn = vi.fn();
     const reddit = vi.fn();
     const web = vi.fn();
-    const twitter = vi.fn();
     const worker = createRunProcessWorker({
       runState: runStateMock.service,
       loadFn: vi.fn(() => Promise.resolve([])),
       rankFn: vi.fn(),
-      collectFns: { hn, reddit, web, twitter },
+      collectFns: { hn, reddit, web },
     });
     expect(worker).toBeDefined();
   });
