@@ -198,20 +198,27 @@ export async function rankCandidates(
     throw new Error(`ranking failed: ${message}`, { cause: err });
   }
 
-  for (const entry of result.object.ranked) {
+  const axisValidated = result.object.ranked.filter((entry) => {
     const rationaleLower = entry.rationale.toLowerCase();
     const mentionsAxis = axes.some((axis) =>
       rationaleLower.includes(axis.toLowerCase()),
     );
     if (!mentionsAxis) {
-      throw new Error(
-        `rationale for id=${entry.id} does not name a scoring axis: "${entry.rationale}"`,
+      logger.warn(
+        {
+          event: "run.rank.rationale_axis_missing",
+          runId: options.runId,
+          itemId: entry.id,
+          rationale: entry.rationale,
+        },
+        "skipping ranked item: rationale does not name a scoring axis",
       );
     }
-  }
+    return mentionsAxis;
+  });
 
   const byId = new Map(shortlist.map((c) => [c.id, c]));
-  const validEntries = result.object.ranked.filter((r) => byId.has(r.id));
+  const validEntries = axisValidated.filter((r) => byId.has(r.id));
   if (validEntries.length === 0) {
     throw new Error("ranking returned no valid items");
   }
