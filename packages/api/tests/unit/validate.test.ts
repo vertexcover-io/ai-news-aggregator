@@ -93,6 +93,126 @@ describe("userSettingsUpsertSchema (REQ-012/REQ-013/EDGE-004)", () => {
   });
 });
 
+describe("userSettingsUpsertSchema twitterConfig (REQ-022)", () => {
+  const baseTwitter = {
+    listIds: ["123456789"],
+    users: [{ handle: "jack", userId: "12" }],
+  };
+
+  it("accepts a valid twitterConfig with listIds and users", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      twitterConfig: baseTwitter,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("accepts users without userId on input (resolved server-side)", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      twitterConfig: { listIds: [], users: [{ handle: "jack" }] },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("accepts users with both handle and userId", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      twitterConfig: {
+        listIds: [],
+        users: [{ handle: "jack", userId: "12" }],
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects empty list ID", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      twitterConfig: { listIds: [""], users: [] },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects non-digit list ID", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      twitterConfig: { listIds: ["abc"], users: [] },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects negative maxTweetsPerSource", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      twitterConfig: { ...baseTwitter, maxTweetsPerSource: -1 },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects maxTweetsPerSource over 500", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      twitterConfig: { ...baseTwitter, maxTweetsPerSource: 501 },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects sinceHours over 168", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      twitterConfig: { ...baseTwitter, sinceHours: 200 },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects sinceHours below 1", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      twitterConfig: { ...baseTwitter, sinceHours: 0 },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects malformed handle (with @ prefix)", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      twitterConfig: { listIds: [], users: [{ handle: "@jack" }] },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects malformed handle (over 15 chars)", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      twitterConfig: {
+        listIds: [],
+        users: [{ handle: "abcdefghijklmnopqrstu" }],
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects malformed handle (contains space)", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      twitterConfig: { listIds: [], users: [{ handle: "jack dorsey" }] },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects userId that isn't all digits", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      twitterConfig: {
+        listIds: [],
+        users: [{ handle: "jack", userId: "12a" }],
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+});
+
 describe("runSubmitSchema (REQ-002)", () => {
   it("accepts a payload with hn only", () => {
     const result = runSubmitSchema.safeParse({

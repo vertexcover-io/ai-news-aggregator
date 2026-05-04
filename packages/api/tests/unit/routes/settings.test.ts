@@ -22,6 +22,7 @@ function makeRepo(initial: UserSettings | null = null): {
         hnConfig: input.hnConfig,
         redditConfig: input.redditConfig,
         webConfig: input.webConfig,
+        twitterConfig: input.twitterConfig,
         scheduleTime: input.scheduleTime,
         scheduleTimezone: input.scheduleTimezone,
         scheduleEnabled: input.scheduleEnabled,
@@ -46,13 +47,23 @@ function makeQueue() {
   return { upsertJobScheduler, removeJobScheduler };
 }
 
-function buildApp(repo: UserSettingsRepo, queue: ReturnType<typeof makeQueue>) {
+function buildApp(
+  repo: UserSettingsRepo,
+  queue: ReturnType<typeof makeQueue>,
+  resolveHandles?: (
+    handles: string[],
+  ) => Promise<{ handle: string; userId: string }[]>,
+) {
   const app = new Hono();
   app.route(
     "/api/settings",
     createSettingsRouter({
       getSettingsRepo: () => repo,
       processingQueue: queue as never,
+      resolveHandles: resolveHandles
+        ? (handles) => resolveHandles(handles)
+        : undefined,
+      rettiwtFactory: () => ({}) as never,
     }),
   );
   return app;
@@ -174,6 +185,210 @@ describe("PUT /api/settings", () => {
     expect(res.status).toBe(200);
     expect(queue.removeJobScheduler).toHaveBeenCalledTimes(1);
     expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
+  });
+
+  it("REQ-045b: users with userId already set → no resolver call, persisted as-is", async () => {
+    const { repo, store } = makeRepo(null);
+    const resolver = vi.fn(() =>
+      Promise.resolve([] as { handle: string; userId: string }[]),
+    );
+    const app = buildApp(repo, makeQueue(), resolver);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        twitterConfig: {
+          listIds: ["111"],
+          users: [{ handle: "jack", userId: "12" }],
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(resolver).not.toHaveBeenCalled();
+    expect(store.current?.twitterConfig).toEqual({
+      listIds: ["111"],
+      users: [{ handle: "jack", userId: "12" }],
+      maxTweetsPerSource: undefined,
+      sinceHours: undefined,
+    });
+  });
+
+  it("REQ-045: users missing userId → resolver called, persisted shape has both fields", async () => {
+    const { repo, store } = makeRepo(null);
+    const resolver = vi.fn(() =>
+      Promise.resolve([{ handle: "jack", userId: "12" }]),
+    );
+    const app = buildApp(repo, makeQueue(), resolver);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        twitterConfig: {
+          listIds: [],
+          users: [{ handle: "jack" }],
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(resolver).toHaveBeenCalledTimes(1);
+    expect(resolver).toHaveBeenCalledWith(["jack"]);
+    expect(store.current?.twitterConfig?.users).toEqual([
+      { handle: "jack", userId: "12" },
+    ]);
+  });
+
+  it("REQ-045: mixed resolved+unresolved users preserve order", async () => {
+    const { repo, store } = makeRepo(null);
+    const resolver = vi.fn((handles: string[]) =>
+      Promise.resolve(
+        handles.map((h) => ({ handle: h, userId: h === "alice" ? "100" : "200" })),
+      ),
+    );
+    const app = buildApp(repo, makeQueue(), resolver);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        twitterConfig: {
+          listIds: [],
+          users: [
+            { handle: "jack", userId: "12" },
+            { handle: "alice" },
+            { handle: "bob" },
+          ],
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(resolver).toHaveBeenCalledWith(["alice", "bob"]);
+    expect(store.current?.twitterConfig?.users).toEqual([
+      { handle: "jack", userId: "12" },
+      { handle: "alice", userId: "100" },
+      { handle: "bob", userId: "200" },
+    ]);
+  });
+
+  it("REQ-046: resolver throws not_found → 422 with failure list, settings unchanged", async () => {
+    const existing: UserSettings = {
+      id: "id-1",
+      topN: 5,
+      halfLifeHours: null,
+      hnConfig: null,
+      redditConfig: null,
+      webConfig: null,
+      twitterConfig: null,
+      scheduleTime: "08:00",
+      scheduleTimezone: "UTC",
+      scheduleEnabled: false,
+      updatedAt: new Date().toISOString(),
+    };
+    const { repo, store } = makeRepo(existing);
+    const { TwitterHandleResolutionError } = await import(
+      "@api/services/twitter-handle-resolver.js"
+    );
+    const resolver = vi.fn(() =>
+      Promise.resolve().then((): never => {
+        throw new TwitterHandleResolutionError("ghost", "not_found");
+      }),
+    );
+    const app = buildApp(repo, makeQueue(), resolver);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        twitterConfig: {
+          listIds: [],
+          users: [{ handle: "ghost" }],
+        },
+      }),
+    });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as {
+      error: string;
+      failures: { handle: string; reason: string }[];
+    };
+    expect(body.failures).toEqual([{ handle: "ghost", reason: "not_found" }]);
+    expect(store.current).toEqual(existing);
+  });
+
+  it("REQ-047: resolver throws missing_api_key → 503, settings unchanged", async () => {
+    const { repo, store } = makeRepo(null);
+    const { TwitterHandleResolutionError } = await import(
+      "@api/services/twitter-handle-resolver.js"
+    );
+    const resolver = vi.fn(() =>
+      Promise.resolve().then((): never => {
+        throw new TwitterHandleResolutionError("jack", "missing_api_key");
+      }),
+    );
+    const app = buildApp(repo, makeQueue(), resolver);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        twitterConfig: { listIds: [], users: [{ handle: "jack" }] },
+      }),
+    });
+    expect(res.status).toBe(503);
+    expect(store.current).toBeNull();
+  });
+
+  it("resolver throws auth_failed → 503, settings unchanged", async () => {
+    const { repo, store } = makeRepo(null);
+    const { TwitterHandleResolutionError } = await import(
+      "@api/services/twitter-handle-resolver.js"
+    );
+    const resolver = vi.fn(() =>
+      Promise.resolve().then((): never => {
+        throw new TwitterHandleResolutionError("jack", "auth_failed");
+      }),
+    );
+    const app = buildApp(repo, makeQueue(), resolver);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        twitterConfig: { listIds: [], users: [{ handle: "jack" }] },
+      }),
+    });
+    expect(res.status).toBe(503);
+    expect(store.current).toBeNull();
+  });
+
+  it("REQ-023: round-trips twitterConfig (PUT then GET returns same shape)", async () => {
+    const { repo } = makeRepo(null);
+    const resolver = vi.fn(() =>
+      Promise.resolve([{ handle: "jack", userId: "12" }]),
+    );
+    const app = buildApp(repo, makeQueue(), resolver);
+    const putRes = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        twitterConfig: {
+          listIds: ["111"],
+          users: [{ handle: "jack", userId: "12" }],
+          maxTweetsPerSource: 50,
+          sinceHours: 24,
+        },
+      }),
+    });
+    expect(putRes.status).toBe(200);
+    const getRes = await app.request("/api/settings");
+    const body = (await getRes.json()) as UserSettings;
+    expect(body.twitterConfig).toEqual({
+      listIds: ["111"],
+      users: [{ handle: "jack", userId: "12" }],
+      maxTweetsPerSource: 50,
+      sinceHours: 24,
+    });
   });
 
   it("EDGE-011: returns 400 for malformed JSON", async () => {
