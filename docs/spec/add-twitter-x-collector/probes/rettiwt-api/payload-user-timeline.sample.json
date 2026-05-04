@@ -1,0 +1,38 @@
+{
+  "vs": "VS-0a-user-timeline",
+  "library": "rettiwt-api",
+  "version": "7.0.3",
+  "auth_mode": "user (apiKey)",
+  "handles_resolved": 2,
+  "timelines_fetched": 2,
+  "results": [
+    {
+      "handle": "jack",
+      "userId": "12",
+      "userName": "jack",
+      "tweetCount": 21,
+      "cursorPresent": false,
+      "firstTweetPreview": {
+        "id": "1833951636005552366",
+        "createdAt": "2024-09-11T19:31:57.000Z",
+        "authorHandle": "jack",
+        "textPreview": "We reject: kings, presidents, and voting.\nWe believe in: rough consensus and running code.\n\n—David Clark, 1992",
+        "fullTextLength": 110
+      }
+    },
+    {
+      "handle": "sama",
+      "userId": "1605",
+      "userName": "sama",
+      "tweetCount": 22,
+      "cursorPresent": false,
+      "firstTweetPreview": {
+        "id": "2051318922805436896",
+        "createdAt": "2026-05-04T15:11:57.000Z",
+        "authorHandle": "sama",
+        "textPreview": "we are gonna do something nice for everyone who applied for the GPT-5.5 party and that we didn't have space for. hope yo",
+        "fullTextLength": 128
+      }
+    }
+  ]
+}

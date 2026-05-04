@@ -1,0 +1,11 @@
+[0.00s] apiKey loaded (length=388)
+[0.00s] instantiating Rettiwt({ apiKey: <redacted> }) — user-auth mode
+[0.00s] calling rettiwt.list.tweets("1585430245762441216", 20)
+[2.08s] result type: object; keys: list,next
+[2.08s] tweets returned: 95
+[2.08s] first tweet keys: _raw,bookmarkCount,conversationId,createdAt,entities,fullText,id,lang,likeCount,media,quoteCount,quoted,replyCount,replyTo,retweetCount,retweetedTweet,tweetBy,url,viewCount
+[2.08s] shape checks: {"hasId":true,"hasText":true,"hasCreatedAt":true,"hasAuthor":true,"hasLikeCount":true}
+[2.08s] long-form tweet found: 778 chars — full-text expansion VERIFIED
+[2.08s] cursor present for pagination: true
+[2.09s] payload sample written to /Users/amankumar/Documents/newsletter/.worktrees/feat-twitter-collector-v2/docs/spec/add-twitter-x-collector/probes/rettiwt-api/payload.sample.json
+[2.09s] PASS — list-tweets in user-auth mode, 95 tweets, 2.09s
