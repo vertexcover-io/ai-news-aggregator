@@ -38,6 +38,7 @@ export interface CollectionWorkerDeps {
 
 const logger = createLogger("worker:collection");
 
+// singleton: one set of deps per process lifetime
 let defaultDepsInstance: CollectionWorkerDeps | null = null;
 
 function getDefaultDeps(): CollectionWorkerDeps {

@@ -4,6 +4,7 @@ import * as schema from "./schema.js";
 
 export type AppDb = ReturnType<typeof drizzle<typeof schema>>;
 
+// singleton: one connection per process lifetime
 let db: AppDb | undefined;
 
 function createClient(): AppDb {

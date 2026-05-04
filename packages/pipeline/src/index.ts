@@ -32,7 +32,7 @@ if (!process.env.ANTHROPIC_API_KEY) {
 
 export function getRunIdFromJobData(data: unknown): string | undefined {
   if (typeof data === "object" && data !== null && "runId" in data) {
-    const runId = (data as Record<string, unknown>).runId;
+    const runId = (data as { runId: unknown }).runId;
     return typeof runId === "string" ? runId : undefined;
   }
   return undefined;

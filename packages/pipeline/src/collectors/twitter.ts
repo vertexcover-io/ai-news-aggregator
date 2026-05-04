@@ -102,7 +102,7 @@ export function parseCookieEnv(raw: string | undefined): unknown[] {
     if (typeof c !== "object" || c === null) {
       throw new TwitterAuthError("invalid cookie shape");
     }
-    const rec = c as Record<string, unknown>;
+    const rec = c as { name: unknown; value: unknown };
     if (typeof rec.name !== "string") {
       throw new TwitterAuthError("invalid cookie shape");
     }
