@@ -1,7 +1,7 @@
 {
   "spec": "ver-85-newsletter-system",
-  "ran_at": "2026-05-05T14:22:00Z",
-  "passed": 11,
+  "ran_at": "2026-05-05T14:55:00Z",
+  "passed": 13,
   "failed": 0,
   "tests": [
     {
@@ -58,6 +58,18 @@
       "name": "admin analytics page > renders metric cards and date controls when logged in",
       "file": "packages/web/tests/e2e/subscribe.spec.ts",
       "status": "passed"
+    },
+    {
+      "name": "Newsletter send (real Resend) > delivers to all 3 confirmed subscribers; email_sends rows persisted",
+      "file": "packages/pipeline/tests/e2e/network/newsletter-send.e2e.test.ts",
+      "status": "passed",
+      "notes": "Real Resend API call. Sends to delivered@/bounced@/complained@resend.dev. Asserts 3 rows in email_sends with non-empty Resend message_ids."
+    },
+    {
+      "name": "Newsletter send (real Resend) > does not duplicate sends on re-run for same archive (idempotency)",
+      "file": "packages/pipeline/tests/e2e/network/newsletter-send.e2e.test.ts",
+      "status": "passed",
+      "notes": "Verifies REQ-012 / EDGE-006: duplicate send-newsletter job does not produce duplicate email_sends rows."
     }
   ],
   "infra": {
@@ -66,15 +78,41 @@
     "api": "http://localhost:3000",
     "web": "http://localhost:5173"
   },
-  "notes": [
-    "Subscribe POST is stubbed via Playwright route interception because the configured RESEND_API_KEY is a placeholder; unit tests cover the API + email-provider + template logic with real mocks.",
-    "Real-DB persistence of subscribers (with confirm_token issued) was verified manually before the test run by hitting /api/subscribe via curl and inspecting the subscribers table."
+  "ses_setup": {
+    "script": "scripts/setup-ses.ts (pnpm setup:ses)",
+    "ran_at": "2026-05-05T09:20:38Z",
+    "domain": "news.vertexcover.io",
+    "region": "us-east-1",
+    "sandbox": true,
+    "max_24_hour_send": 200,
+    "configuration_set": "newsletter-default",
+    "sns_topic_arn": "arn:aws:sns:us-east-1:183017936378:newsletter-ses-events",
+    "event_destination": "sns-all-events (BOUNCE, COMPLAINT, DELIVERY, OPEN, CLICK, REJECT)",
+    "dkim_status": "PENDING (awaiting DNS publish)",
+    "verified_for_sending": false,
+    "dns_records_file": "docs/spec/ver-85-newsletter-system/ses-dns-records.txt"
+  },
+  "coverage": [
+    "Subscribe widget render on / and /archive/:runId (REQ-001, REQ-002)",
+    "Privacy and Terms pages render (REQ-025, REQ-026, REQ-027)",
+    "Confirm page status states success/expired/invalid (REQ-005, REQ-007, REQ-008)",
+    "Unsubscribe success page (REQ-015)",
+    "Admin analytics gate + dashboard render (REQ-029)",
+    "Pipeline send-newsletter via real Resend API (REQ-011, REQ-024, EDGE-013): 3 confirmed subscribers receive emails, email_sends rows persisted with Resend message IDs",
+    "Send-newsletter idempotency (REQ-012, EDGE-006): duplicate job does not duplicate email_sends rows",
+    "SES setup script (idempotent) provisions domain identity, DKIM, MAIL FROM, configuration set, SNS topic, and event destination"
   ],
   "gaps": [
-    "Real SES/Resend email delivery is not exercised end-to-end (RESEND_API_KEY placeholder; no SES credentials wired for tests).",
-    "SNS webhook receipt + signature verification (POST /api/webhooks/ses) is covered by unit tests only, not by an e2e HTTP round-trip.",
-    "The full daily newsletter send pipeline (BullMQ send-newsletter worker -> per-subscriber email -> email_sends row -> SES event ingestion) is not exercised end-to-end.",
-    "Confirm-token + unsubscribe-token round-trip via real /api/confirm and /api/unsubscribe links is covered by unit tests but not driven through the browser e2e (would require valid HMAC tokens and a successful confirmation send).",
-    "Analytics aggregation with non-zero data is not exercised — the e2e test asserts the dashboard renders metric cards on an empty dataset only."
+    "Confirm/unsubscribe token round-trip via real DB+browser (Task 3A): token state pages are covered by component-level e2e with stubbed routes; the real-token flow hitting the live API + DB is covered by unit tests but not yet by an e2e Playwright spec.",
+    "SNS webhook with real signed payloads (Task 3B): the verifier's cert-fetcher has no test injection point yet; signature verification is covered by unit tests with mocked crypto, not by an e2e HTTP round-trip against the running API.",
+    "Analytics with seeded non-zero data (Task 3D): the e2e currently asserts metric cards render; non-zero seeded values + date-range filter behavior is not exercised end-to-end yet.",
+    "Subscribe-to-confirm full UI flow against real DB (Task 3E): the existing widget test stubs /api/subscribe; full-stack POST -> DB pending row -> token -> /confirm success is covered by unit tests only.",
+    "Real SES production sending: account is in sandbox (max 200/day, verified-recipients-only) — out of scope until DNS records are published and the production-access form is submitted.",
+    "Live SNS subscription to the deployed webhook URL: deferred — production deploy required. Local e2e uses simulated payloads."
+  ],
+  "notes": [
+    "Real Resend send tests are gated by RUN_NETWORK_TESTS=1 and read RESEND_API_KEY from .env.harness (which lives at the main repo root, not the worktree root — the test resolves it via `git rev-parse --git-common-dir`).",
+    "Resend test recipients (delivered@/bounced@/complained@resend.dev) are documented at https://resend.com/docs/dashboard/emails/send-test-emails. Sender uses Resend's no-domain-verification address `onboarding@resend.dev`.",
+    "All 403 unit tests in @newsletter/pipeline pass, including newsletter-send worker unit tests."
   ]
 }
