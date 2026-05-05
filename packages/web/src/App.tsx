@@ -5,6 +5,11 @@ import { ArchivePage } from "./pages/ArchivePage";
 import { ReviewPage } from "./pages/ReviewPage";
 import { ArchiveListingPage } from "./pages/ArchiveListingPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
+import { ConfirmPage } from "./pages/ConfirmPage";
+import { AnalyticsPage } from "./pages/AnalyticsPage";
+import { UnsubscribePage } from "./pages/UnsubscribePage";
+import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
+import { TermsPage } from "./pages/TermsPage";
 import { PublicLayout } from "./layouts/PublicLayout";
 import { AdminLayout } from "./layouts/AdminLayout";
 import { RequireAdmin } from "./layouts/RequireAdmin";
@@ -15,6 +20,10 @@ export const routes: RouteObject[] = [
     children: [
       { path: "/", element: <ArchiveListingPage /> },
       { path: "/archive/:runId", element: <ArchivePage /> },
+      { path: "/confirm", element: <ConfirmPage /> },
+      { path: "/unsubscribe", element: <UnsubscribePage /> },
+      { path: "/privacy", element: <PrivacyPolicyPage /> },
+      { path: "/terms", element: <TermsPage /> },
     ],
   },
   { path: "/admin/login", element: <AdminLoginPage /> },
@@ -28,6 +37,7 @@ export const routes: RouteObject[] = [
           { index: true, element: <DashboardPage /> },
           { path: "review/:runId", element: <ReviewPage /> },
           { path: "settings", element: <SettingsPage /> },
+          { path: "analytics", element: <AnalyticsPage /> },
         ],
       },
     ],

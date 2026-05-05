@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { logout } from "@/api/admin";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,12 @@ export function AdminLayout(): ReactElement {
 
   return (
     <div>
-      <header className="flex justify-end items-center gap-2 px-4 py-2 border-b">
+      <header className="flex items-center justify-between px-4 py-2 border-b">
+        <nav className="flex items-center gap-4">
+          <Link to="/admin" className="font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-neutral-900 min-h-[44px] inline-flex items-center">Dashboard</Link>
+          <Link to="/admin/settings" className="font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-neutral-900 min-h-[44px] inline-flex items-center">Settings</Link>
+          <Link to="/admin/analytics" className="font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-neutral-900 min-h-[44px] inline-flex items-center">Analytics</Link>
+        </nav>
         <Button
           type="button"
           variant="ghost"
