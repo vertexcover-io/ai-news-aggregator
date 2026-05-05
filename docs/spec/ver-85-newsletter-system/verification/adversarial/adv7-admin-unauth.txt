@@ -1,0 +1,8 @@
+HTTP/1.1 401 Unauthorized
+content-type: application/json
+Content-Length: 24
+Date: Tue, 05 May 2026 10:25:45 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"error":"unauthorized"}

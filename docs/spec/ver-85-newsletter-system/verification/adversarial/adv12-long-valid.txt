@@ -1,0 +1,8 @@
+HTTP/1.1 500 Internal Server Error
+content-type: text/plain; charset=UTF-8
+Content-Length: 21
+Date: Tue, 05 May 2026 10:25:56 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+Internal Server Error

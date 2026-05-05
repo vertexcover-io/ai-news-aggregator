@@ -1,0 +1,8 @@
+HTTP/1.1 200 OK
+content-type: application/json
+Content-Length: 211
+Date: Tue, 05 May 2026 10:23:57 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"totalSubscriptions":0,"totalUnsubscriptions":0,"emailsSent":0,"bounces":0,"complaints":0,"opens":0,"clicks":0,"period":{"from":"2026-04-01T00:00:00.000Z","to":"2026-05-01T00:00:00.000Z","granularity":"daily"}}
