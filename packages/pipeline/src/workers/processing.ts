@@ -167,7 +167,7 @@ function buildDefaultDailyRunDeps(connection: IORedis): DailyRunDeps {
   };
 }
 
-function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
+export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
   const db = getDb();
   return {
     emailProvider: createEmailProvider(),
