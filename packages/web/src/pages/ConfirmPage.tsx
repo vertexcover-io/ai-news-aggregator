@@ -50,6 +50,9 @@ export function ConfirmPage(): ReactElement {
             <h1 className="font-serif text-3xl sm:text-4xl font-medium text-neutral-900">
               This link is invalid.
             </h1>
+            <p className="mt-4 font-serif text-neutral-700">
+              Please subscribe again to receive a new confirmation email.
+            </p>
           </>
         )}
         {status !== "success" && status !== "expired" && status !== "invalid" && (

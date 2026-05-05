@@ -14,7 +14,7 @@ export interface SubscribeRouterDeps {
 }
 
 const subscribeBodySchema = z.object({
-  email: z.email(),
+  email: z.email().max(254),
 });
 
 export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
@@ -39,10 +39,19 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       return c.json({ ok: true });
     }
 
-    const subscriber = await deps.subscribersRepo.create({
-      email,
-      status: "pending",
-    });
+    let subscriber;
+    try {
+      subscriber = await deps.subscribersRepo.create({
+        email,
+        status: "pending",
+      });
+    } catch (err) {
+      const code = (err as { code?: unknown }).code;
+      if (code === "23505") {
+        return c.json({ ok: true });
+      }
+      throw err;
+    }
 
     const confirmTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const confirmToken = issueSubscriberToken(
@@ -59,7 +68,13 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
     );
 
     const confirmUrl = `${deps.baseUrl}/api/confirm?token=${confirmToken}`;
-    await deps.sendConfirmationEmail(email, confirmUrl);
+    try {
+      await deps.sendConfirmationEmail(email, confirmUrl);
+    } catch {
+      // Email send failures (provider rejection, rate limit, transient outage)
+      // must not surface as 500: the subscriber is persisted in pending state
+      // and can be re-sent via admin tools or retried.
+    }
 
     return c.json({ ok: true });
   });
