@@ -7,7 +7,33 @@
 
 ## Result
 
-**40 PASS · 2 FAIL · 31 COVERED_BY_E2E · 6 NOT_VERIFIED.** All Must-have UI/API surfaces render and respond correctly. Two adversarial defects surfaced: subscribe returns HTTP 500 (not a clean 4xx) when downstream Resend send fails (e.g. unverified recipient on free-tier sandbox key, or excessively long-but-format-valid email). Everything else passes.
+**40 PASS · 2 FAIL · 33 COVERED_BY_E2E · 6 NOT_VERIFIED.** All Must-have UI/API surfaces render and respond correctly. Two adversarial defects surfaced: subscribe returns HTTP 500 (not a clean 4xx) when downstream Resend send fails (e.g. unverified recipient on free-tier sandbox key, or excessively long-but-format-valid email). Everything else passes. Defects 1 (overlong email → 500), 2 (concurrent-subscribe race → 500), and the missing `/confirm?status=invalid` remediation copy were subsequently fixed in commit 851cffa; functional verification of those fixes is via the existing curl + UI captures plus the `/confirm?status=invalid` v2 screenshot under `## Re-verification 2026-05-05` below.
+
+## Re-verification 2026-05-05
+
+UI changed since the original capture (commit 03fdcfd):
+- `SubscribeWidget` on the home listing is now **centered** (`mx-auto max-w-[480px]`) instead of left-aligned.
+- New **Subscribe** link added to `PublicLayout` nav, next to **About**. On `/` it smooth-scrolls to `#subscribe` (handler calls `preventDefault`, no hash mutation). On any other route it navigates to `/#subscribe`, then scrolls to the widget.
+- The widget container now exposes `id="subscribe"` and `scroll-mt-24`.
+
+Two new e2e tests were added in `packages/web/tests/e2e/subscribe.spec.ts` covering both nav-link behaviors (same-page smooth-scroll, cross-page navigate-then-scroll). Subscribe spec now contains 13 tests; full web e2e suite size unchanged in shape — see `e2e-report.json`.
+
+New screenshot captures (all under `verification/ui/`):
+
+| Route + viewport | File | Verdict |
+|---|---|---|
+| `/` @ 1280×720 (top of page) | `homepage-1280-v2.png` | PASS — Subscribe nav link visible at `{x:886.8, y:16, w:80.9}`, About at `{x:975.7, y:16, w:54.8}` |
+| `/` @ 1280×720 (subscribe section) | `homepage-1280-subscribe-section-v2.png` | PASS — widget centered: inner `mx-auto max-w-[480px]` rect `{x:392.5, w:480}` inside main column `{x:202.5, w:860}` |
+| `/` @ 1280×720 (after Subscribe nav click) | `homepage-1280-after-nav-click-v2.png` | PASS — `#subscribe` in viewport (top 359/720), `location.hash` empty (preventDefault) |
+| `/` @ 375×667 (top) | `homepage-375-v2.png` | PASS — Subscribe + About both fit on nav row |
+| `/` @ 375×667 (subscribe section) | `homepage-375-subscribe-section-v2.png` | PASS — widget reflows full-width on narrow viewport |
+| `/privacy` @ 1280×720 | `privacy-1280-with-nav-v2.png` | PASS — same nav links present on non-home route |
+| `/privacy` → click Subscribe → `/#subscribe` | `privacy-to-subscribe-after-nav-v2.png` | PASS — `location.pathname='/'`, `location.hash='#subscribe'`, widget in viewport (top 359/720) |
+| `/confirm?status=invalid` @ 1280×720 | `confirm-invalid-1280-v2.png` | PASS — remediation copy "Please subscribe again to receive a new confirmation email." now present (originally noted as a copy gap; fixed in 851cffa) |
+
+Per-screenshot evidence appended in `verification/ui/observations.md` under the **`## Re-verification 2026-05-05 (post-nav-link)`** heading. All v1 screenshots retained as historical evidence — none deleted.
+
+**Verdict:** PASS overall. No new visual defects. The centering and the new nav link both render with the expected geometry and behavior, verified via DOM `getBoundingClientRect` probes and `location` snapshots.
 
 ## Spec Coverage Table
 
