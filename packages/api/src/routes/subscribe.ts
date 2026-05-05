@@ -7,6 +7,7 @@ export interface SubscribeRouterDeps {
   subscribersRepo: SubscribersRepo;
   sessionSecret: string;
   baseUrl: string;
+  webBaseUrl: string;
   sendConfirmationEmail: (email: string, confirmUrl: string) => Promise<void>;
   sendNewsletterToSubscriber: (runId: string, subscriberId: string) => Promise<void>;
   getTodaysReviewedArchiveId: () => Promise<string | null>;
@@ -69,12 +70,12 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
 
     if (!result.valid) {
       if (result.reason === "expired") {
-        return c.redirect("/confirm?status=expired");
+        return c.redirect(`${deps.webBaseUrl}/confirm?status=expired`);
       }
       if (result.reason === "wrong-type") {
-        return c.redirect("/confirm?status=invalid");
+        return c.redirect(`${deps.webBaseUrl}/confirm?status=invalid`);
       }
-      return c.redirect("/confirm?status=invalid");
+      return c.redirect(`${deps.webBaseUrl}/confirm?status=invalid`);
     }
 
     await deps.subscribersRepo.updateStatus(result.subscriberId, "confirmed", {
@@ -88,7 +89,7 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       await deps.sendNewsletterToSubscriber(todaysArchiveId, result.subscriberId);
     }
 
-    return c.redirect("/confirm?status=success");
+    return c.redirect(`${deps.webBaseUrl}/confirm?status=success`);
   });
 
   app.get("/unsubscribe", async (c) => {
@@ -101,7 +102,7 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       });
     }
 
-    return c.redirect("/unsubscribe?status=success");
+    return c.redirect(`${deps.webBaseUrl}/unsubscribe?status=success`);
   });
 
   app.post("/unsubscribe", async (c) => {

@@ -68,6 +68,7 @@ const subscribeRouter = createSubscribeRouter({
   subscribersRepo: createSubscribersRepo(getDb()),
   sessionSecret,
   baseUrl: process.env.BASE_URL ?? `http://localhost:${process.env.API_PORT ?? 3000}`,
+  webBaseUrl: newsletterBaseUrl,
   sendConfirmationEmail: async (email, confirmUrl) => {
     const html = await renderConfirmation({ confirmUrl, baseUrl: newsletterBaseUrl });
     await emailProvider.send({

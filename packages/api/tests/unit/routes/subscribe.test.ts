@@ -63,6 +63,7 @@ function buildApp(opts: {
     subscribersRepo: opts.repo,
     sessionSecret: SECRET,
     baseUrl: BASE_URL,
+    webBaseUrl: BASE_URL,
     sendConfirmationEmail: opts.sendConfirmationEmail ?? vi.fn(() => Promise.resolve()),
     sendNewsletterToSubscriber:
       opts.sendNewsletterToSubscriber ?? vi.fn(() => Promise.resolve()),
@@ -145,7 +146,7 @@ describe("GET /api/confirm", () => {
 
     expect(res.status).toBe(302);
     const location = res.headers.get("location");
-    expect(location).toBe("/confirm?status=success");
+    expect(location).toBe(`${BASE_URL}/confirm?status=success`);
     expect(repo.updateStatus).toHaveBeenCalledWith(
       subscriber.id,
       "confirmed",
@@ -164,7 +165,7 @@ describe("GET /api/confirm", () => {
 
     expect(res.status).toBe(302);
     const location = res.headers.get("location");
-    expect(location).toBe("/confirm?status=expired");
+    expect(location).toBe(`${BASE_URL}/confirm?status=expired`);
     expect(repo.updateStatus).not.toHaveBeenCalled();
   });
 
@@ -176,7 +177,7 @@ describe("GET /api/confirm", () => {
 
     expect(res.status).toBe(302);
     const location = res.headers.get("location");
-    expect(location).toBe("/confirm?status=invalid");
+    expect(location).toBe(`${BASE_URL}/confirm?status=invalid`);
     expect(repo.updateStatus).not.toHaveBeenCalled();
   });
 
@@ -225,7 +226,7 @@ describe("GET /api/unsubscribe", () => {
 
     expect(res.status).toBe(302);
     const location = res.headers.get("location");
-    expect(location).toBe("/unsubscribe?status=success");
+    expect(location).toBe(`${BASE_URL}/unsubscribe?status=success`);
     expect(repo.updateStatus).toHaveBeenCalledWith(
       subscriber.id,
       "unsubscribed",
@@ -241,7 +242,7 @@ describe("GET /api/unsubscribe", () => {
 
     expect(res.status).toBe(302);
     const location = res.headers.get("location");
-    expect(location).toBe("/unsubscribe?status=success");
+    expect(location).toBe(`${BASE_URL}/unsubscribe?status=success`);
     expect(repo.updateStatus).not.toHaveBeenCalled();
   });
 });
