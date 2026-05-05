@@ -64,6 +64,22 @@ function makeStubSettingsRouter(): Hono {
   return app;
 }
 
+function makeStubSubscribeRouter(): Hono {
+  const app = new Hono();
+  app.post("/subscribe", (c) => c.json({ ok: true }));
+  return app;
+}
+
+function makeStubWebhooksRouter(): Hono {
+  const app = new Hono();
+  app.post("/ses", (c) => c.json({ ok: true }));
+  return app;
+}
+
+function makeStubAnalyticsRouter(): Hono {
+  return new Hono();
+}
+
 function makeApp(
   archiveRepo: RunArchivesRepo = makeArchiveRepo(),
 ): Hono {
@@ -80,6 +96,9 @@ function makeApp(
       logger: { info: vi.fn(), warn: vi.fn() },
     }),
     requireAdminFactory: requireAdmin,
+    subscribeRouter: makeStubSubscribeRouter(),
+    webhooksRouter: makeStubWebhooksRouter(),
+    analyticsRouter: makeStubAnalyticsRouter(),
   });
 }
 

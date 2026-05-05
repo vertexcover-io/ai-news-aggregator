@@ -11,7 +11,7 @@ if (!process.env.SESSION_SECRET) {
 }
 
 import { serve } from "@hono/node-server";
-import { createLogger } from "@newsletter/shared";
+import { createLogger, getDb } from "@newsletter/shared";
 import { createDefaultRunsRouter } from "@api/routes/runs.js";
 import {
   createDefaultPublicArchivesRouter,
@@ -21,6 +21,15 @@ import { createDefaultSettingsRouter } from "@api/routes/settings.js";
 import { createAdminRouter } from "@api/routes/admin.js";
 import { requireAdmin } from "@api/auth/middleware.js";
 import { buildApp } from "@api/app.js";
+import { createSubscribeRouter } from "@api/routes/subscribe.js";
+import { createSubscribersRepo } from "@api/repositories/subscribers.js";
+import { createEmailProvider } from "@api/lib/email/provider.js";
+import { renderConfirmation } from "@api/lib/email/templates/index.js";
+import { createWebhooksRouter } from "@api/routes/webhooks.js";
+import { createDefaultAnalyticsRouter } from "@api/routes/analytics.js";
+import { createSesEventsRepo } from "@api/repositories/ses-events.js";
+import { createEmailSendsRepo } from "@api/repositories/email-sends.js";
+import { verifySnsMessage } from "@api/lib/sns-verifier.js";
 
 const logger = createLogger("api");
 
@@ -47,6 +56,46 @@ const logger = createLogger("api");
 const adminPassword = process.env.ADMIN_PASSWORD;
 const sessionSecret = process.env.SESSION_SECRET;
 
+const emailProvider = createEmailProvider();
+const sesFromEmail = process.env.SES_FROM_EMAIL ?? "newsletter@mail.vertexcover.io";
+const newsletterBaseUrl = process.env.NEWSLETTER_BASE_URL ?? process.env.BASE_URL ?? `http://localhost:${process.env.API_PORT ?? 3000}`;
+
+const { Queue: BullQueue } = await import("bullmq");
+const { createRedisConnection } = await import("@newsletter/shared/redis");
+const sendQueue = new BullQueue("processing", { connection: createRedisConnection() });
+
+const subscribeRouter = createSubscribeRouter({
+  subscribersRepo: createSubscribersRepo(getDb()),
+  sessionSecret,
+  baseUrl: process.env.BASE_URL ?? `http://localhost:${process.env.API_PORT ?? 3000}`,
+  sendConfirmationEmail: async (email, confirmUrl) => {
+    const html = await renderConfirmation({ confirmUrl, baseUrl: newsletterBaseUrl });
+    await emailProvider.send({
+      to: [email],
+      from: sesFromEmail,
+      subject: "Confirm your AI Newsletter subscription",
+      html,
+      text: `Confirm your subscription: ${confirmUrl}`,
+    });
+  },
+  sendNewsletterToSubscriber: async (runId, subscriberId) => {
+    await sendQueue.add(
+      "send-newsletter",
+      { runId, subscriberIds: [subscriberId] },
+      { jobId: `send-${runId}-${subscriberId}` },
+    );
+  },
+  getTodaysReviewedArchiveId: () => Promise.resolve(null),
+});
+
+const webhooksRouter = createWebhooksRouter({
+  sesEventsRepo: createSesEventsRepo(getDb()),
+  emailSendsRepo: createEmailSendsRepo(getDb()),
+  subscribersRepo: createSubscribersRepo(getDb()),
+  verifySns: verifySnsMessage,
+  logger,
+});
+
 const app = buildApp({
   sessionSecret,
   publicArchivesRouter: createDefaultPublicArchivesRouter(),
@@ -66,6 +115,9 @@ const app = buildApp({
     },
   }),
   requireAdminFactory: requireAdmin,
+  subscribeRouter,
+  webhooksRouter,
+  analyticsRouter: createDefaultAnalyticsRouter(),
 });
 
 const port = Number(process.env.API_PORT ?? 3000);
