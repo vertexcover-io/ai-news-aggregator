@@ -47,10 +47,14 @@ export function AnalyticsPage(): ReactElement {
 
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="block text-xs font-mono uppercase tracking-widest text-neutral-500 mb-1">
+          <label
+            htmlFor="analytics-from"
+            className="block text-xs font-mono uppercase tracking-widest text-neutral-500 mb-1"
+          >
             From
           </label>
           <input
+            id="analytics-from"
             type="date"
             value={from}
             onChange={(e) => { setFrom(e.target.value); }}
@@ -58,25 +62,38 @@ export function AnalyticsPage(): ReactElement {
           />
         </div>
         <div>
-          <label className="block text-xs font-mono uppercase tracking-widest text-neutral-500 mb-1">
+          <label
+            htmlFor="analytics-to"
+            className="block text-xs font-mono uppercase tracking-widest text-neutral-500 mb-1"
+          >
             To
           </label>
           <input
+            id="analytics-to"
             type="date"
             value={to}
             onChange={(e) => { setTo(e.target.value); }}
             className="border border-neutral-200 rounded px-3 py-1.5 text-sm"
           />
         </div>
-        <select
-          value={granularity}
-          onChange={(e) => { setGranularity(e.target.value as "daily" | "weekly" | "monthly"); }}
-          className="border border-neutral-200 rounded px-3 py-1.5 text-sm self-end"
-        >
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly</option>
-          <option value="monthly">Monthly</option>
-        </select>
+        <div>
+          <label
+            htmlFor="analytics-granularity"
+            className="block text-xs font-mono uppercase tracking-widest text-neutral-500 mb-1"
+          >
+            Granularity
+          </label>
+          <select
+            id="analytics-granularity"
+            value={granularity}
+            onChange={(e) => { setGranularity(e.target.value as "daily" | "weekly" | "monthly"); }}
+            className="border border-neutral-200 rounded px-3 py-1.5 text-sm self-end"
+          >
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
       </div>
 
       {isLoading && (
