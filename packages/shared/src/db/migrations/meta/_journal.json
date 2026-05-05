@@ -71,6 +71,13 @@
       "when": 1776331822490,
       "tag": "0009_goofy_grey_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777967242727,
+      "tag": "0010_groovy_risque",
+      "breakpoints": true
     }
   ]
 }
