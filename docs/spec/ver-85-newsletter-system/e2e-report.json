@@ -1,0 +1,80 @@
+{
+  "spec": "ver-85-newsletter-system",
+  "ran_at": "2026-05-05T14:22:00Z",
+  "passed": 11,
+  "failed": 0,
+  "tests": [
+    {
+      "name": "subscribe flow > homepage subscribe widget submits and shows success state",
+      "file": "packages/web/tests/e2e/subscribe.spec.ts",
+      "status": "passed"
+    },
+    {
+      "name": "subscribe flow > submit button is disabled until consent checkbox is checked",
+      "file": "packages/web/tests/e2e/subscribe.spec.ts",
+      "status": "passed"
+    },
+    {
+      "name": "subscribe flow > subscribe widget appears at the bottom of an archive detail page",
+      "file": "packages/web/tests/e2e/subscribe.spec.ts",
+      "status": "passed"
+    },
+    {
+      "name": "legal pages > privacy page renders policy heading and key sections",
+      "file": "packages/web/tests/e2e/subscribe.spec.ts",
+      "status": "passed"
+    },
+    {
+      "name": "legal pages > terms page renders terms heading and key sections",
+      "file": "packages/web/tests/e2e/subscribe.spec.ts",
+      "status": "passed"
+    },
+    {
+      "name": "confirm page status states > success status shows confirmed message",
+      "file": "packages/web/tests/e2e/subscribe.spec.ts",
+      "status": "passed"
+    },
+    {
+      "name": "confirm page status states > expired status shows expired message",
+      "file": "packages/web/tests/e2e/subscribe.spec.ts",
+      "status": "passed"
+    },
+    {
+      "name": "confirm page status states > invalid status shows invalid message",
+      "file": "packages/web/tests/e2e/subscribe.spec.ts",
+      "status": "passed"
+    },
+    {
+      "name": "unsubscribe page > success status shows unsubscribed confirmation",
+      "file": "packages/web/tests/e2e/subscribe.spec.ts",
+      "status": "passed"
+    },
+    {
+      "name": "admin analytics page > redirects to login when unauthenticated",
+      "file": "packages/web/tests/e2e/subscribe.spec.ts",
+      "status": "passed"
+    },
+    {
+      "name": "admin analytics page > renders metric cards and date controls when logged in",
+      "file": "packages/web/tests/e2e/subscribe.spec.ts",
+      "status": "passed"
+    }
+  ],
+  "infra": {
+    "postgres": "running (newsletter_postgres_1 on :5433)",
+    "redis": "running (ver-85-setup-a-newsletter-system_redis_1 on :6379)",
+    "api": "http://localhost:3000",
+    "web": "http://localhost:5173"
+  },
+  "notes": [
+    "Subscribe POST is stubbed via Playwright route interception because the configured RESEND_API_KEY is a placeholder; unit tests cover the API + email-provider + template logic with real mocks.",
+    "Real-DB persistence of subscribers (with confirm_token issued) was verified manually before the test run by hitting /api/subscribe via curl and inspecting the subscribers table."
+  ],
+  "gaps": [
+    "Real SES/Resend email delivery is not exercised end-to-end (RESEND_API_KEY placeholder; no SES credentials wired for tests).",
+    "SNS webhook receipt + signature verification (POST /api/webhooks/ses) is covered by unit tests only, not by an e2e HTTP round-trip.",
+    "The full daily newsletter send pipeline (BullMQ send-newsletter worker -> per-subscriber email -> email_sends row -> SES event ingestion) is not exercised end-to-end.",
+    "Confirm-token + unsubscribe-token round-trip via real /api/confirm and /api/unsubscribe links is covered by unit tests but not driven through the browser e2e (would require valid HMAC tokens and a successful confirmation send).",
+    "Analytics aggregation with non-zero data is not exercised — the e2e test asserts the dashboard renders metric cards on an empty dataset only."
+  ]
+}
