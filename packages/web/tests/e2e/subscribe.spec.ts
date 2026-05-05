@@ -75,6 +75,36 @@ test.describe("subscribe flow", () => {
   });
 });
 
+test.describe("subscribe nav link", () => {
+  test("nav Subscribe link scrolls to widget on /", async ({ page }) => {
+    await page.goto("/");
+
+    const widget = page.getByRole("heading", {
+      name: /Get the daily AI digest in your inbox/i,
+    });
+    await expect(widget).toBeVisible();
+
+    const widgetTopBeforeClick = await widget.evaluate(
+      (el) => el.getBoundingClientRect().top,
+    );
+    expect(widgetTopBeforeClick).toBeGreaterThan(400);
+
+    await page.getByRole("link", { name: /^Subscribe$/ }).click();
+    await expect(widget).toBeInViewport();
+  });
+
+  test("nav Subscribe link from /privacy navigates to /#subscribe and scrolls", async ({
+    page,
+  }) => {
+    await page.goto("/privacy");
+    await page.getByRole("link", { name: /^Subscribe$/ }).click();
+    await expect(page).toHaveURL(/\/#subscribe$/);
+    await expect(
+      page.getByRole("heading", { name: /Get the daily AI digest in your inbox/i }),
+    ).toBeInViewport({ timeout: 10000 });
+  });
+});
+
 test.describe("legal pages", () => {
   test("privacy page renders policy heading and key sections", async ({ page }) => {
     await page.goto("/privacy");

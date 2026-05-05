@@ -102,8 +102,8 @@ export function ArchiveListingPage(): ReactElement {
           </button>
         </div>
       ) : null}
-      <div className="mt-12 border-t border-neutral-200 pt-8">
-        <SubscribeWidget className="max-w-[480px]" />
+      <div id="subscribe" className="mt-12 border-t border-neutral-200 pt-8 scroll-mt-24">
+        <SubscribeWidget className="mx-auto max-w-[480px]" />
       </div>
     </>
   );
