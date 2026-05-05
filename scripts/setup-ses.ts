@@ -31,6 +31,7 @@ interface Args {
   region: string;
   verify: boolean;
   requestProductionAccess: boolean;
+  verifyEmail: string | undefined;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -39,6 +40,7 @@ function parseArgs(argv: string[]): Args {
     region: "",
     verify: false,
     requestProductionAccess: false,
+    verifyEmail: undefined,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -50,6 +52,8 @@ function parseArgs(argv: string[]): Args {
       args.verify = true;
     } else if (a === "--request-production-access") {
       args.requestProductionAccess = true;
+    } else if (a === "--verify-email") {
+      args.verifyEmail = argv[++i];
     }
   }
   return args;
@@ -108,6 +112,26 @@ async function main(): Promise<void> {
 
   const region = args.region !== "" ? args.region : (process.env.AWS_REGION ?? "us-east-1");
   const domain = args.domain;
+
+  if (args.verifyEmail !== undefined) {
+    const ses = new SESv2Client({ region });
+    const email = args.verifyEmail;
+    try {
+      await ses.send(new CreateEmailIdentityCommand({ EmailIdentity: email }));
+      console.log(`✓ Sent verification email to ${email}. Click the link to verify, then re-run with --verify-email ${email} to confirm status.`);
+    } catch (err) {
+      const e = err as { name?: string; message?: string };
+      if (e.name === "AlreadyExistsException") {
+        console.log(`Identity ${email} already exists.`);
+      } else {
+        console.error("CreateEmailIdentity failed:", e.message);
+        process.exit(1);
+      }
+    }
+    const identity = await ses.send(new GetEmailIdentityCommand({ EmailIdentity: email }));
+    console.log(`Status: VerifiedForSendingStatus=${String(identity.VerifiedForSendingStatus ?? false)}`);
+    return;
+  }
 
   console.log(`Configured: domain=${domain} region=${region}`);
 
