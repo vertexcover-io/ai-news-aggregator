@@ -50,7 +50,9 @@ function buildSigningString(msg: SnsMessage): string {
   );
 }
 
-function fetchCert(url: string): Promise<string> {
+export type CertFetcher = (url: string) => Promise<string>;
+
+const defaultCertFetcher: CertFetcher = (url) => {
   return new Promise((resolve, reject) => {
     httpsGet(url, (res) => {
       const chunks: Buffer[] = [];
@@ -63,7 +65,7 @@ function fetchCert(url: string): Promise<string> {
       res.on("error", reject);
     }).on("error", reject);
   });
-}
+};
 
 export function parseSnsMessageUnchecked(rawBody: string): SnsMessage {
   let parsed: unknown;
@@ -82,12 +84,15 @@ export function parseSnsMessageUnchecked(rawBody: string): SnsMessage {
   return obj as unknown as SnsMessage;
 }
 
-export async function verifySnsMessage(rawBody: string): Promise<SnsMessage> {
+export async function verifySnsMessage(
+  rawBody: string,
+  certFetcher: CertFetcher = defaultCertFetcher,
+): Promise<SnsMessage> {
   const msg = parseSnsMessageUnchecked(rawBody);
 
   assertAmazonsCertUrl(msg.SigningCertURL);
 
-  const cert = await fetchCert(msg.SigningCertURL);
+  const cert = await certFetcher(msg.SigningCertURL);
   const signingString = buildSigningString(msg);
 
   const verifier = createVerify("SHA1");
