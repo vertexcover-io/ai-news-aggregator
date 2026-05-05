@@ -13,10 +13,14 @@
     "migrate:up": "pnpm --filter @newsletter/shared db:migrate",
     "test:unit": "turbo test:unit",
     "test:e2e": "turbo test:e2e",
+    "setup:ses": "tsx scripts/setup-ses.ts",
     "prepare": "husky"
   },
   "devDependencies": {
+    "@aws-sdk/client-sesv2": "3.1042.0",
+    "@aws-sdk/client-sns": "3.1042.0",
     "@eslint/js": "10.0.1",
+    "tsx": "4.19.4",
     "@newsletter/eslint-plugin": "workspace:*",
     "@types/node": "22.15.3",
     "eslint": "10.1.0",
