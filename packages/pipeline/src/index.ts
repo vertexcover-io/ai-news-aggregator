@@ -30,6 +30,10 @@ if (!process.env.ANTHROPIC_API_KEY) {
   throw new Error("ANTHROPIC_API_KEY is required for ranking");
 }
 
+if (!process.env.SESSION_SECRET) {
+  throw new Error("SESSION_SECRET is required for issuing unsubscribe tokens");
+}
+
 export function getRunIdFromJobData(data: unknown): string | undefined {
   if (typeof data === "object" && data !== null && "runId" in data) {
     const runId = (data as Record<string, unknown>).runId;

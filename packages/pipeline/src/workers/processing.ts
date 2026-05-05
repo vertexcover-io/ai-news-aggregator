@@ -4,7 +4,7 @@ import type { Job } from "bullmq";
 import { getDb } from "@newsletter/shared";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { createLogger } from "@newsletter/shared/logger";
-import type { RunProcessJobPayload } from "@newsletter/shared";
+import type { NewsletterSendJobPayload, RunProcessJobPayload } from "@newsletter/shared";
 import {
   handleRunProcessJob,
   type RunProcessDeps,
@@ -19,6 +19,11 @@ import {
   type DailyRunDeps,
   type DailyRunJobLike,
 } from "@pipeline/workers/daily-run.js";
+import {
+  handleNewsletterSendJob,
+  type NewsletterSendDeps,
+  type NewsletterSendJobLike,
+} from "@pipeline/workers/newsletter-send.js";
 import {
   createRunStateService,
   type RunStateService,
@@ -36,6 +41,12 @@ import {
   type RunArchivesRepo,
 } from "@pipeline/repositories/run-archives.js";
 import {
+  createPipelineSubscribersRepo,
+} from "@pipeline/repositories/subscribers.js";
+import {
+  createPipelineEmailSendsRepo,
+} from "@pipeline/repositories/email-sends.js";
+import {
   createUserSettingsRepo,
   type UserSettingsRepo,
 } from "@pipeline/repositories/user-settings.js";
@@ -48,6 +59,8 @@ import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
 import { rankCandidates } from "@pipeline/processors/rank.js";
 import { shortlistCandidates } from "@pipeline/processors/shortlist.js";
+import { renderNewsletter } from "@pipeline/lib/email-render.js";
+import { createEmailProvider } from "@pipeline/lib/email-provider.js";
 
 const logger = createLogger("worker:processing");
 
@@ -55,6 +68,7 @@ export interface CreateProcessingWorkerOptions {
   connection?: IORedis;
   runProcessDeps?: RunProcessDeps;
   dailyRunDeps?: DailyRunDeps;
+  newsletterSendDeps?: NewsletterSendDeps;
 }
 
 // Discriminated by job.name; payload shape is heterogeneous between routes.
@@ -69,6 +83,9 @@ export function createProcessingWorker(
     options.runProcessDeps ?? buildDefaultRunProcessDeps(connection);
   const dailyRunDeps =
     options.dailyRunDeps ?? buildDefaultDailyRunDeps(connection);
+  // Lazily build newsletter send deps to avoid eager DB connection in tests.
+  let resolvedNewsletterSendDeps: NewsletterSendDeps | undefined =
+    options.newsletterSendDeps;
 
   return new Worker<ProcessingJobData, unknown>(
     "processing",
@@ -89,6 +106,16 @@ export function createProcessingWorker(
             data: job.data,
           };
           await handleDailyRunJob(dailyRunDeps, typed);
+          return undefined;
+        }
+        case "send-newsletter": {
+          resolvedNewsletterSendDeps ??= buildDefaultNewsletterSendDeps();
+          const typed: NewsletterSendJobLike = {
+            name: job.name,
+            id: job.id,
+            data: job.data as unknown as NewsletterSendJobPayload,
+          };
+          await handleNewsletterSendJob(resolvedNewsletterSendDeps, typed);
           return undefined;
         }
         default: {
@@ -140,4 +167,22 @@ function buildDefaultDailyRunDeps(connection: IORedis): DailyRunDeps {
   };
 }
 
-export type { RunProcessDeps, DailyRunDeps, RunProcessResult };
+function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
+  const db = getDb();
+  return {
+    emailProvider: createEmailProvider(),
+    subscribersRepo: createPipelineSubscribersRepo(db),
+    emailSendsRepo: createPipelineEmailSendsRepo(db),
+    archiveRepo: createRunArchivesRepo(db),
+    rawItemsRepo: createRawItemsRepo(db),
+    renderNewsletter,
+    // Validated at startup in index.ts — safe to assert here.
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    sessionSecret: process.env.SESSION_SECRET!,
+    sesFromEmail: process.env.SES_FROM_EMAIL ?? "newsletter@mail.vertexcover.io",
+    replyToEmail: process.env.NEWSLETTER_REPLY_TO_EMAIL,
+    baseUrl: process.env.NEWSLETTER_BASE_URL ?? "https://newsletter.vertexcover.io",
+  };
+}
+
+export type { RunProcessDeps, DailyRunDeps, NewsletterSendDeps, RunProcessResult };
