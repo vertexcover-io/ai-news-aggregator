@@ -1,7 +1,7 @@
 {
   "spec": "ver-85-newsletter-system",
-  "ran_at": "2026-05-05T14:55:00Z",
-  "passed": 13,
+  "ran_at": "2026-05-05T15:30:00Z",
+  "passed": 31,
   "failed": 0,
   "tests": [
     {
@@ -60,6 +60,113 @@
       "status": "passed"
     },
     {
+      "name": "subscribe tokens > confirm token success path: pending -> confirmed",
+      "file": "packages/web/tests/e2e/subscribe-tokens.spec.ts",
+      "status": "passed",
+      "notes": "Real DB + browser navigation through GET /api/confirm. REQ-005."
+    },
+    {
+      "name": "subscribe tokens > confirm token invalid -> /confirm?status=invalid",
+      "file": "packages/web/tests/e2e/subscribe-tokens.spec.ts",
+      "status": "passed",
+      "notes": "REQ-008."
+    },
+    {
+      "name": "subscribe tokens > confirm token expired -> /confirm?status=expired",
+      "file": "packages/web/tests/e2e/subscribe-tokens.spec.ts",
+      "status": "passed",
+      "notes": "REQ-007 / EDGE-003. Token issued with past expiry via reused HMAC logic."
+    },
+    {
+      "name": "subscribe tokens > unsubscribe token success: confirmed -> unsubscribed",
+      "file": "packages/web/tests/e2e/subscribe-tokens.spec.ts",
+      "status": "passed",
+      "notes": "REQ-015. Real GET /api/unsubscribe."
+    },
+    {
+      "name": "subscribe tokens > already-confirmed re-confirm is idempotent success",
+      "file": "packages/web/tests/e2e/subscribe-tokens.spec.ts",
+      "status": "passed",
+      "notes": "EDGE-004."
+    },
+    {
+      "name": "subscribe tokens > unsubscribe token wrong-type / tampered HMAC redirects to success but does NOT change status",
+      "file": "packages/web/tests/e2e/subscribe-tokens.spec.ts",
+      "status": "passed",
+      "notes": "REQ-017 / EDGE-012."
+    },
+    {
+      "name": "subscribe full flow > submits via the homepage widget, persists pending row, confirms via token",
+      "file": "packages/web/tests/e2e/subscribe-full-flow.spec.ts",
+      "status": "passed",
+      "notes": "REQ-003 + REQ-005. End-to-end browser submit, real Resend send, DB-token confirm."
+    },
+    {
+      "name": "admin analytics seeded > metric cards render expected counts for the seeded window",
+      "file": "packages/web/tests/e2e/analytics-seeded.spec.ts",
+      "status": "passed",
+      "notes": "REQ-029. Inserts 5 subscribers + 10 email_sends + 6 ses_events; asserts API + UI render correct counts."
+    },
+    {
+      "name": "admin analytics seeded > granularity selector switches without breaking render",
+      "file": "packages/web/tests/e2e/analytics-seeded.spec.ts",
+      "status": "passed",
+      "notes": "REQ-029."
+    },
+    {
+      "name": "admin analytics seeded > from > to date range returns 400",
+      "file": "packages/web/tests/e2e/analytics-seeded.spec.ts",
+      "status": "passed",
+      "notes": "EDGE-017."
+    },
+    {
+      "name": "admin analytics seeded > date range BEFORE seeded data yields zero counts",
+      "file": "packages/web/tests/e2e/analytics-seeded.spec.ts",
+      "status": "passed"
+    },
+    {
+      "name": "SNS webhook signed payload > permanent bounce marks subscriber bounced",
+      "file": "packages/api/tests/e2e/sns-webhook.e2e.test.ts",
+      "status": "passed",
+      "notes": "REQ-019. Self-signed RSA key + cert via node-forge; verifySnsMessage uses injected certFetcher."
+    },
+    {
+      "name": "SNS webhook signed payload > transient bounce records event but does not mark bounced",
+      "file": "packages/api/tests/e2e/sns-webhook.e2e.test.ts",
+      "status": "passed",
+      "notes": "REQ-019 / EDGE-008."
+    },
+    {
+      "name": "SNS webhook signed payload > complaint marks subscriber complained",
+      "file": "packages/api/tests/e2e/sns-webhook.e2e.test.ts",
+      "status": "passed",
+      "notes": "REQ-020."
+    },
+    {
+      "name": "SNS webhook signed payload > delivery, open, click events stored",
+      "file": "packages/api/tests/e2e/sns-webhook.e2e.test.ts",
+      "status": "passed",
+      "notes": "REQ-021."
+    },
+    {
+      "name": "SNS webhook signed payload > duplicate bounce dedups via unique constraint",
+      "file": "packages/api/tests/e2e/sns-webhook.e2e.test.ts",
+      "status": "passed",
+      "notes": "REQ-023 / EDGE-009."
+    },
+    {
+      "name": "SNS webhook signed payload > invalid signature returns 400, no event persisted",
+      "file": "packages/api/tests/e2e/sns-webhook.e2e.test.ts",
+      "status": "passed",
+      "notes": "REQ-032 / EDGE-016."
+    },
+    {
+      "name": "SNS webhook signed payload > SubscriptionConfirmation triggers SubscribeURL fetch",
+      "file": "packages/api/tests/e2e/sns-webhook.e2e.test.ts",
+      "status": "passed",
+      "notes": "REQ-022 / EDGE-010."
+    },
+    {
       "name": "Newsletter send (real Resend) > delivers to all 3 confirmed subscribers; email_sends rows persisted",
       "file": "packages/pipeline/tests/e2e/network/newsletter-send.e2e.test.ts",
       "status": "passed",
@@ -69,7 +176,7 @@
       "name": "Newsletter send (real Resend) > does not duplicate sends on re-run for same archive (idempotency)",
       "file": "packages/pipeline/tests/e2e/network/newsletter-send.e2e.test.ts",
       "status": "passed",
-      "notes": "Verifies REQ-012 / EDGE-006: duplicate send-newsletter job does not produce duplicate email_sends rows."
+      "notes": "Verifies REQ-012 / EDGE-006."
     }
   ],
   "infra": {
@@ -98,21 +205,15 @@
     "Confirm page status states success/expired/invalid (REQ-005, REQ-007, REQ-008)",
     "Unsubscribe success page (REQ-015)",
     "Admin analytics gate + dashboard render (REQ-029)",
-    "Pipeline send-newsletter via real Resend API (REQ-011, REQ-024, EDGE-013): 3 confirmed subscribers receive emails, email_sends rows persisted with Resend message IDs",
-    "Send-newsletter idempotency (REQ-012, EDGE-006): duplicate job does not duplicate email_sends rows",
-    "SES setup script (idempotent) provisions domain identity, DKIM, MAIL FROM, configuration set, SNS topic, and event destination"
+    "Confirm token round-trip with real DB + redirect to absolute web URL (REQ-005, REQ-007, REQ-008, EDGE-003, EDGE-004)",
+    "Unsubscribe token round-trip with real DB (REQ-015, REQ-017, EDGE-012)",
+    "Full subscribe-to-confirm UI flow with real Resend send (REQ-003 + REQ-005)",
+    "Admin analytics with seeded non-zero data (REQ-029, EDGE-017)",
+    "SNS webhook with cryptographically signed payloads — bounce/complaint/delivery/open/click + dedup + invalid-sig + SubscriptionConfirmation (REQ-019, REQ-020, REQ-021, REQ-022, REQ-023, REQ-032, EDGE-008, EDGE-009, EDGE-010, EDGE-016)",
+    "Newsletter send to confirmed subscribers via real Resend (REQ-011, REQ-012, EDGE-006)"
   ],
-  "gaps": [
-    "Confirm/unsubscribe token round-trip via real DB+browser (Task 3A): token state pages are covered by component-level e2e with stubbed routes; the real-token flow hitting the live API + DB is covered by unit tests but not yet by an e2e Playwright spec.",
-    "SNS webhook with real signed payloads (Task 3B): the verifier's cert-fetcher has no test injection point yet; signature verification is covered by unit tests with mocked crypto, not by an e2e HTTP round-trip against the running API.",
-    "Analytics with seeded non-zero data (Task 3D): the e2e currently asserts metric cards render; non-zero seeded values + date-range filter behavior is not exercised end-to-end yet.",
-    "Subscribe-to-confirm full UI flow against real DB (Task 3E): the existing widget test stubs /api/subscribe; full-stack POST -> DB pending row -> token -> /confirm success is covered by unit tests only.",
-    "Real SES production sending: account is in sandbox (max 200/day, verified-recipients-only) — out of scope until DNS records are published and the production-access form is submitted.",
-    "Live SNS subscription to the deployed webhook URL: deferred — production deploy required. Local e2e uses simulated payloads."
-  ],
-  "notes": [
-    "Real Resend send tests are gated by RUN_NETWORK_TESTS=1 and read RESEND_API_KEY from .env.harness (which lives at the main repo root, not the worktree root — the test resolves it via `git rev-parse --git-common-dir`).",
-    "Resend test recipients (delivered@/bounced@/complained@resend.dev) are documented at https://resend.com/docs/dashboard/emails/send-test-emails. Sender uses Resend's no-domain-verification address `onboarding@resend.dev`.",
-    "All 403 unit tests in @newsletter/pipeline pass, including newsletter-send worker unit tests."
+  "remaining_gaps": [
+    "Real SES sandbox-exit production sending (deferred — DKIM DNS publish + production access still pending)",
+    "Live SNS topic actually delivering to deployed API URL (deferred per Option A — local SNS-signing tests cover the verifier and handler logic)"
   ]
 }
