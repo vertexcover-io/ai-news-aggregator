@@ -6,7 +6,7 @@ import type { RecapContent } from "@newsletter/shared";
 
 const logger = createLogger("processor:recap");
 
-const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
+const DEFAULT_MODEL = "claude-sonnet-4-6";
 
 export const RECAP_SYSTEM_PROMPT = `You are writing a recap for a single news item.
 

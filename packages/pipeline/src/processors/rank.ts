@@ -18,7 +18,7 @@ import type { ShortlistBreakdown } from "@pipeline/processors/shortlist.js";
 
 const logger = createLogger("processor:rank");
 
-const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
+const DEFAULT_MODEL = "claude-sonnet-4-6";
 const DEFAULT_BODY_TOKEN_BUDGET = 2000;
 const DEFAULT_COMMENTS_PER_ITEM = 5;
 const DEFAULT_COMMENT_TOKEN_BUDGET = 200;
