@@ -199,8 +199,11 @@ describe("ArchivePage", () => {
     renderWithClient(<ArchivePage />);
     const articles = screen.getAllByRole("article");
     expect(articles).toHaveLength(2);
-    expect(screen.getByText("01 / 02")).toBeTruthy();
-    expect(screen.getByText("02 / 02")).toBeTruthy();
+    // Rank counters live in the left rail (N° + serif rank). Right rail with
+    // "rank / total" was removed in VER-94 to dedupe with the left rail and source eyebrow.
+    const leftRails = articles.map((a) => a.querySelector('[data-rail="left"]'));
+    expect(leftRails[0]?.textContent).toMatch(/N°.*01/);
+    expect(leftRails[1]?.textContent).toMatch(/N°.*02/);
   });
 
   it("completed with 0 stories: No stories in this issue. rendered; no article roles (EDGE-001)", () => {
