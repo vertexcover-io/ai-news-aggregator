@@ -76,6 +76,7 @@ const baseSettings: UserSettings = {
   hnConfig: { sinceDays: 1 },
   redditConfig: null,
   webConfig: null,
+  twitterConfig: null,
   scheduleTime: "09:00",
   scheduleTimezone: "UTC",
   scheduleEnabled: false,
@@ -98,7 +99,8 @@ describe("POST /api/runs/now", () => {
         hnConfig: null,
         redditConfig: null,
         webConfig: null,
-      },
+        twitterConfig: null,
+        },
     });
     const res = await app.request("/api/runs/now", { method: "POST" });
     expect(res.status).toBe(409);
@@ -108,6 +110,29 @@ describe("POST /api/runs/now", () => {
 
   it("REQ-031: happy path returns 202 + runId (UUID)", async () => {
     const { app, q } = buildApp({ settings: baseSettings });
+    const res = await app.request("/api/runs/now", { method: "POST" });
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { runId: string };
+    expect(body.runId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(q.calls).toHaveLength(1);
+    expect(q.calls[0].name).toBe("run-process");
+  });
+
+  it("REQ-031: twitter-only config triggers a run (no other sources required)", async () => {
+    const { app, q } = buildApp({
+      settings: {
+        ...baseSettings,
+        hnConfig: null,
+        redditConfig: null,
+        webConfig: null,
+        twitterConfig: {
+          listIds: ["1585430245762441216"],
+          users: [{ handle: "sama", userId: "1605" }],
+          maxTweetsPerSource: 50,
+          sinceHours: 24,
+        },
+      },
+    });
     const res = await app.request("/api/runs/now", { method: "POST" });
     expect(res.status).toBe(202);
     const body = (await res.json()) as { runId: string };

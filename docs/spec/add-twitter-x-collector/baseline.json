@@ -1,0 +1,54 @@
+{
+  "spec_name": "add-twitter-x-collector",
+  "branch": "feat/twitter-collector-v2",
+  "base_commit": "8012d61",
+  "captured_at": "2026-05-04",
+  "tooling": {
+    "package_manager": "pnpm",
+    "monorepo": "turborepo",
+    "test_runner": "vitest"
+  },
+  "metrics": {
+    "typecheck": {
+      "command": "pnpm typecheck",
+      "exit_code": 0,
+      "result": "pass",
+      "tasks": "7 successful, 7 total"
+    },
+    "lint": {
+      "command": "pnpm lint",
+      "exit_code": 0,
+      "result": "pass",
+      "tasks": "5 successful, 5 total",
+      "warnings": 5,
+      "warning_packages": ["@newsletter/web (react-refresh/only-export-components in form.tsx)"]
+    },
+    "test_unit": {
+      "command": "pnpm test:unit (per-package)",
+      "result": "pass",
+      "totals": {
+        "test_files_passing": 82,
+        "tests_passing": 884
+      },
+      "per_package": {
+        "@newsletter/pipeline": {"files": 35, "tests": 392},
+        "@newsletter/web": {"files": 23, "tests": 219},
+        "@newsletter/api": {"files": 19, "tests": 235},
+        "@newsletter/shared": {"files": 2, "tests": 8},
+        "@newsletter/eslint-plugin": {"files": 3, "tests": 30}
+      },
+      "known_flake": {
+        "package": "@newsletter/eslint-plugin",
+        "test": "tests/rules/collector-return-shape.test.ts > REQ-060: exported async function returning Promise<CollectorResult>",
+        "symptom": "5s timeout in @typescript-eslint/rule-tester (RuleTester.js:408)",
+        "note": "Passes when run in isolation; only flaked once during a parallel turbo run. Treat as pre-existing flake; do NOT introduce as a regression."
+      }
+    },
+    "build": {
+      "command": "pnpm build",
+      "exit_code": 0,
+      "result": "pass",
+      "tasks": "5 successful, 5 total"
+    }
+  }
+}

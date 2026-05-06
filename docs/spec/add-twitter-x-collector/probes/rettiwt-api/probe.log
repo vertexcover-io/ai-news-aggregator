@@ -1,0 +1,7 @@
+[0.00s] instantiating Rettiwt() with NO apiKey (guest mode)
+[0.00s] calling rettiwt.list.tweets("1585430245762441216", 20)
+FAIL: rettiwt.list.tweets threw: Not authorized to access requested resource
+  name: Error
+  code: undefined
+  status: undefined
+  stack: Error: Not authorized to access requested resource |     at ListService._checkAuthorization (/Users/amankumar/Documents/newsletter/.worktrees/feat-twitter-collector-v2/node_modules/.pnpm/rettiwt-api@7.0.3/node_modules/rettiwt-api/dist/services/public/FetcherService.js:91:19) |     at ListService.request (/Users/amankumar/Documents/newsletter/.worktrees/feat-twitter-collector-v2/node_modules/.pnpm/rettiwt-api@7.0.3/node_modules/rettiwt-api/dist/services/public/FetcherService.js:273:14) |     at ListService.tweets (/Users/amankumar/Documents/newsletter/.worktrees/feat-twitter-collector-v2/node_modules/.pnpm/rettiwt-api@7.0.3/node_modules/rettiwt-api/dist/services/public/ListService.js:200:37) |     at file:///Users/amankumar/Documents/newsletter/.worktrees/feat-twitter-collector-v2/docs/spec/add-twitter-x-collector/probes/rettiwt-api/probe-list-tweets.mjs:60:43

@@ -57,6 +57,9 @@ import {
 import { collectHn } from "@pipeline/collectors/hn.js";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
+import { collectTwitter } from "@pipeline/collectors/twitter/index.js";
+import { createRettiwtClient } from "@pipeline/collectors/twitter/clients/rettiwt.js";
+import { Rettiwt } from "rettiwt-api";
 import { rankCandidates } from "@pipeline/processors/rank.js";
 import { shortlistCandidates } from "@pipeline/processors/shortlist.js";
 import { renderNewsletter } from "@pipeline/lib/email-render.js";
@@ -142,7 +145,11 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     hn: collectHn,
     reddit: collectReddit,
     web: collectWeb,
+    twitter: collectTwitter,
   };
+  const twitterClient = createRettiwtClient({
+    rettiwt: new Rettiwt({ apiKey: process.env.RETTIWT_API_KEY }),
+  });
   return {
     runState,
     rawItemsRepo,
@@ -153,6 +160,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     collectFns,
     archiveRepo,
     cancelSubscriber: createCancelSubscriber(connection),
+    twitterClient,
   };
 }
 

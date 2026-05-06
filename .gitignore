@@ -3,6 +3,10 @@ dist/
 .playwright-mcp/
 .env
 .env.test
+.env.harness
+.env.*
+!.env.example
+!.env.test.example
 deployment/.env.prod
 *.tsbuildinfo
 .turbo/

@@ -34,7 +34,15 @@ function getTimezones(): string[] {
   };
   if (typeof intl.supportedValuesOf === "function") {
     try {
-      return intl.supportedValuesOf("timeZone");
+      const supported = intl.supportedValuesOf("timeZone");
+      // `Intl.supportedValuesOf("timeZone")` returns only canonical IANA names
+      // (e.g. "Etc/UTC", "Atlantic/Reykjavik") and excludes the alias "UTC".
+      // The persisted DB value uses "UTC" though — and Radix Select clears
+      // its controlled value to "" if the value isn't in the option list,
+      // which silently fails the schema's `z.string().min(1)` check.
+      // Include "UTC" so the persisted alias remains a selectable option.
+      // Discovered debugging Stage-5 VS-6.
+      return supported.includes("UTC") ? supported : ["UTC", ...supported];
     } catch {
       return FALLBACK_TIMEZONES;
     }

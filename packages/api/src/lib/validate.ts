@@ -17,6 +17,47 @@ const redditConfigSchema = z.object({
   sinceDays: z.number().int().min(1).max(30),
 });
 
+const TWITTER_HANDLE_RE = /^[A-Za-z0-9_]{1,15}$/;
+
+const twitterUserInputSchema = z.object({
+  handle: z
+    .string()
+    .regex(TWITTER_HANDLE_RE, {
+      message:
+        "handle must be 1-15 chars of letters, digits, or underscore (no @)",
+    }),
+  userId: z
+    .string()
+    .regex(/^\d+$/, { message: "userId must be a digit string" })
+    .optional(),
+});
+
+const twitterUserPersistedSchema = z.object({
+  handle: z.string().regex(TWITTER_HANDLE_RE),
+  userId: z.string().regex(/^\d+$/),
+});
+
+export const twitterConfigInputSchema = z.object({
+  listIds: z.array(
+    z
+      .string()
+      .regex(/^\d+$/, { message: "listId must be a digit string" }),
+  ),
+  users: z.array(twitterUserInputSchema),
+  maxTweetsPerSource: z.number().int().min(1).max(500).optional(),
+  sinceHours: z.number().int().min(1).max(168).optional(),
+});
+
+const twitterConfigPersistedSchema = z.object({
+  listIds: z.array(z.string().regex(/^\d+$/)),
+  users: z.array(twitterUserPersistedSchema),
+  maxTweetsPerSource: z.number().int().min(1).max(500).optional(),
+  sinceHours: z.number().int().min(1).max(168).optional(),
+});
+
+export type TwitterConfigInput = z.infer<typeof twitterConfigInputSchema>;
+export type TwitterUserInput = z.infer<typeof twitterUserInputSchema>;
+
 const webConfigSchema = z.object({
   sources: z
     .array(
@@ -59,37 +100,60 @@ function isValidIanaTimezone(tz: string): boolean {
   }
 }
 
+const userSettingsCommonShape = {
+  topN: z.number().int().min(1).max(50),
+  halfLifeHours: z.number().positive().nullable(),
+  hnConfig: hnConfigSchema.nullable(),
+  redditConfig: redditConfigSchema.nullable(),
+  webConfig: webConfigSchema.nullable(),
+  scheduleTime: z
+    .string()
+    .regex(HH_MM_RE, { message: "scheduleTime must be HH:MM (24h)" }),
+  scheduleTimezone: z
+    .string()
+    .min(1)
+    .refine(isValidIanaTimezone, {
+      message: "scheduleTimezone must be a valid IANA timezone",
+    }),
+  scheduleEnabled: z.boolean(),
+} as const;
+
+const sourcesPresentRefinement = (payload: {
+  scheduleEnabled: boolean;
+  hnConfig: unknown;
+  redditConfig: unknown;
+  webConfig: unknown;
+}): boolean =>
+  !payload.scheduleEnabled ||
+  payload.hnConfig !== null ||
+  payload.redditConfig !== null ||
+  payload.webConfig !== null;
+
+const sourcesPresentMessage = {
+  message:
+    "at least one source must be enabled when scheduleEnabled is true",
+};
+
 export const userSettingsUpsertSchema = z
   .object({
-    topN: z.number().int().min(1).max(50),
-    halfLifeHours: z.number().positive().nullable(),
-    hnConfig: hnConfigSchema.nullable(),
-    redditConfig: redditConfigSchema.nullable(),
-    webConfig: webConfigSchema.nullable(),
-    scheduleTime: z
-      .string()
-      .regex(HH_MM_RE, { message: "scheduleTime must be HH:MM (24h)" }),
-    scheduleTimezone: z
-      .string()
-      .min(1)
-      .refine(isValidIanaTimezone, {
-        message: "scheduleTimezone must be a valid IANA timezone",
-      }),
-    scheduleEnabled: z.boolean(),
+    ...userSettingsCommonShape,
+    twitterConfig: twitterConfigInputSchema.nullable(),
   })
-  .refine(
-    (payload) =>
-      !payload.scheduleEnabled ||
-      payload.hnConfig !== null ||
-      payload.redditConfig !== null ||
-      payload.webConfig !== null,
-    {
-      message:
-        "at least one source must be enabled when scheduleEnabled is true",
-    },
-  ) satisfies z.ZodType<Omit<UserSettings, "id" | "updatedAt">>;
+  .refine(sourcesPresentRefinement, sourcesPresentMessage);
 
 export type UserSettingsUpsertBody = z.infer<typeof userSettingsUpsertSchema>;
+
+export const userSettingsPersistedSchema = z
+  .object({
+    ...userSettingsCommonShape,
+    twitterConfig: twitterConfigPersistedSchema.nullable(),
+  })
+  .refine(
+    sourcesPresentRefinement,
+    sourcesPresentMessage,
+  ) satisfies z.ZodType<Omit<UserSettings, "id" | "updatedAt">>;
+
+export type UserSettingsPersistedBody = z.infer<typeof userSettingsPersistedSchema>;
 
 export const archivePatchSchema = z
   .object({

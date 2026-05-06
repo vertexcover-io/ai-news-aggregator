@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { emailSends, runArchives, sesEvents, subscribers, userSettings } from "@shared/db/schema.js";
+import type {
+  RunSubmitTwitterConfig,
+  RunSubmitTwitterUser,
+  RunCollectorsPayload,
+} from "@shared/types/run.js";
 
 describe("schema: userSettings", () => {
   it("exports userSettings with all required columns", () => {
@@ -11,6 +16,7 @@ describe("schema: userSettings", () => {
       "hnConfig",
       "redditConfig",
       "webConfig",
+      "twitterConfig",
       "scheduleTime",
       "scheduleTimezone",
       "scheduleEnabled",
@@ -63,5 +69,34 @@ describe("schema: sesEvents", () => {
     for (const col of cols) {
       expect(sesEvents[col as keyof typeof sesEvents]).toBeDefined();
     }
+  });
+});
+
+describe("types: RunSubmitTwitterConfig", () => {
+  it("accepts a fully-populated value with users and lists", () => {
+    const user: RunSubmitTwitterUser = { handle: "jack", userId: "12" };
+    const cfg: RunSubmitTwitterConfig = {
+      listIds: ["1585430245762441216"],
+      users: [user],
+      maxTweetsPerSource: 100,
+      sinceHours: 24,
+    };
+    expect(cfg.listIds).toHaveLength(1);
+    expect(cfg.users[0].userId).toBe("12");
+  });
+
+  it("accepts a value without optional caps", () => {
+    const cfg: RunSubmitTwitterConfig = {
+      listIds: [],
+      users: [],
+    };
+    expect(cfg.users).toEqual([]);
+  });
+
+  it("RunCollectorsPayload includes optional twitter slot", () => {
+    const payload: RunCollectorsPayload = {
+      twitter: { listIds: ["1"], users: [] },
+    };
+    expect(payload.twitter?.listIds).toEqual(["1"]);
   });
 });
