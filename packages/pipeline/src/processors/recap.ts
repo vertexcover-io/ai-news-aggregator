@@ -66,6 +66,9 @@ export async function generateRecap(
       system: RECAP_SYSTEM_PROMPT,
       prompt,
       schema: recapContentSchema,
+      providerOptions: {
+        anthropic: { structuredOutputMode: "outputFormat" },
+      },
       temperature: 0,
     })) as { object: RecapContent };
     return result.object;

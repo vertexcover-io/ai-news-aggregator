@@ -186,6 +186,9 @@ export async function rankCandidates(
       system: systemPrompt,
       prompt: JSON.stringify({ items: promptItems }, null, 2),
       schema: rankedResponseSchema,
+      providerOptions: {
+        anthropic: { structuredOutputMode: "outputFormat" },
+      },
       temperature: 0,
       maxRetries: 2,
       abortSignal: options.abortSignal,
