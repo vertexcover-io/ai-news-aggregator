@@ -2,6 +2,10 @@
 
 FROM node:22-alpine AS build
 
+# Browser binaries belong in the runtime stage (which uses the official
+# Playwright image with browsers preinstalled). Alpine can't run them anyway.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
 RUN corepack enable
 WORKDIR /app
 
@@ -22,11 +26,17 @@ RUN pnpm --filter @newsletter/shared build \
 
 RUN pnpm --filter @newsletter/pipeline --prod --legacy deploy /out/pipeline
 
-FROM node:22-alpine AS runtime
+# Runtime: Microsoft's official Playwright image. Pinned to match the
+# `playwright` npm package version (packages/pipeline/package.json). Bumping
+# Playwright requires bumping this tag in lockstep.
+FROM mcr.microsoft.com/playwright:v1.52.0-jammy AS runtime
 
 ENV NODE_ENV=production
+# The official image installs browsers under /ms-playwright. Make sure the
+# Playwright package looks there at runtime instead of $HOME/.cache.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-RUN addgroup -S app && adduser -S -G app app
+RUN groupadd -r app && useradd -r -g app -m -d /home/app app
 
 WORKDIR /app
 
