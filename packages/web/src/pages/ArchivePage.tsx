@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useArchive } from "../hooks/useArchive";
 import { ArchivePageHeader, pickHeadline } from "../components/ArchivePageHeader";
 import { ArchiveStoryCard } from "../components/ArchiveStoryCard";
+import { ArchiveShareRow } from "../components/ArchiveShareRow";
 import { setMeta } from "../lib/meta";
 import { SubscribeWidget } from "../components/SubscribeWidget";
 
@@ -24,7 +25,9 @@ export function ArchivePage(): ReactElement {
 
   useEffect(() => {
     if (data?.status === "completed") {
-      document.title = `Issue — ${formatIssueDate(data.startedAt)}`;
+      const title = `AI news - ${formatIssueDate(data.startedAt)}`;
+      document.title = title;
+      setMeta("og:title", title);
       setMeta("description", pickHeadline(null, topStoryTitle));
     }
   }, [data, topStoryTitle]);
@@ -134,6 +137,10 @@ export function ArchivePage(): ReactElement {
           storyCount={items.length}
           leadSummary={null}
           topStoryTitle={topStoryTitle}
+        />
+        <ArchiveShareRow
+          archiveUrl={typeof window === "undefined" ? "" : window.location.href}
+          shareText={`AI news - ${formatIssueDate(data.startedAt)}`}
         />
         {items.length === 0 ? (
           <p className="py-8 font-serif text-xl text-neutral-600">No stories in this issue.</p>

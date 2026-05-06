@@ -224,7 +224,7 @@ describe("ArchivePage", () => {
     expect(screen.queryAllByRole("article")).toHaveLength(0);
   });
 
-  it("document.title updated to Issue — <formatted date> after completed render (REQ-028)", () => {
+  it("document.title updated to AI news - <formatted date> after completed render (REQ-002)", () => {
     vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: baseCompletedRun,
@@ -237,7 +237,7 @@ describe("ArchivePage", () => {
     } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
-    expect(document.title).toContain("Issue —");
+    expect(document.title).toContain("AI news -");
   });
 
   it("bottom-of-page ← All issues link present on completed state (REQ-024)", () => {
