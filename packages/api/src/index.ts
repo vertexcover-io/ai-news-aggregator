@@ -58,6 +58,7 @@ const sessionSecret = process.env.SESSION_SECRET;
 
 const emailProvider = createEmailProvider();
 const sesFromEmail = process.env.SES_FROM_EMAIL ?? "newsletter@mail.vertexcover.io";
+const replyToEmail = process.env.NEWSLETTER_REPLY_TO_EMAIL;
 const newsletterBaseUrl = process.env.NEWSLETTER_BASE_URL ?? process.env.BASE_URL ?? `http://localhost:${process.env.API_PORT ?? 3000}`;
 
 const { Queue: BullQueue } = await import("bullmq");
@@ -74,6 +75,7 @@ const subscribeRouter = createSubscribeRouter({
     await emailProvider.send({
       to: [email],
       from: sesFromEmail,
+      replyTo: replyToEmail,
       subject: "Confirm your AI Newsletter subscription",
       html,
       text: `Confirm your subscription: ${confirmUrl}`,

@@ -44,6 +44,9 @@ refreshes the credentials in `.env.harness` — that is on the user, not a scrip
      subscribers, ~50–500 recipients per send, daily").
 4. **Subscribe the deployed webhook URL** to the SNS topic — deferred per option A,
    the e2e suite uses signed simulated payloads instead of a live SNS subscription.
+5. **Create the `newsletter-feedback@vertexcover.io` Google Group** so subscriber
+   replies fan out to both team members. See `google-group-setup.md` in this
+   directory — Workspace admin action, no code change.
 
 ## Why we don't subscribe SNS to a webhook yet (option A)
 

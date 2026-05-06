@@ -15,6 +15,7 @@ docs/spec/**
 !docs/spec/**/e2e-report.json
 !docs/spec/**/ses-setup.md
 !docs/spec/**/ses-dns-records.txt
+!docs/spec/**/google-group-setup.md
 !docs/spec/**/verification/
 !docs/spec/**/verification/proof-report.md
 .worktrees/
