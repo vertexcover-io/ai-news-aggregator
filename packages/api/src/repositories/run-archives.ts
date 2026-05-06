@@ -19,6 +19,8 @@ export interface RunArchiveRow {
   createdAt: Date;
   startedAt: Date | null;
   sourceTypes: SourceType[] | null;
+  digestHeadline: string | null;
+  digestSummary: string | null;
 }
 
 export interface FindPoolItemsOpts {
@@ -92,6 +94,8 @@ export function createRunArchivesRepo(
           createdAt: runArchives.createdAt,
           startedAt: runArchives.startedAt,
           sourceTypes: runArchives.sourceTypes,
+          digestHeadline: runArchives.digestHeadline,
+          digestSummary: runArchives.digestSummary,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
@@ -103,6 +107,8 @@ export function createRunArchivesRepo(
           runId: runArchives.id,
           completedAt: runArchives.completedAt,
           rankedItems: runArchives.rankedItems,
+          digestHeadline: runArchives.digestHeadline,
+          digestSummary: runArchives.digestSummary,
         })
         .from(runArchives)
         .where(eq(runArchives.reviewed, true))
@@ -130,6 +136,8 @@ export function createRunArchivesRepo(
           storyCount: Array.isArray(r.rankedItems) ? r.rankedItems.length : 0,
           topItems,
           leadSummary,
+          digestHeadline: r.digestHeadline,
+          digestSummary: r.digestSummary,
         };
       });
     },
@@ -145,6 +153,8 @@ export function createRunArchivesRepo(
           createdAt: runArchives.createdAt,
           startedAt: runArchives.startedAt,
           sourceTypes: runArchives.sourceTypes,
+          digestHeadline: runArchives.digestHeadline,
+          digestSummary: runArchives.digestSummary,
         })
         .from(runArchives)
         .orderBy(desc(runArchives.completedAt))
@@ -172,6 +182,8 @@ export function createRunArchivesRepo(
           createdAt: runArchives.createdAt,
           startedAt: runArchives.startedAt,
           sourceTypes: runArchives.sourceTypes,
+          digestHeadline: runArchives.digestHeadline,
+          digestSummary: runArchives.digestSummary,
         });
       return row;
     },

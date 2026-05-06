@@ -23,7 +23,7 @@ vi.mock("@newsletter/shared", async () => {
   };
 });
 
-import { rankCandidates } from "@pipeline/processors/rank.js";
+import { rankCandidates, rankedResponseSchema } from "@pipeline/processors/rank.js";
 
 interface GenerateArgs {
   model: unknown;
@@ -55,13 +55,27 @@ function makeRankedEntry(overrides: { id: number; score: number; rationale: stri
   };
 }
 
+const DEFAULT_DIGEST = {
+  headline: "Test digest headline phrase",
+  summary: "A one-sentence summary of the day's main stories for tests.",
+};
+
 function makeGenerate(
-  response: { ranked: RankedEntry[] } | Error,
+  response:
+    | {
+        ranked: RankedEntry[];
+        digest?: { headline: string; summary: string };
+      }
+    | Error,
 ): ReturnType<typeof vi.fn> {
   return vi.fn((args: GenerateArgs) => {
     void args;
     if (response instanceof Error) return Promise.reject(response);
-    return Promise.resolve({ object: response });
+    const fullResponse = {
+      digest: response.digest ?? DEFAULT_DIGEST,
+      ranked: response.ranked,
+    };
+    return Promise.resolve({ object: fullResponse });
   });
 }
 
@@ -128,6 +142,8 @@ describe("rankCandidates", () => {
       rankedItems: [],
       candidateCount: 0,
       rankedCount: 0,
+      digestHeadline: "",
+      digestSummary: "",
     });
   });
 
@@ -298,7 +314,10 @@ describe("rankCandidates", () => {
       const parsed = args.schema.safeParse(bad);
       expect(parsed.success).toBe(false);
       return Promise.resolve({
-        object: { ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })] },
+        object: {
+          digest: DEFAULT_DIGEST,
+          ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
+        },
       });
     });
 
@@ -493,6 +512,7 @@ describe("rankCandidates", () => {
     const generateObject = vi.fn((_args: GenerateArgs) => {
       return Promise.resolve({
         object: {
+          digest: DEFAULT_DIGEST,
           ranked: [makeRankedEntry({
             id: 1,
             score: 50,
@@ -513,6 +533,47 @@ describe("rankCandidates", () => {
     expect(result.rankedCount).toBe(1);
   });
 
+  it("VER-96: propagates digestHeadline and digestSummary from LLM response", async () => {
+    const generateObject = makeGenerate({
+      digest: {
+        headline: "AI safety, regulation, open models",
+        summary: "Five stories on regulation, new open-weight releases, and benchmark results across the day's main themes.",
+      },
+      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" })],
+    });
+
+    const result = await rankCandidates([makeCandidate(1)], {
+      topN: 5,
+      generateObject,
+      loadBodies: stubLoadBodies,
+    });
+
+    expect(result.digestHeadline).toBe("AI safety, regulation, open models");
+    expect(result.digestSummary).toContain("regulation");
+  });
+
+  it("VER-96: empty shortlist returns empty digest fields without calling LLM", async () => {
+    const generateObject = makeGenerate({ ranked: [] });
+    const result = await rankCandidates([], {
+      topN: 5,
+      generateObject,
+      loadBodies: stubLoadBodies,
+    });
+
+    expect(generateObject).not.toHaveBeenCalled();
+    expect(result.digestHeadline).toBe("");
+    expect(result.digestSummary).toBe("");
+  });
+
+  it("VER-96: rankedResponseSchema rejects responses missing the digest field", () => {
+    const without = {
+      ranked: [
+        { id: 1, score: 50, rationale: "strong Novelty", summary: "x", bullets: ["a"], bottomLine: "b" },
+      ],
+    };
+    expect(rankedResponseSchema.safeParse(without).success).toBe(false);
+  });
+
   it("REQ-06: forwards abortSignal to generateObject call", async () => {
     const controller = new AbortController();
     let capturedAbortSignal: AbortSignal | undefined;
@@ -521,6 +582,7 @@ describe("rankCandidates", () => {
       capturedAbortSignal = args.abortSignal;
       return Promise.resolve({
         object: {
+          digest: DEFAULT_DIGEST,
           ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" })],
         },
       });

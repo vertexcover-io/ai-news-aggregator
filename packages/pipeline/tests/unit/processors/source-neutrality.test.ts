@@ -102,7 +102,10 @@ describe("source-neutrality golden-set (EDGE-010, REQ-054)", () => {
     const generateObject = (
       args: GenerateArgs,
     ): Promise<{
-      object: { ranked: { id: number; score: number; rationale: string }[] };
+      object: {
+        digest: { headline: string; summary: string };
+        ranked: { id: number; score: number; rationale: string }[];
+      };
     }> => {
       // Assert the source-neutrality rule is present verbatim in the prompt
       // the ranker actually composes. If a future edit drops or rewords it,
@@ -119,6 +122,10 @@ describe("source-neutrality golden-set (EDGE-010, REQ-054)", () => {
 
       return Promise.resolve({
         object: {
+          digest: {
+            headline: "Source neutrality test digest",
+            summary: "Stub digest summary used by source-neutrality test fixture.",
+          },
           ranked: payload.items.map((it) => ({
             id: it.id,
             score: scoreForItem(it),

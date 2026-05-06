@@ -76,6 +76,8 @@ function makeArchive(
         ? [{ id: 1, title: `Top story for ${runId}`, sourceType: "hn" }]
         : []),
     leadSummary,
+    digestHeadline: null,
+    digestSummary: null,
   };
 }
 

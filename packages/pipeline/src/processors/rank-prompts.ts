@@ -18,5 +18,9 @@ For each ranked item, also produce:
 - bullets: 3-5 plain-text analysis points explaining why this matters and what it means. No markdown links.
 - bottomLine: A single plain-text strategic takeaway sentence. No markdown links.
 
-Return a ranked array and use the \`id\` field from the input verbatim.
+Also return a top-level \`digest\` object summarizing the day across all ranked items:
+- digest.headline: A tight 6-8 word phrase capturing the day's overall theme. Plain text, no trailing punctuation, no source names, no rankings.
+- digest.summary: One sentence (max 280 characters) describing the main stories in today's digest, written for a reader scanning a list of issues. Mention the substantive themes, not source names or item counts.
+
+Return a \`digest\` object and a \`ranked\` array. Use the \`id\` field from the input verbatim for each ranked entry.
 `;

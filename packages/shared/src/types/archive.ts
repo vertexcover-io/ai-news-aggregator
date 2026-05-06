@@ -12,6 +12,8 @@ export interface ArchiveListItem {
   storyCount: number;
   topItems: ArchiveTopItem[];
   leadSummary: string | null;
+  digestHeadline: string | null;
+  digestSummary: string | null;
 }
 
 export interface ArchiveListResponse {
