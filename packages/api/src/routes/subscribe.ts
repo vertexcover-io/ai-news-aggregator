@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { createLogger } from "@newsletter/shared";
 import { issueSubscriberToken, verifySubscriberToken } from "@api/lib/subscriber-token.js";
 import type { SubscribersRepo } from "@api/repositories/subscribers.js";
 
@@ -11,6 +12,14 @@ export interface SubscribeRouterDeps {
   sendConfirmationEmail: (email: string, confirmUrl: string) => Promise<void>;
   sendNewsletterToSubscriber: (runId: string, subscriberId: string) => Promise<void>;
   getTodaysReviewedArchiveId: () => Promise<string | null>;
+  logger?: ReturnType<typeof createLogger>;
+}
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!domain) return "***";
+  const head = local.slice(0, 2);
+  return `${head}***@${domain}`;
 }
 
 const subscribeBodySchema = z.object({
@@ -19,23 +28,34 @@ const subscribeBodySchema = z.object({
 
 export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
   const app = new Hono();
+  const logger = deps.logger ?? createLogger("api:subscribe");
 
   app.post("/subscribe", async (c) => {
     let body: unknown;
     try {
       body = await c.req.json();
     } catch {
+      logger.warn({ event: "subscribe.invalid_json" }, "subscribe: invalid json body");
       return c.json({ error: "invalid json" }, 400);
     }
 
     const parsed = subscribeBodySchema.safeParse(body);
     if (!parsed.success) {
+      logger.warn(
+        { event: "subscribe.invalid_input", reason: parsed.error.message },
+        "subscribe: validation failed",
+      );
       return c.json({ error: parsed.error.message }, 400);
     }
 
     const { email } = parsed.data;
+    const masked = maskEmail(email);
     const existing = await deps.subscribersRepo.findByEmail(email);
     if (existing) {
+      logger.info(
+        { event: "subscribe.duplicate", subscriberId: existing.id, email: masked, status: existing.status },
+        "subscribe: existing subscriber, no-op",
+      );
       return c.json({ ok: true });
     }
 
@@ -48,10 +68,23 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
     } catch (err) {
       const code = (err as { code?: unknown }).code;
       if (code === "23505") {
+        logger.info(
+          { event: "subscribe.race_won", email: masked },
+          "subscribe: concurrent insert lost the race, returning idempotent ok",
+        );
         return c.json({ ok: true });
       }
+      logger.error(
+        { event: "subscribe.create_failed", email: masked, error: err instanceof Error ? err.message : String(err) },
+        "subscribe: subscriber create failed",
+      );
       throw err;
     }
+
+    logger.info(
+      { event: "subscribe.created", subscriberId: subscriber.id, email: masked },
+      "subscribe: new subscriber persisted (pending)",
+    );
 
     const confirmTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const confirmToken = issueSubscriberToken(
@@ -70,10 +103,23 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
     const confirmUrl = `${deps.baseUrl}/api/confirm?token=${confirmToken}`;
     try {
       await deps.sendConfirmationEmail(email, confirmUrl);
-    } catch {
+      logger.info(
+        { event: "subscribe.confirmation_sent", subscriberId: subscriber.id, email: masked },
+        "subscribe: confirmation email sent",
+      );
+    } catch (err) {
       // Email send failures (provider rejection, rate limit, transient outage)
       // must not surface as 500: the subscriber is persisted in pending state
       // and can be re-sent via admin tools or retried.
+      logger.warn(
+        {
+          event: "subscribe.confirmation_send_failed",
+          subscriberId: subscriber.id,
+          email: masked,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "subscribe: confirmation email send failed (subscriber still persisted as pending)",
+      );
     }
 
     return c.json({ ok: true });
@@ -84,6 +130,10 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
     const result = verifySubscriberToken(token, "confirm", deps.sessionSecret);
 
     if (!result.valid) {
+      logger.warn(
+        { event: "confirm.invalid_token", reason: result.reason },
+        "confirm: invalid/expired token",
+      );
       if (result.reason === "expired") {
         return c.redirect(`${deps.webBaseUrl}/confirm?status=expired`);
       }
@@ -99,9 +149,34 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       confirmTokenExpiresAt: null,
     });
 
+    logger.info(
+      { event: "confirm.success", subscriberId: result.subscriberId },
+      "confirm: subscriber moved pending -> confirmed",
+    );
+
     const todaysArchiveId = await deps.getTodaysReviewedArchiveId();
     if (todaysArchiveId) {
-      await deps.sendNewsletterToSubscriber(todaysArchiveId, result.subscriberId);
+      try {
+        await deps.sendNewsletterToSubscriber(todaysArchiveId, result.subscriberId);
+        logger.info(
+          {
+            event: "confirm.welcome_send_enqueued",
+            subscriberId: result.subscriberId,
+            runId: todaysArchiveId,
+          },
+          "confirm: enqueued today's archive to new subscriber",
+        );
+      } catch (err) {
+        logger.warn(
+          {
+            event: "confirm.welcome_send_failed",
+            subscriberId: result.subscriberId,
+            runId: todaysArchiveId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "confirm: failed to enqueue today's archive",
+        );
+      }
     }
 
     return c.redirect(`${deps.webBaseUrl}/confirm?status=success`);
@@ -115,6 +190,15 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       await deps.subscribersRepo.updateStatus(result.subscriberId, "unsubscribed", {
         unsubscribedAt: new Date(),
       });
+      logger.info(
+        { event: "unsubscribe.success", subscriberId: result.subscriberId, via: "GET" },
+        "unsubscribe: subscriber unsubscribed",
+      );
+    } else {
+      logger.warn(
+        { event: "unsubscribe.invalid_token", via: "GET", reason: result.reason },
+        "unsubscribe: invalid/expired token (still returning success to prevent enumeration)",
+      );
     }
 
     return c.redirect(`${deps.webBaseUrl}/unsubscribe?status=success`);
@@ -144,7 +228,21 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
         await deps.subscribersRepo.updateStatus(result.subscriberId, "unsubscribed", {
           unsubscribedAt: new Date(),
         });
+        logger.info(
+          { event: "unsubscribe.success", subscriberId: result.subscriberId, via: "POST" },
+          "unsubscribe: subscriber unsubscribed (one-click)",
+        );
+      } else {
+        logger.warn(
+          { event: "unsubscribe.invalid_token", via: "POST", reason: result.reason },
+          "unsubscribe: invalid token on one-click POST",
+        );
       }
+    } else {
+      logger.warn(
+        { event: "unsubscribe.missing_token", via: "POST" },
+        "unsubscribe: POST received without token",
+      );
     }
 
     return c.json({ ok: true });

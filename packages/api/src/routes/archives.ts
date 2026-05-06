@@ -123,6 +123,10 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
           { runId, subscriberIds: "all" },
           { jobId: `send-${runId}` },
         );
+        logger.info(
+          { event: "archive.send_enqueued", runId, jobId: `send-${runId}` },
+          "archive: send-newsletter job enqueued",
+        );
       }
       return c.json(updated);
     } catch (err) {
@@ -146,8 +150,11 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         { runId, subscriberIds: "all" },
         { jobId: `send-${runId}` },
       );
+      logger.info(
+        { event: "archive.send_enqueued", runId, jobId: `send-${runId}`, trigger: "force-send" },
+        "archive: send-newsletter job enqueued (force-send)",
+      );
     }
-    logger.info({ event: "archive.force-send", runId }, "archive.force-send");
     return c.json({ ok: true }, 202);
   });
 

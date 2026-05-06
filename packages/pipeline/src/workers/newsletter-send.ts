@@ -171,51 +171,75 @@ export async function handleNewsletterSendJob(
     "newsletter-send started",
   );
 
+  let okCount = 0;
+  let failCount = 0;
   for (const batch of batches) {
     await Promise.allSettled(
       batch.map(async (subscriber) => {
-        const unsubToken = issueUnsubToken(subscriber.id, deps.sessionSecret);
-        const unsubUrl = `${deps.baseUrl}/api/unsubscribe?token=${unsubToken}`;
-        const html = await deps.renderNewsletter({
-          stories,
-          issueDate,
-          issueNumber: 1,
-          unsubscribeUrl: unsubUrl,
-          baseUrl: deps.baseUrl,
-          replyToEmail: deps.replyToEmail,
-        });
-        const result = await deps.emailProvider.send({
-          to: [subscriber.email],
-          from: deps.sesFromEmail,
-          replyTo: deps.replyToEmail,
-          subject,
-          html,
-          text: htmlToPlainText(html),
-          headers: {
-            "List-Unsubscribe": `<${unsubUrl}>`,
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-          },
-        });
-        await deps.emailSendsRepo.create({
-          subscriberId: subscriber.id,
-          runArchiveId: runId,
-          messageId: result.messageId,
-        });
-        logger.info(
-          {
-            event: "newsletter-send.sent",
-            runId,
+        try {
+          const unsubToken = issueUnsubToken(subscriber.id, deps.sessionSecret);
+          const unsubUrl = `${deps.baseUrl}/api/unsubscribe?token=${unsubToken}`;
+          const html = await deps.renderNewsletter({
+            stories,
+            issueDate,
+            issueNumber: 1,
+            unsubscribeUrl: unsubUrl,
+            baseUrl: deps.baseUrl,
+            replyToEmail: deps.replyToEmail,
+          });
+          const result = await deps.emailProvider.send({
+            to: [subscriber.email],
+            from: deps.sesFromEmail,
+            replyTo: deps.replyToEmail,
+            subject,
+            html,
+            text: htmlToPlainText(html),
+            headers: {
+              "List-Unsubscribe": `<${unsubUrl}>`,
+              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
+          });
+          await deps.emailSendsRepo.create({
             subscriberId: subscriber.id,
+            runArchiveId: runId,
             messageId: result.messageId,
-          },
-          "newsletter-send: sent to subscriber",
-        );
+          });
+          okCount += 1;
+          logger.info(
+            {
+              event: "newsletter-send.sent",
+              runId,
+              subscriberId: subscriber.id,
+              messageId: result.messageId,
+            },
+            "newsletter-send: sent to subscriber",
+          );
+        } catch (err) {
+          failCount += 1;
+          logger.error(
+            {
+              event: "newsletter-send.failed",
+              runId,
+              subscriberId: subscriber.id,
+              error: err instanceof Error ? err.message : String(err),
+            },
+            "newsletter-send: failed to send to subscriber",
+          );
+          throw err;
+        }
       }),
     );
   }
 
   logger.info(
-    { event: "newsletter-send.completed", runId, jobId: job.id, sent: toSend.length },
+    {
+      event: "newsletter-send.completed",
+      runId,
+      jobId: job.id,
+      attempted: toSend.length,
+      sent: okCount,
+      failed: failCount,
+    },
     "newsletter-send completed",
   );
 }
