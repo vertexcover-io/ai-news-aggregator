@@ -4,7 +4,6 @@ import type { RankedItem } from "@newsletter/shared";
 interface ArchiveStoryCardProps {
   item: RankedItem;
   rank: number;
-  totalCount: number;
 }
 
 function formatDate(value: string | null): string {
@@ -27,20 +26,9 @@ function formatRank(n: number): string {
   return n < 10 ? `0${String(n)}` : String(n);
 }
 
-function truncateHost(url: string): string {
-  let host: string;
-  try {
-    host = new URL(url).host;
-  } catch {
-    return "";
-  }
-  return host.length <= 28 ? host : host.slice(0, 27) + "\u2026";
-}
-
 export function ArchiveStoryCard({
   item,
   rank,
-  totalCount,
 }: ArchiveStoryCardProps): ReactElement {
   const [imgError, setImgError] = useState(false);
   const showImage = Boolean(item.imageUrl) && !imgError;
@@ -69,7 +57,7 @@ export function ArchiveStoryCard({
 
   return (
     <article
-      className={`grid grid-cols-1 md:grid-cols-[120px_minmax(0,1fr)_120px] gap-3 md:gap-10 border-b border-[#1A1A1A1A] py-8 md:py-14`}
+      className={`grid grid-cols-1 md:grid-cols-[120px_minmax(0,1fr)] gap-3 md:gap-10 border-b border-[#1A1A1A1A] py-8 md:py-14`}
     >
       {/* Left rail — inline row on mobile, vertical column on desktop */}
       <div
@@ -167,17 +155,6 @@ export function ArchiveStoryCard({
             →
           </span>
         </a>
-      </div>
-
-      {/* Right rail — below body on mobile, vertical column on desktop */}
-      <div
-        data-rail="right"
-        className="flex md:flex order-3 md:order-none mt-2 md:mt-0 font-mono text-[11px] text-neutral-500 uppercase tracking-[0.18em] flex-row md:flex-col items-center md:items-start gap-3 md:gap-1"
-      >
-        <span>
-          {formatRank(rank)} / {formatRank(totalCount)}
-        </span>
-        <span>{truncateHost(item.url)}</span>
       </div>
     </article>
   );

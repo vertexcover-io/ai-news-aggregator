@@ -147,7 +147,7 @@ export function ArchivePage(): ReactElement {
         ) : (
           <div>
             {items.map((item, idx) => (
-              <ArchiveStoryCard key={item.id} item={item} rank={idx + 1} totalCount={items.length} />
+              <ArchiveStoryCard key={item.id} item={item} rank={idx + 1} />
             ))}
           </div>
         )}

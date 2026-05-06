@@ -14,27 +14,6 @@ export function formatMonthLabel(runDate: string): string {
   return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(d);
 }
 
-export interface MonthChip {
-  id: string;
-  label: string;
-  count: number;
-}
-
-export function buildMonthChips(items: ArchiveListItem[]): MonthChip[] {
-  const buckets = new Map<string, { label: string; count: number }>();
-  for (const item of items) {
-    const id = runDateToMonthKey(item.runDate);
-    const d = parseLocalDate(item.runDate);
-    const label = new Intl.DateTimeFormat("en-US", { month: "short" }).format(d);
-    const current = buckets.get(id) ?? { label, count: 0 };
-    current.count += 1;
-    buckets.set(id, current);
-  }
-  return Array.from(buckets, ([id, v]) => ({ id, ...v })).sort((a, b) =>
-    b.id.localeCompare(a.id),
-  );
-}
-
 export interface MonthGroup {
   month: string;
   items: ArchiveListItem[];

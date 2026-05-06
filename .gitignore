@@ -16,6 +16,9 @@ docs/*
 docs/spec/**
 !docs/spec/**/
 !docs/spec/**/spec.md
+!docs/spec/**/plan.md
+!docs/spec/**/REVIEW.md
+!docs/spec/**/quality-gate.md
 !docs/spec/**/e2e-report.json
 !docs/spec/**/ses-setup.md
 !docs/spec/**/ses-dns-records.txt
@@ -28,6 +31,7 @@ docs/spec/**
 !docs/spec/share-archive-on-social/probes/*.sh
 !docs/spec/share-archive-on-social/probes/*.md
 !docs/spec/share-archive-on-social/verification/*.log
+!docs/spec/**/verification/*.png
 .worktrees/
 .harness/
 .worktrees/

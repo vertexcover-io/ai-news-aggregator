@@ -92,39 +92,27 @@ function getFilterChips(): NodeListOf<Element> {
   return document.querySelectorAll("button[data-filter-chip]");
 }
 
-function getFilterChipByText(text: string): Element | undefined {
-  return Array.from(getFilterChips()).find((b) =>
-    b.textContent?.includes(text),
-  );
-}
-
-function requireFilterChipByText(text: string): Element {
-  const chip = getFilterChipByText(text);
-  if (!chip) throw new Error(`FilterChip with text "${text}" not found`);
-  return chip;
-}
-
 function getArchiveRows(): NodeListOf<Element> {
   return document.querySelectorAll("ul.archive-list > li");
 }
 
 describe("ArchiveListingPage", () => {
-  // REQ-034: document.title
-  it("REQ-034: document.title is 'Newsletter archive'", () => {
+  // VER-94: brand renamed to Sieve, headline copy updated, month filter chips removed.
+  it("VER-94: document.title is 'Sieve — The Daily Read'", () => {
     const data = makeArchives(1, "2026-04");
     renderWithQueryClient(<ArchiveListingPage />, data);
-    expect(document.title).toBe("Newsletter archive");
+    expect(document.title).toBe("Sieve — The Daily Read");
   });
 
-  // REQ-012: renders nav, hero, filter row, archive list and footer when data loads
-  it("REQ-012: renders nav, hero, filter row, archive list and footer when data loads", () => {
+  // VER-94: brand "Sieve" in nav, new headline "The Daily Read", no filter chips.
+  it("VER-94: renders Sieve nav, hero, archive list, blog/footer when data loads", () => {
     const data = makeArchives(3, "2026-04");
     renderWithLayout(data);
-    expect(screen.getByText("AI Newsletter")).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 1 })).toBeTruthy();
-    expect(getFilterChipByText("All")).toBeTruthy();
+    expect(screen.getByText("Sieve")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "The Daily Read" })).toBeTruthy();
+    expect(getFilterChips().length).toBe(0);
     expect(getArchiveRows().length).toBeGreaterThan(0);
-    expect(screen.getByText(/Made by Vertexcover/)).toBeTruthy();
+    expect(screen.getByText(/blog\.vertexcover\.io/)).toBeTruthy();
   });
 
   // REQ-018: loading state shows SkeletonRows (animate-pulse elements)
@@ -174,116 +162,7 @@ describe("ArchiveListingPage", () => {
     expect(screen.queryByRole("button", { name: /load more/i })).toBeNull();
   });
 
-  // REQ-022: filter row chips derived from data (not filtered), newest first
-  it("REQ-022: filter row shows All + month chips newest first with correct counts", () => {
-    const data: ArchiveListResponse = {
-      archives: [
-        makeArchive("r1", "2026-04-01"),
-        makeArchive("r2", "2026-04-15"),
-        makeArchive("r3", "2026-03-01"),
-        makeArchive("r4", "2026-03-15"),
-        makeArchive("r5", "2026-03-20"),
-        makeArchive("r6", "2026-02-10"),
-      ],
-    };
-    renderWithQueryClient(<ArchiveListingPage />, data);
-    expect(getFilterChips().length).toBe(4); // All + Apr + Mar + Feb
-    const allChip = getFilterChipByText("All");
-    expect(allChip?.textContent).toContain("6");
-  });
-
-  // REQ-023: clicking Mar chip filters to Mar archives, Mar chip active, All inactive
-  it("REQ-023: clicking month chip filters list and marks chip active", () => {
-    const data: ArchiveListResponse = {
-      archives: [
-        makeArchive("r1", "2026-04-01"),
-        makeArchive("r2", "2026-04-15"),
-        makeArchive("r3", "2026-03-01"),
-        makeArchive("r4", "2026-03-15"),
-        makeArchive("r5", "2026-03-20"),
-      ],
-    };
-    renderWithQueryClient(<ArchiveListingPage />, data);
-
-    const marChip = requireFilterChipByText("Mar");
-    fireEvent.click(marChip);
-
-    expect(getArchiveRows().length).toBe(3);
-    expect(marChip.getAttribute("data-active")).toBe("true");
-    const allChip = getFilterChipByText("All");
-    expect(allChip?.getAttribute("data-active")).toBeFalsy();
-  });
-
-  // REQ-024: clicking active Mar chip restores all, All active
-  it("REQ-024: clicking active month chip again clears filter", () => {
-    const data: ArchiveListResponse = {
-      archives: [
-        makeArchive("r1", "2026-04-01"),
-        makeArchive("r2", "2026-04-15"),
-        makeArchive("r3", "2026-03-01"),
-        makeArchive("r4", "2026-03-15"),
-        makeArchive("r5", "2026-03-20"),
-      ],
-    };
-    renderWithQueryClient(<ArchiveListingPage />, data);
-
-    const marChip = requireFilterChipByText("Mar");
-
-    fireEvent.click(marChip);
-    expect(getArchiveRows().length).toBe(3);
-
-    fireEvent.click(marChip);
-    expect(getArchiveRows().length).toBe(5);
-  });
-
-  // REQ-025: clicking All while month active clears filter
-  it("REQ-025: clicking All chip clears filter", () => {
-    const data: ArchiveListResponse = {
-      archives: [
-        makeArchive("r1", "2026-04-01"),
-        makeArchive("r2", "2026-04-15"),
-        makeArchive("r3", "2026-03-01"),
-        makeArchive("r4", "2026-03-15"),
-        makeArchive("r5", "2026-03-20"),
-      ],
-    };
-    renderWithQueryClient(<ArchiveListingPage />, data);
-
-    const marChip = requireFilterChipByText("Mar");
-    const allChip = requireFilterChipByText("All");
-
-    fireEvent.click(marChip);
-    expect(getArchiveRows().length).toBe(3);
-
-    fireEvent.click(allChip);
-    expect(getArchiveRows().length).toBe(5);
-  });
-
-  // REQ-026: filter + Load more works within filtered set
-  it("REQ-026: Load more reveals within filtered set", () => {
-    const archives: ArchiveListItem[] = [
-      ...Array.from({ length: 25 }, (_, i) => {
-        const day = String(i + 1).padStart(2, "0");
-        return makeArchive(`mar-${String(i)}`, `2026-03-${day}`);
-      }),
-      makeArchive("apr-1", "2026-04-01"),
-      makeArchive("apr-2", "2026-04-02"),
-    ];
-    renderWithQueryClient(<ArchiveListingPage />, { archives });
-
-    const marChip = requireFilterChipByText("Mar");
-    fireEvent.click(marChip);
-
-    expect(getArchiveRows().length).toBe(10);
-
-    fireEvent.click(screen.getByRole("button", { name: /load more/i }));
-    expect(getArchiveRows().length).toBe(20);
-
-    fireEvent.click(screen.getByRole("button", { name: /load more/i }));
-    expect(getArchiveRows().length).toBe(25);
-
-    expect(screen.queryByRole("button", { name: /load more/i })).toBeNull();
-  });
+  // VER-94: month filter chips removed. Tests REQ-022 through REQ-026 deleted.
 
   // REQ-027: error state — shows exact string, no filter chips, no load more
   it("REQ-027: error state renders exact text and no filter or load more", async () => {
@@ -325,35 +204,14 @@ describe("ArchiveListingPage", () => {
     expect(screen.queryByRole("button", { name: /load more/i })).toBeNull();
   });
 
-  // EDGE-008: single month fixture → All + one chip; single month group header
-  it("EDGE-008: single month fixture has All + 1 month chip and 1 group header", () => {
+  // VER-94: EDGE-008 (single-month chip count) and EDGE-009 (filter resets visible count)
+  // dropped — month filter chips were removed.
+  it("VER-94: single-month fixture renders one group header and zero filter chips", () => {
     const data = makeArchives(3, "2026-04");
     renderWithQueryClient(<ArchiveListingPage />, data);
-    expect(getFilterChips().length).toBe(2); // All + Apr
+    expect(getFilterChips().length).toBe(0);
     const h2s = screen.getAllByRole("heading", { level: 2 });
     expect(h2s.length).toBe(1);
-  });
-
-  // EDGE-009: after loading more, switching filter resets visible count
-  it("EDGE-009: switching filter resets visible count to 10", () => {
-    const archives: ArchiveListItem[] = [
-      ...Array.from({ length: 20 }, (_, i) => {
-        const day = String(i + 1).padStart(2, "0");
-        return makeArchive(`apr-${String(i)}`, `2026-04-${day}`);
-      }),
-      ...Array.from({ length: 5 }, (_, i) => {
-        const day = String(i + 1).padStart(2, "0");
-        return makeArchive(`mar-${String(i)}`, `2026-03-${day}`);
-      }),
-    ];
-    renderWithQueryClient(<ArchiveListingPage />, { archives });
-
-    fireEvent.click(screen.getByRole("button", { name: /load more/i }));
-    expect(getArchiveRows().length).toBe(20);
-
-    const marChip = requireFilterChipByText("Mar");
-    fireEvent.click(marChip);
-    expect(getArchiveRows().length).toBe(5);
   });
 
   // EDGE-014: 17 archives, Load more reveals remainder < 10
