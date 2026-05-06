@@ -15,6 +15,7 @@ export default defineConfig({
     },
   },
   server: {
+    allowedHosts: [".trycloudflare.com", ".ngrok.app", ".ngrok-free.app"],
     proxy: {
       // Use 127.0.0.1 (not localhost) so the proxy resolves IPv4 directly.
       // On macOS with IPv6 enabled, `localhost` may resolve to `::1` first,

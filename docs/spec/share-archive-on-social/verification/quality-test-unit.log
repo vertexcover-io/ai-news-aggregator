@@ -1,0 +1,52 @@
+
+> @newsletter/web@0.0.1 test:unit /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/web
+> vitest run --project unit
+
+
+ RUN  v3.2.1 /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/web
+
+ ✓ |unit| tests/unit/components/settings/SourcesSection.test.tsx (5 tests) 504ms
+ ✓ |unit| tests/unit/components/dashboard/RunsTable.test.tsx (11 tests) 508ms
+stderr | tests/unit/pages/ArchiveListingPage.test.tsx > ArchiveListingPage > EDGE-016: duplicate runId archives render without crash
+Encountered two children with the same key, `dup-id`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+
+ ✓ |unit| tests/unit/components/settings/TwitterEditPanel.test.tsx (7 tests) 793ms
+ ✓ |unit| tests/unit/pages/ArchiveListingPage.test.tsx (20 tests) 779ms
+ ✓ |unit| tests/unit/hooks/useReview.test.tsx (17 tests) 995ms
+ ✓ |unit| tests/unit/components/settings/ScheduleSection-tz-utc.test.tsx (2 tests) 841ms
+   ✓ ScheduleSection — UTC alias regression > VS-6: renders with scheduleTimezone='UTC' (alias not stripped by Intl.supportedValuesOf)  604ms
+ ✓ |unit| tests/unit/components/ArchiveShareRow.test.tsx (8 tests) 1766ms
+   ✓ ArchiveShareRow > primary clipboard path: writeText called, label flips to COPIED ✓ then back to COPY LINK after 1500ms (REQ-009, REQ-012)  1525ms
+ ✓ |unit| tests/unit/components/review/EditableField.test.tsx (9 tests) 374ms
+ ✓ |unit| tests/unit/components/settings/SourcesSection-twitter-submit.test.tsx (1 test) 659ms
+   ✓ SourcesSection — Twitter form submit (VS-6 regression) > VS-6: toggling Twitter on, adding a list + handle, then submitting fires onValid with normalized config  658ms
+ ✓ |unit| tests/unit/ArchiveStoryCard.test.tsx (26 tests) 440ms
+ ✓ |unit| tests/unit/components/review/EditableBulletList.test.tsx (9 tests) 355ms
+ ✓ |unit| tests/unit/components/SubscribeWidget.test.tsx (7 tests) 731ms
+ ✓ |unit| tests/unit/components/archive-listing/ArchiveRow.test.tsx (18 tests) 503ms
+ ✓ |unit| tests/unit/components/review/SaveBar.test.tsx (4 tests) 493ms
+ ✓ |unit| tests/unit/ArchivePageHeader.test.tsx (11 tests) 239ms
+ ✓ |unit| tests/unit/useRunPolling.test.tsx (4 tests) 350ms
+ ✓ |unit| tests/unit/pages/ReviewPage.test.tsx (6 tests) 440ms
+ ✓ |unit| tests/unit/components/review/AddPostPanel.test.tsx (7 tests) 382ms
+ ✓ |unit| tests/unit/ArchivePage.test.tsx (9 tests) 691ms
+ ✓ |unit| tests/unit/hooks/useRunList.test.tsx (2 tests) 178ms
+ ✓ |unit| tests/unit/components/review/PoolCard.test.tsx (6 tests) 379ms
+ ✓ |unit| tests/unit/pages/ConfirmPage.test.tsx (4 tests) 128ms
+ ✓ |unit| tests/unit/components/review/ReviewList.test.tsx (4 tests) 356ms
+ ✓ |unit| tests/unit/ui-primitives.test.tsx (14 tests) 244ms
+ ✓ |unit| tests/unit/pages/ArchivePage.test.tsx (6 tests) 184ms
+ ✓ |unit| tests/unit/lib/meta.test.ts (4 tests) 20ms
+ ✓ |unit| tests/unit/api/runs.test.ts (9 tests) 26ms
+ ✓ |unit| tests/unit/components/review/ReviewCard.test.tsx (6 tests) 119ms
+ ✓ |unit| tests/unit/pages/settingsSchema.test.ts (4 tests) 25ms
+ ✓ |unit| tests/unit/api/settings.test.ts (5 tests) 9ms
+ ✓ |unit| tests/unit/api/archives.test.ts (4 tests) 8ms
+ ✓ |unit| tests/unit/lib/shareLinks.test.ts (8 tests) 2ms
+ ✓ |unit| tests/unit/components/review/PoolSection.test.tsx (13 tests) 70ms
+
+ Test Files  33 passed (33)
+      Tests  270 passed (270)
+   Start at  20:08:15
+   Duration  10.86s (transform 1.53s, setup 923ms, collect 14.65s, tests 13.59s, environment 35.81s, prepare 2.36s)
+

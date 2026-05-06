@@ -1,0 +1,16 @@
+PROBE: clipboard
+TIME: 2026-05-06T14:37:57Z
+
+ RUN  v3.2.1 /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/web
+
+stdout | tests/unit/_probe_clipboard.test.ts > library-probe: clipboard surfaces in JSDOM > navigator.clipboard absence is informational only (mock in tests either way)
+[probe] navigator.clipboard present in JSDOM 29: [33mfalse[39m
+
+ ✓ |unit| tests/unit/_probe_clipboard.test.ts (3 tests) 3ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  20:07:57
+   Duration  636ms (transform 51ms, setup 33ms, collect 18ms, tests 3ms, environment 341ms, prepare 38ms)
+
+RESULT: VERIFIED

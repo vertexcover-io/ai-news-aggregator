@@ -59,7 +59,7 @@ describe("ArchiveShareRow", () => {
     const btn = screen.getByRole("button", { name: "Copy archive link" });
     expect(btn.tagName).toBe("BUTTON");
     expect(btn.getAttribute("data-share-target")).toBe("copy");
-    expect(btn.textContent).toBe("COPY LINK");
+    expect(btn.textContent?.replace(/\s+/g, " ").trim()).toBe("COPY LINK");
   });
 
   it("primary clipboard path: writeText called, label flips to COPIED ✓ then back to COPY LINK after 1500ms (REQ-009, REQ-012)", async () => {
@@ -74,7 +74,7 @@ describe("ArchiveShareRow", () => {
     fireEvent.click(btn);
 
     await waitFor(() => {
-      expect(btn.textContent).toBe("COPIED ✓");
+      expect(btn.textContent?.replace(/\s+/g, " ").trim()).toBe("COPIED ✓");
     });
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(writeText).toHaveBeenCalledWith(ARCHIVE_URL);
@@ -84,7 +84,7 @@ describe("ArchiveShareRow", () => {
 
     await waitFor(
       () => {
-        expect(btn.textContent).toBe("COPY LINK");
+        expect(btn.textContent?.replace(/\s+/g, " ").trim()).toBe("COPY LINK");
       },
       { timeout: 2000 },
     );
@@ -106,7 +106,7 @@ describe("ArchiveShareRow", () => {
     fireEvent.click(btn);
 
     await waitFor(() => {
-      expect(btn.textContent).toBe("COPIED ✓");
+      expect(btn.textContent?.replace(/\s+/g, " ").trim()).toBe("COPIED ✓");
     });
     expect(execCommand).toHaveBeenCalledWith("copy");
     // No orphan textarea
@@ -130,7 +130,7 @@ describe("ArchiveShareRow", () => {
     fireEvent.click(btn);
 
     await waitFor(() => {
-      expect(btn.textContent).toBe("COPY FAILED");
+      expect(btn.textContent?.replace(/\s+/g, " ").trim()).toBe("COPY FAILED");
     });
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();

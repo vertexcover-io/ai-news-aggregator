@@ -22,6 +22,12 @@ docs/spec/**
 !docs/spec/**/google-group-setup.md
 !docs/spec/**/verification/
 !docs/spec/**/verification/proof-report.md
+# VER-68: ship full audit trail (probes + library-probe + verification logs)
+!docs/spec/share-archive-on-social/library-probe.md
+!docs/spec/share-archive-on-social/probes/
+!docs/spec/share-archive-on-social/probes/*.sh
+!docs/spec/share-archive-on-social/probes/*.md
+!docs/spec/share-archive-on-social/verification/*.log
 .worktrees/
 .harness/
 .worktrees/
