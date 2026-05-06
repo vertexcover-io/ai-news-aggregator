@@ -62,7 +62,7 @@ const newsletterBaseUrl = process.env.NEWSLETTER_BASE_URL ?? process.env.BASE_UR
 
 const { Queue: BullQueue } = await import("bullmq");
 const { createRedisConnection } = await import("@newsletter/shared/redis");
-const sendQueue = new BullQueue("processing", { connection: createRedisConnection() });
+const sendQueue = new BullQueue("send-newsletter", { connection: createRedisConnection() });
 
 const subscribeRouter = createSubscribeRouter({
   subscribersRepo: createSubscribersRepo(getDb()),
