@@ -483,6 +483,8 @@ export async function handleRunProcessJob(
         startedAt: runStartedAt,
         sourceTypes,
         reviewed: process.env.AUTO_REVIEW === "true",
+        digestHeadline: rankResult.digestHeadline || null,
+        digestSummary: rankResult.digestSummary || null,
       });
     } catch (err) {
       logger.error(

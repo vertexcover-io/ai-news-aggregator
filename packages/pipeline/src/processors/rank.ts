@@ -42,6 +42,8 @@ export interface RankResult {
   rankedItems: RankedItemRef[];
   candidateCount: number;
   rankedCount: number;
+  digestHeadline: string;
+  digestSummary: string;
 }
 
 const rankedEntrySchema = z.object({
@@ -53,7 +55,13 @@ const rankedEntrySchema = z.object({
   bottomLine: z.string(),
 });
 
+const digestSchema = z.object({
+  headline: z.string().min(1).max(80),
+  summary: z.string().min(1).max(280),
+});
+
 export const rankedResponseSchema = z.object({
+  digest: digestSchema,
   ranked: z.array(rankedEntrySchema),
 });
 
@@ -128,7 +136,13 @@ export async function rankCandidates(
   const started = Date.now();
 
   if (shortlist.length === 0) {
-    return { rankedItems: [], candidateCount: 0, rankedCount: 0 };
+    return {
+      rankedItems: [],
+      candidateCount: 0,
+      rankedCount: 0,
+      digestHeadline: "",
+      digestSummary: "",
+    };
   }
 
   const generate = options.generateObject ?? defaultGenerateObject;
@@ -259,5 +273,7 @@ export async function rankCandidates(
     rankedItems,
     candidateCount: shortlist.length,
     rankedCount: rankedItems.length,
+    digestHeadline: result.object.digest.headline,
+    digestSummary: result.object.digest.summary,
   };
 }

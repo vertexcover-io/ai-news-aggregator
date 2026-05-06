@@ -12,6 +12,8 @@ export interface RunArchiveUpsertInput {
   startedAt?: Date;
   sourceTypes?: SourceType[];
   reviewed?: boolean;
+  digestHeadline?: string | null;
+  digestSummary?: string | null;
 }
 
 export interface PipelineRunArchiveRow {
@@ -62,6 +64,8 @@ export function createRunArchivesRepo(
           startedAt: input.startedAt ?? null,
           sourceTypes: input.sourceTypes ?? null,
           reviewed: input.reviewed ?? false,
+          digestHeadline: input.digestHeadline ?? null,
+          digestSummary: input.digestSummary ?? null,
         })
         .onConflictDoUpdate({
           target: runArchives.id,
@@ -71,6 +75,8 @@ export function createRunArchivesRepo(
             topN: sql.raw(`excluded.${runArchives.topN.name}`),
             completedAt: sql.raw(`excluded.${runArchives.completedAt.name}`),
             reviewed: sql.raw(`excluded.${runArchives.reviewed.name}`),
+            digestHeadline: sql.raw(`excluded.${runArchives.digestHeadline.name}`),
+            digestSummary: sql.raw(`excluded.${runArchives.digestSummary.name}`),
           },
         });
     },

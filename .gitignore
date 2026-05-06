@@ -32,6 +32,7 @@ docs/spec/**
 !docs/spec/share-archive-on-social/probes/*.md
 !docs/spec/share-archive-on-social/verification/*.log
 !docs/spec/**/verification/*.png
+!docs/spec/**/verification/*.jpg
 .worktrees/
 .harness/
 .worktrees/

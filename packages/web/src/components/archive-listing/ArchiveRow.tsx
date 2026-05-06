@@ -15,11 +15,6 @@ const shortDateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
-function truncateChip(title: string): string {
-  if (title.length <= 28) return title;
-  return title.slice(0, 27) + "\u2026";
-}
-
 function DateBlock({
   runDate,
   issueNumber,
@@ -60,40 +55,45 @@ export function ArchiveRow({
   issueNumber,
   featured,
 }: ArchiveRowProps): ReactElement {
-  const { runId, runDate, storyCount, topItems, leadSummary } = item;
+  const {
+    runId,
+    runDate,
+    storyCount,
+    topItems,
+    leadSummary,
+    digestHeadline,
+    digestSummary,
+  } = item;
 
   const hasStories = storyCount > 0;
-  const hasTopItems = topItems.length > 0;
+  const showNoStories = !hasStories && topItems.length === 0;
 
   let headlineContent: ReactElement;
-  if (!hasStories && !hasTopItems) {
+  if (showNoStories) {
     headlineContent = (
       <span className="font-mono text-sm text-neutral-400">No stories</span>
     );
-  } else if (!hasTopItems) {
-    headlineContent = (
-      <h3
-        className={`font-serif font-medium leading-tight ${featured ? "text-3xl" : "text-xl"}`}
-      >
-        {"\u2014"}
-      </h3>
-    );
   } else {
+    const firstTopTitle = topItems.length > 0 ? topItems[0].title : "—";
+    const headlineText = digestHeadline ?? firstTopTitle;
     headlineContent = (
       <h3
         className={`font-serif font-medium leading-tight ${featured ? "text-3xl" : "text-xl"}`}
       >
-        {topItems[0].title}
+        {headlineText}
       </h3>
     );
   }
 
-  const showDek = featured && typeof leadSummary === "string" && leadSummary.length > 0;
+  // Featured rows fall back to leadSummary (the rank-1 recap) when the digest
+  // summary is missing — that was the pre-VER-96 dek behavior. Non-featured
+  // rows never used leadSummary, so we only show a dek if digestSummary exists.
+  const dek = digestSummary ?? (featured ? leadSummary : null);
+  const showDek = typeof dek === "string" && dek.length > 0;
 
   const rowBody = (
-    // Mobile: single-column grid (date eyebrow → content → meta inline under chips).
+    // Mobile: single-column grid (date eyebrow → content → meta).
     // md+: three-column grid [120px / 1fr / 120px] with date in left rail, meta in right rail.
-    // grid-template-areas lets the single meta <div> sit in column 3 on md+ without DOM duplication.
     <div
       className={[
         "grid md:px-2",
@@ -111,22 +111,8 @@ export function ArchiveRow({
         {headlineContent}
         {showDek ? (
           <p className="font-sans text-[15px] leading-relaxed text-neutral-600 line-clamp-2">
-            {leadSummary}
+            {dek}
           </p>
-        ) : null}
-        {hasTopItems ? (
-          <ul className="flex flex-wrap gap-x-2 gap-y-1.5 pt-1">
-            {topItems.map((t) => (
-              <li key={t.id} title={t.title} className="inline-flex items-center font-mono text-[11px] rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-600">
-                {truncateChip(t.title)}
-              </li>
-            ))}
-            {storyCount > topItems.length ? (
-              <li className="inline-flex items-center font-mono text-[11px] py-1 self-center text-neutral-400">
-                {`+ ${String(storyCount - topItems.length)} more`}
-              </li>
-            ) : null}
-          </ul>
         ) : null}
       </div>
 
@@ -160,3 +146,4 @@ export function ArchiveRow({
     </li>
   );
 }
+

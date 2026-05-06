@@ -85,6 +85,13 @@
       "when": 1778063623448,
       "tag": "0011_cute_ben_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1778066070565,
+      "tag": "0012_regular_sauron",
+      "breakpoints": true
     }
   ]
 }
