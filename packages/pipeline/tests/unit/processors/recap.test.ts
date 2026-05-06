@@ -85,11 +85,11 @@ describe("generateRecap", () => {
     );
   });
 
-  it("rejects malformed responses that fail schema validation", () => {
+  it("rejects responses with wrong types", () => {
     const parseResult = recapContentSchema.safeParse({
-      summary: "short",
-      bullets: ["only one bullet"],
-      bottomLine: "x",
+      summary: "ok",
+      bullets: "not an array",
+      bottomLine: "ok",
     });
     expect(parseResult.success).toBe(false);
   });

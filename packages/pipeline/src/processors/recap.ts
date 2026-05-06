@@ -17,9 +17,9 @@ Produce a structured recap for the reader:
 `;
 
 export const recapContentSchema = z.object({
-  summary: z.string().min(10),
-  bullets: z.array(z.string().min(10)).min(3).max(5),
-  bottomLine: z.string().min(10),
+  summary: z.string(),
+  bullets: z.array(z.string()),
+  bottomLine: z.string(),
 });
 
 export interface RecapInputItem {

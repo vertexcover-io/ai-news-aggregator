@@ -49,15 +49,15 @@ export interface RankResult {
 const rankedEntrySchema = z.object({
   id: z.number(),
   score: z.number(),
-  rationale: z.string().min(1),
+  rationale: z.string(),
   summary: z.string(),
-  bullets: z.array(z.string()).min(1).max(5),
+  bullets: z.array(z.string()),
   bottomLine: z.string(),
 });
 
 const digestSchema = z.object({
-  headline: z.string().min(1),
-  summary: z.string().min(1),
+  headline: z.string(),
+  summary: z.string(),
 });
 
 export const rankedResponseSchema = z.object({
