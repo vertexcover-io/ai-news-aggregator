@@ -1,4 +1,4 @@
-import { JSDOM } from "jsdom";
+import { JSDOM, VirtualConsole } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import TurndownService from "turndown";
 // turndown-plugin-gfm ships no types; see src/types/turndown-plugin-gfm.d.ts
@@ -6,6 +6,13 @@ import { gfm } from "turndown-plugin-gfm";
 import type { ConvertInput, ConvertResult } from "@pipeline/services/web-fetch/types.js";
 
 export const HEALTHY_TEXT_LENGTH = 200;
+
+// Silent virtual console: JSDOM's default forwards CSS parse errors and
+// unsupported-feature warnings to stdout/stderr, which floods our logs with
+// CSS rules from third-party pages we have no control over.
+function silentVirtualConsole(): VirtualConsole {
+  return new VirtualConsole();
+}
 
 function makeTurndown(): TurndownService {
   const td = new TurndownService({
@@ -99,7 +106,7 @@ export function convert(input: ConvertInput): ConvertResult {
 
   if (mode === "article") {
     // Parse into a fresh JSDOM — pass baseUrl so relative links resolve
-    const dom = new JSDOM(html, { url: baseUrl });
+    const dom = new JSDOM(html, { url: baseUrl, virtualConsole: silentVirtualConsole() });
     const doc = dom.window.document;
 
     // Extract image from ORIGINAL doc before Readability mutates it
@@ -127,7 +134,7 @@ export function convert(input: ConvertInput): ConvertResult {
   }
 
   // listing mode
-  const dom = new JSDOM(html, { url: baseUrl });
+  const dom = new JSDOM(html, { url: baseUrl, virtualConsole: silentVirtualConsole() });
   const doc = dom.window.document;
 
   // Extract image from original DOM (before stripping)

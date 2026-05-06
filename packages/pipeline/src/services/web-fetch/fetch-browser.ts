@@ -29,7 +29,11 @@ export async function fetchBrowser(
     opts.signal?.addEventListener("abort", onAbort, { once: true });
 
     try {
-      await page.goto(url, { timeout: 20_000, waitUntil: "load" });
+      const response = await page.goto(url, { timeout: 20_000, waitUntil: "load" });
+      const status = response?.status() ?? 0;
+      if (status < 200 || status >= 300) {
+        throw new Error(`HTTP ${status} for ${url}`);
+      }
       const html = await page.content();
       return convert({ html, baseUrl: url, mode });
     } finally {

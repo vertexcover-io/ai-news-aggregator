@@ -88,13 +88,16 @@ function makeStaticContext(
   url: string,
   html: string,
   userData: Record<string, unknown>,
+  statusCode = 200,
 ): {
   request: { url: string; loadedUrl: string; userData: Record<string, unknown> };
+  response: { statusCode: number };
   parseWithCheerio: () => Promise<{ html: () => string }>;
   pushData: ReturnType<typeof vi.fn>;
 } {
   return {
     request: { url, loadedUrl: url, userData },
+    response: { statusCode },
     parseWithCheerio: vi.fn().mockResolvedValue({
       html: () => html,
     }),

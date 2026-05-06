@@ -72,6 +72,13 @@ export async function runWebCrawl(
         mode: FetchMode;
       };
 
+      // Reject non-2xx responses before we ever convert HTML — error pages
+      // (404/410/5xx) carry no useful content and pollute downstream prompts.
+      const status = context.response.statusCode;
+      if (status < 200 || status >= 300) {
+        throw new Error(`HTTP ${status} for ${context.request.url}`);
+      }
+
       // parseWithCheerio() works for both static and browser paths:
       // - static path: parses the HTTP response body
       // - browser path: calls page.content() then parses
