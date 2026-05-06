@@ -47,7 +47,7 @@ export interface RankResult {
 }
 
 const rankedEntrySchema = z.object({
-  id: z.number().int(),
+  id: z.number(),
   score: z.number(),
   rationale: z.string().min(1),
   summary: z.string(),
