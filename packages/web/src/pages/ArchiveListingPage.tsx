@@ -6,6 +6,7 @@ import { FilterChip } from "../components/archive-listing/FilterChip";
 import { MonthHeader } from "../components/archive-listing/MonthHeader";
 import { ArchiveRow } from "../components/archive-listing/ArchiveRow";
 import { buildMonthChips, groupVisible, runDateToMonthKey } from "../components/archive-listing/format";
+import { SubscribeWidget } from "../components/SubscribeWidget";
 
 const TAGLINE = "A hand-curated daily digest of what's actually moving in AI.";
 
@@ -101,6 +102,9 @@ export function ArchiveListingPage(): ReactElement {
           </button>
         </div>
       ) : null}
+      <div id="subscribe" className="mt-12 border-t border-neutral-200 pt-8 scroll-mt-24">
+        <SubscribeWidget className="mx-auto max-w-[480px]" />
+      </div>
     </>
   );
 }

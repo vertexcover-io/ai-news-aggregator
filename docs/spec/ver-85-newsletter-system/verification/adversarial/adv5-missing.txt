@@ -1,0 +1,8 @@
+HTTP/1.1 400 Bad Request
+content-type: application/json
+Content-Length: 205
+Date: Tue, 05 May 2026 10:25:45 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"error":"[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"email\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]"}

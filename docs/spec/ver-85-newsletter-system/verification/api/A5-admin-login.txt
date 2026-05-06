@@ -1,0 +1,9 @@
+HTTP/1.1 200 OK
+content-type: application/json
+set-cookie: admin_session=1777976636985.bfc722a621a7dca785e343d0fdf8b98a4767b19b639aeae2276ce137ba19d61a; Max-Age=2592000; Path=/; HttpOnly; SameSite=Lax
+Content-Length: 11
+Date: Tue, 05 May 2026 10:23:56 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"ok":true}

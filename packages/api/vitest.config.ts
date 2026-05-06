@@ -16,7 +16,9 @@ export default defineConfig({
           name: "unit",
           include: [
             "tests/unit/**/*.test.ts",
+            "tests/unit/**/*.test.tsx",
             "src/**/__tests__/**/*.test.ts",
+            "src/**/__tests__/**/*.test.tsx",
           ],
           globals: false,
         },

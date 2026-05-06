@@ -4,6 +4,7 @@ import { useArchive } from "../hooks/useArchive";
 import { ArchivePageHeader, pickHeadline } from "../components/ArchivePageHeader";
 import { ArchiveStoryCard } from "../components/ArchiveStoryCard";
 import { setMeta } from "../lib/meta";
+import { SubscribeWidget } from "../components/SubscribeWidget";
 
 function formatIssueDate(iso: string): string {
   const d = new Date(iso);
@@ -143,6 +144,9 @@ export function ArchivePage(): ReactElement {
             ))}
           </div>
         )}
+        <div className="mt-12 border-t border-neutral-200 pt-8 max-w-[480px]">
+          <SubscribeWidget />
+        </div>
         <div className="py-16">
           <Link
             to="/"

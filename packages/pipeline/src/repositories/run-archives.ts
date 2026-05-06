@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { runArchives } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { RankedItemRef, SourceType } from "@newsletter/shared";
@@ -14,14 +14,42 @@ export interface RunArchiveUpsertInput {
   reviewed?: boolean;
 }
 
+export interface PipelineRunArchiveRow {
+  id: string;
+  status: "completed" | "failed" | "cancelled";
+  rankedItems: RankedItemRef[];
+  topN: number;
+  reviewed: boolean;
+  completedAt: Date;
+}
+
 export interface RunArchivesRepo {
   upsert(input: RunArchiveUpsertInput): Promise<void>;
+  findById(id: string): Promise<PipelineRunArchiveRow | null>;
 }
 
 export function createRunArchivesRepo(
-  db: Pick<AppDb, "insert">,
+  db: Pick<AppDb, "insert" | "select">,
 ): RunArchivesRepo {
   return {
+    async findById(id: string): Promise<PipelineRunArchiveRow | null> {
+      const UUID_RE =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_RE.test(id)) return null;
+      const rows = await db
+        .select({
+          id: runArchives.id,
+          status: runArchives.status,
+          rankedItems: runArchives.rankedItems,
+          topN: runArchives.topN,
+          reviewed: runArchives.reviewed,
+          completedAt: runArchives.completedAt,
+        })
+        .from(runArchives)
+        .where(eq(runArchives.id, id));
+      return rows[0] ?? null;
+    },
+
     async upsert(input: RunArchiveUpsertInput): Promise<void> {
       await db
         .insert(runArchives)

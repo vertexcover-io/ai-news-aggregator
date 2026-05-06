@@ -69,3 +69,52 @@ export const userSettings = pgTable(
 
 export type UserSettingsInsert = typeof userSettings.$inferInsert;
 export type UserSettingsSelect = typeof userSettings.$inferSelect;
+
+export type SubscriberStatus = "pending" | "confirmed" | "unsubscribed" | "bounced" | "complained";
+
+export const subscribers = pgTable("subscribers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull(),
+  status: text("status").$type<SubscriberStatus>().notNull().default("pending"),
+  confirmToken: text("confirm_token"),
+  confirmTokenExpiresAt: timestamp("confirm_token_expires_at"),
+  subscribedAt: timestamp("subscribed_at"),
+  unsubscribedAt: timestamp("unsubscribed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("subscribers_email_uq").on(t.email),
+]);
+
+export type SubscriberInsert = typeof subscribers.$inferInsert;
+export type SubscriberSelect = typeof subscribers.$inferSelect;
+
+export const emailSends = pgTable("email_sends", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  subscriberId: uuid("subscriber_id").notNull().references(() => subscribers.id),
+  runArchiveId: uuid("run_archive_id").notNull().references(() => runArchives.id),
+  messageId: text("message_id"),
+  sentAt: timestamp("sent_at").notNull().defaultNow(),
+}, (t) => [
+  unique("email_sends_subscriber_archive_uq").on(t.subscriberId, t.runArchiveId),
+]);
+
+export type EmailSendInsert = typeof emailSends.$inferInsert;
+export type EmailSendSelect = typeof emailSends.$inferSelect;
+
+export type SesEventType = "delivery" | "bounce" | "complaint" | "open" | "click" | "reject";
+
+export const sesEvents = pgTable("ses_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  messageId: text("message_id").notNull(),
+  eventType: text("event_type").$type<SesEventType>().notNull(),
+  subscriberId: uuid("subscriber_id"),
+  rawPayload: jsonb("raw_payload").notNull(),
+  occurredAt: timestamp("occurred_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [
+  unique("ses_events_message_type_uq").on(t.messageId, t.eventType),
+]);
+
+export type SesEventInsert = typeof sesEvents.$inferInsert;
+export type SesEventSelect = typeof sesEvents.$inferSelect;

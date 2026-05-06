@@ -14,6 +14,9 @@ export interface BuildAppDeps {
    */
   adminRouter: Hono;
   requireAdminFactory: (secret: string) => MiddlewareHandler;
+  subscribeRouter: Hono;
+  webhooksRouter: Hono;
+  analyticsRouter: Hono;
 }
 
 const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
@@ -40,6 +43,12 @@ export function buildApp(deps: BuildAppDeps): Hono {
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
+  // Public subscribe/confirm/unsubscribe routes.
+  app.route("/api", deps.subscribeRouter);
+
+  // Public SNS/SES webhook — no auth required.
+  app.route("/api/webhooks", deps.webhooksRouter);
+
   // Public archives.
   app.route("/api/archives", deps.publicArchivesRouter);
 
@@ -59,6 +68,7 @@ export function buildApp(deps: BuildAppDeps): Hono {
   adminApp.use("*", conditionalGate);
   adminApp.route("/", deps.adminRouter);
   adminApp.route("/archives", deps.adminArchivesRouter);
+  adminApp.route("/analytics", deps.analyticsRouter);
   app.route("/api/admin", adminApp);
 
   app.route("/api/runs", gatedWrap(gate, deps.runsRouter));

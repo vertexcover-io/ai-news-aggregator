@@ -28,6 +28,7 @@ export interface RawItemsRepo {
     sourceType: SourceType,
     externalId: string,
   ): Promise<RawItemRow | null>;
+  findByIds(ids: number[]): Promise<RawItemRow[]>;
   updateRecapData(updates: { id: number; recap: RecapContent }[]): Promise<void>;
 }
 
@@ -97,6 +98,27 @@ export function createRawItemsRepo(
         )
         .limit(1);
       return rows[0] ?? null;
+    },
+
+    async findByIds(ids: number[]): Promise<RawItemRow[]> {
+      if (ids.length === 0) return [];
+      return db
+        .select({
+          id: rawItems.id,
+          sourceType: rawItems.sourceType,
+          externalId: rawItems.externalId,
+          title: rawItems.title,
+          url: rawItems.url,
+          sourceUrl: rawItems.sourceUrl,
+          author: rawItems.author,
+          content: rawItems.content,
+          imageUrl: rawItems.imageUrl,
+          publishedAt: rawItems.publishedAt,
+          engagement: rawItems.engagement,
+          metadata: rawItems.metadata,
+        })
+        .from(rawItems)
+        .where(inArray(rawItems.id, ids));
     },
 
     async updateRecapData(updates: { id: number; recap: RecapContent }[]): Promise<void> {

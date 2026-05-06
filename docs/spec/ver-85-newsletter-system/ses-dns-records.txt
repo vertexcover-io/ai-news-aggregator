@@ -1,0 +1,14 @@
+# DNS records to publish for news.vertexcover.io
+# Generated: 2026-05-05T09:20:38.944Z
+
+## DKIM (3 CNAMEs)
+CNAME  nd5i5kzozt5hbfxxdn6kes7vgpseaa4m._domainkey.news.vertexcover.io.  →  nd5i5kzozt5hbfxxdn6kes7vgpseaa4m.dkim.amazonses.com.
+CNAME  pkntyfy4zu3w373qsclmr4hwtvhtsu2y._domainkey.news.vertexcover.io.  →  pkntyfy4zu3w373qsclmr4hwtvhtsu2y.dkim.amazonses.com.
+CNAME  sb5s3oqqgvga7522yxbphzl3ehsie7wc._domainkey.news.vertexcover.io.  →  sb5s3oqqgvga7522yxbphzl3ehsie7wc.dkim.amazonses.com.
+
+## MAIL FROM (SPF alignment)
+MX    mail.news.vertexcover.io.   priority=10  →  feedback-smtp.us-east-1.amazonses.com.
+TXT   mail.news.vertexcover.io.   →  "v=spf1 include:amazonses.com -all"
+
+## DMARC (recommended)
+TXT   _dmarc.news.vertexcover.io.   →  "v=DMARC1; p=quarantine; rua=mailto:dmarc@news.vertexcover.io"

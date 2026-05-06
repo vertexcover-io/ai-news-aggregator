@@ -93,6 +93,9 @@ function createInMemoryRawItemsRepo(): DemoRepo {
     findBySourceAndExternalId(): Promise<null> {
       return Promise.resolve(null);
     },
+    findByIds(): Promise<never[]> {
+      return Promise.resolve([]);
+    },
   };
 }
 

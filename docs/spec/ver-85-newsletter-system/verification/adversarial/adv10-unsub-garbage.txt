@@ -1,0 +1,8 @@
+HTTP/1.1 302 Found
+location: http://localhost:5173/unsubscribe?status=success
+content-type: text/plain; charset=UTF-8
+Date: Tue, 05 May 2026 10:25:45 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+

@@ -1,9 +1,12 @@
 import { Hono } from "hono";
+import type { Queue } from "bullmq";
 import {
   createLogger,
   getDb as defaultGetDb,
+  createRedisConnection,
 } from "@newsletter/shared";
 import type { ArchiveListResponse, RunState } from "@newsletter/shared";
+import { Queue as BullQueue } from "bullmq";
 import { hydrateRankedItems } from "@api/services/rank-hydration.js";
 import {
   createRawItemsRepo,
@@ -36,6 +39,7 @@ export interface ArchivesRouterDeps {
   hydrateAddedPost?: HydrateAddedPostFn;
   generateRecapFn?: GenerateRecapFn;
   logger?: ReturnType<typeof createLogger>;
+  sendQueue?: Queue;
 }
 
 export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
@@ -113,6 +117,17 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         { event: "archive.patched", runId, count: parsed.data.rankedItems.length },
         "archive.patched",
       );
+      if (deps.sendQueue) {
+        await deps.sendQueue.add(
+          "send-newsletter",
+          { runId, subscriberIds: "all" },
+          { jobId: `send-${runId}` },
+        );
+        logger.info(
+          { event: "archive.send_enqueued", runId, jobId: `send-${runId}` },
+          "archive: send-newsletter job enqueued",
+        );
+      }
       return c.json(updated);
     } catch (err) {
       if (err instanceof NotFoundError) {
@@ -123,6 +138,24 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
       }
       throw err;
     }
+  });
+
+  archives.post("/:runId/send", async (c) => {
+    const runId = c.req.param("runId");
+    const archive = await deps.getArchiveRepo().findById(runId);
+    if (!archive) return c.json({ error: "not found" }, 404);
+    if (deps.sendQueue) {
+      await deps.sendQueue.add(
+        "send-newsletter",
+        { runId, subscriberIds: "all" },
+        { jobId: `send-${runId}` },
+      );
+      logger.info(
+        { event: "archive.send_enqueued", runId, jobId: `send-${runId}`, trigger: "force-send" },
+        "archive: send-newsletter job enqueued (force-send)",
+      );
+    }
+    return c.json({ ok: true }, 202);
   });
 
   archives.post("/:runId/add-post", async (c) => {
@@ -264,12 +297,21 @@ export function createDefaultAdminArchivesRouter(): Hono {
   return createAdminArchivesRouter(createDefaultArchivesDeps());
 }
 
+let defaultSendQueue: Queue | null = null;
+function getDefaultSendQueue(): Queue {
+  defaultSendQueue ??= new BullQueue("send-newsletter", {
+    connection: createRedisConnection(),
+  });
+  return defaultSendQueue;
+}
+
 function createDefaultArchivesDeps(): ArchivesRouterDeps {
   return {
     getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
     getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
     hydrateAddedPost: createDefaultHydrateAddedPost(),
     generateRecapFn: createDefaultGenerateRecapFn(),
+    sendQueue: getDefaultSendQueue(),
   };
 }
 
