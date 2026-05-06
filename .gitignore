@@ -22,6 +22,8 @@ docs/spec/**
 !docs/spec/**/google-group-setup.md
 !docs/spec/**/verification/
 !docs/spec/**/verification/proof-report.md
+!docs/spec/**/verification/*.png
+!docs/spec/**/verification/*.jpg
 .worktrees/
 .harness/
 .worktrees/
