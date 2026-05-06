@@ -31,6 +31,10 @@ import {
 import { collectHn } from "@pipeline/collectors/hn.js";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
+import { collectTwitter } from "@pipeline/collectors/twitter/index.js";
+import { createRettiwtClient } from "@pipeline/collectors/twitter/clients/rettiwt.js";
+import type { TwitterClient } from "@pipeline/collectors/twitter/types.js";
+import { Rettiwt } from "rettiwt-api";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import {
   createRunArchivesRepo,
@@ -39,6 +43,7 @@ import {
 import type {
   HnCollectConfig,
   RedditCollectConfig,
+  TwitterCollectConfig,
   WebCollectConfig,
 } from "@pipeline/types.js";
 import type { CollectorResult } from "@newsletter/shared";
@@ -61,6 +66,7 @@ export interface RunCollectorsPayload {
   hn?: HnCollectConfig;
   reddit?: RedditCollectConfig;
   web?: WebCollectConfig;
+  twitter?: TwitterCollectConfig;
 }
 
 export interface RunProcessJobData {
@@ -115,10 +121,20 @@ export type WebCollectFn = (
   config: WebCollectConfig,
 ) => Promise<CollectorResult>;
 
+export type TwitterCollectFn = (
+  deps: {
+    client: TwitterClient;
+    rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
+    signal?: AbortSignal;
+  },
+  config: TwitterCollectConfig,
+) => Promise<CollectorResult>;
+
 export interface CollectFns {
   hn: HnCollectFn;
   reddit: RedditCollectFn;
   web: WebCollectFn;
+  twitter: TwitterCollectFn;
 }
 
 export interface RunProcessDeps {
@@ -131,6 +147,7 @@ export interface RunProcessDeps {
   collectFns: CollectFns;
   archiveRepo: RunArchivesRepo;
   cancelSubscriber: CancelSubscriberFactory;
+  twitterClient: TwitterClient;
 }
 
 interface CollectingOutcome {
@@ -160,7 +177,7 @@ async function runCollecting(
 
   const collectorDeps = { rawItemsRepo: deps.rawItemsRepo, signal };
 
-  type SourceKey = "hn" | "reddit" | "blog";
+  type SourceKey = "hn" | "reddit" | "blog" | "twitter";
   interface Task {
     sourceKey: SourceKey;
     run: () => Promise<CollectorResult>;
@@ -186,6 +203,17 @@ async function runCollecting(
     tasks.push({
       sourceKey: "blog",
       run: () => deps.collectFns.web(collectorDeps, config),
+    });
+  }
+  if (collectors.twitter) {
+    const config = collectors.twitter;
+    tasks.push({
+      sourceKey: "twitter",
+      run: () =>
+        deps.collectFns.twitter(
+          { client: deps.twitterClient, rawItemsRepo: deps.rawItemsRepo, signal },
+          config,
+        ),
     });
   }
 
@@ -215,6 +243,12 @@ async function runCollecting(
       );
       successCount += 1;
     } catch (err) {
+      // Re-throw CancelledError so the outer worker catch maps the run to
+      // status: cancelled instead of aggregating it as a per-source failure.
+      // Mirrors the rank stage's pattern at line ~437. Without this, a
+      // single-source cancellation hits the all-failed branch and the run
+      // finalises as "failed". Discovered by Stage 5 VS-5.
+      if (err instanceof CancelledError) throw err;
       const message = err instanceof Error ? err.message : String(err);
       await writeSerial(() =>
         deps.runState.updateSource(runId, task.sourceKey, {
@@ -522,6 +556,7 @@ export interface CreateRunProcessWorkerOptions {
   collectFns?: Partial<CollectFns>;
   archiveRepo?: RunArchivesRepo;
   cancelSubscriber?: CancelSubscriberFactory;
+  twitterClient?: TwitterClient;
 }
 
 export function createRunProcessWorker(
@@ -545,7 +580,17 @@ export function createRunProcessWorker(
     hn: options.collectFns?.hn ?? collectHn,
     reddit: options.collectFns?.reddit ?? collectReddit,
     web: options.collectFns?.web ?? collectWeb,
+    twitter: options.collectFns?.twitter ?? collectTwitter,
   };
+
+  // Rettiwt accepts an undefined apiKey (guest mode); the collector itself
+  // checks RETTIWT_API_KEY at call time and short-circuits when missing,
+  // so no real requests are made on an unauthenticated client.
+  const twitterClient =
+    options.twitterClient ??
+    createRettiwtClient({
+      rettiwt: new Rettiwt({ apiKey: process.env.RETTIWT_API_KEY }),
+    });
 
   const archiveRepo =
     options.archiveRepo ?? createRunArchivesRepo(ensureDb(db));
@@ -563,6 +608,7 @@ export function createRunProcessWorker(
     collectFns,
     archiveRepo,
     cancelSubscriber,
+    twitterClient,
   };
 
   return new Worker<RunProcessJobData, RunProcessResult>(

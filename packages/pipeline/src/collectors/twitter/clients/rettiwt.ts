@@ -1,0 +1,142 @@
+import { MediaType } from "rettiwt-api";
+import type {
+  NormalizedTweet,
+  TwitterClient,
+  TwitterClientFetchOptions,
+  TwitterClientFetchResult,
+} from "@pipeline/collectors/twitter/types.js";
+
+// Narrowed projection of rettiwt-api's Tweet — only the fields the adapter reads.
+// The real `Tweet` class is structurally assignable to this interface, so consumers
+// can pass real Rettiwt instances without casts.
+export interface RettiwtRawMedia {
+  type: MediaType;
+  url: string;
+}
+
+export interface RettiwtRawUser {
+  userName: string;
+}
+
+export interface RettiwtRawTweet {
+  id: string;
+  fullText?: string;
+  createdAt: string;
+  tweetBy?: RettiwtRawUser;
+  likeCount?: number;
+  retweetCount?: number;
+  replyCount?: number;
+  quoteCount?: number;
+  media?: RettiwtRawMedia[];
+  retweetedTweet?: RettiwtRawTweet;
+  quoted?: RettiwtRawTweet;
+}
+
+// The published rettiwt types declare `CursoredData.next: string`, but the live runtime
+// emits either a string or `{ value: string }` (observed in the probe at
+// docs/spec/add-twitter-x-collector/probes/rettiwt-api/probe-pagination.mjs). We accept
+// either shape via a relaxed page type rather than narrowing to the published declaration.
+export interface RettiwtCursoredPage {
+  list: RettiwtRawTweet[];
+  next: string | { value: string } | null;
+}
+
+export interface RettiwtFacade {
+  list: { tweets(id: string, count?: number, cursor?: string): Promise<RettiwtCursoredPage> };
+  user: { timeline(id: string, count?: number, cursor?: string): Promise<RettiwtCursoredPage> };
+}
+
+interface CreateRettiwtClientDeps {
+  rettiwt: RettiwtFacade;
+}
+
+function extractCursor(next: RettiwtCursoredPage["next"]): string | null {
+  if (next === null) return null;
+  if (typeof next === "string") return next.length > 0 ? next : null;
+  return next.value.length > 0 ? next.value : null;
+}
+
+function denormalize(t: RettiwtRawTweet): NormalizedTweet {
+  const inner = t.retweetedTweet ?? t;
+  const handle = inner.tweetBy?.userName ?? "i";
+  const photoUrls = (inner.media ?? [])
+    .filter((m) => m.type === MediaType.PHOTO)
+    .map((m) => m.url)
+    .filter((u): u is string => typeof u === "string");
+  return {
+    id: inner.id,
+    authorHandle: handle,
+    fullText: inner.fullText ?? "",
+    createdAt: inner.createdAt,
+    url: `https://x.com/${handle}/status/${inner.id}`,
+    likeCount: inner.likeCount ?? 0,
+    retweetCount: inner.retweetCount ?? 0,
+    replyCount: inner.replyCount ?? 0,
+    quoteCount: inner.quoteCount ?? 0,
+    photoUrls,
+    isRetweet: !!t.retweetedTweet,
+    isQuote: !!t.quoted,
+  };
+}
+
+function abortRace<T>(p: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return p;
+  if (signal.aborted) {
+    return Promise.reject(makeAbortError());
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(makeAbortError());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    p.then(
+      (v) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(v);
+      },
+      (e: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      },
+    );
+  });
+}
+
+function makeAbortError(): Error {
+  const err = new Error("Aborted");
+  err.name = "AbortError";
+  return err;
+}
+
+function toResult(page: RettiwtCursoredPage): TwitterClientFetchResult {
+  return {
+    tweets: page.list.map(denormalize),
+    nextCursor: extractCursor(page.next),
+  };
+}
+
+export function createRettiwtClient(deps: CreateRettiwtClientDeps): TwitterClient {
+  const { rettiwt } = deps;
+  return {
+    async fetchListTweets(
+      listId: string,
+      opts: TwitterClientFetchOptions = {},
+    ): Promise<TwitterClientFetchResult> {
+      const page = await abortRace(
+        rettiwt.list.tweets(listId, opts.maxTweets, opts.cursor),
+        opts.signal,
+      );
+      return toResult(page);
+    },
+    async fetchUserTimeline(
+      userId: string,
+      opts: TwitterClientFetchOptions = {},
+    ): Promise<TwitterClientFetchResult> {
+      const page = await abortRace(
+        rettiwt.user.timeline(userId, opts.maxTweets, opts.cursor),
+        opts.signal,
+      );
+      return toResult(page);
+    },
+  };
+}

@@ -1,0 +1,33 @@
+{
+  "library": "rettiwt-api",
+  "snapshot_at": "2026-05-04",
+  "registry": {
+    "name": "rettiwt-api",
+    "latest_version": "7.0.3",
+    "created": "2023-02-03",
+    "last_publish": "2026-05-02",
+    "deprecated": false,
+    "license": "ISC",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "engines": { "node": "^22.21.0" },
+    "esm": false
+  },
+  "github": {
+    "url": "https://github.com/Rishikant181/Rettiwt-API",
+    "pushed_at": "2026-05-02",
+    "stars": 828,
+    "open_issues": 19,
+    "archived": false,
+    "disabled": false,
+    "license": "MIT"
+  },
+  "thresholds_tripped": 0,
+  "verdict": "trusted",
+  "node_compatibility": {
+    "required": "^22.21.0",
+    "worktree_node": "v22.22.1",
+    "compatible": true
+  },
+  "notes": "Active maintenance (published 2 days before probe). License field differs between npm (ISC) and GitHub (MIT) — minor metadata inconsistency, not blocking."
+}

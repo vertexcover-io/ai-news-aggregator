@@ -1,0 +1,13 @@
+[0.00s] apiKey loaded (length=388)
+[0.00s] resolving @jack via rettiwt.user.details(jack)
+[3.48s]   -> id=12, userName=jack, fullName=jack
+[3.48s] resolving @sama via rettiwt.user.details(sama)
+[5.53s]   -> id=1605, userName=sama, fullName=Sam Altman
+[5.53s] calling rettiwt.user.timeline("12", 10) for @jack
+[8.81s]   -> 21 tweets, cursor=no
+[8.81s]   shape: {"hasId":true,"hasText":true,"hasCreatedAt":true,"hasAuthor":true,"hasLikeCount":true}
+[8.81s] calling rettiwt.user.timeline("1605", 10) for @sama
+[11.26s]   -> 20 tweets, cursor=no
+[11.26s]   shape: {"hasId":true,"hasText":true,"hasCreatedAt":true,"hasAuthor":true,"hasLikeCount":true}
+[11.26s] sample written to /Users/amankumar/Documents/newsletter/.worktrees/feat-twitter-collector-v2/docs/spec/add-twitter-x-collector/probes/rettiwt-api/payload-user-timeline.sample.json
+[11.26s] PASS — handle->id resolution + user.timeline() in user-auth mode (11.264s)

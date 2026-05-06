@@ -5,14 +5,30 @@ import {
   createRedisConnection,
   getDb as defaultGetDb,
 } from "@newsletter/shared";
-import type { RunProcessJobPayload } from "@newsletter/shared";
+import type {
+  RunProcessJobPayload,
+  RunSubmitTwitterConfig,
+  RunSubmitTwitterUser,
+} from "@newsletter/shared";
 import { Queue as BullQueue } from "bullmq";
-import { userSettingsUpsertSchema } from "@api/lib/validate.js";
+import {
+  userSettingsUpsertSchema,
+  type UserSettingsUpsertBody,
+} from "@api/lib/validate.js";
 import {
   createUserSettingsRepo,
   type UserSettingsRepo,
+  type UserSettingsUpsertInput,
 } from "@api/repositories/user-settings.js";
 import { reconcileDailyRunSchedule } from "@api/services/scheduler.js";
+import {
+  defaultRettiwtFactory,
+  resolveTwitterHandles,
+  TwitterHandleResolutionError,
+  type TwitterHandleResolverDeps,
+} from "@api/services/twitter-handle-resolver.js";
+
+type RettiwtFactory = TwitterHandleResolverDeps["rettiwtFactory"];
 
 export interface SettingsRouterDeps {
   getSettingsRepo: () => UserSettingsRepo;
@@ -20,11 +36,59 @@ export interface SettingsRouterDeps {
     Queue,
     "upsertJobScheduler" | "removeJobScheduler"
   >;
+  resolveHandles?: (
+    handles: string[],
+    deps: TwitterHandleResolverDeps,
+  ) => Promise<{ handle: string; userId: string }[]>;
+  rettiwtFactory?: RettiwtFactory;
   logger?: ReturnType<typeof createLogger>;
+}
+
+async function resolveTwitterConfig(
+  config: UserSettingsUpsertBody["twitterConfig"],
+  resolver: (
+    handles: string[],
+    deps: TwitterHandleResolverDeps,
+  ) => Promise<{ handle: string; userId: string }[]>,
+  rettiwtFactory: RettiwtFactory,
+): Promise<RunSubmitTwitterConfig | null> {
+  if (config === null) return null;
+
+  const resolved: RunSubmitTwitterUser[] = [];
+  const unresolvedHandles: string[] = [];
+  const placeholderIndex: number[] = [];
+
+  config.users.forEach((u, idx) => {
+    if (u.userId !== undefined) {
+      resolved[idx] = { handle: u.handle, userId: u.userId };
+    } else {
+      placeholderIndex.push(idx);
+      unresolvedHandles.push(u.handle);
+    }
+  });
+
+  if (unresolvedHandles.length > 0) {
+    const newlyResolved = await resolver(unresolvedHandles, {
+      rettiwtFactory,
+    });
+    placeholderIndex.forEach((idx, i) => {
+      const r = newlyResolved[i];
+      resolved[idx] = { handle: r.handle, userId: r.userId };
+    });
+  }
+
+  return {
+    listIds: config.listIds,
+    users: resolved,
+    maxTweetsPerSource: config.maxTweetsPerSource,
+    sinceHours: config.sinceHours,
+  };
 }
 
 export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
   const logger = deps.logger ?? createLogger("api:settings");
+  const resolver = deps.resolveHandles ?? resolveTwitterHandles;
+  const rettiwtFactory = deps.rettiwtFactory ?? defaultRettiwtFactory;
   const app = new Hono();
 
   app.get("/", async (c) => {
@@ -48,7 +112,73 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       );
     }
 
-    const saved = await deps.getSettingsRepo().upsert(parsed.data);
+    let resolvedTwitterConfig: RunSubmitTwitterConfig | null;
+    try {
+      resolvedTwitterConfig = await resolveTwitterConfig(
+        parsed.data.twitterConfig,
+        resolver,
+        rettiwtFactory,
+      );
+    } catch (err) {
+      if (err instanceof TwitterHandleResolutionError) {
+        if (err.reason === "missing_api_key") {
+          logger.error(
+            { event: "settings.twitter.resolve_failed", reason: err.reason },
+            "twitter handle resolution failed: missing api key",
+          );
+          return c.json(
+            {
+              error:
+                "twitter handle resolution unavailable: RETTIWT_API_KEY not configured",
+            },
+            503,
+          );
+        }
+        if (err.reason === "auth_failed") {
+          logger.error(
+            { event: "settings.twitter.resolve_failed", reason: err.reason },
+            "twitter handle resolution failed: auth failed",
+          );
+          return c.json(
+            {
+              error:
+                "twitter handle resolution unavailable: auth failed (rotate RETTIWT_API_KEY)",
+            },
+            503,
+          );
+        }
+        logger.warn(
+          {
+            event: "settings.twitter.resolve_failed",
+            reason: err.reason,
+            handle: err.handle,
+          },
+          "twitter handle resolution failed",
+        );
+        return c.json(
+          {
+            error: "twitter handle resolution failed",
+            failures: [{ handle: err.handle, reason: err.reason }],
+          },
+          422,
+        );
+      }
+      throw err;
+    }
+
+    const upsertInput: UserSettingsUpsertInput = {
+      topN: parsed.data.topN,
+      halfLifeHours: parsed.data.halfLifeHours,
+      hnConfig: parsed.data.hnConfig,
+      redditConfig: parsed.data.redditConfig,
+      webConfig: parsed.data.webConfig,
+      twitterConfig: resolvedTwitterConfig,
+      scheduleTime: parsed.data.scheduleTime,
+      scheduleTimezone: parsed.data.scheduleTimezone,
+      scheduleEnabled: parsed.data.scheduleEnabled,
+    };
+
+    const saved = await deps.getSettingsRepo().upsert(upsertInput);
     await reconcileDailyRunSchedule(deps.processingQueue, saved);
     logger.info(
       {

@@ -200,18 +200,49 @@ describe("rankCandidates", () => {
     expect(call.temperature).toBe(0);
   });
 
-  it("throws if a rationale does not name any scoring axis (REQ-065)", async () => {
+  it("skips items whose rationale does not name a scoring axis, run continues (REQ-065 softened)", async () => {
+    // Previously this threw and killed the entire run. New behaviour: drop the
+    // unvalidated item, log a warn, keep the rest. One bad rationale must not
+    // brick a daily run (Stage-5 finding 2026-05-04: a tweet with terse
+    // content produced rationale "Low on all axes..." which is semantically
+    // valid but lexically doesn't match a single axis name).
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "just because" })],
+      ranked: [
+        makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" }),
+        makeRankedEntry({ id: 2, score: 50, rationale: "just because" }),
+        makeRankedEntry({ id: 3, score: 70, rationale: "good Actionability" }),
+      ],
+    });
+
+    const result = await rankCandidates(
+      [makeCandidate(1), makeCandidate(2), makeCandidate(3)],
+      {
+        topN: 5,
+        generateObject,
+        loadBodies: stubLoadBodies,
+      },
+    );
+
+    // Items 1 and 3 survive; item 2 is dropped.
+    const ids = result.rankedItems.map((r) => r.rawItemId).sort();
+    expect(ids).toEqual([1, 3]);
+  });
+
+  it("throws if EVERY rationale fails axis validation (REQ-065 still gates totally-bad runs)", async () => {
+    const generateObject = makeGenerate({
+      ranked: [
+        makeRankedEntry({ id: 1, score: 50, rationale: "just because" }),
+        makeRankedEntry({ id: 2, score: 40, rationale: "no reason" }),
+      ],
     });
 
     await expect(
-      rankCandidates([makeCandidate(1)], {
+      rankCandidates([makeCandidate(1), makeCandidate(2)], {
         topN: 5,
         generateObject,
         loadBodies: stubLoadBodies,
       }),
-    ).rejects.toThrow(/axis/i);
+    ).rejects.toThrow(/no valid items/i);
   });
 
   it("accepts lowercase axis names in rationales (REQ-065 case-insensitive)", async () => {
