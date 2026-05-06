@@ -1,0 +1,58 @@
+
+> ai-newsletter@ lint /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social
+> turbo lint
+
+turbo 2.5.4
+
+• Packages in scope: @newsletter/api, @newsletter/eslint-plugin, @newsletter/pipeline, @newsletter/shared, @newsletter/web
+• Running lint in 5 packages
+• Remote caching disabled
+@newsletter/web:lint: cache miss, executing ac478798e14e3d84
+@newsletter/eslint-plugin:lint: cache hit, replaying logs 8139ade83f8a56e0
+@newsletter/pipeline:lint: cache hit, replaying logs 9ed43397728f8e57
+@newsletter/eslint-plugin:lint: 
+@newsletter/pipeline:lint: 
+@newsletter/pipeline:lint: > @newsletter/pipeline@0.0.1 lint /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/pipeline
+@newsletter/pipeline:lint: > eslint .
+@newsletter/pipeline:lint: 
+@newsletter/eslint-plugin:lint: > @newsletter/eslint-plugin@0.0.1 lint /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/eslint-plugin
+@newsletter/eslint-plugin:lint: > eslint .
+@newsletter/eslint-plugin:lint: 
+@newsletter/shared:lint: cache hit, replaying logs 3c346504166ecbde
+@newsletter/shared:lint: 
+@newsletter/shared:lint: > @newsletter/shared@0.0.1 lint /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/shared
+@newsletter/shared:lint: > eslint .
+@newsletter/shared:lint: 
+@newsletter/api:lint: cache hit, replaying logs 7715953ee88cb8b9
+@newsletter/api:lint: 
+@newsletter/api:lint: > @newsletter/api@0.0.1 lint /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/api
+@newsletter/api:lint: > eslint .
+@newsletter/api:lint: 
+@newsletter/web:lint: 
+@newsletter/web:lint: > @newsletter/web@0.0.1 lint /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/web
+@newsletter/web:lint: > eslint .
+@newsletter/web:lint: 
+@newsletter/web:lint: 
+@newsletter/web:lint: /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/web/src/components/ArchivePageHeader.tsx
+@newsletter/web:lint:   11:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+@newsletter/web:lint:   28:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+@newsletter/web:lint: 
+@newsletter/web:lint: /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/web/src/components/ui/badge.tsx
+@newsletter/web:lint:   50:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+@newsletter/web:lint: 
+@newsletter/web:lint: /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/web/src/components/ui/button.tsx
+@newsletter/web:lint:   61:18  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+@newsletter/web:lint: 
+@newsletter/web:lint: /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/web/src/components/ui/form.tsx
+@newsletter/web:lint:   168:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+@newsletter/web:lint: 
+@newsletter/web:lint: /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/web/src/pages/SettingsPage.tsx
+@newsletter/web:lint:   90:6  warning  React Hook useEffect has missing dependencies: 'form' and 'settingsQuery.data'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+@newsletter/web:lint: 
+@newsletter/web:lint: ✖ 6 problems (0 errors, 6 warnings)
+@newsletter/web:lint: 
+
+ Tasks:    5 successful, 5 total
+Cached:    4 cached, 5 total
+  Time:    10.066s 
+

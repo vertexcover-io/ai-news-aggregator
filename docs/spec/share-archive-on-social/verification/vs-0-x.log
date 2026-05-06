@@ -1,0 +1,6 @@
+PROBE: x
+URL: https://twitter.com/intent/tweet?text=AI%20news%20-%20May%206%2C%202026&url=https%3A%2F%2Fexample.com%2Farchive%2Ftest
+TIME: 2026-05-06T14:37:44Z
+HTTP_NO_FOLLOW: 301
+HTTP_FOLLOWED: 200
+RESULT: VERIFIED

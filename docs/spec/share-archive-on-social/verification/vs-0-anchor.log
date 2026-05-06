@@ -1,0 +1,13 @@
+PROBE: anchor/window.open
+TIME: 2026-05-06T14:37:55Z
+
+ RUN  v3.2.1 /Users/amankumar/Documents/newsletter/.worktrees/VER-68-share-archive-on-social/packages/web
+
+ ✓ |unit| tests/unit/_probe_anchor.test.ts (2 tests) 2ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  20:07:56
+   Duration  888ms (transform 27ms, setup 13ms, collect 7ms, tests 2ms, environment 637ms, prepare 47ms)
+
+RESULT: VERIFIED

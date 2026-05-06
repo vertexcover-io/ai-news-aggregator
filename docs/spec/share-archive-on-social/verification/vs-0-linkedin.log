@@ -1,0 +1,5 @@
+PROBE: linkedin
+URL: https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fexample.com%2Farchive%2Ftest
+TIME: 2026-05-06T14:37:42Z
+HTTP: 200
+RESULT: VERIFIED

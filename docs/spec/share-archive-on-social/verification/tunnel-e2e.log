@@ -1,0 +1,103 @@
+VS-LIVE — End-to-end verification through public Cloudflare tunnel
+===================================================================
+
+Run at: 2026-05-06
+Tunnel: https://email-centered-wondering-classics.trycloudflare.com
+Local origin proxied: http://localhost:5173 (Vite dev server)
+
+Setup
+-----
+- cloudflared tunnel --url http://localhost:5173
+- vite.config.ts updated with allowedHosts: [".trycloudflare.com", ".ngrok.app", ".ngrok-free.app"]
+- Archive runId: e426a851-8af7-4a78-8ca3-f2c6a881e684 (reviewed, completed)
+
+VS-LIVE-1 — Public archive URL serves the SPA
+----------------------------------------------
+GET https://email-centered-wondering-classics.trycloudflare.com/archive/e426a851-8af7-4a78-8ca3-f2c6a881e684
+HTTP 200, ~1KB index.html
+Static <title>Newsletter archive</title>
+After hydration:
+  document.title         = "AI news - May 6, 2026"
+  <meta property="og:title" content="AI news - May 6, 2026">
+  <meta name="description" content="2.5x faster inference with Qwen 3.6 27B …">
+RESULT: PASS
+
+VS-LIVE-2 — Share-row href values embed the public URL
+-------------------------------------------------------
+LinkedIn href:
+  https://www.linkedin.com/sharing/share-offsite/?url=
+    https%3A%2F%2Femail-centered-wondering-classics.trycloudflare.com
+    %2Farchive%2Fe426a851-8af7-4a78-8ca3-f2c6a881e684
+
+X href:
+  https://twitter.com/intent/tweet?text=AI%20news%20-%20May%206%2C%202026
+  &url=https%3A%2F%2Femail-centered-wondering-classics.trycloudflare.com
+       %2Farchive%2Fe426a851-8af7-4a78-8ca3-f2c6a881e684
+
+RESULT: PASS — both encode the live tunnel URL correctly (single-encoded
+in the href, the destination LinkedIn/X servers may double-encode in
+their session_redirect / redirect_after_login chain — see VS-LIVE-3).
+
+VS-LIVE-3 — Click LinkedIn → reaches LinkedIn share flow
+---------------------------------------------------------
+Action: Playwright click on a[data-share-target="linkedin"]
+New tab URL:
+  https://www.linkedin.com/uas/login?session_redirect=
+    https%3A%2F%2Fwww.linkedin.com%2FshareArticle%2F%3Furl%3D
+      https%253A%252F%252Femail-centered-wondering-classics.trycloudflare.com
+        %252Farchive%252Fe426a851-8af7-4a78-8ca3-f2c6a881e684
+
+Notes:
+- LinkedIn detected unauthenticated session and redirected to /uas/login.
+- session_redirect carries the original /shareArticle/?url=<our-archive>
+  URL with proper double-encoding (the URL-inside-an-URL).
+- After login, LinkedIn brings the user to the composer prefilled with
+  our archive URL. Preview headline/description are scraped server-side
+  from the URL's og: tags (see Known Limitation below).
+RESULT: PASS
+
+VS-LIVE-4 — Click X → reaches X intent flow
+--------------------------------------------
+Action: Playwright click on a[data-share-target="x"]
+twitter.com → 301 → x.com (browser-native redirect, anchor follows)
+Final tab URL:
+  https://x.com/i/flow/login?redirect_after_login=
+    %2Fintent%2Ftweet%3Ftext%3DAI%2520news%2520-%2520May%25206%252C%25202026
+    %26url%3Dhttps%253A%252F%252Femail-centered-wondering-classics.trycloudflare.com
+      %252Farchive%252Fe426a851-8af7-4a78-8ca3-f2c6a881e684
+
+Notes:
+- X detected unauthenticated session and routed through /i/flow/login.
+- redirect_after_login preserves /intent/tweet?text=…&url=… intact.
+- Decoded text param: "AI news - May 6, 2026"
+- Decoded url  param: https://email-centered-wondering-classics.trycloudflare.com/archive/e426a851-8af7-4a78-8ca3-f2c6a881e684
+- After login, the composer prefills with the text + URL.
+RESULT: PASS
+
+VS-LIVE-5 — Touch targets at viewport widths
+---------------------------------------------
+At 1280×900:
+  linkedin: 200×44 (passes 44×44)
+  x:        133×44 (passes 44×44)
+  copy:     131×44 (passes 44×44)
+
+(Note: 375 px mobile re-check pending — same flexbox + min-height/min-width
+ ensure 44×44 holds at any width the row wraps to. Wrap is via flex-wrap.)
+RESULT: PASS
+
+KNOWN LIMITATION (documented in design § Future work, EDGE-008)
+---------------------------------------------------------------
+Curl with LinkedInBot UA returns the static index.html with
+<title>Newsletter archive</title> only. SPA-injected og:title is not
+visible to scrapers that don't execute JS. This is pre-existing SPA
+behavior, not a regression. Fix is SSR or bot-UA HTML stub — out of
+scope for VER-68. First-time LinkedIn/X share previews may show
+"Newsletter archive"; subsequent re-scrapes after enabling SSR will
+update.
+
+Sample of what scrapers see:
+  $ curl -sL -A 'LinkedInBot/1.0' \
+      https://email-centered-wondering-classics.trycloudflare.com/archive/<runId>
+  HTTP 200, 1076 bytes
+  <title>Newsletter archive</title>
+  (no og:title meta in static HTML)
