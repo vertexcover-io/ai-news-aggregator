@@ -56,8 +56,8 @@ const rankedEntrySchema = z.object({
 });
 
 const digestSchema = z.object({
-  headline: z.string().min(1).max(80),
-  summary: z.string().min(1).max(280),
+  headline: z.string().min(1),
+  summary: z.string().min(1),
 });
 
 export const rankedResponseSchema = z.object({
