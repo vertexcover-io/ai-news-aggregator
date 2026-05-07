@@ -24,18 +24,20 @@ export function ArchivePage(): ReactElement {
   const topStoryTitle = items[0]?.title ?? null;
   const digestHeadline = data?.digestHeadline ?? null;
   const digestSummary = data?.digestSummary ?? null;
+  const issueDate = data?.startedAt ? formatIssueDate(data.startedAt) : "";
+  const fallbackTitle = `AI news - ${issueDate}`;
+  const shareTitle = digestHeadline ?? fallbackTitle;
 
   useEffect(() => {
     if (data?.status === "completed") {
-      const title = `AI news - ${formatIssueDate(data.startedAt)}`;
-      document.title = title;
-      setMeta("og:title", title);
+      document.title = shareTitle;
+      setMeta("og:title", shareTitle);
       setMeta(
         "description",
         digestSummary ?? pickHeadline(null, topStoryTitle, digestHeadline),
       );
     }
-  }, [data, topStoryTitle, digestHeadline, digestSummary]);
+  }, [data, topStoryTitle, digestHeadline, digestSummary, shareTitle]);
 
   if (isLoading) {
     return (
@@ -147,7 +149,7 @@ export function ArchivePage(): ReactElement {
         />
         <ArchiveShareRow
           archiveUrl={typeof window === "undefined" ? "" : window.location.href}
-          shareText={`AI news - ${formatIssueDate(data.startedAt)}`}
+          shareText={shareTitle}
         />
         {items.length === 0 ? (
           <p className="py-8 font-serif text-xl text-neutral-600">No stories in this issue.</p>
