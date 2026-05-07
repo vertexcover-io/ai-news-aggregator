@@ -1,0 +1,8 @@
+{
+  "extension": "unaccent",
+  "host_image": "postgres:16",
+  "available": true,
+  "already_installed_in_local_db": true,
+  "verdict": "trusted",
+  "notes": "unaccent() is STABLE not IMMUTABLE; must wrap in IMMUTABLE function for use in GENERATED ALWAYS STORED columns. Wrapper verified working."
+}

@@ -1,0 +1,10 @@
+{
+  "library": "react-day-picker",
+  "version_probed": "9.14.0",
+  "registry": "npm",
+  "weekly_downloads": 38237362,
+  "last_published": "2026-05-03T16:06:35Z",
+  "deprecated": false,
+  "peer_deps": { "react": ">=16.8.0" },
+  "verdict": "trusted"
+}

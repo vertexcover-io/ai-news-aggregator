@@ -47,6 +47,18 @@ docs/spec/**
 !docs/spec/cap-send-rate-and-raw-error/verification/verify-report.md
 !docs/spec/cap-send-rate-and-raw-error/verification/live-run-logs/
 !docs/spec/cap-send-rate-and-raw-error/verification/live-run-logs/*.log
+# add-archive-keyword-search: ship library-probe + probes + UI mock
+!docs/spec/add-archive-keyword-search/library-probe.md
+!docs/spec/add-archive-keyword-search/mocks/
+!docs/spec/add-archive-keyword-search/mocks/*.html
+!docs/spec/add-archive-keyword-search/probes/
+!docs/spec/add-archive-keyword-search/probes/*.md
+!docs/spec/add-archive-keyword-search/probes/react-day-picker/
+!docs/spec/add-archive-keyword-search/probes/react-day-picker/*.mjs
+!docs/spec/add-archive-keyword-search/probes/react-day-picker/*.json
+!docs/spec/add-archive-keyword-search/probes/unaccent/
+!docs/spec/add-archive-keyword-search/probes/unaccent/*.sh
+!docs/spec/add-archive-keyword-search/probes/unaccent/*.json
 .worktrees/
 .harness/
 .worktrees/
