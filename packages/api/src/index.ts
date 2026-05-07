@@ -30,6 +30,7 @@ import { createDefaultAnalyticsRouter } from "@api/routes/analytics.js";
 import { createSesEventsRepo } from "@api/repositories/ses-events.js";
 import { createEmailSendsRepo } from "@api/repositories/email-sends.js";
 import { verifySnsMessage } from "@api/lib/sns-verifier.js";
+import { resolveBaseUrls } from "@api/lib/base-urls.js";
 
 const logger = createLogger("api");
 
@@ -59,7 +60,7 @@ const sessionSecret = process.env.SESSION_SECRET;
 const emailProvider = createEmailProvider();
 const fromMail = process.env.FROM_MAIL ?? "newsletter@news.vertexcover.io";
 const replyToEmail = process.env.NEWSLETTER_REPLY_TO_EMAIL;
-const newsletterBaseUrl = process.env.NEWSLETTER_BASE_URL ?? process.env.BASE_URL ?? `http://localhost:${process.env.API_PORT ?? 3000}`;
+const { baseUrl: apiBaseUrl, webBaseUrl: newsletterBaseUrl } = resolveBaseUrls(process.env);
 
 const { Queue: BullQueue } = await import("bullmq");
 const { createRedisConnection } = await import("@newsletter/shared/redis");
@@ -68,7 +69,7 @@ const sendQueue = new BullQueue("send-newsletter", { connection: createRedisConn
 const subscribeRouter = createSubscribeRouter({
   subscribersRepo: createSubscribersRepo(getDb()),
   sessionSecret,
-  baseUrl: process.env.BASE_URL ?? `http://localhost:${process.env.API_PORT ?? 3000}`,
+  baseUrl: apiBaseUrl,
   webBaseUrl: newsletterBaseUrl,
   sendConfirmationEmail: async (email, confirmUrl) => {
     const html = await renderConfirmation({ confirmUrl, baseUrl: newsletterBaseUrl });
