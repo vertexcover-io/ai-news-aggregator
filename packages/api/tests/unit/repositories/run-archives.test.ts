@@ -178,7 +178,11 @@ describe("RunArchivesRepo.updateRankedItems (REQ-160)", () => {
 
     vi.advanceTimersByTime(1000);
     const expectedUpdatedAt = new Date(before.getTime() + 1000);
-    const updated = await repo.updateRankedItems("run-1", newItems);
+    const updated = await repo.updateRankedItems("run-1", newItems, {
+      rawItemsById: new Map(),
+      digestHeadline: null,
+      digestSummary: null,
+    });
 
     expect(updated.rankedItems).toEqual(newItems);
     expect(updated.reviewed).toBe(true);

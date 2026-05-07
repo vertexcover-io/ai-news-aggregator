@@ -1,14 +1,21 @@
-import { and, desc, eq, gte, ilike, inArray, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lte, notInArray, sql } from "drizzle-orm";
 import { rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
-import type {
-  ArchiveListItem,
-  ArchiveTopItem,
-  PoolItem,
-  RankedItemRef,
-  RunSourceTelemetry,
+import {
+  serializeArchiveSearchText,
+  type ArchiveListItem,
+  type ArchiveTopItem,
+  type PoolItem,
+  type RankedItemRef,
+  type RunSourceTelemetry,
 } from "@newsletter/shared";
 import type { RawItemRow, RawItemsRepo } from "./raw-items.js";
+
+export interface UpdateRankedItemsContext {
+  rawItemsById: Map<number, RawItemRow>;
+  digestHeadline: string | null;
+  digestSummary: string | null;
+}
 
 export interface RunArchiveRow {
   id: string;
@@ -41,13 +48,28 @@ export interface ListReviewedDeps {
   rawItemsRepo: RawItemsRepo;
 }
 
+export interface SearchReviewedInput {
+  q?: string;
+  from?: Date;
+  to?: Date;
+  limit?: number;
+  rawItemsRepo: RawItemsRepo;
+}
+
+export interface SearchReviewedResult {
+  archives: ArchiveListItem[];
+  total: number;
+}
+
 export interface RunArchivesRepo {
   findById(id: string): Promise<RunArchiveRow | null>;
   list(limit: number): Promise<RunArchiveRow[]>;
   listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]>;
+  searchReviewed(input: SearchReviewedInput): Promise<SearchReviewedResult>;
   updateRankedItems(
     id: string,
     items: RankedItemRef[],
+    ctx: UpdateRankedItemsContext,
   ): Promise<RunArchiveRow>;
   findPoolItems(
     archiveId: string,
@@ -57,7 +79,7 @@ export interface RunArchivesRepo {
 }
 
 export function createRunArchivesRepo(
-  db: Pick<AppDb, "select" | "update">,
+  db: Pick<AppDb, "select" | "update" | "execute">,
 ): RunArchivesRepo {
   function toPoolItem(row: {
     id: number;
@@ -126,32 +148,83 @@ export function createRunArchivesRepo(
         .where(eq(runArchives.reviewed, true))
         .orderBy(desc(runArchives.completedAt));
 
-      if (rows.length === 0) return [];
+      return hydrateListItems(rows, deps.rawItemsRepo);
+    },
+    async searchReviewed(
+      input: SearchReviewedInput,
+    ): Promise<SearchReviewedResult> {
+      const cappedLimit = Math.min(Math.max(input.limit ?? 50, 1), 50);
+      const fromTs = input.from ?? new Date(0);
+      const toTs = input.to ?? new Date("9999-12-31T23:59:59.999Z");
+      const q = input.q?.trim();
 
-      // Build deduplicated set of first-3 rawItemIds across all rows
-      const idSet = new Set<number>();
-      for (const r of rows) {
-        for (const ref of r.rankedItems.slice(0, 3)) {
-          idSet.add(ref.rawItemId);
-        }
+      if (!q) {
+        const where = and(
+          eq(runArchives.reviewed, true),
+          gte(runArchives.completedAt, fromTs),
+          lte(runArchives.completedAt, toTs),
+        );
+        const rows = await db
+          .select({
+            runId: runArchives.id,
+            completedAt: runArchives.completedAt,
+            rankedItems: runArchives.rankedItems,
+            digestHeadline: runArchives.digestHeadline,
+            digestSummary: runArchives.digestSummary,
+          })
+          .from(runArchives)
+          .where(where)
+          .orderBy(desc(runArchives.completedAt))
+          .limit(cappedLimit);
+
+        const [countRow] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(runArchives)
+          .where(where);
+
+        const archives = await hydrateListItems(rows, input.rawItemsRepo);
+        return { archives, total: countRow.count };
       }
 
-      const rawRows = await deps.rawItemsRepo.findByIds([...idSet]);
-      const byId = new Map<number, RawItemRow>(rawRows.map((r) => [r.id, r]));
+      const fromIso = fromTs.toISOString();
+      const toIso = toTs.toISOString();
+      const tsq = sql`websearch_to_tsquery('english', immutable_unaccent(${q}))`;
+      const matchedRows = await db.execute<{
+        id: string;
+        completed_at: Date | string;
+        ranked_items: RankedItemRef[];
+        digest_headline: string | null;
+        digest_summary: string | null;
+      }>(sql`
+        SELECT id, completed_at, ranked_items, digest_headline, digest_summary,
+               ts_rank_cd(search_tsv, ${tsq}) AS rank
+        FROM run_archives
+        WHERE reviewed = true
+          AND completed_at BETWEEN ${fromIso}::timestamptz AND ${toIso}::timestamptz
+          AND search_tsv @@ ${tsq}
+        ORDER BY rank DESC, completed_at DESC
+        LIMIT ${cappedLimit}
+      `);
 
-      return rows.map((r) => {
-        const topItems = buildTopItems(r.rankedItems, byId);
-        const leadSummary = computeLeadSummary(r.rankedItems, byId);
-        return {
-          runId: r.runId,
-          runDate: r.completedAt.toISOString().slice(0, 10),
-          storyCount: Array.isArray(r.rankedItems) ? r.rankedItems.length : 0,
-          topItems,
-          leadSummary,
-          digestHeadline: r.digestHeadline,
-          digestSummary: r.digestSummary,
-        };
-      });
+      const totalRow = await db.execute<{ c: number }>(sql`
+        SELECT count(*)::int AS c
+        FROM run_archives
+        WHERE reviewed = true
+          AND completed_at BETWEEN ${fromIso}::timestamptz AND ${toIso}::timestamptz
+          AND search_tsv @@ ${tsq}
+      `);
+
+      const rows = matchedRows.map((r) => ({
+        runId: r.id,
+        completedAt:
+          r.completed_at instanceof Date ? r.completed_at : new Date(r.completed_at),
+        rankedItems: Array.isArray(r.ranked_items) ? r.ranked_items : [],
+        digestHeadline: r.digest_headline,
+        digestSummary: r.digest_summary,
+      }));
+
+      const archives = await hydrateListItems(rows, input.rawItemsRepo);
+      return { archives, total: totalRow[0].c };
     },
     async list(limit: number): Promise<RunArchiveRow[]> {
       return db
@@ -177,12 +250,20 @@ export function createRunArchivesRepo(
     async updateRankedItems(
       id: string,
       items: RankedItemRef[],
+      ctx: UpdateRankedItemsContext,
     ): Promise<RunArchiveRow> {
+      const searchText = serializeArchiveSearchText({
+        digestHeadline: ctx.digestHeadline,
+        digestSummary: ctx.digestSummary,
+        rankedItems: items,
+        rawItemsById: ctx.rawItemsById,
+      });
       const [row] = await db
         .update(runArchives)
         .set({
           rankedItems: items,
           reviewed: true,
+          searchText,
           updatedAt: new Date(),
         })
         .where(eq(runArchives.id, id))
@@ -252,6 +333,45 @@ export function createRunArchivesRepo(
 
       return { items: rows.map(toPoolItem), total: countRow.count };
     },
+  };
+}
+
+interface ArchiveListSourceRow {
+  runId: string;
+  completedAt: Date;
+  rankedItems: RankedItemRef[];
+  digestHeadline: string | null;
+  digestSummary: string | null;
+}
+
+async function hydrateListItems(
+  rows: ArchiveListSourceRow[],
+  rawItemsRepo: RawItemsRepo,
+): Promise<ArchiveListItem[]> {
+  if (rows.length === 0) return [];
+  const idSet = new Set<number>();
+  for (const r of rows) {
+    for (const ref of r.rankedItems.slice(0, 3)) {
+      idSet.add(ref.rawItemId);
+    }
+  }
+  const rawRows = await rawItemsRepo.findByIds([...idSet]);
+  const byId = new Map<number, RawItemRow>(rawRows.map((r) => [r.id, r]));
+  return rows.map((r) => toArchiveListItem(r, byId));
+}
+
+function toArchiveListItem(
+  r: ArchiveListSourceRow,
+  byId: Map<number, RawItemRow>,
+): ArchiveListItem {
+  return {
+    runId: r.runId,
+    runDate: r.completedAt.toISOString().slice(0, 10),
+    storyCount: Array.isArray(r.rankedItems) ? r.rankedItems.length : 0,
+    topItems: buildTopItems(r.rankedItems, byId),
+    leadSummary: computeLeadSummary(r.rankedItems, byId),
+    digestHeadline: r.digestHeadline,
+    digestSummary: r.digestSummary,
   };
 }
 

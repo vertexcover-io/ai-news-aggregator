@@ -106,7 +106,12 @@ export async function patchArchive(
     if (i.imageUrl !== undefined) ref.imageUrl = i.imageUrl;
     return ref;
   });
-  return deps.archiveRepo.updateRankedItems(runId, refs);
+  const rawItemsById = new Map(found.map((r) => [r.id, r]));
+  return deps.archiveRepo.updateRankedItems(runId, refs, {
+    rawItemsById,
+    digestHeadline: archive.digestHeadline,
+    digestSummary: archive.digestSummary,
+  });
 }
 
 export interface AddPostInput {
