@@ -13,6 +13,7 @@ Hono REST API for job enqueueing and email delivery.
   - `runs.ts` — `POST /api/runs`, `GET /api/runs/:runId`, `POST /api/runs/now` (trigger immediate run from saved settings), `GET /api/runs` (list recent runs)
   - `settings.ts` — `GET /api/settings`, `PUT /api/settings` (read/write `user_settings` singleton row)
   - `archives.ts` — `GET /api/archives` (public list of reviewed archives with top-3 stories + lead summary), `GET /api/archives/:runId` (public single archive detail), `PATCH /api/archives/:runId` (save curated post order, mark reviewed), `POST /api/archives/:runId/add-post` (fetch and add a post by URL)
+  - `archives-search.ts` — `GET /api/archives/search` (public; `q`/`from`/`to`/`limit` params; Postgres FTS over digest headline+summary+top-item titles via the `search_tsv` generated column with `unaccent` + `english` config and `websearch_to_tsquery`; ranks by `ts_rank_cd` when `q` is present, by `completed_at desc` otherwise)
 - `src/services/` — business logic invoked by routes:
   - `runs.ts` — seeds Redis run-state and enqueues the single run-process job
   - `rank-hydration.ts` — joins ranked IDs to `raw_items`
