@@ -9,10 +9,12 @@ import { PublicLayout } from "../../../src/layouts/PublicLayout";
 
 vi.mock("../../../src/api/archives", () => ({
   listArchives: vi.fn(),
+  searchArchives: vi.fn(),
 }));
 
-import { listArchives } from "../../../src/api/archives";
+import { listArchives, searchArchives } from "../../../src/api/archives";
 const mockListArchives = vi.mocked(listArchives);
+const mockSearchArchives = vi.mocked(searchArchives);
 
 afterEach(() => {
   cleanup();
@@ -289,6 +291,89 @@ describe("ArchiveListingPage", () => {
     expect(rows[0].getAttribute("data-featured")).toBe("true");
     expect(rows[1].getAttribute("data-featured")).toBeNull();
     expect(screen.getByText("A concrete lead paragraph shown on the featured row.")).toBeTruthy();
+  });
+
+  // Phase 5: search wiring
+  it("calls searchArchives (not listArchives) when q URL param is present", async () => {
+    const data: ArchiveListResponse = { archives: [makeArchive("run-x", "2026-04-18")] };
+    mockSearchArchives.mockResolvedValue(data);
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={["/?q=foo"]}>
+          <ArchiveListingPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => {
+      expect(mockSearchArchives).toHaveBeenCalled();
+    });
+    expect(mockListArchives).not.toHaveBeenCalled();
+    expect(mockSearchArchives).toHaveBeenCalledWith({ q: "foo", from: undefined, to: undefined });
+  });
+
+  it("hides MonthHeader when q is non-empty", async () => {
+    const data: ArchiveListResponse = { archives: [makeArchive("run-x", "2026-04-18")] };
+    mockSearchArchives.mockResolvedValue(data);
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={["/?q=foo"]}>
+          <ArchiveListingPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => {
+      expect(getArchiveRows().length).toBe(1);
+    });
+    // No month-header h2 — only hero h1
+    expect(screen.queryAllByRole("heading", { level: 2 }).length).toBe(0);
+  });
+
+  it("renders ResultMeta with the count and query when q is non-empty", async () => {
+    const data: ArchiveListResponse = {
+      archives: [
+        makeArchive("a", "2026-04-18"),
+        makeArchive("b", "2026-04-17"),
+      ],
+    };
+    mockSearchArchives.mockResolvedValue(data);
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={["/?q=foo"]}>
+          <ArchiveListingPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText("2 issues")).toBeTruthy();
+    });
+    expect(screen.getByText(/match\s+"foo"/)).toBeTruthy();
+  });
+
+  it("renders EmptyResults when search returns zero results", async () => {
+    mockSearchArchives.mockResolvedValue({ archives: [] });
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={["/?q=zzz"]}>
+          <ArchiveListingPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText("NO MATCHES")).toBeTruthy();
+    });
+    expect(screen.getByText('Nothing in the archive matched "zzz".')).toBeTruthy();
   });
 
   it("REQ-017: first archive with null leadSummary does NOT render data-featured", () => {
