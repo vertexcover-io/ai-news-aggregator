@@ -22,15 +22,20 @@ export function ArchivePage(): ReactElement {
 
   const items = data?.status === "completed" ? (data.rankedItems ?? []) : [];
   const topStoryTitle = items[0]?.title ?? null;
+  const digestHeadline = data?.digestHeadline ?? null;
+  const digestSummary = data?.digestSummary ?? null;
 
   useEffect(() => {
     if (data?.status === "completed") {
       const title = `AI news - ${formatIssueDate(data.startedAt)}`;
       document.title = title;
       setMeta("og:title", title);
-      setMeta("description", pickHeadline(null, topStoryTitle));
+      setMeta(
+        "description",
+        digestSummary ?? pickHeadline(null, topStoryTitle, digestHeadline),
+      );
     }
-  }, [data, topStoryTitle]);
+  }, [data, topStoryTitle, digestHeadline, digestSummary]);
 
   if (isLoading) {
     return (
@@ -137,6 +142,8 @@ export function ArchivePage(): ReactElement {
           storyCount={items.length}
           leadSummary={null}
           topStoryTitle={topStoryTitle}
+          digestHeadline={digestHeadline}
+          digestSummary={digestSummary}
         />
         <ArchiveShareRow
           archiveUrl={typeof window === "undefined" ? "" : window.location.href}

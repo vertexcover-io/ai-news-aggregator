@@ -13,6 +13,8 @@ export interface SubmitRunResponse {
 export type RunStateResponse = Omit<RunState, "rankedItems"> & {
   rankedItems: RankedItem[] | null;
   sourceTypes?: string[] | null;
+  digestHeadline?: string | null;
+  digestSummary?: string | null;
 };
 
 interface ApiErrorBody {

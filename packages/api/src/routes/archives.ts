@@ -65,7 +65,11 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
       const archive = await deps.getArchiveRepo().findById(runId);
       if (!archive) return c.json({ error: "not found" }, 404);
 
-      const state: RunState & { sourceTypes: string[] | null } = {
+      const state: RunState & {
+        sourceTypes: string[] | null;
+        digestHeadline: string | null;
+        digestSummary: string | null;
+      } = {
         id: runId,
         status: archive.status,
         stage: archive.status === "completed" ? "completed" : "failed",
@@ -78,6 +82,8 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
         warnings: [],
         error: null,
         sourceTypes: archive.sourceTypes,
+        digestHeadline: archive.digestHeadline,
+        digestSummary: archive.digestSummary,
       };
 
       if (archive.status === "completed" && Array.isArray(archive.rankedItems)) {
