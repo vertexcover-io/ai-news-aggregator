@@ -1,0 +1,37 @@
+
+> @newsletter/api@0.0.1 bench:search /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api
+> tsx scripts/seed-search-perf.ts
+
+[seed] inserting 1000 synthetic reviewed archives ...
+[seed] 100/1000 archives inserted
+[seed] 200/1000 archives inserted
+[seed] 300/1000 archives inserted
+[seed] 400/1000 archives inserted
+[seed] 500/1000 archives inserted
+[seed] 600/1000 archives inserted
+[seed] 700/1000 archives inserted
+[seed] 800/1000 archives inserted
+[seed] 900/1000 archives inserted
+[seed] 1000/1000 archives inserted
+[seed] done in 4134ms
+[bench] running 100 queries against http://localhost:3000/api/archives/search ...
+[bench] wrote report to /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/docs/spec/add-archive-keyword-search/verification/perf-report.json
+{
+  "n_archives": 1000,
+  "n_queries": 100,
+  "p50_ms": 9.45,
+  "p95_ms": 14.37,
+  "p99_ms": 24.53,
+  "p95_threshold_ms": 200,
+  "passed": true,
+  "captured_at": "2026-05-07T12:06:28.934Z",
+  "tokens_sampled": [
+    "agentic",
+    "claude",
+    "qwen",
+    "context",
+    "inference",
+    "embedding"
+  ]
+}
+[bench] PASS: P95 14.37ms <= 200ms

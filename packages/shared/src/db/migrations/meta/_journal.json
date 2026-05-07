@@ -99,6 +99,13 @@
       "when": 1778137322920,
       "tag": "0013_curly_stellaris",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1778400000000,
+      "tag": "0014_lazy_silver_surfer",
+      "breakpoints": true
     }
   ]
 }

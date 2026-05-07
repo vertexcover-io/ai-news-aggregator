@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "react-day-picker/style.css";
 
 @theme {
   --font-serif:
@@ -126,5 +127,50 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+mark.archive-search-mark {
+  background-color: #FBE9C8;
+  color: #000;
+  font-style: inherit;
+  padding: 0 0.05em;
+}
+
+@layer components {
+  .ledger-rdp {
+    --rdp-accent-color: #8C3A1E;
+    --rdp-accent-background-color: #FBE9C8;
+    --rdp-day_button-border-radius: 2px;
+    --rdp-selected-border: 1px solid #8C3A1E;
+    --rdp-range_middle-color: inherit;
+    --rdp-range_middle-background-color: #FBE9C8;
+    --rdp-range_start-color: white;
+    --rdp-range_start-background: #8C3A1E;
+    --rdp-range_end-color: white;
+    --rdp-range_end-background: #8C3A1E;
+    --rdp-today-color: #8C3A1E;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+
+  .ledger-rdp .rdp-month_caption,
+  .ledger-rdp .rdp-caption_label {
+    font-family: var(--font-serif);
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .ledger-rdp .rdp-weekday {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #737373;
+  }
+
+  .ledger-rdp .rdp-day_button {
+    font-family: var(--font-serif);
   }
 }

@@ -30,6 +30,26 @@ export async function listArchives(): Promise<ArchiveListResponse> {
   return (await res.json()) as ArchiveListResponse;
 }
 
+export interface SearchArchivesQuery {
+  q?: string;
+  from?: string;
+  to?: string;
+}
+
+export async function searchArchives(
+  query: SearchArchivesQuery = {},
+): Promise<ArchiveListResponse> {
+  const params = new URLSearchParams();
+  if (query.q) params.set("q", query.q);
+  if (query.from) params.set("from", query.from);
+  if (query.to) params.set("to", query.to);
+  const qs = params.toString();
+  const url = `/api/archives/search${qs ? `?${qs}` : ""}`;
+  const res = await apiFetch(url);
+  if (!res.ok) throw new Error(`searchArchives: ${String(res.status)}`);
+  return (await res.json()) as ArchiveListResponse;
+}
+
 export async function patchArchive(
   runId: string,
   body: PatchArchiveBody,

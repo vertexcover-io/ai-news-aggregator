@@ -87,6 +87,7 @@ function makeApp(
   return buildApp({
     sessionSecret: SESSION_SECRET,
     publicArchivesRouter: createPublicArchivesRouter(deps),
+    archivesSearchRouter: new Hono(),
     adminArchivesRouter: createAdminArchivesRouter(deps),
     runsRouter: makeStubRunsRouter(),
     settingsRouter: makeStubSettingsRouter(),

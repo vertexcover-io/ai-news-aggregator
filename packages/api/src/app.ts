@@ -4,6 +4,7 @@ import type { MiddlewareHandler } from "hono";
 export interface BuildAppDeps {
   sessionSecret: string;
   publicArchivesRouter: Hono;
+  archivesSearchRouter: Hono;
   adminArchivesRouter: Hono;
   runsRouter: Hono;
   settingsRouter: Hono;
@@ -49,7 +50,9 @@ export function buildApp(deps: BuildAppDeps): Hono {
   // Public SNS/SES webhook — no auth required.
   app.route("/api/webhooks", deps.webhooksRouter);
 
-  // Public archives.
+  // Public archives. /search MUST be mounted before the public router so
+  // it does not collide with the GET /:runId catch-all.
+  app.route("/api/archives/search", deps.archivesSearchRouter);
   app.route("/api/archives", deps.publicArchivesRouter);
 
   // Path-aware admin gate: login/logout skip, everything else requires a

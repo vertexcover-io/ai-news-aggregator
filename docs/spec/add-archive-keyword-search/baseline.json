@@ -1,0 +1,47 @@
+{
+  "spec": "add-archive-keyword-search",
+  "branch": "feat/archive-keyword-search",
+  "base_commit": "cd0fda9",
+  "captured_at": "2026-05-07",
+  "tooling": {
+    "package_manager": "pnpm",
+    "monorepo": "turborepo",
+    "language": "typescript-strict",
+    "test_runner": "vitest"
+  },
+  "metrics": {
+    "typecheck": {
+      "status": "pass",
+      "errors": 0,
+      "tasks_total": 7,
+      "tasks_passed": 7
+    },
+    "lint": {
+      "status": "pass",
+      "errors": 0,
+      "warnings": 6,
+      "warning_files": [
+        "packages/web/src/components/ui/badge.tsx",
+        "packages/web/src/components/ui/button.tsx",
+        "packages/web/src/components/ui/form.tsx (2)",
+        "packages/web/src/pages/SettingsPage.tsx"
+      ]
+    },
+    "test_unit": {
+      "status": "pass",
+      "total_files": 75,
+      "total_tests_passed_known": 750,
+      "breakdown": {
+        "pipeline": {"files": 42, "tests": 489},
+        "web": {"files": 33, "tests": 261}
+      },
+      "duration_seconds": 32.36
+    },
+    "test_e2e_known_pre_existing_failures": {
+      "file": "packages/api/tests/e2e/runs.e2e.test.ts",
+      "failures": 2,
+      "verified_on_main_at": "cd0fda9",
+      "note": "Pre-existing failures on main, unrelated to FTS work. Quality-gate must not regress count beyond 2."
+    }
+  }
+}

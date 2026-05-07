@@ -1,0 +1,10 @@
+  "ok": true,
+  "htmlLength": 18228,
+  "checks": {
+    "hasRoot": true,
+    "hasMonthGrid": true,
+    "hasGridCells": true,
+    "containsApr8": true,
+    "containsMay6": true
+  }
+}

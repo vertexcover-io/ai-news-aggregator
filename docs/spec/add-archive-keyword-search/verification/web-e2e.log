@@ -1,0 +1,12 @@
+
+> @newsletter/web@0.0.1 test:e2e /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/web
+> playwright test -- archive-search
+
+
+Running 3 tests using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/archive-search.spec.ts:15:1 › VS-7: empty state when query has no matches (731ms)
+  ✓  2 [chromium] › tests/e2e/archive-search.spec.ts:25:1 › VS-8: type → results filter → clear restores list (830ms)
+  ✓  3 [chromium] › tests/e2e/archive-search.spec.ts:59:1 › VS-9: open date chip → pick preset → apply updates URL (475ms)
+
+  3 passed (2.9s)

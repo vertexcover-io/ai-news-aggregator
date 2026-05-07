@@ -1,10 +1,21 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { listArchives } from "../api/archives";
+import { useSearchParams } from "react-router-dom";
+import { listArchives, searchArchives } from "../api/archives";
 import { setMeta } from "../lib/meta";
 import { MonthHeader } from "../components/archive-listing/MonthHeader";
 import { ArchiveRow } from "../components/archive-listing/ArchiveRow";
+import { SearchBar } from "../components/archive-listing/SearchBar";
+import { ResultMeta } from "../components/archive-listing/ResultMeta";
+import { EmptyResults } from "../components/archive-listing/EmptyResults";
+import { DateRangeChip } from "../components/archive-listing/DateRangeChip";
 import { groupVisible } from "../components/archive-listing/format";
+import {
+  formatRangeLabel,
+  parseRangeFromParams,
+  serializeRangeToParams,
+  type DateRangeValue,
+} from "../lib/dateRange";
 import { SubscribeWidget } from "../components/SubscribeWidget";
 
 const TAGLINE = "AI news worth your morning.";
@@ -28,13 +39,58 @@ function SkeletonRows(): ReactElement {
 
 export function ArchiveListingPage(): ReactElement {
   const [visibleCount, setVisibleCount] = useState(10);
+  const [params, setParams] = useSearchParams();
+  const q = params.get("q") ?? "";
+  const from = params.get("from") ?? "";
+  const to = params.get("to") ?? "";
+  const isSearch = q.length > 0 || from.length > 0 || to.length > 0;
+  const range = parseRangeFromParams({
+    from: from.length > 0 ? from : undefined,
+    to: to.length > 0 ? to : undefined,
+  });
+  const hasRange = Boolean(range.from ?? range.to);
+  const rangeLabel = hasRange ? formatRangeLabel(range.from, range.to) : undefined;
+
+  const handleRangeChange = (next: DateRangeValue | undefined): void => {
+    const nextParams = new URLSearchParams(params);
+    if (!next || (!next.from && !next.to)) {
+      nextParams.delete("from");
+      nextParams.delete("to");
+    } else {
+      const serialized = serializeRangeToParams(next);
+      if (serialized.from) nextParams.set("from", serialized.from);
+      else nextParams.delete("from");
+      if (serialized.to) nextParams.set("to", serialized.to);
+      else nextParams.delete("to");
+    }
+    setParams(nextParams, { replace: true });
+  };
 
   useEffect(() => { document.title = "Sieve — The Daily Read"; setMeta("description", TAGLINE); }, []);
 
-  const { data, isLoading, isError } = useQuery({ queryKey: ["archives", "list"], queryFn: listArchives });
+  const { data, isLoading, isError } = useQuery({
+    queryKey: isSearch ? ["archives", "search", q, from, to] : ["archives", "list"],
+    queryFn: isSearch
+      ? (): ReturnType<typeof searchArchives> =>
+          searchArchives({
+            q: q.length > 0 ? q : undefined,
+            from: from.length > 0 ? from : undefined,
+            to: to.length > 0 ? to : undefined,
+          })
+      : listArchives,
+  });
 
   const shell = (content: ReactElement): ReactElement => (
-    <main className="mx-auto max-w-[860px] px-4 sm:px-6"><Hero />{content}</main>
+    <main className="mx-auto max-w-[860px] px-4 sm:px-6">
+      <Hero />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[220px]">
+          <SearchBar />
+        </div>
+        <DateRangeChip value={hasRange ? range : undefined} onChange={handleRangeChange} />
+      </div>
+      {content}
+    </main>
   );
 
   if (isLoading) return shell(<SkeletonRows />);
@@ -46,11 +102,37 @@ export function ArchiveListingPage(): ReactElement {
     </div>
   );
 
-  if (!data || data.archives.length === 0) return shell(
-    <div className="py-16 text-center">
-      <p className="font-serif text-xl text-neutral-600">No issues yet. Check back soon.</p>
-    </div>
-  );
+  if (!data || data.archives.length === 0) {
+    if (isSearch && q.length > 0) return shell(<EmptyResults q={q} />);
+    return shell(
+      <div className="py-16 text-center">
+        <p className="font-serif text-xl text-neutral-600">No issues yet. Check back soon.</p>
+      </div>
+    );
+  }
+
+  const highlightTermsList = q.length > 0 ? [q] : [];
+
+  if (isSearch) {
+    return shell(
+      <>
+        {q.length > 0 ? (
+          <ResultMeta count={data.archives.length} q={q} rangeLabel={rangeLabel} />
+        ) : null}
+        <ul className="archive-list mt-6">
+          {data.archives.map((item, idx) => (
+            <ArchiveRow
+              key={`${item.runId}-${String(idx)}`}
+              item={item}
+              issueNumber={data.archives.length - idx}
+              featured={false}
+              highlightTerms={highlightTermsList}
+            />
+          ))}
+        </ul>
+      </>,
+    );
+  }
 
   const visible = data.archives.slice(0, Math.min(visibleCount, data.archives.length));
   const groups = groupVisible(visible);

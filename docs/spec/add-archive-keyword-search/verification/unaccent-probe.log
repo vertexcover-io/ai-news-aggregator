@@ -1,0 +1,27 @@
+DATABASE_URL=postgresql:***@localhost:5433/newsletter
+=== 1. unaccent extension can be created ===
+CREATE EXTENSION
+NOTICE:  extension "unaccent" already exists, skipping
+=== 2. unaccent() strips accents ===
+input='Côté' output='Cote'
+=== 3. immutable_unaccent wrapper compiles ===
+CREATE FUNCTION
+=== 4. generated tsvector column with wrapper ===
+DROP TABLE
+NOTICE:  table "probe_fts" does not exist, skipping
+CREATE TABLE
+CREATE INDEX
+INSERT 0 3
+=== 5. query 'agentic' should match row 1 ===
+matches: 1
+=== 6. query 'cote' (no accent) matches accented row ===
+matches: 1
+=== 7. websearch operators: 'claude -agentic' excludes row 1, includes row 2 ===
+matches: 2
+=== 8. plan uses GIN index ===
+Seq Scan on probe_fts  (cost=0.00..20.62 rows=4 width=4)
+  Filter: (body_tsv @@ '''agent'''::tsquery)
+PLAN: WARNING — no index in plan (corpus may be too small for planner to choose GIN)
+=== 9. cleanup ===
+DROP TABLE
+ALL OK

@@ -1,0 +1,18 @@
+{
+  "n_archives": 1000,
+  "n_queries": 100,
+  "p50_ms": 9.45,
+  "p95_ms": 14.37,
+  "p99_ms": 24.53,
+  "p95_threshold_ms": 200,
+  "passed": true,
+  "captured_at": "2026-05-07T12:06:28.934Z",
+  "tokens_sampled": [
+    "agentic",
+    "claude",
+    "qwen",
+    "context",
+    "inference",
+    "embedding"
+  ]
+}

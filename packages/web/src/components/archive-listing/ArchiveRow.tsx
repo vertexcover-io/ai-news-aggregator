@@ -1,12 +1,20 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { ArchiveListItem } from "@newsletter/shared";
 import { parseLocalDate } from "./format.js";
+import { highlightTerms as applyHighlightTerms } from "../../lib/highlightTerms.js";
 
 export interface ArchiveRowProps {
   item: ArchiveListItem;
   issueNumber: number;
   featured: boolean;
+  highlightTerms?: string[];
+}
+
+function applyHighlight(text: string | null | undefined, terms: string[] | undefined): ReactNode {
+  if (text == null) return text;
+  if (!terms || terms.length === 0) return text;
+  return applyHighlightTerms(text, terms);
 }
 
 const dayFormatter = new Intl.DateTimeFormat("en-US", { weekday: "short" });
@@ -54,6 +62,7 @@ export function ArchiveRow({
   item,
   issueNumber,
   featured,
+  highlightTerms,
 }: ArchiveRowProps): ReactElement {
   const {
     runId,
@@ -80,7 +89,7 @@ export function ArchiveRow({
       <h3
         className={`font-serif font-medium leading-tight ${featured ? "text-3xl" : "text-xl"}`}
       >
-        {headlineText}
+        {applyHighlight(headlineText, highlightTerms)}
       </h3>
     );
   }
@@ -111,7 +120,7 @@ export function ArchiveRow({
         {headlineContent}
         {showDek ? (
           <p className="font-sans text-[15px] leading-relaxed text-neutral-600 line-clamp-2">
-            {dek}
+            {applyHighlight(dek, highlightTerms)}
           </p>
         ) : null}
       </div>

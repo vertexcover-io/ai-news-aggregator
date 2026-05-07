@@ -1,0 +1,509 @@
+
+> ai-newsletter@ test:unit /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search
+> turbo test:unit
+
+turbo 2.5.4
+
+• Packages in scope: @newsletter/api, @newsletter/eslint-plugin, @newsletter/pipeline, @newsletter/shared, @newsletter/web
+• Running test:unit in 5 packages
+• Remote caching disabled
+@newsletter/shared:test:unit: cache hit, replaying logs b0e54fab55c727bf
+@newsletter/eslint-plugin:test:unit: cache hit, replaying logs 2ee74cad377b29b9
+@newsletter/shared:test:unit: 
+@newsletter/shared:test:unit: > @newsletter/shared@0.0.1 test:unit /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/shared
+@newsletter/shared:test:unit: > vitest run --project unit
+@newsletter/shared:test:unit: 
+@newsletter/shared:test:unit: 
+@newsletter/shared:test:unit:  RUN  v3.2.1 /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/shared
+@newsletter/shared:test:unit: 
+@newsletter/shared:test:unit:  ✓ |unit| tests/unit/slack/message-builder.test.ts (10 tests) 10ms
+@newsletter/shared:test:unit:  ✓ |unit| tests/unit/slack/webhook-client.test.ts (4 tests) 13ms
+@newsletter/shared:test:unit:  ✓ |unit| tests/unit/archive-search-text.test.ts (8 tests) 10ms
+@newsletter/shared:test:unit:  ✓ |unit| tests/unit/slack/notifier.test.ts (9 tests) 55ms
+@newsletter/shared:test:unit:  ✓ |unit| tests/unit/run-start.test.ts (7 tests) 120ms
+@newsletter/shared:test:unit:  ✓ |unit| tests/unit/schema.test.ts (10 tests) 35ms
+@newsletter/shared:test:unit: 
+@newsletter/shared:test:unit:  Test Files  6 passed (6)
+@newsletter/shared:test:unit:       Tests  48 passed (48)
+@newsletter/shared:test:unit:    Start at  17:17:25
+@newsletter/shared:test:unit:    Duration  5.13s (transform 1.40s, setup 0ms, collect 6.07s, tests 244ms, environment 1ms, prepare 2.73s)
+@newsletter/shared:test:unit: 
+@newsletter/eslint-plugin:test:unit: 
+@newsletter/eslint-plugin:test:unit: > @newsletter/eslint-plugin@0.0.1 test:unit /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/eslint-plugin
+@newsletter/eslint-plugin:test:unit: > vitest run --project unit
+@newsletter/eslint-plugin:test:unit: 
+@newsletter/eslint-plugin:test:unit: 
+@newsletter/eslint-plugin:test:unit:  RUN  v3.2.1 /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/eslint-plugin
+@newsletter/eslint-plugin:test:unit: 
+@newsletter/eslint-plugin:test:unit:  ✓ |unit| tests/meta.test.ts (4 tests) 3ms
+@newsletter/eslint-plugin:test:unit:  ✓ |unit| tests/rules/enforce-repository-access.test.ts (15 tests) 801ms
+@newsletter/eslint-plugin:test:unit:    ✓ enforce-repository-access > valid > type-only import from @newsletter/shared/db in a service file  387ms
+@newsletter/eslint-plugin:test:unit:  ✓ |unit| tests/rules/collector-return-shape.test.ts (11 tests) 12681ms
+@newsletter/eslint-plugin:test:unit:    ✓ collector-return-shape > valid > REQ-060: exported async function returning Promise<CollectorResult>  10220ms
+@newsletter/eslint-plugin:test:unit:    ✓ collector-return-shape > valid > EDGE-012: .d.ts files are skipped entirely  1565ms
+@newsletter/eslint-plugin:test:unit: 
+@newsletter/eslint-plugin:test:unit:  Test Files  3 passed (3)
+@newsletter/eslint-plugin:test:unit:       Tests  30 passed (30)
+@newsletter/eslint-plugin:test:unit:    Start at  15:48:01
+@newsletter/eslint-plugin:test:unit:    Duration  17.16s (transform 411ms, setup 0ms, collect 7.03s, tests 13.49s, environment 3ms, prepare 1.19s)
+@newsletter/eslint-plugin:test:unit: 
+@newsletter/shared:build: cache hit, replaying logs 114c6dd5f950da49
+@newsletter/shared:build: 
+@newsletter/shared:build: > @newsletter/shared@0.0.1 build /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/shared
+@newsletter/shared:build: > tsup
+@newsletter/shared:build: 
+@newsletter/shared:build: CLI Building entry: src/index.ts, src/logger.ts, src/redis.ts, src/run-start.ts, src/send-newsletter.ts, src/constants/index.ts, src/db/index.ts, src/slack/index.ts, src/types/index.ts, src/types/settings.ts, src/utils/index.ts
+@newsletter/shared:build: CLI Using tsconfig: tsconfig.json
+@newsletter/shared:build: CLI tsup v8.4.0
+@newsletter/shared:build: CLI Using tsup config: /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/shared/tsup.config.ts
+@newsletter/shared:build: CLI Target: es2022
+@newsletter/shared:build: CLI Cleaning output folder
+@newsletter/shared:build: ESM Build start
+@newsletter/shared:build: ESM dist/types/settings.js      67.00 B
+@newsletter/shared:build: ESM dist/types/index.js         64.00 B
+@newsletter/shared:build: ESM dist/logger.js              145.00 B
+@newsletter/shared:build: ESM dist/chunk-NL4NAHXG.js      42.00 B
+@newsletter/shared:build: ESM dist/utils/index.js         64.00 B
+@newsletter/shared:build: ESM dist/index.js               2.15 KB
+@newsletter/shared:build: ESM dist/chunk-AMJSW4RQ.js      42.00 B
+@newsletter/shared:build: ESM dist/chunk-HNULWM2K.js      313.00 B
+@newsletter/shared:build: ESM dist/run-start.js           140.00 B
+@newsletter/shared:build: ESM dist/chunk-BMJ6XNXR.js      1.84 KB
+@newsletter/shared:build: ESM dist/send-newsletter.js     268.00 B
+@newsletter/shared:build: ESM dist/chunk-EUJPSGDR.js      266.00 B
+@newsletter/shared:build: ESM dist/chunk-5BVJRYAY.js      451.00 B
+@newsletter/shared:build: ESM dist/db/index.js            302.00 B
+@newsletter/shared:build: ESM dist/chunk-XJGWQ3QS.js      169.00 B
+@newsletter/shared:build: ESM dist/slack/index.js         242.00 B
+@newsletter/shared:build: ESM dist/chunk-PZ5AY32C.js      233.00 B
+@newsletter/shared:build: ESM dist/constants/index.js     224.00 B
+@newsletter/shared:build: ESM dist/chunk-TN775OJE.js      4.83 KB
+@newsletter/shared:build: ESM dist/redis.js               162.00 B
+@newsletter/shared:build: ESM dist/chunk-TCRFUDMP.js      7.51 KB
+@newsletter/shared:build: ESM dist/chunk-JCUHDSY2.js      42.00 B
+@newsletter/shared:build: ESM dist/types/index.js.map     71.00 B
+@newsletter/shared:build: ESM dist/utils/index.js.map     71.00 B
+@newsletter/shared:build: ESM dist/logger.js.map          71.00 B
+@newsletter/shared:build: ESM dist/chunk-AMJSW4RQ.js.map  71.00 B
+@newsletter/shared:build: ESM dist/index.js.map           2.62 KB
+@newsletter/shared:build: ESM dist/run-start.js.map       71.00 B
+@newsletter/shared:build: ESM dist/chunk-NL4NAHXG.js.map  71.00 B
+@newsletter/shared:build: ESM dist/chunk-BMJ6XNXR.js.map  4.26 KB
+@newsletter/shared:build: ESM dist/chunk-EUJPSGDR.js.map  387.00 B
+@newsletter/shared:build: ESM dist/chunk-5BVJRYAY.js.map  849.00 B
+@newsletter/shared:build: ESM dist/db/index.js.map        71.00 B
+@newsletter/shared:build: ESM dist/chunk-XJGWQ3QS.js.map  283.00 B
+@newsletter/shared:build: ESM dist/chunk-PZ5AY32C.js.map  71.00 B
+@newsletter/shared:build: ESM dist/slack/index.js.map     71.00 B
+@newsletter/shared:build: ESM dist/constants/index.js.map 71.00 B
+@newsletter/shared:build: ESM dist/redis.js.map           71.00 B
+@newsletter/shared:build: ESM dist/types/settings.js.map  71.00 B
+@newsletter/shared:build: ESM dist/chunk-TCRFUDMP.js.map  13.98 KB
+@newsletter/shared:build: ESM dist/send-newsletter.js.map 71.00 B
+@newsletter/shared:build: ESM dist/chunk-JCUHDSY2.js.map  71.00 B
+@newsletter/shared:build: ESM dist/chunk-HNULWM2K.js.map  529.00 B
+@newsletter/shared:build: ESM dist/chunk-TN775OJE.js.map  9.90 KB
+@newsletter/shared:build: ESM ⚡️ Build success in 21ms
+@newsletter/shared:build: DTS Build start
+@newsletter/shared:build: DTS ⚡️ Build success in 3065ms
+@newsletter/shared:build: DTS dist/utils/index.d.ts     13.00 B
+@newsletter/shared:build: DTS dist/index.d.ts           2.74 KB
+@newsletter/shared:build: DTS dist/logger.d.ts          110.00 B
+@newsletter/shared:build: DTS dist/run-start.d.ts       930.00 B
+@newsletter/shared:build: DTS dist/send-newsletter.d.ts 439.00 B
+@newsletter/shared:build: DTS dist/constants/index.d.ts 213.00 B
+@newsletter/shared:build: DTS dist/types/settings.d.ts  886.00 B
+@newsletter/shared:build: DTS dist/redis.d.ts           155.00 B
+@newsletter/shared:build: DTS dist/db/index.d.ts        632.00 B
+@newsletter/shared:build: DTS dist/slack/index.d.ts     2.42 KB
+@newsletter/shared:build: DTS dist/types/index.d.ts     913.00 B
+@newsletter/shared:build: DTS dist/schema-CmV_dkiJ.d.ts 44.69 KB
+@newsletter/web:test:unit: cache hit, replaying logs c54c842ea8a44c65
+@newsletter/web:test:unit: 
+@newsletter/web:test:unit: > @newsletter/web@0.0.1 test:unit /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/web
+@newsletter/web:test:unit: > vitest run --project unit
+@newsletter/web:test:unit: 
+@newsletter/web:test:unit: 
+@newsletter/web:test:unit:  RUN  v3.2.1 /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/web
+@newsletter/web:test:unit: 
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/hooks/useReview.test.tsx (17 tests) 1217ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/ArchiveShareRow.test.tsx (8 tests) 3478ms
+@newsletter/web:test:unit:    ✓ ArchiveShareRow > LinkedIn anchor has correct href, target, rel, aria-label (REQ-003, REQ-008)  1054ms
+@newsletter/web:test:unit:    ✓ ArchiveShareRow > primary clipboard path: writeText called, label flips to COPIED ✓ then back to COPY LINK after 1500ms (REQ-009, REQ-012)  1642ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/dashboard/RunsTable.test.tsx (11 tests) 3709ms
+@newsletter/web:test:unit:    ✓ RunsTable running state (REQ-001..REQ-005) > REQ-001: running row renders Cancel button, not Open button (REQ-11)  1160ms
+@newsletter/web:test:unit:    ✓ RunsTable running state (REQ-001..REQ-005) > REQ-004: completed run renders 'View archive' link to /archive/:runId  394ms
+@newsletter/web:test:unit:    ✓ RunsTable running state (REQ-001..REQ-005) > REQ-005: failed run still renders the Retry button  456ms
+@newsletter/web:test:unit:    ✓ RunsTable cancel button (REQ-11, REQ-12) > REQ-12: confirming dialog triggers onCancel with the runId  651ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/settings/ScheduleSection-tz-utc.test.tsx (2 tests) 10796ms
+@newsletter/web:test:unit:    ✓ ScheduleSection — UTC alias regression > VS-6: renders with scheduleTimezone='UTC' (alias not stripped by Intl.supportedValuesOf)  5467ms
+@newsletter/web:test:unit:    ✓ ScheduleSection — UTC alias regression > VS-6: renders with a canonical IANA timezone present in the option list  5264ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/settings/SourcesSection-twitter-submit.test.tsx (1 test) 2009ms
+@newsletter/web:test:unit:    ✓ SourcesSection — Twitter form submit (VS-6 regression) > VS-6: toggling Twitter on, adding a list + handle, then submitting fires onValid with normalized config  2003ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/settings/TwitterEditPanel.test.tsx (7 tests) 2422ms
+@newsletter/web:test:unit:    ✓ TwitterEditPanel rendering > REQ-040: renders Twitter section with empty list/user editors and the two scalar inputs  729ms
+@newsletter/web:test:unit:    ✓ TwitterEditPanel — list dynamic array > REQ-040b: clicking Add list appends an input row; typing fills it; Remove removes it  755ms
+@newsletter/web:test:unit:    ✓ TwitterEditPanel — user dynamic array > REQ-040c: clicking Add user appends a handle input row; typing fills; Remove works  829ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/archive-listing/DateRangeChip.test.tsx (7 tests) 1474ms
+@newsletter/web:test:unit:    ✓ DateRangeChip > opens popover with 2 month grids on chip click  840ms
+@newsletter/web:test:unit:    ✓ DateRangeChip > calls onChange when popover Apply is clicked with a range  350ms
+@newsletter/web:test:unit: stderr | tests/unit/pages/ArchiveListingPage.test.tsx > ArchiveListingPage > EDGE-016: duplicate runId archives render without crash
+@newsletter/web:test:unit: Encountered two children with the same key, `dup-id`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+@newsletter/web:test:unit: 
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/pages/ArchiveListingPage.test.tsx (18 tests) 1152ms
+@newsletter/web:test:unit:    ✓ ArchiveListingPage > VER-94: renders Sieve nav, hero, archive list, blog/footer when data loads  398ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/settings/SourcesSection.test.tsx (5 tests) 900ms
+@newsletter/web:test:unit:    ✓ WebEditPanel — per-source Name+URL row inputs > renders one Name and one URL input per source  566ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/review/AddPostPanel.test.tsx (7 tests) 466ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/pages/ReviewPage.test.tsx (6 tests) 671ms
+@newsletter/web:test:unit:    ✓ ReviewPage > REQ-154: useBlocker intercepts in-app navigation when there are unsaved changes > blocks navigation when dirty and the user cancels confirmation  325ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/ArchivePage.test.tsx (9 tests) 502ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/archive-listing/DateRangePopover.test.tsx (8 tests) 2176ms
+@newsletter/web:test:unit:    ✓ DateRangePopover > renders 2 month grids  527ms
+@newsletter/web:test:unit:    ✓ DateRangePopover > renders preset chips  320ms
+@newsletter/web:test:unit:    ✓ DateRangePopover > Apply with complete range calls onApply and onClose  315ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/useRunPolling.test.tsx (4 tests) 370ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/SubscribeWidget.test.tsx (7 tests) 360ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/ui-primitives.test.tsx (14 tests) 275ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/ArchiveStoryCard.test.tsx (25 tests) 369ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/review/EditableBulletList.test.tsx (9 tests) 311ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/archive-listing/ArchiveRow.test.tsx (19 tests) 319ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/ArchivePageHeader.test.tsx (11 tests) 288ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/review/SaveBar.test.tsx (4 tests) 322ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/review/ReviewList.test.tsx (4 tests) 298ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/review/EditableField.test.tsx (9 tests) 368ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/archive-listing/SearchBar.test.tsx (6 tests) 210ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/hooks/useRunList.test.tsx (2 tests) 189ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/review/PoolCard.test.tsx (6 tests) 251ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/pages/ArchivePage.test.tsx (6 tests) 109ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/review/ReviewCard.test.tsx (6 tests) 89ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/archive-listing/EmptyResults.test.tsx (4 tests) 48ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/archive-listing/ResultMeta.test.tsx (4 tests) 48ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/lib/highlightTerms.test.tsx (7 tests) 49ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/components/review/PoolSection.test.tsx (13 tests) 192ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/lib/meta.test.ts (4 tests) 30ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/pages/ConfirmPage.test.tsx (4 tests) 84ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/pages/settingsSchema.test.ts (4 tests) 22ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/api/runs.test.ts (9 tests) 31ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/api/archives.test.ts (4 tests) 6ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/api/settings.test.ts (5 tests) 7ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/lib/shareLinks.test.ts (8 tests) 2ms
+@newsletter/web:test:unit:  ✓ |unit| tests/unit/lib/dateRange.test.ts (15 tests) 5ms
+@newsletter/web:test:unit: 
+@newsletter/web:test:unit:  Test Files  40 passed (40)
+@newsletter/web:test:unit:       Tests  319 passed (319)
+@newsletter/web:test:unit:    Start at  17:26:48
+@newsletter/web:test:unit:    Duration  35.29s (transform 5.24s, setup 2.13s, collect 110.96s, tests 35.62s, environment 75.04s, prepare 4.93s)
+@newsletter/web:test:unit: 
+@newsletter/pipeline:test:unit: cache hit, replaying logs 5589c8d512be92f7
+@newsletter/pipeline:test:unit: 
+@newsletter/pipeline:test:unit: > @newsletter/pipeline@0.0.1 test:unit /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline
+@newsletter/pipeline:test:unit: > vitest run --project unit
+@newsletter/pipeline:test:unit: 
+@newsletter/pipeline:test:unit: 
+@newsletter/pipeline:test:unit:  RUN  v3.2.1 /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline
+@newsletter/pipeline:test:unit: 
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154448881,"pid":25611,"hostname":"Amans-MacBook-Pro.local","name":"collector:reddit","subreddits":["MachineLearning"],"sort":"top","timeframe":"day","limit":25,"commentsPerItem":10,"msg":"collection started"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154448882,"pid":25611,"hostname":"Amans-MacBook-Pro.local","name":"collector:reddit","subreddit":"MachineLearning","fetched":0,"added":0,"msg":"subreddit fetched"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154448882,"pid":25611,"hostname":"Amans-MacBook-Pro.local","name":"collector:reddit","itemsFetched":0,"commentsFetched":0,"itemsStored":0,"durationMs":1,"unitResults":[{"identifier":"r/MachineLearning","displayName":"r/MachineLearning","itemsFetched":0,"status":"completed","errors":[],"durationMs":1}],"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154448905,"pid":25611,"hostname":"Amans-MacBook-Pro.local","name":"collector:reddit","subreddits":["MachineLearning"],"sort":"top","timeframe":"day","limit":25,"commentsPerItem":10,"msg":"collection started"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154448905,"pid":25611,"hostname":"Amans-MacBook-Pro.local","name":"collector:reddit","subreddit":"MachineLearning","fetched":0,"added":0,"msg":"subreddit fetched"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154448905,"pid":25611,"hostname":"Amans-MacBook-Pro.local","name":"collector:reddit","itemsFetched":0,"commentsFetched":0,"itemsStored":0,"durationMs":0,"unitResults":[{"identifier":"r/MachineLearning","displayName":"r/MachineLearning","itemsFetched":0,"status":"completed","errors":[],"durationMs":0}],"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154448948,"pid":25611,"hostname":"Amans-MacBook-Pro.local","name":"collector:reddit","event":"reddit.single.fetch","subreddit":"MachineLearning","postId":"abc","url":"https://www.reddit.com/r/MachineLearning/comments/abc/t/","msg":"reddit.single.fetch"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154448986,"pid":25611,"hostname":"Amans-MacBook-Pro.local","name":"collector:reddit","event":"reddit.single.fetch","subreddit":"MachineLearning","postId":"abc","url":"https://www.reddit.com/r/MachineLearning/comments/abc/t/","msg":"reddit.single.fetch"}
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/collectors/reddit-proxy-wiring.test.ts (4 tests) 1100ms
+@newsletter/pipeline:test:unit:    ✓ collectReddit — proxy wiring > invokes createProxyFetch with REDDIT_HTTP_PROXY when no fetchFn provided  1000ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/workers/newsletter-send.test.ts (17 tests) 2449ms
+@newsletter/pipeline:test:unit:    ✓ handleNewsletterSendJob > sends to 3 subscribers and creates 3 email_sends rows  469ms
+@newsletter/pipeline:test:unit:    ✓ handleNewsletterSendJob > does not block other sends when email provider throws for one subscriber  443ms
+@newsletter/pipeline:test:unit:    ✓ handleNewsletterSendJob > calls slackNotifier with classified failure reasons after a partial-failure send  659ms
+@newsletter/pipeline:test:unit:    ✓ handleNewsletterSendJob > aggregates byte-identical raw provider errors into a single entry with count  476ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/repositories/run-archives.test.ts (2 tests) 4778ms
+@newsletter/pipeline:test:unit:    ✓ run-archives repository > inserts a new archive row  4776ms
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154458023,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154458033,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154458034,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154458066,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154458073,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154458076,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154458077,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154459968,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154459969,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/processors/rank-body-loader.test.ts (8 tests) 135ms
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154460172,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.abort","msg":"abort signal received — tearing down crawler"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154460172,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":0,"requestsFailed":0,"requestsRetries":0,"httpOnlyRequestHandlerRuns":0,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154460175,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154460175,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154460180,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154460183,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154460187,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154460190,"pid":25763,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":2,"requestsFailed":0,"requestsRetries":1,"httpOnlyRequestHandlerRuns":2,"browserRequestHandlerRuns":0,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/services/web-crawler.test.ts (16 tests) 2236ms
+@newsletter/pipeline:test:unit:    ✓ runWebCrawl > requestHandler invocation: calls convert with page HTML and stores success result  1891ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/services/web-fetch/convert.test.ts (30 tests) 2347ms
+@newsletter/pipeline:test:unit:    ✓ convert — no image candidates > returns null imageUrl when no image candidates exist  526ms
+@newsletter/pipeline:test:unit:    ✓ convert — state isolation between consecutive calls > produces identical results for the same fixture called twice in a row  414ms
+@newsletter/pipeline:test:unit:    ✓ convert — state isolation between consecutive calls > produces identical results for different fixtures called back to back  1010ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/collectors/twitter/collect-twitter.test.ts (25 tests) 38ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/collectors/hn.test.ts (37 tests) 21379ms
+@newsletter/pipeline:test:unit:    ✓ fetchOgImage > extracts og:image from property attribute  416ms
+@newsletter/pipeline:test:unit:    ✓ collectHn > uses /search endpoint for best feed and /search_by_date for newest feed  633ms
+@newsletter/pipeline:test:unit:    ✓ collectHn > parses Algolia hits extracting title, url, externalId, author, publishedAt, engagement  1189ms
+@newsletter/pipeline:test:unit:    ✓ collectHn > stores item without comments when comment fetch fails  3410ms
+@newsletter/pipeline:test:unit:    ✓ collectHn > retries on 502 then succeeds for comment fetch  3386ms
+@newsletter/pipeline:test:unit:    ✓ collectHn > retries on 502 up to 3 times for the main story fetch  3227ms
+@newsletter/pipeline:test:unit:    ✓ collectHn > retries on JSON parse error  3575ms
+@newsletter/pipeline:test:unit:    ✓ collectHn > enforces 500ms+ delay between consecutive Algolia requests  753ms
+@newsletter/pipeline:test:unit:    ✓ collectHn > calls upsertItems with correct row shape  320ms
+@newsletter/pipeline:test:unit:    ✓ collectHn > returns CollectorResult with all metric fields  1346ms
+@newsletter/pipeline:test:unit:    ✓ collectHn > fetches multiple feeds and deduplicates items by HN ID  2506ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/workers/collection.test.ts (12 tests) 138ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/collectors/reddit.test.ts (40 tests) 23430ms
+@newsletter/pipeline:test:unit:    ✓ extractRedditImageUrl > extracts preview.images[0].source.url when present  1444ms
+@newsletter/pipeline:test:unit:    ✓ collectReddit > builds URL with custom subreddits and sort  757ms
+@newsletter/pipeline:test:unit:    ✓ collectReddit > parses listing items extracting title, url, externalId, author, publishedAt, engagement  1358ms
+@newsletter/pipeline:test:unit:    ✓ collectReddit > filters out stickied posts  1146ms
+@newsletter/pipeline:test:unit:    ✓ collectReddit > stores item without comments when comment fetch fails  4164ms
+@newsletter/pipeline:test:unit:    ✓ collectReddit > retries on 502 up to 3 times  3403ms
+@newsletter/pipeline:test:unit:    ✓ collectReddit > enforces 500ms+ delay between consecutive requests  1395ms
+@newsletter/pipeline:test:unit:    ✓ collectReddit > calls upsertItems with correct row shape  535ms
+@newsletter/pipeline:test:unit:    ✓ collectReddit > returns CollectorResult with all metric fields  1130ms
+@newsletter/pipeline:test:unit:    ✓ collectReddit > deduplicates items across multiple subreddits  541ms
+@newsletter/pipeline:test:unit:    ✓ collectReddit > extracts imageUrl from preview.images when available  1295ms
+@newsletter/pipeline:test:unit:    ✓ collectReddit > populates unitResults with one entry per subreddit (all success)  674ms
+@newsletter/pipeline:test:unit:    ✓ collectReddit > marks one subreddit as failed and others as completed when its fetch fails  4914ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/repositories/raw-items.test.ts (5 tests) 132ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/services/web-fetch/fetch-static.test.ts (5 tests) 25ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/collectors/reddit-single.test.ts (7 tests) 4ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/processors/dedup.test.ts (12 tests) 28ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/collectors/twitter/map.test.ts (16 tests) 108ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/services/candidate-loader.test.ts (6 tests) 54ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/processors/rank.test.ts (22 tests) 6911ms
+@newsletter/pipeline:test:unit:    ✓ rankCandidates > returns empty result for empty shortlist without calling generate  2464ms
+@newsletter/pipeline:test:unit:    ✓ rankCandidates > presents all 9 fields per item in the prompt (REQ-060)  611ms
+@newsletter/pipeline:test:unit:    ✓ rankCandidates > throws if EVERY rationale fails axis validation (REQ-065 still gates totally-bad runs)  361ms
+@newsletter/pipeline:test:unit:    ✓ rankCandidates > validates output shape with zod (REQ-067)  2096ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/lib/boot.test.ts (2 tests) 23ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/services/cancel-subscriber.test.ts (5 tests) 5ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/processors/shortlist.test.ts (17 tests) 28ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/collectors/twitter/rettiwt-client.test.ts (8 tests) 52ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/raw-items-schema.test.ts (6 tests) 36ms
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529491,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","itemsFetched":0,"itemsStored":0,"failures":0,"durationMs":0,"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154531462,"pid":26246,"hostname":"Amans-MacBook-Pro.local","name":"processor:rank","event":"run.rank","stage":"rank","inputCount":2,"outputCount":2,"durationMs":43,"msg":"run.rank"}
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/processors/source-neutrality.test.ts (1 test) 82ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/collectors/web.test.ts (49 tests) 9519ms
+@newsletter/pipeline:test:unit:    ✓ LLM extraction helpers > discoverPostUrls > returns posts array from mocked LLM  374ms
+@newsletter/pipeline:test:unit:    ✓ LLM extraction helpers > discoverPostUrls > throws when LLM throws  1013ms
+@newsletter/pipeline:test:unit:    ✓ filters and row assembly > applySinceDays returns input unchanged when sinceDays is undefined  1817ms
+@newsletter/pipeline:test:unit:    ✓ filters and row assembly > applySinceDays keeps posts within the cutoff  421ms
+@newsletter/pipeline:test:unit:    ✓ collectWeb (mocked at runWebCrawl boundary) > happy path: returns correct WebCollectorResult for two sources with multiple posts  360ms
+@newsletter/pipeline:test:unit:    ✓ fetchWebPost > returns RawItemInsert with correct shape from fetchAdaptive result  2223ms
+@newsletter/pipeline:test:unit:    ✓ fetchWebPost > uses title from fetchAdaptive result when available  589ms
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529567,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":2,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529575,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.progress","source":"alpha","postUrl":"https://example.com/blog/scaling-events","done":1,"total":2,"msg":"extracted post fields"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529578,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.progress","source":"alpha","postUrl":"https://example.com/blog/rust-scheduler","done":2,"total":2,"msg":"extracted post fields"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529579,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":2,"total":2,"durationMs":12,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529579,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","itemsFetched":2,"itemsStored":2,"failures":1,"durationMs":34,"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529616,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":0,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529616,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":0,"total":0,"durationMs":0,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":50,"time":1778154529616,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"collector.web.all_failed","failures":[{"source":"alpha","error":"LLM down"}],"msg":"all web sources failed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529629,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":0,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529629,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":0,"total":0,"durationMs":0,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":50,"time":1778154529629,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"collector.web.all_failed","failures":[{"source":"alpha","error":"HTTP 503"},{"source":"beta","error":"HTTP 404"}],"msg":"all web sources failed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529640,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":0,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529640,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":0,"total":0,"durationMs":0,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":50,"time":1778154529640,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"collector.web.all_failed","failures":[{"source":"alpha","error":"no posts after filter"}],"msg":"all web sources failed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1775520000000,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":1,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1775520000000,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.progress","source":"alpha","postUrl":"https://example.com/blog/a","done":1,"total":1,"msg":"extracted post fields"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1775520000000,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":1,"total":1,"durationMs":0,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1775520000000,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","itemsFetched":1,"itemsStored":1,"failures":0,"durationMs":0,"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529688,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":1,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529695,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.progress","source":"alpha","postUrl":"https://example.com/blog/rust-scheduler","done":1,"total":1,"msg":"extracted post fields"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529695,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":1,"total":1,"durationMs":7,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529695,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","itemsFetched":1,"itemsStored":1,"failures":0,"durationMs":9,"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529710,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":1,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529711,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.progress","source":"alpha","postUrl":"https://example.com/blog/scaling-events","done":1,"total":1,"msg":"extracted post fields"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529711,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":1,"total":1,"durationMs":1,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529711,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","itemsFetched":1,"itemsStored":1,"failures":1,"durationMs":4,"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529727,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":1,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529736,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":0,"total":1,"durationMs":9,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529736,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","itemsFetched":0,"itemsStored":0,"failures":1,"durationMs":18,"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529746,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":1,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529747,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.progress","source":"alpha","postUrl":"https://example.com/blog/scaling-events","done":1,"total":1,"msg":"extracted post fields"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529747,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":1,"total":1,"durationMs":1,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529826,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","itemsFetched":0,"itemsStored":0,"failures":1,"durationMs":81,"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154529896,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":2,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530170,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.progress","source":"alpha","postUrl":"https://example.com/blog/scaling-events","done":1,"total":2,"msg":"extracted post fields"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530196,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.progress","source":"beta","postUrl":"https://example.com/blog/scaling-events","done":2,"total":2,"msg":"extracted post fields"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530196,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":2,"total":2,"durationMs":300,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530196,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","itemsFetched":2,"itemsStored":2,"failures":0,"durationMs":335,"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530238,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":1,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530238,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.progress","source":"alpha","postUrl":"https://example.com/blog/scaling-events","done":1,"total":1,"msg":"extracted post fields"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530239,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":1,"total":1,"durationMs":1,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530239,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","itemsFetched":1,"itemsStored":1,"failures":0,"durationMs":12,"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530247,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":1,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530249,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.progress","source":"alpha","postUrl":"https://example.com/blog/scaling-events","done":1,"total":1,"msg":"extracted post fields"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530249,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":1,"total":1,"durationMs":2,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530249,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","itemsFetched":1,"itemsStored":1,"failures":0,"durationMs":7,"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530260,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":1,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530261,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.progress","source":"alpha","postUrl":"https://example.com/blog/scaling-events","done":1,"total":1,"msg":"extracted post fields"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530261,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":1,"total":1,"durationMs":1,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530267,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","itemsFetched":1,"itemsStored":1,"failures":0,"durationMs":9,"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154530302,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.single.fetch","url":"https://example.com/post","msg":"web.single.fetch"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154532617,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.single.fetch","url":"https://example.com/post","msg":"web.single.fetch"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154533125,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.single.fetch","url":"https://example.com/post","msg":"web.single.fetch"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154533258,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.single.fetch","url":"https://example.com/my-post-slug","msg":"web.single.fetch"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154533525,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.start","posts":1,"msg":"extracting post fields via LLM"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154533525,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.progress","source":"alpha","postUrl":"https://example.com/blog/scaling-events","done":1,"total":1,"msg":"extracted post fields"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154533525,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","event":"web.extract.done","extracted":1,"total":1,"durationMs":0,"msg":"post field extraction complete"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154533525,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","itemsFetched":1,"itemsStored":1,"failures":1,"durationMs":148,"msg":"collection completed"}
+@newsletter/pipeline:test:unit: {"level":30,"time":1778154533527,"pid":25610,"hostname":"Amans-MacBook-Pro.local","name":"collector:web","itemsFetched":0,"itemsStored":0,"failures":0,"durationMs":0,"msg":"collection completed"}
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/services/web-fetch/fetch-adaptive.test.ts (5 tests) 21ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/workers/daily-run.test.ts (4 tests) 71ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/services/run-state.test.ts (7 tests) 280ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/shared-types.test.ts (4 tests) 5ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/collectors/hn-single.test.ts (11 tests) 192ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/processors/recap.test.ts (5 tests) 18ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/profile-and-candidate-types.test.ts (2 tests) 20ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/lib/abortable-fetch.test.ts (3 tests) 16ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/services/recency.test.ts (9 tests) 20ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/services/source-telemetry.test.ts (6 tests) 15ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/lib/proxy-fetch.test.ts (4 tests) 16ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/workers/run-process.test.ts (43 tests) 924ms
+@newsletter/pipeline:test:unit:    ✓ run-process worker > loads, dedupes, ranks, and writes rankedItems on happy path  322ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/setup.test.ts (1 test) 5ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/processors/rank-prompts.test.ts (4 tests) 5ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/services/add-post-helper.test.ts (20 tests) 84ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/workers/processing-index.test.ts (5 tests) 6ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/services/web-fetch/index.test.ts (2 tests) 12ms
+@newsletter/pipeline:test:unit:  ✓ |unit| tests/unit/workers/processing.test.ts (3 tests) 3ms
+@newsletter/pipeline:test:unit: 
+@newsletter/pipeline:test:unit:  Test Files  42 passed (42)
+@newsletter/pipeline:test:unit:       Tests  490 passed (490)
+@newsletter/pipeline:test:unit:    Start at  17:17:25
+@newsletter/pipeline:test:unit:    Duration  101.77s (transform 60.44s, setup 3.13s, collect 499.01s, tests 76.75s, environment 13ms, prepare 19.75s)
+@newsletter/pipeline:test:unit: 
+@newsletter/pipeline:build: cache hit, replaying logs 6439ddc75a8e1981
+@newsletter/pipeline:build: 
+@newsletter/pipeline:build: > @newsletter/pipeline@0.0.1 build /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline
+@newsletter/pipeline:build: > tsup
+@newsletter/pipeline:build: 
+@newsletter/pipeline:build: CLI Building entry: src/add-post-entry.ts, src/index.ts
+@newsletter/pipeline:build: CLI Using tsconfig: tsconfig.json
+@newsletter/pipeline:build: CLI tsup v8.4.0
+@newsletter/pipeline:build: CLI Using tsup config: /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline/tsup.config.ts
+@newsletter/pipeline:build: CLI Target: es2022
+@newsletter/pipeline:build: CLI Cleaning output folder
+@newsletter/pipeline:build: ESM Build start
+@newsletter/pipeline:build: ESM dist/add-post-entry.js     4.93 KB
+@newsletter/pipeline:build: ESM dist/chunk-PYUOCJ6A.js     46.27 KB
+@newsletter/pipeline:build: ESM dist/index.js              77.19 KB
+@newsletter/pipeline:build: ESM dist/add-post-entry.js.map 10.05 KB
+@newsletter/pipeline:build: ESM dist/index.js.map          165.51 KB
+@newsletter/pipeline:build: ESM dist/chunk-PYUOCJ6A.js.map 96.62 KB
+@newsletter/pipeline:build: ESM ⚡️ Build success in 48ms
+@newsletter/pipeline:build: DTS Build start
+@newsletter/pipeline:build: DTS ⚡️ Build success in 2804ms
+@newsletter/pipeline:build: DTS dist/add-post-entry.d.ts 2.63 KB
+@newsletter/api:test:unit: cache hit, replaying logs 59b8676308f6dbcb
+@newsletter/api:test:unit: 
+@newsletter/api:test:unit: > @newsletter/api@0.0.1 test:unit /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api
+@newsletter/api:test:unit: > vitest run --project unit
+@newsletter/api:test:unit: 
+@newsletter/api:test:unit: 
+@newsletter/api:test:unit:  RUN  v3.2.1 /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api
+@newsletter/api:test:unit: 
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/repositories/run-archives.test.ts (19 tests) 19ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/lib/email/templates.test.ts (11 tests) 626ms
+@newsletter/api:test:unit: {"level":30,"time":1778155013130,"pid":55031,"hostname":"Amans-MacBook-Pro.local","name":"api:runs","event":"run.cancelling","runId":"run-xyz","msg":"run.cancelling"}
+@newsletter/api:test:unit: {"level":30,"time":1778155013210,"pid":55031,"hostname":"Amans-MacBook-Pro.local","name":"api:runs","event":"run.cancelling","runId":"run-xyz","msg":"run.cancelling"}
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/routes/cancel-run-route.test.ts (7 tests) 130ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/validate.test.ts (55 tests) 419ms
+@newsletter/api:test:unit:    ✓ userSettingsUpsertSchema (REQ-012/REQ-013/EDGE-004) > accepts a valid payload  330ms
+@newsletter/api:test:unit: {"level":30,"time":1778155014147,"pid":55029,"hostname":"Amans-MacBook-Pro.local","name":"api:settings","event":"settings.saved","scheduleEnabled":true,"scheduleTime":"09:30","scheduleTimezone":"America/New_York","msg":"settings.saved"}
+@newsletter/api:test:unit: {"level":30,"time":1778155014169,"pid":55029,"hostname":"Amans-MacBook-Pro.local","name":"api:settings","event":"settings.saved","scheduleEnabled":true,"scheduleTime":"09:30","scheduleTimezone":"America/New_York","msg":"settings.saved"}
+@newsletter/api:test:unit: {"level":30,"time":1778155014183,"pid":55029,"hostname":"Amans-MacBook-Pro.local","name":"api:settings","event":"settings.saved","scheduleEnabled":false,"scheduleTime":"09:30","scheduleTimezone":"America/New_York","msg":"settings.saved"}
+@newsletter/api:test:unit: {"level":30,"time":1778155014185,"pid":55029,"hostname":"Amans-MacBook-Pro.local","name":"api:settings","event":"settings.saved","scheduleEnabled":true,"scheduleTime":"09:30","scheduleTimezone":"America/New_York","msg":"settings.saved"}
+@newsletter/api:test:unit: {"level":30,"time":1778155014190,"pid":55029,"hostname":"Amans-MacBook-Pro.local","name":"api:settings","event":"settings.saved","scheduleEnabled":true,"scheduleTime":"09:30","scheduleTimezone":"America/New_York","msg":"settings.saved"}
+@newsletter/api:test:unit: {"level":30,"time":1778155014195,"pid":55029,"hostname":"Amans-MacBook-Pro.local","name":"api:settings","event":"settings.saved","scheduleEnabled":true,"scheduleTime":"09:30","scheduleTimezone":"America/New_York","msg":"settings.saved"}
+@newsletter/api:test:unit: {"level":40,"time":1778155014199,"pid":55029,"hostname":"Amans-MacBook-Pro.local","name":"api:settings","event":"settings.twitter.resolve_failed","reason":"not_found","handle":"ghost","msg":"twitter handle resolution failed"}
+@newsletter/api:test:unit: {"level":50,"time":1778155014200,"pid":55029,"hostname":"Amans-MacBook-Pro.local","name":"api:settings","event":"settings.twitter.resolve_failed","reason":"missing_api_key","msg":"twitter handle resolution failed: missing api key"}
+@newsletter/api:test:unit: {"level":50,"time":1778155014201,"pid":55029,"hostname":"Amans-MacBook-Pro.local","name":"api:settings","event":"settings.twitter.resolve_failed","reason":"auth_failed","msg":"twitter handle resolution failed: auth failed"}
+@newsletter/api:test:unit: {"level":30,"time":1778155014202,"pid":55029,"hostname":"Amans-MacBook-Pro.local","name":"api:settings","event":"settings.saved","scheduleEnabled":true,"scheduleTime":"09:30","scheduleTimezone":"America/New_York","msg":"settings.saved"}
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/routes/settings.test.ts (15 tests) 381ms
+@newsletter/api:test:unit:    ✓ PUT /api/settings > REQ-011: validates, persists, and returns the row  304ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/services/scheduler.test.ts (7 tests) 162ms
+@newsletter/api:test:unit:  ✓ |unit| src/routes/__tests__/admin.test.ts (10 tests) 61ms
+@newsletter/api:test:unit: {"level":30,"time":1778155016389,"pid":55187,"hostname":"Amans-MacBook-Pro.local","name":"api:analytics","event":"analytics.fetched","from":"2026-04-07T11:56:56.388Z","to":"2026-05-07T11:56:56.388Z","granularity":"daily","durationMs":0,"totalSubscriptions":10,"totalUnsubscriptions":2,"emailsSent":50,"bounces":1,"complaints":0,"opens":30,"clicks":15,"msg":"analytics: metrics fetched"}
+@newsletter/api:test:unit: {"level":40,"time":1778155016395,"pid":55187,"hostname":"Amans-MacBook-Pro.local","name":"api:analytics","event":"analytics.from_after_to","from":"2026-01-01T00:00:00.000Z","to":"2025-12-01T00:00:00.000Z","msg":"analytics: from is after to"}
+@newsletter/api:test:unit: {"level":40,"time":1778155016397,"pid":55187,"hostname":"Amans-MacBook-Pro.local","name":"api:analytics","event":"analytics.invalid_date","fromStr":"invalid","msg":"analytics: invalid date in query"}
+@newsletter/api:test:unit: {"level":30,"time":1778155016399,"pid":55187,"hostname":"Amans-MacBook-Pro.local","name":"api:analytics","event":"analytics.fetched","from":"2026-04-07T11:56:56.399Z","to":"2026-05-07T11:56:56.399Z","granularity":"daily","durationMs":0,"totalSubscriptions":0,"totalUnsubscriptions":0,"emailsSent":0,"bounces":0,"complaints":0,"opens":0,"clicks":0,"msg":"analytics: metrics fetched"}
+@newsletter/api:test:unit: {"level":40,"time":1778155016400,"pid":55187,"hostname":"Amans-MacBook-Pro.local","name":"api:analytics","event":"analytics.invalid_date","toStr":"not-a-date","msg":"analytics: invalid date in query"}
+@newsletter/api:test:unit: {"level":30,"time":1778155016409,"pid":55187,"hostname":"Amans-MacBook-Pro.local","name":"api:analytics","event":"analytics.fetched","from":"2026-04-07T11:56:56.409Z","to":"2026-05-07T11:56:56.409Z","granularity":"monthly","durationMs":0,"totalSubscriptions":0,"totalUnsubscriptions":0,"emailsSent":0,"bounces":0,"complaints":0,"opens":0,"clicks":0,"msg":"analytics: metrics fetched"}
+@newsletter/api:test:unit: {"level":30,"time":1778155016410,"pid":55187,"hostname":"Amans-MacBook-Pro.local","name":"api:analytics","event":"analytics.fetched","from":"2026-01-01T00:00:00.000Z","to":"2026-02-01T00:00:00.000Z","granularity":"daily","durationMs":0,"totalSubscriptions":0,"totalUnsubscriptions":0,"emailsSent":0,"bounces":0,"complaints":0,"opens":0,"clicks":0,"msg":"analytics: metrics fetched"}
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/routes/analytics.test.ts (7 tests) 34ms
+@newsletter/api:test:unit: {"level":30,"time":1778155017762,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"subscribe.created","subscriberId":"00000000-0000-0000-0000-000000000001","email":"ne***@example.com","msg":"subscribe: new subscriber persisted (pending)"}
+@newsletter/api:test:unit: {"level":30,"time":1778155017895,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"subscribe.duplicate","subscriberId":"00000000-0000-0000-0000-000000000001","email":"ex***@example.com","status":"pending","msg":"subscribe: existing subscriber, no-op"}
+@newsletter/api:test:unit: {"level":40,"time":1778155017901,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"subscribe.invalid_input","reason":"[\n  {\n    \"origin\": \"string\",\n    \"code\": \"invalid_format\",\n    \"format\": \"email\",\n    \"pattern\": \"/^(?!\\\\.)(?!.*\\\\.\\\\.)([A-Za-z0-9_'+\\\\-\\\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\\\-]*\\\\.)+[A-Za-z]{2,}$/\",\n    \"path\": [\n      \"email\"\n    ],\n    \"message\": \"Invalid email address\"\n  }\n]","msg":"subscribe: validation failed"}
+@newsletter/api:test:unit: {"level":40,"time":1778155017903,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"subscribe.invalid_input","reason":"[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"email\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]","msg":"subscribe: validation failed"}
+@newsletter/api:test:unit: {"level":30,"time":1778155017907,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"confirm.success","subscriberId":"00000000-0000-0000-0000-000000000001","msg":"confirm: subscriber moved pending -> confirmed"}
+@newsletter/api:test:unit: {"level":40,"time":1778155017910,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"confirm.invalid_token","reason":"expired","msg":"confirm: invalid/expired token"}
+@newsletter/api:test:unit: {"level":40,"time":1778155017911,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"confirm.invalid_token","reason":"invalid","msg":"confirm: invalid/expired token"}
+@newsletter/api:test:unit: {"level":30,"time":1778155017913,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"confirm.success","subscriberId":"00000000-0000-0000-0000-000000000001","msg":"confirm: subscriber moved pending -> confirmed"}
+@newsletter/api:test:unit: {"level":30,"time":1778155017920,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"confirm.success","subscriberId":"00000000-0000-0000-0000-000000000001","msg":"confirm: subscriber moved pending -> confirmed"}
+@newsletter/api:test:unit: {"level":30,"time":1778155017923,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"unsubscribe.success","subscriberId":"00000000-0000-0000-0000-000000000001","via":"GET","msg":"unsubscribe: subscriber unsubscribed"}
+@newsletter/api:test:unit: {"level":40,"time":1778155017925,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"unsubscribe.invalid_token","via":"GET","reason":"invalid","msg":"unsubscribe: invalid/expired token (still returning success to prevent enumeration)"}
+@newsletter/api:test:unit: {"level":30,"time":1778155017937,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"unsubscribe.success","subscriberId":"00000000-0000-0000-0000-000000000001","via":"POST","msg":"unsubscribe: subscriber unsubscribed (one-click)"}
+@newsletter/api:test:unit: {"level":30,"time":1778155017890,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"subscribe.confirmation_sent","subscriberId":"00000000-0000-0000-0000-000000000001","email":"ne***@example.com","msg":"subscribe: confirmation email sent"}
+@newsletter/api:test:unit: {"level":30,"time":1778155017913,"pid":55454,"hostname":"Amans-MacBook-Pro.local","name":"api:subscribe","event":"confirm.welcome_send_enqueued","subscriberId":"00000000-0000-0000-0000-000000000001","runId":"archive-123","msg":"confirm: enqueued today's archive to new subscriber"}
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/routes/subscribe.test.ts (12 tests) 211ms
+@newsletter/api:test:unit: {"level":30,"time":1778155018982,"pid":55504,"hostname":"Amans-MacBook-Pro.local","name":"api:runs","event":"run.started","runId":"070be87b-9ee9-4831-99fe-f8e1a799debf","topN":10,"sources":["hn"],"msg":"run.started"}
+@newsletter/api:test:unit: {"level":30,"time":1778155019005,"pid":55504,"hostname":"Amans-MacBook-Pro.local","name":"api:runs","event":"run.started","runId":"54914ae7-e7ab-4479-899b-ffd02ea3e166","topN":5,"sources":["web"],"msg":"run.started"}
+@newsletter/api:test:unit: {"level":30,"time":1778155019011,"pid":55504,"hostname":"Amans-MacBook-Pro.local","name":"api:runs","event":"run.started","runId":"52488f0a-4b91-41e1-83db-6899396124db","topN":10,"sources":["hn"],"msg":"run.started"}
+@newsletter/api:test:unit: {"level":30,"time":1778155019013,"pid":55504,"hostname":"Amans-MacBook-Pro.local","name":"api:runs","event":"run.started","runId":"c3781c97-038e-499a-9604-ec426546905c","topN":10,"sources":["hn","reddit"],"msg":"run.started"}
+@newsletter/api:test:unit: {"level":30,"time":1778155019295,"pid":55504,"hostname":"Amans-MacBook-Pro.local","name":"api:runs","event":"run.started","runId":"d283ad71-2075-40bc-9a1c-678c19626da5","topN":10,"sources":["hn"],"msg":"run.started"}
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/runs-route.test.ts (17 tests) 379ms
+@newsletter/api:test:unit: {"level":30,"time":1778155020141,"pid":55026,"hostname":"Amans-MacBook-Pro.local","name":"api:archives","event":"archive.patched","runId":"run-1","count":1,"msg":"archive.patched"}
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/routes/route-gating.test.ts (12 tests) 312ms
+@newsletter/api:test:unit: {"level":30,"time":1778155020308,"pid":55026,"hostname":"Amans-MacBook-Pro.local","name":"api:archives","event":"archive.add-post","runId":"run-1","msg":"archive.add-post"}
+@newsletter/api:test:unit: {"level":30,"time":1778155020345,"pid":55026,"hostname":"Amans-MacBook-Pro.local","name":"api:archives","event":"archive.add-post","runId":"run-1","msg":"archive.add-post"}
+@newsletter/api:test:unit: {"level":30,"time":1778155020355,"pid":55026,"hostname":"Amans-MacBook-Pro.local","name":"api:archives","event":"archive.add-post","runId":"run-1","msg":"archive.add-post"}
+@newsletter/api:test:unit: {"level":40,"time":1778155020422,"pid":55026,"hostname":"Amans-MacBook-Pro.local","name":"api:archives","event":"archive.add-post.upstream-failure","runId":"run-1","error":"upstream fetch 503","msg":"archive.add-post.upstream-failure"}
+@newsletter/api:test:unit: {"level":30,"time":1778155020429,"pid":55027,"hostname":"Amans-MacBook-Pro.local","name":"api:archives","event":"archive.promote","runId":"run-1","rawItemId":10,"msg":"archive.promote"}
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/routes/archives-review.test.ts (14 tests) 334ms
+@newsletter/api:test:unit: {"level":30,"time":1778155020520,"pid":55027,"hostname":"Amans-MacBook-Pro.local","name":"api:archives","event":"archive.patched","runId":"run-1","count":1,"msg":"archive.patched"}
+@newsletter/api:test:unit: {"level":30,"time":1778155020520,"pid":55027,"hostname":"Amans-MacBook-Pro.local","name":"api:archives","event":"archive.send_enqueued","runId":"run-1","msg":"archive: send-newsletter job enqueued"}
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/archives-route.test.ts (17 tests) 231ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/archives-search-route.test.ts (10 tests) 63ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/runs-service.test.ts (6 tests) 65ms
+@newsletter/api:test:unit:  ✓ |unit| src/auth/__tests__/session.test.ts (17 tests) 12ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/repositories/user-settings.test.ts (4 tests) 29ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/rank-hydration.test.ts (13 tests) 55ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/routes/webhooks.test.ts (10 tests) 14ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/lib/email/provider.test.ts (4 tests) 26ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/lib/sns-verifier.test.ts (4 tests) 10ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/services/run-list.test.ts (8 tests) 86ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/lib/subscriber-token.test.ts (8 tests) 17ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/repositories/analytics.test.ts (5 tests) 5ms
+@newsletter/api:test:unit: {"level":30,"time":1778155032348,"pid":55869,"hostname":"Amans-MacBook-Pro.local","name":"api:runs","event":"run.now","runId":"53130574-5625-4f25-936b-ec4119c59986","topN":10,"msg":"run.now"}
+@newsletter/api:test:unit: {"level":30,"time":1778155032355,"pid":55869,"hostname":"Amans-MacBook-Pro.local","name":"api:runs","event":"run.now","runId":"d0a5895b-aad6-4e64-980a-f0e95baa3abb","topN":10,"msg":"run.now"}
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/routes/runs-now.test.ts (4 tests) 39ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/services/cancel-run.test.ts (7 tests) 6ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/services/twitter-handle-resolver.test.ts (10 tests) 14ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/services/review.test.ts (20 tests) 18ms
+@newsletter/api:test:unit: {"level":30,"time":1778155036270,"pid":55862,"hostname":"Amans-MacBook-Pro.local","name":"api:archives","event":"archive.patched","runId":"run-1","count":1,"msg":"archive.patched"}
+@newsletter/api:test:unit: {"level":30,"time":1778155036275,"pid":55862,"hostname":"Amans-MacBook-Pro.local","name":"api:archives","event":"archive.send_enqueued","runId":"run-1","trigger":"force-send","msg":"archive: send-newsletter job enqueued (force-send)"}
+@newsletter/api:test:unit: {"level":30,"time":1778155036270,"pid":55862,"hostname":"Amans-MacBook-Pro.local","name":"api:archives","event":"archive.send_enqueued","runId":"run-1","msg":"archive: send-newsletter job enqueued"}
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/routes/archives-send.test.ts (3 tests) 13ms
+@newsletter/api:test:unit:  ✓ |unit| tests/unit/routes/archives-list.test.ts (6 tests) 69ms
+@newsletter/api:test:unit: 
+@newsletter/api:test:unit:  Test Files  30 passed (30)
+@newsletter/api:test:unit:       Tests  342 passed (342)
+@newsletter/api:test:unit:    Start at  17:26:48
+@newsletter/api:test:unit:    Duration  28.17s (transform 10.01s, setup 0ms, collect 150.53s, tests 3.84s, environment 8ms, prepare 7.62s)
+@newsletter/api:test:unit: 
+
+ Tasks:    7 successful, 7 total
+Cached:    7 cached, 7 total
+  Time:    136ms >>> FULL TURBO
+

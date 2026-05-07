@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mock — Archive keyword search</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;1,400;1,500&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #FAFAF7;
+    --ink: #171717;
+    --muted: #525252;
+    --hairline: #E5E5E5;
+    --soft: #A3A3A3;
+    --rust: #8C3A1E;
+    --serif: "Newsreader", Georgia, serif;
+    --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #ECEAE2; }
+  body { font-family: var(--serif); color: var(--ink); padding: 32px; }
+  .page-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 2200px; margin: 0 auto; }
+  .frame {
+    background: var(--bg);
+    border: 1px solid var(--hairline);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+    overflow: hidden;
+  }
+  .frame-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--soft);
+    padding: 12px 24px;
+    background: #F5F2EA;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .shell { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+  /* Top nav */
+  .nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 0; border-bottom: 1px solid var(--hairline); margin: 0 24px;
+  }
+  .nav-brand { font-family: var(--serif); font-size: 16px; }
+  .nav-links { font-family: var(--mono); font-size: 12px; color: var(--muted); display: flex; gap: 20px; }
+  /* Hero */
+  .hero { text-align: center; padding: 48px 0 24px; }
+  .hero h1 { font-family: var(--serif); font-weight: 500; font-size: 44px; letter-spacing: -0.5px; margin: 0; }
+  .hero .tag {
+    font-family: var(--mono); font-size: 11px; color: var(--soft);
+    letter-spacing: 0.22em; text-transform: uppercase; margin-top: 10px;
+  }
+  /* Search + filter row */
+  .search-wrap { padding: 8px 0 28px; display: flex; gap: 12px; align-items: stretch; }
+  .search-bar {
+    flex: 1; display: flex; align-items: center; gap: 10px;
+    background: #FFFFFF;
+    border: 1px solid var(--hairline);
+    height: 48px;
+    padding: 0 14px;
+  }
+  .search-bar:focus-within { border-color: var(--ink); }
+  .search-bar .glyph { color: var(--soft); font-family: var(--mono); font-size: 16px; }
+  .search-bar input, .search-bar .placeholder {
+    flex: 1; border: 0; outline: 0; background: transparent;
+    font-family: var(--serif); font-size: 16px; color: var(--ink);
+  }
+  .search-bar .placeholder { color: var(--soft); font-style: italic; }
+  .search-bar .clear-btn {
+    font-family: var(--mono); font-size: 11px; color: var(--soft); cursor: pointer;
+    border: 0; background: transparent; letter-spacing: 0.18em; text-transform: uppercase;
+  }
+  .date-filter {
+    display: flex; align-items: center; gap: 8px;
+    background: #FFFFFF;
+    border: 1px solid var(--hairline);
+    height: 48px;
+    padding: 0 14px;
+    min-width: 200px;
+    cursor: pointer;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.18em; text-transform: uppercase;
+  }
+  .date-filter:hover { border-color: var(--ink); }
+  .date-filter .caret { color: var(--soft); font-size: 10px; margin-left: auto; }
+  .date-filter .value { color: var(--ink); }
+  .filter-host { position: relative; }
+  /* Range-picker popover */
+  .range-pop {
+    position: absolute; right: 0; top: 56px;
+    background: #FFFFFF; border: 1px solid var(--hairline);
+    padding: 18px 20px;
+    min-width: 560px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+    z-index: 10;
+  }
+  .range-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 12px; margin-bottom: 12px;
+    border-bottom: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    letter-spacing: 0.18em; text-transform: uppercase;
+  }
+  .range-head .selected { color: var(--ink); }
+  .range-cals { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .cal-month {
+    text-align: center;
+    font-family: var(--mono); font-size: 11px; color: var(--ink);
+    letter-spacing: 0.18em; text-transform: uppercase;
+    padding-bottom: 8px;
+  }
+  .cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+  }
+  .cal-grid .dow {
+    font-family: var(--mono); font-size: 9px; color: var(--soft);
+    letter-spacing: 0.1em; text-align: center; padding: 4px 0;
+    text-transform: uppercase;
+  }
+  .cal-grid .day {
+    font-family: var(--serif); font-size: 13px;
+    text-align: center; padding: 8px 0; cursor: pointer;
+    color: var(--ink);
+  }
+  .cal-grid .day.muted { color: var(--soft); }
+  .cal-grid .day.in-range { background: #FBE9C8; }
+  .cal-grid .day.range-edge { background: var(--rust); color: #FFF; font-weight: 500; }
+  .cal-grid .day.today { box-shadow: inset 0 0 0 1px var(--ink); }
+  .range-presets {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    padding-top: 14px; margin-top: 14px;
+    border-top: 1px solid var(--hairline);
+  }
+  .range-presets .chip {
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    letter-spacing: 0.18em; text-transform: uppercase;
+    padding: 6px 12px; border: 1px solid var(--hairline);
+    cursor: pointer; background: #FAFAF7;
+  }
+  .range-presets .chip:hover { border-color: var(--ink); color: var(--ink); }
+  .range-actions {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-top: 14px; margin-top: 14px;
+    border-top: 1px solid var(--hairline);
+  }
+  .range-actions .clear {
+    font-family: var(--mono); font-size: 11px; color: var(--soft);
+    letter-spacing: 0.18em; text-transform: uppercase;
+    background: transparent; border: 0; cursor: pointer;
+  }
+  .range-actions .apply {
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    background: var(--rust); color: #FFF; border: 0;
+    padding: 10px 22px; cursor: pointer;
+  }
+  /* Result meta line (search active) */
+  .result-meta {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    letter-spacing: 0.18em; text-transform: uppercase;
+    padding: 8px 0 12px;
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+    margin-top: 8px;
+    display: flex; justify-content: space-between;
+  }
+  .result-meta strong { color: var(--ink); font-weight: 500; }
+  /* Month header */
+  .month-h {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 32px 0 8px;
+  }
+  .month-h .label {
+    font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--muted);
+    letter-spacing: 0.22em; text-transform: uppercase;
+  }
+  /* Row */
+  .row {
+    display: grid;
+    grid-template-columns: 120px 1fr 120px;
+    gap: 24px;
+    padding: 24px 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .row .date .dow {
+    font-family: var(--mono); font-size: 10px; color: var(--rust); letter-spacing: 0.22em;
+  }
+  .row .date .d { font-family: var(--serif); font-size: 18px; margin-top: 4px; }
+  .row .date .iss { font-family: var(--mono); font-size: 10px; color: var(--soft); letter-spacing: 0.22em; margin-top: 6px; }
+  .row .main h3 {
+    font-family: var(--serif); font-size: 24px; font-weight: 500; line-height: 1.18;
+    margin: 0 0 8px;
+  }
+  .row .main .dek { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--muted); line-height: 1.45; }
+  .row .meta { text-align: right; }
+  .row .meta .count { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 0.18em; }
+  .row .meta .read { font-family: var(--mono); font-size: 11px; color: var(--rust); letter-spacing: 0.18em; margin-top: 6px; display: inline-block; }
+  /* Inline highlight only — used inside dek/headline when search is active */
+  mark { background: #FBE9C8; color: var(--ink); padding: 0 2px; font-style: normal; }
+  /* Empty state */
+  .empty {
+    text-align: center; padding: 64px 24px;
+  }
+  .empty .eyebrow { font-family: var(--mono); font-size: 11px; color: var(--soft); letter-spacing: 0.22em; text-transform: uppercase; }
+  .empty h2 { font-family: var(--serif); font-size: 24px; color: var(--ink); margin: 8px 0 6px; }
+  .empty p { font-family: var(--serif); color: var(--muted); }
+  /* Footer */
+  .footer {
+    padding: 48px 0 32px;
+    text-align: center;
+    font-family: var(--mono); font-size: 11px; color: var(--soft);
+    letter-spacing: 0.18em;
+  }
+</style>
+</head>
+<body>
+
+<div class="page-grid">
+
+  <!-- ===================== FRAME 1: Idle ===================== -->
+  <section class="frame">
+    <div class="frame-label">Frame 1 · Listing — idle (search bar present, no query)</div>
+    <div class="nav">
+      <div class="nav-brand">AI Newsletter</div>
+      <nav class="nav-links"><span>SUBSCRIBE</span><span>ABOUT</span></nav>
+    </div>
+    <main class="shell">
+      <div class="hero">
+        <h1>The Daily Read</h1>
+        <div class="tag">AI news worth your morning.</div>
+      </div>
+
+      <div class="search-wrap">
+        <div class="search-bar">
+          <span class="glyph">⌕</span>
+          <span class="placeholder">Search the archive…</span>
+        </div>
+        <div class="filter-host">
+          <div class="date-filter">
+            <span>DATE:</span>
+            <span class="value">ALL TIME</span>
+            <span class="caret">▾</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="month-h"><span class="label">May 2026 · 6 issues</span></div>
+
+      <div class="row">
+        <div class="date">
+          <div class="dow">Wednesday</div>
+          <div class="d">May 6, 2026</div>
+          <div class="iss">N° 12</div>
+        </div>
+        <div class="main">
+          <h3>Anthropic ships Claude 4.7 with 1M context</h3>
+          <div class="dek">A long-context milestone reshapes how teams plan agentic workloads — early benchmarks place it ahead on retrieval-heavy tasks.</div>
+        </div>
+        <div class="meta">
+          <div class="count">12 STORIES</div>
+          <div class="read">READ →</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="date">
+          <div class="dow">Tuesday</div>
+          <div class="d">May 5, 2026</div>
+          <div class="iss">N° 11</div>
+        </div>
+        <div class="main">
+          <h3>Qwen 3.6 27B local inference 2.5× faster with MTP</h3>
+          <div class="dek">Multi-token prediction lands in the OSS Qwen line, making local agentic coding viable on 48 GB rigs.</div>
+        </div>
+        <div class="meta">
+          <div class="count">10 STORIES</div>
+          <div class="read">READ →</div>
+        </div>
+      </div>
+    </main>
+    <div class="footer">SIEVE · A VERTEXCOVER PROJECT</div>
+  </section>
+
+  <!-- ===================== FRAME 2: Active query ===================== -->
+  <section class="frame">
+    <div class="frame-label">Frame 2 · Search active — q = "agentic"  (3 matching issues)</div>
+    <div class="nav">
+      <div class="nav-brand">AI Newsletter</div>
+      <nav class="nav-links"><span>SUBSCRIBE</span><span>ABOUT</span></nav>
+    </div>
+    <main class="shell">
+      <div class="hero">
+        <h1>The Daily Read</h1>
+        <div class="tag">AI news worth your morning.</div>
+      </div>
+
+      <div class="search-wrap">
+        <div class="search-bar">
+          <span class="glyph">⌕</span>
+          <input type="text" value="agentic" />
+          <button class="clear-btn">Clear</button>
+        </div>
+        <div class="filter-host">
+          <div class="date-filter" style="min-width: 240px;">
+            <span>DATE:</span>
+            <span class="value">APR 8 – MAY 6, 2026</span>
+            <span class="caret">▾</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="result-meta">
+        <span><strong>3 issues</strong> match “agentic” · Apr 8 – May 6, 2026</span>
+      </div>
+
+      <div class="row">
+        <div class="date">
+          <div class="dow">Wednesday</div>
+          <div class="d">May 6, 2026</div>
+          <div class="iss">N° 12</div>
+        </div>
+        <div class="main">
+          <h3>Anthropic ships Claude 4.7 with 1M context</h3>
+          <div class="dek">A long-context milestone reshapes how teams plan <mark>agentic</mark> workloads — early benchmarks place it ahead on retrieval-heavy tasks.</div>
+        </div>
+        <div class="meta">
+          <div class="count">12 STORIES</div>
+          <div class="read">READ →</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="date">
+          <div class="dow">Tuesday</div>
+          <div class="d">May 5, 2026</div>
+          <div class="iss">N° 11</div>
+        </div>
+        <div class="main">
+          <h3>Qwen 3.6 27B local inference 2.5× faster with MTP</h3>
+          <div class="dek">Multi-token prediction lands in the OSS Qwen line, making local <mark>agentic</mark> coding viable on 48 GB rigs.</div>
+        </div>
+        <div class="meta">
+          <div class="count">10 STORIES</div>
+          <div class="read">READ →</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="date">
+          <div class="dow">Friday</div>
+          <div class="d">May 1, 2026</div>
+          <div class="iss">N° 07</div>
+        </div>
+        <div class="main">
+          <h3>OpenAI publishes function-calling 2.0 spec</h3>
+          <div class="dek">Spec adds parallel calls, structured tool errors, and lays groundwork for cross-vendor <mark>agentic</mark> tool routing.</div>
+        </div>
+        <div class="meta">
+          <div class="count">8 STORIES</div>
+          <div class="read">READ →</div>
+        </div>
+      </div>
+
+    </main>
+    <div class="footer">SIEVE · A VERTEXCOVER PROJECT</div>
+  </section>
+
+</div>
+
+<!-- ===================== FRAME 4: Date filter open ===================== -->
+<div class="page-grid" style="margin-top: 32px; grid-template-columns: 1fr;">
+  <section class="frame">
+    <div class="frame-label">Frame 4 · Date filter dropdown — open</div>
+    <div class="nav">
+      <div class="nav-brand">AI Newsletter</div>
+      <nav class="nav-links"><span>SUBSCRIBE</span><span>ABOUT</span></nav>
+    </div>
+    <main class="shell" style="padding-bottom: 240px;">
+      <div class="hero">
+        <h1>The Daily Read</h1>
+        <div class="tag">AI news worth your morning.</div>
+      </div>
+      <div class="search-wrap">
+        <div class="search-bar">
+          <span class="glyph">⌕</span>
+          <input type="text" value="claude" />
+          <button class="clear-btn">Clear</button>
+        </div>
+        <div class="filter-host">
+          <div class="date-filter" style="border-color: var(--ink); min-width: 260px;">
+            <span>DATE:</span>
+            <span class="value">APR 8 – MAY 6, 2026</span>
+            <span class="caret">▴</span>
+          </div>
+          <div class="range-pop">
+            <div class="range-head">
+              <span>SELECT RANGE</span>
+              <span class="selected">APR 8 → MAY 6 · 28 DAYS</span>
+            </div>
+            <div class="range-cals">
+              <div>
+                <div class="cal-month">April 2026</div>
+                <div class="cal-grid">
+                  <span class="dow">M</span><span class="dow">T</span><span class="dow">W</span><span class="dow">T</span><span class="dow">F</span><span class="dow">S</span><span class="dow">S</span>
+                  <span class="day muted">30</span><span class="day muted">31</span><span class="day">1</span><span class="day">2</span><span class="day">3</span><span class="day">4</span><span class="day">5</span>
+                  <span class="day">6</span><span class="day">7</span><span class="day range-edge">8</span><span class="day in-range">9</span><span class="day in-range">10</span><span class="day in-range">11</span><span class="day in-range">12</span>
+                  <span class="day in-range">13</span><span class="day in-range">14</span><span class="day in-range">15</span><span class="day in-range">16</span><span class="day in-range">17</span><span class="day in-range">18</span><span class="day in-range">19</span>
+                  <span class="day in-range">20</span><span class="day in-range">21</span><span class="day in-range">22</span><span class="day in-range">23</span><span class="day in-range">24</span><span class="day in-range">25</span><span class="day in-range">26</span>
+                  <span class="day in-range">27</span><span class="day in-range">28</span><span class="day in-range">29</span><span class="day in-range">30</span><span class="day muted">1</span><span class="day muted">2</span><span class="day muted">3</span>
+                </div>
+              </div>
+              <div>
+                <div class="cal-month">May 2026</div>
+                <div class="cal-grid">
+                  <span class="dow">M</span><span class="dow">T</span><span class="dow">W</span><span class="dow">T</span><span class="dow">F</span><span class="dow">S</span><span class="dow">S</span>
+                  <span class="day muted">28</span><span class="day muted">29</span><span class="day muted">30</span><span class="day in-range">1</span><span class="day in-range">2</span><span class="day in-range">3</span><span class="day in-range">4</span>
+                  <span class="day in-range">5</span><span class="day range-edge today">6</span><span class="day">7</span><span class="day">8</span><span class="day">9</span><span class="day">10</span><span class="day">11</span>
+                  <span class="day">12</span><span class="day">13</span><span class="day">14</span><span class="day">15</span><span class="day">16</span><span class="day">17</span><span class="day">18</span>
+                  <span class="day">19</span><span class="day">20</span><span class="day">21</span><span class="day">22</span><span class="day">23</span><span class="day">24</span><span class="day">25</span>
+                  <span class="day">26</span><span class="day">27</span><span class="day">28</span><span class="day">29</span><span class="day">30</span><span class="day">31</span><span class="day muted">1</span>
+                </div>
+              </div>
+            </div>
+            <div class="range-presets">
+              <span class="chip">Last 7 days</span>
+              <span class="chip" style="border-color: var(--ink); color: var(--ink);">Last 30 days</span>
+              <span class="chip">Last 90 days</span>
+              <span class="chip">This year</span>
+              <span class="chip">All time</span>
+            </div>
+            <div class="range-actions">
+              <button class="clear">Clear</button>
+              <button class="apply">Apply</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="result-meta">
+        <span><strong>14 issues</strong> match “claude” · Apr 8 – May 6, 2026</span>
+      </div>
+    </main>
+    <div class="footer">SIEVE · A VERTEXCOVER PROJECT</div>
+  </section>
+</div>
+
+<!-- ===================== FRAME 3: Empty ===================== -->
+<div class="page-grid" style="margin-top: 32px; grid-template-columns: 1fr;">
+  <section class="frame">
+    <div class="frame-label">Frame 3 · No results state</div>
+    <div class="nav">
+      <div class="nav-brand">AI Newsletter</div>
+      <nav class="nav-links"><span>SUBSCRIBE</span><span>ABOUT</span></nav>
+    </div>
+    <main class="shell">
+      <div class="hero">
+        <h1>The Daily Read</h1>
+        <div class="tag">AI news worth your morning.</div>
+      </div>
+      <div class="search-wrap">
+        <div class="search-bar">
+          <span class="glyph">⌕</span>
+          <input type="text" value="quantum entanglement breakfast" />
+          <button class="clear-btn">Clear</button>
+        </div>
+        <div class="filter-host">
+          <div class="date-filter">
+            <span>DATE:</span>
+            <span class="value">ALL TIME</span>
+            <span class="caret">▾</span>
+          </div>
+        </div>
+      </div>
+      <div class="empty">
+        <div class="eyebrow">No matches</div>
+        <h2>Nothing in the archive matched “quantum entanglement breakfast”.</h2>
+        <p>Try a shorter query, a source name, or an author handle.</p>
+      </div>
+    </main>
+    <div class="footer">SIEVE · A VERTEXCOVER PROJECT</div>
+  </section>
+</div>
+
+</body>
+</html>

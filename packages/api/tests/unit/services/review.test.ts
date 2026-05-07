@@ -128,6 +128,11 @@ describe("patchArchive (REQ-160, REQ-161, REQ-163)", () => {
     expect(archiveRepo.updateRankedItems).toHaveBeenCalledWith(
       "run-1",
       [{ rawItemId: 1, score: 0, rationale: "" }],
+      expect.objectContaining({
+        rawItemsById: expect.any(Map),
+        digestHeadline: archiveRow.digestHeadline,
+        digestSummary: archiveRow.digestSummary,
+      }),
     );
   });
 });
@@ -171,17 +176,21 @@ describe("patchArchive — optional editable fields (REQ-004, REQ-005, EDGE-007)
       },
       deps,
     );
-    expect(archiveRepo.updateRankedItems).toHaveBeenCalledWith("run-1", [
-      {
-        rawItemId: 1,
-        score: 0,
-        rationale: "",
-        summary: "my summary",
-        bullets: ["point 1", "point 2"],
-        bottomLine: "final thought",
-        imageUrl: "https://img.example.com/pic.png",
-      },
-    ]);
+    expect(archiveRepo.updateRankedItems).toHaveBeenCalledWith(
+      "run-1",
+      [
+        {
+          rawItemId: 1,
+          score: 0,
+          rationale: "",
+          summary: "my summary",
+          bullets: ["point 1", "point 2"],
+          bottomLine: "final thought",
+          imageUrl: "https://img.example.com/pic.png",
+        },
+      ],
+      expect.objectContaining({ rawItemsById: expect.any(Map) }),
+    );
   });
 
   it("EDGE-007: does NOT add optional fields to RankedItemRef when absent from input (backward compat)", async () => {

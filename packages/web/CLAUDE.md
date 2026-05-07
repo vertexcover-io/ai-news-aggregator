@@ -3,7 +3,7 @@
 React + Vite frontend for the admin review dashboard and public archive.
 
 ## Responsibilities
-- Archive listing (`/`): PUBLIC — Ledger-layout listing of reviewed archives, month-grouped, with filter chips, client-side "Load more", and a featured first row when a lead summary is available
+- Archive listing (`/`): PUBLIC — Ledger-layout listing of reviewed archives, month-grouped, with filter chips, client-side "Load more", a featured first row when a lead summary is available, and a search bar + date-range chip (`?q=`/`?from=`/`?to=` URL state) that calls `/api/archives/search` for keyword + date filtering with inline term highlighting
 - Archive detail (`/archive/:runId`): PUBLIC — Ledger-aesthetic read-only view of a completed run: serif/mono typography, 3-column story sections with numbered N° rail, image plates, and rust-accented recap blocks; wrapped by `PublicLayout` (shared Nav + Footer)
 - Admin login (`/admin/login`): password gate for operator pages
 - Dashboard (`/admin`): shows recent runs table, schedule status banner, and "Run Now" button
@@ -14,7 +14,7 @@ React + Vite frontend for the admin review dashboard and public archive.
 ## Layout
 - `src/pages/` — top-level route components (`ArchiveListingPage.tsx`, `ArchivePage.tsx`, `DashboardPage.tsx`, `ReviewPage.tsx`, `SettingsPage.tsx`, `AdminLoginPage.tsx`)
 - `src/components/` — presentational pieces:
-  - `archive-listing/` — `ArchiveRow.tsx`, `FilterChip.tsx`, `MonthHeader.tsx`, `format.ts` (Ledger listing components)
+  - `archive-listing/` — `ArchiveRow.tsx`, `FilterChip.tsx`, `MonthHeader.tsx`, `format.ts`, `SearchBar.tsx`, `DateRangeChip.tsx`, `DateRangePopover.tsx`, `ResultMeta.tsx`, `EmptyResults.tsx` (Ledger listing components + keyword/date-range search UI)
   - `RunForm/`, `StatusPanel.tsx`, `ResultList.tsx` — run-page components
   - `review/` — `ReviewList.tsx` (DnD list), `ReviewCard.tsx`, `AddPostPanel.tsx`, `SaveBar.tsx`
   - `dashboard/` — `RunsTable.tsx` (≥ 640 px tabular layout), `RunsCardList.tsx` (< 640 px stacked card layout), `ScheduleBanner.tsx`, `EmptyState.tsx`

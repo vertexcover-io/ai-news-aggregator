@@ -1,0 +1,62 @@
+
+> @newsletter/pipeline@0.0.1 test:e2e /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline
+> vitest run --project seam --project crawler
+
+
+ RUN  v3.2.1 /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline
+
+{
+  severity_local: 'NOTICE',
+  severity: 'NOTICE',
+  code: '42P06',
+  message: 'schema "drizzle" already exists, skipping',
+  file: 'schemacmds.c',
+  line: '132',
+  routine: 'CreateSchemaCommand'
+}
+{
+  severity_local: 'NOTICE',
+  severity: 'NOTICE',
+  code: '42P07',
+  message: 'relation "__drizzle_migrations" already exists, skipping',
+  file: 'parse_utilcmd.c',
+  line: '207',
+  routine: 'transformCreateStmt'
+}
+No test files found, exiting with code 1
+
+projects: seam, crawler
+
+|seam| 
+
+include: tests/e2e/seam/**/*.e2e.test.ts
+exclude:  tests/e2e/seam/web-crawler.e2e.test.ts
+
+|crawler| 
+
+include: tests/e2e/seam/web-crawler.e2e.test.ts
+exclude:  **/node_modules/**, **/dist/**, **/cypress/**, **/.{idea,git,cache,output,temp}/**, **/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*
+
+
+⎯⎯⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯⎯⎯⎯
+PostgresError: relation "email_sends" already exists
+ ❯ ErrorResponse ../../node_modules/.pnpm/postgres@3.4.7/node_modules/postgres/src/connection.js:794:26
+ ❯ handle ../../node_modules/.pnpm/postgres@3.4.7/node_modules/postgres/src/connection.js:480:6
+ ❯ Socket.data ../../node_modules/.pnpm/postgres@3.4.7/node_modules/postgres/src/connection.js:315:9
+ ❯ Socket.emit node:events:519:28
+ ❯ addChunk node:internal/streams/readable:561:12
+ ❯ readableAddChunkPushByteMode node:internal/streams/readable:512:3
+ ❯ Readable.push node:internal/streams/readable:392:5
+ ❯ TCP.onStreamRead node:internal/stream_base_commons:189:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { severity_local: 'ERROR', severity: 'ERROR', code: '42P07', file: 'heap.c', routine: 'heap_create_with_catalog', query: 'CREATE TABLE "email_sends" (\n\t"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,\n\t"subscriber_id" uuid NOT NULL,\n\t"run_archive_id" uuid NOT NULL,\n\t"message_id" text,\n\t"sent_at" timestamp DEFAULT now() NOT NULL,\n\tCONSTRAINT "email_sends_subscriber_archive_uq" UNIQUE("subscriber_id","run_archive_id")\n);\n', parameters: [], args: [], types: [] }
+
+
+
+close timed out after 10000ms
+Tests closed successfully but something prevents the main process from exiting
+You can try to identify the cause by enabling "hanging-process" reporter. See https://vitest.dev/config/#reporters
+/Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @newsletter/pipeline@0.0.1 test:e2e: `vitest run --project seam --project crawler`
+Exit status 1

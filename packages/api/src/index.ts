@@ -17,6 +17,7 @@ import {
   createDefaultPublicArchivesRouter,
   createDefaultAdminArchivesRouter,
 } from "@api/routes/archives.js";
+import { createDefaultArchivesSearchRouter } from "@api/routes/archives-search.js";
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
 import { createAdminRouter } from "@api/routes/admin.js";
 import { requireAdmin } from "@api/auth/middleware.js";
@@ -103,6 +104,7 @@ const webhooksRouter = createWebhooksRouter({
 const app = buildApp({
   sessionSecret,
   publicArchivesRouter: createDefaultPublicArchivesRouter(),
+  archivesSearchRouter: createDefaultArchivesSearchRouter(),
   adminArchivesRouter: createDefaultAdminArchivesRouter(),
   runsRouter: createDefaultRunsRouter(),
   settingsRouter: createDefaultSettingsRouter(),

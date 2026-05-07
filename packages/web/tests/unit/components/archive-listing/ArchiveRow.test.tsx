@@ -248,4 +248,62 @@ describe("ArchiveRow", () => {
     const paras = container.querySelectorAll("p");
     expect(paras.length).toBe(0);
   });
+
+  // Phase 5: highlightTerms wraps matches in <mark> in digestHeadline
+  it("highlights terms in the digest headline", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ul>
+          <ArchiveRow
+            item={makeItem({ digestHeadline: "Agentic systems break out" })}
+            issueNumber={1}
+            featured={false}
+            highlightTerms={["agentic"]}
+          />
+        </ul>
+      </MemoryRouter>,
+    );
+    const marks = container.querySelectorAll("h3 mark");
+    expect(marks.length).toBe(1);
+    expect(marks[0].textContent).toBe("Agentic");
+  });
+
+  // Phase 5: highlightTerms wraps matches in <mark> in dek (digestSummary)
+  it("highlights terms in the dek", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ul>
+          <ArchiveRow
+            item={makeItem({
+              digestHeadline: "Story",
+              digestSummary: "How teams plan agentic workloads today",
+            })}
+            issueNumber={1}
+            featured={false}
+            highlightTerms={["agentic"]}
+          />
+        </ul>
+      </MemoryRouter>,
+    );
+    const marks = container.querySelectorAll("p mark");
+    expect(marks.length).toBe(1);
+    expect(marks[0].textContent).toBe("agentic");
+  });
+
+  // Phase 5: empty highlightTerms renders no <mark>
+  it("renders no <mark> when highlightTerms is empty", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ul>
+          <ArchiveRow
+            item={makeItem({ digestHeadline: "Agentic systems" })}
+            issueNumber={1}
+            featured={false}
+            highlightTerms={[]}
+          />
+        </ul>
+      </MemoryRouter>,
+    );
+    expect(container.querySelector("mark")).toBeNull();
+  });
 });

@@ -1,0 +1,132 @@
+
+> ai-newsletter@ typecheck /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search
+> turbo typecheck
+
+turbo 2.5.4
+
+• Packages in scope: @newsletter/api, @newsletter/eslint-plugin, @newsletter/pipeline, @newsletter/shared, @newsletter/web
+• Running typecheck in 5 packages
+• Remote caching disabled
+@newsletter/eslint-plugin:typecheck: cache hit, replaying logs 1d698d6da5c49cb8
+@newsletter/shared:typecheck: cache hit, replaying logs 8207d306a9b6642e
+@newsletter/eslint-plugin:typecheck: 
+@newsletter/eslint-plugin:typecheck: > @newsletter/eslint-plugin@0.0.1 typecheck /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/eslint-plugin
+@newsletter/eslint-plugin:typecheck: > tsc --noEmit
+@newsletter/eslint-plugin:typecheck: 
+@newsletter/shared:typecheck: 
+@newsletter/shared:typecheck: > @newsletter/shared@0.0.1 typecheck /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/shared
+@newsletter/shared:typecheck: > tsc --noEmit
+@newsletter/shared:typecheck: 
+@newsletter/shared:build: cache hit, replaying logs 114c6dd5f950da49
+@newsletter/shared:build: 
+@newsletter/shared:build: > @newsletter/shared@0.0.1 build /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/shared
+@newsletter/shared:build: > tsup
+@newsletter/shared:build: 
+@newsletter/shared:build: CLI Building entry: src/index.ts, src/logger.ts, src/redis.ts, src/run-start.ts, src/send-newsletter.ts, src/constants/index.ts, src/db/index.ts, src/slack/index.ts, src/types/index.ts, src/types/settings.ts, src/utils/index.ts
+@newsletter/shared:build: CLI Using tsconfig: tsconfig.json
+@newsletter/shared:build: CLI tsup v8.4.0
+@newsletter/shared:build: CLI Using tsup config: /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/shared/tsup.config.ts
+@newsletter/shared:build: CLI Target: es2022
+@newsletter/shared:build: CLI Cleaning output folder
+@newsletter/shared:build: ESM Build start
+@newsletter/shared:build: ESM dist/types/settings.js      67.00 B
+@newsletter/shared:build: ESM dist/types/index.js         64.00 B
+@newsletter/shared:build: ESM dist/logger.js              145.00 B
+@newsletter/shared:build: ESM dist/chunk-NL4NAHXG.js      42.00 B
+@newsletter/shared:build: ESM dist/utils/index.js         64.00 B
+@newsletter/shared:build: ESM dist/index.js               2.15 KB
+@newsletter/shared:build: ESM dist/chunk-AMJSW4RQ.js      42.00 B
+@newsletter/shared:build: ESM dist/chunk-HNULWM2K.js      313.00 B
+@newsletter/shared:build: ESM dist/run-start.js           140.00 B
+@newsletter/shared:build: ESM dist/chunk-BMJ6XNXR.js      1.84 KB
+@newsletter/shared:build: ESM dist/send-newsletter.js     268.00 B
+@newsletter/shared:build: ESM dist/chunk-EUJPSGDR.js      266.00 B
+@newsletter/shared:build: ESM dist/chunk-5BVJRYAY.js      451.00 B
+@newsletter/shared:build: ESM dist/db/index.js            302.00 B
+@newsletter/shared:build: ESM dist/chunk-XJGWQ3QS.js      169.00 B
+@newsletter/shared:build: ESM dist/slack/index.js         242.00 B
+@newsletter/shared:build: ESM dist/chunk-PZ5AY32C.js      233.00 B
+@newsletter/shared:build: ESM dist/constants/index.js     224.00 B
+@newsletter/shared:build: ESM dist/chunk-TN775OJE.js      4.83 KB
+@newsletter/shared:build: ESM dist/redis.js               162.00 B
+@newsletter/shared:build: ESM dist/chunk-TCRFUDMP.js      7.51 KB
+@newsletter/shared:build: ESM dist/chunk-JCUHDSY2.js      42.00 B
+@newsletter/shared:build: ESM dist/types/index.js.map     71.00 B
+@newsletter/shared:build: ESM dist/utils/index.js.map     71.00 B
+@newsletter/shared:build: ESM dist/logger.js.map          71.00 B
+@newsletter/shared:build: ESM dist/chunk-AMJSW4RQ.js.map  71.00 B
+@newsletter/shared:build: ESM dist/index.js.map           2.62 KB
+@newsletter/shared:build: ESM dist/run-start.js.map       71.00 B
+@newsletter/shared:build: ESM dist/chunk-NL4NAHXG.js.map  71.00 B
+@newsletter/shared:build: ESM dist/chunk-BMJ6XNXR.js.map  4.26 KB
+@newsletter/shared:build: ESM dist/chunk-EUJPSGDR.js.map  387.00 B
+@newsletter/shared:build: ESM dist/chunk-5BVJRYAY.js.map  849.00 B
+@newsletter/shared:build: ESM dist/db/index.js.map        71.00 B
+@newsletter/shared:build: ESM dist/chunk-XJGWQ3QS.js.map  283.00 B
+@newsletter/shared:build: ESM dist/chunk-PZ5AY32C.js.map  71.00 B
+@newsletter/shared:build: ESM dist/slack/index.js.map     71.00 B
+@newsletter/shared:build: ESM dist/constants/index.js.map 71.00 B
+@newsletter/shared:build: ESM dist/redis.js.map           71.00 B
+@newsletter/shared:build: ESM dist/types/settings.js.map  71.00 B
+@newsletter/shared:build: ESM dist/chunk-TCRFUDMP.js.map  13.98 KB
+@newsletter/shared:build: ESM dist/send-newsletter.js.map 71.00 B
+@newsletter/shared:build: ESM dist/chunk-JCUHDSY2.js.map  71.00 B
+@newsletter/shared:build: ESM dist/chunk-HNULWM2K.js.map  529.00 B
+@newsletter/shared:build: ESM dist/chunk-TN775OJE.js.map  9.90 KB
+@newsletter/shared:build: ESM ⚡️ Build success in 21ms
+@newsletter/shared:build: DTS Build start
+@newsletter/shared:build: DTS ⚡️ Build success in 3065ms
+@newsletter/shared:build: DTS dist/utils/index.d.ts     13.00 B
+@newsletter/shared:build: DTS dist/index.d.ts           2.74 KB
+@newsletter/shared:build: DTS dist/logger.d.ts          110.00 B
+@newsletter/shared:build: DTS dist/run-start.d.ts       930.00 B
+@newsletter/shared:build: DTS dist/send-newsletter.d.ts 439.00 B
+@newsletter/shared:build: DTS dist/constants/index.d.ts 213.00 B
+@newsletter/shared:build: DTS dist/types/settings.d.ts  886.00 B
+@newsletter/shared:build: DTS dist/redis.d.ts           155.00 B
+@newsletter/shared:build: DTS dist/db/index.d.ts        632.00 B
+@newsletter/shared:build: DTS dist/slack/index.d.ts     2.42 KB
+@newsletter/shared:build: DTS dist/types/index.d.ts     913.00 B
+@newsletter/shared:build: DTS dist/schema-CmV_dkiJ.d.ts 44.69 KB
+@newsletter/pipeline:typecheck: cache hit, replaying logs d805d8de1430e166
+@newsletter/pipeline:typecheck: 
+@newsletter/pipeline:typecheck: > @newsletter/pipeline@0.0.1 typecheck /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline
+@newsletter/pipeline:typecheck: > tsc --noEmit
+@newsletter/pipeline:typecheck: 
+@newsletter/web:typecheck: cache hit, replaying logs 4f2cf92e97ceed56
+@newsletter/web:typecheck: 
+@newsletter/web:typecheck: > @newsletter/web@0.0.1 typecheck /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/web
+@newsletter/web:typecheck: > tsc --noEmit -p tsconfig.app.json
+@newsletter/web:typecheck: 
+@newsletter/pipeline:build: cache hit, replaying logs 6439ddc75a8e1981
+@newsletter/pipeline:build: 
+@newsletter/pipeline:build: > @newsletter/pipeline@0.0.1 build /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline
+@newsletter/pipeline:build: > tsup
+@newsletter/pipeline:build: 
+@newsletter/pipeline:build: CLI Building entry: src/add-post-entry.ts, src/index.ts
+@newsletter/pipeline:build: CLI Using tsconfig: tsconfig.json
+@newsletter/pipeline:build: CLI tsup v8.4.0
+@newsletter/pipeline:build: CLI Using tsup config: /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline/tsup.config.ts
+@newsletter/pipeline:build: CLI Target: es2022
+@newsletter/pipeline:build: CLI Cleaning output folder
+@newsletter/pipeline:build: ESM Build start
+@newsletter/pipeline:build: ESM dist/add-post-entry.js     4.93 KB
+@newsletter/pipeline:build: ESM dist/chunk-PYUOCJ6A.js     46.27 KB
+@newsletter/pipeline:build: ESM dist/index.js              77.19 KB
+@newsletter/pipeline:build: ESM dist/add-post-entry.js.map 10.05 KB
+@newsletter/pipeline:build: ESM dist/index.js.map          165.51 KB
+@newsletter/pipeline:build: ESM dist/chunk-PYUOCJ6A.js.map 96.62 KB
+@newsletter/pipeline:build: ESM ⚡️ Build success in 48ms
+@newsletter/pipeline:build: DTS Build start
+@newsletter/pipeline:build: DTS ⚡️ Build success in 2804ms
+@newsletter/pipeline:build: DTS dist/add-post-entry.d.ts 2.63 KB
+@newsletter/api:typecheck: cache hit, replaying logs 9102424cad4f118b
+@newsletter/api:typecheck: 
+@newsletter/api:typecheck: > @newsletter/api@0.0.1 typecheck /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api
+@newsletter/api:typecheck: > tsc --noEmit
+@newsletter/api:typecheck: 
+
+ Tasks:    7 successful, 7 total
+Cached:    7 cached, 7 total
+  Time:    248ms >>> FULL TURBO
+
