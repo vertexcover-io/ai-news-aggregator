@@ -6,6 +6,7 @@ import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { delay } from "@pipeline/lib/delay.js";
 import { UrlParseError } from "@pipeline/collectors/hn.js";
 import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
+import { createProxyFetch } from "@pipeline/lib/proxy-fetch.js";
 
 const logger = createLogger("collector:reddit");
 
@@ -289,7 +290,7 @@ export async function fetchRedditPost(
     throw new UrlParseError(`not a recognized Reddit post URL: ${url}`);
   }
 
-  const fetchFn = deps.fetchFn ?? fetch;
+  const fetchFn = deps.fetchFn ?? createProxyFetch(process.env.REDDIT_HTTP_PROXY);
   const cleanUrl = url.endsWith("/") ? url.slice(0, -1) : url;
   const jsonUrl = `${cleanUrl}.json`;
 
@@ -361,7 +362,7 @@ export async function collectReddit(
   config: RedditCollectConfig,
 ): Promise<CollectorResult> {
   const startTime = Date.now();
-  const baseFetch = deps.fetchFn ?? fetch;
+  const baseFetch = deps.fetchFn ?? createProxyFetch(process.env.REDDIT_HTTP_PROXY);
   const fetchFn = deps.signal ? withAbortSignal(baseFetch, deps.signal) : baseFetch;
   const subreddits = config.subreddits ?? DEFAULT_SUBREDDITS;
   const sort = config.sort ?? DEFAULT_SORT;
