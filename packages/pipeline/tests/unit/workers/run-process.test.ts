@@ -1211,6 +1211,136 @@ describe("run-process worker", () => {
     expect(payload.error).toBe("pg connection lost");
   });
 
+  // BUG-FIX: auto-reviewed runs must enqueue a send-newsletter job
+  it("enqueues send-newsletter when AUTO_REVIEW=true and archive write succeeds", async () => {
+    const prevAutoReview = process.env.AUTO_REVIEW;
+    process.env.AUTO_REVIEW = "true";
+    try {
+      const runStateMock = makeMockRunState(makeRunState());
+      const candidates = [makeCandidate(1)];
+      const loadFn = vi.fn(
+        (): Promise<Candidate[]> => Promise.resolve(candidates),
+      );
+      const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+      const rankFn = vi.fn(
+        (): Promise<RankResult> =>
+          Promise.resolve({
+            rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+            candidateCount: 1,
+            rankedCount: 1,
+          }),
+      );
+      const archiveUpsert = vi.fn(() => Promise.resolve());
+      const sendQueueAdd = vi.fn(() => Promise.resolve({ id: "send-run-1" }));
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn,
+        shortlistFn,
+        rankFn,
+        archiveRepo: { upsert: archiveUpsert },
+        sendQueue: { add: sendQueueAdd } as unknown as Parameters<
+          typeof createRunProcessWorker
+        >[0]["sendQueue"],
+      });
+
+      await worker.handler(baseJob);
+
+      expect(sendQueueAdd).toHaveBeenCalledOnce();
+      const [name, payload, opts] = sendQueueAdd.mock.calls[0] as [
+        string,
+        { runId: string; subscriberIds: string },
+        { jobId: string },
+      ];
+      expect(name).toBe("send-newsletter");
+      expect(payload).toEqual({ runId: "run-1", subscriberIds: "all" });
+      expect(opts.jobId).toBe("send-run-1");
+    } finally {
+      if (prevAutoReview === undefined) delete process.env.AUTO_REVIEW;
+      else process.env.AUTO_REVIEW = prevAutoReview;
+    }
+  });
+
+  it("does not enqueue send-newsletter when AUTO_REVIEW is unset", async () => {
+    const prevAutoReview = process.env.AUTO_REVIEW;
+    delete process.env.AUTO_REVIEW;
+    try {
+      const runStateMock = makeMockRunState(makeRunState());
+      const candidates = [makeCandidate(1)];
+      const loadFn = vi.fn(
+        (): Promise<Candidate[]> => Promise.resolve(candidates),
+      );
+      const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+      const rankFn = vi.fn(
+        (): Promise<RankResult> =>
+          Promise.resolve({
+            rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+            candidateCount: 1,
+            rankedCount: 1,
+          }),
+      );
+      const archiveUpsert = vi.fn(() => Promise.resolve());
+      const sendQueueAdd = vi.fn(() => Promise.resolve({ id: "send-run-1" }));
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn,
+        shortlistFn,
+        rankFn,
+        archiveRepo: { upsert: archiveUpsert },
+        sendQueue: { add: sendQueueAdd } as unknown as Parameters<
+          typeof createRunProcessWorker
+        >[0]["sendQueue"],
+      });
+
+      await worker.handler(baseJob);
+
+      expect(sendQueueAdd).not.toHaveBeenCalled();
+    } finally {
+      if (prevAutoReview !== undefined) process.env.AUTO_REVIEW = prevAutoReview;
+    }
+  });
+
+  it("does not enqueue send-newsletter when archive write fails even with AUTO_REVIEW=true", async () => {
+    const prevAutoReview = process.env.AUTO_REVIEW;
+    process.env.AUTO_REVIEW = "true";
+    try {
+      const runStateMock = makeMockRunState(makeRunState());
+      const candidates = [makeCandidate(1)];
+      const loadFn = vi.fn(
+        (): Promise<Candidate[]> => Promise.resolve(candidates),
+      );
+      const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+      const rankFn = vi.fn(
+        (): Promise<RankResult> =>
+          Promise.resolve({
+            rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+            candidateCount: 1,
+            rankedCount: 1,
+          }),
+      );
+      const archiveUpsert = vi.fn(() =>
+        Promise.reject(new Error("pg connection lost")),
+      );
+      const sendQueueAdd = vi.fn(() => Promise.resolve({ id: "send-run-1" }));
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn,
+        shortlistFn,
+        rankFn,
+        archiveRepo: { upsert: archiveUpsert },
+        sendQueue: { add: sendQueueAdd } as unknown as Parameters<
+          typeof createRunProcessWorker
+        >[0]["sendQueue"],
+      });
+
+      await worker.handler(baseJob);
+
+      expect(sendQueueAdd).not.toHaveBeenCalled();
+    } finally {
+      if (prevAutoReview === undefined) delete process.env.AUTO_REVIEW;
+      else process.env.AUTO_REVIEW = prevAutoReview;
+    }
+  });
+
   // REQ-002: factory falls back to default archiveRepo when none is injected
   it("REQ-002: uses default archiveRepo when none is provided", async () => {
     const runStateMock = makeMockRunState(makeRunState());

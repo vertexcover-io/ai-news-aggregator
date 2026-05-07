@@ -8,6 +8,7 @@ export default defineConfig((options) => ({
     "src/types/index.ts",
     "src/types/settings.ts",
     "src/run-start.ts",
+    "src/send-newsletter.ts",
     "src/constants/index.ts",
     "src/utils/index.ts",
     "src/logger.ts",

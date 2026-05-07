@@ -1,7 +1,9 @@
 import { Worker } from "bullmq";
+import type { Queue } from "bullmq";
 import type IORedis from "ioredis";
 import { createRedisConnection } from "@newsletter/shared/redis";
-import { getDb } from "@newsletter/shared";
+import { getDb, enqueueSendNewsletter } from "@newsletter/shared";
+import type { NewsletterSendJobPayload } from "@newsletter/shared";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
 import { dedupCandidates } from "@pipeline/processors/dedup.js";
@@ -148,6 +150,7 @@ export interface RunProcessDeps {
   archiveRepo: RunArchivesRepo;
   cancelSubscriber: CancelSubscriberFactory;
   twitterClient: TwitterClient;
+  sendQueue?: Queue<NewsletterSendJobPayload>;
 }
 
 interface CollectingOutcome {
@@ -473,6 +476,8 @@ export async function handleRunProcessJob(
       completedAt: new Date().toISOString(),
     }));
 
+    const autoReviewed = process.env.AUTO_REVIEW === "true";
+    let archiveWritten = false;
     try {
       await deps.archiveRepo.upsert({
         id: runId,
@@ -482,10 +487,11 @@ export async function handleRunProcessJob(
         completedAt: new Date(),
         startedAt: runStartedAt,
         sourceTypes,
-        reviewed: process.env.AUTO_REVIEW === "true",
+        reviewed: autoReviewed,
         digestHeadline: rankResult.digestHeadline || null,
         digestSummary: rankResult.digestSummary || null,
       });
+      archiveWritten = true;
     } catch (err) {
       logger.error(
         {
@@ -495,6 +501,25 @@ export async function handleRunProcessJob(
         },
         "archive.write_failed",
       );
+    }
+
+    if (archiveWritten && autoReviewed && deps.sendQueue) {
+      try {
+        await enqueueSendNewsletter(deps.sendQueue, runId);
+        logger.info(
+          { event: "archive.send_enqueued", runId, trigger: "auto-review" },
+          "archive: send-newsletter job enqueued (auto-review)",
+        );
+      } catch (err) {
+        logger.error(
+          {
+            event: "archive.send_enqueue_failed",
+            runId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "archive.send_enqueue_failed",
+        );
+      }
     }
 
     logger.info(
@@ -559,6 +584,7 @@ export interface CreateRunProcessWorkerOptions {
   archiveRepo?: RunArchivesRepo;
   cancelSubscriber?: CancelSubscriberFactory;
   twitterClient?: TwitterClient;
+  sendQueue?: Queue<NewsletterSendJobPayload>;
 }
 
 export function createRunProcessWorker(
@@ -611,6 +637,7 @@ export function createRunProcessWorker(
     archiveRepo,
     cancelSubscriber,
     twitterClient,
+    sendQueue: options.sendQueue,
   };
 
   return new Worker<RunProcessJobData, RunProcessResult>(

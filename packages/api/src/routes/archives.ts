@@ -4,8 +4,14 @@ import {
   createLogger,
   getDb as defaultGetDb,
   createRedisConnection,
+  enqueueSendNewsletter,
+  SEND_NEWSLETTER_QUEUE,
 } from "@newsletter/shared";
-import type { ArchiveListResponse, RunState } from "@newsletter/shared";
+import type {
+  ArchiveListResponse,
+  NewsletterSendJobPayload,
+  RunState,
+} from "@newsletter/shared";
 import { Queue as BullQueue } from "bullmq";
 import { hydrateRankedItems } from "@api/services/rank-hydration.js";
 import {
@@ -39,7 +45,7 @@ export interface ArchivesRouterDeps {
   hydrateAddedPost?: HydrateAddedPostFn;
   generateRecapFn?: GenerateRecapFn;
   logger?: ReturnType<typeof createLogger>;
-  sendQueue?: Queue;
+  sendQueue?: Queue<NewsletterSendJobPayload>;
 }
 
 export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
@@ -118,13 +124,9 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         "archive.patched",
       );
       if (deps.sendQueue) {
-        await deps.sendQueue.add(
-          "send-newsletter",
-          { runId, subscriberIds: "all" },
-          { jobId: `send-${runId}` },
-        );
+        await enqueueSendNewsletter(deps.sendQueue, runId);
         logger.info(
-          { event: "archive.send_enqueued", runId, jobId: `send-${runId}` },
+          { event: "archive.send_enqueued", runId },
           "archive: send-newsletter job enqueued",
         );
       }
@@ -145,13 +147,9 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     const archive = await deps.getArchiveRepo().findById(runId);
     if (!archive) return c.json({ error: "not found" }, 404);
     if (deps.sendQueue) {
-      await deps.sendQueue.add(
-        "send-newsletter",
-        { runId, subscriberIds: "all" },
-        { jobId: `send-${runId}` },
-      );
+      await enqueueSendNewsletter(deps.sendQueue, runId);
       logger.info(
-        { event: "archive.send_enqueued", runId, jobId: `send-${runId}`, trigger: "force-send" },
+        { event: "archive.send_enqueued", runId, trigger: "force-send" },
         "archive: send-newsletter job enqueued (force-send)",
       );
     }
@@ -297,11 +295,12 @@ export function createDefaultAdminArchivesRouter(): Hono {
   return createAdminArchivesRouter(createDefaultArchivesDeps());
 }
 
-let defaultSendQueue: Queue | null = null;
-function getDefaultSendQueue(): Queue {
-  defaultSendQueue ??= new BullQueue("send-newsletter", {
-    connection: createRedisConnection(),
-  });
+let defaultSendQueue: Queue<NewsletterSendJobPayload> | null = null;
+function getDefaultSendQueue(): Queue<NewsletterSendJobPayload> {
+  defaultSendQueue ??= new BullQueue<NewsletterSendJobPayload>(
+    SEND_NEWSLETTER_QUEUE,
+    { connection: createRedisConnection() },
+  );
   return defaultSendQueue;
 }
 

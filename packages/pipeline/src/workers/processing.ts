@@ -150,6 +150,9 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   const twitterClient = createRettiwtClient({
     rettiwt: new Rettiwt({ apiKey: process.env.RETTIWT_API_KEY }),
   });
+  const sendQueue = new Queue<NewsletterSendJobPayload>("send-newsletter", {
+    connection,
+  });
   return {
     runState,
     rawItemsRepo,
@@ -161,6 +164,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     archiveRepo,
     cancelSubscriber: createCancelSubscriber(connection),
     twitterClient,
+    sendQueue,
   };
 }
 
