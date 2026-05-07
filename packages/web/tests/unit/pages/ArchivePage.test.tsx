@@ -75,6 +75,56 @@ describe("ArchivePage — share metadata + share row (REQ-002, REQ-005, REQ-010,
     expect(og?.getAttribute("content")).toBe("AI news - May 6, 2026");
   });
 
+  it("uses digestHeadline for document.title and og:title when present", async () => {
+    vi.mocked(useArchive).mockReturnValue(
+      makeResult({
+        ...completedData,
+        digestHeadline: "OpenAI ships GPT-7 with native tool use",
+      }),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(document.title).toBe("OpenAI ships GPT-7 with native tool use");
+    });
+    const og = document.head.querySelector('meta[property="og:title"]');
+    expect(og?.getAttribute("content")).toBe(
+      "OpenAI ships GPT-7 with native tool use",
+    );
+  });
+
+  it("passes digestHeadline as shareText so X composer prefills the heading", async () => {
+    vi.mocked(useArchive).mockReturnValue(
+      makeResult({
+        ...completedData,
+        digestHeadline: "OpenAI ships GPT-7 with native tool use",
+      }),
+    );
+    const { container } = renderPage();
+    await waitFor(() => {
+      const xLink = container.querySelector('a[data-share-target="x"]');
+      expect(xLink).not.toBeNull();
+      const href = xLink?.getAttribute("href") ?? "";
+      const m = /text=([^&]+)/.exec(href);
+      expect(m).not.toBeNull();
+      expect(decodeURIComponent(m?.[1] ?? "")).toBe(
+        "OpenAI ships GPT-7 with native tool use",
+      );
+    });
+  });
+
+  it("falls back to 'AI news - <Date>' shareText when digestHeadline is null", async () => {
+    vi.mocked(useArchive).mockReturnValue(
+      makeResult({ ...completedData, digestHeadline: null }),
+    );
+    const { container } = renderPage();
+    await waitFor(() => {
+      const xLink = container.querySelector('a[data-share-target="x"]');
+      const href = xLink?.getAttribute("href") ?? "";
+      const m = /text=([^&]+)/.exec(href);
+      expect(decodeURIComponent(m?.[1] ?? "")).toBe("AI news - May 6, 2026");
+    });
+  });
+
   it("renders exactly one archive-share-row on completed status", async () => {
     vi.mocked(useArchive).mockReturnValue(makeResult(completedData));
     const { container } = renderPage();
