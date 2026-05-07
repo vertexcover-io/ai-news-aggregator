@@ -140,7 +140,6 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db);
   const candidatesRepo: CandidatesRepo = createCandidatesRepo(db);
   const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db);
-  const subscribersRepo = createPipelineSubscribersRepo(db);
   const loadFn: LoadCandidatesFn = loadCandidatesSince;
   const collectFns: CollectFns = {
     hn: collectHn,
@@ -154,20 +153,6 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   const sendQueue = new Queue<NewsletterSendJobPayload>("send-newsletter", {
     connection,
   });
-  const slackNotifier = createSlackNotifier({
-    webhookUrl: process.env.SLACK_WEBHOOK_URL,
-    archives: archiveRepo,
-    subscribers: subscribersRepo,
-    resolveTopRankedTitle: async (archive) => {
-      if (archive.rankedItems.length === 0) return null;
-      const items = await rawItemsRepo.findByIds([
-        archive.rankedItems[0].rawItemId,
-      ]);
-      return items[0]?.title ?? null;
-    },
-    logger: createLogger("slack"),
-    publicArchiveBaseUrl: process.env.PUBLIC_BASE_URL,
-  });
   return {
     runState,
     rawItemsRepo,
@@ -180,7 +165,6 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     cancelSubscriber: createCancelSubscriber(connection),
     twitterClient,
     sendQueue,
-    slackNotifier,
   };
 }
 
@@ -197,12 +181,27 @@ function buildDefaultDailyRunDeps(connection: IORedis): DailyRunDeps {
 
 export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
   const db = getDb();
+  const archiveRepo = createRunArchivesRepo(db);
+  const rawItemsRepo = createRawItemsRepo(db);
+  const slackNotifier = createSlackNotifier({
+    webhookUrl: process.env.SLACK_WEBHOOK_URL,
+    archives: archiveRepo,
+    resolveTopRankedTitle: async (archive) => {
+      if (archive.rankedItems.length === 0) return null;
+      const items = await rawItemsRepo.findByIds([
+        archive.rankedItems[0].rawItemId,
+      ]);
+      return items[0]?.title ?? null;
+    },
+    logger: createLogger("slack"),
+    publicArchiveBaseUrl: process.env.PUBLIC_BASE_URL,
+  });
   return {
     emailProvider: createEmailProvider(),
     subscribersRepo: createPipelineSubscribersRepo(db),
     emailSendsRepo: createPipelineEmailSendsRepo(db),
-    archiveRepo: createRunArchivesRepo(db),
-    rawItemsRepo: createRawItemsRepo(db),
+    archiveRepo,
+    rawItemsRepo,
     renderNewsletter,
     // Validated at startup in index.ts — safe to assert here.
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
@@ -210,6 +209,7 @@ export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
     sesFromEmail: process.env.SES_FROM_EMAIL ?? "newsletter@mail.vertexcover.io",
     replyToEmail: process.env.NEWSLETTER_REPLY_TO_EMAIL,
     baseUrl: process.env.NEWSLETTER_BASE_URL ?? "https://newsletter.vertexcover.io",
+    slackNotifier,
   };
 }
 

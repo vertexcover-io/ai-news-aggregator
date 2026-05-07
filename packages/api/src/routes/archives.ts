@@ -11,10 +11,7 @@ import type {
   ArchiveListResponse,
   NewsletterSendJobPayload,
   RunState,
-  SlackNotifier,
 } from "@newsletter/shared";
-import { createApiSlackNotifier } from "@api/lib/slack-provider.js";
-import { createSubscribersRepo } from "@api/repositories/subscribers.js";
 import { Queue as BullQueue } from "bullmq";
 import { hydrateRankedItems } from "@api/services/rank-hydration.js";
 import {
@@ -49,7 +46,6 @@ export interface ArchivesRouterDeps {
   generateRecapFn?: GenerateRecapFn;
   logger?: ReturnType<typeof createLogger>;
   sendQueue?: Queue<NewsletterSendJobPayload>;
-  slackNotifier?: SlackNotifier;
 }
 
 export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
@@ -133,23 +129,6 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
           { event: "archive.send_enqueued", runId },
           "archive: send-newsletter job enqueued",
         );
-      }
-      if (deps.slackNotifier) {
-        try {
-          await deps.slackNotifier.notifyReviewedArchive({
-            runId,
-            trigger: "manual",
-          });
-        } catch (err) {
-          logger.error(
-            {
-              event: "slack.notify.unexpected_throw",
-              runId,
-              error: err instanceof Error ? err.message : String(err),
-            },
-            "slack.notify.unexpected_throw",
-          );
-        }
       }
       return c.json(updated);
     } catch (err) {
@@ -326,26 +305,12 @@ function getDefaultSendQueue(): Queue<NewsletterSendJobPayload> {
 }
 
 function createDefaultArchivesDeps(): ArchivesRouterDeps {
-  const archiveRepo = createRunArchivesRepo(defaultGetDb());
-  const rawItemsRepo = createRawItemsRepo(defaultGetDb());
-  const subscribersRepo = createSubscribersRepo(defaultGetDb());
-  const slackNotifier = createApiSlackNotifier({
-    archives: archiveRepo,
-    subscribers: subscribersRepo,
-    resolveTopRankedTitle: async (archive) => {
-      if (archive.rankedItems.length === 0) return null;
-      const firstRef = archive.rankedItems[0];
-      const rows = await rawItemsRepo.findByIds([firstRef.rawItemId]);
-      return rows.length > 0 ? rows[0].title : null;
-    },
-  });
   return {
-    getRawItemsRepo: () => rawItemsRepo,
-    getArchiveRepo: () => archiveRepo,
+    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
+    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
     hydrateAddedPost: createDefaultHydrateAddedPost(),
     generateRecapFn: createDefaultGenerateRecapFn(),
     sendQueue: getDefaultSendQueue(),
-    slackNotifier,
   };
 }
 

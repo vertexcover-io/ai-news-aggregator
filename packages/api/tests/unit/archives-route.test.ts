@@ -4,7 +4,6 @@ import type {
   RunState,
   PoolResponse,
   RankedItem,
-  SlackNotifier,
 } from "@newsletter/shared";
 import { createArchivesRouter } from "@api/routes/archives.js";
 import type {
@@ -44,7 +43,6 @@ function makeApp(opts: {
   repo?: RawItemsRepo;
   archiveRepo: RunArchivesRepo;
   generateRecapFn?: GenerateRecapFn;
-  slackNotifier?: SlackNotifier;
   sendQueue?: Queue<NewsletterSendJobPayload>;
 }): Hono {
   const app = new Hono();
@@ -52,7 +50,6 @@ function makeApp(opts: {
     getRawItemsRepo: () => opts.repo ?? makeRepo(),
     getArchiveRepo: () => opts.archiveRepo,
     generateRecapFn: opts.generateRecapFn,
-    slackNotifier: opts.slackNotifier,
     sendQueue: opts.sendQueue,
   });
   app.route("/api/archives", router);
@@ -482,7 +479,7 @@ describe("POST /api/archives/:runId/promote (REQ-010, REQ-011, EDGE-007)", () =>
   });
 });
 
-describe("PATCH /api/archives/:runId Slack notification (P5)", () => {
+describe("PATCH /api/archives/:runId enqueues send-newsletter only (Slack moved to send worker)", () => {
   const date = new Date("2026-04-10T00:00:00Z");
 
   function makeRow(): RunArchiveRow {
@@ -535,17 +532,14 @@ describe("PATCH /api/archives/:runId Slack notification (P5)", () => {
     };
   }
 
-  it("VS-1: invokes slackNotifier.notifyReviewedArchive once with manual trigger after sendQueue.add", async () => {
+  it("PATCH enqueues send-newsletter and returns 200; Slack notification fires from the send worker, not the route", async () => {
     const archiveRepo = makeArchiveRepo(makeRow());
     archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(makeUpdatedRow()));
     const sendQueue = makeSendQueue();
-    const notify = vi.fn().mockResolvedValue(undefined);
-    const slackNotifier: SlackNotifier = { notifyReviewedArchive: notify };
 
     const app = makeApp({
       archiveRepo,
       repo: makeRepo([makeRawForId(1)]),
-      slackNotifier,
       sendQueue,
     });
 
@@ -556,79 +550,6 @@ describe("PATCH /api/archives/:runId Slack notification (P5)", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(notify).toHaveBeenCalledTimes(1);
-    expect(notify).toHaveBeenCalledWith({ runId: "run-1", trigger: "manual" });
-
-    // Order: sendQueue.add invoked before slack notifier
-    const sendOrder = sendQueue.add.mock.invocationCallOrder[0];
-    const notifyOrder = notify.mock.invocationCallOrder[0];
-    expect(sendOrder).toBeLessThan(notifyOrder);
-  });
-
-  it("VS-3: route always invokes notifier (idempotency lives in the notifier itself)", async () => {
-    const archiveRepo = makeArchiveRepo({
-      ...makeRow(),
-      reviewed: true,
-    });
-    archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(makeUpdatedRow()));
-    const notify = vi.fn().mockResolvedValue(undefined);
-    const slackNotifier: SlackNotifier = { notifyReviewedArchive: notify };
-
-    const app = makeApp({
-      archiveRepo,
-      repo: makeRepo([makeRawForId(1)]),
-      slackNotifier,
-    });
-
-    const res = await app.request("/api/archives/run-1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: patchBody(),
-    });
-
-    expect(res.status).toBe(200);
-    expect(notify).toHaveBeenCalledTimes(1);
-  });
-
-  it("VS-7: returns 200 even when notifier rejects unexpectedly", async () => {
-    const archiveRepo = makeArchiveRepo(makeRow());
-    archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(makeUpdatedRow()));
-    const notify = vi.fn().mockRejectedValue(new Error("network blew up"));
-    const slackNotifier: SlackNotifier = { notifyReviewedArchive: notify };
-
-    const app = makeApp({
-      archiveRepo,
-      repo: makeRepo([makeRawForId(1)]),
-      slackNotifier,
-    });
-
-    const res = await app.request("/api/archives/run-1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: patchBody(),
-    });
-
-    expect(res.status).toBe(200);
-    expect(notify).toHaveBeenCalledTimes(1);
-  });
-
-  it("works without a configured notifier (deps.slackNotifier undefined)", async () => {
-    const archiveRepo = makeArchiveRepo(makeRow());
-    archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(makeUpdatedRow()));
-
-    const app = makeApp({
-      archiveRepo,
-      repo: makeRepo([makeRawForId(1)]),
-    });
-
-    const res = await app.request("/api/archives/run-1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: patchBody(),
-    });
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { reviewed: boolean };
-    expect(body.reviewed).toBe(true);
+    expect(sendQueue.add).toHaveBeenCalledTimes(1);
   });
 });

@@ -366,4 +366,97 @@ describe("handleNewsletterSendJob", () => {
       baseUrl: "https://example.com",
     });
   });
+
+  it("calls slackNotifier with classified failure reasons after a partial-failure send", async () => {
+    const subs = [
+      makeSubscriber({ id: "sub-1", email: "a@x.com" }),
+      makeSubscriber({ id: "sub-2", email: "b@x.com" }),
+      makeSubscriber({ id: "sub-3", email: "c@x.com" }),
+      makeSubscriber({ id: "sub-4", email: "d@x.com" }),
+    ];
+    const sendMock = vi
+      .fn()
+      .mockResolvedValueOnce({ messageId: "msg-ok" })
+      .mockRejectedValueOnce(
+        new Error(
+          "Resend error: Too many requests. You can only make 5 requests per second.",
+        ),
+      )
+      .mockRejectedValueOnce(
+        new Error(
+          "Resend error: Too many requests. You can only make 5 requests per second.",
+        ),
+      )
+      .mockRejectedValueOnce(
+        new Error(
+          "Resend error: The example.com domain is not verified. Please verify it.",
+        ),
+      );
+    const notify = vi.fn(() => Promise.resolve());
+
+    const deps = makeDeps({
+      emailProvider: { send: sendMock },
+      subscribersRepo: {
+        listConfirmed: vi.fn().mockResolvedValue(subs),
+        findByIds: vi.fn().mockResolvedValue(subs),
+      },
+      slackNotifier: { notifyNewsletterSent: notify },
+    });
+
+    await handleNewsletterSendJob(deps, {
+      name: "send-newsletter",
+      id: "j1",
+      data: { runId: "run-uuid-1234", subscriberIds: "all" },
+    });
+
+    expect(notify).toHaveBeenCalledOnce();
+    const arg = notify.mock.calls[0]?.[0] as {
+      runId: string;
+      delivery: {
+        attempted: number;
+        sent: number;
+        failed: number;
+        failureReasons?: { reason: string; count: number }[];
+      };
+    };
+    expect(arg.runId).toBe("run-uuid-1234");
+    expect(arg.delivery.attempted).toBe(4);
+    expect(arg.delivery.sent).toBe(1);
+    expect(arg.delivery.failed).toBe(3);
+    expect(arg.delivery.failureReasons).toEqual([
+      { reason: "rate limit", count: 2 },
+      { reason: "unverified sender domain", count: 1 },
+    ]);
+  });
+
+  it("calls slackNotifier with no failureReasons on a fully-successful send", async () => {
+    const sub = makeSubscriber();
+    const notify = vi.fn(() => Promise.resolve());
+    const deps = makeDeps({
+      emailProvider: { send: vi.fn().mockResolvedValue({ messageId: "ok" }) },
+      subscribersRepo: {
+        listConfirmed: vi.fn().mockResolvedValue([sub]),
+        findByIds: vi.fn().mockResolvedValue([sub]),
+      },
+      slackNotifier: { notifyNewsletterSent: notify },
+    });
+
+    await handleNewsletterSendJob(deps, {
+      name: "send-newsletter",
+      id: "j1",
+      data: { runId: "run-uuid-1234", subscriberIds: "all" },
+    });
+
+    expect(notify).toHaveBeenCalledOnce();
+    const arg = notify.mock.calls[0]?.[0] as {
+      delivery: {
+        sent: number;
+        failed: number;
+        failureReasons?: unknown;
+      };
+    };
+    expect(arg.delivery.sent).toBe(1);
+    expect(arg.delivery.failed).toBe(0);
+    expect(arg.delivery.failureReasons).toBeUndefined();
+  });
 });

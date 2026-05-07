@@ -33,12 +33,16 @@ docs/spec/**
 !docs/spec/share-archive-on-social/verification/*.log
 !docs/spec/**/verification/*.png
 !docs/spec/**/verification/*.jpg
-# slack-notify-on-reviewed: ship design + library-probe + probes
+# slack-notify-on-reviewed: ship design + library-probe + probes + live-run proof
 !docs/spec/slack-notify-on-reviewed/design.md
 !docs/spec/slack-notify-on-reviewed/library-probe.md
 !docs/spec/slack-notify-on-reviewed/probes/
 !docs/spec/slack-notify-on-reviewed/probes/*.mjs
 !docs/spec/slack-notify-on-reviewed/probes/*.md
+!docs/spec/slack-notify-on-reviewed/verification/verify-report.md
+!docs/spec/slack-notify-on-reviewed/verification/live-run-logs/
+!docs/spec/slack-notify-on-reviewed/verification/live-run-logs/*.log
+!docs/spec/slack-notify-on-reviewed/verification/live-run-logs/*.txt
 .worktrees/
 .harness/
 .worktrees/

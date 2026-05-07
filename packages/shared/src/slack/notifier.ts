@@ -1,6 +1,6 @@
 import { buildReviewedMessage } from "./message-builder.js";
 import type {
-  NotifyReviewedInput,
+  NotifyNewsletterSentInput,
   SlackNotifier,
   SlackNotifierDeps,
 } from "./types.js";
@@ -25,7 +25,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
       "slack notifications disabled (SLACK_WEBHOOK_URL unset)",
     );
     return {
-      notifyReviewedArchive: (): Promise<void> => Promise.resolve(),
+      notifyNewsletterSent: (): Promise<void> => Promise.resolve(),
     };
   }
 
@@ -40,7 +40,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
   }
 
   return {
-    async notifyReviewedArchive(input: NotifyReviewedInput): Promise<void> {
+    async notifyNewsletterSent(input: NotifyNewsletterSentInput): Promise<void> {
       try {
         const archive = await deps.archives.findById(input.runId);
         if (archive === null) {
@@ -67,11 +67,9 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
         }
 
         const topRankedTitle = await deps.resolveTopRankedTitle(archive);
-        const subscriberCount = await deps.subscribers.countConfirmed();
 
         const { blocks } = buildReviewedMessage({
           runId: input.runId,
-          trigger: input.trigger,
           archive: {
             id: archive.id,
             digestHeadline: archive.digestHeadline,
@@ -79,7 +77,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
           },
           topRankedTitle,
           sourceTelemetry: archive.sourceTelemetry,
-          subscriberCount,
+          delivery: input.delivery,
           publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
         });
 
@@ -96,7 +94,9 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
             {
               event: "slack.notify.sent",
               runId: input.runId,
-              trigger: input.trigger,
+              attempted: input.delivery.attempted,
+              sent: input.delivery.sent,
+              failed: input.delivery.failed,
             },
             "slack notification sent",
           );

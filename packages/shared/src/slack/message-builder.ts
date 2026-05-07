@@ -1,8 +1,8 @@
 import type { RunSourceTelemetry } from "../types/run.js";
+import type { DeliveryCounts } from "./types.js";
 
 export interface BuildReviewedMessageArgs {
   runId: string;
-  trigger: "manual" | "auto-review";
   archive: {
     id: string;
     digestHeadline: string | null;
@@ -10,7 +10,7 @@ export interface BuildReviewedMessageArgs {
   };
   topRankedTitle: string | null;
   sourceTelemetry: RunSourceTelemetry | null;
-  subscriberCount: number;
+  delivery: DeliveryCounts;
   publicArchiveBaseUrl?: string;
 }
 
@@ -46,12 +46,19 @@ function statusSuffix(status: "completed" | "failed" | "partial"): string {
   return "";
 }
 
+const ERROR_MESSAGE_MAX_LEN = 120;
+
+function truncate(s: string, max: number = ERROR_MESSAGE_MAX_LEN): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1).trimEnd() + "…";
+}
+
 export function buildReviewedMessage(args: BuildReviewedMessageArgs): {
   blocks: unknown[];
 } {
   const blocks: SlackBlock[] = [];
 
-  blocks.push(headerBlock(`🟢 Newsletter Reviewed (${args.trigger})`));
+  blocks.push(headerBlock("🟢 Newsletter Sent"));
 
   const headline = args.archive.digestHeadline ?? args.topRankedTitle;
   if (headline !== null && headline.length > 0) {
@@ -62,36 +69,59 @@ export function buildReviewedMessage(args: BuildReviewedMessageArgs): {
     blocks.push(sectionMarkdown("Telemetry unavailable (legacy run)"));
   } else {
     const telemetry = args.sourceTelemetry;
-    const lines = ["*📊 Sources*"];
+    const sourceLines = ["*📊 Sources*"];
     for (const source of telemetry.sources) {
-      lines.push(
+      sourceLines.push(
         `• ${source.displayName}: ${source.itemsFetched} items${statusSuffix(source.status)}`,
       );
     }
-    lines.push(`_Total: ${telemetry.totalItemsFetched} items fetched_`);
-    blocks.push(sectionMarkdown(lines.join("\n")));
+    sourceLines.push(`_Total: ${telemetry.totalItemsFetched} items fetched_`);
+    blocks.push(sectionMarkdown(sourceLines.join("\n")));
 
     const sourcesWithErrors = telemetry.sources.filter(
       (s) => s.errors.length > 0,
     );
-    if (sourcesWithErrors.length > 0) {
-      const errorLines = [`*⚠️ Errors (${sourcesWithErrors.length})*`];
+    const errorLines: string[] = [];
+    if (sourcesWithErrors.length === 0) {
+      errorLines.push("*⚠️ Errors*");
+      errorLines.push("• No collection errors");
+    } else {
+      errorLines.push(`*⚠️ Errors (${sourcesWithErrors.length})*`);
       for (const source of sourcesWithErrors) {
+        const reason = truncate(source.errors[0] ?? "unknown");
         errorLines.push(
-          `• ${source.displayName}: ${source.errors[0]} (${source.retries} retries) — ${source.status}`,
+          `• ${source.displayName}: ${reason} (${source.retries} retries) — ${source.status}`,
         );
       }
-      blocks.push(sectionMarkdown(errorLines.join("\n")));
     }
+    blocks.push(sectionMarkdown(errorLines.join("\n")));
   }
 
-  const subscriberWord =
-    args.subscriberCount === 1 ? "subscriber" : "subscribers";
-  blocks.push(
-    sectionMarkdown(
-      `*📬 Distribution*\nWill send to ${args.subscriberCount} ${subscriberWord}.`,
-    ),
-  );
+  const { attempted, sent, failed, failureReasons } = args.delivery;
+  const recipientWord = sent === 1 ? "subscriber" : "subscribers";
+  const distributionLines = ["*📬 Distribution*"];
+  if (failed === 0 && attempted === sent) {
+    distributionLines.push(`Sent to ${sent} ${recipientWord}.`);
+  } else {
+    distributionLines.push(
+      `Sent to ${sent}/${attempted} ${recipientWord} (${failed} failed).`,
+    );
+    if (failureReasons !== undefined && failureReasons.length > 0) {
+      // Strategic top-3 reasons; aggregated counts beat full per-recipient logs.
+      const top = failureReasons.slice(0, 3);
+      for (const r of top) {
+        distributionLines.push(`  ◦ ${r.count}× ${truncate(r.reason)}`);
+      }
+      const remaining = failureReasons.length - top.length;
+      if (remaining > 0) {
+        const otherCount = failureReasons
+          .slice(3)
+          .reduce((acc, r) => acc + r.count, 0);
+        distributionLines.push(`  ◦ ${otherCount}× other (${remaining} more reasons)`);
+      }
+    }
+  }
+  blocks.push(sectionMarkdown(distributionLines.join("\n")));
 
   if (
     args.publicArchiveBaseUrl !== undefined &&

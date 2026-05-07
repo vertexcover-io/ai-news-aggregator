@@ -48,7 +48,7 @@ import type {
   TwitterCollectConfig,
   WebCollectConfig,
 } from "@pipeline/types.js";
-import type { CollectorResult, SlackNotifier } from "@newsletter/shared";
+import type { CollectorResult } from "@newsletter/shared";
 import { CancelledError } from "@pipeline/lib/cancelled-error.js";
 import {
   createCancelSubscriber,
@@ -156,7 +156,6 @@ export interface RunProcessDeps {
   cancelSubscriber: CancelSubscriberFactory;
   twitterClient: TwitterClient;
   sendQueue?: Queue<NewsletterSendJobPayload>;
-  slackNotifier?: SlackNotifier;
 }
 
 interface CollectingOutcome {
@@ -546,24 +545,6 @@ export async function handleRunProcessJob(
       }
     }
 
-    if (archiveWritten && autoReviewed && deps.slackNotifier) {
-      try {
-        await deps.slackNotifier.notifyReviewedArchive({
-          runId,
-          trigger: "auto-review",
-        });
-      } catch (err) {
-        logger.error(
-          {
-            event: "slack.notify.unexpected_throw",
-            runId,
-            error: err instanceof Error ? err.message : String(err),
-          },
-          "slack.notify.unexpected_throw",
-        );
-      }
-    }
-
     logger.info(
       {
         event: "run.completed",
@@ -627,7 +608,6 @@ export interface CreateRunProcessWorkerOptions {
   cancelSubscriber?: CancelSubscriberFactory;
   twitterClient?: TwitterClient;
   sendQueue?: Queue<NewsletterSendJobPayload>;
-  slackNotifier?: SlackNotifier;
 }
 
 export function createRunProcessWorker(
@@ -681,7 +661,6 @@ export function createRunProcessWorker(
     cancelSubscriber,
     twitterClient,
     sendQueue: options.sendQueue,
-    slackNotifier: options.slackNotifier,
   };
 
   return new Worker<RunProcessJobData, RunProcessResult>(

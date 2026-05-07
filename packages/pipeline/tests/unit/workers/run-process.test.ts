@@ -1898,13 +1898,12 @@ describe("run-process slack notifier + telemetry (P4)", () => {
       });
   }
 
-  it("invokes slackNotifier with trigger 'auto-review' when AUTO_REVIEW=true and archive write succeeds", async () => {
+  it("persists sourceTelemetry on every archive write regardless of AUTO_REVIEW", async () => {
     const prev = process.env.AUTO_REVIEW;
     process.env.AUTO_REVIEW = "true";
     try {
       const runStateMock = makeMockRunState(makeRunState());
       const archiveUpsert = vi.fn(() => Promise.resolve());
-      const notify = vi.fn(() => Promise.resolve());
       const hn = vi.fn(
         (): Promise<CollectorResult> =>
           Promise.resolve({
@@ -1921,7 +1920,6 @@ describe("run-process slack notifier + telemetry (P4)", () => {
         rankFn: makeRankFn(),
         shortlistFn: makeShortlistFn(passthroughShortlist),
         archiveRepo: { upsert: archiveUpsert },
-        slackNotifier: { notifyReviewedArchive: notify },
         collectFns: { hn, reddit: vi.fn(), web: vi.fn(), twitter: vi.fn() },
       });
 
@@ -1934,24 +1932,24 @@ describe("run-process slack notifier + telemetry (P4)", () => {
         },
       });
 
-      expect(notify).toHaveBeenCalledOnce();
-      expect(notify).toHaveBeenCalledWith({
-        runId: "run-1",
-        trigger: "auto-review",
-      });
+      expect(archiveUpsert).toHaveBeenCalledOnce();
+      const arg = archiveUpsert.mock.calls[0]?.[0] as {
+        sourceTelemetry: { sources: unknown[]; totalItemsFetched: number };
+      };
+      expect(arg.sourceTelemetry).toBeDefined();
+      expect(arg.sourceTelemetry.totalItemsFetched).toBe(5);
     } finally {
       if (prev === undefined) delete process.env.AUTO_REVIEW;
       else process.env.AUTO_REVIEW = prev;
     }
   });
 
-  it("does not invoke slackNotifier when AUTO_REVIEW is unset, but still persists sourceTelemetry", async () => {
+  it("does not invoke slackNotifier from run-process worker (Slack is fired from newsletter-send worker)", async () => {
     const prev = process.env.AUTO_REVIEW;
     delete process.env.AUTO_REVIEW;
     try {
       const runStateMock = makeMockRunState(makeRunState());
       const archiveUpsert = vi.fn(() => Promise.resolve());
-      const notify = vi.fn(() => Promise.resolve());
       const hn = vi.fn(
         (): Promise<CollectorResult> =>
           Promise.resolve({
@@ -1968,7 +1966,6 @@ describe("run-process slack notifier + telemetry (P4)", () => {
         rankFn: makeRankFn(),
         shortlistFn: makeShortlistFn(passthroughShortlist),
         archiveRepo: { upsert: archiveUpsert },
-        slackNotifier: { notifyReviewedArchive: notify },
         collectFns: { hn, reddit: vi.fn(), web: vi.fn(), twitter: vi.fn() },
       });
 
@@ -1981,72 +1978,18 @@ describe("run-process slack notifier + telemetry (P4)", () => {
         },
       });
 
-      expect(notify).not.toHaveBeenCalled();
+      // No slack-related log events should be emitted from run-process.
+      const slackLogs = [
+        ...mockLoggerInfo.mock.calls,
+        ...mockLoggerWarn.mock.calls,
+        ...mockLoggerError.mock.calls,
+      ].filter((c) =>
+        ((c[0] as { event?: string })?.event ?? "").startsWith("slack."),
+      );
+      expect(slackLogs).toHaveLength(0);
       expect(archiveUpsert).toHaveBeenCalledOnce();
-      const arg = archiveUpsert.mock.calls[0]?.[0] as {
-        sourceTelemetry: {
-          sources: { sourceType: string; identifier: string }[];
-          totalItemsFetched: number;
-          totalErrors: number;
-        };
-      };
-      expect(arg.sourceTelemetry).toBeDefined();
-      expect(arg.sourceTelemetry.sources).toHaveLength(1);
-      expect(arg.sourceTelemetry.sources[0]?.sourceType).toBe("hn");
-      expect(arg.sourceTelemetry.sources[0]?.identifier).toBe("hn");
-      expect(arg.sourceTelemetry.totalItemsFetched).toBe(5);
-      expect(arg.sourceTelemetry.totalErrors).toBe(0);
     } finally {
       if (prev !== undefined) process.env.AUTO_REVIEW = prev;
-    }
-  });
-
-  it("worker still completes when slackNotifier throws unexpectedly", async () => {
-    const prev = process.env.AUTO_REVIEW;
-    process.env.AUTO_REVIEW = "true";
-    try {
-      const runStateMock = makeMockRunState(makeRunState());
-      const archiveUpsert = vi.fn(() => Promise.resolve());
-      const notify = vi.fn(() => Promise.reject(new Error("notifier blew up")));
-      const hn = vi.fn(
-        (): Promise<CollectorResult> =>
-          Promise.resolve({
-            itemsFetched: 1,
-            itemsStored: 1,
-            commentsFetched: 0,
-            durationMs: 5,
-          }),
-      );
-
-      const worker = createRunProcessWorker({
-        runState: runStateMock.service,
-        loadFn: vi.fn(() => Promise.resolve([makeCandidate(1)])),
-        rankFn: makeRankFn(),
-        shortlistFn: makeShortlistFn(passthroughShortlist),
-        archiveRepo: { upsert: archiveUpsert },
-        slackNotifier: { notifyReviewedArchive: notify },
-        collectFns: { hn, reddit: vi.fn(), web: vi.fn(), twitter: vi.fn() },
-      });
-
-      const result = await worker.handler({
-        ...baseJob,
-        data: {
-          ...baseJob.data,
-          sourceTypes: ["hn"],
-          collectors: { hn: { sinceDays: 1 } as unknown as HnCollectConfig },
-        },
-      });
-
-      expect(result).toEqual({ rankedCount: 1 });
-      const errLog = mockLoggerError.mock.calls.find(
-        (c) =>
-          (c[0] as { event?: string }).event ===
-          "slack.notify.unexpected_throw",
-      );
-      expect(errLog).toBeDefined();
-    } finally {
-      if (prev === undefined) delete process.env.AUTO_REVIEW;
-      else process.env.AUTO_REVIEW = prev;
     }
   });
 

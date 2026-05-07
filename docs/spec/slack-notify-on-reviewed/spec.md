@@ -7,18 +7,18 @@
 
 ## Summary
 
-Post a Slack message to `#internal-projects` whenever a newsletter run's archive transitions to `reviewed=true`. Message includes per-source link counts, distribution recipient count, and any data collection errors with retry counts. Both the manual review path (API `PATCH /api/admin/archives/:runId`) and the pipeline `AUTO_REVIEW` path must trigger the notification.
+Post a Slack message to `#internal-projects` whenever the daily newsletter has finished sending — i.e. at the end of the `newsletter-send` worker job. The message includes per-source link counts (from telemetry persisted on the archive at run completion), an Errors section (always present; shows "No collection errors" when zero), and actual delivery counts (`Sent to N subscribers` or `Sent to N/M subscribers (F failed)`). The send job is enqueued by both the manual review path (`PATCH /api/admin/archives/:runId`) and the AUTO_REVIEW pipeline path, so both review modes ultimately trigger one Slack notification per archive.
 
 ## Functional Requirements
 
-### FR-1. Trigger Points
+### FR-1. Trigger Point
 
-The notification fires on **both** review-completion paths:
+The notification fires from the **`newsletter-send` worker**, after the send job completes (`packages/pipeline/src/workers/newsletter-send.ts`, after the `newsletter-send.completed` log). This means:
 
-- **Manual:** API `PATCH /api/admin/archives/:runId` with `{ reviewed: true }` (current code path: `packages/api/src/services/review.ts` → after `enqueueSendNewsletter()`).
-- **AUTO_REVIEW:** Pipeline run completion when `process.env.AUTO_REVIEW === "true"` (current code path: `packages/pipeline/src/workers/run-process.ts` lines 504-521, after archive upsert).
+- **Manual review:** `PATCH /api/admin/archives/:runId` enqueues `send-newsletter` → worker delivers emails → fires Slack with actual delivery counts.
+- **AUTO_REVIEW:** Pipeline run completion enqueues `send-newsletter` → same worker path → same Slack notification.
 
-The notification fires **after** `enqueueSendNewsletter()` is called (so a Slack failure cannot block the send).
+A single archive produces exactly one Slack notification (idempotency via `slack_notified_at` on the archive row).
 
 ### FR-2. Message Content
 
@@ -26,11 +26,11 @@ The Slack message MUST include:
 
 | Section | Content |
 |---------|---------|
-| Header | "🟢 Newsletter Reviewed — Issue #N (trigger: manual\|auto-review)" |
+| Header | "🟢 Newsletter Sent" |
 | Digest | `archive.digestHeadline` if present, otherwise the rank-1 item title; omitted if neither exists |
 | Sources | One line per source unit with `displayName` and `itemsFetched`. Total at the end. |
-| Errors | One line per source with errors. Includes error string, retry count, status (failed/partial). Section omitted if zero errors. |
-| Distribution | "Will send to N subscribers" (count from `SubscribersRepo.listConfirmed()`) |
+| Errors | **Always present.** When zero errors: "*⚠️ Errors* / • No collection errors". When errors: one line per failed source with error string, retry count, status. |
+| Distribution | "Sent to N subscribers" when all delivered; "Sent to N/M subscribers (F failed)" when some failures. Counts come from the send worker. |
 | Footer | Archive link if `PUBLIC_BASE_URL` env is set |
 
 ### FR-3. Per-Source Telemetry Persistence

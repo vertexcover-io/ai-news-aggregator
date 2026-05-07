@@ -4,7 +4,6 @@ import { createSlackNotifier } from "@shared/slack/notifier.js";
 import type {
   NotifierArchiveAccess,
   NotifierArchiveView,
-  NotifierSubscriberCount,
   NotifierTopRankedTitle,
 } from "@shared/slack/types.js";
 
@@ -63,10 +62,6 @@ function makeArchives(
   };
 }
 
-function makeSubscribers(count = 3): NotifierSubscriberCount {
-  return { countConfirmed: vi.fn(() => Promise.resolve(count)) };
-}
-
 const resolveTitle: NotifierTopRankedTitle = () => Promise.resolve(null);
 
 describe("createSlackNotifier", () => {
@@ -77,12 +72,11 @@ describe("createSlackNotifier", () => {
     const notifier = createSlackNotifier({
       webhookUrl: undefined,
       archives,
-      subscribers: makeSubscribers(),
       resolveTopRankedTitle: resolveTitle,
       logger,
       fetchFn: fetchFn as unknown as typeof fetch,
     });
-    await notifier.notifyReviewedArchive({ runId: "run-1", trigger: "manual" });
+    await notifier.notifyNewsletterSent({ runId: "run-1", delivery: { attempted: 3, sent: 3, failed: 0 } });
     expect(fetchFn).not.toHaveBeenCalled();
     expect(archives.findById).not.toHaveBeenCalled();
     const disabled = calls.filter(
@@ -101,12 +95,11 @@ describe("createSlackNotifier", () => {
     const notifier = createSlackNotifier({
       webhookUrl: "",
       archives,
-      subscribers: makeSubscribers(),
       resolveTopRankedTitle: resolveTitle,
       logger,
       fetchFn: fetchFn as unknown as typeof fetch,
     });
-    await notifier.notifyReviewedArchive({ runId: "run-1", trigger: "manual" });
+    await notifier.notifyNewsletterSent({ runId: "run-1", delivery: { attempted: 3, sent: 3, failed: 0 } });
     expect(fetchFn).not.toHaveBeenCalled();
     expect(archives.findById).not.toHaveBeenCalled();
     expect(
@@ -127,7 +120,6 @@ describe("createSlackNotifier", () => {
     const notifier = createSlackNotifier({
       webhookUrl: "https://evil.example.com/webhook",
       archives,
-      subscribers: makeSubscribers(),
       resolveTopRankedTitle: resolveTitle,
       logger,
       fetchFn: fetchFn as unknown as typeof fetch,
@@ -140,7 +132,7 @@ describe("createSlackNotifier", () => {
             "slack.notify.suspicious_url",
       ),
     ).toBe(true);
-    await notifier.notifyReviewedArchive({ runId: "run-1", trigger: "manual" });
+    await notifier.notifyNewsletterSent({ runId: "run-1", delivery: { attempted: 3, sent: 3, failed: 0 } });
     expect(fetchFn).toHaveBeenCalledTimes(1);
     expect(archives.markSlackNotified).toHaveBeenCalledTimes(1);
   });
@@ -152,14 +144,13 @@ describe("createSlackNotifier", () => {
     const notifier = createSlackNotifier({
       webhookUrl: SECRET_URL,
       archives,
-      subscribers: makeSubscribers(),
       resolveTopRankedTitle: resolveTitle,
       logger,
       fetchFn: fetchFn as unknown as typeof fetch,
     });
-    await notifier.notifyReviewedArchive({
+    await notifier.notifyNewsletterSent({
       runId: "missing",
-      trigger: "manual",
+      delivery: { attempted: 0, sent: 0, failed: 0 },
     });
     expect(fetchFn).not.toHaveBeenCalled();
     expect(archives.markSlackNotified).not.toHaveBeenCalled();
@@ -182,12 +173,11 @@ describe("createSlackNotifier", () => {
     const notifier = createSlackNotifier({
       webhookUrl: SECRET_URL,
       archives,
-      subscribers: makeSubscribers(),
       resolveTopRankedTitle: resolveTitle,
       logger,
       fetchFn: fetchFn as unknown as typeof fetch,
     });
-    await notifier.notifyReviewedArchive({ runId: "run-1", trigger: "manual" });
+    await notifier.notifyNewsletterSent({ runId: "run-1", delivery: { attempted: 3, sent: 3, failed: 0 } });
     expect(fetchFn).not.toHaveBeenCalled();
     expect(archives.markSlackNotified).not.toHaveBeenCalled();
     expect(
@@ -210,13 +200,12 @@ describe("createSlackNotifier", () => {
     const notifier = createSlackNotifier({
       webhookUrl: SECRET_URL,
       archives,
-      subscribers: makeSubscribers(7),
       resolveTopRankedTitle: resolveTitle,
       logger,
       fetchFn: fetchFn as unknown as typeof fetch,
       now: () => fixedNow,
     });
-    await notifier.notifyReviewedArchive({ runId: "run-1", trigger: "manual" });
+    await notifier.notifyNewsletterSent({ runId: "run-1", delivery: { attempted: 3, sent: 3, failed: 0 } });
     expect(fetchFn).toHaveBeenCalledTimes(1);
     const [url] = fetchFn.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(SECRET_URL);
@@ -241,13 +230,12 @@ describe("createSlackNotifier", () => {
     const notifier = createSlackNotifier({
       webhookUrl: SECRET_URL,
       archives,
-      subscribers: makeSubscribers(),
       resolveTopRankedTitle: resolveTitle,
       logger,
       fetchFn: fetchFn as unknown as typeof fetch,
     });
     await expect(
-      notifier.notifyReviewedArchive({ runId: "run-1", trigger: "manual" }),
+      notifier.notifyNewsletterSent({ runId: "run-1", delivery: { attempted: 3, sent: 3, failed: 0 } }),
     ).resolves.toBeUndefined();
     expect(archives.markSlackNotified).not.toHaveBeenCalled();
     const errorCall = calls.find(
@@ -269,13 +257,12 @@ describe("createSlackNotifier", () => {
     const notifier = createSlackNotifier({
       webhookUrl: SECRET_URL,
       archives,
-      subscribers: makeSubscribers(),
       resolveTopRankedTitle: resolveTitle,
       logger,
       fetchFn: fetchFn as unknown as typeof fetch,
     });
     await expect(
-      notifier.notifyReviewedArchive({ runId: "run-1", trigger: "manual" }),
+      notifier.notifyNewsletterSent({ runId: "run-1", delivery: { attempted: 3, sent: 3, failed: 0 } }),
     ).resolves.toBeUndefined();
     expect(archives.markSlackNotified).not.toHaveBeenCalled();
     const errorCall = calls.find(
@@ -297,12 +284,11 @@ describe("createSlackNotifier", () => {
     const notifier = createSlackNotifier({
       webhookUrl: SECRET_URL,
       archives,
-      subscribers: makeSubscribers(),
       resolveTopRankedTitle: resolveTitle,
       logger,
       fetchFn: fetchFn as unknown as typeof fetch,
     });
-    await notifier.notifyReviewedArchive({ runId: "run-1", trigger: "manual" });
+    await notifier.notifyNewsletterSent({ runId: "run-1", delivery: { attempted: 3, sent: 3, failed: 0 } });
     const serialized = JSON.stringify(calls);
     expect(serialized).not.toContain("SECRET_PATH_TOKEN");
     expect(serialized).not.toContain(SECRET_URL);

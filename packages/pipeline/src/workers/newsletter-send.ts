@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { createLogger } from "@newsletter/shared/logger";
-import type { EmailProvider, NewsletterSendJobPayload, RankedItemRef, RecapContent } from "@newsletter/shared";
+import type { EmailProvider, NewsletterSendJobPayload, RankedItemRef, RecapContent, SlackNotifier } from "@newsletter/shared";
 import type { PipelineSubscribersRepo } from "@pipeline/repositories/subscribers.js";
 import type { PipelineEmailSendsRepo } from "@pipeline/repositories/email-sends.js";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
@@ -39,6 +39,7 @@ export interface NewsletterSendDeps {
   sesFromEmail: string;
   replyToEmail?: string;
   baseUrl: string;
+  slackNotifier?: SlackNotifier;
 }
 
 export interface NewsletterSendJobLike {
@@ -76,6 +77,38 @@ function chunk<T>(arr: T[], size: number): T[][] {
     chunks.push(arr.slice(i, i + size));
   }
   return chunks;
+}
+
+/**
+ * Boil a provider error message down to a short, actionable category.
+ * Strategic by design: the full per-recipient error stays in the structured
+ * log; the notifier surface gets a single human-grokkable label per class.
+ */
+function classifyDeliveryFailure(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes("rate limit") || m.includes("too many requests")) {
+    return "rate limit";
+  }
+  if (m.includes("domain is not verified") || m.includes("domain not verified")) {
+    return "unverified sender domain";
+  }
+  if (m.includes("bounce") || m.includes("mailbox") || m.includes("recipient")) {
+    return "recipient rejected";
+  }
+  if (m.includes("invalid") && m.includes("address")) {
+    return "invalid recipient address";
+  }
+  if (m.includes("timeout") || m.includes("etimedout") || m.includes("econnreset")) {
+    return "network timeout";
+  }
+  if (m.includes("auth") || m.includes("unauthorized") || m.includes("forbidden")) {
+    return "auth/permission denied";
+  }
+  // Fallback: keep it short — first sentence or first 60 chars.
+  const firstSentence = message.split(/[.\n]/)[0]?.trim() ?? message;
+  return firstSentence.length > 60
+    ? firstSentence.slice(0, 59).trimEnd() + "…"
+    : firstSentence;
 }
 
 function hydrateItems(refs: RankedItemRef[], rows: RawItemRow[]): NewsletterStory[] {
@@ -173,6 +206,7 @@ export async function handleNewsletterSendJob(
 
   let okCount = 0;
   let failCount = 0;
+  const failureReasonCounts = new Map<string, number>();
   for (const batch of batches) {
     await Promise.allSettled(
       batch.map(async (subscriber) => {
@@ -216,12 +250,19 @@ export async function handleNewsletterSendJob(
           );
         } catch (err) {
           failCount += 1;
+          const rawMessage = err instanceof Error ? err.message : String(err);
+          const reason = classifyDeliveryFailure(rawMessage);
+          failureReasonCounts.set(
+            reason,
+            (failureReasonCounts.get(reason) ?? 0) + 1,
+          );
           logger.error(
             {
               event: "newsletter-send.failed",
               runId,
               subscriberId: subscriber.id,
-              error: err instanceof Error ? err.message : String(err),
+              error: rawMessage,
+              reason,
             },
             "newsletter-send: failed to send to subscriber",
           );
@@ -230,6 +271,9 @@ export async function handleNewsletterSendJob(
       }),
     );
   }
+  const failureReasons = [...failureReasonCounts.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count);
 
   logger.info(
     {
@@ -242,4 +286,27 @@ export async function handleNewsletterSendJob(
     },
     "newsletter-send completed",
   );
+
+  if (deps.slackNotifier) {
+    try {
+      await deps.slackNotifier.notifyNewsletterSent({
+        runId,
+        delivery: {
+          attempted: toSend.length,
+          sent: okCount,
+          failed: failCount,
+          failureReasons: failureReasons.length > 0 ? failureReasons : undefined,
+        },
+      });
+    } catch (err) {
+      logger.error(
+        {
+          event: "slack.notify.unexpected_throw",
+          runId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "slack.notify.unexpected_throw",
+      );
+    }
+  }
 }
