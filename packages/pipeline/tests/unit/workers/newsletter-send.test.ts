@@ -89,7 +89,7 @@ function makeDeps(overrides: Partial<NewsletterSendDeps> = {}): NewsletterSendDe
     },
     renderNewsletter: vi.fn().mockResolvedValue("<html>newsletter</html>"),
     sessionSecret: "test-secret",
-    sesFromEmail: "newsletter@example.com",
+    fromMail: "newsletter@example.com",
     replyToEmail: undefined,
     baseUrl: "https://example.com",
     ...overrides,
@@ -140,6 +140,59 @@ describe("handleNewsletterSendJob", () => {
     expect(mockLoggerInfo).toHaveBeenCalledWith(
       expect.objectContaining({ event: "newsletter-send.no-recipients" }),
       expect.any(String),
+    );
+  });
+
+  it("calls slackNotifier with attempted=0 when there are 0 confirmed subscribers", async () => {
+    const notify = vi.fn().mockResolvedValue(undefined);
+    const deps = makeDeps({
+      subscribersRepo: {
+        listConfirmed: vi.fn().mockResolvedValue([]),
+        findByIds: vi.fn().mockResolvedValue([]),
+      },
+      slackNotifier: { notifyNewsletterSent: notify },
+    });
+    await handleNewsletterSendJob(deps, {
+      name: "send-newsletter",
+      id: "j1",
+      data: { runId: "run-uuid-1234", subscriberIds: "all" },
+    });
+    expect(deps.emailProvider.send).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "run-uuid-1234",
+        delivery: expect.objectContaining({ attempted: 0, sent: 0, failed: 0 }),
+      }),
+    );
+  });
+
+  it("calls slackNotifier with attempted=0 when all subscribers were already sent", async () => {
+    const sub = makeSubscriber();
+    const notify = vi.fn().mockResolvedValue(undefined);
+    const deps = makeDeps({
+      subscribersRepo: {
+        listConfirmed: vi.fn().mockResolvedValue([sub]),
+        findByIds: vi.fn().mockResolvedValue([sub]),
+      },
+      emailSendsRepo: {
+        create: vi.fn(),
+        findSentSubscriberIds: vi.fn().mockResolvedValue(new Set([sub.id])),
+      },
+      slackNotifier: { notifyNewsletterSent: notify },
+    });
+    await handleNewsletterSendJob(deps, {
+      name: "send-newsletter",
+      id: "j1",
+      data: { runId: "run-uuid-1234", subscriberIds: "all" },
+    });
+    expect(deps.emailProvider.send).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "run-uuid-1234",
+        delivery: expect.objectContaining({ attempted: 0, sent: 0, failed: 0 }),
+      }),
     );
   });
 

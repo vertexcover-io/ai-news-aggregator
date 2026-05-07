@@ -163,7 +163,7 @@ describe("Newsletter send — real Resend e2e", () => {
       rawItemsRepo: createRawItemsRepo(db),
       renderNewsletter,
       sessionSecret: process.env.SESSION_SECRET ?? "test-session-secret",
-      sesFromEmail: RESEND_FROM,
+      fromMail: RESEND_FROM,
       replyToEmail: undefined,
       baseUrl: "http://localhost:3000",
     };
@@ -227,7 +227,7 @@ describe("Newsletter send — real Resend e2e", () => {
       rawItemsRepo: createRawItemsRepo(db),
       renderNewsletter,
       sessionSecret: process.env.SESSION_SECRET ?? "test-session-secret",
-      sesFromEmail: RESEND_FROM,
+      fromMail: RESEND_FROM,
       replyToEmail: undefined,
       baseUrl: "http://localhost:3000",
     };

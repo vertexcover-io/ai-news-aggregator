@@ -206,7 +206,7 @@ export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
     // Validated at startup in index.ts — safe to assert here.
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     sessionSecret: process.env.SESSION_SECRET!,
-    sesFromEmail: process.env.SES_FROM_EMAIL ?? "newsletter@mail.vertexcover.io",
+    fromMail: process.env.FROM_MAIL ?? "newsletter@news.vertexcover.io",
     replyToEmail: process.env.NEWSLETTER_REPLY_TO_EMAIL,
     baseUrl: process.env.NEWSLETTER_BASE_URL ?? "https://newsletter.vertexcover.io",
     slackNotifier,
