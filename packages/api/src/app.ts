@@ -17,6 +17,14 @@ export interface BuildAppDeps {
   subscribeRouter: Hono;
   webhooksRouter: Hono;
   analyticsRouter: Hono;
+  /**
+   * Mounted at /archive/:runId. Returns server-rendered HTML with Open Graph
+   * meta tags pulled from the archive row, so social-media scrapers (LinkedIn,
+   * Slack, Facebook) that don't execute JavaScript can render preview cards.
+   * Caddy routes bot user-agents to this path; real browsers continue to hit
+   * the static SPA.
+   */
+  ogArchiveRouter: Hono;
 }
 
 const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
@@ -73,6 +81,10 @@ export function buildApp(deps: BuildAppDeps): Hono {
 
   app.route("/api/runs", gatedWrap(gate, deps.runsRouter));
   app.route("/api/settings", gatedWrap(gate, deps.settingsRouter));
+
+  // Public OG-tagged HTML for /archive/:runId — served to social bots only
+  // (Caddy gates this by user-agent in production).
+  app.route("/archive", deps.ogArchiveRouter);
 
   return app;
 }

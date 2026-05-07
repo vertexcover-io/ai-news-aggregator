@@ -99,6 +99,7 @@ function makeApp(
     subscribeRouter: makeStubSubscribeRouter(),
     webhooksRouter: makeStubWebhooksRouter(),
     analyticsRouter: makeStubAnalyticsRouter(),
+    ogArchiveRouter: new Hono(),
   });
 }
 

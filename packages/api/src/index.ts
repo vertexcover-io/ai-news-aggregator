@@ -31,6 +31,7 @@ import { createSesEventsRepo } from "@api/repositories/ses-events.js";
 import { createEmailSendsRepo } from "@api/repositories/email-sends.js";
 import { verifySnsMessage } from "@api/lib/sns-verifier.js";
 import { resolveBaseUrls } from "@api/lib/base-urls.js";
+import { createDefaultOgArchiveRouter } from "@api/routes/og-archive.js";
 
 const logger = createLogger("api");
 
@@ -122,6 +123,7 @@ const app = buildApp({
   subscribeRouter,
   webhooksRouter,
   analyticsRouter: createDefaultAnalyticsRouter(),
+  ogArchiveRouter: createDefaultOgArchiveRouter(newsletterBaseUrl),
 });
 
 const port = Number(process.env.API_PORT ?? 3000);

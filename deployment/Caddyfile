@@ -18,6 +18,19 @@ news.vertexcover.io {
 		reverse_proxy 127.0.0.1:3000
 	}
 
+	# Social-media scrapers (LinkedIn, Slack, Facebook, Twitter, Discord, etc.)
+	# don't execute JavaScript, so the SPA's client-injected og:* meta tags are
+	# invisible to them. Route bot UAs hitting /archive/* to the API, which
+	# serves a server-rendered HTML stub with proper Open Graph tags pulled
+	# from the archive row. Real browsers fall through to the SPA below.
+	@socialBot {
+		path /archive/*
+		header_regexp User-Agent (?i)(linkedinbot|slackbot|facebookexternalhit|facebot|twitterbot|discordbot|whatsapp|telegrambot|skypeuripreview|pinterest|redditbot|embedly|quora\s*link\s*preview|outbrain|nuzzel|bitlybot|googlebot|bingbot|yandexbot|applebot)
+	}
+	handle @socialBot {
+		reverse_proxy 127.0.0.1:3000
+	}
+
 	handle {
 		root * /var/www/newsletter/web
 		try_files {path} /index.html
