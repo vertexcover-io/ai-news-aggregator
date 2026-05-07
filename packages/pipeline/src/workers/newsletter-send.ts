@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { createLogger } from "@newsletter/shared/logger";
-import type { EmailProvider, NewsletterSendJobPayload, RankedItemRef, RecapContent, SlackNotifier } from "@newsletter/shared";
+import type { EmailProvider, NewsletterSendJobPayload, RankedItemRef, RecapContent, SlackNotifier, SubscriberSelect } from "@newsletter/shared";
 import type { PipelineSubscribersRepo } from "@pipeline/repositories/subscribers.js";
 import type { PipelineEmailSendsRepo } from "@pipeline/repositories/email-sends.js";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
@@ -89,7 +89,7 @@ export interface NewsletterSendDeps {
   rawItemsRepo: RawItemsRepo;
   renderNewsletter: (props: NewsletterRenderProps) => Promise<string>;
   sessionSecret: string;
-  sesFromEmail: string;
+  fromMail: string;
   replyToEmail?: string;
   baseUrl: string;
   slackNotifier?: SlackNotifier;
@@ -224,39 +224,39 @@ export async function handleNewsletterSendJob(
       ? await deps.subscribersRepo.listConfirmed()
       : await deps.subscribersRepo.findByIds(subscriberIds);
 
+  let toSend: SubscriberSelect[] = [];
   if (candidates.length === 0) {
     logger.info(
       { event: "newsletter-send.no-recipients", runId, jobId: job.id },
       "newsletter-send: no recipients",
     );
-    return;
-  }
-
-  const alreadySent = await deps.emailSendsRepo.findSentSubscriberIds(runId);
-  const toSend = candidates.filter((s) => !alreadySent.has(s.id));
-
-  if (toSend.length === 0) {
-    logger.info(
-      { event: "newsletter-send.all-already-sent", runId, jobId: job.id },
-      "newsletter-send: all subscribers already received this issue",
-    );
-    return;
+  } else {
+    const alreadySent = await deps.emailSendsRepo.findSentSubscriberIds(runId);
+    toSend = candidates.filter((s) => !alreadySent.has(s.id));
+    if (toSend.length === 0) {
+      logger.info(
+        { event: "newsletter-send.all-already-sent", runId, jobId: job.id },
+        "newsletter-send: all subscribers already received this issue",
+      );
+    }
   }
 
   const issueDate = formatArchiveDate(archive.completedAt);
   const subject = `AI Newsletter — ${issueDate}`;
   const batches = chunk(toSend, BATCH_SIZE);
 
-  logger.info(
-    {
-      event: "newsletter-send.started",
-      runId,
-      jobId: job.id,
-      total: toSend.length,
-      batches: batches.length,
-    },
-    "newsletter-send started",
-  );
+  if (toSend.length > 0) {
+    logger.info(
+      {
+        event: "newsletter-send.started",
+        runId,
+        jobId: job.id,
+        total: toSend.length,
+        batches: batches.length,
+      },
+      "newsletter-send started",
+    );
+  }
 
   let okCount = 0;
   let failCount = 0;
@@ -279,7 +279,7 @@ export async function handleNewsletterSendJob(
           await pacer.acquire();
           const result = await deps.emailProvider.send({
             to: [subscriber.email],
-            from: deps.sesFromEmail,
+            from: deps.fromMail,
             replyTo: deps.replyToEmail,
             subject,
             html,

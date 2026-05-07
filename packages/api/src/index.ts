@@ -57,7 +57,7 @@ const adminPassword = process.env.ADMIN_PASSWORD;
 const sessionSecret = process.env.SESSION_SECRET;
 
 const emailProvider = createEmailProvider();
-const sesFromEmail = process.env.SES_FROM_EMAIL ?? "newsletter@mail.vertexcover.io";
+const fromMail = process.env.FROM_MAIL ?? "newsletter@news.vertexcover.io";
 const replyToEmail = process.env.NEWSLETTER_REPLY_TO_EMAIL;
 const newsletterBaseUrl = process.env.NEWSLETTER_BASE_URL ?? process.env.BASE_URL ?? `http://localhost:${process.env.API_PORT ?? 3000}`;
 
@@ -74,7 +74,7 @@ const subscribeRouter = createSubscribeRouter({
     const html = await renderConfirmation({ confirmUrl, baseUrl: newsletterBaseUrl });
     await emailProvider.send({
       to: [email],
-      from: sesFromEmail,
+      from: fromMail,
       replyTo: replyToEmail,
       subject: "Confirm your AI Newsletter subscription",
       html,
