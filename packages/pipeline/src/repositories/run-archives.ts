@@ -19,6 +19,7 @@ export interface RunArchiveUpsertInput {
   digestHeadline?: string | null;
   digestSummary?: string | null;
   sourceTelemetry?: RunSourceTelemetry | null;
+  searchText?: string | null;
 }
 
 export interface PipelineRunArchiveRow {
@@ -86,6 +87,7 @@ export function createRunArchivesRepo(
           digestHeadline: input.digestHeadline ?? null,
           digestSummary: input.digestSummary ?? null,
           sourceTelemetry: input.sourceTelemetry ?? null,
+          searchText: input.searchText ?? null,
         })
         .onConflictDoUpdate({
           target: runArchives.id,
@@ -98,6 +100,7 @@ export function createRunArchivesRepo(
             digestHeadline: sql.raw(`excluded.${runArchives.digestHeadline.name}`),
             digestSummary: sql.raw(`excluded.${runArchives.digestSummary.name}`),
             sourceTelemetry: sql.raw(`excluded.${runArchives.sourceTelemetry.name}`),
+            searchText: sql.raw(`excluded.${runArchives.searchText.name}`),
           },
         });
     },

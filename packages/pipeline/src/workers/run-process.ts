@@ -2,7 +2,7 @@ import { Worker } from "bullmq";
 import type { Queue } from "bullmq";
 import type IORedis from "ioredis";
 import { createRedisConnection } from "@newsletter/shared/redis";
-import { getDb, enqueueSendNewsletter } from "@newsletter/shared";
+import { getDb, enqueueSendNewsletter, serializeArchiveSearchText } from "@newsletter/shared";
 import type { NewsletterSendJobPayload } from "@newsletter/shared";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
@@ -499,6 +499,17 @@ export async function handleRunProcessJob(
 
     const autoReviewed = process.env.AUTO_REVIEW === "true";
     const sourceTelemetry = buildSourceTelemetry(collecting.outcomes);
+    const digestHeadline = rankResult.digestHeadline || null;
+    const digestSummary = rankResult.digestSummary || null;
+    const rankedRawIds = rankResult.rankedItems.map((r) => r.rawItemId);
+    const rankedRawRows = await deps.rawItemsRepo.findByIds(rankedRawIds);
+    const rawItemsById = new Map(rankedRawRows.map((r) => [r.id, r]));
+    const searchText = serializeArchiveSearchText({
+      digestHeadline,
+      digestSummary,
+      rankedItems: rankResult.rankedItems,
+      rawItemsById,
+    });
     let archiveWritten = false;
     try {
       await deps.archiveRepo.upsert({
@@ -510,9 +521,10 @@ export async function handleRunProcessJob(
         startedAt: runStartedAt,
         sourceTypes,
         reviewed: autoReviewed,
-        digestHeadline: rankResult.digestHeadline || null,
-        digestSummary: rankResult.digestSummary || null,
+        digestHeadline,
+        digestSummary,
         sourceTelemetry,
+        searchText,
       });
       archiveWritten = true;
     } catch (err) {

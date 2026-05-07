@@ -57,6 +57,7 @@ describe("run-archives repository", () => {
       digestHeadline: null,
       digestSummary: null,
       sourceTelemetry: null,
+      searchText: null,
     });
     expect(mockOnConflictDoUpdate).toHaveBeenCalledOnce();
   });

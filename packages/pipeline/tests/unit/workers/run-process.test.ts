@@ -61,8 +61,13 @@ vi.mock("@newsletter/shared/redis", () => ({
 }));
 
 const mockUpdateRecapData = vi.fn(() => Promise.resolve());
+const mockFindByIds = vi.fn(() => Promise.resolve([]));
 vi.mock("@pipeline/repositories/raw-items.js", () => ({
-  createRawItemsRepo: vi.fn(() => ({ upsertItems: vi.fn(), updateRecapData: mockUpdateRecapData })),
+  createRawItemsRepo: vi.fn(() => ({
+    upsertItems: vi.fn(),
+    updateRecapData: mockUpdateRecapData,
+    findByIds: mockFindByIds,
+  })),
 }));
 
 vi.mock("@pipeline/repositories/candidates.js", () => ({
@@ -1160,6 +1165,85 @@ describe("run-process worker", () => {
     expect(arg.rankedItems).toEqual(rankedItems);
     expect(arg.topN).toBe(3);
     expect(arg.completedAt).toBeInstanceOf(Date);
+  });
+
+  // REQ-011: archiveRepo.upsert receives search_text identical to the API path
+  it("REQ-011: archiveRepo.upsert receives search_text matching serializeArchiveSearchText output", async () => {
+    const { serializeArchiveSearchText } = await import("@newsletter/shared");
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(101)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankedItems: RankedItemRef[] = [
+      {
+        rawItemId: 101,
+        score: 0.9,
+        rationale: "top",
+        summary: "OVERRIDE_SUMMARY",
+        bullets: ["override_b1"],
+        bottomLine: "OVERRIDE_BOTTOM",
+      },
+    ];
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems,
+          candidateCount: 1,
+          rankedCount: 1,
+          digestHeadline: "Pipeline digest head",
+          digestSummary: "Pipeline digest summary",
+        }),
+    );
+    const rawRow = {
+      id: 101,
+      sourceType: "hn" as const,
+      externalId: "ext-101",
+      title: "Pipeline Story Title",
+      url: "https://pipeline.example/post",
+      sourceUrl: null,
+      author: "carol",
+      content: null,
+      imageUrl: null,
+      publishedAt: null,
+      engagement: { points: 1, commentCount: 0 },
+      metadata: {
+        comments: [],
+        recap: {
+          summary: "RECAP_SUMMARY",
+          bullets: ["recap_b1"],
+          bottomLine: "RECAP_BOTTOM",
+        },
+      },
+    };
+    mockFindByIds.mockResolvedValueOnce([rawRow]);
+
+    const archiveUpsert = vi.fn(() => Promise.resolve());
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+      archiveRepo: { upsert: archiveUpsert },
+    });
+
+    await worker.handler(baseJob);
+
+    expect(archiveUpsert).toHaveBeenCalledOnce();
+    const arg = archiveUpsert.mock.calls[0]?.[0] as {
+      searchText: string;
+    };
+    const expected = serializeArchiveSearchText({
+      digestHeadline: "Pipeline digest head",
+      digestSummary: "Pipeline digest summary",
+      rankedItems,
+      rawItemsById: new Map([[101, rawRow]]),
+    });
+    expect(arg.searchText).toBe(expected);
+    // Override precedence sanity
+    expect(arg.searchText).toContain("OVERRIDE_SUMMARY");
+    expect(arg.searchText).not.toContain("RECAP_SUMMARY");
   });
 
   // EDGE-001: archive write failure does not crash the worker
