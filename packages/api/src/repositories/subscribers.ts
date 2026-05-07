@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import { subscribers } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { SubscriberInsert, SubscriberSelect, SubscriberStatus } from "@newsletter/shared";
@@ -24,6 +24,7 @@ export interface SubscribersRepo {
     },
   ): Promise<SubscriberSelect>;
   listConfirmed(): Promise<SubscriberSelect[]>;
+  countConfirmed(): Promise<number>;
 }
 
 export function createSubscribersRepo(
@@ -93,6 +94,14 @@ export function createSubscribersRepo(
         .select()
         .from(subscribers)
         .where(eq(subscribers.status, "confirmed"));
+    },
+
+    async countConfirmed(): Promise<number> {
+      const [row] = await db
+        .select({ value: count() })
+        .from(subscribers)
+        .where(eq(subscribers.status, "confirmed"));
+      return row.value;
     },
   };
 }

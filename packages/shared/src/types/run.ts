@@ -144,3 +144,20 @@ export interface PoolResponse {
   items: PoolItem[];
   total: number;
 }
+
+export interface SourceTelemetryEntry {
+  sourceType: "hn" | "reddit" | "blog" | "twitter";
+  identifier: string;
+  displayName: string;
+  itemsFetched: number;
+  status: "completed" | "failed" | "partial";
+  errors: string[];
+  retries: number;
+  durationMs: number;
+}
+
+export interface RunSourceTelemetry {
+  sources: SourceTelemetryEntry[];
+  totalItemsFetched: number;
+  totalErrors: number;
+}

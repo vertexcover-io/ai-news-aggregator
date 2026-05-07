@@ -12,6 +12,7 @@ export default defineConfig((options) => ({
     "src/constants/index.ts",
     "src/utils/index.ts",
     "src/logger.ts",
+    "src/slack/index.ts",
   ],
   format: ["esm"],
   dts: true,

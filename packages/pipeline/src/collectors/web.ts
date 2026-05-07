@@ -3,6 +3,7 @@ import type { LanguageModel } from "ai";
 import { z } from "zod";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
+import type { SourceUnitResult } from "@newsletter/shared/types";
 import type {
   BlogSource,
   CollectorFailure,
@@ -158,7 +159,7 @@ export async function collectWeb(
       { itemsFetched: 0, itemsStored: 0, failures: 0, durationMs },
       "collection completed",
     );
-    return { itemsFetched: 0, itemsStored: 0, commentsFetched: 0, durationMs, failures: undefined };
+    return { itemsFetched: 0, itemsStored: 0, commentsFetched: 0, durationMs, failures: undefined, unitResults: [] };
   }
 
   // Pass 1: listings
@@ -228,6 +229,7 @@ export async function collectWeb(
   // Aggregate items and failures
   const allItems: RawItemInsert[] = [];
   const allFailures: CollectorFailure[] = [];
+  const itemsBySource = new Map<string, number>();
 
   // Source-level failures (listing + LLM-discovery)
   for (const ps of perSource) {
@@ -284,6 +286,7 @@ export async function collectWeb(
           continue;
         }
         allItems.push(buildRawItem(post.url, dr.result.markdown, merged));
+        itemsBySource.set(ps.source.name, (itemsBySource.get(ps.source.name) ?? 0) + 1);
       } catch (err) {
         allFailures.push({ source: ps.source.name, postUrl: post.url, error: truncateError(err) });
       }
@@ -313,12 +316,21 @@ export async function collectWeb(
   }
 
   const durationMs = Date.now() - startTime;
+  const unitResults: SourceUnitResult[] = perSource.map((ps) => ({
+    identifier: ps.source.listingUrl,
+    displayName: ps.source.name,
+    itemsFetched: ps.sourceFailed ? 0 : itemsBySource.get(ps.source.name) ?? 0,
+    status: ps.sourceFailed ? "failed" : "completed",
+    errors: ps.sourceFailed ? [ps.failure ?? "unknown"] : [],
+    durationMs: 0,
+  }));
   const result: WebCollectorResult = {
     itemsFetched: allItems.length,
     itemsStored: allItems.length,
     commentsFetched: 0,
     durationMs,
     failures: allFailures.length > 0 ? allFailures : undefined,
+    unitResults,
   };
 
   logger.info(

@@ -1,0 +1,4 @@
+{"level":30,"time":1778141898748,"pid":74228,"hostname":"Amans-MacBook-Pro.local","name":"api:runs","event":"run.started","runId":"819550b9-d0a2-48d5-84d8-432f2dd8948b","topN":3,"sources":["hn"],"msg":"run.started"}
+{"level":30,"time":1778142051793,"pid":74228,"hostname":"Amans-MacBook-Pro.local","name":"api:archives","event":"archive.patched","runId":"819550b9-d0a2-48d5-84d8-432f2dd8948b","count":3,"msg":"archive.patched"}
+{"level":30,"time":1778142051794,"pid":74228,"hostname":"Amans-MacBook-Pro.local","name":"api:archives","event":"archive.send_enqueued","runId":"819550b9-d0a2-48d5-84d8-432f2dd8948b","msg":"archive: send-newsletter job enqueued"}
+{"level":30,"time":1778142051796,"pid":74228,"hostname":"Amans-MacBook-Pro.local","name":"api:slack","event":"slack.notify.skipped","reason":"already_notified","runId":"819550b9-d0a2-48d5-84d8-432f2dd8948b","msg":"slack notification skipped (already notified)"}

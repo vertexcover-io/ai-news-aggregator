@@ -7,3 +7,4 @@ export * from "./utils/index.js";
 export * from "./logger.js";
 export * from "./run-start.js";
 export * from "./send-newsletter.js";
+export * from "./slack/index.js";

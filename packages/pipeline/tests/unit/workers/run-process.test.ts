@@ -1875,3 +1875,190 @@ describe("run-process cancellation (REQ-05 through REQ-09)", () => {
     expect(closeSpy).toHaveBeenCalledOnce();
   });
 });
+
+// ---- Slack notifier + sourceTelemetry persistence (P4) ----
+
+describe("run-process slack notifier + telemetry (P4)", () => {
+  beforeEach(() => {
+    mockLoggerInfo.mockClear();
+    mockLoggerWarn.mockClear();
+    mockLoggerError.mockClear();
+  });
+
+  function makeRanked(): RankedItemRef[] {
+    return [{ rawItemId: 1, score: 0.9, rationale: "ok" }];
+  }
+
+  function makeRankFn(): () => Promise<RankResult> {
+    return () =>
+      Promise.resolve({
+        rankedItems: makeRanked(),
+        candidateCount: 1,
+        rankedCount: 1,
+      });
+  }
+
+  it("persists sourceTelemetry on every archive write regardless of AUTO_REVIEW", async () => {
+    const prev = process.env.AUTO_REVIEW;
+    process.env.AUTO_REVIEW = "true";
+    try {
+      const runStateMock = makeMockRunState(makeRunState());
+      const archiveUpsert = vi.fn(() => Promise.resolve());
+      const hn = vi.fn(
+        (): Promise<CollectorResult> =>
+          Promise.resolve({
+            itemsFetched: 5,
+            itemsStored: 5,
+            commentsFetched: 0,
+            durationMs: 10,
+          }),
+      );
+
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn: vi.fn(() => Promise.resolve([makeCandidate(1)])),
+        rankFn: makeRankFn(),
+        shortlistFn: makeShortlistFn(passthroughShortlist),
+        archiveRepo: { upsert: archiveUpsert },
+        collectFns: { hn, reddit: vi.fn(), web: vi.fn(), twitter: vi.fn() },
+      });
+
+      await worker.handler({
+        ...baseJob,
+        data: {
+          ...baseJob.data,
+          sourceTypes: ["hn"],
+          collectors: { hn: { sinceDays: 1 } as unknown as HnCollectConfig },
+        },
+      });
+
+      expect(archiveUpsert).toHaveBeenCalledOnce();
+      const arg = archiveUpsert.mock.calls[0]?.[0] as {
+        sourceTelemetry: { sources: unknown[]; totalItemsFetched: number };
+      };
+      expect(arg.sourceTelemetry).toBeDefined();
+      expect(arg.sourceTelemetry.totalItemsFetched).toBe(5);
+    } finally {
+      if (prev === undefined) delete process.env.AUTO_REVIEW;
+      else process.env.AUTO_REVIEW = prev;
+    }
+  });
+
+  it("does not invoke slackNotifier from run-process worker (Slack is fired from newsletter-send worker)", async () => {
+    const prev = process.env.AUTO_REVIEW;
+    delete process.env.AUTO_REVIEW;
+    try {
+      const runStateMock = makeMockRunState(makeRunState());
+      const archiveUpsert = vi.fn(() => Promise.resolve());
+      const hn = vi.fn(
+        (): Promise<CollectorResult> =>
+          Promise.resolve({
+            itemsFetched: 5,
+            itemsStored: 5,
+            commentsFetched: 0,
+            durationMs: 10,
+          }),
+      );
+
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn: vi.fn(() => Promise.resolve([makeCandidate(1)])),
+        rankFn: makeRankFn(),
+        shortlistFn: makeShortlistFn(passthroughShortlist),
+        archiveRepo: { upsert: archiveUpsert },
+        collectFns: { hn, reddit: vi.fn(), web: vi.fn(), twitter: vi.fn() },
+      });
+
+      await worker.handler({
+        ...baseJob,
+        data: {
+          ...baseJob.data,
+          sourceTypes: ["hn"],
+          collectors: { hn: { sinceDays: 1 } as unknown as HnCollectConfig },
+        },
+      });
+
+      // No slack-related log events should be emitted from run-process.
+      const slackLogs = [
+        ...mockLoggerInfo.mock.calls,
+        ...mockLoggerWarn.mock.calls,
+        ...mockLoggerError.mock.calls,
+      ].filter((c) =>
+        ((c[0] as { event?: string })?.event ?? "").startsWith("slack."),
+      );
+      expect(slackLogs).toHaveLength(0);
+      expect(archiveUpsert).toHaveBeenCalledOnce();
+    } finally {
+      if (prev !== undefined) process.env.AUTO_REVIEW = prev;
+    }
+  });
+
+  it("persists sourceTelemetry derived from collector unitResults", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const archiveUpsert = vi.fn(() => Promise.resolve());
+    const reddit = vi.fn(
+      (): Promise<CollectorResult> =>
+        Promise.resolve({
+          itemsFetched: 7,
+          itemsStored: 7,
+          commentsFetched: 0,
+          durationMs: 100,
+          unitResults: [
+            {
+              identifier: "r/MachineLearning",
+              displayName: "r/MachineLearning",
+              itemsFetched: 5,
+              status: "completed",
+              errors: [],
+              durationMs: 50,
+            },
+            {
+              identifier: "r/LocalLLaMA",
+              displayName: "r/LocalLLaMA",
+              itemsFetched: 2,
+              status: "completed",
+              errors: [],
+              durationMs: 40,
+            },
+          ],
+        }),
+    );
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([makeCandidate(1)])),
+      rankFn: makeRankFn(),
+      shortlistFn: makeShortlistFn(passthroughShortlist),
+      archiveRepo: { upsert: archiveUpsert },
+      collectFns: { hn: vi.fn(), reddit, web: vi.fn(), twitter: vi.fn() },
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["reddit"],
+        collectors: {
+          reddit: {
+            subreddits: ["MachineLearning", "LocalLLaMA"],
+            sinceDays: 1,
+          } as unknown as RedditCollectConfig,
+        },
+      },
+    });
+
+    expect(archiveUpsert).toHaveBeenCalledOnce();
+    const arg = archiveUpsert.mock.calls[0]?.[0] as {
+      sourceTelemetry: {
+        sources: { sourceType: string; displayName: string }[];
+        totalItemsFetched: number;
+      };
+    };
+    expect(arg.sourceTelemetry.sources).toHaveLength(2);
+    expect(arg.sourceTelemetry.sources.map((s) => s.displayName)).toEqual([
+      "r/MachineLearning",
+      "r/LocalLLaMA",
+    ]);
+    expect(arg.sourceTelemetry.totalItemsFetched).toBe(7);
+  });
+});

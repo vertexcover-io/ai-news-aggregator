@@ -673,4 +673,60 @@ describe("collectReddit", () => {
     const hasDropWarn = messages.some((m) => m.includes("sinceDays filter dropped 0 items"));
     expect(hasDropWarn).toBe(true);
   });
+
+  // P2 telemetry: per-subreddit unitResults
+  it("populates unitResults with one entry per subreddit (all success)", async () => {
+    const emptyListing = { kind: "Listing", data: { children: [] } };
+    const mockFetch = createMockFetch([
+      listingResponse(emptyListing),
+      listingResponse(emptyListing),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    const result = await collectReddit(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { subreddits: ["MachineLearning", "LocalLLaMA"], commentsPerItem: 0 },
+    );
+
+    expect(result.unitResults).toBeDefined();
+    expect(result.unitResults).toHaveLength(2);
+    expect(result.unitResults?.[0]).toMatchObject({
+      identifier: "r/MachineLearning",
+      displayName: "r/MachineLearning",
+      status: "completed",
+      errors: [],
+      itemsFetched: 0,
+    });
+    expect(result.unitResults?.[1]).toMatchObject({
+      identifier: "r/LocalLLaMA",
+      status: "completed",
+    });
+  });
+
+  it("marks one subreddit as failed and others as completed when its fetch fails", async () => {
+    // First subreddit: 3 retry failures (502); second: success
+    const emptyListing = { kind: "Listing", data: { children: [] } };
+    const mockFetch = createMockFetch([
+      errorResponse(502),
+      errorResponse(502),
+      errorResponse(502),
+      listingResponse(emptyListing),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    const result = await collectReddit(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { subreddits: ["BadSub", "GoodSub"], commentsPerItem: 0 },
+    );
+
+    expect(result.unitResults).toHaveLength(2);
+    const [bad, good] = result.unitResults ?? [];
+    expect(bad.identifier).toBe("r/BadSub");
+    expect(bad.status).toBe("failed");
+    expect(bad.errors.length).toBeGreaterThan(0);
+    expect(bad.itemsFetched).toBe(0);
+    expect(good.identifier).toBe("r/GoodSub");
+    expect(good.status).toBe("completed");
+    expect(good.errors).toEqual([]);
+  });
 });

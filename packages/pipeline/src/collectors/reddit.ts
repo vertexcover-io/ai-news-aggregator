@@ -1,5 +1,5 @@
 import type { RawItemInsert } from "@newsletter/shared/db";
-import type { CollectorResult, RawItemComment, RawItemEngagement } from "@newsletter/shared/types";
+import type { CollectorResult, RawItemComment, RawItemEngagement, SourceUnitResult } from "@newsletter/shared/types";
 import type { RedditCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -374,9 +374,11 @@ export async function collectReddit(
   const seenIds = new Set<string>();
   const allItems: RawItemInsert[] = [];
   const subredditByExternalId = new Map<string, string>();
+  const unitResults: SourceUnitResult[] = [];
 
   for (const subreddit of subreddits) {
     const url = buildListingUrl(subreddit, sort, timeframe, limit);
+    const subStart = Date.now();
 
     try {
       const data = await fetchWithRetry(fetchFn, url);
@@ -392,8 +394,25 @@ export async function collectReddit(
         }
       }
       logger.info({ subreddit, fetched: items.length, added }, "subreddit fetched");
+      unitResults.push({
+        identifier: `r/${subreddit}`,
+        displayName: `r/${subreddit}`,
+        itemsFetched: added,
+        status: "completed",
+        errors: [],
+        durationMs: Date.now() - subStart,
+      });
     } catch (err) {
-      logger.error({ subreddit, error: err instanceof Error ? err.message : String(err) }, "failed to fetch subreddit");
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error({ subreddit, error: message }, "failed to fetch subreddit");
+      unitResults.push({
+        identifier: `r/${subreddit}`,
+        displayName: `r/${subreddit}`,
+        itemsFetched: 0,
+        status: "failed",
+        errors: [message],
+        durationMs: Date.now() - subStart,
+      });
     }
 
     if (subreddit !== subreddits[subreddits.length - 1]) {
@@ -460,11 +479,12 @@ export async function collectReddit(
     itemsStored = filteredItems.length;
   }
 
-  const result = {
+  const result: CollectorResult = {
     itemsFetched: filteredItems.length,
     commentsFetched: totalComments,
     itemsStored,
     durationMs: Date.now() - startTime,
+    unitResults,
   };
 
   logger.info(result, "collection completed");
