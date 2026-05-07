@@ -49,6 +49,7 @@ export const runArchives = pgTable("run_archives", {
   digestSummary: text("digest_summary"),
   sourceTelemetry: jsonb("source_telemetry").$type<RunSourceTelemetry | null>(),
   slackNotifiedAt: timestamp("slack_notified_at", { withTimezone: true }),
+  searchText: text("search_text"),
 });
 
 export type RunArchiveInsert = typeof runArchives.$inferInsert;
