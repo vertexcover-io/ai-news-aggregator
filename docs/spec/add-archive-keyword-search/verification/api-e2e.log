@@ -1,0 +1,132 @@
+
+ RUN  v3.2.1 /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api
+
+{"level":30,"time":1778155551608,"pid":81341,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","count":50,"durationMs":15,"msg":"archives.search"}
+{"level":30,"time":1778155551620,"pid":81341,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","q":"agentic","count":13,"durationMs":8,"msg":"archives.search"}
+{"level":30,"time":1778155551623,"pid":81341,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","q":"cote","count":1,"durationMs":2,"msg":"archives.search"}
+{"level":30,"time":1778155551626,"pid":81341,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","q":"claude -agentic","count":1,"durationMs":2,"msg":"archives.search"}
+{"level":30,"time":1778155551629,"pid":81341,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","q":"agentic","from":"2099-04-20","to":"2099-05-10","count":1,"durationMs":2,"msg":"archives.search"}
+{"level":30,"time":1778155551632,"pid":81341,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","from":"2099-04-15","to":"2099-04-15","count":1,"durationMs":2,"msg":"archives.search"}
+{"level":30,"time":1778155551635,"pid":81341,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","q":"claude agentic","count":12,"durationMs":3,"msg":"archives.search"}
+{"level":30,"time":1778155551640,"pid":81341,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","q":"agentic","count":13,"durationMs":4,"msg":"archives.search"}
+{"level":30,"time":1778155551645,"pid":81341,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","count":50,"durationMs":4,"msg":"archives.search"}
+{"level":30,"time":1778155551649,"pid":81341,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","count":2,"durationMs":2,"msg":"archives.search"}
+ ✓ |e2e| tests/e2e/archives-search.e2e.test.ts (10 tests) 149ms
+stdout | tests/e2e/archives-search-migration.e2e.test.ts
+{
+  severity_local: [32m'NOTICE'[39m,
+  severity: [32m'NOTICE'[39m,
+  code: [32m'42710'[39m,
+  message: [32m'extension "unaccent" already exists, skipping'[39m,
+  file: [32m'extension.c'[39m,
+  line: [32m'2017'[39m,
+  routine: [32m'CreateExtension'[39m
+}
+
+stdout | tests/e2e/archives-search-migration.e2e.test.ts
+{
+  severity_local: [32m'NOTICE'[39m,
+  severity: [32m'NOTICE'[39m,
+  code: [32m'42701'[39m,
+  message: [32m'column "search_text" of relation "run_archives" already exists, skipping'[39m,
+  file: [32m'tablecmds.c'[39m,
+  line: [32m'7340'[39m,
+  routine: [32m'check_for_column_name_collision'[39m
+}
+
+stdout | tests/e2e/archives-search-migration.e2e.test.ts
+{
+  severity_local: [32m'NOTICE'[39m,
+  severity: [32m'NOTICE'[39m,
+  code: [32m'42701'[39m,
+  message: [32m'column "search_tsv" of relation "run_archives" already exists, skipping'[39m,
+  file: [32m'tablecmds.c'[39m,
+  line: [32m'7340'[39m,
+  routine: [32m'check_for_column_name_collision'[39m
+}
+
+stdout | tests/e2e/archives-search-migration.e2e.test.ts
+{
+  severity_local: [32m'NOTICE'[39m,
+  severity: [32m'NOTICE'[39m,
+  code: [32m'42P07'[39m,
+  message: [32m'relation "idx_run_archives_search_tsv" already exists, skipping'[39m,
+  file: [32m'index.c'[39m,
+  line: [32m'877'[39m,
+  routine: [32m'index_create'[39m
+}
+
+stdout | tests/e2e/archives-search-migration.e2e.test.ts
+{
+  severity_local: [32m'NOTICE'[39m,
+  severity: [32m'NOTICE'[39m,
+  code: [32m'42P07'[39m,
+  message: [32m'relation "idx_run_archives_reviewed_completed" already exists, skipping'[39m,
+  file: [32m'index.c'[39m,
+  line: [32m'877'[39m,
+  routine: [32m'index_create'[39m
+}
+
+stdout | tests/e2e/archives-search-migration.e2e.test.ts > archive-keyword-search migration (e2e) > is idempotent — re-running migration leaves search_text unchanged and does not error
+{
+  severity_local: [32m'NOTICE'[39m,
+  severity: [32m'NOTICE'[39m,
+  code: [32m'42710'[39m,
+  message: [32m'extension "unaccent" already exists, skipping'[39m,
+  file: [32m'extension.c'[39m,
+  line: [32m'2017'[39m,
+  routine: [32m'CreateExtension'[39m
+}
+
+stdout | tests/e2e/archives-search-migration.e2e.test.ts > archive-keyword-search migration (e2e) > is idempotent — re-running migration leaves search_text unchanged and does not error
+{
+  severity_local: [32m'NOTICE'[39m,
+  severity: [32m'NOTICE'[39m,
+  code: [32m'42701'[39m,
+  message: [32m'column "search_text" of relation "run_archives" already exists, skipping'[39m,
+  file: [32m'tablecmds.c'[39m,
+  line: [32m'7340'[39m,
+  routine: [32m'check_for_column_name_collision'[39m
+}
+
+stdout | tests/e2e/archives-search-migration.e2e.test.ts > archive-keyword-search migration (e2e) > is idempotent — re-running migration leaves search_text unchanged and does not error
+{
+  severity_local: [32m'NOTICE'[39m,
+  severity: [32m'NOTICE'[39m,
+  code: [32m'42701'[39m,
+  message: [32m'column "search_tsv" of relation "run_archives" already exists, skipping'[39m,
+  file: [32m'tablecmds.c'[39m,
+  line: [32m'7340'[39m,
+  routine: [32m'check_for_column_name_collision'[39m
+}
+
+stdout | tests/e2e/archives-search-migration.e2e.test.ts > archive-keyword-search migration (e2e) > is idempotent — re-running migration leaves search_text unchanged and does not error
+{
+  severity_local: [32m'NOTICE'[39m,
+  severity: [32m'NOTICE'[39m,
+  code: [32m'42P07'[39m,
+  message: [32m'relation "idx_run_archives_search_tsv" already exists, skipping'[39m,
+  file: [32m'index.c'[39m,
+  line: [32m'877'[39m,
+  routine: [32m'index_create'[39m
+}
+
+stdout | tests/e2e/archives-search-migration.e2e.test.ts > archive-keyword-search migration (e2e) > is idempotent — re-running migration leaves search_text unchanged and does not error
+{
+  severity_local: [32m'NOTICE'[39m,
+  severity: [32m'NOTICE'[39m,
+  code: [32m'42P07'[39m,
+  message: [32m'relation "idx_run_archives_reviewed_completed" already exists, skipping'[39m,
+  file: [32m'index.c'[39m,
+  line: [32m'877'[39m,
+  routine: [32m'index_create'[39m
+}
+
+ ✓ |e2e| tests/e2e/archives-search-migration.e2e.test.ts (8 tests) 42ms
+ ✓ |e2e| tests/e2e/run-archives-repo-search-text.e2e.test.ts (2 tests) 28ms
+
+ Test Files  3 passed (3)
+      Tests  20 passed (20)
+   Start at  17:35:50
+   Duration  1.05s (transform 121ms, setup 0ms, collect 564ms, tests 219ms, environment 0ms, prepare 63ms)
+

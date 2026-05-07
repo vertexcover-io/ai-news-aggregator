@@ -47,7 +47,8 @@ docs/spec/**
 !docs/spec/cap-send-rate-and-raw-error/verification/verify-report.md
 !docs/spec/cap-send-rate-and-raw-error/verification/live-run-logs/
 !docs/spec/cap-send-rate-and-raw-error/verification/live-run-logs/*.log
-# add-archive-keyword-search: ship library-probe + probes + UI mock
+# add-archive-keyword-search: ship full audit trail
+# (library-probe + probes + UI mock + plan + phases + reviews + verification + gate + baseline)
 !docs/spec/add-archive-keyword-search/library-probe.md
 !docs/spec/add-archive-keyword-search/mocks/
 !docs/spec/add-archive-keyword-search/mocks/*.html
@@ -59,6 +60,17 @@ docs/spec/**
 !docs/spec/add-archive-keyword-search/probes/unaccent/
 !docs/spec/add-archive-keyword-search/probes/unaccent/*.sh
 !docs/spec/add-archive-keyword-search/probes/unaccent/*.json
+!docs/spec/add-archive-keyword-search/phase-*.md
+!docs/spec/add-archive-keyword-search/baseline.json
+!docs/spec/add-archive-keyword-search/REVIEW-*.md
+!docs/spec/add-archive-keyword-search/qg-*.log
+!docs/spec/add-archive-keyword-search/verification/
+!docs/spec/add-archive-keyword-search/verification/*.md
+!docs/spec/add-archive-keyword-search/verification/*.json
+!docs/spec/add-archive-keyword-search/verification/*.log
 .worktrees/
 .harness/
 .worktrees/
+
+# Playwright per-run output (traces, screenshots) — regenerates every run
+packages/web/test-results/

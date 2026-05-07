@@ -1,0 +1,538 @@
+
+> ai-newsletter@ test:e2e /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search
+> turbo test:e2e
+
+turbo 2.5.4
+
+• Packages in scope: @newsletter/api, @newsletter/eslint-plugin, @newsletter/pipeline, @newsletter/shared, @newsletter/web
+• Running test:e2e in 5 packages
+• Remote caching disabled
+@newsletter/shared:build: cache hit, replaying logs 114c6dd5f950da49
+@newsletter/shared:build: 
+@newsletter/shared:build: > @newsletter/shared@0.0.1 build /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/shared
+@newsletter/shared:build: > tsup
+@newsletter/shared:build: 
+@newsletter/shared:build: CLI Building entry: src/index.ts, src/logger.ts, src/redis.ts, src/run-start.ts, src/send-newsletter.ts, src/constants/index.ts, src/db/index.ts, src/slack/index.ts, src/types/index.ts, src/types/settings.ts, src/utils/index.ts
+@newsletter/shared:build: CLI Using tsconfig: tsconfig.json
+@newsletter/shared:build: CLI tsup v8.4.0
+@newsletter/shared:build: CLI Using tsup config: /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/shared/tsup.config.ts
+@newsletter/shared:build: CLI Target: es2022
+@newsletter/shared:build: CLI Cleaning output folder
+@newsletter/shared:build: ESM Build start
+@newsletter/shared:build: ESM dist/types/settings.js      67.00 B
+@newsletter/shared:build: ESM dist/types/index.js         64.00 B
+@newsletter/shared:build: ESM dist/logger.js              145.00 B
+@newsletter/shared:build: ESM dist/chunk-NL4NAHXG.js      42.00 B
+@newsletter/shared:build: ESM dist/utils/index.js         64.00 B
+@newsletter/shared:build: ESM dist/index.js               2.15 KB
+@newsletter/shared:build: ESM dist/chunk-AMJSW4RQ.js      42.00 B
+@newsletter/shared:build: ESM dist/chunk-HNULWM2K.js      313.00 B
+@newsletter/shared:build: ESM dist/run-start.js           140.00 B
+@newsletter/shared:build: ESM dist/chunk-BMJ6XNXR.js      1.84 KB
+@newsletter/shared:build: ESM dist/send-newsletter.js     268.00 B
+@newsletter/shared:build: ESM dist/chunk-EUJPSGDR.js      266.00 B
+@newsletter/shared:build: ESM dist/chunk-5BVJRYAY.js      451.00 B
+@newsletter/shared:build: ESM dist/db/index.js            302.00 B
+@newsletter/shared:build: ESM dist/chunk-XJGWQ3QS.js      169.00 B
+@newsletter/shared:build: ESM dist/slack/index.js         242.00 B
+@newsletter/shared:build: ESM dist/chunk-PZ5AY32C.js      233.00 B
+@newsletter/shared:build: ESM dist/constants/index.js     224.00 B
+@newsletter/shared:build: ESM dist/chunk-TN775OJE.js      4.83 KB
+@newsletter/shared:build: ESM dist/redis.js               162.00 B
+@newsletter/shared:build: ESM dist/chunk-TCRFUDMP.js      7.51 KB
+@newsletter/shared:build: ESM dist/chunk-JCUHDSY2.js      42.00 B
+@newsletter/shared:build: ESM dist/types/index.js.map     71.00 B
+@newsletter/shared:build: ESM dist/utils/index.js.map     71.00 B
+@newsletter/shared:build: ESM dist/logger.js.map          71.00 B
+@newsletter/shared:build: ESM dist/chunk-AMJSW4RQ.js.map  71.00 B
+@newsletter/shared:build: ESM dist/index.js.map           2.62 KB
+@newsletter/shared:build: ESM dist/run-start.js.map       71.00 B
+@newsletter/shared:build: ESM dist/chunk-NL4NAHXG.js.map  71.00 B
+@newsletter/shared:build: ESM dist/chunk-BMJ6XNXR.js.map  4.26 KB
+@newsletter/shared:build: ESM dist/chunk-EUJPSGDR.js.map  387.00 B
+@newsletter/shared:build: ESM dist/chunk-5BVJRYAY.js.map  849.00 B
+@newsletter/shared:build: ESM dist/db/index.js.map        71.00 B
+@newsletter/shared:build: ESM dist/chunk-XJGWQ3QS.js.map  283.00 B
+@newsletter/shared:build: ESM dist/chunk-PZ5AY32C.js.map  71.00 B
+@newsletter/shared:build: ESM dist/slack/index.js.map     71.00 B
+@newsletter/shared:build: ESM dist/constants/index.js.map 71.00 B
+@newsletter/shared:build: ESM dist/redis.js.map           71.00 B
+@newsletter/shared:build: ESM dist/types/settings.js.map  71.00 B
+@newsletter/shared:build: ESM dist/chunk-TCRFUDMP.js.map  13.98 KB
+@newsletter/shared:build: ESM dist/send-newsletter.js.map 71.00 B
+@newsletter/shared:build: ESM dist/chunk-JCUHDSY2.js.map  71.00 B
+@newsletter/shared:build: ESM dist/chunk-HNULWM2K.js.map  529.00 B
+@newsletter/shared:build: ESM dist/chunk-TN775OJE.js.map  9.90 KB
+@newsletter/shared:build: ESM ⚡️ Build success in 21ms
+@newsletter/shared:build: DTS Build start
+@newsletter/shared:build: DTS ⚡️ Build success in 3065ms
+@newsletter/shared:build: DTS dist/utils/index.d.ts     13.00 B
+@newsletter/shared:build: DTS dist/index.d.ts           2.74 KB
+@newsletter/shared:build: DTS dist/logger.d.ts          110.00 B
+@newsletter/shared:build: DTS dist/run-start.d.ts       930.00 B
+@newsletter/shared:build: DTS dist/send-newsletter.d.ts 439.00 B
+@newsletter/shared:build: DTS dist/constants/index.d.ts 213.00 B
+@newsletter/shared:build: DTS dist/types/settings.d.ts  886.00 B
+@newsletter/shared:build: DTS dist/redis.d.ts           155.00 B
+@newsletter/shared:build: DTS dist/db/index.d.ts        632.00 B
+@newsletter/shared:build: DTS dist/slack/index.d.ts     2.42 KB
+@newsletter/shared:build: DTS dist/types/index.d.ts     913.00 B
+@newsletter/shared:build: DTS dist/schema-CmV_dkiJ.d.ts 44.69 KB
+@newsletter/web:test:e2e: cache bypass, force executing 6aaa5007df02d470
+@newsletter/pipeline:test:e2e: cache bypass, force executing b296467fd0793b63
+@newsletter/pipeline:build: cache hit, replaying logs 6439ddc75a8e1981
+@newsletter/pipeline:build: 
+@newsletter/pipeline:build: > @newsletter/pipeline@0.0.1 build /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline
+@newsletter/pipeline:build: > tsup
+@newsletter/pipeline:build: 
+@newsletter/pipeline:build: CLI Building entry: src/add-post-entry.ts, src/index.ts
+@newsletter/pipeline:build: CLI Using tsconfig: tsconfig.json
+@newsletter/pipeline:build: CLI tsup v8.4.0
+@newsletter/pipeline:build: CLI Using tsup config: /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline/tsup.config.ts
+@newsletter/pipeline:build: CLI Target: es2022
+@newsletter/pipeline:build: CLI Cleaning output folder
+@newsletter/pipeline:build: ESM Build start
+@newsletter/pipeline:build: ESM dist/add-post-entry.js     4.93 KB
+@newsletter/pipeline:build: ESM dist/chunk-PYUOCJ6A.js     46.27 KB
+@newsletter/pipeline:build: ESM dist/index.js              77.19 KB
+@newsletter/pipeline:build: ESM dist/add-post-entry.js.map 10.05 KB
+@newsletter/pipeline:build: ESM dist/index.js.map          165.51 KB
+@newsletter/pipeline:build: ESM dist/chunk-PYUOCJ6A.js.map 96.62 KB
+@newsletter/pipeline:build: ESM ⚡️ Build success in 48ms
+@newsletter/pipeline:build: DTS Build start
+@newsletter/pipeline:build: DTS ⚡️ Build success in 2804ms
+@newsletter/pipeline:build: DTS dist/add-post-entry.d.ts 2.63 KB
+@newsletter/api:test:e2e: cache bypass, force executing b38a0ff44866d020
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e: > @newsletter/web@0.0.1 test:e2e /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/web
+@newsletter/web:test:e2e: > playwright test
+@newsletter/web:test:e2e: 
+@newsletter/pipeline:test:e2e: 
+@newsletter/pipeline:test:e2e: > @newsletter/pipeline@0.0.1 test:e2e /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline
+@newsletter/pipeline:test:e2e: > vitest run --project seam --project crawler
+@newsletter/pipeline:test:e2e: 
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: > @newsletter/api@0.0.1 test:e2e /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api
+@newsletter/api:test:e2e: > vitest run --project e2e
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e:  RUN  v3.2.1 /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api
+@newsletter/api:test:e2e: 
+@newsletter/pipeline:test:e2e: 
+@newsletter/pipeline:test:e2e:  RUN  v3.2.1 /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline
+@newsletter/pipeline:test:e2e: 
+@newsletter/pipeline:test:e2e: {
+@newsletter/pipeline:test:e2e:   severity_local: 'NOTICE',
+@newsletter/pipeline:test:e2e:   severity: 'NOTICE',
+@newsletter/pipeline:test:e2e:   code: '42P06',
+@newsletter/pipeline:test:e2e:   message: 'schema "drizzle" already exists, skipping',
+@newsletter/pipeline:test:e2e:   file: 'schemacmds.c',
+@newsletter/pipeline:test:e2e:   line: '132',
+@newsletter/pipeline:test:e2e:   routine: 'CreateSchemaCommand'
+@newsletter/pipeline:test:e2e: }
+@newsletter/pipeline:test:e2e: {
+@newsletter/pipeline:test:e2e:   severity_local: 'NOTICE',
+@newsletter/pipeline:test:e2e:   severity: 'NOTICE',
+@newsletter/pipeline:test:e2e:   code: '42P07',
+@newsletter/pipeline:test:e2e:   message: 'relation "__drizzle_migrations" already exists, skipping',
+@newsletter/pipeline:test:e2e:   file: 'parse_utilcmd.c',
+@newsletter/pipeline:test:e2e:   line: '207',
+@newsletter/pipeline:test:e2e:   routine: 'transformCreateStmt'
+@newsletter/pipeline:test:e2e: }
+@newsletter/pipeline:test:e2e: No test files found, exiting with code 1
+@newsletter/pipeline:test:e2e: 
+@newsletter/pipeline:test:e2e: projects: seam, crawler
+@newsletter/pipeline:test:e2e: 
+@newsletter/pipeline:test:e2e: |seam| 
+@newsletter/pipeline:test:e2e: 
+@newsletter/pipeline:test:e2e: include: tests/e2e/seam/**/*.e2e.test.ts
+@newsletter/pipeline:test:e2e: exclude:  tests/e2e/seam/web-crawler.e2e.test.ts
+@newsletter/pipeline:test:e2e: 
+@newsletter/pipeline:test:e2e: |crawler| 
+@newsletter/pipeline:test:e2e: 
+@newsletter/pipeline:test:e2e: include: tests/e2e/seam/web-crawler.e2e.test.ts
+@newsletter/pipeline:test:e2e: exclude:  **/node_modules/**, **/dist/**, **/cypress/**, **/.{idea,git,cache,output,temp}/**, **/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*
+@newsletter/pipeline:test:e2e: 
+@newsletter/pipeline:test:e2e: 
+@newsletter/pipeline:test:e2e: ⎯⎯⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯⎯⎯⎯
+@newsletter/pipeline:test:e2e: PostgresError: relation "email_sends" already exists
+@newsletter/pipeline:test:e2e:  ❯ ErrorResponse ../../node_modules/.pnpm/postgres@3.4.7/node_modules/postgres/src/connection.js:794:26
+@newsletter/pipeline:test:e2e:  ❯ handle ../../node_modules/.pnpm/postgres@3.4.7/node_modules/postgres/src/connection.js:480:6
+@newsletter/pipeline:test:e2e:  ❯ Socket.data ../../node_modules/.pnpm/postgres@3.4.7/node_modules/postgres/src/connection.js:315:9
+@newsletter/pipeline:test:e2e:  ❯ Socket.emit node:events:519:28
+@newsletter/pipeline:test:e2e:  ❯ addChunk node:internal/streams/readable:561:12
+@newsletter/pipeline:test:e2e:  ❯ readableAddChunkPushByteMode node:internal/streams/readable:512:3
+@newsletter/pipeline:test:e2e:  ❯ Readable.push node:internal/streams/readable:392:5
+@newsletter/pipeline:test:e2e:  ❯ TCP.onStreamRead node:internal/stream_base_commons:189:23
+@newsletter/pipeline:test:e2e: 
+@newsletter/pipeline:test:e2e: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+@newsletter/pipeline:test:e2e: Serialized Error: { severity_local: 'ERROR', severity: 'ERROR', code: '42P07', file: 'heap.c', routine: 'heap_create_with_catalog', query: 'CREATE TABLE "email_sends" (\n\t"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,\n\t"subscriber_id" uuid NOT NULL,\n\t"run_archive_id" uuid NOT NULL,\n\t"message_id" text,\n\t"sent_at" timestamp DEFAULT now() NOT NULL,\n\tCONSTRAINT "email_sends_subscriber_archive_uq" UNIQUE("subscriber_id","run_archive_id")\n);\n', parameters: [], args: [], types: [] }
+@newsletter/pipeline:test:e2e: 
+@newsletter/pipeline:test:e2e: 
+@newsletter/pipeline:test:e2e: 
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e: Running 32 tests using 4 workers
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:   -   1 [chromium] › tests/e2e/review-add-post.spec.ts:5:1 › add a post via URL and see it appended (REQ-020, REQ-021)
+@newsletter/web:test:e2e:   -   2 [chromium] › tests/e2e/review-reorder.spec.ts:7:1 › drag reorder updates the rendered order (REQ-121, REQ-122)
+@newsletter/web:test:e2e:   -   3 [chromium] › tests/e2e/review-save.spec.ts:5:1 › save & view archive navigates to /archive/:runId (REQ-151)
+@newsletter/api:test:e2e: {"level":30,"time":1778155622678,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:runs","event":"run.started","runId":"da53a2a8-6471-4d37-9bed-bcd8f569f114","topN":10,"sources":["hn"],"msg":"run.started"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155622695,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:runs","event":"run.started","runId":"b97b4611-0f01-4404-8937-d6974cd8eb88","topN":10,"sources":["hn"],"msg":"run.started"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155622699,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:runs","event":"run.started","runId":"b31339be-0234-4821-b2c2-c477fdb3b486","topN":10,"sources":["hn","reddit"],"msg":"run.started"}
+@newsletter/api:test:e2e: stderr | tests/e2e/runs.e2e.test.ts > GET /api/runs/:runId (e2e) > REQ-012: hydrates rankedItems from raw_items on completed status
+@newsletter/api:test:e2e: TypeError: Cannot read properties of undefined (reading 'recap')
+@newsletter/api:test:e2e:     at hydrateRankedItems [90m(/Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api/[39msrc/services/rank-hydration.ts:16:35[90m)[39m
+@newsletter/api:test:e2e: [90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+@newsletter/api:test:e2e:     at Array.<anonymous> [90m(/Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api/[39msrc/routes/runs.ts:141:24[90m)[39m
+@newsletter/api:test:e2e:     at [90m/Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api/[39mtests/e2e/runs.e2e.test.ts:259:17
+@newsletter/api:test:e2e:     at file:///Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/node_modules/[4m.pnpm[24m/@vitest+runner@3.2.1/node_modules/[4m@vitest/runner[24m/dist/chunk-hooks.js:751:20
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e:  ❯ |e2e| tests/e2e/runs.e2e.test.ts (13 tests | 2 failed) 59ms
+@newsletter/api:test:e2e:    ✓ POST /api/runs (e2e) > REQ-001: returns 201 + runId for a valid payload 10ms
+@newsletter/api:test:e2e:    ✓ POST /api/runs (e2e) > REQ-002: rejects topN: 0 1ms
+@newsletter/api:test:e2e:    ✓ POST /api/runs (e2e) > REQ-002: rejects topN: 51 2ms
+@newsletter/api:test:e2e:    ✓ POST /api/runs (e2e) > REQ-002: rejects no source group 1ms
+@newsletter/api:test:e2e:    × POST /api/runs (e2e) > Web deferral: rejects when body.web is present 8ms
+@newsletter/api:test:e2e:      → expected '[\n  {\n    "expected": "array",\n   …' to be 'web sources not yet supported' // Object.is equality
+@newsletter/api:test:e2e:    ✓ POST /api/runs (e2e) > REQ-004: seeds Redis run-state with status running, stage queued, TTL ~3600 4ms
+@newsletter/api:test:e2e:    ✓ POST /api/runs (e2e) > REQ-005: enqueues a single run-process job carrying both hn and reddit configs 2ms
+@newsletter/api:test:e2e:    ✓ POST /api/runs (e2e) > EDGE-011: returns 400 for malformed JSON body 1ms
+@newsletter/api:test:e2e:    ✓ GET /api/runs/:runId (e2e) > REQ-010: returns 200 with the full state for a known runId 3ms
+@newsletter/api:test:e2e:    ✓ GET /api/runs/:runId (e2e) > REQ-011: returns 404 for an unknown runId 2ms
+@newsletter/api:test:e2e:    × GET /api/runs/:runId (e2e) > REQ-012: hydrates rankedItems from raw_items on completed status 4ms
+@newsletter/api:test:e2e:      → expected 500 to be 200 // Object.is equality
+@newsletter/api:test:e2e:    ✓ GET /api/runs/:runId (e2e) > REQ-013: returns empty rankedItems when state has empty rankedItems 4ms
+@newsletter/api:test:e2e:    ✓ GET /api/runs/:runId (e2e) > EDGE-012: returns 404 for path traversal attempts 1ms
+@newsletter/api:test:e2e: {"level":30,"time":1778155623163,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","messageId":"msg-bounce-5c8d66cf-eaf5-43b8-875c-0bd712c99daa","eventType":"bounce","subscriberId":"2707c722-e53a-4c9d-82f6-cc7f83e6a690","msg":"SES event recorded"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623164,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","subscriberId":"2707c722-e53a-4c9d-82f6-cc7f83e6a690","msg":"Subscriber marked bounced"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623181,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","messageId":"msg-transient-f27e61d8-62e5-40f7-98ab-6cdc33701435","eventType":"bounce","subscriberId":"22a44628-0718-4a82-b2d6-a41a09ecf4ab","msg":"SES event recorded"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623194,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","messageId":"msg-complaint-8d022514-2723-47af-8634-542d8911a4c5","eventType":"complaint","subscriberId":"673c9984-a0f4-4589-9c9d-96054e27771a","msg":"SES event recorded"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623196,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","subscriberId":"673c9984-a0f4-4589-9c9d-96054e27771a","msg":"Subscriber marked complained"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623208,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","messageId":"msg-evt-d9ab1ccc-7c0e-4503-85f3-95ff5127783d","eventType":"delivery","subscriberId":"00498f98-442f-49d1-ab60-3a903dd27fc9","msg":"SES event recorded"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623215,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","messageId":"msg-evt-d9ab1ccc-7c0e-4503-85f3-95ff5127783d","eventType":"open","subscriberId":"00498f98-442f-49d1-ab60-3a903dd27fc9","msg":"SES event recorded"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623220,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","messageId":"msg-evt-d9ab1ccc-7c0e-4503-85f3-95ff5127783d","eventType":"click","subscriberId":"00498f98-442f-49d1-ab60-3a903dd27fc9","msg":"SES event recorded"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623228,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","messageId":"msg-dedup-c1db51ec-d65c-437f-b950-462857b5a369","eventType":"bounce","subscriberId":"eaecbde4-91d7-4980-8244-8771cbb629ba","msg":"SES event recorded"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623229,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","subscriberId":"eaecbde4-91d7-4980-8244-8771cbb629ba","msg":"Subscriber marked bounced"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623232,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","messageId":"msg-dedup-c1db51ec-d65c-437f-b950-462857b5a369","eventType":"bounce","subscriberId":"eaecbde4-91d7-4980-8244-8771cbb629ba","msg":"SES event recorded"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623233,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","subscriberId":"eaecbde4-91d7-4980-8244-8771cbb629ba","msg":"Subscriber marked bounced"}
+@newsletter/api:test:e2e: {"level":40,"time":1778155623236,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","err":{"type":"Error","message":"SNS message signature verification failed","stack":"Error: SNS message signature verification failed\n    at verifySnsMessage (/Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api/src/lib/sns-verifier.ts:103:11)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at Array.<anonymous> (/Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api/src/routes/webhooks.ts:54:17)\n    at /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api/tests/e2e/sns-webhook.e2e.test.ts:446:17\n    at file:///Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/node_modules/.pnpm/@vitest+runner@3.2.1/node_modules/@vitest/runner/dist/chunk-hooks.js:751:20"},"msg":"SNS signature verification failed"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623243,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"test-sns-webhook","topicArn":"arn:aws:sns:us-east-1:183017936378:newsletter-ses-events","msg":"SNS subscription confirmed"}
+@newsletter/api:test:e2e:  ✓ |e2e| tests/e2e/sns-webhook.e2e.test.ts (7 tests) 370ms
+@newsletter/api:test:e2e: {"level":30,"time":1778155623349,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","count":50,"durationMs":11,"msg":"archives.search"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623383,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","q":"agentic","count":50,"durationMs":32,"msg":"archives.search"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623393,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","q":"cote","count":1,"durationMs":6,"msg":"archives.search"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623397,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","q":"claude -agentic","count":1,"durationMs":3,"msg":"archives.search"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623400,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","q":"agentic","from":"2099-04-20","to":"2099-05-10","count":1,"durationMs":2,"msg":"archives.search"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623404,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","from":"2099-04-15","to":"2099-04-15","count":1,"durationMs":3,"msg":"archives.search"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623437,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","q":"claude agentic","count":50,"durationMs":32,"msg":"archives.search"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623465,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","q":"agentic","count":50,"durationMs":19,"msg":"archives.search"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623469,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","count":50,"durationMs":3,"msg":"archives.search"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155623472,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:archives-search","event":"archives.search","count":2,"durationMs":2,"msg":"archives.search"}
+@newsletter/api:test:e2e:  ❯ |e2e| tests/e2e/archives-search.e2e.test.ts (10 tests | 2 failed) 195ms
+@newsletter/api:test:e2e:    ✓ GET /api/archives/search (e2e) > EDGE-001: empty q + no range returns all 4 reviewed archives, never the unreviewed 13ms
+@newsletter/api:test:e2e:    × GET /api/archives/search (e2e) > REQ-002: q='agentic' returns the 2 archives with that token 36ms
+@newsletter/api:test:e2e:      → expected [] to deeply equal [ …(2) ]
+@newsletter/api:test:e2e:    ✓ GET /api/archives/search (e2e) > EDGE-008: q='cote' (accent-insensitive) matches archive containing 'Côté' 7ms
+@newsletter/api:test:e2e:    ✓ GET /api/archives/search (e2e) > EDGE-003: q='claude -agentic' returns claude-only, excludes claude+agentic 3ms
+@newsletter/api:test:e2e:    ✓ GET /api/archives/search (e2e) > REQ-002+REQ-003: q + range intersect 3ms
+@newsletter/api:test:e2e:    ✓ GET /api/archives/search (e2e) > REQ-003 + EDGE-016: range only with from === to returns archive completed exactly that date 4ms
+@newsletter/api:test:e2e:    × GET /api/archives/search (e2e) > EDGE-009: multi-token q='claude agentic' returns only archives with both terms 40ms
+@newsletter/api:test:e2e:      → expected [] to include 'aaaaaaaa-3333-3333-3333-333333333333'
+@newsletter/api:test:e2e:    ✓ GET /api/archives/search (e2e) > REQ-005: with q, results sort by ts_rank_cd desc (digest-token match outranks single mention) 21ms
+@newsletter/api:test:e2e:    ✓ GET /api/archives/search (e2e) > REQ-005: without q, sort by completed_at desc (newest first among reviewed) 4ms
+@newsletter/api:test:e2e:    ✓ GET /api/archives/search (e2e) > REQ-006: limit caps result length and total reflects full count 3ms
+@newsletter/api:test:e2e: stdout | tests/e2e/archives-search-migration.e2e.test.ts
+@newsletter/api:test:e2e: {
+@newsletter/api:test:e2e:   severity_local: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   severity: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   code: [32m'42710'[39m,
+@newsletter/api:test:e2e:   message: [32m'extension "unaccent" already exists, skipping'[39m,
+@newsletter/api:test:e2e:   file: [32m'extension.c'[39m,
+@newsletter/api:test:e2e:   line: [32m'2017'[39m,
+@newsletter/api:test:e2e:   routine: [32m'CreateExtension'[39m
+@newsletter/api:test:e2e: }
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: stdout | tests/e2e/archives-search-migration.e2e.test.ts
+@newsletter/api:test:e2e: {
+@newsletter/api:test:e2e:   severity_local: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   severity: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   code: [32m'42701'[39m,
+@newsletter/api:test:e2e:   message: [32m'column "search_text" of relation "run_archives" already exists, skipping'[39m,
+@newsletter/api:test:e2e:   file: [32m'tablecmds.c'[39m,
+@newsletter/api:test:e2e:   line: [32m'7340'[39m,
+@newsletter/api:test:e2e:   routine: [32m'check_for_column_name_collision'[39m
+@newsletter/api:test:e2e: }
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: stdout | tests/e2e/archives-search-migration.e2e.test.ts
+@newsletter/api:test:e2e: {
+@newsletter/api:test:e2e:   severity_local: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   severity: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   code: [32m'42701'[39m,
+@newsletter/api:test:e2e:   message: [32m'column "search_tsv" of relation "run_archives" already exists, skipping'[39m,
+@newsletter/api:test:e2e:   file: [32m'tablecmds.c'[39m,
+@newsletter/api:test:e2e:   line: [32m'7340'[39m,
+@newsletter/api:test:e2e:   routine: [32m'check_for_column_name_collision'[39m
+@newsletter/api:test:e2e: }
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: stdout | tests/e2e/archives-search-migration.e2e.test.ts
+@newsletter/api:test:e2e: {
+@newsletter/api:test:e2e:   severity_local: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   severity: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   code: [32m'42P07'[39m,
+@newsletter/api:test:e2e:   message: [32m'relation "idx_run_archives_search_tsv" already exists, skipping'[39m,
+@newsletter/api:test:e2e:   file: [32m'index.c'[39m,
+@newsletter/api:test:e2e:   line: [32m'877'[39m,
+@newsletter/api:test:e2e:   routine: [32m'index_create'[39m
+@newsletter/api:test:e2e: }
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: stdout | tests/e2e/archives-search-migration.e2e.test.ts
+@newsletter/api:test:e2e: {
+@newsletter/api:test:e2e:   severity_local: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   severity: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   code: [32m'42P07'[39m,
+@newsletter/api:test:e2e:   message: [32m'relation "idx_run_archives_reviewed_completed" already exists, skipping'[39m,
+@newsletter/api:test:e2e:   file: [32m'index.c'[39m,
+@newsletter/api:test:e2e:   line: [32m'877'[39m,
+@newsletter/api:test:e2e:   routine: [32m'index_create'[39m
+@newsletter/api:test:e2e: }
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: stdout | tests/e2e/archives-search-migration.e2e.test.ts > archive-keyword-search migration (e2e) > is idempotent — re-running migration leaves search_text unchanged and does not error
+@newsletter/api:test:e2e: {
+@newsletter/api:test:e2e:   severity_local: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   severity: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   code: [32m'42710'[39m,
+@newsletter/api:test:e2e:   message: [32m'extension "unaccent" already exists, skipping'[39m,
+@newsletter/api:test:e2e:   file: [32m'extension.c'[39m,
+@newsletter/api:test:e2e:   line: [32m'2017'[39m,
+@newsletter/api:test:e2e:   routine: [32m'CreateExtension'[39m
+@newsletter/api:test:e2e: }
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: stdout | tests/e2e/archives-search-migration.e2e.test.ts > archive-keyword-search migration (e2e) > is idempotent — re-running migration leaves search_text unchanged and does not error
+@newsletter/api:test:e2e: {
+@newsletter/api:test:e2e:   severity_local: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   severity: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   code: [32m'42701'[39m,
+@newsletter/api:test:e2e:   message: [32m'column "search_text" of relation "run_archives" already exists, skipping'[39m,
+@newsletter/api:test:e2e:   file: [32m'tablecmds.c'[39m,
+@newsletter/api:test:e2e:   line: [32m'7340'[39m,
+@newsletter/api:test:e2e:   routine: [32m'check_for_column_name_collision'[39m
+@newsletter/api:test:e2e: }
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: stdout | tests/e2e/archives-search-migration.e2e.test.ts > archive-keyword-search migration (e2e) > is idempotent — re-running migration leaves search_text unchanged and does not error
+@newsletter/api:test:e2e: {
+@newsletter/api:test:e2e:   severity_local: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   severity: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   code: [32m'42701'[39m,
+@newsletter/api:test:e2e:   message: [32m'column "search_tsv" of relation "run_archives" already exists, skipping'[39m,
+@newsletter/api:test:e2e:   file: [32m'tablecmds.c'[39m,
+@newsletter/api:test:e2e:   line: [32m'7340'[39m,
+@newsletter/api:test:e2e:   routine: [32m'check_for_column_name_collision'[39m
+@newsletter/api:test:e2e: }
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: stdout | tests/e2e/archives-search-migration.e2e.test.ts > archive-keyword-search migration (e2e) > is idempotent — re-running migration leaves search_text unchanged and does not error
+@newsletter/api:test:e2e: {
+@newsletter/api:test:e2e:   severity_local: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   severity: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   code: [32m'42P07'[39m,
+@newsletter/api:test:e2e:   message: [32m'relation "idx_run_archives_search_tsv" already exists, skipping'[39m,
+@newsletter/api:test:e2e:   file: [32m'index.c'[39m,
+@newsletter/api:test:e2e:   line: [32m'877'[39m,
+@newsletter/api:test:e2e:   routine: [32m'index_create'[39m
+@newsletter/api:test:e2e: }
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: stdout | tests/e2e/archives-search-migration.e2e.test.ts > archive-keyword-search migration (e2e) > is idempotent — re-running migration leaves search_text unchanged and does not error
+@newsletter/api:test:e2e: {
+@newsletter/api:test:e2e:   severity_local: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   severity: [32m'NOTICE'[39m,
+@newsletter/api:test:e2e:   code: [32m'42P07'[39m,
+@newsletter/api:test:e2e:   message: [32m'relation "idx_run_archives_reviewed_completed" already exists, skipping'[39m,
+@newsletter/api:test:e2e:   file: [32m'index.c'[39m,
+@newsletter/api:test:e2e:   line: [32m'877'[39m,
+@newsletter/api:test:e2e:   routine: [32m'index_create'[39m
+@newsletter/api:test:e2e: }
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e:  ✓ |e2e| tests/e2e/archives-search-migration.e2e.test.ts (8 tests) 71ms
+@newsletter/api:test:e2e: {"level":30,"time":1778155624114,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:settings","event":"settings.saved","scheduleEnabled":true,"scheduleTime":"09:30","scheduleTimezone":"America/New_York","msg":"settings.saved"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155624141,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:settings","event":"settings.saved","scheduleEnabled":true,"scheduleTime":"09:30","scheduleTimezone":"America/New_York","msg":"settings.saved"}
+@newsletter/api:test:e2e: {"level":30,"time":1778155624146,"pid":85256,"hostname":"Amans-MacBook-Pro.local","name":"api:settings","event":"settings.saved","scheduleEnabled":true,"scheduleTime":"07:00","scheduleTimezone":"America/New_York","msg":"settings.saved"}
+@newsletter/api:test:e2e:  ✓ |e2e| tests/e2e/settings.e2e.test.ts (4 tests) 298ms
+@newsletter/api:test:e2e:  ✓ |e2e| tests/e2e/run-archives-repo-search-text.e2e.test.ts (2 tests) 76ms
+@newsletter/api:test:e2e:  ↓ |e2e| tests/e2e/live-ses.e2e.test.ts (1 test | 1 skipped)
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e:  FAIL  |e2e| tests/e2e/archives-search.e2e.test.ts > GET /api/archives/search (e2e) > REQ-002: q='agentic' returns the 2 archives with that token
+@newsletter/api:test:e2e: AssertionError: expected [] to deeply equal [ …(2) ]
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: [32m- Expected[39m
+@newsletter/api:test:e2e: [31m+ Received[39m
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: [32m- [[39m
+@newsletter/api:test:e2e: [32m-   "aaaaaaaa-1111-1111-1111-111111111111",[39m
+@newsletter/api:test:e2e: [32m-   "aaaaaaaa-3333-3333-3333-333333333333",[39m
+@newsletter/api:test:e2e: [32m- ][39m
+@newsletter/api:test:e2e: [31m+ [][39m
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e:  ❯ tests/e2e/archives-search.e2e.test.ts:284:24
+@newsletter/api:test:e2e:     282|     const body = await search("?q=agentic");
+@newsletter/api:test:e2e:     283|     const ids = seededIds(body);
+@newsletter/api:test:e2e:     284|     expect(ids.sort()).toEqual([RUN_AGENTIC, RUN_BOTH].sort());
+@newsletter/api:test:e2e:        |                        ^
+@newsletter/api:test:e2e:     285|     expect(ids).not.toContain(RUN_UNREVIEWED);
+@newsletter/api:test:e2e:     286|   });
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e:  FAIL  |e2e| tests/e2e/archives-search.e2e.test.ts > GET /api/archives/search (e2e) > EDGE-009: multi-token q='claude agentic' returns only archives with both terms
+@newsletter/api:test:e2e: AssertionError: expected [] to include 'aaaaaaaa-3333-3333-3333-333333333333'
+@newsletter/api:test:e2e:  ❯ tests/e2e/archives-search.e2e.test.ts:320:17
+@newsletter/api:test:e2e:     318|     );
+@newsletter/api:test:e2e:     319|     const ids = seededIds(body);
+@newsletter/api:test:e2e:     320|     expect(ids).toContain(RUN_BOTH);
+@newsletter/api:test:e2e:        |                 ^
+@newsletter/api:test:e2e:     321|     expect(ids).not.toContain(RUN_AGENTIC);
+@newsletter/api:test:e2e:     322|   });
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e:  FAIL  |e2e| tests/e2e/runs.e2e.test.ts > POST /api/runs (e2e) > Web deferral: rejects when body.web is present
+@newsletter/api:test:e2e: AssertionError: expected '[\n  {\n    "expected": "array",\n   …' to be 'web sources not yet supported' // Object.is equality
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: [32m- Expected[39m
+@newsletter/api:test:e2e: [31m+ Received[39m
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: [32m- web sources not yet supported[39m
+@newsletter/api:test:e2e: [31m+ [[39m
+@newsletter/api:test:e2e: [31m+   {[39m
+@newsletter/api:test:e2e: [31m+     "expected": "array",[39m
+@newsletter/api:test:e2e: [31m+     "code": "invalid_type",[39m
+@newsletter/api:test:e2e: [31m+     "path": [[39m
+@newsletter/api:test:e2e: [31m+       "web",[39m
+@newsletter/api:test:e2e: [31m+       "sources"[39m
+@newsletter/api:test:e2e: [31m+     ],[39m
+@newsletter/api:test:e2e: [31m+     "message": "Invalid input: expected array, received undefined"[39m
+@newsletter/api:test:e2e: [31m+   },[39m
+@newsletter/api:test:e2e: [31m+   {[39m
+@newsletter/api:test:e2e: [31m+     "expected": "number",[39m
+@newsletter/api:test:e2e: [31m+     "code": "invalid_type",[39m
+@newsletter/api:test:e2e: [31m+     "path": [[39m
+@newsletter/api:test:e2e: [31m+       "web",[39m
+@newsletter/api:test:e2e: [31m+       "maxItems"[39m
+@newsletter/api:test:e2e: [31m+     ],[39m
+@newsletter/api:test:e2e: [31m+     "message": "Invalid input: expected number, received undefined"[39m
+@newsletter/api:test:e2e: [31m+   }[39m
+@newsletter/api:test:e2e: [31m+ ][39m
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e:  ❯ tests/e2e/runs.e2e.test.ts:135:24
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e:  Test Files  2 failed | 4 passed | 1 skipped (7)
+@newsletter/api:test:e2e:       Tests  4 failed | 40 passed | 1 skipped (45)
+@newsletter/api:test:e2e:    Start at  17:37:00
+@newsletter/api:test:e2e:    Duration  4.65s (transform 236ms, setup 0ms, collect 2.89s, tests 1.07s, environment 0ms, prepare 218ms)
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e:     133|     expect(res.status).toBe(400);
+@newsletter/api:test:e2e:     134|     const body = (await res.json()) as { error: string };
+@newsletter/api:test:e2e:     135|     expect(body.error).toBe("web sources not yet supported");
+@newsletter/api:test:e2e:        |                        ^
+@newsletter/api:test:e2e:     136|   });
+@newsletter/api:test:e2e:     137| 
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e:  FAIL  |e2e| tests/e2e/runs.e2e.test.ts > GET /api/runs/:runId (e2e) > REQ-012: hydrates rankedItems from raw_items on completed status
+@newsletter/api:test:e2e: AssertionError: expected 500 to be 200 // Object.is equality
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: [32m- Expected[39m
+@newsletter/api:test:e2e: [31m+ Received[39m
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: [32m- 200[39m
+@newsletter/api:test:e2e: [31m+ 500[39m
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e:  ❯ tests/e2e/runs.e2e.test.ts:260:24
+@newsletter/api:test:e2e:     258|     const app = buildApp({ q: makeQueue(), repo });
+@newsletter/api:test:e2e:     259|     const res = await app.request(`/api/runs/${runId}`);
+@newsletter/api:test:e2e:     260|     expect(res.status).toBe(200);
+@newsletter/api:test:e2e:        |                        ^
+@newsletter/api:test:e2e:     261|     const body = (await res.json()) as {
+@newsletter/api:test:e2e:     262|       rankedItems: { id: number; title: string; score: number; rationa…
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+@newsletter/api:test:e2e: 
+@newsletter/api:test:e2e:  ELIFECYCLE  Command failed with exit code 1.
+@newsletter/api:test:e2e: ERROR: command finished with error: command (/Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api) /usr/local/bin/pnpm run test:e2e exited (1)
+@newsletter/pipeline:test:e2e:  ELIFECYCLE  Command failed.
+@newsletter/web:test:e2e:   ✘   7 [chromium] › tests/e2e/analytics-seeded.spec.ts:145:3 › admin analytics — seeded non-zero data (REQ-029) › metric cards render expected counts for the seeded window (1.5s)
+@newsletter/web:test:e2e:   ✘   5 [chromium] › tests/e2e/archive-search.spec.ts:15:1 › VS-7: empty state when query has no matches (1.5s)
+@newsletter/web:test:e2e:   ✘   4 [chromium] › tests/e2e/archive.spec.ts:9:1 › submit run and view archive page (1.5s)
+@newsletter/web:test:e2e:   ✘   6 [chromium] › tests/e2e/subscribe-full-flow.spec.ts:45:3 › subscribe full flow — UI -> API -> token -> confirm (REQ-003 + REQ-005) › submits via the homepage widget, persists pending row, confirms via token (1.5s)
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:   1) [chromium] › tests/e2e/analytics-seeded.spec.ts:145:3 › admin analytics — seeded non-zero data (REQ-029) › metric cards render expected counts for the seeded window 
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:     Test was interrupted.
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:     Error: locator.fill: Target page, context or browser has been closed
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:       158 |
+@newsletter/web:test:e2e:       159 |     await page.locator("#analytics-from").fill(from);
+@newsletter/web:test:e2e:     > 160 |     await page.locator("#analytics-to").fill(to);
+@newsletter/web:test:e2e:           |                                         ^
+@newsletter/web:test:e2e:       161 |
+@newsletter/web:test:e2e:       162 |     // Wait for the metric grid to populate (skeleton -> data swap).
+@newsletter/web:test:e2e:       163 |     await expect(page.getByText("Emails Sent")).toBeVisible();
+@newsletter/web:test:e2e:         at /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/web/tests/e2e/analytics-seeded.spec.ts:160:41
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:   2) [chromium] › tests/e2e/archive.spec.ts:9:1 › submit run and view archive page ─────────────────
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:     Test was interrupted.
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:     Error: page.waitForLoadState: Test ended.
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:       11 |
+@newsletter/web:test:e2e:       12 |   // Wait for form to load
+@newsletter/web:test:e2e:     > 13 |   await page.waitForLoadState("networkidle");
+@newsletter/web:test:e2e:          |              ^
+@newsletter/web:test:e2e:       14 |
+@newsletter/web:test:e2e:       15 |   // Reduce HN count to minimum to make the run fast
+@newsletter/web:test:e2e:       16 |   await page.fill('input[type="number"][name="hn.count"]', "20");
+@newsletter/web:test:e2e:         at /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/web/tests/e2e/archive.spec.ts:13:14
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:     Error Context: test-results/archive-submit-run-and-view-archive-page-chromium/error-context.md
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:   3) [chromium] › tests/e2e/subscribe-full-flow.spec.ts:45:3 › subscribe full flow — UI -> API -> token -> confirm (REQ-003 + REQ-005) › submits via the homepage widget, persists pending row, confirms via token 
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:     Test was interrupted.
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:     Error: locator.fill: Test ended.
+@newsletter/web:test:e2e:     Call log:
+@newsletter/web:test:e2e:     [2m  - waiting for getByPlaceholder('Your email')[22m
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:       50 |     await expect(page.getByRole("heading", { name: /Get the daily AI digest in your inbox/i })).toBeVisible();
+@newsletter/web:test:e2e:       51 |
+@newsletter/web:test:e2e:     > 52 |     await page.getByPlaceholder("Your email").fill(email);
+@newsletter/web:test:e2e:          |                                               ^
+@newsletter/web:test:e2e:       53 |     await page.getByRole("checkbox").check();
+@newsletter/web:test:e2e:       54 |     const submit = page.getByRole("button", { name: /^Subscribe$/i });
+@newsletter/web:test:e2e:       55 |     await expect(submit).toBeEnabled();
+@newsletter/web:test:e2e:         at /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/web/tests/e2e/subscribe-full-flow.spec.ts:52:47
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:     Error Context: test-results/subscribe-full-flow-subscr-b42a6-ding-row-confirms-via-token-chromium/error-context.md
+@newsletter/web:test:e2e: 
+@newsletter/web:test:e2e:   4 interrupted
+@newsletter/web:test:e2e:     [chromium] › tests/e2e/analytics-seeded.spec.ts:145:3 › admin analytics — seeded non-zero data (REQ-029) › metric cards render expected counts for the seeded window 
+@newsletter/web:test:e2e:     [chromium] › tests/e2e/archive-search.spec.ts:15:1 › VS-7: empty state when query has no matches 
+@newsletter/web:test:e2e:     [chromium] › tests/e2e/archive.spec.ts:9:1 › submit run and view archive page ──────────────────
+@newsletter/web:test:e2e:     [chromium] › tests/e2e/subscribe-full-flow.spec.ts:45:3 › subscribe full flow — UI -> API -> token -> confirm (REQ-003 + REQ-005) › submits via the homepage widget, persists pending row, confirms via token 
+@newsletter/web:test:e2e:   3 skipped
+@newsletter/web:test:e2e:   25 did not run
+@newsletter/web:test:e2e:  ELIFECYCLE  Command failed with exit code 130.
+@newsletter/api#test:e2e: command (/Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/api) /usr/local/bin/pnpm run test:e2e exited (1)
+
+ Tasks:    2 successful, 5 total
+Cached:    2 cached, 5 total
+  Time:    6.367s 
+Failed:    @newsletter/api#test:e2e
+
+ ERROR  run failed: command  exited (1)
+ ELIFECYCLE  Command failed with exit code 1.

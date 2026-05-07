@@ -1,0 +1,116 @@
+
+> @newsletter/pipeline@0.0.1 test:e2e /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline
+> vitest run --project seam --project crawler
+
+
+ RUN  v3.2.1 /Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline
+
+{
+  severity_local: 'NOTICE',
+  severity: 'NOTICE',
+  code: '42P06',
+  message: 'schema "drizzle" already exists, skipping',
+  file: 'schemacmds.c',
+  line: '132',
+  routine: 'CreateSchemaCommand'
+}
+{
+  severity_local: 'NOTICE',
+  severity: 'NOTICE',
+  code: '42P07',
+  message: 'relation "__drizzle_migrations" already exists, skipping',
+  file: 'parse_utilcmd.c',
+  line: '207',
+  routine: 'transformCreateStmt'
+}
+Migrations applied to newsletter_test
+{"level":30,"time":1778155792702,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.source.completed","runId":"run-flow-e2e-happy","sourceType":"hn","itemsFetched":3,"durationMs":4,"msg":"run.source.completed"}
+{"level":30,"time":1778155792710,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.source.completed","runId":"run-flow-e2e-happy","sourceType":"reddit","itemsFetched":1,"durationMs":10,"msg":"run.source.completed"}
+{"level":30,"time":1778155792714,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.dedup","runId":"run-flow-e2e-happy","inputCount":4,"outputCount":3,"msg":"run.dedup"}
+{"level":50,"time":1778155792725,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"archive.write_failed","runId":"run-flow-e2e-happy","error":"invalid input syntax for type uuid: \"run-flow-e2e-happy\"","msg":"archive.write_failed"}
+{"level":30,"time":1778155792725,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.completed","runId":"run-flow-e2e-happy","totalDurationMs":28,"rankedItemCount":3,"msg":"run.completed"}
+{"level":50,"time":1778155792819,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.source.failed","runId":"run-flow-e2e-allfail","sourceType":"hn","error":"simulated hn failure","durationMs":0,"msg":"run.source.failed"}
+{"level":50,"time":1778155792819,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.source.failed","runId":"run-flow-e2e-allfail","sourceType":"reddit","error":"simulated reddit failure","durationMs":0,"msg":"run.source.failed"}
+{"level":50,"time":1778155792820,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.failed","runId":"run-flow-e2e-allfail","totalDurationMs":3,"error":"hn: simulated hn failure; reddit: simulated reddit failure","msg":"run.failed"}
+{"level":50,"time":1778155792944,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.source.failed","runId":"run-flow-e2e-mixed","sourceType":"reddit","error":"simulated reddit failure","durationMs":0,"msg":"run.source.failed"}
+{"level":30,"time":1778155792947,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.source.completed","runId":"run-flow-e2e-mixed","sourceType":"hn","itemsFetched":3,"durationMs":4,"msg":"run.source.completed"}
+{"level":30,"time":1778155792949,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.dedup","runId":"run-flow-e2e-mixed","inputCount":3,"outputCount":2,"msg":"run.dedup"}
+{"level":50,"time":1778155792954,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"archive.write_failed","runId":"run-flow-e2e-mixed","error":"invalid input syntax for type uuid: \"run-flow-e2e-mixed\"","msg":"archive.write_failed"}
+{"level":30,"time":1778155792954,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.completed","runId":"run-flow-e2e-mixed","totalDurationMs":18,"rankedItemCount":2,"msg":"run.completed"}
+ ✓ |seam| tests/e2e/seam/run-flow.e2e.test.ts (3 tests) 385ms
+{"level":30,"time":1778155793092,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.dedup","runId":"run-process-e2e-1","inputCount":4,"outputCount":3,"msg":"run.dedup"}
+{"level":50,"time":1778155793095,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"archive.write_failed","runId":"run-process-e2e-1","error":"invalid input syntax for type uuid: \"run-process-e2e-1\"","msg":"archive.write_failed"}
+{"level":30,"time":1778155793095,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.completed","runId":"run-process-e2e-1","totalDurationMs":5,"rankedItemCount":3,"msg":"run.completed"}
+{"level":30,"time":1778155793102,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"worker:run-process","event":"run.completed","runId":"run-process-e2e-2","totalDurationMs":2,"rankedItemCount":0,"msg":"run.completed"}
+ ✓ |seam| tests/e2e/seam/workers/run-process.e2e.test.ts (2 tests) 38ms
+{"level":30,"time":1778155793135,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"collector:hn","feeds":["newest"],"commentsPerItem":0,"msg":"collection started"}
+{"level":30,"time":1778155795429,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"collector:hn","feeds":["newest"],"commentsPerItem":0,"msg":"collection started"}
+{"level":30,"time":1778155796549,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"collector:reddit","subreddits":["MachineLearning"],"sort":"top","timeframe":"week","limit":3,"commentsPerItem":0,"msg":"collection started"}
+{"level":30,"time":1778155796981,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"collector:reddit","subreddit":"MachineLearning","fetched":3,"added":3,"msg":"subreddit fetched"}
+{"level":30,"time":1778155797000,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"collector:reddit","subreddits":["MachineLearning"],"sort":"top","timeframe":"week","limit":3,"commentsPerItem":0,"msg":"collection started"}
+{"level":30,"time":1778155797374,"pid":94470,"hostname":"Amans-MacBook-Pro.local","name":"collector:reddit","subreddit":"MachineLearning","fetched":3,"added":3,"msg":"subreddit fetched"}
+ ❯ |seam| tests/e2e/seam/workers/collection.e2e.test.ts (5 tests | 4 failed) 4271ms
+   × Collection Worker E2E > enqueues hn-collect job, worker processes it, data lands in DB 2294ms
+     → Cannot read properties of undefined (reading 'upsertItems')
+   × Collection Worker E2E > completed job returns CollectorResult with all fields 1118ms
+     → Cannot read properties of undefined (reading 'upsertItems')
+   × Collection Worker E2E > enqueues reddit-collect job, worker processes it, data lands in DB 451ms
+     → Cannot read properties of undefined (reading 'upsertItems')
+   × Collection Worker E2E > completed reddit-collect job returns CollectorResult with all fields 392ms
+     → Cannot read properties of undefined (reading 'upsertItems')
+   ✓ Collection Worker E2E > unknown job name results in a failed job 14ms
+ ✓ |seam| tests/e2e/seam/db/schema.e2e.test.ts (3 tests) 37ms
+stdout | tests/e2e/seam/web-crawler.e2e.test.ts > e2e: AdaptivePlaywrightCrawler against in-process fixture server > processes a listing job and returns a healthy ConvertResult
+[32mINFO[39m [33m AdaptivePlaywrightCrawler:[39m Starting the crawler.
+
+stdout | tests/e2e/seam/web-crawler.e2e.test.ts > e2e: AdaptivePlaywrightCrawler against in-process fixture server > processes a listing job and returns a healthy ConvertResult
+[32mINFO[39m [33m AdaptivePlaywrightCrawler:[39m All requests from the queue have been processed, the crawler will shut down.
+
+stdout | tests/e2e/seam/web-crawler.e2e.test.ts > e2e: AdaptivePlaywrightCrawler against in-process fixture server > processes a listing job and returns a healthy ConvertResult
+[32mINFO[39m [33m AdaptivePlaywrightCrawler:[39m Final request statistics:[90m {"requestsFinished":1,"requestsFailed":0,"retryHistogram":[1],"requestAvgFailedDurationMillis":null,"requestAvgFinishedDurationMillis":758,"requestsFinishedPerMinute":52,"requestsFailedPerMinute":0,"requestTotalDurationMillis":758,"requestsTotal":1,"crawlerRuntimeMillis":1153}[39m
+
+stdout | tests/e2e/seam/web-crawler.e2e.test.ts > e2e: AdaptivePlaywrightCrawler against in-process fixture server > processes a listing job and returns a healthy ConvertResult
+[32mINFO[39m [33m AdaptivePlaywrightCrawler:[39m Finished! Total 1 requests: 1 succeeded, 0 failed.[90m {"terminal":true}[39m
+
+{"level":30,"time":1778155799215,"pid":94471,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":1,"requestsFailed":0,"requestsRetries":0,"httpOnlyRequestHandlerRuns":0,"browserRequestHandlerRuns":1,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+stdout | tests/e2e/seam/web-crawler.e2e.test.ts > e2e: AdaptivePlaywrightCrawler against in-process fixture server > processes an article job and extracts og:image
+[32mINFO[39m [33m AdaptivePlaywrightCrawler:[39m Starting the crawler.
+
+stdout | tests/e2e/seam/web-crawler.e2e.test.ts > e2e: AdaptivePlaywrightCrawler against in-process fixture server > processes an article job and extracts og:image
+[32mINFO[39m [33m AdaptivePlaywrightCrawler:[39m All requests from the queue have been processed, the crawler will shut down.
+
+stdout | tests/e2e/seam/web-crawler.e2e.test.ts > e2e: AdaptivePlaywrightCrawler against in-process fixture server > processes an article job and extracts og:image
+[32mINFO[39m [33m AdaptivePlaywrightCrawler:[39m Final request statistics:[90m {"requestsFinished":1,"requestsFailed":0,"retryHistogram":[1],"requestAvgFailedDurationMillis":null,"requestAvgFinishedDurationMillis":266,"requestsFinishedPerMinute":191,"requestsFailedPerMinute":0,"requestTotalDurationMillis":266,"requestsTotal":1,"crawlerRuntimeMillis":314}[39m
+
+stdout | tests/e2e/seam/web-crawler.e2e.test.ts > e2e: AdaptivePlaywrightCrawler against in-process fixture server > processes an article job and extracts og:image
+[32mINFO[39m [33m AdaptivePlaywrightCrawler:[39m Finished! Total 1 requests: 1 succeeded, 0 failed.[90m {"terminal":true}[39m
+
+{"level":30,"time":1778155799600,"pid":94471,"hostname":"Amans-MacBook-Pro.local","name":"crawler:web","event":"crawler.stats","jobs":1,"requestsFinished":1,"requestsFailed":0,"requestsRetries":0,"httpOnlyRequestHandlerRuns":0,"browserRequestHandlerRuns":1,"renderingTypeMispredictions":0,"msg":"crawler completed"}
+ ✓ |crawler| tests/e2e/seam/web-crawler.e2e.test.ts (3 tests) 1727ms
+   ✓ e2e: AdaptivePlaywrightCrawler against in-process fixture server > processes a listing job and returns a healthy ConvertResult  1338ms
+   ✓ e2e: AdaptivePlaywrightCrawler against in-process fixture server > processes an article job and extracts og:image  385ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |seam| tests/e2e/seam/workers/collection.e2e.test.ts > Collection Worker E2E > enqueues hn-collect job, worker processes it, data lands in DB
+ FAIL  |seam| tests/e2e/seam/workers/collection.e2e.test.ts > Collection Worker E2E > completed job returns CollectorResult with all fields
+ FAIL  |seam| tests/e2e/seam/workers/collection.e2e.test.ts > Collection Worker E2E > enqueues reddit-collect job, worker processes it, data lands in DB
+ FAIL  |seam| tests/e2e/seam/workers/collection.e2e.test.ts > Collection Worker E2E > completed reddit-collect job returns CollectorResult with all fields
+Error: Cannot read properties of undefined (reading 'upsertItems')
+ ❯ QueueEvents.onFailed ../../node_modules/.pnpm/bullmq@5.51.0/node_modules/bullmq/src/classes/job.ts:1231:16
+ ❯ QueueEvents.emit ../../node_modules/.pnpm/bullmq@5.51.0/node_modules/bullmq/src/classes/queue-base.ts:118:20
+ ❯ QueueEvents.emit ../../node_modules/.pnpm/bullmq@5.51.0/node_modules/bullmq/src/classes/queue-events.ts:313:18
+ ❯ QueueEvents.consumeEvents ../../node_modules/.pnpm/bullmq@5.51.0/node_modules/bullmq/src/classes/queue-events.ts:407:20
+ ❯ QueueEvents.run ../../node_modules/.pnpm/bullmq@5.51.0/node_modules/bullmq/src/classes/queue-events.ts:359:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+
+ Test Files  1 failed | 4 passed (5)
+      Tests  4 failed | 12 passed (16)
+   Start at  17:39:50
+   Duration  8.81s (transform 172ms, setup 0ms, collect 1.75s, tests 6.46s, environment 0ms, prepare 90ms)
+
+/Users/amankumar/Documents/newsletter/.worktrees/archive-keyword-search/packages/pipeline:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @newsletter/pipeline@0.0.1 test:e2e: `vitest run --project seam --project crawler`
+Exit status 1
