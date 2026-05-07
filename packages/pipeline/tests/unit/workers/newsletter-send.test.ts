@@ -245,6 +245,7 @@ describe("handleNewsletterSendJob", () => {
         create: createMock,
         findSentSubscriberIds: vi.fn().mockResolvedValue(new Set()),
       },
+      sendPacer: { acquire: () => Promise.resolve() },
     });
 
     await handleNewsletterSendJob(deps, {
@@ -424,9 +425,150 @@ describe("handleNewsletterSendJob", () => {
     expect(arg.delivery.sent).toBe(1);
     expect(arg.delivery.failed).toBe(3);
     expect(arg.delivery.failureReasons).toEqual([
-      { reason: "rate limit", count: 2 },
-      { reason: "unverified sender domain", count: 1 },
+      {
+        reason:
+          "Resend error: Too many requests. You can only make 5 requests per second.",
+        count: 2,
+      },
+      {
+        reason:
+          "Resend error: The example.com domain is not verified. Please verify it.",
+        count: 1,
+      },
     ]);
+  });
+
+  it("aggregates byte-identical raw provider errors into a single entry with count", async () => {
+    const subs = [
+      makeSubscriber({ id: "sub-1", email: "a@x.com" }),
+      makeSubscriber({ id: "sub-2", email: "b@x.com" }),
+      makeSubscriber({ id: "sub-3", email: "c@x.com" }),
+    ];
+    const dup = "Resend error: Too many requests. You can only make 5 requests per second.";
+    const distinct = "Resend error: The example.com domain is not verified. Please verify it.";
+    const sendMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error(dup))
+      .mockRejectedValueOnce(new Error(dup))
+      .mockRejectedValueOnce(new Error(distinct));
+    const notify = vi.fn(() => Promise.resolve());
+
+    const deps = makeDeps({
+      emailProvider: { send: sendMock },
+      subscribersRepo: {
+        listConfirmed: vi.fn().mockResolvedValue(subs),
+        findByIds: vi.fn().mockResolvedValue(subs),
+      },
+      slackNotifier: { notifyNewsletterSent: notify },
+    });
+
+    await handleNewsletterSendJob(deps, {
+      name: "send-newsletter",
+      id: "j1",
+      data: { runId: "run-uuid-1234", subscriberIds: "all" },
+    });
+
+    const arg = notify.mock.calls[0]?.[0] as {
+      delivery: { failureReasons?: { reason: string; count: number }[] };
+    };
+    expect(arg.delivery.failureReasons).toEqual([
+      { reason: dup, count: 2 },
+      { reason: distinct, count: 1 },
+    ]);
+  });
+
+  it("paces emailProvider.send so no 1-sec window exceeds SEND_RATE_PER_SECOND", async () => {
+    const subs = Array.from({ length: 12 }, (_, i) =>
+      makeSubscriber({ id: `sub-${i}`, email: `u${i}@x.com` }),
+    );
+
+    let virtualNow = 1_000_000;
+    const fakeNow = (): number => virtualNow;
+    const fakeSleep = (ms: number): Promise<void> => {
+      virtualNow += ms;
+      return Promise.resolve();
+    };
+
+    const sendTimestamps: number[] = [];
+    const sendMock = vi.fn(() => {
+      sendTimestamps.push(virtualNow);
+      return Promise.resolve({ messageId: "ok" });
+    });
+
+    const { createSendPacer } = await import(
+      "@pipeline/workers/newsletter-send.js"
+    );
+    const pacer = createSendPacer(5, { now: fakeNow, sleep: fakeSleep });
+
+    const deps = makeDeps({
+      emailProvider: { send: sendMock },
+      subscribersRepo: {
+        listConfirmed: vi.fn().mockResolvedValue(subs),
+        findByIds: vi.fn().mockResolvedValue(subs),
+      },
+      sendPacer: pacer,
+    });
+
+    await handleNewsletterSendJob(deps, {
+      name: "send-newsletter",
+      id: "j1",
+      data: { runId: "run-uuid-1234", subscriberIds: "all" },
+    });
+
+    expect(sendMock).toHaveBeenCalledTimes(12);
+    // Sliding-window guarantee: no rolling 1000ms contains more than 5 sends.
+    for (const t of sendTimestamps) {
+      const within = sendTimestamps.filter((s) => s <= t && t - s < 1000).length;
+      expect(within).toBeLessThanOrEqual(5);
+    }
+    // Stronger guarantee from fixed-interval pacing: successive sends are
+    // spaced by at least ceil(1000 / 5) = 200 ms. This is what prevents the
+    // provider from seeing a burst at the window boundary.
+    for (let i = 1; i < sendTimestamps.length; i += 1) {
+      const gap = sendTimestamps[i] - sendTimestamps[i - 1];
+      expect(gap).toBeGreaterThanOrEqual(200);
+    }
+  });
+
+  it("aggregate counts (attempted/sent/failed) are unchanged when a custom pacer is used", async () => {
+    const subs = Array.from({ length: 7 }, (_, i) =>
+      makeSubscriber({ id: `sub-${i}`, email: `u${i}@x.com` }),
+    );
+    const sendMock = vi
+      .fn()
+      .mockResolvedValueOnce({ messageId: "1" })
+      .mockResolvedValueOnce({ messageId: "2" })
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce({ messageId: "4" })
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce({ messageId: "6" })
+      .mockResolvedValueOnce({ messageId: "7" });
+    const notify = vi.fn(() => Promise.resolve());
+
+    const acquire = vi.fn(() => Promise.resolve());
+    const deps = makeDeps({
+      emailProvider: { send: sendMock },
+      subscribersRepo: {
+        listConfirmed: vi.fn().mockResolvedValue(subs),
+        findByIds: vi.fn().mockResolvedValue(subs),
+      },
+      slackNotifier: { notifyNewsletterSent: notify },
+      sendPacer: { acquire },
+    });
+
+    await handleNewsletterSendJob(deps, {
+      name: "send-newsletter",
+      id: "j1",
+      data: { runId: "run-uuid-1234", subscriberIds: "all" },
+    });
+
+    expect(acquire).toHaveBeenCalledTimes(7);
+    const arg = notify.mock.calls[0]?.[0] as {
+      delivery: { attempted: number; sent: number; failed: number };
+    };
+    expect(arg.delivery.attempted).toBe(7);
+    expect(arg.delivery.sent).toBe(5);
+    expect(arg.delivery.failed).toBe(2);
   });
 
   it("calls slackNotifier with no failureReasons on a fully-successful send", async () => {
@@ -458,5 +600,48 @@ describe("handleNewsletterSendJob", () => {
     expect(arg.delivery.sent).toBe(1);
     expect(arg.delivery.failed).toBe(0);
     expect(arg.delivery.failureReasons).toBeUndefined();
+  });
+
+  it("VS-5: structured newsletter-send.failed log carries both raw error and classified reason", async () => {
+    const sub = makeSubscriber({ id: "sub-vs5", email: "vs5@x.com" });
+    const rawError =
+      "Resend error: Too many requests. You can only make 5 requests per second.";
+    const deps = makeDeps({
+      emailProvider: {
+        send: vi.fn().mockRejectedValue(new Error(rawError)),
+      },
+      subscribersRepo: {
+        listConfirmed: vi.fn().mockResolvedValue([sub]),
+        findByIds: vi.fn().mockResolvedValue([sub]),
+      },
+      sendPacer: { acquire: () => Promise.resolve() },
+    });
+
+    await handleNewsletterSendJob(deps, {
+      name: "send-newsletter",
+      id: "j1",
+      data: { runId: "run-uuid-1234", subscriberIds: "all" },
+    });
+
+    const failedCall = mockLoggerError.mock.calls.find(
+      (c) =>
+        (c[0] as { event?: string } | undefined)?.event ===
+        "newsletter-send.failed",
+    );
+    expect(failedCall).toBeDefined();
+    const obj = failedCall?.[0] as {
+      event: string;
+      error?: unknown;
+      reason?: unknown;
+    };
+    expect(obj.event).toBe("newsletter-send.failed");
+    expect(obj.error).toBe(rawError);
+    // Classified label — distinct from the raw string. We don't pin the exact
+    // label (that's classifyDeliveryFailure's contract, tested elsewhere by
+    // the aggregation tests); we only require the field exists, is a non-empty
+    // string, and isn't a verbatim copy of the raw error.
+    expect(typeof obj.reason).toBe("string");
+    expect((obj.reason as string).length).toBeGreaterThan(0);
+    expect(obj.reason).not.toBe(rawError);
   });
 });

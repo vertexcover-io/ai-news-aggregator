@@ -179,15 +179,27 @@ describe("buildReviewedMessage", () => {
         sent: 0,
         failed: 38,
         failureReasons: [
-          { reason: "rate limit", count: 32 },
-          { reason: "unverified sender domain", count: 6 },
+          {
+            reason:
+              "Resend error: Too many requests. You can only make 5 requests per second.",
+            count: 32,
+          },
+          {
+            reason:
+              "Resend error: The vertexcover.io domain is not verified.",
+            count: 6,
+          },
         ],
       },
     });
     const distribution = sectionTexts(blocks).at(-1) ?? "";
     expect(distribution).toContain("Sent to 0/38 subscribers (38 failed).");
-    expect(distribution).toContain("◦ 32× rate limit");
-    expect(distribution).toContain("◦ 6× unverified sender domain");
+    expect(distribution).toContain(
+      "◦ 32× Resend error: Too many requests. You can only make 5 requests per second.",
+    );
+    expect(distribution).toContain(
+      "◦ 6× Resend error: The vertexcover.io domain is not verified.",
+    );
   });
 
   it("distribution buckets reasons beyond top-3 into 'other'", () => {

@@ -43,6 +43,10 @@ docs/spec/**
 !docs/spec/slack-notify-on-reviewed/verification/live-run-logs/
 !docs/spec/slack-notify-on-reviewed/verification/live-run-logs/*.log
 !docs/spec/slack-notify-on-reviewed/verification/live-run-logs/*.txt
+# cap-send-rate-and-raw-error: ship verification report + live-run proof
+!docs/spec/cap-send-rate-and-raw-error/verification/verify-report.md
+!docs/spec/cap-send-rate-and-raw-error/verification/live-run-logs/
+!docs/spec/cap-send-rate-and-raw-error/verification/live-run-logs/*.log
 .worktrees/
 .harness/
 .worktrees/

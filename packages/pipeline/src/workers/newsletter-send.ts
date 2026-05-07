@@ -9,6 +9,59 @@ import type { RawItemsRepo, RawItemRow } from "@pipeline/repositories/raw-items.
 const logger = createLogger("worker:newsletter-send");
 
 const BATCH_SIZE = 50;
+const SEND_RATE_PER_SECOND = 5;
+
+export interface SendPacer {
+  acquire(): Promise<void>;
+}
+
+interface PacerClock {
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Fixed-interval pacer: enforces a minimum spacing of `ceil(1000 / rate)` ms
+ * between successive permits. For rate = 5 that's 200 ms between sends, which
+ * guarantees the provider can never observe more than `rate` starts in any
+ * rolling 1-second window — even if its rate-limit bucket boundary differs
+ * from ours. A pure sliding-window admission policy can let 5 sends bunch at
+ * the start of a window and trip the provider when its bucket happens to
+ * straddle that bunch; fixed spacing avoids the issue entirely.
+ *
+ * Acquisition is serialized via an internal queue so concurrent `acquire()`
+ * callers wait their turn; the caller then proceeds and any downstream async
+ * work (e.g. `emailProvider.send(...)`) runs in parallel with later
+ * acquisitions.
+ */
+export function createSendPacer(rate: number, deps: PacerClock = {}): SendPacer {
+  const now = deps.now ?? (() => Date.now());
+  const sleep =
+    deps.sleep ??
+    ((ms: number) =>
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, ms);
+      }));
+  const minIntervalMs = Math.ceil(1000 / rate);
+  let nextAvailableAt = 0;
+  let chain: Promise<void> = Promise.resolve();
+
+  async function next(): Promise<void> {
+    const t = now();
+    if (t < nextAvailableAt) {
+      await sleep(nextAvailableAt - t);
+    }
+    nextAvailableAt = Math.max(now(), nextAvailableAt) + minIntervalMs;
+  }
+
+  return {
+    acquire(): Promise<void> {
+      const run = chain.then(next);
+      chain = run.catch(() => undefined);
+      return run;
+    },
+  };
+}
 
 export interface NewsletterStory {
   title: string;
@@ -40,6 +93,7 @@ export interface NewsletterSendDeps {
   replyToEmail?: string;
   baseUrl: string;
   slackNotifier?: SlackNotifier;
+  sendPacer?: SendPacer;
 }
 
 export interface NewsletterSendJobLike {
@@ -207,6 +261,7 @@ export async function handleNewsletterSendJob(
   let okCount = 0;
   let failCount = 0;
   const failureReasonCounts = new Map<string, number>();
+  const pacer = deps.sendPacer ?? createSendPacer(SEND_RATE_PER_SECOND);
   for (const batch of batches) {
     await Promise.allSettled(
       batch.map(async (subscriber) => {
@@ -221,6 +276,7 @@ export async function handleNewsletterSendJob(
             baseUrl: deps.baseUrl,
             replyToEmail: deps.replyToEmail,
           });
+          await pacer.acquire();
           const result = await deps.emailProvider.send({
             to: [subscriber.email],
             from: deps.sesFromEmail,
@@ -253,8 +309,8 @@ export async function handleNewsletterSendJob(
           const rawMessage = err instanceof Error ? err.message : String(err);
           const reason = classifyDeliveryFailure(rawMessage);
           failureReasonCounts.set(
-            reason,
-            (failureReasonCounts.get(reason) ?? 0) + 1,
+            rawMessage,
+            (failureReasonCounts.get(rawMessage) ?? 0) + 1,
           );
           logger.error(
             {
