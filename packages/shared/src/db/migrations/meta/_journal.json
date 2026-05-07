@@ -92,6 +92,13 @@
       "when": 1778066070565,
       "tag": "0012_regular_sauron",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1778137322920,
+      "tag": "0013_curly_stellaris",
+      "breakpoints": true
     }
   ]
 }

@@ -1875,3 +1875,247 @@ describe("run-process cancellation (REQ-05 through REQ-09)", () => {
     expect(closeSpy).toHaveBeenCalledOnce();
   });
 });
+
+// ---- Slack notifier + sourceTelemetry persistence (P4) ----
+
+describe("run-process slack notifier + telemetry (P4)", () => {
+  beforeEach(() => {
+    mockLoggerInfo.mockClear();
+    mockLoggerWarn.mockClear();
+    mockLoggerError.mockClear();
+  });
+
+  function makeRanked(): RankedItemRef[] {
+    return [{ rawItemId: 1, score: 0.9, rationale: "ok" }];
+  }
+
+  function makeRankFn(): () => Promise<RankResult> {
+    return () =>
+      Promise.resolve({
+        rankedItems: makeRanked(),
+        candidateCount: 1,
+        rankedCount: 1,
+      });
+  }
+
+  it("invokes slackNotifier with trigger 'auto-review' when AUTO_REVIEW=true and archive write succeeds", async () => {
+    const prev = process.env.AUTO_REVIEW;
+    process.env.AUTO_REVIEW = "true";
+    try {
+      const runStateMock = makeMockRunState(makeRunState());
+      const archiveUpsert = vi.fn(() => Promise.resolve());
+      const notify = vi.fn(() => Promise.resolve());
+      const hn = vi.fn(
+        (): Promise<CollectorResult> =>
+          Promise.resolve({
+            itemsFetched: 5,
+            itemsStored: 5,
+            commentsFetched: 0,
+            durationMs: 10,
+          }),
+      );
+
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn: vi.fn(() => Promise.resolve([makeCandidate(1)])),
+        rankFn: makeRankFn(),
+        shortlistFn: makeShortlistFn(passthroughShortlist),
+        archiveRepo: { upsert: archiveUpsert },
+        slackNotifier: { notifyReviewedArchive: notify },
+        collectFns: { hn, reddit: vi.fn(), web: vi.fn(), twitter: vi.fn() },
+      });
+
+      await worker.handler({
+        ...baseJob,
+        data: {
+          ...baseJob.data,
+          sourceTypes: ["hn"],
+          collectors: { hn: { sinceDays: 1 } as unknown as HnCollectConfig },
+        },
+      });
+
+      expect(notify).toHaveBeenCalledOnce();
+      expect(notify).toHaveBeenCalledWith({
+        runId: "run-1",
+        trigger: "auto-review",
+      });
+    } finally {
+      if (prev === undefined) delete process.env.AUTO_REVIEW;
+      else process.env.AUTO_REVIEW = prev;
+    }
+  });
+
+  it("does not invoke slackNotifier when AUTO_REVIEW is unset, but still persists sourceTelemetry", async () => {
+    const prev = process.env.AUTO_REVIEW;
+    delete process.env.AUTO_REVIEW;
+    try {
+      const runStateMock = makeMockRunState(makeRunState());
+      const archiveUpsert = vi.fn(() => Promise.resolve());
+      const notify = vi.fn(() => Promise.resolve());
+      const hn = vi.fn(
+        (): Promise<CollectorResult> =>
+          Promise.resolve({
+            itemsFetched: 5,
+            itemsStored: 5,
+            commentsFetched: 0,
+            durationMs: 10,
+          }),
+      );
+
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn: vi.fn(() => Promise.resolve([makeCandidate(1)])),
+        rankFn: makeRankFn(),
+        shortlistFn: makeShortlistFn(passthroughShortlist),
+        archiveRepo: { upsert: archiveUpsert },
+        slackNotifier: { notifyReviewedArchive: notify },
+        collectFns: { hn, reddit: vi.fn(), web: vi.fn(), twitter: vi.fn() },
+      });
+
+      await worker.handler({
+        ...baseJob,
+        data: {
+          ...baseJob.data,
+          sourceTypes: ["hn"],
+          collectors: { hn: { sinceDays: 1 } as unknown as HnCollectConfig },
+        },
+      });
+
+      expect(notify).not.toHaveBeenCalled();
+      expect(archiveUpsert).toHaveBeenCalledOnce();
+      const arg = archiveUpsert.mock.calls[0]?.[0] as {
+        sourceTelemetry: {
+          sources: { sourceType: string; identifier: string }[];
+          totalItemsFetched: number;
+          totalErrors: number;
+        };
+      };
+      expect(arg.sourceTelemetry).toBeDefined();
+      expect(arg.sourceTelemetry.sources).toHaveLength(1);
+      expect(arg.sourceTelemetry.sources[0]?.sourceType).toBe("hn");
+      expect(arg.sourceTelemetry.sources[0]?.identifier).toBe("hn");
+      expect(arg.sourceTelemetry.totalItemsFetched).toBe(5);
+      expect(arg.sourceTelemetry.totalErrors).toBe(0);
+    } finally {
+      if (prev !== undefined) process.env.AUTO_REVIEW = prev;
+    }
+  });
+
+  it("worker still completes when slackNotifier throws unexpectedly", async () => {
+    const prev = process.env.AUTO_REVIEW;
+    process.env.AUTO_REVIEW = "true";
+    try {
+      const runStateMock = makeMockRunState(makeRunState());
+      const archiveUpsert = vi.fn(() => Promise.resolve());
+      const notify = vi.fn(() => Promise.reject(new Error("notifier blew up")));
+      const hn = vi.fn(
+        (): Promise<CollectorResult> =>
+          Promise.resolve({
+            itemsFetched: 1,
+            itemsStored: 1,
+            commentsFetched: 0,
+            durationMs: 5,
+          }),
+      );
+
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn: vi.fn(() => Promise.resolve([makeCandidate(1)])),
+        rankFn: makeRankFn(),
+        shortlistFn: makeShortlistFn(passthroughShortlist),
+        archiveRepo: { upsert: archiveUpsert },
+        slackNotifier: { notifyReviewedArchive: notify },
+        collectFns: { hn, reddit: vi.fn(), web: vi.fn(), twitter: vi.fn() },
+      });
+
+      const result = await worker.handler({
+        ...baseJob,
+        data: {
+          ...baseJob.data,
+          sourceTypes: ["hn"],
+          collectors: { hn: { sinceDays: 1 } as unknown as HnCollectConfig },
+        },
+      });
+
+      expect(result).toEqual({ rankedCount: 1 });
+      const errLog = mockLoggerError.mock.calls.find(
+        (c) =>
+          (c[0] as { event?: string }).event ===
+          "slack.notify.unexpected_throw",
+      );
+      expect(errLog).toBeDefined();
+    } finally {
+      if (prev === undefined) delete process.env.AUTO_REVIEW;
+      else process.env.AUTO_REVIEW = prev;
+    }
+  });
+
+  it("persists sourceTelemetry derived from collector unitResults", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const archiveUpsert = vi.fn(() => Promise.resolve());
+    const reddit = vi.fn(
+      (): Promise<CollectorResult> =>
+        Promise.resolve({
+          itemsFetched: 7,
+          itemsStored: 7,
+          commentsFetched: 0,
+          durationMs: 100,
+          unitResults: [
+            {
+              identifier: "r/MachineLearning",
+              displayName: "r/MachineLearning",
+              itemsFetched: 5,
+              status: "completed",
+              errors: [],
+              durationMs: 50,
+            },
+            {
+              identifier: "r/LocalLLaMA",
+              displayName: "r/LocalLLaMA",
+              itemsFetched: 2,
+              status: "completed",
+              errors: [],
+              durationMs: 40,
+            },
+          ],
+        }),
+    );
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([makeCandidate(1)])),
+      rankFn: makeRankFn(),
+      shortlistFn: makeShortlistFn(passthroughShortlist),
+      archiveRepo: { upsert: archiveUpsert },
+      collectFns: { hn: vi.fn(), reddit, web: vi.fn(), twitter: vi.fn() },
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["reddit"],
+        collectors: {
+          reddit: {
+            subreddits: ["MachineLearning", "LocalLLaMA"],
+            sinceDays: 1,
+          } as unknown as RedditCollectConfig,
+        },
+      },
+    });
+
+    expect(archiveUpsert).toHaveBeenCalledOnce();
+    const arg = archiveUpsert.mock.calls[0]?.[0] as {
+      sourceTelemetry: {
+        sources: { sourceType: string; displayName: string }[];
+        totalItemsFetched: number;
+      };
+    };
+    expect(arg.sourceTelemetry.sources).toHaveLength(2);
+    expect(arg.sourceTelemetry.sources.map((s) => s.displayName)).toEqual([
+      "r/MachineLearning",
+      "r/LocalLLaMA",
+    ]);
+    expect(arg.sourceTelemetry.totalItemsFetched).toBe(7);
+  });
+});

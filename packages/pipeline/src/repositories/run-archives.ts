@@ -1,7 +1,11 @@
 import { eq, sql } from "drizzle-orm";
 import { runArchives } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
-import type { RankedItemRef, SourceType } from "@newsletter/shared";
+import type {
+  RankedItemRef,
+  RunSourceTelemetry,
+  SourceType,
+} from "@newsletter/shared";
 
 export interface RunArchiveUpsertInput {
   id: string;
@@ -14,6 +18,7 @@ export interface RunArchiveUpsertInput {
   reviewed?: boolean;
   digestHeadline?: string | null;
   digestSummary?: string | null;
+  sourceTelemetry?: RunSourceTelemetry | null;
 }
 
 export interface PipelineRunArchiveRow {
@@ -23,15 +28,19 @@ export interface PipelineRunArchiveRow {
   topN: number;
   reviewed: boolean;
   completedAt: Date;
+  digestHeadline: string | null;
+  sourceTelemetry: RunSourceTelemetry | null;
+  slackNotifiedAt: Date | null;
 }
 
 export interface RunArchivesRepo {
   upsert(input: RunArchiveUpsertInput): Promise<void>;
   findById(id: string): Promise<PipelineRunArchiveRow | null>;
+  markSlackNotified(runId: string, at: Date): Promise<void>;
 }
 
 export function createRunArchivesRepo(
-  db: Pick<AppDb, "insert" | "select">,
+  db: Pick<AppDb, "insert" | "select" | "update">,
 ): RunArchivesRepo {
   return {
     async findById(id: string): Promise<PipelineRunArchiveRow | null> {
@@ -46,10 +55,20 @@ export function createRunArchivesRepo(
           topN: runArchives.topN,
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
+          digestHeadline: runArchives.digestHeadline,
+          sourceTelemetry: runArchives.sourceTelemetry,
+          slackNotifiedAt: runArchives.slackNotifiedAt,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
       return rows[0] ?? null;
+    },
+
+    async markSlackNotified(runId: string, at: Date): Promise<void> {
+      await db
+        .update(runArchives)
+        .set({ slackNotifiedAt: at })
+        .where(eq(runArchives.id, runId));
     },
 
     async upsert(input: RunArchiveUpsertInput): Promise<void> {
@@ -66,6 +85,7 @@ export function createRunArchivesRepo(
           reviewed: input.reviewed ?? false,
           digestHeadline: input.digestHeadline ?? null,
           digestSummary: input.digestSummary ?? null,
+          sourceTelemetry: input.sourceTelemetry ?? null,
         })
         .onConflictDoUpdate({
           target: runArchives.id,
@@ -77,6 +97,7 @@ export function createRunArchivesRepo(
             reviewed: sql.raw(`excluded.${runArchives.reviewed.name}`),
             digestHeadline: sql.raw(`excluded.${runArchives.digestHeadline.name}`),
             digestSummary: sql.raw(`excluded.${runArchives.digestSummary.name}`),
+            sourceTelemetry: sql.raw(`excluded.${runArchives.sourceTelemetry.name}`),
           },
         });
     },

@@ -3,6 +3,7 @@ import type {
   RawItemEngagement,
   RawItemMetadata,
   RankedItemRef,
+  RunSourceTelemetry,
   RunSubmitHnConfig,
   RunSubmitRedditConfig,
   RunSubmitTwitterConfig,
@@ -46,6 +47,8 @@ export const runArchives = pgTable("run_archives", {
   sourceTypes: jsonb("source_types").$type<SourceType[]>(),
   digestHeadline: text("digest_headline"),
   digestSummary: text("digest_summary"),
+  sourceTelemetry: jsonb("source_telemetry").$type<RunSourceTelemetry | null>(),
+  slackNotifiedAt: timestamp("slack_notified_at", { withTimezone: true }),
 });
 
 export type RunArchiveInsert = typeof runArchives.$inferInsert;

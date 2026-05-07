@@ -48,12 +48,17 @@ import type {
   TwitterCollectConfig,
   WebCollectConfig,
 } from "@pipeline/types.js";
-import type { CollectorResult } from "@newsletter/shared";
+import type { CollectorResult, SlackNotifier } from "@newsletter/shared";
 import { CancelledError } from "@pipeline/lib/cancelled-error.js";
 import {
   createCancelSubscriber,
   type CancelSubscriberFactory,
 } from "@pipeline/services/cancel-subscriber.js";
+import {
+  buildSourceTelemetry,
+  type CollectorOutcome,
+  type CollectorSourceType,
+} from "@pipeline/services/source-telemetry.js";
 
 const logger = createLogger("worker:run-process");
 
@@ -151,12 +156,14 @@ export interface RunProcessDeps {
   cancelSubscriber: CancelSubscriberFactory;
   twitterClient: TwitterClient;
   sendQueue?: Queue<NewsletterSendJobPayload>;
+  slackNotifier?: SlackNotifier;
 }
 
 interface CollectingOutcome {
   successCount: number;
   failureCount: number;
   errors: string[];
+  outcomes: CollectorOutcome[];
 }
 
 async function runCollecting(
@@ -180,7 +187,7 @@ async function runCollecting(
 
   const collectorDeps = { rawItemsRepo: deps.rawItemsRepo, signal };
 
-  type SourceKey = "hn" | "reddit" | "blog" | "twitter";
+  type SourceKey = CollectorSourceType;
   interface Task {
     sourceKey: SourceKey;
     run: () => Promise<CollectorResult>;
@@ -221,6 +228,7 @@ async function runCollecting(
   }
 
   const errors: string[] = [];
+  const outcomes: CollectorOutcome[] = [];
   let successCount = 0;
   let failureCount = 0;
 
@@ -228,6 +236,7 @@ async function runCollecting(
     const started = Date.now();
     try {
       const result = await task.run();
+      const durationMs = Date.now() - started;
       await writeSerial(() =>
         deps.runState.updateSource(runId, task.sourceKey, {
           status: "completed",
@@ -240,10 +249,16 @@ async function runCollecting(
           runId,
           sourceType: task.sourceKey,
           itemsFetched: result.itemsStored,
-          durationMs: Date.now() - started,
+          durationMs,
         },
         "run.source.completed",
       );
+      outcomes.push({
+        sourceType: task.sourceKey,
+        result,
+        topLevelError: null,
+        durationMs,
+      });
       successCount += 1;
     } catch (err) {
       // Re-throw CancelledError so the outer worker catch maps the run to
@@ -252,6 +267,7 @@ async function runCollecting(
       // single-source cancellation hits the all-failed branch and the run
       // finalises as "failed". Discovered by Stage 5 VS-5.
       if (err instanceof CancelledError) throw err;
+      const durationMs = Date.now() - started;
       const message = err instanceof Error ? err.message : String(err);
       await writeSerial(() =>
         deps.runState.updateSource(runId, task.sourceKey, {
@@ -265,18 +281,24 @@ async function runCollecting(
           runId,
           sourceType: task.sourceKey,
           error: message,
-          durationMs: Date.now() - started,
+          durationMs,
         },
         "run.source.failed",
       );
       errors.push(`${task.sourceKey}: ${message}`);
+      outcomes.push({
+        sourceType: task.sourceKey,
+        result: null,
+        topLevelError: message,
+        durationMs,
+      });
       failureCount += 1;
     }
   };
 
   await Promise.all(tasks.map(runTask));
 
-  return { successCount, failureCount, errors };
+  return { successCount, failureCount, errors, outcomes };
 }
 
 function throwIfAborted(signal: AbortSignal): void {
@@ -477,6 +499,7 @@ export async function handleRunProcessJob(
     }));
 
     const autoReviewed = process.env.AUTO_REVIEW === "true";
+    const sourceTelemetry = buildSourceTelemetry(collecting.outcomes);
     let archiveWritten = false;
     try {
       await deps.archiveRepo.upsert({
@@ -490,6 +513,7 @@ export async function handleRunProcessJob(
         reviewed: autoReviewed,
         digestHeadline: rankResult.digestHeadline || null,
         digestSummary: rankResult.digestSummary || null,
+        sourceTelemetry,
       });
       archiveWritten = true;
     } catch (err) {
@@ -518,6 +542,24 @@ export async function handleRunProcessJob(
             error: err instanceof Error ? err.message : String(err),
           },
           "archive.send_enqueue_failed",
+        );
+      }
+    }
+
+    if (archiveWritten && autoReviewed && deps.slackNotifier) {
+      try {
+        await deps.slackNotifier.notifyReviewedArchive({
+          runId,
+          trigger: "auto-review",
+        });
+      } catch (err) {
+        logger.error(
+          {
+            event: "slack.notify.unexpected_throw",
+            runId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "slack.notify.unexpected_throw",
         );
       }
     }
@@ -585,6 +627,7 @@ export interface CreateRunProcessWorkerOptions {
   cancelSubscriber?: CancelSubscriberFactory;
   twitterClient?: TwitterClient;
   sendQueue?: Queue<NewsletterSendJobPayload>;
+  slackNotifier?: SlackNotifier;
 }
 
 export function createRunProcessWorker(
@@ -638,6 +681,7 @@ export function createRunProcessWorker(
     cancelSubscriber,
     twitterClient,
     sendQueue: options.sendQueue,
+    slackNotifier: options.slackNotifier,
   };
 
   return new Worker<RunProcessJobData, RunProcessResult>(

@@ -1,7 +1,7 @@
 import { Queue, Worker } from "bullmq";
 import type IORedis from "ioredis";
 import type { Job } from "bullmq";
-import { getDb } from "@newsletter/shared";
+import { getDb, createSlackNotifier } from "@newsletter/shared";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { createLogger } from "@newsletter/shared/logger";
 import type { NewsletterSendJobPayload, RunProcessJobPayload } from "@newsletter/shared";
@@ -140,6 +140,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db);
   const candidatesRepo: CandidatesRepo = createCandidatesRepo(db);
   const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db);
+  const subscribersRepo = createPipelineSubscribersRepo(db);
   const loadFn: LoadCandidatesFn = loadCandidatesSince;
   const collectFns: CollectFns = {
     hn: collectHn,
@@ -153,6 +154,20 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   const sendQueue = new Queue<NewsletterSendJobPayload>("send-newsletter", {
     connection,
   });
+  const slackNotifier = createSlackNotifier({
+    webhookUrl: process.env.SLACK_WEBHOOK_URL,
+    archives: archiveRepo,
+    subscribers: subscribersRepo,
+    resolveTopRankedTitle: async (archive) => {
+      if (archive.rankedItems.length === 0) return null;
+      const items = await rawItemsRepo.findByIds([
+        archive.rankedItems[0].rawItemId,
+      ]);
+      return items[0]?.title ?? null;
+    },
+    logger: createLogger("slack"),
+    publicArchiveBaseUrl: process.env.PUBLIC_BASE_URL,
+  });
   return {
     runState,
     rawItemsRepo,
@@ -165,6 +180,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     cancelSubscriber: createCancelSubscriber(connection),
     twitterClient,
     sendQueue,
+    slackNotifier,
   };
 }
 

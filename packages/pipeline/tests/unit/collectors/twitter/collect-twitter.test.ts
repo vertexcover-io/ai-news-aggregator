@@ -647,4 +647,92 @@ describe("collectTwitter", () => {
       pagesFetched: 1,
     });
   });
+
+  // P2 telemetry: per-list and per-user unitResults
+  it("P2: unitResults includes lists and users with handle-based display names", async () => {
+    const client = createClientStub();
+    client.fetchListTweets.mockResolvedValue({
+      tweets: [makeTweet({ id: "tw-list" })],
+      nextCursor: null,
+    });
+    client.fetchUserTimeline.mockResolvedValue({
+      tweets: [makeTweet({ id: "tw-user-1" }), makeTweet({ id: "tw-user-2" })],
+      nextCursor: null,
+    });
+    const repo = createMockRepo();
+    const config: TwitterCollectConfig = {
+      listIds: ["1234567890"],
+      users: [{ handle: "alice", userId: "U1" }],
+    };
+
+    const result = await collectTwitter(makeDeps(client, repo), config);
+
+    expect(result.unitResults).toBeDefined();
+    expect(result.unitResults).toHaveLength(2);
+    expect(result.unitResults?.[0]).toMatchObject({
+      identifier: "list:1234567890",
+      displayName: "Twitter list 1234567890",
+      itemsFetched: 1,
+      status: "completed",
+      errors: [],
+    });
+    expect(result.unitResults?.[1]).toMatchObject({
+      identifier: "user:U1",
+      displayName: "@alice",
+      itemsFetched: 2,
+      status: "completed",
+      errors: [],
+    });
+  });
+
+  it("P2: unitResults marks a single user failure as failed while list succeeds", async () => {
+    const client = createClientStub();
+    client.fetchListTweets.mockResolvedValue({
+      tweets: [makeTweet({ id: "list-ok" })],
+      nextCursor: null,
+    });
+    client.fetchUserTimeline.mockRejectedValue(
+      Object.assign(new Error("not found"), { status: 404 }),
+    );
+    const repo = createMockRepo();
+    const config: TwitterCollectConfig = {
+      listIds: ["L1"],
+      users: [{ handle: "ghost", userId: "Uxx" }],
+    };
+
+    const result = await collectTwitter(makeDeps(client, repo), config);
+
+    expect(result.unitResults).toHaveLength(2);
+    const list = result.unitResults?.find((u) => u.identifier === "list:L1");
+    const user = result.unitResults?.find((u) => u.identifier === "user:Uxx");
+    expect(list?.status).toBe("completed");
+    expect(user?.status).toBe("failed");
+    expect(user?.displayName).toBe("@ghost");
+    expect(user?.errors.length).toBeGreaterThan(0);
+  });
+
+  it("P2: unitResults is [] when RETTIWT_API_KEY missing", async () => {
+    delete process.env.RETTIWT_API_KEY;
+    const client = createClientStub();
+    const repo = createMockRepo();
+
+    const result = await collectTwitter(makeDeps(client, repo), {
+      listIds: ["L1"],
+      users: [],
+    });
+
+    expect(result.unitResults).toEqual([]);
+  });
+
+  it("P2: unitResults is [] when no sources configured", async () => {
+    const client = createClientStub();
+    const repo = createMockRepo();
+
+    const result = await collectTwitter(makeDeps(client, repo), {
+      listIds: [],
+      users: [],
+    });
+
+    expect(result.unitResults).toEqual([]);
+  });
 });

@@ -1,4 +1,4 @@
-import type { CollectorResult } from "@newsletter/shared/types";
+import type { CollectorResult, SourceUnitResult } from "@newsletter/shared/types";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
 import type {
@@ -208,6 +208,7 @@ export async function collectTwitter(
       commentsFetched: 0,
       itemsStored: 0,
       durationMs: now().getTime() - startMs,
+      unitResults: [],
     };
   }
 
@@ -221,6 +222,7 @@ export async function collectTwitter(
       commentsFetched: 0,
       itemsStored: 0,
       durationMs: now().getTime() - startMs,
+      unitResults: [],
     };
   }
 
@@ -238,16 +240,35 @@ export async function collectTwitter(
     ...config.users.map((u): Source => ({ kind: "user", id: u.userId })),
   ];
 
+  const userIdToHandle = new Map<string, string>();
+  for (const u of config.users) {
+    userIdToHandle.set(u.userId, u.handle);
+  }
+
   const batch: RawItemInsert[] = [];
   const failures: TwitterCollectorFailure[] = [];
+  const unitResults: SourceUnitResult[] = [];
 
   for (const source of sources) {
     checkAborted(deps.signal);
+    const sourceStart = now().getTime();
 
     try {
       const outcome = await fetchSource(source, deps, config, sleep, now);
       const rows = outcome.tweets.map(tweetToRawItem);
       batch.push(...rows);
+      const displayName =
+        source.kind === "list"
+          ? `Twitter list ${source.id}`
+          : `@${userIdToHandle.get(source.id) ?? source.id}`;
+      unitResults.push({
+        identifier: source.kind === "list" ? `list:${source.id}` : `user:${source.id}`,
+        displayName,
+        itemsFetched: outcome.tweets.length,
+        status: "completed",
+        errors: [],
+        durationMs: now().getTime() - sourceStart,
+      });
       logger.info(
         {
           event:
@@ -285,6 +306,18 @@ export async function collectTwitter(
       const code = classifyError(err);
       const errorObj = err instanceof Error ? err : new Error(errMessage(err));
       failures.push({ source: source.id, error: errorObj });
+      const displayName =
+        source.kind === "list"
+          ? `Twitter list ${source.id}`
+          : `@${userIdToHandle.get(source.id) ?? source.id}`;
+      unitResults.push({
+        identifier: source.kind === "list" ? `list:${source.id}` : `user:${source.id}`,
+        displayName,
+        itemsFetched: 0,
+        status: "failed",
+        errors: [errorObj.message],
+        durationMs: now().getTime() - sourceStart,
+      });
       logger.warn(
         {
           event:
@@ -328,5 +361,6 @@ export async function collectTwitter(
     commentsFetched: 0,
     itemsStored: deduped.length,
     durationMs,
+    unitResults,
   };
 }

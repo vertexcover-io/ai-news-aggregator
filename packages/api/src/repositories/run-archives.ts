@@ -6,6 +6,7 @@ import type {
   ArchiveTopItem,
   PoolItem,
   RankedItemRef,
+  RunSourceTelemetry,
 } from "@newsletter/shared";
 import type { RawItemRow, RawItemsRepo } from "./raw-items.js";
 
@@ -21,6 +22,8 @@ export interface RunArchiveRow {
   sourceTypes: SourceType[] | null;
   digestHeadline: string | null;
   digestSummary: string | null;
+  sourceTelemetry: RunSourceTelemetry | null;
+  slackNotifiedAt: Date | null;
 }
 
 export interface FindPoolItemsOpts {
@@ -50,6 +53,7 @@ export interface RunArchivesRepo {
     archiveId: string,
     opts: FindPoolItemsOpts,
   ): Promise<{ items: PoolItem[]; total: number }>;
+  markSlackNotified(runId: string, at: Date): Promise<void>;
 }
 
 export function createRunArchivesRepo(
@@ -96,10 +100,18 @@ export function createRunArchivesRepo(
           sourceTypes: runArchives.sourceTypes,
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
+          sourceTelemetry: runArchives.sourceTelemetry,
+          slackNotifiedAt: runArchives.slackNotifiedAt,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
       return rows[0] ?? null;
+    },
+    async markSlackNotified(runId: string, at: Date): Promise<void> {
+      await db
+        .update(runArchives)
+        .set({ slackNotifiedAt: at })
+        .where(eq(runArchives.id, runId));
     },
     async listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]> {
       const rows = await db
@@ -155,6 +167,8 @@ export function createRunArchivesRepo(
           sourceTypes: runArchives.sourceTypes,
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
+          sourceTelemetry: runArchives.sourceTelemetry,
+          slackNotifiedAt: runArchives.slackNotifiedAt,
         })
         .from(runArchives)
         .orderBy(desc(runArchives.completedAt))
@@ -184,6 +198,8 @@ export function createRunArchivesRepo(
           sourceTypes: runArchives.sourceTypes,
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
+          sourceTelemetry: runArchives.sourceTelemetry,
+          slackNotifiedAt: runArchives.slackNotifiedAt,
         });
       return row;
     },

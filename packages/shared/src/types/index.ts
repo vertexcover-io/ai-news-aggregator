@@ -22,11 +22,21 @@ export interface RawItemMetadata {
   addedInReview?: boolean;
 }
 
+export interface SourceUnitResult {
+  identifier: string;
+  displayName: string;
+  itemsFetched: number;
+  status: "completed" | "failed" | "partial";
+  errors: string[];
+  durationMs: number;
+}
+
 export interface CollectorResult {
   itemsFetched: number;
   commentsFetched: number;
   itemsStored: number;
   durationMs: number;
+  unitResults?: SourceUnitResult[];
 }
 
 export interface SendEmailParams {

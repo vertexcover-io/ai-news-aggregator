@@ -1064,3 +1064,64 @@ describe("fetchWebPost", () => {
     expect(result.title).toBeTruthy();
   });
 });
+
+describe("collectWeb (P2 telemetry)", () => {
+  it("populates unitResults with mixed success/failure entries", async () => {
+    const model = makeDiscoveryThenExtractModel(
+      [DISCOVERY_POSTS[0]],
+      { title: "Post Title", author: "Author", published_at: "2026-03-30" },
+    );
+    const repo = makeRepo();
+
+    const listingMap = new Map<string, CrawlResult>([
+      [sourceA.listingUrl, makeSuccessResult(LISTING_MARKDOWN)],
+      [sourceB.listingUrl, makeFailureResult("HTTP 404 for beta")],
+    ]);
+    const detailMap = new Map<string, CrawlResult>([
+      [DISCOVERY_POSTS[0].url, makeSuccessResult(DETAIL_MARKDOWN)],
+    ]);
+
+    let crawlCallCount = 0;
+    const runWebCrawl = vi.fn().mockImplementation(() => {
+      crawlCallCount++;
+      return Promise.resolve(crawlCallCount === 1 ? listingMap : detailMap);
+    });
+
+    const result = await collectWeb(
+      { rawItemsRepo: repo, llmModel: model, runWebCrawl },
+      { sources: [sourceA, sourceB], maxItems: 10 },
+    );
+
+    expect(result.unitResults).toBeDefined();
+    expect(result.unitResults).toHaveLength(2);
+    const alpha = result.unitResults?.find((u) => u.displayName === "alpha");
+    const beta = result.unitResults?.find((u) => u.displayName === "beta");
+    expect(alpha).toMatchObject({
+      identifier: sourceA.listingUrl,
+      status: "completed",
+      errors: [],
+    });
+    expect(alpha?.itemsFetched).toBeGreaterThan(0);
+    expect(beta).toMatchObject({
+      identifier: sourceB.listingUrl,
+      status: "failed",
+      itemsFetched: 0,
+    });
+    expect(beta?.errors[0]).toContain("HTTP 404");
+  });
+
+  it("returns empty unitResults when sources is []", async () => {
+    const repo = makeRepo();
+    const runWebCrawl = vi.fn().mockResolvedValue(new Map());
+    const model = new MockLanguageModelV2({
+      doGenerate: () => { throw new Error("LLM should not be called"); },
+    });
+
+    const result = await collectWeb(
+      { rawItemsRepo: repo, llmModel: model, runWebCrawl },
+      { sources: [], maxItems: 5 },
+    );
+
+    expect(result.unitResults).toEqual([]);
+  });
+});
