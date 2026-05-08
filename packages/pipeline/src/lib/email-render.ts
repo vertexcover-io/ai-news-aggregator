@@ -15,7 +15,10 @@ import {
 } from "@react-email/components";
 import type { NewsletterRenderProps, NewsletterStory } from "@pipeline/workers/newsletter-send.js";
 
-const MAX_STORIES = 5;
+// No render-time cap on stories — the curator picks the count during review.
+// The archive ribbon stays at index RIBBON_AFTER_INDEX (after story 2) for
+// digests with 3+ stories; on 1- or 2-story digests it slots in after the last
+// story so the archive CTA always appears.
 
 const COLORS = {
   bg: "#fbfaf7",
@@ -350,7 +353,7 @@ function NewsletterEmail({
   baseUrl,
   replyToEmail,
 }: NewsletterRenderProps): React.ReactElement {
-  const displayStories = stories.slice(0, MAX_STORIES);
+  const displayStories = stories;
   const totalCount = displayStories.length;
   const headStoryTitle = totalCount > 0 ? displayStories[0].title : null;
   const minRead = Math.max(2, totalCount * 2 - 1);

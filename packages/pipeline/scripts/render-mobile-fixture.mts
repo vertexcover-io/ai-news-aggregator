@@ -12,6 +12,25 @@ const baseUrl = "https://newsletter.vertexcover.io";
 // Use a deliberately long headline to stress the mobile fix — same kind of
 // title that broke in the user's screenshot ("Multi-Token Prediction (MTP) for
 // LLaMA.cpp - Gemma 4 speedup by 40%").
+// Long fixture: 8 stories so we exercise post-cap rendering visually.
+const longProps = {
+  stories: Array.from({ length: 8 }, (_, i) => ({
+    title: `Story ${String(i + 1)} — ${["A long-horizon planning failure mode", "Edge inference quietly ships", "Flow maps cut diffusion cost", "MTP lands in llama.cpp", "Probing Gemma 3's latents", "Compute partnership shake-up", "Open-web AI-slop reaches a tipping point", "Sandbox spec adds rollback semantics"][i]}`,
+    url: `https://example.com/${String(i + 1)}`,
+    summary: `One-line summary of story ${String(i + 1)} for stress-testing the layout with realistic prose.`,
+    bullets: [
+      "First take that captures the headline finding.",
+      "Second take that adds nuance.",
+      "Third take that ties it back.",
+    ],
+    bottomLine: `Bottom line for story ${String(i + 1)} — short, italic, and to the point.`,
+  })),
+  issueDate: "Friday, May 8, 2026",
+  issueNumber: 142,
+  unsubscribeUrl: `${baseUrl}/api/unsubscribe?token=demo`,
+  baseUrl,
+};
+
 const props = {
   stories: [
     {
@@ -57,3 +76,8 @@ const html = await renderNewsletter(props);
 const outPath = join(outDir, "newsletter-mobile-fixture.html");
 writeFileSync(outPath, html, "utf8");
 console.log("wrote:", outPath);
+
+const longHtml = await renderNewsletter(longProps);
+const longOut = join(outDir, "newsletter-8-stories-fixture.html");
+writeFileSync(longOut, longHtml, "utf8");
+console.log("wrote:", longOut);

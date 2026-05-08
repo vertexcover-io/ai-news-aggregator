@@ -55,14 +55,37 @@ describe("renderNewsletter (editorial layout)", () => {
     expect(html).toContain("The biggest AI leap since GPT-4.");
   });
 
-  it("limits stories to 5", async () => {
-    const many: NewsletterStory[] = Array.from({ length: 10 }, (_, i) => ({
+  it("renders every story passed in (no upstream cap)", async () => {
+    const many: NewsletterStory[] = Array.from({ length: 12 }, (_, i) => ({
       title: `Story ${i + 1}`,
       url: `https://example.com/${i + 1}`,
     }));
     const html = await renderNewsletter({ ...baseProps, stories: many });
-    expect(html).toContain("Story 5");
-    expect(html).not.toContain("Story 6");
+    for (let i = 1; i <= 12; i += 1) {
+      expect(html).toContain(`Story ${String(i)}`);
+    }
+  });
+
+  it("places the archive ribbon after story 2 regardless of total count", async () => {
+    const many: NewsletterStory[] = Array.from({ length: 8 }, (_, i) => ({
+      title: `Story ${i + 1}`,
+      url: `https://example.com/${i + 1}`,
+    }));
+    const html = await renderNewsletter({ ...baseProps, stories: many });
+    const idxStory2 = html.indexOf("Story 2");
+    const idxRibbon = html.indexOf("READING THE ARCHIVE");
+    const idxStory3 = html.indexOf("Story 3");
+    // Ribbon must appear AFTER story 2 and BEFORE story 3.
+    expect(idxStory2).toBeGreaterThan(0);
+    expect(idxRibbon).toBeGreaterThan(idxStory2);
+    expect(idxStory3).toBeGreaterThan(idxRibbon);
+  });
+
+  it("renders the ribbon even when there are exactly 2 stories (fallback: after last)", async () => {
+    // baseProps already has 2 stories. Ribbon should still appear so users
+    // see the archive CTA even on tiny digests.
+    const html = await renderNewsletter(baseProps);
+    expect(html).toContain("READING THE ARCHIVE");
   });
 
   it("includes replyToEmail when provided", async () => {
