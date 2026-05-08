@@ -6,6 +6,8 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 import { postSubscribe } from "../../api/subscribe";
+import { useIsSubscribed } from "../../hooks/useIsSubscribed";
+import { markSubscribed } from "../../lib/subscriptionStorage";
 
 type Variant = "hero" | "interlude";
 type State = "idle" | "loading" | "success" | "error";
@@ -14,17 +16,25 @@ interface Props {
   variant?: Variant;
 }
 
-export function SubscribeInline({ variant = "hero" }: Props): ReactElement {
+export function SubscribeInline({ variant = "hero" }: Props): ReactElement | null {
   const [state, setState] = useState<State>("idle");
   const [email, setEmail] = useState("");
   const [agreed, setAgreed] = useState(false);
+  const isSubscribed = useIsSubscribed();
+
+  if (isSubscribed && state !== "success") return null;
 
   const onSubmit = (e: SyntheticEvent<HTMLFormElement>): void => {
     e.preventDefault();
     if (!email || !agreed || state === "loading") return;
     setState("loading");
     void postSubscribe(email).then((result) => {
-      setState("error" in result ? "error" : "success");
+      if ("error" in result) {
+        setState("error");
+      } else {
+        setState("success");
+        markSubscribed();
+      }
     });
   };
 
