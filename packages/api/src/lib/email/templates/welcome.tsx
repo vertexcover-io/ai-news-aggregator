@@ -10,13 +10,14 @@ import {
   Preview,
 } from "@react-email/components";
 
-interface ConfirmationEmailProps {
-  confirmUrl: string;
+export interface WelcomeEmailProps {
   baseUrl: string;
+  unsubscribeUrl: string;
 }
 
 const COLORS = {
   bg: "#fbfaf7",
+  bgElev: "#ffffff",
   ink: "#14110d",
   ink2: "#2a261f",
   muted: "#6b6557",
@@ -29,13 +30,18 @@ const SERIF = 'Newsreader, Georgia, "Times New Roman", serif';
 const MONO = '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 const SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
 
-export function ConfirmationEmail({ confirmUrl }: ConfirmationEmailProps): React.ReactElement {
+export function WelcomeEmail({
+  baseUrl,
+  unsubscribeUrl,
+}: WelcomeEmailProps): React.ReactElement {
   return (
     <Html lang="en">
       <Head />
-      <Preview>One click confirms your subscription to The Daily Read.</Preview>
+      <Preview>
+        You&apos;re in. Tomorrow morning, your first issue. Here&apos;s what to expect.
+      </Preview>
       <Body style={{ backgroundColor: COLORS.bg, margin: 0, padding: "56px 0 80px" }}>
-        <Container style={{ maxWidth: "560px", margin: "0 auto", padding: "0 28px" }}>
+        <Container style={{ maxWidth: "600px", margin: "0 auto", padding: "0 28px" }}>
           {/* Eyebrow — brand */}
           <Section style={{ textAlign: "center", padding: 0 }}>
             <Text
@@ -52,7 +58,7 @@ export function ConfirmationEmail({ confirmUrl }: ConfirmationEmailProps): React
             </Text>
           </Section>
 
-          {/* Eyebrow — step */}
+          {/* Eyebrow — status */}
           <Section style={{ textAlign: "center", padding: "14px 0 0" }}>
             <Text
               style={{
@@ -64,7 +70,7 @@ export function ConfirmationEmail({ confirmUrl }: ConfirmationEmailProps): React
                 margin: 0,
               }}
             >
-              One step left
+              You&apos;re in
             </Text>
           </Section>
 
@@ -73,15 +79,15 @@ export function ConfirmationEmail({ confirmUrl }: ConfirmationEmailProps): React
             <Text
               style={{
                 fontFamily: SERIF,
-                fontSize: "44px",
-                lineHeight: "1.04",
+                fontSize: "42px",
+                lineHeight: "1.05",
                 fontWeight: 600,
                 letterSpacing: "-0.014em",
                 color: COLORS.ink,
                 margin: 0,
               }}
             >
-              Confirm your<br />subscription.
+              Welcome to<br />The Daily Read.
             </Text>
           </Section>
 
@@ -95,61 +101,78 @@ export function ConfirmationEmail({ confirmUrl }: ConfirmationEmailProps): React
                 fontStyle: "italic",
                 color: COLORS.ink2,
                 margin: "0 auto",
-                maxWidth: "440px",
+                maxWidth: "480px",
               }}
             >
-              We&apos;d rather not send anything you didn&apos;t ask for. One click and
-              you&apos;re in — the first issue lands in your inbox tomorrow morning.
+              Subscription confirmed. Your first issue lands in your inbox tomorrow morning around
+              7&thinsp;am — five stories, seven minutes, every weekday.
             </Text>
           </Section>
 
-          {/* CTA pill */}
-          <Section style={{ textAlign: "center", padding: "40px 0 0" }}>
-            <Link
-              href={confirmUrl}
-              target="_blank"
-              style={{
-                display: "inline-block",
-                backgroundColor: COLORS.ink,
-                color: COLORS.bg,
-                padding: "15px 28px",
-                borderRadius: "999px",
-                fontFamily: MONO,
-                fontSize: "12px",
-                letterSpacing: "0.18em",
-                textTransform: "uppercase",
-                textDecoration: "none",
-                fontWeight: 500,
-                lineHeight: 1,
-                whiteSpace: "nowrap",
-              }}
-            >
-              Confirm subscription &nbsp;→
-            </Link>
-          </Section>
+          {/* Hairline */}
+          <Section
+            style={{
+              borderTop: `1px solid ${COLORS.line}`,
+              margin: "44px 0 0",
+              padding: 0,
+              lineHeight: "1px",
+              fontSize: "1px",
+            }}
+          />
 
-          {/* Plain-text fallback */}
-          <Section style={{ textAlign: "center", padding: "22px 0 0" }}>
+          {/* Editor's note label */}
+          <Section style={{ textAlign: "center", padding: "36px 0 0" }}>
             <Text
               style={{
-                fontFamily: SANS,
-                fontSize: "13px",
-                lineHeight: "1.55",
-                color: COLORS.muted2,
-                margin: "0 auto",
-                maxWidth: "440px",
+                fontFamily: MONO,
+                fontSize: "10.5px",
+                letterSpacing: "0.22em",
+                textTransform: "uppercase",
+                color: COLORS.rust,
+                margin: 0,
               }}
             >
-              Button not working? Paste this link into your browser:
-              <br />
-              <Link
-                href={confirmUrl}
-                target="_blank"
-                style={{ color: COLORS.muted, textDecoration: "underline", wordBreak: "break-all" }}
-              >
-                {confirmUrl}
-              </Link>
+              From the editors
             </Text>
+          </Section>
+
+          {/* Editor's note card */}
+          <Section style={{ padding: "22px 0 0" }}>
+            <Section
+              style={{
+                backgroundColor: COLORS.bgElev,
+                border: `1px solid ${COLORS.line}`,
+                borderRadius: "8px",
+                padding: "36px 36px 32px",
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: SERIF,
+                  fontSize: "19px",
+                  lineHeight: "1.6",
+                  fontStyle: "italic",
+                  color: COLORS.ink,
+                  margin: "0 0 20px",
+                }}
+              >
+                We started The Daily Read because the AI firehose is loud and most of it doesn&apos;t
+                matter. Five stories a day, every weekday — and a bottom line on each so you can
+                skim the morning and still know what shipped.
+              </Text>
+              <Text
+                style={{
+                  fontFamily: MONO,
+                  fontSize: "10.5px",
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  color: COLORS.muted,
+                  margin: 0,
+                }}
+              >
+                — The Vertexcover Labs team
+              </Text>
+            </Section>
           </Section>
 
           {/* Sign-off */}
@@ -157,14 +180,14 @@ export function ConfirmationEmail({ confirmUrl }: ConfirmationEmailProps): React
             <Text
               style={{
                 fontFamily: SERIF,
-                fontSize: "18px",
-                lineHeight: "1.55",
+                fontSize: "20px",
+                lineHeight: "1.4",
                 fontStyle: "italic",
                 color: COLORS.ink,
                 margin: 0,
               }}
             >
-              See you tomorrow.
+              Glad to have you.
             </Text>
             <Text
               style={{
@@ -180,24 +203,7 @@ export function ConfirmationEmail({ confirmUrl }: ConfirmationEmailProps): React
             </Text>
           </Section>
 
-          {/* Reassurance */}
-          <Section style={{ textAlign: "center", padding: "44px 0 0" }}>
-            <Text
-              style={{
-                fontFamily: SANS,
-                fontSize: "12.5px",
-                lineHeight: "1.6",
-                color: COLORS.muted2,
-                margin: "0 auto",
-                maxWidth: "440px",
-              }}
-            >
-              Didn&apos;t sign up for The Daily Read? You can safely ignore this email — we&apos;ll
-              never message this address again.
-            </Text>
-          </Section>
-
-          {/* Footer hairline + brand */}
+          {/* Footer hairline */}
           <Section
             style={{
               borderTop: `1px solid ${COLORS.line}`,
@@ -207,6 +213,8 @@ export function ConfirmationEmail({ confirmUrl }: ConfirmationEmailProps): React
               fontSize: "1px",
             }}
           />
+
+          {/* Footer */}
           <Section style={{ textAlign: "center", padding: "22px 0 0" }}>
             <Text
               style={{
@@ -215,11 +223,11 @@ export function ConfirmationEmail({ confirmUrl }: ConfirmationEmailProps): React
                 letterSpacing: "0.18em",
                 textTransform: "uppercase",
                 color: COLORS.muted2,
-                margin: 0,
+                margin: "0 0 12px",
               }}
             >
-              <span style={{ color: COLORS.ink, fontWeight: 500 }}>The Daily Read</span> &nbsp;·&nbsp;
-              Made by{" "}
+              <span style={{ color: COLORS.ink, fontWeight: 500 }}>The Daily Read</span>{" "}
+              &nbsp;·&nbsp; Made by{" "}
               <Link
                 href="https://vertexcover.io"
                 target="_blank"
@@ -232,6 +240,44 @@ export function ConfirmationEmail({ confirmUrl }: ConfirmationEmailProps): React
               >
                 Vertexcover Labs
               </Link>
+            </Text>
+            <Text
+              style={{
+                fontFamily: SANS,
+                fontSize: "12px",
+                lineHeight: "1.6",
+                color: COLORS.muted2,
+                margin: "0 0 6px",
+              }}
+            >
+              You&apos;re receiving this because you confirmed your subscription at{" "}
+              <Link
+                href={baseUrl}
+                target="_blank"
+                style={{ color: COLORS.muted, textDecoration: "underline" }}
+              >
+                {baseUrl}
+              </Link>
+              .
+            </Text>
+            <Text
+              style={{
+                fontFamily: SANS,
+                fontSize: "12px",
+                lineHeight: "1.6",
+                color: COLORS.muted2,
+                margin: 0,
+              }}
+            >
+              Changed your mind?{" "}
+              <Link
+                href={unsubscribeUrl}
+                target="_blank"
+                style={{ color: COLORS.muted2, textDecoration: "underline" }}
+              >
+                Unsubscribe
+              </Link>
+              .
             </Text>
           </Section>
         </Container>
