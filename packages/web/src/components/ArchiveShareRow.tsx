@@ -132,7 +132,7 @@ export function ArchiveShareRow({ archiveUrl, shareText }: Props): ReactElement 
         role="group"
         aria-label="Share this issue"
       >
-        <span className="absolute right-full top-1/2 -translate-y-1/2 pr-[10px] font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#8a8472]">
+        <span className="mr-[10px] font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#8a8472]">
           Share
         </span>
         <a
