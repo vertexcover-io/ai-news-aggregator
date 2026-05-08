@@ -5,7 +5,9 @@ import { ArchivePageHeader, pickHeadline } from "../components/ArchivePageHeader
 import { ArchiveStoryCard } from "../components/ArchiveStoryCard";
 import { ArchiveShareRow } from "../components/ArchiveShareRow";
 import { setMeta } from "../lib/meta";
-import { SubscribeWidget } from "../components/SubscribeWidget";
+import { SubscribeInline } from "../components/archive-listing/SubscribeInline";
+import { ScrollToTop } from "../components/ScrollToTop";
+import { readingTimeMinutes } from "../lib/readingTime";
 
 function formatIssueDate(iso: string): string {
   const d = new Date(iso);
@@ -14,6 +16,44 @@ function formatIssueDate(iso: string): string {
     month: "long",
     day: "numeric",
   });
+}
+
+function BackToArchive(): ReactElement {
+  return (
+    <div className="text-center mb-7">
+      <Link
+        to="/"
+        aria-label="Back to archive"
+        className="inline-flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#6b6557] no-underline hover:text-[#14110d] [&:hover>svg]:-translate-x-[3px] min-h-[44px] px-2"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          className="h-3 w-3 transition-transform duration-150"
+        >
+          <line x1="19" y1="12" x2="5" y2="12" />
+          <polyline points="12 19 5 12 12 5" />
+        </svg>
+        <span>Back to archive</span>
+      </Link>
+    </div>
+  );
+}
+
+function PageShell({ children }: { children: ReactElement }): ReactElement {
+  return (
+    <main className="min-h-[calc(100vh-8rem)] bg-[#fbfaf7]">
+      <div className="mx-auto max-w-[720px] px-5 sm:px-7 pt-8 sm:pt-12 md:pt-14 pb-16 md:pb-24">
+        {children}
+      </div>
+      <ScrollToTop />
+    </main>
+  );
 }
 
 export function ArchivePage(): ReactElement {
@@ -27,6 +67,7 @@ export function ArchivePage(): ReactElement {
   const issueDate = data?.startedAt ? formatIssueDate(data.startedAt) : "";
   const fallbackTitle = `AI news - ${issueDate}`;
   const shareTitle = digestHeadline ?? fallbackTitle;
+  const readingMin = readingTimeMinutes(items);
 
   useEffect(() => {
     if (data?.status === "completed") {
@@ -41,104 +82,92 @@ export function ArchivePage(): ReactElement {
 
   if (isLoading) {
     return (
-      <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
-        <div className="mx-auto max-w-[1120px] px-4 sm:px-6 md:px-20">
-          <div role="status" aria-busy="true" aria-label="Loading issue" className="py-12 space-y-6">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="grid grid-cols-1 md:grid-cols-[120px_minmax(0,1fr)_120px] gap-4 md:gap-10 animate-pulse">
-                <div className="h-16 rounded bg-[#1A1A1A0A]" />
-                <div className="h-24 rounded bg-[#1A1A1A0A]" />
-                <div className="h-8 rounded bg-[#1A1A1A0A]" />
-              </div>
-            ))}
-          </div>
+      <PageShell>
+        <div role="status" aria-busy="true" aria-label="Loading issue" className="space-y-6 py-12">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="grid grid-cols-1 md:grid-cols-[120px_1fr_120px] gap-4 md:gap-10 animate-pulse"
+            >
+              <div className="h-16 rounded bg-[#f1ede2]" />
+              <div className="h-24 rounded bg-[#f1ede2]" />
+              <div className="h-8 rounded bg-[#f1ede2]" />
+            </div>
+          ))}
         </div>
-      </main>
+      </PageShell>
     );
   }
 
   if (isError) {
     return (
-      <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
-        <div className="mx-auto max-w-[1120px] px-4 sm:px-6 md:px-20">
-          <div className="py-16">
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8C3A1E]">ERROR</p>
-            <h2 className="mt-3 font-serif text-3xl md:text-5xl font-medium text-neutral-900">Couldn't load this issue</h2>
-            <Link
-              to="/"
-              className="mt-6 inline-flex items-center min-h-[44px] px-2 font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
-            >
-              ← All issues
-            </Link>
-          </div>
+      <PageShell>
+        <div className="py-16">
+          <BackToArchive />
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8c3a1e] text-center">
+            ERROR
+          </p>
+          <h2 className="mt-3 font-serif text-3xl md:text-5xl font-medium text-[#14110d] text-center">
+            Couldn't load this issue
+          </h2>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
   if (data === null || data === undefined) {
     return (
-      <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
-        <div className="mx-auto max-w-[1120px] px-4 sm:px-6 md:px-20">
-          <div className="py-16">
-            <h2 className="font-serif text-3xl md:text-5xl font-medium text-neutral-900">This issue isn't here</h2>
-            <p className="mt-3 font-mono text-xs uppercase tracking-widest text-neutral-600">
-              It may have been removed or never existed.
-            </p>
-            <Link
-              to="/"
-              className="mt-6 inline-flex items-center min-h-[44px] px-2 font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
-            >
-              ← All issues
-            </Link>
-          </div>
+      <PageShell>
+        <div className="py-16">
+          <BackToArchive />
+          <h2 className="font-serif text-3xl md:text-5xl font-medium text-[#14110d] text-center">
+            This issue isn't here
+          </h2>
+          <p className="mt-3 font-mono text-xs uppercase tracking-[0.18em] text-[#6b6557] text-center">
+            It may have been removed or never existed.
+          </p>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
   if (data.status === "cancelled") {
     return (
-      <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
-        <div className="mx-auto max-w-[1120px] px-4 sm:px-6 md:px-20">
-          <div className="py-16">
-            <h2 className="font-serif text-3xl md:text-5xl font-medium text-neutral-900">This issue was cancelled.</h2>
-            <Link
-              to="/"
-              className="mt-6 inline-flex items-center min-h-[44px] px-2 font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
-            >
-              ← All issues
-            </Link>
-          </div>
+      <PageShell>
+        <div className="py-16">
+          <BackToArchive />
+          <h2 className="font-serif text-3xl md:text-5xl font-medium text-[#14110d] text-center">
+            This issue was cancelled.
+          </h2>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
   if (data.status !== "completed") {
     return (
-      <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
-        <div className="mx-auto max-w-[1120px] px-4 sm:px-6 md:px-20">
-          <div className="py-16">
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8C3A1E]">IN PROGRESS</p>
-            <h2 className="mt-3 font-serif text-3xl md:text-5xl font-medium text-neutral-900">
-              Today's issue is still being curated.
-            </h2>
-            <Link
-              to="/"
-              className="mt-6 inline-flex items-center min-h-[44px] px-2 font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
-            >
-              ← All issues
-            </Link>
-          </div>
+      <PageShell>
+        <div className="py-16">
+          <BackToArchive />
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8c3a1e] text-center">
+            IN PROGRESS
+          </p>
+          <h2 className="mt-3 font-serif text-3xl md:text-5xl font-medium text-[#14110d] text-center">
+            Today's issue is still being curated.
+          </h2>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
+  // Place the subscribe interlude after the midpoint when there are at least 4 stories
+  const interludeAfter =
+    items.length >= 4 ? Math.floor(items.length / 2) : -1;
+
   return (
-    <main className="min-h-[calc(100vh-8rem)] bg-[#FAFAF7]">
-      <div className="mx-auto max-w-[1120px] px-4 sm:px-6 md:px-20">
+    <PageShell>
+      <>
+        <BackToArchive />
         <ArchivePageHeader
           startedAt={data.startedAt}
           storyCount={items.length}
@@ -146,32 +175,31 @@ export function ArchivePage(): ReactElement {
           topStoryTitle={topStoryTitle}
           digestHeadline={digestHeadline}
           digestSummary={digestSummary}
+          readingTimeMin={readingMin}
         />
         <ArchiveShareRow
           archiveUrl={typeof window === "undefined" ? "" : window.location.href}
           shareText={shareTitle}
         />
         {items.length === 0 ? (
-          <p className="py-8 font-serif text-xl text-neutral-600">No stories in this issue.</p>
+          <p className="py-8 text-center font-serif text-xl italic text-[#6b6557]">
+            No stories in this issue.
+          </p>
         ) : (
           <div>
             {items.map((item, idx) => (
-              <ArchiveStoryCard key={item.id} item={item} rank={idx + 1} />
+              <div key={item.id}>
+                <ArchiveStoryCard item={item} rank={idx + 1} />
+                {interludeAfter !== -1 && idx === interludeAfter ? (
+                  <div className="my-6">
+                    <SubscribeInline variant="interlude" />
+                  </div>
+                ) : null}
+              </div>
             ))}
           </div>
         )}
-        <div className="mt-12 border-t border-neutral-200 pt-8 max-w-[480px]">
-          <SubscribeWidget />
-        </div>
-        <div className="py-16">
-          <Link
-            to="/"
-            className="inline-flex items-center min-h-[44px] px-2 font-mono text-xs uppercase tracking-widest text-neutral-600 hover:text-neutral-900"
-          >
-            ← All issues
-          </Link>
-        </div>
-      </div>
-    </main>
+      </>
+    </PageShell>
   );
 }

@@ -1,5 +1,4 @@
 import type { ReactElement } from "react";
-import { Link } from "react-router-dom";
 
 interface ArchivePageHeaderProps {
   startedAt: string;
@@ -8,6 +7,7 @@ interface ArchivePageHeaderProps {
   topStoryTitle: string | null;
   digestHeadline?: string | null;
   digestSummary?: string | null;
+  readingTimeMin?: number;
 }
 
 export function formatLedgerEyebrow(iso: string): string {
@@ -24,7 +24,7 @@ export function formatLedgerEyebrow(iso: string): string {
   const day = parts.find((p) => p.type === "day")?.value ?? "";
   const year = parts.find((p) => p.type === "year")?.value ?? "";
 
-  return `${weekday} · ${month} ${day}, ${year}`;
+  return `${weekday} · ${month} ${day} · ${year}`;
 }
 
 export function pickHeadline(
@@ -47,33 +47,34 @@ export function ArchivePageHeader({
   topStoryTitle,
   digestHeadline,
   digestSummary,
+  readingTimeMin,
 }: ArchivePageHeaderProps): ReactElement {
   const dek =
     digestSummary !== null && digestSummary !== undefined && digestSummary !== ""
       ? digestSummary
       : null;
+  const storyLabel = storyCount === 1 ? "1 story" : `${String(storyCount)} stories`;
+  const meta =
+    readingTimeMin !== undefined
+      ? `${storyLabel} · ${String(readingTimeMin)} min read`
+      : storyLabel;
+
   return (
-    <header className="pt-12 pb-8">
-      <p className="font-mono text-xs text-[#8C3A1E] uppercase tracking-widest">
+    <header className="text-center mt-2 mb-6">
+      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#8c3a1e] m-0 mb-[18px]">
         {formatLedgerEyebrow(startedAt)}
       </p>
-      <h1 className="mt-4 font-serif text-3xl font-medium leading-tight tracking-tight text-neutral-900 md:text-5xl">
+      <h1 className="font-serif font-semibold leading-[1.05] tracking-[-0.012em] text-[#14110d] text-[34px] sm:text-[42px] md:text-[50px] m-0 mb-[18px]">
         {pickHeadline(leadSummary, topStoryTitle, digestHeadline)}
       </h1>
-      {dek !== null && (
-        <p className="mt-4 max-w-[680px] font-serif text-lg italic leading-relaxed text-neutral-700 md:text-xl">
+      {dek !== null ? (
+        <p className="mx-auto mt-0 mb-[18px] max-w-[56ch] font-serif text-[19px] italic leading-[1.5] text-[#2a261f]">
           {dek}
         </p>
-      )}
-      <p className="mt-4 font-mono text-xs text-neutral-500 uppercase tracking-widest">
-        {storyCount === 1 ? "1 story" : `${String(storyCount)} stories`}
+      ) : null}
+      <p className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#6b6557] m-0">
+        {meta}
       </p>
-      <Link
-        to="/"
-        className="mt-6 inline-flex items-center min-h-[44px] px-2 font-mono text-xs text-neutral-600 uppercase tracking-widest hover:text-neutral-900"
-      >
-        ← All issues
-      </Link>
     </header>
   );
 }

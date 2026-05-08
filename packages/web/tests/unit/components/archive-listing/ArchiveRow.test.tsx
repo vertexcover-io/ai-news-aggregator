@@ -38,18 +38,14 @@ function makeItem(overrides: Partial<ArchiveListItem> = {}): ArchiveListItem {
 describe("ArchiveRow", () => {
   afterEach(cleanup);
 
-  // REQ-013: date block — day-of-week, MMM D, YYYY · N°X
-  it("REQ-013: renders day-of-week eyebrow, MMM D date, and issue number sub", () => {
+  // Mock-A: date block — day-of-week, MMM D, YYYY (no N°)
+  it("Mock-A: renders day-of-week eyebrow, MMM D date, and year (no issue number)", () => {
     renderRow(makeItem({ runDate: "2026-04-18" }), 42, false);
     // April 18, 2026 is a Saturday
     expect(screen.getByText("SAT")).toBeTruthy();
     expect(screen.getByText("Apr 18")).toBeTruthy();
-    expect(screen.getByText("2026 · N°42")).toBeTruthy();
-  });
-
-  it("REQ-013: issue number N°80 when total=82 and index=2", () => {
-    renderRow(makeItem({ runDate: "2026-04-18" }), 80, false);
-    expect(screen.getByText("2026 · N°80")).toBeTruthy();
+    expect(screen.getByText("2026")).toBeTruthy();
+    expect(screen.queryByText(/N°/)).toBeNull();
   });
 
   // VER-96: chip row removed; no <ul> appears inside the row content area
@@ -194,7 +190,7 @@ describe("ArchiveRow", () => {
     expect(screen.queryByRole("link", { name: /Read/i })).toBeNull();
   });
 
-  // EDGE-005: featured=true with leadSummary="" and digestSummary=null — no dek
+  // EDGE-005: featured=true with leadSummary="" and digestSummary=null — no dek paragraph in body slot
   it("EDGE-005: no dek rendered when featured=true but both summaries are empty/null", () => {
     const { container } = renderRow(
       makeItem({ leadSummary: "", digestSummary: null }),
@@ -203,8 +199,7 @@ describe("ArchiveRow", () => {
     );
     const row = container.querySelector("li");
     expect(row?.getAttribute("data-featured")).toBe("true");
-    const paras = container.querySelectorAll("p");
-    expect(paras.length).toBe(0);
+    expect(container.querySelector("[data-slot='dek']")).toBeNull();
   });
 
   // EDGE-006: featured=true, leadSummary=null, digestSummary=null — no dek
@@ -214,8 +209,7 @@ describe("ArchiveRow", () => {
       1,
       true,
     );
-    const paras = container.querySelectorAll("p");
-    expect(paras.length).toBe(0);
+    expect(container.querySelector("[data-slot='dek']")).toBeNull();
   });
 
   // EDGE-007 / EDGE-013: topItems=[], storyCount>0 → headline falls back to topItems[0]?.title (undefined → "—"), Read link present
@@ -245,8 +239,7 @@ describe("ArchiveRow", () => {
       1,
       true,
     );
-    const paras = container.querySelectorAll("p");
-    expect(paras.length).toBe(0);
+    expect(container.querySelector("[data-slot='dek']")).toBeNull();
   });
 
   // Phase 5: highlightTerms wraps matches in <mark> in digestHeadline
