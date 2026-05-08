@@ -29,5 +29,12 @@ describe("rank prompts", () => {
       expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("Signal-vs-hype");
       expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("Actionability");
     });
+
+    it("frames the reader as an AI practitioner tracking the AI world", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("AI practitioner");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
+        "move the AI story forward",
+      );
+    });
   });
 });
