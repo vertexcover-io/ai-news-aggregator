@@ -1,22 +1,32 @@
 import { useState, type ReactElement, type ChangeEvent, type SyntheticEvent } from "react";
 import { Link } from "react-router-dom";
 import { postSubscribe } from "../api/subscribe.js";
+import { useIsSubscribed } from "../hooks/useIsSubscribed.js";
+import { markSubscribed } from "../lib/subscriptionStorage.js";
 import { Button } from "./ui/button.js";
 import { Input } from "./ui/input.js";
 
 type State = "idle" | "loading" | "success" | "error";
 
-export function SubscribeWidget({ className }: { className?: string }): ReactElement {
+export function SubscribeWidget({ className }: { className?: string }): ReactElement | null {
   const [state, setState] = useState<State>("idle");
   const [email, setEmail] = useState("");
   const [agreed, setAgreed] = useState(false);
+  const isSubscribed = useIsSubscribed();
+
+  if (isSubscribed && state !== "success") return null;
 
   const handleSubmit = (e: SyntheticEvent<HTMLFormElement>): void => {
     e.preventDefault();
     if (!email || !agreed) return;
     setState("loading");
     void postSubscribe(email).then((result) => {
-      setState("error" in result ? "error" : "success");
+      if ("error" in result) {
+        setState("error");
+      } else {
+        setState("success");
+        markSubscribed();
+      }
     });
   };
 

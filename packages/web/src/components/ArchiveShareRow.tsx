@@ -128,11 +128,11 @@ export function ArchiveShareRow({ archiveUrl, shareText }: Props): ReactElement 
     <div className="mx-auto mb-9 flex items-center justify-center border-b border-[#e7e2d6] pb-7">
       <div
         data-testid="archive-share-row"
-        className="inline-flex items-center gap-1"
+        className="relative inline-flex items-center gap-1"
         role="group"
         aria-label="Share this issue"
       >
-        <span className="pr-[10px] font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#8a8472]">
+        <span className="absolute right-full top-1/2 -translate-y-1/2 pr-[10px] font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#8a8472]">
           Share
         </span>
         <a
@@ -171,7 +171,7 @@ export function ArchiveShareRow({ archiveUrl, shareText }: Props): ReactElement 
         </button>
         <span
           aria-hidden="true"
-          className={`pl-[10px] font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#8c3a1e] transition-opacity duration-200 ${copyState === "copied" ? "opacity-100" : "opacity-0"}`}
+          className={`absolute left-full top-1/2 -translate-y-1/2 pl-[10px] font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#8c3a1e] transition-opacity duration-200 ${copyState === "copied" ? "opacity-100" : "opacity-0"}`}
         >
           Copied
         </span>

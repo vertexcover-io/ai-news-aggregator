@@ -13,6 +13,7 @@ const mockPostSubscribe = vi.mocked(postSubscribe);
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  window.localStorage.clear();
 });
 
 function renderInline(props: { variant?: "hero" | "interlude" } = {}): ReturnType<typeof render> {

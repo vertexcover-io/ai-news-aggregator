@@ -14,6 +14,7 @@ const mockPostSubscribe = vi.mocked(postSubscribe);
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  window.localStorage.clear();
 });
 
 function renderWidget(): ReturnType<typeof render> {

@@ -1,5 +1,6 @@
 import { useEffect, type ReactElement } from "react";
 import { useSearchParams, Navigate } from "react-router-dom";
+import { markSubscribed } from "../lib/subscriptionStorage";
 
 export function ConfirmPage(): ReactElement {
   const [searchParams] = useSearchParams();
@@ -7,7 +8,10 @@ export function ConfirmPage(): ReactElement {
 
   useEffect(() => {
     document.title = "Confirm Subscription — AI Newsletter";
-  }, []);
+    if (status === "success") {
+      markSubscribed();
+    }
+  }, [status]);
 
   if (!status) {
     return <Navigate to="/" replace />;
