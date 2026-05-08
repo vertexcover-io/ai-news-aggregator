@@ -11,7 +11,7 @@ export interface SubscribeRouterDeps {
   webBaseUrl: string;
   sendConfirmationEmail: (email: string, confirmUrl: string) => Promise<void>;
   sendNewsletterToSubscriber: (runId: string, subscriberId: string) => Promise<void>;
-  getTodaysReviewedArchiveId: () => Promise<string | null>;
+  getMostRecentReviewedArchiveId: () => Promise<string | null>;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -154,27 +154,27 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       "confirm: subscriber moved pending -> confirmed",
     );
 
-    const todaysArchiveId = await deps.getTodaysReviewedArchiveId();
-    if (todaysArchiveId) {
+    const recentArchiveId = await deps.getMostRecentReviewedArchiveId();
+    if (recentArchiveId) {
       try {
-        await deps.sendNewsletterToSubscriber(todaysArchiveId, result.subscriberId);
+        await deps.sendNewsletterToSubscriber(recentArchiveId, result.subscriberId);
         logger.info(
           {
             event: "confirm.welcome_send_enqueued",
             subscriberId: result.subscriberId,
-            runId: todaysArchiveId,
+            runId: recentArchiveId,
           },
-          "confirm: enqueued today's archive to new subscriber",
+          "confirm: enqueued most recent reviewed archive to new subscriber",
         );
       } catch (err) {
         logger.warn(
           {
             event: "confirm.welcome_send_failed",
             subscriberId: result.subscriberId,
-            runId: todaysArchiveId,
+            runId: recentArchiveId,
             error: err instanceof Error ? err.message : String(err),
           },
-          "confirm: failed to enqueue today's archive",
+          "confirm: failed to enqueue most recent reviewed archive",
         );
       }
     }
