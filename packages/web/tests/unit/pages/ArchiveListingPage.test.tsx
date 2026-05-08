@@ -101,22 +101,21 @@ function getArchiveRows(): NodeListOf<Element> {
 }
 
 describe("ArchiveListingPage", () => {
-  // VER-94: brand renamed to Sieve, headline copy updated, month filter chips removed.
-  it("VER-94: document.title is 'Sieve — The Daily Read'", () => {
+  // Mock-A: page title is just "The Daily Read"
+  it("Mock-A: document.title is 'The Daily Read'", () => {
     const data = makeArchives(1, "2026-04");
     renderWithQueryClient(<ArchiveListingPage />, data);
-    expect(document.title).toBe("Sieve — The Daily Read");
+    expect(document.title).toBe("The Daily Read");
   });
 
-  // VER-94: brand "Sieve" in nav, new headline "The Daily Read", no filter chips.
-  it("VER-94: renders Sieve nav, hero, archive list, blog/footer when data loads", () => {
+  // Mock-A: hero h1, "Made by Vertexcover Labs" pill, no top nav, archive rows present
+  it("Mock-A: renders hero, Vertexcover Labs pill, archive list, footer when data loads", () => {
     const data = makeArchives(3, "2026-04");
     renderWithLayout(data);
-    expect(screen.getByText("Sieve")).toBeTruthy();
     expect(screen.getByRole("heading", { level: 1, name: "The Daily Read" })).toBeTruthy();
+    expect(screen.getAllByText(/Vertexcover Labs/i).length).toBeGreaterThan(0);
     expect(getFilterChips().length).toBe(0);
     expect(getArchiveRows().length).toBeGreaterThan(0);
-    expect(screen.getByText(/blog\.vertexcover\.io/)).toBeTruthy();
   });
 
   // REQ-018: loading state shows SkeletonRows (animate-pulse elements)

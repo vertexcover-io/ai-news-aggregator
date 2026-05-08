@@ -20,12 +20,13 @@ function renderHeader(props: {
 }
 
 describe("formatLedgerEyebrow", () => {
-  it("returns weekday and date in uppercase with center dot", () => {
-    // 2026-04-18 is a Saturday (UTC)
+  it("returns weekday · month day · year (uppercase) with center dots", () => {
+    // 2026-04-18 is a Saturday
     const result = formatLedgerEyebrow("2026-04-18T10:00:00Z");
     expect(result).toContain("SATURDAY");
-    expect(result).toContain("APRIL 18, 2026");
-    expect(result).toContain("·");
+    expect(result).toContain("APRIL 18");
+    expect(result).toContain("2026");
+    expect(result.split("·").length).toBe(3);
   });
 });
 
@@ -114,28 +115,25 @@ describe("ArchivePageHeader", () => {
     expect(screen.getByText("0 stories")).toBeTruthy();
   });
 
-  it("renders back link as <a> with href='/' and text '← All issues'", () => {
+  it("does not render an inline back link inside the header (back link lives in a separate row)", () => {
     renderHeader({
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 5,
       leadSummary: null,
       topStoryTitle: null,
     });
-    const link = screen.getByRole("link", { name: "← All issues" });
-    expect(link.getAttribute("href")).toBe("/");
+    expect(screen.queryByRole("link", { name: /All issues|Back to archive/i })).toBeNull();
   });
 
-  it("eyebrow element has font-mono and tracking-widest classes", () => {
+  it("eyebrow element has font-mono", () => {
     renderHeader({
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 5,
       leadSummary: null,
       topStoryTitle: null,
     });
-    // 2026-04-18 is a Saturday — match the actual rendered weekday
     const eyebrow = screen.getByText(/SATURDAY/);
     expect(eyebrow.className).toContain("font-mono");
-    expect(eyebrow.className).toContain("tracking-widest");
   });
 
   it("h1 element has font-serif class", () => {

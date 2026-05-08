@@ -23,36 +23,21 @@ const shortDateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
-function DateBlock({
-  runDate,
-  issueNumber,
-  featured,
-}: {
-  runDate: string;
-  issueNumber: number;
-  featured: boolean;
-}): ReactElement {
+function DateBlock({ runDate }: { runDate: string }): ReactElement {
   const date = parseLocalDate(runDate);
-  const dayOfWeek = dayFormatter.format(date).toUpperCase();
-  const shortDate = shortDateFormatter.format(date);
-  const year = date.getFullYear();
-
+  const dow = dayFormatter.format(date).toUpperCase();
+  const md = shortDateFormatter.format(date);
+  const yr = date.getFullYear();
   return (
-    // Mobile: single inline row (flex-row, gap-x-2) above headline.
-    // md+: stacked column (flex-col, gap-1) in the left rail.
-    <div className="mb-2 md:mb-0 flex flex-wrap items-baseline gap-x-2 gap-y-0 md:flex-col md:gap-1">
-      <span
-        className={`font-mono text-[11px] uppercase tracking-[0.18em] ${featured ? "text-[#8C3A1E]" : "text-neutral-500"}`}
-      >
-        {dayOfWeek}
+    <div className="flex flex-row md:flex-col items-baseline md:items-start gap-x-3 md:gap-y-2 leading-none font-serif">
+      <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#6b6557]">
+        {dow}
       </span>
-      <span
-        className={`font-serif font-medium leading-none text-neutral-900 md:block ${featured ? "text-2xl md:text-3xl" : "text-base md:text-xl"}`}
-      >
-        {shortDate}
+      <span className="text-2xl md:text-[28px] font-medium tracking-[-0.012em] text-[#14110d]">
+        {md}
       </span>
-      <span className="font-mono text-[11px] text-neutral-500">
-        {year} · N°{issueNumber}
+      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#8a8472]">
+        {yr}
       </span>
     </div>
   );
@@ -60,7 +45,6 @@ function DateBlock({
 
 export function ArchiveRow({
   item,
-  issueNumber,
   featured,
   highlightTerms,
 }: ArchiveRowProps): ReactElement {
@@ -77,75 +61,62 @@ export function ArchiveRow({
   const hasStories = storyCount > 0;
   const showNoStories = !hasStories && topItems.length === 0;
 
-  let headlineContent: ReactElement;
+  let headlineNode: ReactElement;
   if (showNoStories) {
-    headlineContent = (
-      <span className="font-mono text-sm text-neutral-400">No stories</span>
+    headlineNode = (
+      <span className="font-mono text-sm text-[#8a8472]">No stories</span>
     );
   } else {
     const firstTopTitle = topItems.length > 0 ? topItems[0].title : "—";
     const headlineText = digestHeadline ?? firstTopTitle;
-    headlineContent = (
+    headlineNode = (
       <h3
-        className={`font-serif font-medium leading-tight ${featured ? "text-3xl" : "text-xl"}`}
+        className={`font-serif font-medium leading-[1.22] tracking-[-0.005em] text-[#14110d] ${featured ? "text-[26px] md:text-[28px]" : "text-[22px]"}`}
       >
         {applyHighlight(headlineText, highlightTerms)}
       </h3>
     );
   }
 
-  // Featured rows fall back to leadSummary (the rank-1 recap) when the digest
-  // summary is missing — that was the pre-VER-96 dek behavior. Non-featured
-  // rows never used leadSummary, so we only show a dek if digestSummary exists.
   const dek = digestSummary ?? (featured ? leadSummary : null);
   const showDek = typeof dek === "string" && dek.length > 0;
 
   const rowBody = (
-    // Mobile: single-column grid (date eyebrow → content → meta).
-    // md+: three-column grid [120px / 1fr / 120px] with date in left rail, meta in right rail.
-    <div
-      className={[
-        "grid md:px-2",
-        "grid-cols-1 md:grid-cols-[120px_minmax(0,1fr)_120px]",
-        "[grid-template-areas:'date''content''meta'] md:[grid-template-areas:'date_content_meta']",
-        "gap-0 md:gap-12",
-        featured ? "py-8 md:py-12" : "py-6 md:py-7",
-      ].join(" ")}
-    >
-      <div className="[grid-area:date]">
-        <DateBlock runDate={runDate} issueNumber={issueNumber} featured={featured} />
+    <div className="grid grid-cols-1 md:grid-cols-[110px_1fr_92px] gap-3 md:gap-7 items-start md:items-center py-6 md:py-[26px] px-3 md:px-4 border-b border-[#e7e2d6] transition-colors duration-150 hover:bg-[rgba(20,17,13,0.025)] rounded-md">
+      <div>
+        <DateBlock runDate={runDate} />
       </div>
-
-      <div className="[grid-area:content] min-w-0 flex flex-col gap-4">
-        {headlineContent}
+      <div className="min-w-0 flex flex-col gap-2">
+        {headlineNode}
         {showDek ? (
-          <p className="font-sans text-[15px] leading-relaxed text-neutral-600 line-clamp-2">
+          <p
+            data-slot="dek"
+            className="font-sans text-[14.5px] leading-[1.55] text-[#2a261f] line-clamp-2 m-0"
+          >
             {applyHighlight(dek, highlightTerms)}
           </p>
         ) : null}
       </div>
-
-      {/* Single meta block: flows after content column on mobile; placed in right rail on md+ via grid-area */}
-      <div className="[grid-area:meta] flex md:flex-col items-end justify-end gap-1 mt-3 md:mt-0">
-        <span className="font-mono text-xs text-neutral-500">
+      <div className="flex md:flex-col items-baseline md:items-end gap-3 md:gap-[14px] font-mono text-[10.5px] uppercase tracking-[0.14em] text-[#6b6557]">
+        <span>
           {storyCount} {storyCount === 1 ? "story" : "stories"}
         </span>
         {hasStories ? (
-          <span className="font-mono text-xs text-neutral-900">Read →</span>
+          <span className="inline-flex items-center gap-[6px] border-b border-[#14110d] pb-[1px] font-mono text-[11px] tracking-[0.14em] text-[#14110d]">
+            Read <span className="inline-block transition-transform">→</span>
+          </span>
         ) : null}
       </div>
     </div>
   );
 
   return (
-    <li
-      data-featured={featured ? "true" : undefined}
-      className="border-b border-neutral-200"
-    >
+    <li data-featured={featured ? "true" : undefined}>
       {hasStories ? (
         <Link
           to={`/archive/${runId}`}
-          className="block transition-colors hover:bg-neutral-50 focus-visible:bg-neutral-50 focus-visible:outline-none"
+          aria-label={`Read issue from ${runDate}`}
+          className="block focus-visible:bg-[rgba(20,17,13,0.04)] focus-visible:outline-none"
         >
           {rowBody}
         </Link>
@@ -155,4 +126,3 @@ export function ArchiveRow({
     </li>
   );
 }
-

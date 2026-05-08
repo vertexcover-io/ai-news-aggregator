@@ -7,6 +7,22 @@
   --font-mono:
     "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
     monospace;
+  --font-sans:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+    sans-serif;
+
+  /* The Daily Read — magazine archive palette */
+  --color-cream: #fbfaf7;
+  --color-cream-elev: #ffffff;
+  --color-ink: #14110d;
+  --color-ink-2: #2a261f;
+  --color-mute: #6b6557;
+  --color-mute-2: #8a8472;
+  --color-line: #e7e2d6;
+  --color-line-strong: #d4ceba;
+  --color-rust: #8c3a1e;
+  --color-rust-deep: #6e2d17;
+  --color-chip: #f1ede2;
 }
 
 @custom-variant dark (&:is(.dark *));

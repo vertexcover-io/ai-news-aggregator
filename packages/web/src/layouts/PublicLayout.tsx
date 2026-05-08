@@ -1,71 +1,26 @@
-import { useEffect, type MouseEvent, type ReactElement } from "react";
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, type ReactElement } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 
-function Nav(): ReactElement {
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  const handleSubscribeClick = (e: MouseEvent<HTMLAnchorElement>): void => {
-    if (location.pathname === "/") {
-      e.preventDefault();
-      const target = document.getElementById("subscribe");
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    } else {
-      e.preventDefault();
-      void navigate("/#subscribe");
-    }
-  };
-
+function Footer(): ReactElement {
   return (
-    <nav className="border-b border-neutral-200 bg-white">
-      <div className="mx-auto flex max-w-[860px] items-center justify-between px-4 sm:px-6 md:px-8 py-4">
-        <Link to="/" className="text-sm font-semibold text-neutral-900 hover:text-neutral-600">
-          Sieve
-        </Link>
-        <div className="flex items-center gap-2">
-          <a
-            href="https://blog.vertexcover.io"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center min-h-[44px] px-2 text-sm text-neutral-600 hover:text-neutral-900"
-          >
-            Blog
-          </a>
-          <a
-            href="/#subscribe"
-            onClick={handleSubscribeClick}
-            className="inline-flex items-center min-h-[44px] px-2 text-sm text-neutral-600 hover:text-neutral-900"
-          >
-            Subscribe
-          </a>
+    <footer className="px-4 sm:px-6 py-8 text-center font-mono text-[11px] uppercase tracking-[0.18em] text-[#8a8472]">
+      <span className="inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+        <span className="font-medium text-[#14110d] whitespace-nowrap">
+          The Daily Read
+        </span>
+        <span className="text-[#8a8472]">·</span>
+        <span className="whitespace-nowrap">
+          Made by{" "}
           <a
             href="https://vertexcover.io"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center min-h-[44px] px-2 text-sm text-neutral-600 hover:text-neutral-900"
+            className="border-b border-[#e7e2d6] pb-px text-[#6b6557] transition-colors hover:border-[#8c3a1e] hover:text-[#8c3a1e]"
           >
-            About
+            Vertexcover Labs
           </a>
-        </div>
-      </div>
-    </nav>
-  );
-}
-
-function Footer(): ReactElement {
-  return (
-    <footer className="mt-12 md:mt-16 py-6 md:py-8 px-4 sm:px-6 md:px-8 text-center font-mono text-xs text-neutral-500">
-      Sieve · Made by Vertexcover ·{" "}
-      <a
-        href="https://blog.vertexcover.io"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="underline hover:text-neutral-900"
-      >
-        blog.vertexcover.io
-      </a>
+        </span>
+      </span>
     </footer>
   );
 }
@@ -75,8 +30,6 @@ export function PublicLayout(): ReactElement {
 
   useEffect(() => {
     if (pathname === "/" && hash === "#subscribe") {
-      // The listing fetches archives async; the #subscribe section mounts only
-      // after the data resolves, so we poll briefly until it appears.
       let cancelled = false;
       const start = Date.now();
       const tick = (): void => {
@@ -99,8 +52,7 @@ export function PublicLayout(): ReactElement {
   }, [pathname, hash]);
 
   return (
-    <div className="min-h-screen bg-white">
-      <Nav />
+    <div className="min-h-screen bg-[#fbfaf7] text-[#14110d]">
       <Outlet />
       <Footer />
     </div>

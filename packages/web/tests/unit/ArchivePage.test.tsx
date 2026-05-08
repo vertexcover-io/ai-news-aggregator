@@ -101,7 +101,7 @@ describe("ArchivePage", () => {
     expect(skeleton.getAttribute("aria-busy")).toBe("true");
   });
 
-  it("error state: ERROR eyebrow, Couldn't load this issue headline, and ← All issues link (REQ-021, EDGE-013)", () => {
+  it("error state: ERROR eyebrow, Couldn't load this issue headline, and Back to archive link", () => {
     vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: undefined,
@@ -116,7 +116,7 @@ describe("ArchivePage", () => {
     renderWithClient(<ArchivePage />);
     expect(screen.getByText("ERROR")).toBeTruthy();
     expect(screen.getByText("Couldn't load this issue")).toBeTruthy();
-    const link = screen.getByRole("link", { name: "← All issues" });
+    const link = screen.getByRole("link", { name: /Back to archive/i });
     expect(link.getAttribute("href")).toBe("/");
   });
 
@@ -184,7 +184,7 @@ describe("ArchivePage", () => {
     expect(screen.getByText("This issue was cancelled.")).toBeTruthy();
   });
 
-  it("completed with 2 stories: getAllByRole(article) length === 2 and rank counters present (REQ-006)", () => {
+  it("completed with 2 stories: renders 2 article elements (no N° rail in Mock-A)", () => {
     vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: baseCompletedRun,
@@ -199,11 +199,7 @@ describe("ArchivePage", () => {
     renderWithClient(<ArchivePage />);
     const articles = screen.getAllByRole("article");
     expect(articles).toHaveLength(2);
-    // Rank counters live in the left rail (N° + serif rank). Right rail with
-    // "rank / total" was removed in VER-94 to dedupe with the left rail and source eyebrow.
-    const leftRails = articles.map((a) => a.querySelector('[data-rail="left"]'));
-    expect(leftRails[0]?.textContent).toMatch(/N°.*01/);
-    expect(leftRails[1]?.textContent).toMatch(/N°.*02/);
+    expect(screen.queryByText("N°")).toBeNull();
   });
 
   it("completed with 0 stories: No stories in this issue. rendered; no article roles (EDGE-001)", () => {
@@ -243,7 +239,7 @@ describe("ArchivePage", () => {
     expect(document.title).toContain("AI news -");
   });
 
-  it("bottom-of-page ← All issues link present on completed state (REQ-024)", () => {
+  it("Mock-A: a single 'Back to archive' link at the top of the page points to '/'", () => {
     vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: baseCompletedRun,
@@ -256,10 +252,9 @@ describe("ArchivePage", () => {
     } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
-    // There should be at least two ← All issues links (from header + bottom)
-    const allIssuesLinks = screen.getAllByRole("link", { name: "← All issues" });
-    expect(allIssuesLinks.length).toBeGreaterThanOrEqual(2);
-    for (const link of allIssuesLinks) {
+    const backLinks = screen.getAllByRole("link", { name: /Back to archive/i });
+    expect(backLinks.length).toBeGreaterThanOrEqual(1);
+    for (const link of backLinks) {
       expect(link.getAttribute("href")).toBe("/");
     }
   });

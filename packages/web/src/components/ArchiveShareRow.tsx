@@ -12,42 +12,35 @@ interface NavigatorClipboardLike {
   clipboard?: { writeText: (s: string) => Promise<void> };
 }
 
-function LinkedInIcon({ className }: { className?: string }): ReactElement {
+function XIcon(): ReactElement {
   return (
     <svg
-      className={className}
-      width="14"
-      height="14"
       viewBox="0 0 24 24"
       fill="currentColor"
       aria-hidden="true"
+      className="h-[14px] w-[14px]"
     >
-      <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.67H9.37V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45C23.2 24 24 23.23 24 22.28V1.72C24 .77 23.2 0 22.22 0z" />
+      <path d="M18.244 2H21.5l-7.46 8.523L23 22h-6.953l-5.444-7.114L4.32 22H1.062l7.973-9.118L1 2h7.116l4.93 6.514L18.244 2zm-2.44 18h1.81L7.27 4H5.32L15.804 20z" />
     </svg>
   );
 }
 
-function XIcon({ className }: { className?: string }): ReactElement {
+function LinkedInIcon(): ReactElement {
   return (
     <svg
-      className={className}
-      width="14"
-      height="14"
       viewBox="0 0 24 24"
       fill="currentColor"
       aria-hidden="true"
+      className="h-[14px] w-[14px]"
     >
-      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817-5.967 6.817H1.677l7.73-8.835L1.254 2.25h6.83l4.713 6.231 5.447-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
+      <path d="M20.5 2h-17A1.5 1.5 0 0 0 2 3.5v17A1.5 1.5 0 0 0 3.5 22h17a1.5 1.5 0 0 0 1.5-1.5v-17A1.5 1.5 0 0 0 20.5 2zM8 19H5V9h3v10zM6.5 7.7A1.7 1.7 0 1 1 6.5 4.3a1.7 1.7 0 0 1 0 3.4zM19 19h-3v-5.5c0-1.4-.5-2.3-1.7-2.3a1.85 1.85 0 0 0-1.7 1.2 2.3 2.3 0 0 0-.1.8V19h-3V9h3v1.3a3 3 0 0 1 2.7-1.5c2 0 3.5 1.3 3.5 4.1V19z" />
     </svg>
   );
 }
 
-function LinkIcon({ className }: { className?: string }): ReactElement {
+function LinkIcon(): ReactElement {
   return (
     <svg
-      className={className}
-      width="14"
-      height="14"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -55,26 +48,24 @@ function LinkIcon({ className }: { className?: string }): ReactElement {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
+      className="h-[14px] w-[14px]"
     >
-      <path d="M9 17H7A5 5 0 0 1 7 7h2" />
-      <path d="M15 7h2a5 5 0 1 1 0 10h-2" />
-      <line x1="8" y1="12" x2="16" y2="12" />
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
     </svg>
   );
 }
 
-export function ArchiveShareRow({
-  archiveUrl,
-  shareText,
-}: Props): ReactElement {
+const iconBtn =
+  "inline-flex h-[30px] w-[30px] min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-[#6b6557] transition-colors hover:bg-[#f1ede2] hover:text-[#8c3a1e] sm:min-h-[30px] sm:min-w-[30px]";
+
+export function ArchiveShareRow({ archiveUrl, shareText }: Props): ReactElement {
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return (): void => {
-      if (timerRef.current !== null) {
-        window.clearTimeout(timerRef.current);
-      }
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     };
   }, []);
 
@@ -83,9 +74,7 @@ export function ArchiveShareRow({
 
   function flash(state: "copied" | "failed"): void {
     setCopyState(state);
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
-    }
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => {
       setCopyState("idle");
       timerRef.current = null;
@@ -117,9 +106,8 @@ export function ArchiveShareRow({
       } finally {
         document.body.removeChild(ta);
       }
-      if (ok) {
-        flash("copied");
-      } else {
+      if (ok) flash("copied");
+      else {
         console.warn("[ArchiveShareRow] copy fallback failed");
         flash("failed");
       }
@@ -129,7 +117,7 @@ export function ArchiveShareRow({
     }
   }
 
-  const copyLabel =
+  const copyTextLabel =
     copyState === "copied"
       ? "COPIED ✓"
       : copyState === "failed"
@@ -137,54 +125,60 @@ export function ArchiveShareRow({
         : "COPY LINK";
 
   return (
-    <div
-      data-testid="archive-share-row"
-      className="mt-2 mb-8 flex flex-wrap items-center gap-3"
-    >
-      <a
-        href={linkedInUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Share this issue on LinkedIn"
-        data-share-target="linkedin"
-        className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 font-mono text-[11px] uppercase tracking-[0.18em] bg-[#8C3A1E] text-[#FAFAF7] hover:bg-[#6E2D17] transition-colors"
+    <div className="mx-auto mb-9 flex items-center justify-center border-b border-[#e7e2d6] pb-7">
+      <div
+        data-testid="archive-share-row"
+        className="inline-flex items-center gap-1"
+        role="group"
+        aria-label="Share this issue"
       >
-        <LinkedInIcon />
-        SHARE ON LINKEDIN
-      </a>
-
-      <a
-        href={xUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Share this issue on X"
-        data-share-target="x"
-        className="inline-flex items-center justify-center gap-2 min-h-[44px] min-w-[44px] px-4 font-mono text-[11px] uppercase tracking-[0.18em] text-neutral-900 border border-neutral-900 hover:bg-neutral-900 hover:text-[#FAFAF7] transition-colors"
-      >
-        <XIcon />
-        POST ON X
-      </a>
-
-      <button
-        type="button"
-        onClick={() => {
-          void handleCopy();
-        }}
-        aria-label="Copy archive link"
-        data-share-target="copy"
-        className={`inline-flex items-center justify-center gap-2 min-h-[44px] min-w-[44px] px-4 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors ${
-          copyState === "copied"
-            ? "text-[#8C3A1E]"
-            : "text-neutral-700 hover:text-[#8C3A1E]"
-        }`}
-      >
-        <LinkIcon />
-        {copyLabel}
-      </button>
-
-      <span aria-live="polite" className="sr-only">
-        {copyState === "copied" ? "Copied" : ""}
-      </span>
+        <span className="pr-[10px] font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#8a8472]">
+          Share
+        </span>
+        <a
+          href={xUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Share this issue on X"
+          data-share-target="x"
+          className={iconBtn}
+        >
+          <XIcon />
+          <span className="sr-only">POST ON X</span>
+        </a>
+        <a
+          href={linkedInUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Share this issue on LinkedIn"
+          data-share-target="linkedin"
+          className={iconBtn}
+        >
+          <LinkedInIcon />
+          <span className="sr-only">SHARE ON LINKEDIN</span>
+        </a>
+        <button
+          type="button"
+          aria-label="Copy archive link"
+          data-share-target="copy"
+          onClick={() => {
+            void handleCopy();
+          }}
+          className={`${iconBtn} ${copyState === "copied" ? "text-[#8c3a1e]" : ""}`}
+        >
+          <LinkIcon />
+          <span className="sr-only">{copyTextLabel}</span>
+        </button>
+        <span
+          aria-hidden="true"
+          className={`pl-[10px] font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#8c3a1e] transition-opacity duration-200 ${copyState === "copied" ? "opacity-100" : "opacity-0"}`}
+        >
+          Copied
+        </span>
+        <span aria-live="polite" className="sr-only">
+          {copyState === "copied" ? "Copied" : ""}
+        </span>
+      </div>
     </div>
   );
 }
