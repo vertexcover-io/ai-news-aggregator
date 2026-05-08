@@ -6,201 +6,618 @@ import {
   Body,
   Container,
   Section,
+  Row,
+  Column,
   Text,
   Link,
-  Hr,
-  Preview,
   Img,
+  Preview,
 } from "@react-email/components";
 import type { NewsletterRenderProps, NewsletterStory } from "@pipeline/workers/newsletter-send.js";
 
 const MAX_STORIES = 5;
 
+const COLORS = {
+  bg: "#fbfaf7",
+  bgElev: "#ffffff",
+  ink: "#14110d",
+  ink2: "#2a261f",
+  muted: "#6b6557",
+  muted2: "#8a8472",
+  line: "#e7e2d6",
+  rust: "#8c3a1e",
+  ribbonInk: "#14110d",
+  ribbonEyebrow: "#c9b88a",
+} as const;
+
+const SERIF = 'Newsreader, Georgia, "Times New Roman", serif';
+const MONO = '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
+
+const eyebrowStyle: React.CSSProperties = {
+  fontFamily: MONO,
+  fontSize: "10.5px",
+  letterSpacing: "0.22em",
+  textTransform: "uppercase",
+  color: COLORS.rust,
+  margin: "0 0 14px",
+};
+
+const sourceEyebrowStyle: React.CSSProperties = {
+  ...eyebrowStyle,
+  margin: "0 0 12px",
+};
+
+const titleLinkStyle: React.CSSProperties = {
+  display: "block",
+  color: COLORS.ink,
+  textDecoration: "none",
+  fontFamily: SERIF,
+  fontSize: "24px",
+  lineHeight: "1.22",
+  fontWeight: 500,
+  letterSpacing: "-0.008em",
+  marginBottom: "14px",
+};
+
+const ledeStyle: React.CSSProperties = {
+  fontFamily: SERIF,
+  fontSize: "17px",
+  lineHeight: "1.55",
+  fontStyle: "italic",
+  color: COLORS.ink2,
+  margin: "0 0 22px",
+};
+
+const unpackedLabelStyle: React.CSSProperties = {
+  ...eyebrowStyle,
+  margin: "0 0 12px",
+};
+
+const bulletStyle: React.CSSProperties = {
+  fontFamily: SERIF,
+  fontSize: "16px",
+  lineHeight: "1.55",
+  color: COLORS.ink2,
+  margin: "0 0 8px",
+  paddingLeft: "22px",
+  textIndent: "-14px",
+};
+
+const sourceLineStyle: React.CSSProperties = {
+  fontFamily: MONO,
+  fontSize: "10.5px",
+  letterSpacing: "0.18em",
+  textTransform: "uppercase",
+  color: COLORS.muted,
+  margin: "18px 0 0",
+};
+
+function sourceLabelFor(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    if (host === "news.ycombinator.com") return "Hacker News";
+    if (host === "github.com") return "GitHub";
+    if (host === "arxiv.org") return "arXiv";
+    if (host === "reddit.com" || host.endsWith(".reddit.com")) return "Reddit";
+    return host;
+  } catch {
+    return "Source";
+  }
+}
+
+function StoryBlock({
+  story,
+  isLast,
+}: {
+  story: NewsletterStory;
+  isLast: boolean;
+}): React.ReactElement {
+  const sourceLabel = sourceLabelFor(story.url);
+  const children: React.ReactNode[] = [
+    React.createElement(Text, { key: "src", style: sourceEyebrowStyle }, sourceLabel),
+    React.createElement(
+      Link,
+      { key: "title", href: story.url, style: titleLinkStyle, target: "_blank" },
+      story.title,
+    ),
+  ];
+
+  if (story.summary !== undefined) {
+    children.push(React.createElement(Text, { key: "lede", style: ledeStyle }, story.summary));
+  }
+
+  if (story.imageUrl !== undefined) {
+    children.push(
+      React.createElement(Img, {
+        key: "img",
+        src: story.imageUrl,
+        alt: story.title,
+        width: "552",
+        style: {
+          width: "100%",
+          maxWidth: "552px",
+          height: "auto",
+          display: "block",
+          margin: "0 0 22px",
+          borderRadius: "6px",
+          border: `1px solid ${COLORS.line}`,
+        },
+      }),
+    );
+  }
+
+  if (story.bullets !== undefined && story.bullets.length > 0) {
+    children.push(
+      React.createElement(Text, { key: "unpacked", style: unpackedLabelStyle }, "UNPACKED"),
+      ...story.bullets.map((bullet, idx) =>
+        React.createElement(Text, { key: `b-${String(idx)}`, style: bulletStyle }, `— ${bullet}`),
+      ),
+    );
+  }
+
+  if (story.bottomLine !== undefined) {
+    children.push(
+      React.createElement(
+        Section,
+        {
+          key: "bottom",
+          style: {
+            borderLeft: `3px solid ${COLORS.rust}`,
+            backgroundColor: COLORS.bgElev,
+            padding: "12px 18px",
+            margin: "22px 0 0",
+            borderRadius: "0 4px 4px 0",
+          },
+        },
+        React.createElement(
+          Text,
+          { style: { ...eyebrowStyle, margin: "0 0 6px" } },
+          "BOTTOM LINE",
+        ),
+        React.createElement(
+          Text,
+          {
+            style: {
+              fontFamily: SERIF,
+              fontSize: "17px",
+              lineHeight: "1.45",
+              fontStyle: "italic",
+              fontWeight: 500,
+              color: COLORS.ink,
+              margin: 0,
+            },
+          },
+          story.bottomLine,
+        ),
+      ),
+    );
+  }
+
+  children.push(
+    React.createElement(
+      Text,
+      { key: "src-line", style: sourceLineStyle },
+      "Source · ",
+      React.createElement(
+        Link,
+        {
+          href: story.url,
+          target: "_blank",
+          style: {
+            color: COLORS.ink,
+            borderBottom: `1px solid ${COLORS.ink}`,
+            paddingBottom: "1px",
+            textDecoration: "none",
+          },
+        },
+        `Read on ${sourceLabel} ↗`,
+      ),
+    ),
+  );
+
+  if (!isLast) {
+    children.push(
+      React.createElement(Section, {
+        key: "divider",
+        style: {
+          borderTop: `1px solid ${COLORS.line}`,
+          margin: "44px 0 44px",
+          padding: 0,
+          lineHeight: "1px",
+          fontSize: "1px",
+        },
+      }),
+    );
+  }
+
+  return React.createElement(Section, { style: { padding: 0 } }, ...children);
+}
+
+function ArchiveRibbon({ archiveUrl }: { archiveUrl: string }): React.ReactElement {
+  return React.createElement(
+    Section,
+    {
+      style: {
+        backgroundColor: COLORS.ribbonInk,
+        borderRadius: "10px",
+        padding: "22px 24px",
+        margin: "56px 0 44px",
+      },
+    },
+    React.createElement(
+      Row,
+      null,
+      React.createElement(
+        Column,
+        { valign: "middle", style: { verticalAlign: "middle" } },
+        React.createElement(
+          Text,
+          {
+            style: {
+              fontFamily: MONO,
+              fontSize: "10px",
+              letterSpacing: "0.22em",
+              textTransform: "uppercase",
+              color: COLORS.ribbonEyebrow,
+              margin: "0 0 4px",
+            },
+          },
+          "READING THE ARCHIVE",
+        ),
+        React.createElement(
+          Text,
+          {
+            style: {
+              fontFamily: SERIF,
+              fontSize: "17px",
+              lineHeight: "1.4",
+              fontStyle: "italic",
+              color: COLORS.bg,
+              margin: 0,
+            },
+          },
+          "Catch up on every issue you've missed.",
+        ),
+      ),
+      React.createElement(
+        Column,
+        {
+          valign: "middle",
+          align: "right",
+          style: {
+            verticalAlign: "middle",
+            paddingLeft: "16px",
+            whiteSpace: "nowrap",
+            width: "1%",
+          },
+        },
+        React.createElement(
+          Link,
+          {
+            href: archiveUrl,
+            target: "_blank",
+            style: {
+              display: "inline-block",
+              backgroundColor: COLORS.bg,
+              color: COLORS.ink,
+              padding: "10px 18px",
+              borderRadius: "999px",
+              fontFamily: MONO,
+              fontSize: "10.5px",
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              textDecoration: "none",
+              fontWeight: 500,
+              whiteSpace: "nowrap",
+              lineHeight: 1,
+            },
+          },
+          "Open archive →",
+        ),
+      ),
+    ),
+  );
+}
+
 function NewsletterEmail({
   stories,
   issueDate,
-  issueNumber,
   unsubscribeUrl,
   baseUrl,
   replyToEmail,
 }: NewsletterRenderProps): React.ReactElement {
   const displayStories = stories.slice(0, MAX_STORIES);
+  const totalCount = displayStories.length;
+  const headStoryTitle = totalCount > 0 ? displayStories[0].title : null;
+  const minRead = Math.max(2, totalCount * 2 - 1);
+  const RIBBON_AFTER_INDEX = 1;
 
-  return React.createElement(Html, { lang: "en" },
+  const sansFooter = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
+
+  return React.createElement(
+    Html,
+    { lang: "en" },
     React.createElement(Head, null),
-    React.createElement(Preview, null,
-      `${displayStories[0]?.title ?? "Your daily AI digest"} — and ${String(Math.max(0, displayStories.length - 1))} more stories`,
+    React.createElement(
+      Preview,
+      null,
+      `${headStoryTitle ?? "Your daily AI digest"} — ${String(totalCount)} stor${totalCount === 1 ? "y" : "ies"}, ${String(minRead)} min read`,
     ),
-    React.createElement(Body, {
-      style: {
-        backgroundColor: "#FAFAF7",
-        fontFamily: "Georgia, serif",
-        margin: 0,
-        padding: "40px 0",
-      },
-    },
-      React.createElement(Container, {
-        style: { maxWidth: "600px", margin: "0 auto", padding: "0 24px" },
-      },
-        // Header
-        React.createElement(Section, { style: { marginBottom: "32px" } },
-          React.createElement(Text, {
-            style: {
-              fontSize: "11px",
-              fontFamily: "monospace",
-              textTransform: "uppercase",
-              letterSpacing: "0.15em",
-              color: "#737373",
-              margin: "0 0 8px",
-            },
-          }, `AI NEWSLETTER · ISSUE ${issueNumber}`),
-          React.createElement(Text, {
-            style: {
-              fontSize: "28px",
-              color: "#171717",
-              margin: "0 0 4px",
-              fontWeight: "normal",
-            },
-          }, issueDate),
-          React.createElement(Hr, { style: { borderColor: "#171717", borderWidth: "2px", margin: "16px 0" } }),
-        ),
-        // Stories
-        ...displayStories.map((story: NewsletterStory, index: number) =>
-          React.createElement(Section, { key: story.url, style: { marginBottom: "40px" } },
-            React.createElement(Text, {
+    React.createElement(
+      Body,
+      { style: { backgroundColor: COLORS.bg, margin: 0, padding: "32px 0 64px" } },
+      React.createElement(
+        Container,
+        { style: { maxWidth: "600px", margin: "0 auto", padding: "0 28px" } },
+        // Date eyebrow
+        React.createElement(
+          Section,
+          { style: { textAlign: "center", padding: "16px 0 0" } },
+          React.createElement(
+            Text,
+            {
               style: {
+                fontFamily: MONO,
                 fontSize: "11px",
-                fontFamily: "monospace",
-                color: "#8C3A1E",
-                margin: "0 0 8px",
+                letterSpacing: "0.22em",
                 textTransform: "uppercase",
-                letterSpacing: "0.1em",
+                color: COLORS.rust,
+                margin: 0,
               },
-            }, `N°${String(index + 1).padStart(2, "0")}`),
-            React.createElement(Link, {
-              href: story.url,
+            },
+            issueDate,
+          ),
+        ),
+        // Headline
+        React.createElement(
+          Section,
+          { style: { textAlign: "center", padding: "14px 0 0" } },
+          React.createElement(
+            Text,
+            {
               style: {
-                fontSize: "20px",
-                color: "#171717",
-                textDecoration: "none",
-                fontFamily: "Georgia, serif",
-                display: "block",
-                marginBottom: "12px",
+                fontFamily: SERIF,
+                fontSize: "38px",
+                lineHeight: "1.04",
+                fontWeight: 600,
+                letterSpacing: "-0.012em",
+                color: COLORS.ink,
+                margin: 0,
+              },
+            },
+            headStoryTitle ?? "Today's AI Digest",
+          ),
+        ),
+        // Meta line — count + reading time, no Issue Nº
+        React.createElement(
+          Section,
+          { style: { textAlign: "center", padding: "18px 0 0" } },
+          React.createElement(
+            Text,
+            {
+              style: {
+                fontFamily: MONO,
+                fontSize: "10.5px",
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                color: COLORS.muted,
+                margin: 0,
+              },
+            },
+            `${String(totalCount)} stor${totalCount === 1 ? "y" : "ies"} · ${String(minRead)} min read`,
+          ),
+        ),
+        // Hairline before stories
+        React.createElement(Section, {
+          style: {
+            borderTop: `1px solid ${COLORS.line}`,
+            margin: "28px 0 44px",
+            padding: 0,
+            lineHeight: "1px",
+            fontSize: "1px",
+          },
+        }),
+        // Stories with archive ribbon after story 2 (or after the last story if fewer)
+        ...(() => {
+          const ribbonAt =
+            displayStories.length > RIBBON_AFTER_INDEX + 1
+              ? RIBBON_AFTER_INDEX
+              : displayStories.length - 1;
+          return displayStories.flatMap((story, index) => {
+            const isLast = index === displayStories.length - 1;
+            const block = React.createElement(StoryBlock, {
+              key: `story-${String(index)}`,
+              story,
+              isLast,
+            });
+            if (index === ribbonAt) {
+              return [
+                block,
+                React.createElement(ArchiveRibbon, {
+                  key: "archive-ribbon",
+                  archiveUrl: baseUrl,
+                }),
+              ];
+            }
+            return [block];
+          });
+        })(),
+        // End-of-issue archive link
+        React.createElement(Section, {
+          style: {
+            borderTop: `1px solid ${COLORS.line}`,
+            margin: "64px 0 0",
+            padding: 0,
+            lineHeight: "1px",
+            fontSize: "1px",
+          },
+        }),
+        React.createElement(
+          Section,
+          { style: { textAlign: "center", padding: "28px 0 0" } },
+          React.createElement(
+            Text,
+            {
+              style: {
+                fontFamily: SERIF,
+                fontSize: "22px",
                 lineHeight: "1.3",
+                fontStyle: "italic",
+                fontWeight: 500,
+                color: COLORS.ink,
+                margin: "0 0 8px",
               },
-            }, story.title),
-            ...(story.imageUrl !== undefined ? [
-              React.createElement(Img, {
-                src: story.imageUrl,
-                alt: story.title,
-                style: {
-                  width: "100%",
-                  maxWidth: "552px",
-                  height: "auto",
-                  display: "block",
-                  marginBottom: "16px",
-                },
-              }),
-            ] : []),
-            ...(story.summary !== undefined ? [
-              React.createElement(Text, {
-                style: {
-                  fontSize: "16px",
-                  color: "#404040",
-                  lineHeight: "1.6",
-                  fontStyle: "italic",
-                  margin: "0 0 16px",
-                },
-              }, story.summary),
-            ] : []),
-            ...(story.bullets !== undefined && story.bullets.length > 0 ? [
-              React.createElement(Section, { style: { margin: "0 0 16px" } },
-                ...story.bullets.map((bullet: string, bIndex: number) =>
-                  React.createElement(Text, {
-                    key: bIndex,
-                    style: {
-                      fontSize: "15px",
-                      color: "#404040",
-                      lineHeight: "1.5",
-                      margin: "0 0 8px",
-                      paddingLeft: "16px",
-                    },
-                  }, `— ${bullet}`),
-                ),
-              ),
-            ] : []),
-            ...(story.bottomLine !== undefined ? [
-              React.createElement(Section, {
-                style: {
-                  borderLeft: "3px solid #8C3A1E",
-                  paddingLeft: "16px",
-                  margin: "16px 0 0",
-                },
+            },
+            "That's today's read.",
+          ),
+          React.createElement(
+            Text,
+            {
+              style: {
+                fontFamily: MONO,
+                fontSize: "10.5px",
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                color: COLORS.muted,
+                margin: "0 0 22px",
               },
-                React.createElement(Text, {
-                  style: {
-                    fontSize: "11px",
-                    fontFamily: "monospace",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    color: "#8C3A1E",
-                    margin: "0 0 6px",
-                  },
-                }, "BOTTOM LINE"),
-                React.createElement(Text, {
-                  style: {
-                    fontSize: "15px",
-                    color: "#171717",
-                    lineHeight: "1.5",
-                    margin: 0,
-                    fontWeight: "bold",
-                  },
-                }, story.bottomLine),
-              ),
-            ] : []),
-            React.createElement(Hr, { style: { borderColor: "#E5E5E5", margin: "32px 0 0" } }),
+            },
+            "Missed yesterday? It's in the archive.",
+          ),
+          React.createElement(
+            Link,
+            {
+              href: baseUrl,
+              target: "_blank",
+              style: {
+                display: "inline-block",
+                fontFamily: MONO,
+                fontSize: "11px",
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                color: COLORS.ink,
+                textDecoration: "none",
+                borderBottom: `1px solid ${COLORS.ink}`,
+                paddingBottom: "2px",
+              },
+            },
+            "Browse every issue →",
           ),
         ),
         // Footer
-        React.createElement(Section, { style: { paddingTop: "8px" } },
-          React.createElement(Text, {
-            style: {
-              fontSize: "12px",
-              color: "#737373",
-              lineHeight: "1.6",
-              margin: "0 0 8px",
-            },
+        React.createElement(Section, {
+          style: {
+            borderTop: `1px solid ${COLORS.line}`,
+            margin: "56px 0 0",
+            padding: 0,
+            lineHeight: "1px",
+            fontSize: "1px",
           },
-            "You're receiving the AI Newsletter because you subscribed at ",
-            React.createElement(Link, { href: baseUrl, style: { color: "#737373" } }, baseUrl),
-            ".",
-          ),
-          ...(replyToEmail !== undefined ? [
-            React.createElement(Text, {
+        }),
+        React.createElement(
+          Section,
+          { style: { textAlign: "center", padding: "24px 0 0" } },
+          React.createElement(
+            Text,
+            {
               style: {
-                fontSize: "12px",
-                color: "#737373",
-                lineHeight: "1.6",
-                margin: "0 0 8px",
+                fontFamily: MONO,
+                fontSize: "10.5px",
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                color: COLORS.muted2,
+                margin: "0 0 12px",
               },
             },
-              "Reply to this email or write to ",
-              React.createElement(Link, {
-                href: `mailto:${replyToEmail}`,
-                style: { color: "#737373" },
-              }, replyToEmail),
-              " with feedback.",
+            React.createElement(
+              "span",
+              { style: { color: COLORS.ink, fontWeight: 500 } },
+              "The Daily Read",
             ),
-          ] : []),
-          React.createElement(Text, {
-            style: {
-              fontSize: "12px",
-              color: "#737373",
-              lineHeight: "1.6",
-              margin: 0,
+            " · Made by ",
+            React.createElement(
+              Link,
+              {
+                href: "https://vertexcover.io",
+                target: "_blank",
+                style: {
+                  color: COLORS.muted,
+                  borderBottom: `1px solid ${COLORS.line}`,
+                  paddingBottom: "1px",
+                  textDecoration: "none",
+                },
+              },
+              "Vertexcover Labs",
+            ),
+          ),
+          React.createElement(
+            Text,
+            {
+              style: {
+                fontFamily: sansFooter,
+                fontSize: "12px",
+                lineHeight: "1.6",
+                color: COLORS.muted2,
+                margin: "0 0 6px",
+              },
             },
-          },
-            React.createElement(Link, { href: unsubscribeUrl, style: { color: "#737373" } }, "Unsubscribe"),
+            "You're receiving this because you subscribed at ",
+            React.createElement(
+              Link,
+              {
+                href: baseUrl,
+                target: "_blank",
+                style: { color: COLORS.muted, textDecoration: "underline" },
+              },
+              baseUrl,
+            ),
+            ".",
+          ),
+          replyToEmail !== undefined
+            ? React.createElement(
+                Text,
+                {
+                  style: {
+                    fontFamily: sansFooter,
+                    fontSize: "12px",
+                    lineHeight: "1.6",
+                    color: COLORS.muted2,
+                    margin: "0 0 6px",
+                  },
+                },
+                "Reply with feedback, or ",
+                React.createElement(
+                  Link,
+                  {
+                    href: `mailto:${replyToEmail}`,
+                    style: { color: COLORS.muted, textDecoration: "underline" },
+                  },
+                  replyToEmail,
+                ),
+                ".",
+              )
+            : null,
+          React.createElement(
+            Text,
+            {
+              style: {
+                fontFamily: sansFooter,
+                fontSize: "12px",
+                lineHeight: "1.6",
+                color: COLORS.muted2,
+                margin: 0,
+              },
+            },
+            React.createElement(
+              Link,
+              {
+                href: unsubscribeUrl,
+                target: "_blank",
+                style: { color: COLORS.muted2, textDecoration: "underline" },
+              },
+              "Unsubscribe",
+            ),
           ),
         ),
       ),
