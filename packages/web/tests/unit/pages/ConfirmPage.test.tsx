@@ -21,27 +21,31 @@ function renderConfirmPage(search: string): ReturnType<typeof render> {
 describe("ConfirmPage", () => {
   it("renders success message for ?status=success", () => {
     renderConfirmPage("?status=success");
-    expect(screen.getByText(/You're subscribed!/)).toBeTruthy();
+    expect(screen.getByText("Confirmed")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(
+      /You're\s+subscribed\./,
+    );
     expect(
-      screen.getByText("You'll receive the AI Newsletter in your inbox."),
+      screen.getByText(
+        "The next edition lands tomorrow morning. Until then, the archive's open.",
+      ),
     ).toBeTruthy();
   });
 
   it("renders expired message for ?status=expired", () => {
     renderConfirmPage("?status=expired");
-    expect(
-      screen.getByText("This confirmation link has expired."),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Please subscribe again to receive a new confirmation email.",
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText("Link Expired")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(
+      /This confirmation link has\s+expired\./,
+    );
   });
 
   it("renders invalid message for ?status=invalid", () => {
     renderConfirmPage("?status=invalid");
-    expect(screen.getByText("This link is invalid.")).toBeTruthy();
+    expect(screen.getByText("Link Invalid")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(
+      /This link doesn't\s+resolve\./,
+    );
   });
 
   it("redirects to / when status is missing", () => {
