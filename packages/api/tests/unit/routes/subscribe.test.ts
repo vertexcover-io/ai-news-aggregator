@@ -56,7 +56,7 @@ function buildApp(opts: {
   repo: SubscribersRepo;
   sendConfirmationEmail?: (email: string, confirmUrl: string) => Promise<void>;
   sendNewsletterToSubscriber?: (runId: string, subscriberId: string) => Promise<void>;
-  getTodaysReviewedArchiveId?: () => Promise<string | null>;
+  getMostRecentReviewedArchiveId?: () => Promise<string | null>;
 }): Hono {
   const app = new Hono();
   const router = createSubscribeRouter({
@@ -67,7 +67,7 @@ function buildApp(opts: {
     sendConfirmationEmail: opts.sendConfirmationEmail ?? vi.fn(() => Promise.resolve()),
     sendNewsletterToSubscriber:
       opts.sendNewsletterToSubscriber ?? vi.fn(() => Promise.resolve()),
-    getTodaysReviewedArchiveId: opts.getTodaysReviewedArchiveId ?? (() => Promise.resolve(null)),
+    getMostRecentReviewedArchiveId: opts.getMostRecentReviewedArchiveId ?? (() => Promise.resolve(null)),
   });
   app.route("/api", router);
   return app;
@@ -181,14 +181,14 @@ describe("GET /api/confirm", () => {
     expect(repo.updateStatus).not.toHaveBeenCalled();
   });
 
-  it("REQ-006: when todaysArchiveId exists, sendNewsletterToSubscriber is called", async () => {
+  it("REQ-006: when a recent reviewed archive exists, sendNewsletterToSubscriber is called", async () => {
     const subscriber = makeSubscriber();
     const repo = makeRepo(subscriber);
     const sendNewsletterToSubscriber = vi.fn(() => Promise.resolve());
     const app = buildApp({
       repo,
       sendNewsletterToSubscriber,
-      getTodaysReviewedArchiveId: () => Promise.resolve("archive-123"),
+      getMostRecentReviewedArchiveId: () => Promise.resolve("archive-123"),
     });
 
     const token = issueSubscriberToken(subscriber.id, "confirm", SECRET);
@@ -198,14 +198,14 @@ describe("GET /api/confirm", () => {
     expect(sendNewsletterToSubscriber).toHaveBeenCalledWith("archive-123", subscriber.id);
   });
 
-  it("EDGE-005: when todaysArchiveId is null, sendNewsletterToSubscriber is NOT called", async () => {
+  it("EDGE-005: when no reviewed archive exists, sendNewsletterToSubscriber is NOT called", async () => {
     const subscriber = makeSubscriber();
     const repo = makeRepo(subscriber);
     const sendNewsletterToSubscriber = vi.fn(() => Promise.resolve());
     const app = buildApp({
       repo,
       sendNewsletterToSubscriber,
-      getTodaysReviewedArchiveId: () => Promise.resolve(null),
+      getMostRecentReviewedArchiveId: () => Promise.resolve(null),
     });
 
     const token = issueSubscriberToken(subscriber.id, "confirm", SECRET);

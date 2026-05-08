@@ -24,6 +24,7 @@ import { requireAdmin } from "@api/auth/middleware.js";
 import { buildApp } from "@api/app.js";
 import { createSubscribeRouter } from "@api/routes/subscribe.js";
 import { createSubscribersRepo } from "@api/repositories/subscribers.js";
+import { createRunArchivesRepo } from "@api/repositories/run-archives.js";
 import { createEmailProvider } from "@api/lib/email/provider.js";
 import { renderConfirmation } from "@api/lib/email/templates/index.js";
 import { createWebhooksRouter } from "@api/routes/webhooks.js";
@@ -67,6 +68,8 @@ const { Queue: BullQueue } = await import("bullmq");
 const { createRedisConnection } = await import("@newsletter/shared/redis");
 const sendQueue = new BullQueue("send-newsletter", { connection: createRedisConnection() });
 
+const runArchivesRepoForSubscribe = createRunArchivesRepo(getDb());
+
 const subscribeRouter = createSubscribeRouter({
   subscribersRepo: createSubscribersRepo(getDb()),
   sessionSecret,
@@ -90,7 +93,10 @@ const subscribeRouter = createSubscribeRouter({
       { jobId: `send-${runId}-${subscriberId}` },
     );
   },
-  getTodaysReviewedArchiveId: () => Promise.resolve(null),
+  getMostRecentReviewedArchiveId: async () => {
+    const archive = await runArchivesRepoForSubscribe.findMostRecentReviewed();
+    return archive?.id ?? null;
+  },
 });
 
 const webhooksRouter = createWebhooksRouter({

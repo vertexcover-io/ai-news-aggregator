@@ -463,3 +463,70 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     expect(result[0].topItems).toHaveLength(3);
   });
 });
+
+// ---------------------------------------------------------------------------
+// findMostRecentReviewed — used by the confirm flow to send the most recent
+// reviewed digest to a newly-confirmed subscriber, regardless of date.
+// ---------------------------------------------------------------------------
+
+function makeFakeDbForMostRecent(rows: StoredArchive[]): Pick<AppDb, "select" | "update"> {
+  return {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          orderBy: () => ({
+            limit: (n: number) =>
+              Promise.resolve(rows.filter((r) => r.reviewed).slice(0, n)),
+          }),
+        }),
+      }),
+    }),
+    update: () => ({
+      set: () => ({
+        where: () => ({ returning: () => Promise.resolve([]) }),
+      }),
+    }),
+  } as unknown as Pick<AppDb, "select" | "update">;
+}
+
+describe("findMostRecentReviewed", () => {
+  it("returns null when no reviewed archives exist", async () => {
+    const db = makeFakeDbForMostRecent([]);
+    const result = await createRunArchivesRepo(db).findMostRecentReviewed();
+    expect(result).toBeNull();
+  });
+
+  it("ignores non-reviewed archives", async () => {
+    const archive = makeDefaultArchive({ reviewed: false });
+    const db = makeFakeDbForMostRecent([archive]);
+    const result = await createRunArchivesRepo(db).findMostRecentReviewed();
+    expect(result).toBeNull();
+  });
+
+  it("returns the only reviewed archive's id when one exists", async () => {
+    const archive = makeDefaultArchive({
+      id: "00000000-0000-0000-0000-0000000000aa",
+      reviewed: true,
+    });
+    const db = makeFakeDbForMostRecent([archive]);
+    const result = await createRunArchivesRepo(db).findMostRecentReviewed();
+    expect(result).toEqual({ id: "00000000-0000-0000-0000-0000000000aa" });
+  });
+
+  it("returns the most recent reviewed archive when multiple exist (most-recent first)", async () => {
+    const older = makeDefaultArchive({
+      id: "00000000-0000-0000-0000-0000000000aa",
+      reviewed: true,
+      completedAt: new Date("2026-04-09T00:00:00Z"),
+    });
+    const newer = makeDefaultArchive({
+      id: "00000000-0000-0000-0000-0000000000bb",
+      reviewed: true,
+      completedAt: new Date("2026-04-10T00:00:00Z"),
+    });
+    // Fake db respects the provided order; production query enforces ORDER BY completedAt DESC LIMIT 1.
+    const db = makeFakeDbForMostRecent([newer, older]);
+    const result = await createRunArchivesRepo(db).findMostRecentReviewed();
+    expect(result).toEqual({ id: "00000000-0000-0000-0000-0000000000bb" });
+  });
+});

@@ -66,6 +66,12 @@ export interface RunArchivesRepo {
   list(limit: number): Promise<RunArchiveRow[]>;
   listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]>;
   searchReviewed(input: SearchReviewedInput): Promise<SearchReviewedResult>;
+  /**
+   * Returns the most recently completed reviewed archive, regardless of date.
+   * Used by the confirm flow to send a freshly-confirmed subscriber the latest
+   * digest they missed — even if it was published before today.
+   */
+  findMostRecentReviewed(): Promise<{ id: string } | null>;
   updateRankedItems(
     id: string,
     items: RankedItemRef[],
@@ -134,6 +140,16 @@ export function createRunArchivesRepo(
         .update(runArchives)
         .set({ slackNotifiedAt: at })
         .where(eq(runArchives.id, runId));
+    },
+    async findMostRecentReviewed(): Promise<{ id: string } | null> {
+      const rows = await db
+        .select({ id: runArchives.id })
+        .from(runArchives)
+        .where(eq(runArchives.reviewed, true))
+        .orderBy(desc(runArchives.completedAt))
+        .limit(1);
+      if (rows.length === 0) return null;
+      return { id: rows[0].id };
     },
     async listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]> {
       const rows = await db
