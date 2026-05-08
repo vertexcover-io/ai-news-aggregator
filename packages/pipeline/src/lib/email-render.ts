@@ -15,7 +15,10 @@ import {
 } from "@react-email/components";
 import type { NewsletterRenderProps, NewsletterStory } from "@pipeline/workers/newsletter-send.js";
 
-const MAX_STORIES = 5;
+// No render-time cap on stories — the curator picks the count during review.
+// The archive ribbon stays at index RIBBON_AFTER_INDEX (after story 2) for
+// digests with 3+ stories; on 1- or 2-story digests it slots in after the last
+// story so the archive CTA always appears.
 
 const COLORS = {
   bg: "#fbfaf7",
@@ -32,6 +35,29 @@ const COLORS = {
 
 const SERIF = 'Newsreader, Georgia, "Times New Roman", serif';
 const MONO = '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
+
+// Mobile-only overrides. Loaded via <style> in <Head>; inline styles win at
+// desktop widths, these classes win at ≤480px.
+const MOBILE_STYLES = `
+@media only screen and (max-width: 480px) {
+  .hero-h1 {
+    font-size: 26px !important;
+    line-height: 1.1 !important;
+  }
+  /* Stack the two columns of the archive ribbon. Email clients keep <td>s
+     side-by-side at narrow widths unless we force display:block. */
+  .stack-col {
+    display: block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    text-align: left !important;
+  }
+  .stack-col-cta {
+    text-align: center !important;
+    padding-top: 16px !important;
+  }
+}
+`.trim();
 
 const eyebrowStyle: React.CSSProperties = {
   fontFamily: MONO,
@@ -250,7 +276,11 @@ function ArchiveRibbon({ archiveUrl }: { archiveUrl: string }): React.ReactEleme
       null,
       React.createElement(
         Column,
-        { valign: "middle", style: { verticalAlign: "middle" } },
+        {
+          className: "stack-col",
+          valign: "middle",
+          style: { verticalAlign: "middle", paddingRight: "16px" },
+        },
         React.createElement(
           Text,
           {
@@ -283,14 +313,10 @@ function ArchiveRibbon({ archiveUrl }: { archiveUrl: string }): React.ReactEleme
       React.createElement(
         Column,
         {
+          className: "stack-col stack-col-cta",
           valign: "middle",
           align: "right",
-          style: {
-            verticalAlign: "middle",
-            paddingLeft: "16px",
-            whiteSpace: "nowrap",
-            width: "1%",
-          },
+          style: { verticalAlign: "middle" },
         },
         React.createElement(
           Link,
@@ -327,7 +353,7 @@ function NewsletterEmail({
   baseUrl,
   replyToEmail,
 }: NewsletterRenderProps): React.ReactElement {
-  const displayStories = stories.slice(0, MAX_STORIES);
+  const displayStories = stories;
   const totalCount = displayStories.length;
   const headStoryTitle = totalCount > 0 ? displayStories[0].title : null;
   const minRead = Math.max(2, totalCount * 2 - 1);
@@ -338,7 +364,18 @@ function NewsletterEmail({
   return React.createElement(
     Html,
     { lang: "en" },
-    React.createElement(Head, null),
+    React.createElement(
+      Head,
+      null,
+      React.createElement("style", {
+        // Mobile (≤480px) overrides — Gmail/Apple Mail/Outlook iOS all honor
+        // <style> inside <head> with media queries. Inline styles are the
+        // baseline; these classes only kick in on narrow viewports.
+        dangerouslySetInnerHTML: {
+          __html: MOBILE_STYLES,
+        },
+      }),
+    ),
     React.createElement(
       Preview,
       null,
@@ -376,10 +413,11 @@ function NewsletterEmail({
           React.createElement(
             Text,
             {
+              className: "hero-h1",
               style: {
                 fontFamily: SERIF,
-                fontSize: "38px",
-                lineHeight: "1.04",
+                fontSize: "30px",
+                lineHeight: "1.08",
                 fontWeight: 600,
                 letterSpacing: "-0.012em",
                 color: COLORS.ink,
