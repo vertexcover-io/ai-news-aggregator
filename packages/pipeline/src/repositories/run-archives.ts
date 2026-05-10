@@ -30,6 +30,7 @@ export interface PipelineRunArchiveRow {
   reviewed: boolean;
   completedAt: Date;
   digestHeadline: string | null;
+  digestSummary: string | null;
   sourceTelemetry: RunSourceTelemetry | null;
   slackNotifiedAt: Date | null;
 }
@@ -57,6 +58,7 @@ export function createRunArchivesRepo(
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
           digestHeadline: runArchives.digestHeadline,
+          digestSummary: runArchives.digestSummary,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
         })

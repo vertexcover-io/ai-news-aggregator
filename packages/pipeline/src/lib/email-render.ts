@@ -38,12 +38,32 @@ const MONO = '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 
 // Mobile-only overrides. Loaded via <style> in <Head>; inline styles win at
 // desktop widths, these classes win at ≤480px.
+// Mobile breakpoints. Inline styles are the desktop baseline; classes scoped
+// to @media (max-width: 480px) override them on phones. Two tiers: a regular
+// phone tier and a tighter tier for very small screens (~iPhone SE) so titles
+// don't overflow at 320px widths.
 const MOBILE_STYLES = `
 @media only screen and (max-width: 480px) {
-  .hero-h1 {
-    font-size: 26px !important;
-    line-height: 1.1 !important;
-  }
+  .hero-h1 { font-size: 30px !important; line-height: 1.08 !important; }
+  .hero-dek { font-size: 16px !important; line-height: 1.45 !important; }
+  .date-eyebrow { font-size: 10px !important; letter-spacing: 0.18em !important; }
+  .meta-line { font-size: 9.5px !important; letter-spacing: 0.16em !important; }
+  .src-eyebrow { font-size: 9.5px !important; letter-spacing: 0.18em !important; }
+  .story-title { font-size: 21px !important; line-height: 1.22 !important; }
+  .story-lede { font-size: 15.5px !important; line-height: 1.5 !important; }
+  .story-bullet { font-size: 14.5px !important; line-height: 1.5 !important; }
+  .unpacked-label { font-size: 9.5px !important; letter-spacing: 0.18em !important; }
+  .bottom-line-label { font-size: 9.5px !important; letter-spacing: 0.18em !important; }
+  .bottom-line-text { font-size: 15.5px !important; line-height: 1.4 !important; }
+  .src-line { font-size: 9.5px !important; letter-spacing: 0.16em !important; }
+  .ribbon-eyebrow { font-size: 9px !important; letter-spacing: 0.18em !important; }
+  .ribbon-body { font-size: 15.5px !important; line-height: 1.4 !important; }
+  .ribbon-cta { font-size: 10px !important; letter-spacing: 0.12em !important; }
+  .closer-headline { font-size: 19px !important; line-height: 1.3 !important; }
+  .closer-sub { font-size: 9.5px !important; letter-spacing: 0.16em !important; }
+  .closer-cta { font-size: 10px !important; letter-spacing: 0.16em !important; }
+  .footer-brand { font-size: 9.5px !important; letter-spacing: 0.16em !important; }
+  .footer-text { font-size: 11.5px !important; line-height: 1.55 !important; }
   /* Stack the two columns of the archive ribbon. Email clients keep <td>s
      side-by-side at narrow widths unless we force display:block. */
   .stack-col {
@@ -56,6 +76,14 @@ const MOBILE_STYLES = `
     text-align: center !important;
     padding-top: 16px !important;
   }
+}
+@media only screen and (max-width: 380px) {
+  .hero-h1 { font-size: 26px !important; }
+  .hero-dek { font-size: 15px !important; }
+  .story-title { font-size: 19px !important; }
+  .story-lede { font-size: 14.5px !important; }
+  .story-bullet { font-size: 14px !important; }
+  .bottom-line-text { font-size: 14.5px !important; }
 }
 `.trim();
 
@@ -141,16 +169,32 @@ function StoryBlock({
 }): React.ReactElement {
   const sourceLabel = sourceLabelFor(story.url);
   const children: React.ReactNode[] = [
-    React.createElement(Text, { key: "src", style: sourceEyebrowStyle }, sourceLabel),
+    React.createElement(
+      Text,
+      { key: "src", className: "src-eyebrow", style: sourceEyebrowStyle },
+      sourceLabel,
+    ),
     React.createElement(
       Link,
-      { key: "title", href: story.url, style: titleLinkStyle, target: "_blank" },
+      {
+        key: "title",
+        className: "story-title",
+        href: story.url,
+        style: titleLinkStyle,
+        target: "_blank",
+      },
       story.title,
     ),
   ];
 
   if (story.summary !== undefined) {
-    children.push(React.createElement(Text, { key: "lede", style: ledeStyle }, story.summary));
+    children.push(
+      React.createElement(
+        Text,
+        { key: "lede", className: "story-lede", style: ledeStyle },
+        story.summary,
+      ),
+    );
   }
 
   if (story.imageUrl !== undefined) {
@@ -175,9 +219,21 @@ function StoryBlock({
 
   if (story.bullets !== undefined && story.bullets.length > 0) {
     children.push(
-      React.createElement(Text, { key: "unpacked", style: unpackedLabelStyle }, "UNPACKED"),
+      React.createElement(
+        Text,
+        { key: "unpacked", className: "unpacked-label", style: unpackedLabelStyle },
+        "UNPACKED",
+      ),
       ...story.bullets.map((bullet, idx) =>
-        React.createElement(Text, { key: `b-${String(idx)}`, style: bulletStyle }, `— ${bullet}`),
+        React.createElement(
+          Text,
+          {
+            key: `b-${String(idx)}`,
+            className: "story-bullet",
+            style: bulletStyle,
+          },
+          `— ${bullet}`,
+        ),
       ),
     );
   }
@@ -198,12 +254,16 @@ function StoryBlock({
         },
         React.createElement(
           Text,
-          { style: { ...eyebrowStyle, margin: "0 0 6px" } },
+          {
+            className: "bottom-line-label",
+            style: { ...eyebrowStyle, margin: "0 0 6px" },
+          },
           "BOTTOM LINE",
         ),
         React.createElement(
           Text,
           {
+            className: "bottom-line-text",
             style: {
               fontFamily: SERIF,
               fontSize: "17px",
@@ -223,7 +283,7 @@ function StoryBlock({
   children.push(
     React.createElement(
       Text,
-      { key: "src-line", style: sourceLineStyle },
+      { key: "src-line", className: "src-line", style: sourceLineStyle },
       "Source · ",
       React.createElement(
         Link,
@@ -284,6 +344,7 @@ function ArchiveRibbon({ archiveUrl }: { archiveUrl: string }): React.ReactEleme
         React.createElement(
           Text,
           {
+            className: "ribbon-eyebrow",
             style: {
               fontFamily: MONO,
               fontSize: "10px",
@@ -298,6 +359,7 @@ function ArchiveRibbon({ archiveUrl }: { archiveUrl: string }): React.ReactEleme
         React.createElement(
           Text,
           {
+            className: "ribbon-body",
             style: {
               fontFamily: SERIF,
               fontSize: "17px",
@@ -321,6 +383,7 @@ function ArchiveRibbon({ archiveUrl }: { archiveUrl: string }): React.ReactEleme
         React.createElement(
           Link,
           {
+            className: "ribbon-cta",
             href: archiveUrl,
             target: "_blank",
             style: {
@@ -351,11 +414,22 @@ function NewsletterEmail({
   issueDate,
   unsubscribeUrl,
   baseUrl,
+  archiveUrl,
   replyToEmail,
+  digestHeadline,
+  digestSummary,
 }: NewsletterRenderProps): React.ReactElement {
   const displayStories = stories;
   const totalCount = displayStories.length;
-  const headStoryTitle = totalCount > 0 ? displayStories[0].title : null;
+  const firstStoryTitle = totalCount > 0 ? displayStories[0].title : null;
+  const headline =
+    digestHeadline !== null && digestHeadline !== undefined && digestHeadline !== ""
+      ? digestHeadline
+      : firstStoryTitle;
+  const dek =
+    digestSummary !== null && digestSummary !== undefined && digestSummary !== ""
+      ? digestSummary
+      : null;
   const minRead = Math.max(2, totalCount * 2 - 1);
   const RIBBON_AFTER_INDEX = 1;
 
@@ -379,7 +453,7 @@ function NewsletterEmail({
     React.createElement(
       Preview,
       null,
-      `${headStoryTitle ?? "Your daily AI digest"} — ${String(totalCount)} stor${totalCount === 1 ? "y" : "ies"}, ${String(minRead)} min read`,
+      `${headline ?? "Your daily AI digest"} — ${String(totalCount)} stor${totalCount === 1 ? "y" : "ies"}, ${String(minRead)} min read`,
     ),
     React.createElement(
       Body,
@@ -394,6 +468,7 @@ function NewsletterEmail({
           React.createElement(
             Text,
             {
+              className: "date-eyebrow",
               style: {
                 fontFamily: MONO,
                 fontSize: "11px",
@@ -411,22 +486,53 @@ function NewsletterEmail({
           Section,
           { style: { textAlign: "center", padding: "14px 0 0" } },
           React.createElement(
-            Text,
+            Link,
             {
-              className: "hero-h1",
-              style: {
-                fontFamily: SERIF,
-                fontSize: "30px",
-                lineHeight: "1.08",
-                fontWeight: 600,
-                letterSpacing: "-0.012em",
-                color: COLORS.ink,
-                margin: 0,
-              },
+              href: archiveUrl,
+              target: "_blank",
+              style: { textDecoration: "none", color: COLORS.ink },
             },
-            headStoryTitle ?? "Today's AI Digest",
+            React.createElement(
+              Text,
+              {
+                className: "hero-h1",
+                style: {
+                  fontFamily: SERIF,
+                  fontSize: "36px",
+                  lineHeight: "1.05",
+                  fontWeight: 600,
+                  letterSpacing: "-0.012em",
+                  color: COLORS.ink,
+                  margin: 0,
+                },
+              },
+              headline ?? "Today's AI Digest",
+            ),
           ),
         ),
+        // Optional dek (italic serif summary) — mirrors the archive page header.
+        dek !== null
+          ? React.createElement(
+              Section,
+              { style: { textAlign: "center", padding: "18px 0 0" } },
+              React.createElement(
+                Text,
+                {
+                  className: "hero-dek",
+                  style: {
+                    fontFamily: SERIF,
+                    fontSize: "18px",
+                    lineHeight: "1.5",
+                    fontStyle: "italic",
+                    color: COLORS.ink2,
+                    margin: "0 auto",
+                    maxWidth: "56ch",
+                  },
+                },
+                dek,
+              ),
+            )
+          : null,
         // Meta line — count + reading time, no Issue Nº
         React.createElement(
           Section,
@@ -434,6 +540,7 @@ function NewsletterEmail({
           React.createElement(
             Text,
             {
+              className: "meta-line",
               style: {
                 fontFamily: MONO,
                 fontSize: "10.5px",
@@ -474,7 +581,7 @@ function NewsletterEmail({
                 block,
                 React.createElement(ArchiveRibbon, {
                   key: "archive-ribbon",
-                  archiveUrl: baseUrl,
+                  archiveUrl,
                 }),
               ];
             }
@@ -497,6 +604,7 @@ function NewsletterEmail({
           React.createElement(
             Text,
             {
+              className: "closer-headline",
               style: {
                 fontFamily: SERIF,
                 fontSize: "22px",
@@ -512,6 +620,7 @@ function NewsletterEmail({
           React.createElement(
             Text,
             {
+              className: "closer-sub",
               style: {
                 fontFamily: MONO,
                 fontSize: "10.5px",
@@ -526,6 +635,7 @@ function NewsletterEmail({
           React.createElement(
             Link,
             {
+              className: "closer-cta",
               href: baseUrl,
               target: "_blank",
               style: {
@@ -559,6 +669,7 @@ function NewsletterEmail({
           React.createElement(
             Text,
             {
+              className: "footer-brand",
               style: {
                 fontFamily: MONO,
                 fontSize: "10.5px",
@@ -592,6 +703,7 @@ function NewsletterEmail({
           React.createElement(
             Text,
             {
+              className: "footer-text",
               style: {
                 fontFamily: sansFooter,
                 fontSize: "12px",
@@ -639,6 +751,7 @@ function NewsletterEmail({
           React.createElement(
             Text,
             {
+              className: "footer-text",
               style: {
                 fontFamily: sansFooter,
                 fontSize: "12px",
