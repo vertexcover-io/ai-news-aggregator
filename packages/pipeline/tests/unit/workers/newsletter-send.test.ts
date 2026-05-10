@@ -418,6 +418,7 @@ describe("handleNewsletterSendJob", () => {
     const [firstCall] = renderMock.mock.calls as [NewsletterRenderProps][];
     expect(firstCall[0]).toMatchObject({
       baseUrl: "https://example.com",
+      archiveUrl: "https://example.com/archive/run-uuid-1234",
     });
   });
 

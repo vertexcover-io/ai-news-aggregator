@@ -78,7 +78,10 @@ export interface NewsletterRenderProps {
   issueNumber: number;
   unsubscribeUrl: string;
   baseUrl: string;
+  archiveUrl: string;
   replyToEmail?: string;
+  digestHeadline?: string | null;
+  digestSummary?: string | null;
 }
 
 export interface NewsletterSendDeps {
@@ -274,7 +277,10 @@ export async function handleNewsletterSendJob(
             issueNumber: 1,
             unsubscribeUrl: unsubUrl,
             baseUrl: deps.baseUrl,
+            archiveUrl: `${deps.baseUrl}/archive/${runId}`,
             replyToEmail: deps.replyToEmail,
+            digestHeadline: archive.digestHeadline,
+            digestSummary: archive.digestSummary,
           });
           await pacer.acquire();
           const result = await deps.emailProvider.send({

@@ -25,6 +25,7 @@ const baseProps: NewsletterRenderProps = {
   issueNumber: 42,
   unsubscribeUrl: "https://newsletter.vertexcover.io/unsubscribe?token=xyz",
   baseUrl,
+  archiveUrl: `${baseUrl}/archive/run-123`,
 };
 
 describe("renderNewsletter (editorial layout)", () => {
@@ -151,6 +152,29 @@ describe("renderNewsletter (editorial layout)", () => {
     expect(html).toContain("https://google.com/gemini");
   });
 
+  it("uses digestHeadline as the hero headline when provided (not the first story title)", async () => {
+    const html = await renderNewsletter({
+      ...baseProps,
+      digestHeadline: "AI labs raise the stakes",
+      digestSummary: "OpenAI and Google trade benchmark crowns in the same week.",
+    });
+    // Hero <p class="hero-h1"> should contain the digest headline.
+    expect(html).toMatch(/class="[^"]*\bhero-h1\b[^"]*"[^>]*>AI labs raise the stakes/);
+    // And the dek (digestSummary) should be rendered below it.
+    expect(html).toContain("OpenAI and Google trade benchmark crowns in the same week.");
+    // The first story's title must NOT be promoted into the hero slot.
+    expect(html).not.toMatch(
+      /class="[^"]*\bhero-h1\b[^"]*"[^>]*>GPT-5 Released With Reasoning Breakthrough/,
+    );
+  });
+
+  it("falls back to the first story title when digestHeadline is missing", async () => {
+    const html = await renderNewsletter(baseProps);
+    expect(html).toMatch(
+      /class="[^"]*\bhero-h1\b[^"]*"[^>]*>GPT-5 Released With Reasoning Breakthrough/,
+    );
+  });
+
   it("renders a story image when imageUrl is provided", async () => {
     const withImage: NewsletterStory[] = [
       {
@@ -169,16 +193,38 @@ describe("renderNewsletter (editorial layout)", () => {
 // the rendered HTML/CSS that the right hooks exist for email clients to apply.
 // ---------------------------------------------------------------------------
 describe("renderNewsletter (mobile responsiveness)", () => {
-  it("renders the hero headline at a smaller default size (≤32px)", async () => {
+  it("renders the hero headline at a strong editorial size (32-44px desktop)", async () => {
     const html = await renderNewsletter(baseProps);
-    // The hero <h1>-equivalent <p> should have inline font-size in the 28-32px
-    // range — small enough to not blow up at 600px desktop email widths, big
-    // enough to still feel editorial.
+    // The hero <h1>-equivalent <p> should dominate the layout against the
+    // per-story 24px titles. Mobile is downscaled separately via @media.
     const heroSizeMatch = /font-size:\s*(\d+(?:\.\d+)?)px[^"]*"[^>]*>GPT-5/.exec(html);
     expect(heroSizeMatch).not.toBeNull();
     const px = Number(heroSizeMatch?.[1] ?? "0");
-    expect(px).toBeGreaterThanOrEqual(26);
-    expect(px).toBeLessThanOrEqual(32);
+    expect(px).toBeGreaterThanOrEqual(32);
+    expect(px).toBeLessThanOrEqual(44);
+  });
+
+  it("scales every text element down on mobile via @media classes", async () => {
+    const html = await renderNewsletter(baseProps);
+    // Each major text element must carry a stable class that the mobile
+    // media query targets, so no element is "stuck" at its desktop size.
+    const requiredClasses = [
+      "hero-h1",
+      "story-title",
+      "story-lede",
+      "story-bullet",
+      "src-eyebrow",
+      "meta-line",
+      "date-eyebrow",
+      "ribbon-eyebrow",
+      "ribbon-body",
+      "closer-headline",
+      "footer-text",
+    ];
+    for (const cls of requiredClasses) {
+      expect(html).toMatch(new RegExp(`class="[^"]*\\b${cls}\\b[^"]*"`));
+      expect(html).toMatch(new RegExp(`@media[\\s\\S]*?\\.${cls}[\\s\\S]*?font-size`, "i"));
+    }
   });
 
   it("includes a <style> block in <head> with a mobile media query", async () => {
