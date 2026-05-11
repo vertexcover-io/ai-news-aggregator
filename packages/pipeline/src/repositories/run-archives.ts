@@ -4,6 +4,7 @@ import type { AppDb } from "@newsletter/shared/db";
 import type {
   RankedItemRef,
   RunSourceTelemetry,
+  SocialMetadata,
   SourceType,
 } from "@newsletter/shared";
 
@@ -33,12 +34,21 @@ export interface PipelineRunArchiveRow {
   digestSummary: string | null;
   sourceTelemetry: RunSourceTelemetry | null;
   slackNotifiedAt: Date | null;
+  linkedinPostedAt: Date | null;
+  twitterPostedAt: Date | null;
 }
 
 export interface RunArchivesRepo {
   upsert(input: RunArchiveUpsertInput): Promise<void>;
   findById(id: string): Promise<PipelineRunArchiveRow | null>;
   markSlackNotified(runId: string, at: Date): Promise<void>;
+  markLinkedInPosted(runId: string, at: Date, permalink: string | null): Promise<void>;
+  markTwitterPosted(runId: string, at: Date, permalink: string | null): Promise<void>;
+  recordSocialFailure(
+    runId: string,
+    platform: "linkedin" | "twitter",
+    error: string,
+  ): Promise<void>;
 }
 
 export function createRunArchivesRepo(
@@ -61,6 +71,8 @@ export function createRunArchivesRepo(
           digestSummary: runArchives.digestSummary,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
+          linkedinPostedAt: runArchives.linkedinPostedAt,
+          twitterPostedAt: runArchives.twitterPostedAt,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
@@ -71,6 +83,65 @@ export function createRunArchivesRepo(
       await db
         .update(runArchives)
         .set({ slackNotifiedAt: at })
+        .where(eq(runArchives.id, runId));
+    },
+
+    async markLinkedInPosted(
+      runId: string,
+      at: Date,
+      permalink: string | null,
+    ): Promise<void> {
+      if (permalink === null) {
+        await db
+          .update(runArchives)
+          .set({ linkedinPostedAt: at })
+          .where(eq(runArchives.id, runId));
+        return;
+      }
+      const patch: SocialMetadata = { linkedinPermalink: permalink };
+      await db
+        .update(runArchives)
+        .set({
+          linkedinPostedAt: at,
+          socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
+        })
+        .where(eq(runArchives.id, runId));
+    },
+
+    async markTwitterPosted(
+      runId: string,
+      at: Date,
+      permalink: string | null,
+    ): Promise<void> {
+      if (permalink === null) {
+        await db
+          .update(runArchives)
+          .set({ twitterPostedAt: at })
+          .where(eq(runArchives.id, runId));
+        return;
+      }
+      const patch: SocialMetadata = { twitterPermalink: permalink };
+      await db
+        .update(runArchives)
+        .set({
+          twitterPostedAt: at,
+          socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
+        })
+        .where(eq(runArchives.id, runId));
+    },
+
+    async recordSocialFailure(
+      runId: string,
+      platform: "linkedin" | "twitter",
+      error: string,
+    ): Promise<void> {
+      const patch: SocialMetadata =
+        platform === "linkedin" ? { linkedinError: error } : { twitterError: error };
+      await db
+        .update(runArchives)
+        .set({
+          socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
+        })
         .where(eq(runArchives.id, runId));
     },
 

@@ -62,6 +62,71 @@ describe("run-archives repository", () => {
     expect(mockOnConflictDoUpdate).toHaveBeenCalledOnce();
   });
 
+  describe("social-marker methods", () => {
+    function makeUpdateOnlyDb(): {
+      db: { update: ReturnType<typeof vi.fn> };
+      setSpy: ReturnType<typeof vi.fn>;
+      whereSpy: ReturnType<typeof vi.fn>;
+    } {
+      const whereSpy = vi.fn().mockResolvedValue(undefined);
+      const setSpy = vi.fn(() => ({ where: whereSpy }));
+      const updateSpy = vi.fn(() => ({ set: setSpy }));
+      return { db: { update: updateSpy }, setSpy, whereSpy };
+    }
+
+    it("markLinkedInPosted writes timestamp + merges permalink into social_metadata", async () => {
+      const { db, setSpy } = makeUpdateOnlyDb();
+      const { createRunArchivesRepo } = await import(
+        "@pipeline/repositories/run-archives.js"
+      );
+      const repo = createRunArchivesRepo(db as never);
+      const at = new Date("2026-05-11T12:00:00Z");
+      await repo.markLinkedInPosted("run-x", at, "urn:li:share:123");
+      const patch = setSpy.mock.calls[0]?.[0];
+      expect(patch.linkedinPostedAt).toBe(at);
+      expect(patch.socialMetadata).toBeDefined();
+    });
+
+    it("markLinkedInPosted skips JSON merge when permalink is null", async () => {
+      const { db, setSpy } = makeUpdateOnlyDb();
+      const { createRunArchivesRepo } = await import(
+        "@pipeline/repositories/run-archives.js"
+      );
+      const repo = createRunArchivesRepo(db as never);
+      const at = new Date("2026-05-11T12:00:00Z");
+      await repo.markLinkedInPosted("run-x", at, null);
+      const patch = setSpy.mock.calls[0]?.[0];
+      expect(patch.linkedinPostedAt).toBe(at);
+      expect(patch.socialMetadata).toBeUndefined();
+    });
+
+    it("markTwitterPosted writes timestamp + merges permalink", async () => {
+      const { db, setSpy } = makeUpdateOnlyDb();
+      const { createRunArchivesRepo } = await import(
+        "@pipeline/repositories/run-archives.js"
+      );
+      const repo = createRunArchivesRepo(db as never);
+      const at = new Date("2026-05-11T12:00:00Z");
+      await repo.markTwitterPosted("run-x", at, "https://x.com/i/web/status/1");
+      const patch = setSpy.mock.calls[0]?.[0];
+      expect(patch.twitterPostedAt).toBe(at);
+      expect(patch.socialMetadata).toBeDefined();
+    });
+
+    it("recordSocialFailure writes only error into social_metadata, no posted_at", async () => {
+      const { db, setSpy } = makeUpdateOnlyDb();
+      const { createRunArchivesRepo } = await import(
+        "@pipeline/repositories/run-archives.js"
+      );
+      const repo = createRunArchivesRepo(db as never);
+      await repo.recordSocialFailure("run-x", "linkedin", "401 Unauthorized");
+      const patch = setSpy.mock.calls[0]?.[0];
+      expect(patch.linkedinPostedAt).toBeUndefined();
+      expect(patch.twitterPostedAt).toBeUndefined();
+      expect(patch.socialMetadata).toBeDefined();
+    });
+  });
+
   // REQ-007: upsert updates an existing row on conflict
   it("uses onConflictDoUpdate targeting the id column", async () => {
     resetMocks();
