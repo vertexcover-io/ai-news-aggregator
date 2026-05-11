@@ -65,7 +65,8 @@ export function createLinkedInApiClient(
 
         if (response.status === 201) {
           const id = response.headers.get("x-restli-id") ?? "";
-          return { ok: true, postUrn: `urn:li:share:${id}` };
+          const postUrn = id.startsWith("urn:li:") ? id : `urn:li:share:${id}`;
+          return { ok: true, postUrn };
         }
 
         const rawBody = await response.text();

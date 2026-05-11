@@ -21,7 +21,7 @@ function makeResponse(args: {
 }
 
 describe("createLinkedInApiClient", () => {
-  it("returns postUrn on 201 reading x-restli-id", async () => {
+  it("returns postUrn on 201 when x-restli-id contains numeric id only", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       makeResponse({ status: 201, headers: { "x-restli-id": "12345" } }),
     );
@@ -44,6 +44,25 @@ describe("createLinkedInApiClient", () => {
     expect(sentBody.commentary).toBe("hello world");
     expect(sentBody.visibility).toBe("PUBLIC");
     expect(sentBody.lifecycleState).toBe("PUBLISHED");
+  });
+
+  it("passes through full URN when x-restli-id already contains it", async () => {
+    // Production LinkedIn now returns the full urn:li:share:<id> in the header.
+    // Ensure we don't double-prefix it.
+    const fetchFn = vi.fn().mockResolvedValue(
+      makeResponse({
+        status: 201,
+        headers: { "x-restli-id": "urn:li:share:7459582142512033793" },
+      }),
+    );
+    const client = createLinkedInApiClient({ fetchFn });
+
+    const result = await client.createPost(INPUT);
+
+    expect(result).toEqual({
+      ok: true,
+      postUrn: "urn:li:share:7459582142512033793",
+    });
   });
 
   it("returns ok:false with status 401", async () => {
