@@ -67,10 +67,6 @@ const { baseUrl: apiBaseUrl, webBaseUrl: newsletterBaseUrl } = resolveBaseUrls(p
 const { Queue: BullQueue } = await import("bullmq");
 const { createRedisConnection } = await import("@newsletter/shared/redis");
 const sendQueue = new BullQueue("send-newsletter", { connection: createRedisConnection() });
-const socialTestPostQueue = new BullQueue("social-test-post", {
-  connection: createRedisConnection(),
-});
-const socialTestRedis = createRedisConnection();
 
 const runArchivesRepoForSubscribe = createRunArchivesRepo(getDb());
 
@@ -117,10 +113,7 @@ const app = buildApp({
   archivesSearchRouter: createDefaultArchivesSearchRouter(),
   adminArchivesRouter: createDefaultAdminArchivesRouter(),
   runsRouter: createDefaultRunsRouter(),
-  settingsRouter: createDefaultSettingsRouter({
-    socialTestPostQueue,
-    socialTestRedis,
-  }),
+  settingsRouter: createDefaultSettingsRouter(),
   adminRouter: createAdminRouter({
     adminPassword,
     sessionSecret,

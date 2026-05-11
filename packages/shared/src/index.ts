@@ -9,4 +9,3 @@ export * from "./run-start.js";
 export * from "./send-newsletter.js";
 export * from "./slack/index.js";
 export * from "./services/archive-search-text.js";
-export * from "./social/test-post-result.js";

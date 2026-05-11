@@ -24,11 +24,6 @@ import {
   type NewsletterSendDeps,
   type NewsletterSendJobLike,
 } from "@pipeline/workers/newsletter-send.js";
-import {
-  handleSocialTestPostJob,
-  type SocialTestPostDeps,
-} from "@pipeline/social/test-post.js";
-import type { SocialTestPostJobData } from "@pipeline/queues/social-test-post.js";
 import { createLinkedInApiClient } from "@pipeline/social/linkedin/api-client.js";
 import { createTwitterApiClient } from "@pipeline/social/twitter/api-client.js";
 import { createLinkedInNotifier } from "@pipeline/social/linkedin/notifier.js";
@@ -85,7 +80,6 @@ export interface CreateProcessingWorkerOptions {
   runProcessDeps?: RunProcessDeps;
   dailyRunDeps?: DailyRunDeps;
   newsletterSendDeps?: NewsletterSendDeps;
-  socialTestPostDeps?: SocialTestPostDeps;
 }
 
 // Discriminated by job.name; payload shape is heterogeneous between routes.
@@ -103,8 +97,6 @@ export function createProcessingWorker(
   // Lazily build newsletter send deps to avoid eager DB connection in tests.
   let resolvedNewsletterSendDeps: NewsletterSendDeps | undefined =
     options.newsletterSendDeps;
-  let resolvedSocialTestPostDeps: SocialTestPostDeps | undefined =
-    options.socialTestPostDeps;
 
   return new Worker<ProcessingJobData, unknown>(
     "processing",
@@ -135,13 +127,6 @@ export function createProcessingWorker(
             data: job.data as unknown as NewsletterSendJobPayload,
           };
           await handleNewsletterSendJob(resolvedNewsletterSendDeps, typed);
-          return undefined;
-        }
-        case "social-test-post": {
-          resolvedSocialTestPostDeps ??= buildDefaultSocialTestPostDeps(connection);
-          await handleSocialTestPostJob(resolvedSocialTestPostDeps, {
-            data: job.data as unknown as SocialTestPostJobData,
-          });
           return undefined;
         }
         default: {
@@ -280,25 +265,6 @@ let cachedSocialTokensRepo: SocialTokensRepo | undefined;
 function getSharedSocialTokensRepo(): SocialTokensRepo {
   cachedSocialTokensRepo ??= createSocialTokensRepo(getDb());
   return cachedSocialTokensRepo;
-}
-
-export function buildDefaultSocialTestPostDeps(
-  connection: IORedis,
-): SocialTestPostDeps {
-  return {
-    linkedinApiClient: createLinkedInApiClient(),
-    twitterApiClient: createTwitterApiClient(),
-    tokens: getSharedSocialTokensRepo(),
-    config: {
-      linkedinApiVersion: process.env.LINKEDIN_API_VERSION ?? "202511",
-      linkedinClientId: process.env.LINKEDIN_CLIENT_ID ?? "",
-      linkedinClientSecret: process.env.LINKEDIN_CLIENT_SECRET ?? "",
-      twitterClientId: process.env.TWITTER_CLIENT_ID ?? "",
-      twitterClientSecret: process.env.TWITTER_CLIENT_SECRET ?? "",
-    },
-    redis: connection,
-    logger: createLogger("social:test-post"),
-  };
 }
 
 export type { RunProcessDeps, DailyRunDeps, NewsletterSendDeps, RunProcessResult };

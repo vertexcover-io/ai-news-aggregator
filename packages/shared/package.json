@@ -10,8 +10,7 @@
     "./types": "./dist/types/index.js",
     "./constants": "./dist/constants/index.js",
     "./utils": "./dist/utils/index.js",
-    "./logger": "./dist/logger.js",
-    "./social/test-post-result": "./dist/social/test-post-result.js"
+    "./logger": "./dist/logger.js"
   },
   "scripts": {
     "build": "tsup",

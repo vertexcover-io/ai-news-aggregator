@@ -42,12 +42,6 @@ vi.mock("@pipeline/workers/daily-run.js", () => ({
   handleDailyRunJob: (...args: unknown[]) => mockHandleDailyRunJob(...args),
 }));
 
-const mockHandleSocialTestPostJob = vi.fn();
-vi.mock("@pipeline/social/test-post.js", () => ({
-  handleSocialTestPostJob: (...args: unknown[]) =>
-    mockHandleSocialTestPostJob(...args),
-}));
-
 const mockCreateLinkedInNotifier = vi.fn(() => ({
   notifyArchiveReady: vi.fn(),
 }));
@@ -129,7 +123,6 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
     const w = createProcessingWorker({
       runProcessDeps: { fake: "rp-deps" } as never,
       dailyRunDeps: { fake: "dr-deps" } as never,
-      socialTestPostDeps: { fake: "stp-deps" } as never,
       connection: { fake: "redis" } as never,
     });
     return w as unknown as { handler: (job: unknown) => Promise<unknown> };
@@ -152,20 +145,6 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
     await worker.handler(job);
     expect(mockHandleDailyRunJob).toHaveBeenCalledOnce();
     expect(mockHandleRunProcessJob).not.toHaveBeenCalled();
-  });
-
-  it("routes job.name === 'social-test-post' to handleSocialTestPostJob", async () => {
-    mockHandleSocialTestPostJob.mockResolvedValue(undefined);
-    const worker = makeWorker();
-    const job = {
-      name: "social-test-post",
-      id: "j4",
-      data: { platform: "linkedin", requestId: "req-1" },
-    };
-    await worker.handler(job);
-    expect(mockHandleSocialTestPostJob).toHaveBeenCalledOnce();
-    expect(mockHandleRunProcessJob).not.toHaveBeenCalled();
-    expect(mockHandleDailyRunJob).not.toHaveBeenCalled();
   });
 
   describe("buildDefaultNewsletterSendDeps env-var construction", () => {

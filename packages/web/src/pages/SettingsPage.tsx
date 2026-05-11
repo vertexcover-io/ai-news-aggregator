@@ -29,7 +29,6 @@ function persistedToFormTwitter(
 }
 import { SourcesSection } from "../components/settings/SourcesSection";
 import { ScheduleSection } from "../components/settings/ScheduleSection";
-import { SocialPostingSection } from "../components/settings/SocialPostingSection";
 import { SaveBar } from "../components/settings/SaveBar";
 
 function getDefaults(): SettingsFormValues {
@@ -189,7 +188,6 @@ export function SettingsPage(): ReactElement {
           </div>
 
           <SourcesSection control={form.control} register={form.register} />
-          <SocialPostingSection />
           <ScheduleSection
             register={form.register}
             control={form.control}
