@@ -79,7 +79,7 @@ sudo -n /usr/bin/install -m 644 "$DEPLOY_DIR/Caddyfile" /etc/caddy/Caddyfile
 sudo -n /bin/systemctl reload caddy
 
 # ─── 6. Prune old images ──────────────────────────────────────────────────
-log "Pruning unused images older than 7 days"
-docker image prune -af --filter "until=168h" || true
+log "Pruning unused images older than 72h"
+docker image prune -af --filter "until=72h" || true
 
 log "Deploy complete — GIT_SHA=$GIT_SHA"
