@@ -1,10 +1,13 @@
 import { createHmac } from "node:crypto";
-import { createLogger } from "@newsletter/shared/logger";
-import type { EmailProvider, NewsletterSendJobPayload, RankedItemRef, RecapContent, SlackNotifier, SubscriberSelect } from "@newsletter/shared";
+import { createLogger, type Logger } from "@newsletter/shared/logger";
+import type { EmailProvider, NewsletterSendJobPayload, RankedItemRef, RecapContent, SlackNotifier, SocialPostReport, SubscriberSelect } from "@newsletter/shared";
 import type { PipelineSubscribersRepo } from "@pipeline/repositories/subscribers.js";
 import type { PipelineEmailSendsRepo } from "@pipeline/repositories/email-sends.js";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { RawItemsRepo, RawItemRow } from "@pipeline/repositories/raw-items.js";
+import type { LinkedInNotifier } from "@pipeline/social/linkedin/index.js";
+import type { TwitterNotifier } from "@pipeline/social/twitter/index.js";
+import type { SocialResult } from "@pipeline/social/types.js";
 
 const logger = createLogger("worker:newsletter-send");
 
@@ -96,7 +99,35 @@ export interface NewsletterSendDeps {
   replyToEmail?: string;
   baseUrl: string;
   slackNotifier?: SlackNotifier;
+  linkedinNotifier?: LinkedInNotifier | null;
+  twitterNotifier?: TwitterNotifier | null;
   sendPacer?: SendPacer;
+}
+
+function settledToReport(
+  s: PromiseSettledResult<SocialResult | null>,
+  platform: "linkedin" | "twitter",
+  log: Logger,
+  runId: string,
+): SocialResult | null {
+  if (s.status === "fulfilled") return s.value;
+  log.error(
+    {
+      event: `social.${platform}.unexpected_throw`,
+      runId,
+      error: s.reason instanceof Error ? s.reason.message : String(s.reason),
+    },
+    `social.${platform}.unexpected_throw`,
+  );
+  return { status: "failed", reason: "unexpected" };
+}
+
+function toSocialPostReport(r: SocialResult | null): SocialPostReport | undefined {
+  if (r === null) return undefined;
+  if (r.status === "posted") {
+    return { status: "posted", permalink: r.permalink };
+  }
+  return { status: r.status, reason: r.reason };
 }
 
 export interface NewsletterSendJobLike {
@@ -349,6 +380,17 @@ export async function handleNewsletterSendJob(
     "newsletter-send completed",
   );
 
+  const [linkedinSettled, twitterSettled] = await Promise.allSettled([
+    deps.linkedinNotifier
+      ? deps.linkedinNotifier.notifyArchiveReady({ runId })
+      : Promise.resolve<SocialResult | null>(null),
+    deps.twitterNotifier
+      ? deps.twitterNotifier.notifyArchiveReady({ runId })
+      : Promise.resolve<SocialResult | null>(null),
+  ]);
+  const linkedinResult = settledToReport(linkedinSettled, "linkedin", logger, runId);
+  const twitterResult = settledToReport(twitterSettled, "twitter", logger, runId);
+
   if (deps.slackNotifier) {
     try {
       await deps.slackNotifier.notifyNewsletterSent({
@@ -358,6 +400,10 @@ export async function handleNewsletterSendJob(
           sent: okCount,
           failed: failCount,
           failureReasons: failureReasons.length > 0 ? failureReasons : undefined,
+        },
+        socialResults: {
+          linkedin: toSocialPostReport(linkedinResult),
+          twitter: toSocialPostReport(twitterResult),
         },
       });
     } catch (err) {

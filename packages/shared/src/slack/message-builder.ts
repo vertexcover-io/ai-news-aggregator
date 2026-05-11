@@ -1,5 +1,9 @@
 import type { RunSourceTelemetry } from "../types/run.js";
-import type { DeliveryCounts } from "./types.js";
+import type {
+  DeliveryCounts,
+  SocialPostReport,
+  SocialResultsForSlack,
+} from "./types.js";
 
 export interface BuildReviewedMessageArgs {
   runId: string;
@@ -12,6 +16,7 @@ export interface BuildReviewedMessageArgs {
   sourceTelemetry: RunSourceTelemetry | null;
   delivery: DeliveryCounts;
   publicArchiveBaseUrl?: string;
+  socialResults?: SocialResultsForSlack;
 }
 
 interface SlackBlock {
@@ -123,6 +128,11 @@ export function buildReviewedMessage(args: BuildReviewedMessageArgs): {
   }
   blocks.push(sectionMarkdown(distributionLines.join("\n")));
 
+  const socialBlockText = buildSocialPostsBlockText(args.socialResults);
+  if (socialBlockText !== null) {
+    blocks.push(sectionMarkdown(socialBlockText));
+  }
+
   if (
     args.publicArchiveBaseUrl !== undefined &&
     args.publicArchiveBaseUrl.length > 0
@@ -138,4 +148,55 @@ export function buildReviewedMessage(args: BuildReviewedMessageArgs): {
   }
 
   return { blocks };
+}
+
+const SOCIAL_STATUS_EMOJI: Record<SocialPostReport["status"], string> = {
+  posted: "🟢",
+  failed: "🔴",
+  skipped: "⚪",
+};
+
+function renderPermalink(permalink: string): string {
+  if (permalink.startsWith("urn:li:share:")) {
+    return `<https://www.linkedin.com/feed/update/${permalink}|view>`;
+  }
+  if (permalink.startsWith("https://x.com/")) {
+    return `<${permalink}|view>`;
+  }
+  return permalink;
+}
+
+function renderSocialLine(
+  platformLabel: string,
+  report: SocialPostReport,
+): string {
+  const emoji = SOCIAL_STATUS_EMOJI[report.status];
+  const head = `${emoji} ${platformLabel}: ${report.status}`;
+
+  if (report.status === "posted") {
+    if (report.permalink === null || report.permalink === undefined) {
+      return `${head} (duplicate detected)`;
+    }
+    return `${head} — ${renderPermalink(report.permalink)}`;
+  }
+
+  if (report.reason !== undefined && report.reason.length > 0) {
+    return `${head} — ${report.reason}`;
+  }
+  return head;
+}
+
+function buildSocialPostsBlockText(
+  socialResults: SocialResultsForSlack | undefined,
+): string | null {
+  if (socialResults === undefined) return null;
+  const lines: string[] = [];
+  if (socialResults.linkedin !== undefined) {
+    lines.push(renderSocialLine("LinkedIn", socialResults.linkedin));
+  }
+  if (socialResults.twitter !== undefined) {
+    lines.push(renderSocialLine("X", socialResults.twitter));
+  }
+  if (lines.length === 0) return null;
+  return ["*🔗 Social posts*", ...lines].join("\n");
 }

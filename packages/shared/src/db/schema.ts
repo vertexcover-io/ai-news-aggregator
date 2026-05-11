@@ -8,6 +8,8 @@ import type {
   RunSubmitRedditConfig,
   RunSubmitTwitterConfig,
   RunSubmitWebConfig,
+  SocialMetadata,
+  SocialTokenMetadata,
 } from "@shared/types/index.js";
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter";
@@ -50,7 +52,22 @@ export const runArchives = pgTable("run_archives", {
   sourceTelemetry: jsonb("source_telemetry").$type<RunSourceTelemetry | null>(),
   slackNotifiedAt: timestamp("slack_notified_at", { withTimezone: true }),
   searchText: text("search_text"),
+  linkedinPostedAt: timestamp("linkedin_posted_at", { withTimezone: true }),
+  twitterPostedAt: timestamp("twitter_posted_at", { withTimezone: true }),
+  socialMetadata: jsonb("social_metadata").$type<SocialMetadata | null>(),
 });
+
+export const socialTokens = pgTable("social_tokens", {
+  platform: text("platform").primaryKey().$type<"linkedin" | "twitter">(),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  metadata: jsonb("metadata").$type<SocialTokenMetadata | null>(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type SocialTokenInsert = typeof socialTokens.$inferInsert;
+export type SocialTokenSelect = typeof socialTokens.$inferSelect;
 
 export type RunArchiveInsert = typeof runArchives.$inferInsert;
 

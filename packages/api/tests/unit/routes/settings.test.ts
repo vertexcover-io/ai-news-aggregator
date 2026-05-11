@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import type { UserSettings } from "@newsletter/shared";
 import { createSettingsRouter } from "@api/routes/settings.js";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
+import type { SocialTokensRepo } from "@api/repositories/social-tokens.js";
 
 function makeRepo(initial: UserSettings | null = null): {
   repo: UserSettingsRepo;
@@ -53,6 +54,9 @@ function buildApp(
   resolveHandles?: (
     handles: string[],
   ) => Promise<{ handle: string; userId: string }[]>,
+  socialTestPostQueue?: { add: ReturnType<typeof vi.fn> },
+  socialTestRedis?: { get: ReturnType<typeof vi.fn> },
+  socialTokensRepo?: SocialTokensRepo,
 ) {
   const app = new Hono();
   app.route(
@@ -60,6 +64,9 @@ function buildApp(
     createSettingsRouter({
       getSettingsRepo: () => repo,
       processingQueue: queue as never,
+      socialTestPostQueue,
+      socialTestRedis,
+      socialTokensRepo,
       resolveHandles: resolveHandles
         ? (handles) => resolveHandles(handles)
         : undefined,
@@ -400,5 +407,131 @@ describe("PUT /api/settings", () => {
       body: "not-json{",
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/settings/test-social-post", () => {
+  it("REQ-050: linkedin enqueues job and returns 202 with requestId", async () => {
+    const { repo } = makeRepo(null);
+    const stpQueue = { add: vi.fn(() => Promise.resolve()) };
+    const stpRedis = { get: vi.fn(() => Promise.resolve(null)) };
+    const app = buildApp(repo, makeQueue(), undefined, stpQueue, stpRedis);
+    const res = await app.request("/api/settings/test-social-post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform: "linkedin" }),
+    });
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { requestId: string };
+    expect(typeof body.requestId).toBe("string");
+    expect(body.requestId.length).toBeGreaterThan(0);
+    expect(stpQueue.add).toHaveBeenCalledOnce();
+    const call = stpQueue.add.mock.calls[0];
+    expect(call[0]).toBe("social-test-post");
+    expect(call[1]).toEqual({ platform: "linkedin", requestId: body.requestId });
+    expect(call[2]).toEqual({ jobId: `social-test-${body.requestId}` });
+  });
+
+  it("REQ-050: twitter enqueues job and returns 202", async () => {
+    const { repo } = makeRepo(null);
+    const stpQueue = { add: vi.fn(() => Promise.resolve()) };
+    const stpRedis = { get: vi.fn(() => Promise.resolve(null)) };
+    const app = buildApp(repo, makeQueue(), undefined, stpQueue, stpRedis);
+    const res = await app.request("/api/settings/test-social-post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform: "twitter" }),
+    });
+    expect(res.status).toBe(202);
+    expect(stpQueue.add).toHaveBeenCalledOnce();
+    expect(stpQueue.add.mock.calls[0][1].platform).toBe("twitter");
+  });
+
+  it("REQ-050: invalid platform returns 400", async () => {
+    const { repo } = makeRepo(null);
+    const stpQueue = { add: vi.fn(() => Promise.resolve()) };
+    const stpRedis = { get: vi.fn(() => Promise.resolve(null)) };
+    const app = buildApp(repo, makeQueue(), undefined, stpQueue, stpRedis);
+    const res = await app.request("/api/settings/test-social-post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform: "facebook" }),
+    });
+    expect(res.status).toBe(400);
+    expect(stpQueue.add).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/settings/test-social-post/:requestId", () => {
+  it("REQ-051: returns {status:'pending'} when redis returns null", async () => {
+    const { repo } = makeRepo(null);
+    const stpQueue = { add: vi.fn(() => Promise.resolve()) };
+    const stpRedis = { get: vi.fn(() => Promise.resolve(null)) };
+    const app = buildApp(repo, makeQueue(), undefined, stpQueue, stpRedis);
+    const res = await app.request("/api/settings/test-social-post/req-x");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ status: "pending" });
+    expect(stpRedis.get).toHaveBeenCalledWith("social-test:req-x");
+  });
+
+  it("REQ-051: returns parsed JSON when redis has a value", async () => {
+    const { repo } = makeRepo(null);
+    const stpQueue = { add: vi.fn(() => Promise.resolve()) };
+    const stored = JSON.stringify({ status: "posted", permalink: "urn:li:share:9" });
+    const stpRedis = { get: vi.fn(() => Promise.resolve(stored)) };
+    const app = buildApp(repo, makeQueue(), undefined, stpQueue, stpRedis);
+    const res = await app.request("/api/settings/test-social-post/req-y");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ status: "posted", permalink: "urn:li:share:9" });
+  });
+});
+
+describe("GET /api/settings/social-status", () => {
+  it("returns configured=true for both platforms when both rows exist", async () => {
+    const { repo } = makeRepo(null);
+    const tokensRepo: SocialTokensRepo = {
+      hasToken: vi.fn(() => Promise.resolve(true)),
+    };
+    const app = buildApp(
+      repo,
+      makeQueue(),
+      undefined,
+      undefined,
+      undefined,
+      tokensRepo,
+    );
+    const res = await app.request("/api/settings/social-status");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({
+      linkedin: { configured: true },
+      twitter: { configured: true },
+    });
+  });
+
+  it("returns configured=true only for the platform whose token row exists", async () => {
+    const { repo } = makeRepo(null);
+    const tokensRepo: SocialTokensRepo = {
+      hasToken: vi.fn((platform) =>
+        Promise.resolve(platform === "linkedin"),
+      ),
+    };
+    const app = buildApp(
+      repo,
+      makeQueue(),
+      undefined,
+      undefined,
+      undefined,
+      tokensRepo,
+    );
+    const res = await app.request("/api/settings/social-status");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({
+      linkedin: { configured: true },
+      twitter: { configured: false },
+    });
   });
 });

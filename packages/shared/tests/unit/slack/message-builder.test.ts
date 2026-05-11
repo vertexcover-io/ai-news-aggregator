@@ -286,6 +286,122 @@ describe("buildReviewedMessage", () => {
     expect(sectionTexts(blocks)).toContain("*Fallback title*");
   });
 
+  it("social posts: both posted with permalinks renders block with two view anchors", () => {
+    const { blocks } = buildReviewedMessage({
+      runId: "r",
+      archive: { id: "r", digestHeadline: "h", rankedItems: [] },
+      topRankedTitle: null,
+      sourceTelemetry: null,
+      delivery: { attempted: 1, sent: 1, failed: 0 },
+      socialResults: {
+        linkedin: {
+          status: "posted",
+          permalink: "urn:li:share:7123456789",
+        },
+        twitter: {
+          status: "posted",
+          permalink: "https://x.com/foo/status/12345",
+        },
+      },
+    });
+    const sections = sectionTexts(blocks);
+    const social = sections.find((s) => s.includes("🔗 Social posts"));
+    expect(social).toBeDefined();
+    expect(social).toContain("*🔗 Social posts*");
+    expect(social).toContain(
+      "🟢 LinkedIn: posted — <https://www.linkedin.com/feed/update/urn:li:share:7123456789|view>",
+    );
+    expect(social).toContain(
+      "🟢 X: posted — <https://x.com/foo/status/12345|view>",
+    );
+  });
+
+  it("social posts: one posted, one failed renders mixed emojis with reason", () => {
+    const { blocks } = buildReviewedMessage({
+      runId: "r",
+      archive: { id: "r", digestHeadline: "h", rankedItems: [] },
+      topRankedTitle: null,
+      sourceTelemetry: null,
+      delivery: { attempted: 1, sent: 1, failed: 0 },
+      socialResults: {
+        linkedin: {
+          status: "posted",
+          permalink: "urn:li:share:abc",
+        },
+        twitter: { status: "failed", reason: "http_402" },
+      },
+    });
+    const social = sectionTexts(blocks).find((s) =>
+      s.includes("🔗 Social posts"),
+    );
+    expect(social).toBeDefined();
+    expect(social).toContain("🟢 LinkedIn: posted —");
+    expect(social).toContain("🔴 X: failed — http_402");
+  });
+
+  it("social posts: both skipped renders two ⚪ lines with reasons", () => {
+    const { blocks } = buildReviewedMessage({
+      runId: "r",
+      archive: { id: "r", digestHeadline: "h", rankedItems: [] },
+      topRankedTitle: null,
+      sourceTelemetry: null,
+      delivery: { attempted: 1, sent: 1, failed: 0 },
+      socialResults: {
+        linkedin: { status: "skipped", reason: "already_posted" },
+        twitter: { status: "skipped", reason: "disabled" },
+      },
+    });
+    const social = sectionTexts(blocks).find((s) =>
+      s.includes("🔗 Social posts"),
+    );
+    expect(social).toBeDefined();
+    expect(social).toContain("⚪ LinkedIn: skipped — already_posted");
+    expect(social).toContain("⚪ X: skipped — disabled");
+  });
+
+  it("social posts: posted with null permalink renders 'posted (duplicate detected)'", () => {
+    const { blocks } = buildReviewedMessage({
+      runId: "r",
+      archive: { id: "r", digestHeadline: "h", rankedItems: [] },
+      topRankedTitle: null,
+      sourceTelemetry: null,
+      delivery: { attempted: 1, sent: 1, failed: 0 },
+      socialResults: {
+        linkedin: { status: "posted", permalink: null },
+      },
+    });
+    const social = sectionTexts(blocks).find((s) =>
+      s.includes("🔗 Social posts"),
+    );
+    expect(social).toBeDefined();
+    expect(social).toContain("🟢 LinkedIn: posted (duplicate detected)");
+  });
+
+  it("social posts: undefined socialResults omits the block (byte-identical to baseline)", () => {
+    const args = {
+      runId: "r-baseline",
+      archive: {
+        id: "r-baseline",
+        digestHeadline: "headline",
+        rankedItems: [],
+      },
+      topRankedTitle: null,
+      sourceTelemetry: null,
+      delivery: { attempted: 1, sent: 1, failed: 0 },
+    } as const;
+    const baseline = buildReviewedMessage(args);
+    const withUndefined = buildReviewedMessage({
+      ...args,
+      socialResults: undefined,
+    });
+    expect(JSON.stringify(withUndefined.blocks)).toBe(
+      JSON.stringify(baseline.blocks),
+    );
+    expect(
+      sectionTexts(baseline.blocks).some((s) => s.includes("🔗 Social posts")),
+    ).toBe(false);
+  });
+
   it("falls back to runId-only context when no public archive base url", () => {
     const { blocks } = buildReviewedMessage({
       runId: "r-99",

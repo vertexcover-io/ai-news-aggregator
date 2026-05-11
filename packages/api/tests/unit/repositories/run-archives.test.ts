@@ -489,6 +489,68 @@ function makeFakeDbForMostRecent(rows: StoredArchive[]): Pick<AppDb, "select" | 
   } as unknown as Pick<AppDb, "select" | "update">;
 }
 
+describe("RunArchivesRepo social-marker methods", () => {
+  function makeUpdateCaptureDb(): {
+    db: Pick<AppDb, "select" | "update" | "execute">;
+    setSpy: ReturnType<typeof vi.fn>;
+    whereSpy: ReturnType<typeof vi.fn>;
+  } {
+    const whereSpy = vi.fn().mockResolvedValue(undefined);
+    const setSpy = vi.fn(() => ({ where: whereSpy }));
+    const updateSpy = vi.fn(() => ({ set: setSpy }));
+    const selectSpy = vi.fn(() => ({
+      from: () => ({ where: () => Promise.resolve([]) }),
+    }));
+    const executeSpy = vi.fn().mockResolvedValue([]);
+    const db = {
+      select: selectSpy,
+      update: updateSpy,
+      execute: executeSpy,
+    } as unknown as Pick<AppDb, "select" | "update" | "execute">;
+    return { db, setSpy, whereSpy };
+  }
+
+  it("markLinkedInPosted sets timestamp + socialMetadata when permalink present", async () => {
+    const { db, setSpy } = makeUpdateCaptureDb();
+    const repo = createRunArchivesRepo(db);
+    const at = new Date("2026-05-11T12:00:00Z");
+    await repo.markLinkedInPosted("run-1", at, "urn:li:share:42");
+    const patch = setSpy.mock.calls[0]?.[0];
+    expect(patch.linkedinPostedAt).toBe(at);
+    expect(patch.socialMetadata).toBeDefined();
+  });
+
+  it("markLinkedInPosted writes only timestamp when permalink is null", async () => {
+    const { db, setSpy } = makeUpdateCaptureDb();
+    const repo = createRunArchivesRepo(db);
+    const at = new Date("2026-05-11T12:00:00Z");
+    await repo.markLinkedInPosted("run-1", at, null);
+    const patch = setSpy.mock.calls[0]?.[0];
+    expect(patch.linkedinPostedAt).toBe(at);
+    expect(patch.socialMetadata).toBeUndefined();
+  });
+
+  it("markTwitterPosted sets timestamp + socialMetadata", async () => {
+    const { db, setSpy } = makeUpdateCaptureDb();
+    const repo = createRunArchivesRepo(db);
+    const at = new Date("2026-05-11T12:00:00Z");
+    await repo.markTwitterPosted("run-1", at, "https://x.com/i/web/status/9");
+    const patch = setSpy.mock.calls[0]?.[0];
+    expect(patch.twitterPostedAt).toBe(at);
+    expect(patch.socialMetadata).toBeDefined();
+  });
+
+  it("recordSocialFailure writes only social_metadata error, no posted_at", async () => {
+    const { db, setSpy } = makeUpdateCaptureDb();
+    const repo = createRunArchivesRepo(db);
+    await repo.recordSocialFailure("run-1", "twitter", "rate limited");
+    const patch = setSpy.mock.calls[0]?.[0];
+    expect(patch.twitterPostedAt).toBeUndefined();
+    expect(patch.linkedinPostedAt).toBeUndefined();
+    expect(patch.socialMetadata).toBeDefined();
+  });
+});
+
 describe("findMostRecentReviewed", () => {
   it("returns null when no reviewed archives exist", async () => {
     const db = makeFakeDbForMostRecent([]);
