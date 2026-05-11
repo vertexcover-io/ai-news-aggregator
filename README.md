@@ -14,6 +14,7 @@ Built for internal use by the [Vertexcover](https://vertexcover.io) team.
 4. **Rerank (Stage 2)** — Claude Haiku reranks the shortlist using a 3-axis prompt (Novelty, Signal-vs-hype, Actionability) and writes a structured recap (summary, bullets, bottom line) per item
 5. **Review** — you drag-to-reorder, remove, or add items on the review page, then save
 6. **Archive** — the curated run is stored and accessible as a beautiful recap-style archive
+7. **Send & cross-post** — after the digest emails go out, the pipeline auto-posts the day's headline + archive link to LinkedIn and X/Twitter (each opt-in via OAuth in admin settings; idempotent, failures don't block the send)
 
 ---
 
