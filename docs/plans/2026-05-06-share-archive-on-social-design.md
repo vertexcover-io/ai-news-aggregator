@@ -395,7 +395,7 @@ here is the click handler. Concrete handling:
   - Success → swap label to "COPIED ✓".
   - Failure → fall back to `document.execCommand("copy")` via a hidden
     `<textarea>` trick.
-  - Double-failure → swap label to "COPY FAILED" and `console.warn` once.
+  - Double-failure → swap label to "COPY FAILED" silently (no console output).
 
 ### 3.7 Testing strategy
 

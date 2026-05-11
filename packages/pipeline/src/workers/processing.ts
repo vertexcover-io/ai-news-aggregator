@@ -203,9 +203,11 @@ export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
     archiveRepo,
     rawItemsRepo,
     renderNewsletter,
-    // Validated at startup in index.ts — safe to assert here.
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    sessionSecret: process.env.SESSION_SECRET!,
+    sessionSecret: (() => {
+      const s = process.env.SESSION_SECRET;
+      if (!s) throw new Error("SESSION_SECRET env var is required");
+      return s;
+    })(),
     fromMail: process.env.FROM_MAIL ?? "newsletter@news.vertexcover.io",
     replyToEmail: process.env.NEWSLETTER_REPLY_TO_EMAIL,
     baseUrl: process.env.NEWSLETTER_BASE_URL ?? "https://newsletter.vertexcover.io",

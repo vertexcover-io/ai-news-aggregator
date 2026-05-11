@@ -10,6 +10,8 @@ import { createLogger } from "@newsletter/shared/logger";
 
 const logger = createLogger("crawler:web");
 
+const MAX_ERROR_LENGTH = 200;
+
 export type CrawlJob =
   | { kind: "listing"; sourceName: string; url: string }
   | { kind: "detail"; sourceName: string; postUrl: string; url: string };
@@ -114,7 +116,7 @@ export async function runWebCrawl(
     failedRequestHandler: (context, error: Error) => {
       const message = truncate(
         error instanceof Error ? error.message : String(error),
-        200,
+        MAX_ERROR_LENGTH,
       );
       results.set(context.request.url, { ok: false, error: message });
     },

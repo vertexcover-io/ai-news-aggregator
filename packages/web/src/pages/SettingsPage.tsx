@@ -174,8 +174,6 @@ export function SettingsPage(): ReactElement {
         e.preventDefault();
         onSubmit(e).catch((err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err);
-           
-          console.error("settings save threw:", err);
           toast.error(`Save failed: ${msg}`);
         });
       }}>

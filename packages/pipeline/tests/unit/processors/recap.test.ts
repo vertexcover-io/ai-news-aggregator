@@ -103,4 +103,31 @@ describe("generateRecap", () => {
     });
     expect(generate).toHaveBeenCalledOnce();
   });
+
+  it("uses RANKING_MODEL env var as model id when modelId option is not set", async () => {
+    const recap = validRecap();
+    const generate = vi.fn((_args: GenerateArgs) => Promise.resolve({ object: recap }));
+    const savedEnv = process.env.RANKING_MODEL;
+    process.env.RANKING_MODEL = "claude-opus-test";
+    try {
+      await generateRecap(makeItem(), { generateObject: generate });
+    } finally {
+      if (savedEnv === undefined) {
+        delete process.env.RANKING_MODEL;
+      } else {
+        process.env.RANKING_MODEL = savedEnv;
+      }
+    }
+    expect(generate).toHaveBeenCalledOnce();
+  });
+
+  it("serializes null publishedAt as null in the prompt", async () => {
+    const recap = validRecap();
+    const generate = vi.fn((_args: GenerateArgs) => Promise.resolve({ object: recap }));
+    await generateRecap(makeItem({ publishedAt: null }), { generateObject: generate });
+    const call = generate.mock.calls[0]?.[0];
+    const payload = JSON.parse(call?.prompt ?? "{}") as { item: { publishedAt: unknown } };
+    expect(payload.item.publishedAt).toBeNull();
+  });
+
 });

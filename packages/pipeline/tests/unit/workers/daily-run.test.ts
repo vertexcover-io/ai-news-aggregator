@@ -159,4 +159,22 @@ describe("createDailyRunWorker", () => {
     expect(userSettingsRepo.get).not.toHaveBeenCalled();
     expect(mockStartRun).not.toHaveBeenCalled();
   });
+
+  it("uses options.connection when provided instead of creating a new Redis connection", async () => {
+    const { createRedisConnection } = await import("@newsletter/shared/redis");
+    const { Worker } = await import("bullmq");
+    vi.clearAllMocks();
+    const connection = { fake: "injected-connection" } as never;
+    createDailyRunWorker({ connection, userSettingsRepo: { get: vi.fn() } });
+    expect(vi.mocked(createRedisConnection)).not.toHaveBeenCalled();
+    const workerCall = vi.mocked(Worker).mock.calls.at(-1);
+    expect(workerCall?.[2]).toMatchObject({ connection });
+  });
+
+  it("calls createRedisConnection when no connection or redis option is provided", async () => {
+    const { createRedisConnection } = await import("@newsletter/shared/redis");
+    vi.clearAllMocks();
+    createDailyRunWorker({ userSettingsRepo: { get: vi.fn() } });
+    expect(vi.mocked(createRedisConnection)).toHaveBeenCalled();
+  });
 });

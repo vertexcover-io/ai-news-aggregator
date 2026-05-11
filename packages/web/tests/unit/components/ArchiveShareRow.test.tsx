@@ -113,7 +113,7 @@ describe("ArchiveShareRow", () => {
     expect(document.querySelectorAll("textarea").length).toBe(0);
   });
 
-  it("double failure: clipboard undefined and execCommand returns false → COPY FAILED + console.warn (REQ-014)", async () => {
+  it("double failure: clipboard undefined and execCommand returns false → COPY FAILED (REQ-014)", async () => {
     Object.defineProperty(navigator, "clipboard", {
       value: undefined,
       configurable: true,
@@ -123,7 +123,6 @@ describe("ArchiveShareRow", () => {
       value: execCommand,
       configurable: true,
     });
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     render(<ArchiveShareRow archiveUrl={ARCHIVE_URL} shareText={SHARE_TEXT} />);
     const btn = screen.getByRole("button", { name: "Copy archive link" });
@@ -132,8 +131,6 @@ describe("ArchiveShareRow", () => {
     await waitFor(() => {
       expect(btn.textContent?.replace(/\s+/g, " ").trim()).toBe("COPY FAILED");
     });
-    expect(warn).toHaveBeenCalledTimes(1);
-    warn.mockRestore();
   });
 
   it("after successful copy, polite live region contains 'Copied'", async () => {

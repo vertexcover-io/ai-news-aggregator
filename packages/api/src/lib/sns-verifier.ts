@@ -81,6 +81,21 @@ export function parseSnsMessageUnchecked(rawBody: string): SnsMessage {
   if (!obj.Type) {
     throw new Error("SNS message missing required field: Type");
   }
+  if (!obj.MessageId) {
+    throw new Error("SNS message missing required field: MessageId");
+  }
+  if (!obj.TopicArn) {
+    throw new Error("SNS message missing required field: TopicArn");
+  }
+  if (!obj.Message) {
+    throw new Error("SNS message missing required field: Message");
+  }
+  if (!obj.SigningCertURL) {
+    throw new Error("SNS message missing required field: SigningCertURL");
+  }
+  if (!obj.Signature) {
+    throw new Error("SNS message missing required field: Signature");
+  }
   return obj as unknown as SnsMessage;
 }
 
