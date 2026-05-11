@@ -119,6 +119,85 @@ curl -s  https://news.vertexcover.io/ | head       # React HTML
 
 ## Day-to-day ops
 
+### Seed social-post tokens (LinkedIn / X) — one-time per platform
+
+The auto-post feature reads tokens from the `social_tokens` table, NOT from `.env`. Env vars hold only the app-level Client ID/Secret; the per-user access + refresh tokens come from a one-time OAuth dance and live in the DB.
+
+**Workflow:**
+
+1. **Get the tokens on your laptop** — the OAuth dance needs an interactive browser, which the headless server can't run. From the repo root locally:
+
+   ```bash
+   pnpm tsx scripts/auth-linkedin.ts
+   # → opens browser, click Allow on LinkedIn
+   # → prints LINKEDIN_TEST_ACCESS_TOKEN=..., LINKEDIN_TEST_REFRESH_TOKEN=..., LINKEDIN_TEST_PERSON_URN=...
+   ```
+
+   ```bash
+   pnpm tsx scripts/auth-twitter.ts
+   # → opens browser, click Authorize on X
+   # → prints TWITTER_TEST_ACCESS_TOKEN=..., TWITTER_TEST_REFRESH_TOKEN=...
+   ```
+
+   Copy the printed values somewhere safe (1Password or similar — you'll paste them in the next step).
+
+2. **SSH into the server and `INSERT` into `social_tokens`:**
+
+   ```bash
+   ssh deploy@news.vertexcover.io
+   docker compose -f /opt/newsletter/deployment/compose.prod.yml exec postgres \
+     psql -U newsletter newsletter
+   ```
+
+   In the psql prompt, run (paste your real values):
+
+   ```sql
+   -- LinkedIn (access tokens last ~60 days; refresh_token may be empty if
+   -- "Programmatic refresh tokens" isn't enabled on the LinkedIn app)
+   INSERT INTO social_tokens (platform, access_token, refresh_token, expires_at, metadata, updated_at)
+   VALUES (
+     'linkedin',
+     'PASTE_LINKEDIN_ACCESS_TOKEN_HERE',
+     'PASTE_LINKEDIN_REFRESH_TOKEN_HERE_OR_EMPTY',
+     NOW() + INTERVAL '55 days',
+     '{"personUrn":"urn:li:person:PASTE_SUB_HERE"}'::jsonb,
+     NOW()
+   )
+   ON CONFLICT (platform) DO UPDATE SET
+     access_token = EXCLUDED.access_token,
+     refresh_token = EXCLUDED.refresh_token,
+     expires_at = EXCLUDED.expires_at,
+     metadata = EXCLUDED.metadata,
+     updated_at = NOW();
+
+   -- X / Twitter (access tokens last ~2 hours; worker auto-refreshes via refresh_token)
+   INSERT INTO social_tokens (platform, access_token, refresh_token, expires_at, metadata, updated_at)
+   VALUES (
+     'twitter',
+     'PASTE_TWITTER_ACCESS_TOKEN_HERE',
+     'PASTE_TWITTER_REFRESH_TOKEN_HERE',
+     NOW() + INTERVAL '110 minutes',
+     NULL,
+     NOW()
+   )
+   ON CONFLICT (platform) DO UPDATE SET
+     access_token = EXCLUDED.access_token,
+     refresh_token = EXCLUDED.refresh_token,
+     expires_at = EXCLUDED.expires_at,
+     metadata = EXCLUDED.metadata,
+     updated_at = NOW();
+
+   -- Verify
+   SELECT platform, expires_at, length(access_token) AS tok_len, metadata
+   FROM social_tokens;
+   ```
+
+3. **Verify from the admin UI** — open `/admin/settings`. The "Social posting" section should show green "Connected" pills for both platforms. Click "Send test post" on each to confirm the live API call works end-to-end.
+
+**Re-seed only when:**
+- LinkedIn: every ~55 days **only if** the LinkedIn app does NOT have "Programmatic refresh tokens" enabled. If it does, the worker auto-refreshes forever.
+- X: never under normal operation — the worker auto-rotates the refresh token on every use and persists the new pair. Only re-run if the app was revoked or the refresh chain broke (you'll see `social.twitter.refresh_failed` in pipeline logs).
+
 ### Rotate a secret
 
 ```bash
