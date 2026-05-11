@@ -77,6 +77,17 @@ export interface AnalyticsMetrics {
   };
 }
 
+export interface SocialMetadata {
+  linkedinPermalink?: string;
+  twitterPermalink?: string;
+  linkedinError?: string;
+  twitterError?: string;
+}
+
+export interface SocialTokenMetadata {
+  personUrn?: string;
+}
+
 export * from "./run.js";
 export * from "./archive.js";
 export type { Candidate } from "./candidate.js";

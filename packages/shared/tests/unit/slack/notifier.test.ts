@@ -275,6 +275,48 @@ describe("createSlackNotifier", () => {
     expect((errorCall?.obj as { status?: unknown }).status).toBe("network");
   });
 
+  it("forwards socialResults into the rendered Slack message blocks", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive());
+    const fetchFn = vi.fn(() =>
+      Promise.resolve(new Response("ok", { status: 200 })),
+    );
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyNewsletterSent({
+      runId: "run-1",
+      delivery: { attempted: 1, sent: 1, failed: 0 },
+      socialResults: {
+        linkedin: {
+          status: "posted",
+          permalink: "urn:li:share:7777",
+        },
+        twitter: { status: "failed", reason: "http_402" },
+      },
+    });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    const [, init] = fetchFn.mock.calls[0] as [string, { body: string }];
+    const payload = JSON.parse(init.body) as {
+      blocks: { type: string; text?: { text?: string } }[];
+    };
+    const sectionTextValues = payload.blocks
+      .filter((b) => b.type === "section")
+      .map((b) => b.text?.text ?? "");
+    const social = sectionTextValues.find((s) =>
+      s.includes("🔗 Social posts"),
+    );
+    expect(social).toBeDefined();
+    expect(social).toContain(
+      "🟢 LinkedIn: posted — <https://www.linkedin.com/feed/update/urn:li:share:7777|view>",
+    );
+    expect(social).toContain("🔴 X: failed — http_402");
+  });
+
   it("never logs the webhook URL or its secret path token", async () => {
     const { calls, logger } = makeCapturedLogger();
     const archives = makeArchives(makeArchive());

@@ -18,9 +18,21 @@ export interface DeliveryCounts {
   failureReasons?: DeliveryFailureReason[];
 }
 
+export interface SocialPostReport {
+  status: "posted" | "skipped" | "failed";
+  reason?: string;
+  permalink?: string | null;
+}
+
+export interface SocialResultsForSlack {
+  linkedin?: SocialPostReport;
+  twitter?: SocialPostReport;
+}
+
 export interface NotifyNewsletterSentInput {
   runId: string;
   delivery: DeliveryCounts;
+  socialResults?: SocialResultsForSlack;
 }
 
 export interface NotifierArchiveView {

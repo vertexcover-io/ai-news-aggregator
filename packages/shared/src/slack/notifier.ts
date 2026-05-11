@@ -79,6 +79,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
           sourceTelemetry: archive.sourceTelemetry,
           delivery: input.delivery,
           publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
+          socialResults: input.socialResults,
         });
 
         const result = await postToWebhook({
