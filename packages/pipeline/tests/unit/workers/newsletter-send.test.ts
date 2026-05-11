@@ -656,6 +656,183 @@ describe("handleNewsletterSendJob", () => {
     expect(arg.delivery.failureReasons).toBeUndefined();
   });
 
+  describe("social notifier integration", () => {
+    function makeSubAndDeps(): {
+      sub: SubscriberSelect;
+      makeBaseDeps: (extra?: Partial<NewsletterSendDeps>) => NewsletterSendDeps;
+    } {
+      const sub = makeSubscriber();
+      const makeBaseDeps = (extra: Partial<NewsletterSendDeps> = {}): NewsletterSendDeps =>
+        makeDeps({
+          subscribersRepo: {
+            listConfirmed: vi.fn().mockResolvedValue([sub]),
+            findByIds: vi.fn().mockResolvedValue([sub]),
+          },
+          ...extra,
+        });
+      return { sub, makeBaseDeps };
+    }
+
+    it("(REQ-001 + EDGE-001) both notifiers wired with no_headline → Slack receives both as skipped", async () => {
+      const { makeBaseDeps } = makeSubAndDeps();
+      const linkedinNotifier = {
+        notifyArchiveReady: vi.fn().mockResolvedValue({ status: "skipped", reason: "no_headline" }),
+      };
+      const twitterNotifier = {
+        notifyArchiveReady: vi.fn().mockResolvedValue({ status: "skipped", reason: "no_headline" }),
+      };
+      const notify = vi.fn().mockResolvedValue(undefined);
+      const deps = makeBaseDeps({
+        slackNotifier: { notifyNewsletterSent: notify },
+        linkedinNotifier,
+        twitterNotifier,
+      });
+
+      await handleNewsletterSendJob(deps, {
+        name: "send-newsletter",
+        id: "j1",
+        data: { runId: "run-uuid-1234", subscriberIds: "all" },
+      });
+
+      expect(linkedinNotifier.notifyArchiveReady).toHaveBeenCalledWith({ runId: "run-uuid-1234" });
+      expect(twitterNotifier.notifyArchiveReady).toHaveBeenCalledWith({ runId: "run-uuid-1234" });
+      const arg = notify.mock.calls[0][0] as { socialResults?: { linkedin?: unknown; twitter?: unknown } };
+      expect(arg.socialResults).toEqual({
+        linkedin: { status: "skipped", reason: "no_headline" },
+        twitter: { status: "skipped", reason: "no_headline" },
+      });
+    });
+
+    it("(REQ-001) both notifiers wired with posted result → Slack receives both as posted", async () => {
+      const { makeBaseDeps } = makeSubAndDeps();
+      const linkedinNotifier = {
+        notifyArchiveReady: vi.fn().mockResolvedValue({ status: "posted", permalink: "urn:li:share:1" }),
+      };
+      const twitterNotifier = {
+        notifyArchiveReady: vi.fn().mockResolvedValue({ status: "posted", permalink: "https://x.com/i/web/status/2" }),
+      };
+      const notify = vi.fn().mockResolvedValue(undefined);
+      const deps = makeBaseDeps({
+        slackNotifier: { notifyNewsletterSent: notify },
+        linkedinNotifier,
+        twitterNotifier,
+      });
+
+      await handleNewsletterSendJob(deps, {
+        name: "send-newsletter",
+        id: "j1",
+        data: { runId: "run-uuid-1234", subscriberIds: "all" },
+      });
+
+      const arg = notify.mock.calls[0][0] as { socialResults?: { linkedin?: unknown; twitter?: unknown } };
+      expect(arg.socialResults).toEqual({
+        linkedin: { status: "posted", permalink: "urn:li:share:1" },
+        twitter: { status: "posted", permalink: "https://x.com/i/web/status/2" },
+      });
+    });
+
+    it("(REQ-003) LinkedIn notifier throws → Twitter still completes; Slack receives linkedin as failed/unexpected", async () => {
+      const { makeBaseDeps } = makeSubAndDeps();
+      const linkedinNotifier = {
+        notifyArchiveReady: vi.fn().mockRejectedValue(new Error("boom")),
+      };
+      const twitterNotifier = {
+        notifyArchiveReady: vi.fn().mockResolvedValue({ status: "posted", permalink: "https://x.com/i/web/status/2" }),
+      };
+      const notify = vi.fn().mockResolvedValue(undefined);
+      const deps = makeBaseDeps({
+        slackNotifier: { notifyNewsletterSent: notify },
+        linkedinNotifier,
+        twitterNotifier,
+      });
+
+      await handleNewsletterSendJob(deps, {
+        name: "send-newsletter",
+        id: "j1",
+        data: { runId: "run-uuid-1234", subscriberIds: "all" },
+      });
+
+      expect(twitterNotifier.notifyArchiveReady).toHaveBeenCalledOnce();
+      const arg = notify.mock.calls[0][0] as { socialResults?: { linkedin?: unknown; twitter?: unknown } };
+      expect(arg.socialResults).toEqual({
+        linkedin: { status: "failed", reason: "unexpected" },
+        twitter: { status: "posted", permalink: "https://x.com/i/web/status/2" },
+      });
+    });
+
+    it("(EDGE-009) slackNotifier null → both social notifiers run; no Slack call attempted", async () => {
+      const { makeBaseDeps } = makeSubAndDeps();
+      const linkedinNotifier = {
+        notifyArchiveReady: vi.fn().mockResolvedValue({ status: "posted", permalink: "p1" }),
+      };
+      const twitterNotifier = {
+        notifyArchiveReady: vi.fn().mockResolvedValue({ status: "posted", permalink: "p2" }),
+      };
+      const deps = makeBaseDeps({
+        slackNotifier: undefined,
+        linkedinNotifier,
+        twitterNotifier,
+      });
+
+      await expect(handleNewsletterSendJob(deps, {
+        name: "send-newsletter",
+        id: "j1",
+        data: { runId: "run-uuid-1234", subscriberIds: "all" },
+      })).resolves.toBeUndefined();
+
+      expect(linkedinNotifier.notifyArchiveReady).toHaveBeenCalledOnce();
+      expect(twitterNotifier.notifyArchiveReady).toHaveBeenCalledOnce();
+    });
+
+    it("(EDGE-012) both notifiers return already_posted → Slack receives both as skipped/already_posted", async () => {
+      const { makeBaseDeps } = makeSubAndDeps();
+      const linkedinNotifier = {
+        notifyArchiveReady: vi.fn().mockResolvedValue({ status: "skipped", reason: "already_posted" }),
+      };
+      const twitterNotifier = {
+        notifyArchiveReady: vi.fn().mockResolvedValue({ status: "skipped", reason: "already_posted" }),
+      };
+      const notify = vi.fn().mockResolvedValue(undefined);
+      const deps = makeBaseDeps({
+        slackNotifier: { notifyNewsletterSent: notify },
+        linkedinNotifier,
+        twitterNotifier,
+      });
+
+      await handleNewsletterSendJob(deps, {
+        name: "send-newsletter",
+        id: "j1",
+        data: { runId: "run-uuid-1234", subscriberIds: "all" },
+      });
+
+      const arg = notify.mock.calls[0][0] as { socialResults?: { linkedin?: unknown; twitter?: unknown } };
+      expect(arg.socialResults).toEqual({
+        linkedin: { status: "skipped", reason: "already_posted" },
+        twitter: { status: "skipped", reason: "already_posted" },
+      });
+    });
+
+    it("(EDGE-013) both notifiers null → no api calls; Slack receives socialResults with both undefined", async () => {
+      const { makeBaseDeps } = makeSubAndDeps();
+      const notify = vi.fn().mockResolvedValue(undefined);
+      const deps = makeBaseDeps({
+        slackNotifier: { notifyNewsletterSent: notify },
+        linkedinNotifier: null,
+        twitterNotifier: null,
+      });
+
+      await handleNewsletterSendJob(deps, {
+        name: "send-newsletter",
+        id: "j1",
+        data: { runId: "run-uuid-1234", subscriberIds: "all" },
+      });
+
+      expect(notify).toHaveBeenCalledOnce();
+      const arg = notify.mock.calls[0][0] as { socialResults?: { linkedin?: unknown; twitter?: unknown } };
+      expect(arg.socialResults).toEqual({ linkedin: undefined, twitter: undefined });
+    });
+  });
+
   it("VS-5: structured newsletter-send.failed log carries both raw error and classified reason", async () => {
     const sub = makeSubscriber({ id: "sub-vs5", email: "vs5@x.com" });
     const rawError =
