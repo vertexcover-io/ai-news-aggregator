@@ -1425,6 +1425,49 @@ describe("run-process worker", () => {
     }
   });
 
+  it("logs an error but does not throw when sendQueue.add() fails during auto-review enqueue", async () => {
+    const prevAutoReview = process.env.AUTO_REVIEW;
+    process.env.AUTO_REVIEW = "true";
+    try {
+      const runStateMock = makeMockRunState(makeRunState());
+      const candidates = [makeCandidate(1)];
+      const loadFn = vi.fn((): Promise<Candidate[]> => Promise.resolve(candidates));
+      const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+      const rankFn = vi.fn(
+        (): Promise<RankResult> =>
+          Promise.resolve({
+            rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+            candidateCount: 1,
+            rankedCount: 1,
+          }),
+      );
+      const archiveUpsert = vi.fn(() => Promise.resolve());
+      const sendQueueAdd = vi.fn(() => Promise.reject(new Error("redis queue unavailable")));
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn,
+        shortlistFn,
+        rankFn,
+        archiveRepo: { upsert: archiveUpsert },
+        sendQueue: { add: sendQueueAdd } as unknown as Parameters<
+          typeof createRunProcessWorker
+        >[0]["sendQueue"],
+      });
+
+      const result = await worker.handler(baseJob);
+
+      expect(result).toEqual({ rankedCount: 1 });
+      expect(sendQueueAdd).toHaveBeenCalledOnce();
+      expect(mockLoggerError).toHaveBeenCalledWith(
+        expect.objectContaining({ event: "archive.send_enqueue_failed" }),
+        expect.any(String),
+      );
+    } finally {
+      if (prevAutoReview === undefined) delete process.env.AUTO_REVIEW;
+      else process.env.AUTO_REVIEW = prevAutoReview;
+    }
+  });
+
   // REQ-002: factory falls back to default archiveRepo when none is injected
   it("REQ-002: uses default archiveRepo when none is provided", async () => {
     const runStateMock = makeMockRunState(makeRunState());
@@ -1957,6 +2000,49 @@ describe("run-process cancellation (REQ-05 through REQ-09)", () => {
 
     await expect(worker.handler(baseJob)).rejects.toThrow("boom");
     expect(closeSpy).toHaveBeenCalledOnce();
+  });
+
+  it("logs an error but does not throw when archiveRepo.upsert() fails during cancellation handling", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const { factory, triggerCancel } = makeInstantCancelSubscriber();
+
+    const hnFn = vi.fn(() => {
+      triggerCancel();
+      return Promise.resolve({
+        itemsFetched: 0,
+        itemsStored: 0,
+        failures: 0,
+        durationMs: 1,
+      });
+    });
+
+    const archiveRepo = {
+      upsert: vi.fn(() => Promise.reject(new Error("db write failed on cancel"))),
+    };
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+      collectFns: { hn: hnFn, reddit: vi.fn(), web: vi.fn() },
+      archiveRepo,
+      cancelSubscriber: factory,
+    });
+
+    const result = await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["hn"],
+        collectors: { hn: { sinceDays: 1 } as unknown as HnCollectConfig },
+      },
+    });
+
+    expect(result).toEqual({ rankedCount: 0 });
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "archive.write_failed" }),
+      expect.any(String),
+    );
   });
 });
 
