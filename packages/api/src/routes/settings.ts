@@ -1,9 +1,12 @@
 import { Hono } from "hono";
+import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import type { Queue } from "bullmq";
 import {
   createLogger,
   createRedisConnection,
   getDb as defaultGetDb,
+  socialTestKey,
 } from "@newsletter/shared";
 import type {
   RunProcessJobPayload,
@@ -20,6 +23,10 @@ import {
   type UserSettingsRepo,
   type UserSettingsUpsertInput,
 } from "@api/repositories/user-settings.js";
+import {
+  createSocialTokensRepo,
+  type SocialTokensRepo,
+} from "@api/repositories/social-tokens.js";
 import { reconcileDailyRunSchedule } from "@api/services/scheduler.js";
 import {
   defaultRettiwtFactory,
@@ -30,12 +37,27 @@ import {
 
 type RettiwtFactory = TwitterHandleResolverDeps["rettiwtFactory"];
 
+export interface SocialTestPostQueueLike {
+  add(
+    name: string,
+    data: { platform: "linkedin" | "twitter"; requestId: string },
+    opts: { jobId: string },
+  ): Promise<unknown>;
+}
+
+export interface SocialTestPostRedisLike {
+  get(key: string): Promise<string | null>;
+}
+
 export interface SettingsRouterDeps {
   getSettingsRepo: () => UserSettingsRepo;
   processingQueue: Pick<
     Queue,
     "upsertJobScheduler" | "removeJobScheduler"
   >;
+  socialTestPostQueue?: SocialTestPostQueueLike;
+  socialTestRedis?: SocialTestPostRedisLike;
+  socialTokensRepo?: SocialTokensRepo;
   resolveHandles?: (
     handles: string[],
     deps: TwitterHandleResolverDeps,
@@ -94,6 +116,24 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
   app.get("/", async (c) => {
     const settings = await deps.getSettingsRepo().get();
     return c.json(settings);
+  });
+
+  app.get("/social-status", async (c) => {
+    const repo = deps.socialTokensRepo;
+    if (!repo) {
+      return c.json({
+        linkedin: { configured: false },
+        twitter: { configured: false },
+      });
+    }
+    const [linkedin, twitter] = await Promise.all([
+      repo.hasToken("linkedin"),
+      repo.hasToken("twitter"),
+    ]);
+    return c.json({
+      linkedin: { configured: linkedin },
+      twitter: { configured: twitter },
+    });
   });
 
   app.put("/", async (c) => {
@@ -192,6 +232,46 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
     return c.json(saved);
   });
 
+  const testPostBodySchema = z.object({
+    platform: z.enum(["linkedin", "twitter"]),
+  });
+
+  app.post("/test-social-post", async (c) => {
+    if (!deps.socialTestPostQueue) {
+      return c.json({ error: "test post unavailable" }, 503);
+    }
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = testPostBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.message }, 400);
+    }
+    const requestId = randomUUID();
+    await deps.socialTestPostQueue.add(
+      "social-test-post",
+      { platform: parsed.data.platform, requestId },
+      { jobId: `social-test-${requestId}` },
+    );
+    logger.info(
+      { event: "social.test_post.enqueued", platform: parsed.data.platform, requestId },
+      "social.test_post.enqueued",
+    );
+    return c.json({ requestId }, 202);
+  });
+
+  // Returns {status:"pending"} for both pre-result and post-TTL-expiry; v1
+  // intentionally does not distinguish (UI gives up after 30s of polling).
+  app.get("/test-social-post/:requestId", async (c) => {
+    if (!deps.socialTestRedis) {
+      return c.json({ error: "test post unavailable" }, 503);
+    }
+    const requestId = c.req.param("requestId");
+    const value = await deps.socialTestRedis.get(socialTestKey(requestId));
+    if (value === null) {
+      return c.json({ status: "pending" });
+    }
+    return c.json(JSON.parse(value));
+  });
+
   return app;
 }
 
@@ -203,9 +283,19 @@ function getDefaultProcessingQueue(): Queue<RunProcessJobPayload> {
   return defaultProcessingQueue;
 }
 
-export function createDefaultSettingsRouter(): Hono {
+export interface CreateDefaultSettingsRouterOptions {
+  socialTestPostQueue?: SocialTestPostQueueLike;
+  socialTestRedis?: SocialTestPostRedisLike;
+}
+
+export function createDefaultSettingsRouter(
+  options: CreateDefaultSettingsRouterOptions = {},
+): Hono {
   return createSettingsRouter({
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
     processingQueue: getDefaultProcessingQueue(),
+    socialTestPostQueue: options.socialTestPostQueue,
+    socialTestRedis: options.socialTestRedis,
+    socialTokensRepo: createSocialTokensRepo(defaultGetDb()),
   });
 }
