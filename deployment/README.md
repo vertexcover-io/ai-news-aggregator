@@ -119,6 +119,33 @@ curl -s  https://news.vertexcover.io/ | head       # React HTML
 
 ## Day-to-day ops
 
+### Seed social-post tokens (LinkedIn / X) — one-time per platform
+
+The auto-post feature reads tokens from the `social_tokens` table, NOT from `.env`. Env vars hold only the app-level Client ID/Secret; the per-user access + refresh tokens are obtained via OAuth and stored in the DB.
+
+Prerequisites: `LINKEDIN_CLIENT_ID`/`LINKEDIN_CLIENT_SECRET` and/or `TWITTER_CLIENT_ID`/`TWITTER_CLIENT_SECRET` already in `deployment/.env.prod.enc` and a successful deploy completed.
+
+From your laptop:
+
+```bash
+./deployment/seed-social-tokens.sh linkedin
+./deployment/seed-social-tokens.sh twitter
+```
+
+Each invocation:
+1. Decrypts the SOPS env locally, pulls the relevant client creds + prod DB password.
+2. Starts a short-lived socat sidecar on the server that exposes prod Postgres on `localhost:5433`.
+3. Opens an SSH tunnel so your laptop reaches it.
+4. Runs `scripts/auth-<platform>.ts` locally — your default browser opens to the platform's authorize page; click Allow.
+5. The script writes the captured tokens into the prod `social_tokens` table.
+6. Tears down the socat sidecar.
+
+After both rows exist, the next reviewed run auto-posts. Verify from `/admin/settings` — both "Connected" pills should be green and the "Send test post" buttons should succeed.
+
+Repeat **only** when:
+- LinkedIn: every ~60 days (access token expiry) if you didn't enable "Programmatic refresh tokens" on the LinkedIn dev app. If you did enable it, never — the worker auto-refreshes.
+- X: never under normal operation — the worker auto-rotates the refresh token on every refresh. Only re-run if you intentionally revoked the app or the refresh token chain breaks.
+
 ### Rotate a secret
 
 ```bash
