@@ -195,9 +195,6 @@ export async function collectWeb(
         const sorted = sortPostsByPublishedAtDesc(validated);
         const filtered = applySinceDays(sorted, config.sinceDays);
         const capped = filtered.slice(0, config.maxItems);
-        if (capped.length === 0) {
-          return { source, capped: [], failure: "no posts after filter", sourceFailed: true };
-        }
         return { source, capped, sourceFailed: false };
       } catch (err) {
         return { source, capped: [], failure: truncateError(err), sourceFailed: true };

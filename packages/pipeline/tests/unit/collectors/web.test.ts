@@ -595,8 +595,8 @@ describe("collectWeb (mocked at runWebCrawl boundary)", () => {
     expect(repo.upsertItems).not.toHaveBeenCalled();
   });
 
-  // REQ-11: discovery-empty failure when no posts pass filter
-  it("records discovery-empty failure when discovered posts list is empty after filter", async () => {
+  // REQ-11: empty-after-filter is a successful empty source, not a failure
+  it("returns a successful empty source when discovered posts are all filtered out", async () => {
     const repo = makeRepo();
     // LLM returns posts but they are all old
     const model = makeDiscoveryModel([
@@ -610,14 +610,21 @@ describe("collectWeb (mocked at runWebCrawl boundary)", () => {
       .mockResolvedValueOnce(listingMap)
       .mockResolvedValueOnce(new Map());
 
-    await expect(
-      collectWeb(
-        { rawItemsRepo: repo, llmModel: model, runWebCrawl },
-        { sources: [sourceA], maxItems: 10, sinceDays: 1 },
-      ),
-    ).rejects.toThrow("all sources failed");
+    const result = await collectWeb(
+      { rawItemsRepo: repo, llmModel: model, runWebCrawl },
+      { sources: [sourceA], maxItems: 10, sinceDays: 1 },
+    );
 
-    // Confirm no items were stored
+    expect(result.itemsFetched).toBe(0);
+    expect(result.itemsStored).toBe(0);
+    expect(result.failures).toBeUndefined();
+    expect(result.unitResults).toHaveLength(1);
+    expect(result.unitResults[0]).toMatchObject({
+      displayName: sourceA.name,
+      itemsFetched: 0,
+      status: "completed",
+      errors: [],
+    });
     expect(repo.upsertItems).not.toHaveBeenCalled();
   });
 
