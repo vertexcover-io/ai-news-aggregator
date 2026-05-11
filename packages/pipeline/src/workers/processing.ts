@@ -25,6 +25,19 @@ import {
   type NewsletterSendJobLike,
 } from "@pipeline/workers/newsletter-send.js";
 import {
+  handleSocialTestPostJob,
+  type SocialTestPostDeps,
+} from "@pipeline/social/test-post.js";
+import type { SocialTestPostJobData } from "@pipeline/queues/social-test-post.js";
+import { createLinkedInApiClient } from "@pipeline/social/linkedin/api-client.js";
+import { createTwitterApiClient } from "@pipeline/social/twitter/api-client.js";
+import { createLinkedInNotifier } from "@pipeline/social/linkedin/notifier.js";
+import { createTwitterNotifier } from "@pipeline/social/twitter/notifier.js";
+import {
+  createSocialTokensRepo,
+  type SocialTokensRepo,
+} from "@pipeline/repositories/social-tokens.js";
+import {
   createRunStateService,
   type RunStateService,
 } from "@pipeline/services/run-state.js";
@@ -72,6 +85,7 @@ export interface CreateProcessingWorkerOptions {
   runProcessDeps?: RunProcessDeps;
   dailyRunDeps?: DailyRunDeps;
   newsletterSendDeps?: NewsletterSendDeps;
+  socialTestPostDeps?: SocialTestPostDeps;
 }
 
 // Discriminated by job.name; payload shape is heterogeneous between routes.
@@ -89,6 +103,8 @@ export function createProcessingWorker(
   // Lazily build newsletter send deps to avoid eager DB connection in tests.
   let resolvedNewsletterSendDeps: NewsletterSendDeps | undefined =
     options.newsletterSendDeps;
+  let resolvedSocialTestPostDeps: SocialTestPostDeps | undefined =
+    options.socialTestPostDeps;
 
   return new Worker<ProcessingJobData, unknown>(
     "processing",
@@ -119,6 +135,13 @@ export function createProcessingWorker(
             data: job.data as unknown as NewsletterSendJobPayload,
           };
           await handleNewsletterSendJob(resolvedNewsletterSendDeps, typed);
+          return undefined;
+        }
+        case "social-test-post": {
+          resolvedSocialTestPostDeps ??= buildDefaultSocialTestPostDeps(connection);
+          await handleSocialTestPostJob(resolvedSocialTestPostDeps, {
+            data: job.data as unknown as SocialTestPostJobData,
+          });
           return undefined;
         }
         default: {
@@ -183,6 +206,7 @@ export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
   const db = getDb();
   const archiveRepo = createRunArchivesRepo(db);
   const rawItemsRepo = createRawItemsRepo(db);
+  const socialTokensRepo = getSharedSocialTokensRepo();
   const slackNotifier = createSlackNotifier({
     webhookUrl: process.env.SLACK_WEBHOOK_URL,
     archives: archiveRepo,
@@ -196,6 +220,43 @@ export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
     logger: createLogger("slack"),
     publicArchiveBaseUrl: process.env.PUBLIC_BASE_URL,
   });
+
+  const publicArchiveBaseUrl = process.env.PUBLIC_BASE_URL ?? "";
+  const linkedinClientId = process.env.LINKEDIN_CLIENT_ID;
+  const linkedinClientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+  const linkedinNotifier =
+    linkedinClientId && linkedinClientSecret
+      ? createLinkedInNotifier({
+          apiClient: createLinkedInApiClient(),
+          archives: archiveRepo,
+          tokens: socialTokensRepo,
+          config: {
+            clientId: linkedinClientId,
+            clientSecret: linkedinClientSecret,
+            apiVersion: process.env.LINKEDIN_API_VERSION ?? "202511",
+            publicArchiveBaseUrl,
+          },
+          logger: createLogger("social.linkedin"),
+        })
+      : null;
+
+  const twitterClientId = process.env.TWITTER_CLIENT_ID;
+  const twitterClientSecret = process.env.TWITTER_CLIENT_SECRET;
+  const twitterNotifier =
+    twitterClientId && twitterClientSecret
+      ? createTwitterNotifier({
+          apiClient: createTwitterApiClient(),
+          archives: archiveRepo,
+          tokens: socialTokensRepo,
+          config: {
+            clientId: twitterClientId,
+            clientSecret: twitterClientSecret,
+            publicArchiveBaseUrl,
+          },
+          logger: createLogger("social.twitter"),
+        })
+      : null;
+
   return {
     emailProvider: createEmailProvider(),
     subscribersRepo: createPipelineSubscribersRepo(db),
@@ -210,6 +271,33 @@ export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
     replyToEmail: process.env.NEWSLETTER_REPLY_TO_EMAIL,
     baseUrl: process.env.NEWSLETTER_BASE_URL ?? "https://newsletter.vertexcover.io",
     slackNotifier,
+    linkedinNotifier,
+    twitterNotifier,
+  };
+}
+
+let cachedSocialTokensRepo: SocialTokensRepo | undefined;
+function getSharedSocialTokensRepo(): SocialTokensRepo {
+  cachedSocialTokensRepo ??= createSocialTokensRepo(getDb());
+  return cachedSocialTokensRepo;
+}
+
+export function buildDefaultSocialTestPostDeps(
+  connection: IORedis,
+): SocialTestPostDeps {
+  return {
+    linkedinApiClient: createLinkedInApiClient(),
+    twitterApiClient: createTwitterApiClient(),
+    tokens: getSharedSocialTokensRepo(),
+    config: {
+      linkedinApiVersion: process.env.LINKEDIN_API_VERSION ?? "202511",
+      linkedinClientId: process.env.LINKEDIN_CLIENT_ID ?? "",
+      linkedinClientSecret: process.env.LINKEDIN_CLIENT_SECRET ?? "",
+      twitterClientId: process.env.TWITTER_CLIENT_ID ?? "",
+      twitterClientSecret: process.env.TWITTER_CLIENT_SECRET ?? "",
+    },
+    redis: connection,
+    logger: createLogger("social:test-post"),
   };
 }
 

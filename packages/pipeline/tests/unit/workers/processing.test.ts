@@ -42,7 +42,81 @@ vi.mock("@pipeline/workers/daily-run.js", () => ({
   handleDailyRunJob: (...args: unknown[]) => mockHandleDailyRunJob(...args),
 }));
 
-const { createProcessingWorker } = await import(
+const mockHandleSocialTestPostJob = vi.fn();
+vi.mock("@pipeline/social/test-post.js", () => ({
+  handleSocialTestPostJob: (...args: unknown[]) =>
+    mockHandleSocialTestPostJob(...args),
+}));
+
+const mockCreateLinkedInNotifier = vi.fn(() => ({
+  notifyArchiveReady: vi.fn(),
+}));
+const mockCreateTwitterNotifier = vi.fn(() => ({
+  notifyArchiveReady: vi.fn(),
+}));
+vi.mock("@pipeline/social/linkedin/notifier.js", () => ({
+  createLinkedInNotifier: (...args: unknown[]) =>
+    mockCreateLinkedInNotifier(...(args as [])),
+}));
+vi.mock("@pipeline/social/twitter/notifier.js", () => ({
+  createTwitterNotifier: (...args: unknown[]) =>
+    mockCreateTwitterNotifier(...(args as [])),
+}));
+vi.mock("@pipeline/social/linkedin/api-client.js", () => ({
+  createLinkedInApiClient: vi.fn(() => ({ fake: "linkedin-client" })),
+}));
+vi.mock("@pipeline/social/twitter/api-client.js", () => ({
+  createTwitterApiClient: vi.fn(() => ({ fake: "twitter-client" })),
+}));
+vi.mock("@pipeline/repositories/social-tokens.js", () => ({
+  createSocialTokensRepo: vi.fn(() => ({ fake: "social-tokens" })),
+}));
+vi.mock("@pipeline/repositories/run-archives.js", () => ({
+  createRunArchivesRepo: vi.fn(() => ({
+    findById: vi.fn(),
+    upsert: vi.fn(),
+    markLinkedInPosted: vi.fn(),
+    markTwitterPosted: vi.fn(),
+    recordSocialFailure: vi.fn(),
+  })),
+}));
+vi.mock("@pipeline/repositories/raw-items.js", () => ({
+  createRawItemsRepo: vi.fn(() => ({ findByIds: vi.fn() })),
+}));
+vi.mock("@pipeline/repositories/subscribers.js", () => ({
+  createPipelineSubscribersRepo: vi.fn(() => ({ listConfirmed: vi.fn(), findByIds: vi.fn() })),
+}));
+vi.mock("@pipeline/repositories/email-sends.js", () => ({
+  createPipelineEmailSendsRepo: vi.fn(() => ({ create: vi.fn(), findSentSubscriberIds: vi.fn() })),
+}));
+vi.mock("@pipeline/repositories/candidates.js", () => ({
+  createCandidatesRepo: vi.fn(() => ({})),
+}));
+vi.mock("@pipeline/repositories/user-settings.js", () => ({
+  createUserSettingsRepo: vi.fn(() => ({})),
+}));
+vi.mock("@pipeline/services/run-state.js", () => ({
+  createRunStateService: vi.fn(() => ({})),
+}));
+vi.mock("@pipeline/services/cancel-subscriber.js", () => ({
+  createCancelSubscriber: vi.fn(() => ({})),
+}));
+vi.mock("@pipeline/lib/email-render.js", () => ({
+  renderNewsletter: vi.fn(),
+}));
+vi.mock("@pipeline/lib/email-provider.js", () => ({
+  createEmailProvider: vi.fn(() => ({ send: vi.fn() })),
+}));
+vi.mock("@newsletter/shared", async () => {
+  const actual = await vi.importActual("@newsletter/shared");
+  return {
+    ...actual,
+    getDb: vi.fn(() => ({ fake: "db" })),
+    createSlackNotifier: vi.fn(() => ({ notifyNewsletterSent: vi.fn() })),
+  };
+});
+
+const { createProcessingWorker, buildDefaultNewsletterSendDeps } = await import(
   "@pipeline/workers/processing.js"
 );
 
@@ -55,6 +129,7 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
     const w = createProcessingWorker({
       runProcessDeps: { fake: "rp-deps" } as never,
       dailyRunDeps: { fake: "dr-deps" } as never,
+      socialTestPostDeps: { fake: "stp-deps" } as never,
       connection: { fake: "redis" } as never,
     });
     return w as unknown as { handler: (job: unknown) => Promise<unknown> };
@@ -77,6 +152,59 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
     await worker.handler(job);
     expect(mockHandleDailyRunJob).toHaveBeenCalledOnce();
     expect(mockHandleRunProcessJob).not.toHaveBeenCalled();
+  });
+
+  it("routes job.name === 'social-test-post' to handleSocialTestPostJob", async () => {
+    mockHandleSocialTestPostJob.mockResolvedValue(undefined);
+    const worker = makeWorker();
+    const job = {
+      name: "social-test-post",
+      id: "j4",
+      data: { platform: "linkedin", requestId: "req-1" },
+    };
+    await worker.handler(job);
+    expect(mockHandleSocialTestPostJob).toHaveBeenCalledOnce();
+    expect(mockHandleRunProcessJob).not.toHaveBeenCalled();
+    expect(mockHandleDailyRunJob).not.toHaveBeenCalled();
+  });
+
+  describe("buildDefaultNewsletterSendDeps env-var construction", () => {
+    const originalEnv = { ...process.env };
+    beforeEach(() => {
+      process.env = { ...originalEnv };
+      delete process.env.LINKEDIN_CLIENT_ID;
+      delete process.env.LINKEDIN_CLIENT_SECRET;
+      delete process.env.TWITTER_CLIENT_ID;
+      delete process.env.TWITTER_CLIENT_SECRET;
+    });
+
+    it("constructs linkedinNotifier when LINKEDIN_CLIENT_ID + SECRET set; null otherwise", () => {
+      const depsWithout = buildDefaultNewsletterSendDeps();
+      expect(depsWithout.linkedinNotifier).toBeNull();
+
+      process.env.LINKEDIN_CLIENT_ID = "li-id";
+      process.env.LINKEDIN_CLIENT_SECRET = "li-secret";
+      const depsWith = buildDefaultNewsletterSendDeps();
+      expect(depsWith.linkedinNotifier).not.toBeNull();
+      expect(mockCreateLinkedInNotifier).toHaveBeenCalled();
+    });
+
+    it("constructs twitterNotifier when TWITTER_CLIENT_ID + SECRET set; null otherwise", () => {
+      const depsWithout = buildDefaultNewsletterSendDeps();
+      expect(depsWithout.twitterNotifier).toBeNull();
+
+      process.env.TWITTER_CLIENT_ID = "tw-id";
+      process.env.TWITTER_CLIENT_SECRET = "tw-secret";
+      const depsWith = buildDefaultNewsletterSendDeps();
+      expect(depsWith.twitterNotifier).not.toBeNull();
+      expect(mockCreateTwitterNotifier).toHaveBeenCalled();
+    });
+
+    it("returns linkedinNotifier=null when only LINKEDIN_CLIENT_ID is set (missing secret)", () => {
+      process.env.LINKEDIN_CLIENT_ID = "li-id";
+      const deps = buildDefaultNewsletterSendDeps();
+      expect(deps.linkedinNotifier).toBeNull();
+    });
   });
 
   it("logs a warn and returns undefined for unknown job names", async () => {
