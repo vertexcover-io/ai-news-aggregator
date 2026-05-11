@@ -13,7 +13,6 @@ export default defineConfig((options) => ({
     "src/utils/index.ts",
     "src/logger.ts",
     "src/slack/index.ts",
-    "src/social/test-post-result.ts",
   ],
   format: ["esm"],
   dts: true,
