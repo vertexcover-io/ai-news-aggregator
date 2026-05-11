@@ -165,6 +165,13 @@ interface CollectingOutcome {
   outcomes: CollectorOutcome[];
 }
 
+type SourceKey = CollectorSourceType;
+
+interface Task {
+  sourceKey: SourceKey;
+  run: () => Promise<CollectorResult>;
+}
+
 async function runCollecting(
   deps: RunProcessDeps,
   runId: string,
@@ -185,12 +192,6 @@ async function runCollecting(
   };
 
   const collectorDeps = { rawItemsRepo: deps.rawItemsRepo, signal };
-
-  type SourceKey = CollectorSourceType;
-  interface Task {
-    sourceKey: SourceKey;
-    run: () => Promise<CollectorResult>;
-  }
 
   const tasks: Task[] = [];
   if (collectors.hn) {

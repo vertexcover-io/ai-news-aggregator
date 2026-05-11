@@ -34,7 +34,6 @@
     "react-email": "6.0.8",
     "resend": "6.12.2",
     "rettiwt-api": "7.0.3",
-    "yaml": "2.8.3",
     "zod": "4.3.6"
   },
   "devDependencies": {

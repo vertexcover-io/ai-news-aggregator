@@ -108,11 +108,9 @@ export function ArchiveShareRow({ archiveUrl, shareText }: Props): ReactElement 
       }
       if (ok) flash("copied");
       else {
-        console.warn("[ArchiveShareRow] copy fallback failed");
         flash("failed");
       }
-    } catch (err) {
-      console.warn("[ArchiveShareRow] copy failed", err);
+    } catch {
       flash("failed");
     }
   }

@@ -113,9 +113,6 @@ importers:
       rettiwt-api:
         specifier: 7.0.3
         version: 7.0.3
-      yaml:
-        specifier: 2.8.3
-        version: 2.8.3
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -216,6 +213,9 @@ importers:
       react:
         specifier: 19.2.4
         version: 19.2.4
+      react-dom:
+        specifier: 19.2.4
+        version: 19.2.4(react@19.2.4)
       react-email:
         specifier: 6.0.8
         version: 6.0.8(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
