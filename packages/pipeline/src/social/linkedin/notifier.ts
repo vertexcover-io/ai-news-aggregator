@@ -10,6 +10,7 @@ import { refreshLinkedInToken } from "./oauth.js";
 
 const REFRESH_SKEW_MS = 60_000;
 const FAILURE_BODY_MAX = 500;
+const AUTH_RETRY_STATUSES = new Set([401, 403]);
 
 export interface LinkedInNotifierConfig {
   clientId: string;
@@ -115,9 +116,8 @@ export function createLinkedInNotifier(
           return { status: "skipped", reason: "no_headline" };
         }
 
-        const acquired = await tokens.withTokenLock<AcquireResult>(
-          "linkedin",
-          async (row, tx) => {
+        const acquire = (forceRefresh: boolean): Promise<AcquireResult> =>
+          tokens.withTokenLock<AcquireResult>("linkedin", async (row, tx) => {
             if (row === null) {
               logger.warn(
                 { event: "social.linkedin.skipped", reason: "no_token", runId },
@@ -127,39 +127,6 @@ export function createLinkedInNotifier(
                 ok: false,
                 result: { status: "skipped", reason: "no_token" },
               };
-            }
-
-            let accessToken = row.accessToken;
-            const needsRefresh =
-              row.expiresAt.getTime() <= now().getTime() + REFRESH_SKEW_MS;
-
-            if (needsRefresh) {
-              const refreshed = await refreshFn({
-                clientId: config.clientId,
-                clientSecret: config.clientSecret,
-                refreshToken: row.refreshToken,
-              });
-              if (!refreshed.ok) {
-                logger.error(
-                  {
-                    event: "social.linkedin.refresh_failed",
-                    runId,
-                    status: refreshed.status,
-                  },
-                  "linkedin token refresh failed",
-                );
-                return {
-                  ok: false,
-                  result: { status: "failed", reason: "refresh_failed" },
-                };
-              }
-              accessToken = refreshed.accessToken;
-              await tx.saveToken("linkedin", {
-                accessToken: refreshed.accessToken,
-                refreshToken: refreshed.refreshToken,
-                expiresAt: refreshed.expiresAt,
-                metadata: row.metadata,
-              });
             }
 
             const personUrn = row.metadata?.personUrn;
@@ -174,20 +141,102 @@ export function createLinkedInNotifier(
               };
             }
 
-            return { ok: true, token: { accessToken, personUrn } };
-          },
-        );
+            const expiredPerDb =
+              row.expiresAt.getTime() <= now().getTime() + REFRESH_SKEW_MS;
+            if (!forceRefresh && !expiredPerDb) {
+              return {
+                ok: true,
+                token: { accessToken: row.accessToken, personUrn },
+              };
+            }
 
+            // LinkedIn apps without "Programmatic refresh tokens" enabled
+            // never get a refresh_token. In that case we can't refresh; bail
+            // with a clear reason rather than calling the refresh endpoint
+            // with an empty string.
+            if (row.refreshToken === "") {
+              logger.error(
+                { event: "social.linkedin.refresh_unavailable", runId },
+                "linkedin token expired and no refresh_token is stored (enable Programmatic refresh tokens on the app and re-run auth-linkedin.ts)",
+              );
+              return {
+                ok: false,
+                result: { status: "failed", reason: "refresh_unavailable" },
+              };
+            }
+
+            const refreshed = await refreshFn({
+              clientId: config.clientId,
+              clientSecret: config.clientSecret,
+              refreshToken: row.refreshToken,
+            });
+            if (!refreshed.ok) {
+              logger.error(
+                {
+                  event: "social.linkedin.refresh_failed",
+                  runId,
+                  status: refreshed.status,
+                  forced: forceRefresh,
+                },
+                "linkedin token refresh failed",
+              );
+              return {
+                ok: false,
+                result: { status: "failed", reason: "refresh_failed" },
+              };
+            }
+            await tx.saveToken("linkedin", {
+              accessToken: refreshed.accessToken,
+              refreshToken: refreshed.refreshToken,
+              expiresAt: refreshed.expiresAt,
+              metadata: row.metadata,
+            });
+            return {
+              ok: true,
+              token: { accessToken: refreshed.accessToken, personUrn },
+            };
+          });
+
+        const acquired = await acquire(false);
         if (!acquired.ok) {
           return acquired.result;
         }
 
-        const postResult = await apiClient.createPost({
+        let postResult = await apiClient.createPost({
           accessToken: acquired.token.accessToken,
           personUrn: acquired.token.personUrn,
           text: composed.linkedinText,
           apiVersion: config.apiVersion,
         });
+
+        // Reactive refresh: if LinkedIn rejects on auth (401/403), force a
+        // refresh and retry once. Guards against silent token invalidation
+        // that bypassed our TTL check.
+        if (!postResult.ok && AUTH_RETRY_STATUSES.has(postResult.status)) {
+          logger.warn(
+            {
+              event: "social.linkedin.auth_retry",
+              runId,
+              status: postResult.status,
+            },
+            "linkedin post got auth error; forcing refresh and retrying once",
+          );
+          const reacquired = await acquire(true);
+          if (!reacquired.ok) {
+            await archives.recordSocialFailure(
+              runId,
+              "linkedin",
+              `${postResult.status}:${truncate(postResult.body)}`,
+            );
+            return reacquired.result;
+          }
+          postResult = await apiClient.createPost({
+            accessToken: reacquired.token.accessToken,
+            personUrn: reacquired.token.personUrn,
+            text: composed.linkedinText,
+            apiVersion: config.apiVersion,
+          });
+        }
 
         if (postResult.ok) {
           await archives.markLinkedInPosted(runId, now(), postResult.postUrn);

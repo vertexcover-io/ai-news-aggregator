@@ -10,6 +10,7 @@ import { refreshTwitterToken } from "./oauth.js";
 
 const REFRESH_SKEW_MS = 60_000;
 const FAILURE_BODY_MAX = 500;
+const AUTH_RETRY_STATUSES = new Set([401, 403]);
 
 export interface TwitterNotifierConfig {
   clientId: string;
@@ -109,9 +110,8 @@ export function createTwitterNotifier(
           return { status: "skipped", reason: "no_headline" };
         }
 
-        const acquired = await tokens.withTokenLock<AcquireResult>(
-          "twitter",
-          async (row, tx) => {
+        const acquire = (forceRefresh: boolean): Promise<AcquireResult> =>
+          tokens.withTokenLock<AcquireResult>("twitter", async (row, tx) => {
             if (row === null) {
               logger.warn(
                 { event: "social.twitter.skipped", reason: "no_token", runId },
@@ -123,51 +123,77 @@ export function createTwitterNotifier(
               };
             }
 
-            let accessToken = row.accessToken;
-            const needsRefresh =
+            const expiredPerDb =
               row.expiresAt.getTime() <= now().getTime() + REFRESH_SKEW_MS;
-
-            if (needsRefresh) {
-              const refreshed = await refreshFn({
-                clientId: config.clientId,
-                clientSecret: config.clientSecret,
-                refreshToken: row.refreshToken,
-              });
-              if (!refreshed.ok) {
-                logger.error(
-                  {
-                    event: "social.twitter.refresh_failed",
-                    runId,
-                    status: refreshed.status,
-                  },
-                  "twitter token refresh failed",
-                );
-                return {
-                  ok: false,
-                  result: { status: "failed", reason: "refresh_failed" },
-                };
-              }
-              accessToken = refreshed.accessToken;
-              await tx.saveToken("twitter", {
-                accessToken: refreshed.accessToken,
-                refreshToken: refreshed.refreshToken,
-                expiresAt: refreshed.expiresAt,
-                metadata: row.metadata,
-              });
+            if (!forceRefresh && !expiredPerDb) {
+              return { ok: true, accessToken: row.accessToken };
             }
 
-            return { ok: true, accessToken };
-          },
-        );
+            const refreshed = await refreshFn({
+              clientId: config.clientId,
+              clientSecret: config.clientSecret,
+              refreshToken: row.refreshToken,
+            });
+            if (!refreshed.ok) {
+              logger.error(
+                {
+                  event: "social.twitter.refresh_failed",
+                  runId,
+                  status: refreshed.status,
+                  forced: forceRefresh,
+                },
+                "twitter token refresh failed",
+              );
+              return {
+                ok: false,
+                result: { status: "failed", reason: "refresh_failed" },
+              };
+            }
+            await tx.saveToken("twitter", {
+              accessToken: refreshed.accessToken,
+              refreshToken: refreshed.refreshToken,
+              expiresAt: refreshed.expiresAt,
+              metadata: row.metadata,
+            });
+            return { ok: true, accessToken: refreshed.accessToken };
+          });
 
+        const acquired = await acquire(false);
         if (!acquired.ok) {
           return acquired.result;
         }
 
-        const postResult = await apiClient.createPost({
+        let postResult = await apiClient.createPost({
           accessToken: acquired.accessToken,
           text: composed.twitterText,
         });
+
+        // Reactive refresh: if the platform rejects on auth (401/403), force a
+        // refresh and retry once. Guards against silent token invalidation that
+        // bypassed our TTL check.
+        if (!postResult.ok && AUTH_RETRY_STATUSES.has(postResult.status)) {
+          logger.warn(
+            {
+              event: "social.twitter.auth_retry",
+              runId,
+              status: postResult.status,
+            },
+            "twitter post got auth error; forcing refresh and retrying once",
+          );
+          const reacquired = await acquire(true);
+          if (!reacquired.ok) {
+            await archives.recordSocialFailure(
+              runId,
+              "twitter",
+              `${postResult.status}:${truncate(postResult.body)}`,
+            );
+            return reacquired.result;
+          }
+          postResult = await apiClient.createPost({
+            accessToken: reacquired.accessToken,
+            text: composed.twitterText,
+          });
+        }
 
         if (postResult.ok) {
           await archives.markTwitterPosted(runId, now(), postResult.tweetUrl);

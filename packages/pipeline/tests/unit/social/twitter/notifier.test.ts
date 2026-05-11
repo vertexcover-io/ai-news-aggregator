@@ -334,4 +334,111 @@ describe("createTwitterNotifier", () => {
 
     expect(result).toEqual({ status: "failed", reason: "unexpected" });
   });
+
+  it("apiClient returns 401 → forces a refresh, retries once, succeeds", async () => {
+    const { notifier, deps } = build({
+      archive: makeArchive(),
+      tokenRow: makeTokenRow(), // DB says token is still valid (FUTURE)
+    });
+    // First call: 401. Second call: success.
+    deps.apiClient.createPost
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        body: '{"title":"Unauthorized"}',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tweetId: "111",
+        tweetUrl: "https://x.com/i/status/111",
+      });
+
+    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
+
+    expect(result).toEqual({
+      status: "posted",
+      permalink: "https://x.com/i/status/111",
+    });
+    // refreshFn was called once even though DB TTL said "still valid".
+    expect(deps.refreshFn).toHaveBeenCalledTimes(1);
+    // apiClient was retried: first with old token, second with refreshed token.
+    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(2);
+    expect(deps.apiClient.createPost.mock.calls[0][0].accessToken).toBe(
+      "access-1",
+    );
+    expect(deps.apiClient.createPost.mock.calls[1][0].accessToken).toBe(
+      "access-2",
+    );
+    expect(deps.archives.markTwitterPosted).toHaveBeenCalledTimes(1);
+    expect(deps.archives.recordSocialFailure).not.toHaveBeenCalled();
+  });
+
+  it("apiClient returns 403 → forces a refresh, retries once", async () => {
+    const { notifier, deps } = build({
+      archive: makeArchive(),
+      tokenRow: makeTokenRow(),
+    });
+    deps.apiClient.createPost
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        body: '{"title":"Forbidden"}',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tweetId: "222",
+        tweetUrl: "https://x.com/i/status/222",
+      });
+
+    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
+
+    expect(result).toEqual({
+      status: "posted",
+      permalink: "https://x.com/i/status/222",
+    });
+    expect(deps.refreshFn).toHaveBeenCalledTimes(1);
+    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(2);
+  });
+
+  it("401 then refresh fails → recordSocialFailure with original 401, returns refresh_failed", async () => {
+    const { notifier, deps } = build({
+      archive: makeArchive(),
+      tokenRow: makeTokenRow(),
+      refreshResult: { ok: false, status: 400, body: "invalid_request" },
+    });
+    deps.apiClient.createPost.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      body: '{"title":"Unauthorized"}',
+    });
+
+    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
+
+    expect(result).toEqual({ status: "failed", reason: "refresh_failed" });
+    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(1);
+    expect(deps.archives.recordSocialFailure).toHaveBeenCalledWith(
+      RUN_ID,
+      "twitter",
+      '401:{"title":"Unauthorized"}',
+    );
+    expect(deps.archives.markTwitterPosted).not.toHaveBeenCalled();
+  });
+
+  it("non-auth error (402) → no retry, recorded as failure as before", async () => {
+    const { notifier, deps } = build({
+      archive: makeArchive(),
+      tokenRow: makeTokenRow(),
+      postResult: {
+        ok: false,
+        status: 402,
+        body: '{"detail":"credits depleted"}',
+      },
+    });
+
+    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
+
+    expect(result).toEqual({ status: "failed", reason: "http_402" });
+    expect(deps.refreshFn).not.toHaveBeenCalled();
+    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(1);
+  });
 });
