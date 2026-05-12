@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { SourcesDialog } from "./SourcesDialog";
 
 interface RunsTableProps {
   runs: RunSummary[];
@@ -165,6 +166,11 @@ export function RunsTable({
 }: RunsTableProps): ReactElement {
   const [confirmRunId, setConfirmRunId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [sourcesRunId, setSourcesRunId] = useState<string | null>(null);
+
+  const activeRun = sourcesRunId
+    ? (runs.find((r) => r.runId === sourcesRunId) ?? null)
+    : null;
 
   if (runs.length === 0) {
     return (
@@ -221,6 +227,15 @@ export function RunsTable({
         </DialogContent>
       </Dialog>
 
+      <SourcesDialog
+        open={sourcesRunId !== null}
+        onOpenChange={(open) => {
+          if (!open) setSourcesRunId(null);
+        }}
+        runId={sourcesRunId}
+        runStartedAt={activeRun?.startedAt ?? null}
+      />
+
       <div className="rounded-lg border bg-white">
         <Table>
           <TableHeader>
@@ -228,6 +243,7 @@ export function RunsTable({
               <TableHead className="px-6 py-3">Date</TableHead>
               <TableHead className="px-6 py-3">Status</TableHead>
               <TableHead className="px-6 py-3">Items</TableHead>
+              <TableHead className="px-6 py-3">Sources</TableHead>
               <TableHead className="px-6 py-3 text-right">Action</TableHead>
             </TableRow>
           </TableHeader>
@@ -248,6 +264,26 @@ export function RunsTable({
                     {derived === "failed" || derived === "cancelled"
                       ? "—"
                       : `${String(run.itemCount)} posts`}
+                  </TableCell>
+                  <TableCell className="px-6 py-4 align-middle">
+                    {(() => {
+                      const disabled =
+                        (derived === "failed" || derived === "cancelled") &&
+                        run.itemCount === 0;
+                      return (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={disabled}
+                          title={disabled ? "No items collected" : undefined}
+                          onClick={() => {
+                            setSourcesRunId(run.runId);
+                          }}
+                        >
+                          Sources
+                        </Button>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell className="px-6 py-4 align-middle text-right">
                     <RunActionCell

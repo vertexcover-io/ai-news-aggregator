@@ -33,12 +33,8 @@ interface GenerateRecapOptions {
   modelId?: string;
 }
 
-export class NotFoundError extends Error {
-  constructor(message = "not found") {
-    super(message);
-    this.name = "NotFoundError";
-  }
-}
+import { NotFoundError } from "@api/lib/errors.js";
+export { NotFoundError };
 
 export class ValidationError extends Error {
   readonly missingIds: number[];

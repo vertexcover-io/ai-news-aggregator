@@ -17,7 +17,7 @@ React + Vite frontend for the admin review dashboard and public archive.
   - `archive-listing/` — `ArchiveRow.tsx`, `FilterChip.tsx`, `MonthHeader.tsx`, `format.ts`, `SearchBar.tsx`, `DateRangeChip.tsx`, `DateRangePopover.tsx`, `ResultMeta.tsx`, `EmptyResults.tsx` (Ledger listing components + keyword/date-range search UI)
   - `RunForm/`, `StatusPanel.tsx`, `ResultList.tsx` — run-page components
   - `review/` — `ReviewList.tsx` (DnD list), `ReviewCard.tsx`, `AddPostPanel.tsx`, `SaveBar.tsx`
-  - `dashboard/` — `RunsTable.tsx` (≥ 640 px tabular layout), `RunsCardList.tsx` (< 640 px stacked card layout), `ScheduleBanner.tsx`, `EmptyState.tsx`
+  - `dashboard/` — `RunsTable.tsx` (≥ 640 px tabular layout), `RunsCardList.tsx` (< 640 px stacked card layout), `ScheduleBanner.tsx`, `EmptyState.tsx`, `SourcesDialog.tsx` (per-run raw-items modal opened from each row's "Sources" button; disabled when the run is `failed`/`cancelled` and `itemCount === 0`)
   - `settings/` — settings-specific components
   - `ui/` — shadcn base components (Button, Input, etc.)
 - `src/api/` — typed API client (`client.ts` for the fetch wrapper, `runs.ts`, `settings.ts`, `archives.ts`)
