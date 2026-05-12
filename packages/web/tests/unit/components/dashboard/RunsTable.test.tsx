@@ -154,7 +154,11 @@ describe("RunsTable cancel button (REQ-11, REQ-12)", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("Cancelled")).toBeTruthy();
-    expect(screen.queryByRole("button")).toBeNull();
+    // The Sources button is always rendered (REQ-002); only the action-cell button is absent.
+    const buttons = screen.queryAllByRole("button");
+    expect(buttons.some((b) => b.textContent === "Sources")).toBe(true);
+    expect(buttons.some((b) => b.textContent === "Cancel")).toBe(false);
+    expect(buttons.some((b) => b.textContent === "Retry")).toBe(false);
   });
 
   it("REQ-12: clicking Cancel opens confirmation dialog with correct title and description", async () => {

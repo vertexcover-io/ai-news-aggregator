@@ -1,6 +1,7 @@
 import type {
   RankedItem,
   RunState,
+  RunSourcesResponse,
   RunSubmitPayload,
   RunSummary,
 } from "@newsletter/shared";
@@ -33,6 +34,17 @@ export async function submitRun(
     throw new Error(body.error ?? "Failed to submit run");
   }
   return (await res.json()) as SubmitRunResponse;
+}
+
+export async function getRunSources(
+  runId: string,
+): Promise<RunSourcesResponse> {
+  const res = await apiFetchAdmin(`/api/admin/runs/${runId}/sources`);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(body.error ?? "Failed to fetch run sources");
+  }
+  return (await res.json()) as RunSourcesResponse;
 }
 
 export async function getRun(runId: string): Promise<RunStateResponse | null> {
