@@ -6,6 +6,7 @@ export interface BuildAppDeps {
   publicArchivesRouter: Hono;
   archivesSearchRouter: Hono;
   adminArchivesRouter: Hono;
+  adminRunsRouter: Hono;
   runsRouter: Hono;
   settingsRouter: Hono;
   /**
@@ -71,6 +72,7 @@ export function buildApp(deps: BuildAppDeps): Hono {
   adminApp.use("*", conditionalGate);
   adminApp.route("/", deps.adminRouter);
   adminApp.route("/archives", deps.adminArchivesRouter);
+  adminApp.route("/runs", deps.adminRunsRouter);
   adminApp.route("/analytics", deps.analyticsRouter);
   app.route("/api/admin", adminApp);
 

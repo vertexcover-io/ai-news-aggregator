@@ -1,5 +1,5 @@
 import type { SourceType } from "../db/schema.js";
-import type { RecapContent } from "./index.js";
+import type { RawItemEngagement, RecapContent } from "./index.js";
 
 export type RunStatus = "running" | "completed" | "failed" | "cancelling" | "cancelled";
 
@@ -160,4 +160,21 @@ export interface RunSourceTelemetry {
   sources: SourceTelemetryEntry[];
   totalItemsFetched: number;
   totalErrors: number;
+}
+
+export interface RawItemSummary {
+  id: number;
+  sourceType: SourceType;
+  title: string;
+  url: string;
+  author: string | null;
+  imageUrl: string | null;
+  publishedAt: string | null;
+  collectedAt: string;
+  engagement: RawItemEngagement;
+}
+
+export interface RunSourcesResponse {
+  runId: string;
+  items: RawItemSummary[];
 }

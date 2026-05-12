@@ -89,6 +89,7 @@ function makeApp(
     publicArchivesRouter: createPublicArchivesRouter(deps),
     archivesSearchRouter: new Hono(),
     adminArchivesRouter: createAdminArchivesRouter(deps),
+    adminRunsRouter: new Hono(),
     runsRouter: makeStubRunsRouter(),
     settingsRouter: makeStubSettingsRouter(),
     adminRouter: createAdminRouter({
