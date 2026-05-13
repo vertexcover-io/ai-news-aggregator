@@ -408,6 +408,7 @@ describe("POST /api/archives/:runId/promote (REQ-010, REQ-011, EDGE-007)", () =>
 
   it("REQ-010: returns hydrated RankedItem with recap on success", async () => {
     const recap = {
+      title: "Recap title",
       summary: "A summary",
       bullets: ["b1", "b2"],
       bottomLine: "The bottom line",
@@ -439,7 +440,8 @@ describe("POST /api/archives/:runId/promote (REQ-010, REQ-011, EDGE-007)", () =>
     const body = (await res.json()) as RankedItem;
     expect(body.id).toBe(10);
     expect(body.rawItemId).toBe(10);
-    expect(body.title).toBe("Promotable Item");
+    // AI-generated recap title takes precedence over source title
+    expect(body.title).toBe("Recap title");
     expect(body.score).toBe(0);
     expect(body.recap).toEqual(recap);
     expect(generateRecapFn).toHaveBeenCalledOnce();

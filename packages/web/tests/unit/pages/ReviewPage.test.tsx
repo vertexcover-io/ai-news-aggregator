@@ -224,9 +224,10 @@ describe("ReviewPage", () => {
     renderAt("run-1");
     const articles = await screen.findAllByRole("article");
     expect(articles).toHaveLength(3);
-    const titles = articles.map((a) =>
-      a.querySelector("a")?.textContent ?? "",
-    );
-    expect(titles).toEqual(["First Story", "Second Story", "Third Story"]);
+    // The title is now rendered as an editable field (not an <a>); the <a>
+    // is the "open ↗" source link. Query the title via its text content.
+    expect(articles[0].textContent).toContain("First Story");
+    expect(articles[1].textContent).toContain("Second Story");
+    expect(articles[2].textContent).toContain("Third Story");
   });
 });

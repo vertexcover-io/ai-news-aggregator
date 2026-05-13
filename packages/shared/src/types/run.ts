@@ -41,6 +41,7 @@ export interface RankedItemRef {
   rawItemId: number;
   score: number;
   rationale: string;
+  title?: string;
   summary?: string;
   bullets?: string[];
   bottomLine?: string;

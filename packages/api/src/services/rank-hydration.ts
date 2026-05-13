@@ -16,11 +16,13 @@ export async function hydrateRankedItems(
     const rawRecap = row.metadata.recap;
     let recap: RecapContent | null = null;
     const hasRefRecap =
+      ref.title !== undefined ||
       ref.summary !== undefined ||
       ref.bullets !== undefined ||
       ref.bottomLine !== undefined;
     if (hasRefRecap) {
       recap = {
+        title: ref.title ?? rawRecap?.title ?? "",
         summary: ref.summary ?? rawRecap?.summary ?? "",
         bullets: ref.bullets ?? rawRecap?.bullets ?? [],
         bottomLine: ref.bottomLine ?? rawRecap?.bottomLine ?? "",
@@ -28,10 +30,11 @@ export async function hydrateRankedItems(
     } else if (rawRecap) {
       recap = rawRecap;
     }
+    const displayTitle = ref.title ?? rawRecap?.title ?? row.title;
     hydrated.push({
       id: row.id,
       rawItemId: row.id,
-      title: row.title,
+      title: displayTitle,
       url: row.url,
       sourceType: row.sourceType,
       author: row.author,

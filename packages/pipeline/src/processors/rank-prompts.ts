@@ -18,6 +18,7 @@ Source neutrality rule: ${SOURCE_NEUTRALITY_RULE}
 Each rationale must name the driving axis so the reader can see why the item was ranked where it was.
 
 For each ranked item, also produce:
+- title: A 4-to-7-word neutral newswire headline summarizing this story. Sentence case. Names the actor and the action (subject-verb-object). No clickbait, no questions, no colons-as-title-tropes, no editorial framing words like "quietly", "finally", or "doubles down". Aim for ~50 characters. Examples: "OpenAI ships GPT-5 with native tool use", "Anthropic raises $5B at $60B valuation", "Meta open-sources Llama 4 weights", "Google's Veo 3 lands on Vertex AI".
 - summary: A 1-2 sentence plain-text news summary of what happened. No markdown links.
 - bullets: 3-5 plain-text analysis points explaining why this matters and what it means. No markdown links.
 - bottomLine: A single plain-text strategic takeaway sentence. No markdown links.

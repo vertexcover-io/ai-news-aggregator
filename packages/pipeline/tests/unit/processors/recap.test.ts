@@ -27,11 +27,13 @@ interface GenerateArgs {
 }
 
 function validRecap(): {
+  title: string;
   summary: string;
   bullets: string[];
   bottomLine: string;
 } {
   return {
+    title: "Test recap title",
     summary: "This is a meaningful summary of the item.",
     bullets: [
       "First analysis point explaining significance.",
@@ -92,6 +94,29 @@ describe("generateRecap", () => {
       bottomLine: "ok",
     });
     expect(parseResult.success).toBe(false);
+  });
+
+  it("requires a non-empty title in the structured output", () => {
+    const missing = recapContentSchema.safeParse({
+      summary: "ok",
+      bullets: ["a"],
+      bottomLine: "ok",
+    });
+    expect(missing.success).toBe(false);
+    const empty = recapContentSchema.safeParse({
+      title: "",
+      summary: "ok",
+      bullets: ["a"],
+      bottomLine: "ok",
+    });
+    expect(empty.success).toBe(false);
+    const valid = recapContentSchema.safeParse({
+      title: "OpenAI ships GPT-5",
+      summary: "ok",
+      bullets: ["a"],
+      bottomLine: "ok",
+    });
+    expect(valid.success).toBe(true);
   });
 
   it("uses the provided model id when specified", async () => {

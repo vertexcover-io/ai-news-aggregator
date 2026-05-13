@@ -23,6 +23,7 @@ const itemWithRecap: RankedItem = {
   ...baseItem,
   imageUrl: "https://example.com/image.jpg",
   recap: {
+    title: "Test recap title",
     summary: "Test summary of the article",
     bullets: ["Point 1", "Point 2", "Point 3"],
     bottomLine: "Test bottom line takeaway",
@@ -107,7 +108,7 @@ describe("ArchiveStoryCard (Mock-A layout)", () => {
   it("does not render 'Unpacked' label when bullets array is empty", () => {
     const item: RankedItem = {
       ...itemWithRecap,
-      recap: { summary: "Some summary", bullets: [], bottomLine: "" },
+      recap: { title: "Test title", summary: "Some summary", bullets: [], bottomLine: "" },
     };
     render(<ArchiveStoryCard item={item} rank={1} />);
     expect(screen.queryByText(/Unpacked/i)).toBeNull();
@@ -122,7 +123,7 @@ describe("ArchiveStoryCard (Mock-A layout)", () => {
   it("does not render 'Bottom line' when bottomLine is empty", () => {
     const item: RankedItem = {
       ...itemWithRecap,
-      recap: { summary: "Some summary", bullets: ["A bullet"], bottomLine: "" },
+      recap: { title: "Test title", summary: "Some summary", bullets: ["A bullet"], bottomLine: "" },
     };
     render(<ArchiveStoryCard item={item} rank={1} />);
     expect(screen.queryByText(/^Bottom line$/i)).toBeNull();

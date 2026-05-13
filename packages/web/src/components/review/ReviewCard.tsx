@@ -26,7 +26,7 @@ interface ReviewCardProps {
   onDelete: (id: number) => void;
   onUpdateField: (
     id: number,
-    field: "summary" | "bullets" | "bottomLine" | "imageUrl",
+    field: "title" | "summary" | "bullets" | "bottomLine" | "imageUrl",
     value: string | string[] | null,
   ) => void;
 }
@@ -159,14 +159,29 @@ export function ReviewCard({
             </span>
           )}
         </div>
-        <a
-          href={item.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-0.5 inline-flex items-center font-semibold text-gray-900 hover:underline truncate min-h-[44px] w-full"
-        >
-          {item.title}
-        </a>
+        <div className="mt-0.5 flex items-start gap-2">
+          <div className="flex-1 min-w-0 font-semibold text-gray-900">
+            <EditableField
+              value={item.title}
+              onCommit={(v) => {
+                const trimmed = v.trim();
+                if (trimmed.length === 0) return;
+                onUpdateField(item.id, "title", trimmed);
+              }}
+              placeholder="Title..."
+              className="text-base"
+            />
+          </div>
+          <a
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open source"
+            className="shrink-0 text-xs text-stone-400 hover:text-stone-700 hover:underline mt-1"
+          >
+            open ↗
+          </a>
+        </div>
         {item.recap ? (
           <div className="mt-1 space-y-1">
             <EditableField

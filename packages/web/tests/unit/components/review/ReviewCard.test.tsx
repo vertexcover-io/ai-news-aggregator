@@ -70,6 +70,7 @@ describe("ReviewCard", () => {
       ...baseItem,
       rationale: "Rationale text",
       recap: {
+        title: "Test title",
         summary: "Summary text",
         bullets: ["bullet one"],
         bottomLine: "Bottom line",
@@ -85,6 +86,7 @@ describe("ReviewCard", () => {
     const item: RankedItem = {
       ...baseItem,
       recap: {
+        title: "Test title",
         summary: "AI is transforming everything",
         bullets: ["point one"],
         bottomLine: "Take note",
@@ -100,6 +102,7 @@ describe("ReviewCard", () => {
     const item: RankedItem = {
       ...baseItem,
       recap: {
+        title: "Test title",
         summary: "Summary",
         bullets: ["bullet alpha", "bullet beta"],
         bottomLine: "Bottom",

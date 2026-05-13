@@ -9,6 +9,7 @@ export interface PatchArchiveBody {
   rankedItems: {
     id: number;
     sourceType: string;
+    title?: string;
     summary?: string;
     bullets?: string[];
     bottomLine?: string;

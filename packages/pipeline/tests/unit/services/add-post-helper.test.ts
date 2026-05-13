@@ -21,6 +21,7 @@ import type { AddPostDeps } from "@pipeline/services/add-post-helper.js";
 
 function validRecap(): RecapContent {
   return {
+    title: "Test recap title",
     summary: "a meaningful summary of the item",
     bullets: [
       "First analysis point on the item.",
@@ -144,7 +145,8 @@ describe("hydrateAddedPost", () => {
       deps,
     );
 
-    expect(result.title).toBe("Some Post");
+    // AI-generated recap title takes precedence over source title
+    expect(result.title).toBe("Test recap title");
     expect(result.rawItemId).toBe(99);
     expect(result.sourceType).toBe("hn");
     expect(result.recap).toEqual(recap);

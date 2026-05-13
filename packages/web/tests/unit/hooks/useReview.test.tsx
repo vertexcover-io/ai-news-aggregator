@@ -282,7 +282,7 @@ describe("useReview", () => {
 
   // EDGE-003: empty string summary is a valid edit (isDirty = true)
   it("EDGE-003: empty string summary is a valid edit that sets isDirty = true", async () => {
-    const itemWithRecap = { ...makeItem(1, "https://a.com"), recap: { summary: "original", bullets: [], bottomLine: "" } };
+    const itemWithRecap = { ...makeItem(1, "https://a.com"), recap: { title: "Test title", summary: "original", bullets: [], bottomLine: "" } };
     const responseWithRecap: RunStateResponse = {
       ...completedResponse,
       rankedItems: [

@@ -3,6 +3,7 @@ import type { RankedItem, RecapContent } from "@newsletter/shared";
 import { readingTimeMinutes } from "../../../src/lib/readingTime";
 
 const recap = (over: Partial<RecapContent>): RecapContent => ({
+  title: "t",
   summary: "",
   bullets: [],
   bottomLine: "",

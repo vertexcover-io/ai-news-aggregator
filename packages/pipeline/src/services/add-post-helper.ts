@@ -81,7 +81,7 @@ function toRankedItem(row: RawItemRow, score: number): RankedItem {
   return {
     id: row.id,
     rawItemId: row.id,
-    title: row.title,
+    title: row.metadata.recap?.title ?? row.title,
     url: row.url,
     sourceType: row.sourceType,
     author: row.author,

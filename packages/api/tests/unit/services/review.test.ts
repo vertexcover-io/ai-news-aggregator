@@ -193,6 +193,26 @@ describe("patchArchive — optional editable fields (REQ-004, REQ-005, EDGE-007)
     );
   });
 
+  it("passes title through to RankedItemRef when present", async () => {
+    const archiveRow = makeArchiveRow([]);
+    const archiveRepo = makeArchiveRepo(archiveRow);
+    const deps: ReviewDeps = {
+      archiveRepo,
+      rawItemsRepo: makeRawRepo([makeRawRow(3)]),
+    };
+    await patchArchive(
+      "run-1",
+      {
+        rankedItems: [
+          { id: 3, sourceType: "hn", title: "Operator-edited title" },
+        ],
+      },
+      deps,
+    );
+    const callArg = (archiveRepo.updateRankedItems as ReturnType<typeof vi.fn>).mock.calls[0][1] as RankedItemRef[];
+    expect(callArg[0].title).toBe("Operator-edited title");
+  });
+
   it("EDGE-007: does NOT add optional fields to RankedItemRef when absent from input (backward compat)", async () => {
     const archiveRow = makeArchiveRow([]);
     const archiveRepo = makeArchiveRepo(archiveRow);
@@ -206,6 +226,7 @@ describe("patchArchive — optional editable fields (REQ-004, REQ-005, EDGE-007)
       deps,
     );
     const callArg = (archiveRepo.updateRankedItems as ReturnType<typeof vi.fn>).mock.calls[0][1] as RankedItemRef[];
+    expect(callArg[0]).not.toHaveProperty("title");
     expect(callArg[0]).not.toHaveProperty("summary");
     expect(callArg[0]).not.toHaveProperty("bullets");
     expect(callArg[0]).not.toHaveProperty("bottomLine");
@@ -451,7 +472,7 @@ describe("promoteItem (REQ-010, REQ-011, EDGE-007)", () => {
   it("REQ-010: returns RankedItem with recap when item exists and not yet ranked", async () => {
     const archive = makeArchiveRow([], { startedAt: new Date(), sourceTypes: ["hn"] });
     const rawRow = makeRawRow(10);
-    const recap = { summary: "A summary", bullets: ["b1", "b2", "b3"], bottomLine: "The bottom line" };
+    const recap = { title: "Recap title", summary: "A summary", bullets: ["b1", "b2", "b3"], bottomLine: "The bottom line" };
     const generateRecapFn = vi.fn().mockResolvedValue(recap);
     const deps: PromoteDeps = {
       archiveRepo: makeArchiveRepo(archive),
@@ -461,7 +482,8 @@ describe("promoteItem (REQ-010, REQ-011, EDGE-007)", () => {
     const result = await promoteItem("run-1", { rawItemId: 10 }, deps);
     expect(result.id).toBe(10);
     expect(result.rawItemId).toBe(10);
-    expect(result.title).toBe(rawRow.title);
+    // AI-generated recap title takes precedence over source title
+    expect(result.title).toBe(recap.title);
     expect(result.url).toBe(rawRow.url);
     expect(result.score).toBe(0);
     expect(result.rationale).toBe("");

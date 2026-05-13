@@ -257,7 +257,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     });
     const db = makeFakeDbReviewed([archive]);
     const rawRows: Partial<RawItemRow>[] = [
-      { id: 7, title: "Seven", sourceType: "hn", metadata: { comments: [], recap: { summary: "raw", bullets: [], bottomLine: "" } } },
+      { id: 7, title: "Seven", sourceType: "hn", metadata: { comments: [], recap: { title: "T", summary: "raw", bullets: [], bottomLine: "" } } },
     ];
     const { repo } = makeFakeRawItemsRepo(rawRows);
     const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
@@ -272,7 +272,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     });
     const db = makeFakeDbReviewed([archive]);
     const rawRows: Partial<RawItemRow>[] = [
-      { id: 7, title: "Seven", sourceType: "hn", metadata: { comments: [], recap: { summary: "raw summary", bullets: [], bottomLine: "" } } },
+      { id: 7, title: "Seven", sourceType: "hn", metadata: { comments: [], recap: { title: "T", summary: "raw summary", bullets: [], bottomLine: "" } } },
     ];
     const { repo } = makeFakeRawItemsRepo(rawRows);
     const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
@@ -313,7 +313,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     });
     const db = makeFakeDbReviewed([archive]);
     const rawRows: Partial<RawItemRow>[] = [
-      { id: 7, title: "Seven", sourceType: "hn", metadata: { comments: [], recap: { summary: "raw", bullets: [], bottomLine: "" } } },
+      { id: 7, title: "Seven", sourceType: "hn", metadata: { comments: [], recap: { title: "T", summary: "raw", bullets: [], bottomLine: "" } } },
     ];
     const { repo } = makeFakeRawItemsRepo(rawRows);
     const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
