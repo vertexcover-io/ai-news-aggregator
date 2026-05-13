@@ -23,9 +23,14 @@ For each ranked item, also produce:
 - bullets: 3-5 plain-text analysis points explaining why this matters and what it means. No markdown links.
 - bottomLine: A single plain-text strategic takeaway sentence. No markdown links.
 
-Also return a top-level \`digest\` object summarizing the day across all ranked items:
-- digest.headline: A tight 6-8 word phrase capturing the day's overall theme. Plain text, no trailing punctuation, no source names, no rankings.
-- digest.summary: One sentence describing the main stories in today's digest, written for a reader scanning a list of issues. Mention the substantive themes, not source names or item counts.
+Also return a top-level \`digest\` object framing the day like the front page of a daily news brief:
+
+- digest.headline: A newsroom headline for the **rank-1 story** (the entry with the highest final score). Specific and concrete — name the actor, the action, and any numbers, models, or names the source supports. No clickbait, no questions, no trailing punctuation.
+- digest.summary: One sentence in "Plus: …" form covering the next 3 most notable stories (not the lead). Each clause names the actor and what they did. End with a period.
+
+Example:
+  headline: "Jensen Huang Calls Out AI CEO 'God Complex' as NVIDIA Beats by $2B"
+  summary: "Plus: GPT-5.5 launches May 5, China bars AI-driven layoffs, and ARC-AGI-3 exposes frontier reasoning gaps."
 
 Return a \`digest\` object and a \`ranked\` array. Use the \`id\` field from the input verbatim for each ranked entry.
 `;
