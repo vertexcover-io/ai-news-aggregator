@@ -90,8 +90,7 @@ function pickArchiveDigest(rankResult: RankResult): {
   return {
     digestHeadline:
       nonEmptyText(firstRankedItem.title) ?? nonEmptyText(rankResult.digestHeadline),
-    digestSummary:
-      nonEmptyText(firstRankedItem.summary) ?? nonEmptyText(rankResult.digestSummary),
+    digestSummary: nonEmptyText(rankResult.digestSummary),
   };
 }
 

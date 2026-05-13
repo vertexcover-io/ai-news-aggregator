@@ -63,8 +63,6 @@ export function ArchivePage(): ReactElement {
   const items = data?.status === "completed" ? (data.rankedItems ?? []) : [];
   const hasTopStory = items.length > 0;
   const topStoryTitle = hasTopStory ? items[0].title : null;
-  const topStorySummary =
-    hasTopStory ? items[0].recap?.summary ?? null : null;
   const digestHeadline = data?.digestHeadline ?? null;
   const digestSummary = data?.digestSummary ?? null;
   const issueDate = data?.startedAt ? formatIssueDate(data.startedAt) : "";
@@ -78,10 +76,10 @@ export function ArchivePage(): ReactElement {
       setMeta("og:title", shareTitle);
       setMeta(
         "description",
-        topStorySummary ?? digestSummary ?? pickHeadline(topStoryTitle, digestHeadline),
+        digestSummary ?? pickHeadline(topStoryTitle, digestHeadline),
       );
     }
-  }, [data, topStoryTitle, topStorySummary, digestHeadline, digestSummary, shareTitle]);
+  }, [data, topStoryTitle, digestHeadline, digestSummary, shareTitle]);
 
   if (isLoading) {
     return (
@@ -174,7 +172,6 @@ export function ArchivePage(): ReactElement {
         <ArchivePageHeader
           startedAt={data.startedAt}
           storyCount={items.length}
-          leadSummary={topStorySummary}
           topStoryTitle={topStoryTitle}
           digestHeadline={digestHeadline}
           digestSummary={digestSummary}

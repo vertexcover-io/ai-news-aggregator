@@ -3,7 +3,6 @@ import type { ReactElement } from "react";
 interface ArchivePageHeaderProps {
   startedAt: string;
   storyCount: number;
-  leadSummary: string | null;
   topStoryTitle: string | null;
   digestHeadline?: string | null;
   digestSummary?: string | null;
@@ -41,17 +40,14 @@ export function pickHeadline(
 export function ArchivePageHeader({
   startedAt,
   storyCount,
-  leadSummary,
   topStoryTitle,
   digestHeadline,
   digestSummary,
   readingTimeMin,
 }: ArchivePageHeaderProps): ReactElement {
   const dek =
-    leadSummary !== null && leadSummary !== ""
-      ? leadSummary
-      : digestSummary !== null && digestSummary !== undefined && digestSummary !== ""
-        ? digestSummary
+    digestSummary !== null && digestSummary !== undefined && digestSummary !== ""
+      ? digestSummary
       : null;
   const storyLabel = storyCount === 1 ? "1 story" : `${String(storyCount)} stories`;
   const meta =
