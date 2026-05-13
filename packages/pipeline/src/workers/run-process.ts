@@ -69,6 +69,32 @@ function ensureDb(db: AppDb | undefined): AppDb {
   return db;
 }
 
+function nonEmptyText(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? value : null;
+}
+
+function pickArchiveDigest(rankResult: RankResult): {
+  digestHeadline: string | null;
+  digestSummary: string | null;
+} {
+  if (rankResult.rankedItems.length === 0) {
+    return {
+      digestHeadline: nonEmptyText(rankResult.digestHeadline),
+      digestSummary: nonEmptyText(rankResult.digestSummary),
+    };
+  }
+
+  const firstRankedItem = rankResult.rankedItems[0];
+  return {
+    digestHeadline:
+      nonEmptyText(firstRankedItem.title) ?? nonEmptyText(rankResult.digestHeadline),
+    digestSummary:
+      nonEmptyText(firstRankedItem.summary) ?? nonEmptyText(rankResult.digestSummary),
+  };
+}
+
 export interface RunCollectorsPayload {
   hn?: HnCollectConfig;
   reddit?: RedditCollectConfig;
@@ -504,8 +530,7 @@ export async function handleRunProcessJob(
 
     const autoReviewed = process.env.AUTO_REVIEW === "true";
     const sourceTelemetry = buildSourceTelemetry(collecting.outcomes);
-    const digestHeadline = rankResult.digestHeadline || null;
-    const digestSummary = rankResult.digestSummary || null;
+    const { digestHeadline, digestSummary } = pickArchiveDigest(rankResult);
     const rankedRawIds = rankResult.rankedItems.map((r) => r.rawItemId);
     const rankedRawRows = await deps.rawItemsRepo.findByIds(rankedRawIds);
     const rawItemsById = new Map(rankedRawRows.map((r) => [r.id, r]));

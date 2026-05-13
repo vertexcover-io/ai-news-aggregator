@@ -61,12 +61,15 @@ export function ArchivePage(): ReactElement {
   const { isLoading, data, isError } = useArchive(runId ?? "");
 
   const items = data?.status === "completed" ? (data.rankedItems ?? []) : [];
-  const topStoryTitle = items[0]?.title ?? null;
+  const hasTopStory = items.length > 0;
+  const topStoryTitle = hasTopStory ? items[0].title : null;
+  const topStorySummary =
+    hasTopStory ? items[0].recap?.summary ?? null : null;
   const digestHeadline = data?.digestHeadline ?? null;
   const digestSummary = data?.digestSummary ?? null;
   const issueDate = data?.startedAt ? formatIssueDate(data.startedAt) : "";
   const fallbackTitle = `AI news - ${issueDate}`;
-  const shareTitle = digestHeadline ?? fallbackTitle;
+  const shareTitle = topStoryTitle ?? digestHeadline ?? fallbackTitle;
   const readingMin = readingTimeMinutes(items);
 
   useEffect(() => {
@@ -75,10 +78,10 @@ export function ArchivePage(): ReactElement {
       setMeta("og:title", shareTitle);
       setMeta(
         "description",
-        digestSummary ?? pickHeadline(null, topStoryTitle, digestHeadline),
+        topStorySummary ?? digestSummary ?? pickHeadline(topStoryTitle, digestHeadline),
       );
     }
-  }, [data, topStoryTitle, digestHeadline, digestSummary, shareTitle]);
+  }, [data, topStoryTitle, topStorySummary, digestHeadline, digestSummary, shareTitle]);
 
   if (isLoading) {
     return (
@@ -171,7 +174,7 @@ export function ArchivePage(): ReactElement {
         <ArchivePageHeader
           startedAt={data.startedAt}
           storyCount={items.length}
-          leadSummary={null}
+          leadSummary={topStorySummary}
           topStoryTitle={topStoryTitle}
           digestHeadline={digestHeadline}
           digestSummary={digestSummary}

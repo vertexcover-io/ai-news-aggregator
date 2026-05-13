@@ -68,7 +68,7 @@ export function ArchiveRow({
     );
   } else {
     const firstTopTitle = topItems.length > 0 ? topItems[0].title : "—";
-    const headlineText = digestHeadline ?? firstTopTitle;
+    const headlineText = firstTopTitle !== "—" ? firstTopTitle : (digestHeadline ?? firstTopTitle);
     headlineNode = (
       <h3
         className={`font-serif font-medium leading-[1.22] tracking-[-0.005em] text-[#14110d] ${featured ? "text-[26px] md:text-[28px]" : "text-[22px]"}`}

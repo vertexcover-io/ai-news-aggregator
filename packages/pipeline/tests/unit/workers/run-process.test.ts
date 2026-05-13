@@ -1185,6 +1185,7 @@ describe("run-process worker", () => {
         rawItemId: 101,
         score: 0.9,
         rationale: "top",
+        title: "Pipeline Story Title",
         summary: "OVERRIDE_SUMMARY",
         bullets: ["override_b1"],
         bottomLine: "OVERRIDE_BOTTOM",
@@ -1240,8 +1241,8 @@ describe("run-process worker", () => {
       searchText: string;
     };
     const expected = serializeArchiveSearchText({
-      digestHeadline: "Pipeline digest head",
-      digestSummary: "Pipeline digest summary",
+      digestHeadline: "Pipeline Story Title",
+      digestSummary: "OVERRIDE_SUMMARY",
       rankedItems,
       rawItemsById: new Map([[101, rawRow]]),
     });

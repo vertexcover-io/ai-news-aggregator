@@ -28,15 +28,13 @@ export function formatLedgerEyebrow(iso: string): string {
 }
 
 export function pickHeadline(
-  leadSummary: string | null,
   topStoryTitle: string | null,
   digestHeadline?: string | null,
 ): string {
+  if (topStoryTitle !== null && topStoryTitle !== "") return topStoryTitle;
   if (digestHeadline !== null && digestHeadline !== undefined && digestHeadline !== "") {
     return digestHeadline;
   }
-  if (leadSummary !== null && leadSummary !== "") return leadSummary;
-  if (topStoryTitle !== null && topStoryTitle !== "") return topStoryTitle;
   return "An archived issue";
 }
 
@@ -50,8 +48,10 @@ export function ArchivePageHeader({
   readingTimeMin,
 }: ArchivePageHeaderProps): ReactElement {
   const dek =
-    digestSummary !== null && digestSummary !== undefined && digestSummary !== ""
-      ? digestSummary
+    leadSummary !== null && leadSummary !== ""
+      ? leadSummary
+      : digestSummary !== null && digestSummary !== undefined && digestSummary !== ""
+        ? digestSummary
       : null;
   const storyLabel = storyCount === 1 ? "1 story" : `${String(storyCount)} stories`;
   const meta =
@@ -65,7 +65,7 @@ export function ArchivePageHeader({
         {formatLedgerEyebrow(startedAt)}
       </p>
       <h1 className="font-serif font-semibold leading-[1.05] tracking-[-0.012em] text-[#14110d] text-[34px] sm:text-[42px] md:text-[50px] m-0 mb-[18px]">
-        {pickHeadline(leadSummary, topStoryTitle, digestHeadline)}
+        {pickHeadline(topStoryTitle, digestHeadline)}
       </h1>
       {dek !== null ? (
         <p className="mx-auto mt-0 mb-[18px] max-w-[56ch] font-serif text-[19px] italic leading-[1.5] text-[#2a261f]">
