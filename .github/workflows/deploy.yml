@@ -100,12 +100,127 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
+      - name: Generate production runtime env
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
+          RANKING_MODEL: ${{ secrets.RANKING_MODEL }}
+          WEB_CRAWLER_CONCURRENCY: ${{ secrets.WEB_CRAWLER_CONCURRENCY }}
+          RETTIWT_API_KEY: ${{ secrets.RETTIWT_API_KEY }}
+          API_PORT: ${{ secrets.API_PORT }}
+          PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL }}
+          NEWSLETTER_BASE_URL: ${{ secrets.NEWSLETTER_BASE_URL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          FROM_MAIL: ${{ secrets.FROM_MAIL }}
+          NEWSLETTER_REPLY_TO_EMAIL: ${{ secrets.NEWSLETTER_REPLY_TO_EMAIL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          LINKEDIN_CLIENT_ID: ${{ secrets.LINKEDIN_CLIENT_ID }}
+          LINKEDIN_CLIENT_SECRET: ${{ secrets.LINKEDIN_CLIENT_SECRET }}
+          LINKEDIN_API_VERSION: ${{ secrets.LINKEDIN_API_VERSION }}
+          TWITTER_CLIENT_ID: ${{ secrets.TWITTER_CLIENT_ID }}
+          TWITTER_CLIENT_SECRET: ${{ secrets.TWITTER_CLIENT_SECRET }}
+          AUTO_REVIEW: ${{ secrets.AUTO_REVIEW }}
+          GHCR_REPO_OWNER: ${{ secrets.GHCR_REPO_OWNER }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          python3 <<'PY'
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          required = [
+              "DATABASE_URL",
+              "POSTGRES_USER",
+              "POSTGRES_PASSWORD",
+              "POSTGRES_DB",
+              "REDIS_URL",
+              "ANTHROPIC_API_KEY",
+              "JINA_API_KEY",
+              "RANKING_MODEL",
+              "RETTIWT_API_KEY",
+              "API_PORT",
+              "PUBLIC_BASE_URL",
+              "NEWSLETTER_BASE_URL",
+              "ADMIN_PASSWORD",
+              "SESSION_SECRET",
+              "RESEND_API_KEY",
+              "FROM_MAIL",
+              "GHCR_REPO_OWNER",
+              "GHCR_USERNAME",
+              "GHCR_TOKEN",
+          ]
+          optional = [
+              "WEB_CRAWLER_CONCURRENCY",
+              "NEWSLETTER_REPLY_TO_EMAIL",
+              "SLACK_WEBHOOK_URL",
+              "LINKEDIN_CLIENT_ID",
+              "LINKEDIN_CLIENT_SECRET",
+              "LINKEDIN_API_VERSION",
+              "TWITTER_CLIENT_ID",
+              "TWITTER_CLIENT_SECRET",
+              "AUTO_REVIEW",
+          ]
+          names = required + optional
+          template = Path("deployment/.env.prod.example").read_text()
+          template_names = {
+              match.group(1)
+              for line in template.splitlines()
+              if (match := re.match(r"^\s*#?\s*([A-Z0-9_]+)=", line))
+          }
+          missing_from_workflow = sorted(template_names - set(names))
+          extra_in_workflow = sorted(set(names) - template_names)
+          if missing_from_workflow or extra_in_workflow:
+              print("runtime.env key list is out of sync with deployment/.env.prod.example", file=sys.stderr)
+              if missing_from_workflow:
+                  print(f"Missing from workflow: {', '.join(missing_from_workflow)}", file=sys.stderr)
+              if extra_in_workflow:
+                  print(f"Extra in workflow: {', '.join(extra_in_workflow)}", file=sys.stderr)
+              sys.exit(1)
+
+          missing = [name for name in required if os.environ.get(name, "") == ""]
+          if missing:
+              print(f"Missing required production secrets: {', '.join(missing)}", file=sys.stderr)
+              sys.exit(1)
+
+          lines = []
+          for name in names:
+              value = os.environ.get(name, "")
+              if "\n" in value or "\r" in value:
+                  print(f"Secret {name} contains a newline, which is not supported in dotenv runtime.env", file=sys.stderr)
+                  sys.exit(1)
+              if value:
+                  masked_value = value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+                  print(f"::add-mask::{masked_value}")
+              lines.append(f"{name}={value}")
+
+          Path("runtime.env").write_text("\n".join(lines) + "\n")
+          print(f"Generated runtime.env with {len(names)} keys")
+          PY
+
       - name: Rsync deployment directory to server
         run: |
           rsync -az --delete \
+            --delete-excluded \
             --exclude='.env.prod.example' \
+            --exclude='.env.prod.enc' \
+            --exclude='.sops.yaml' \
             deployment/ \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/newsletter/deployment/"
+
+      - name: Install runtime env on server
+        run: |
+          scp runtime.env "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/newsletter-runtime.env"
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "sudo tee /etc/newsletter/.env < /tmp/newsletter-runtime.env > /dev/null && sudo chown root:${{ secrets.DEPLOY_USER }} /etc/newsletter/.env && sudo chmod 640 /etc/newsletter/.env && rm -f /tmp/newsletter-runtime.env"
 
       - name: Rsync web bundle to server
         run: |

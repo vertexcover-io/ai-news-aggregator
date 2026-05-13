@@ -1,6 +1,6 @@
 # Deployment — ops runbook
 
-This folder is the single source of truth for deploying the AI Newsletter Aggregator to any Ubuntu 24.04 VPS.
+This folder is the single source of truth for deploying the AI Newsletter Aggregator to an Ubuntu 24.04 VPS.
 
 ## Architecture at a glance
 
@@ -15,65 +15,74 @@ Internet → Caddy (host) → {  /api/*  → 127.0.0.1:3000  (api container)
                 redis      (bind /var/lib/newsletter/redisdata)
 ```
 
-All secrets live in `deployment/.env.prod.enc` (SOPS + age). One age private key on the server decrypts everything.
+Production secrets live in GitHub Environment secrets under the `production` environment. The deploy workflow renders those secrets into a temporary `runtime.env`, uploads it over SSH, installs it as `/etc/newsletter/.env`, and then runs `deployment/deploy.sh`.
 
----
+## First-time setup — new VPS
 
-## First-time setup — new VPS (~45 min)
+### 0. GitHub prerequisites
 
-### 0. Prerequisites on your laptop (one-time)
+1. **Generate a deploy SSH key** for GitHub Actions:
 
-1. **Generate an age keypair** (do NOT commit the private key anywhere):
-   ```bash
-   age-keygen -o age-key.txt
-   # Output shows:
-   #   # created: ...
-   #   # public key: age1...
-   #   AGE-SECRET-KEY-1...
-   ```
-   Save the `AGE-SECRET-KEY-1...` line in 1Password (or equivalent). You need it exactly once per server.
-
-2. **Wire the public key into SOPS config:**
-   Edit `deployment/.sops.yaml` — replace `REPLACE_WITH_AGE_PUBLIC_KEY` with the `age1...` public key.
-
-3. **Create and encrypt the production env file:**
-   ```bash
-   cp deployment/.env.prod.example deployment/.env.prod
-   # fill in real secrets: DATABASE_URL, ANTHROPIC_API_KEY, JINA_API_KEY,
-   # POSTGRES_PASSWORD, GHCR_USERNAME, GHCR_TOKEN, …
-   sops --encrypt deployment/.env.prod > deployment/.env.prod.enc
-   rm deployment/.env.prod            # never commit plaintext
-   git add deployment/.sops.yaml deployment/.env.prod.enc
-   git commit -m "chore(deploy): encrypt prod env"
-   git push
-   ```
-
-4. **Generate a deploy SSH key** for GitHub Actions:
    ```bash
    ssh-keygen -t ed25519 -f deploy-key -C "gh-actions-newsletter-deploy"
-   # deploy-key      — private key, paste into GH Actions secret DEPLOY_SSH_KEY
-   # deploy-key.pub  — public key, feeds into DEPLOY_SSH_PUBKEY on the server
    ```
 
-5. **Add GitHub Actions secrets** (repo → Settings → Secrets and variables → Actions):
-   - `DEPLOY_SSH_KEY` — contents of `deploy-key` (include `-----BEGIN OPENSSH PRIVATE KEY-----` through `-----END OPENSSH PRIVATE KEY-----`)
-   - `DEPLOY_HOST` — the server's hostname or IP (e.g. `news.vertexcover.io`)
-   - `DEPLOY_USER` — `deploy`
+   - `deploy-key` — private key, paste into GitHub secret `DEPLOY_SSH_KEY`.
+   - `deploy-key.pub` — public key, pass to `DEPLOY_SSH_PUBKEY` during server bootstrap.
+
+2. **Create the `production` GitHub Environment**:
+
+   Repo → Settings → Environments → New environment → `production`.
+
+3. **Add deploy-control secrets** to the `production` environment:
+
+   - `DEPLOY_SSH_KEY`
+   - `DEPLOY_HOST` — server hostname or IP, for example `news.vertexcover.io`
+   - `DEPLOY_USER` — usually `deploy`
+
+4. **Add runtime secrets** to the `production` environment.
+
+   `deployment/.env.prod.example` is the source-of-truth list. Create one GitHub Environment secret for each key in that file:
+
+   - `DATABASE_URL`
+   - `POSTGRES_USER`
+   - `POSTGRES_PASSWORD`
+   - `POSTGRES_DB`
+   - `REDIS_URL`
+   - `ANTHROPIC_API_KEY`
+   - `JINA_API_KEY`
+   - `RANKING_MODEL`
+   - `WEB_CRAWLER_CONCURRENCY` if used
+   - `RETTIWT_API_KEY`
+   - `API_PORT`
+   - `PUBLIC_BASE_URL`
+   - `NEWSLETTER_BASE_URL`
+   - `ADMIN_PASSWORD`
+   - `SESSION_SECRET`
+   - `RESEND_API_KEY`
+   - `FROM_MAIL`
+   - `NEWSLETTER_REPLY_TO_EMAIL`
+   - `SLACK_WEBHOOK_URL`
+   - `LINKEDIN_CLIENT_ID`
+   - `LINKEDIN_CLIENT_SECRET`
+   - `LINKEDIN_API_VERSION`
+   - `TWITTER_CLIENT_ID`
+   - `TWITTER_CLIENT_SECRET`
+   - `AUTO_REVIEW` if used
+   - `GHCR_REPO_OWNER`
+   - `GHCR_USERNAME`
+   - `GHCR_TOKEN`
+
+   Required secrets are enforced by `.github/workflows/deploy.yml`; optional secrets may be left empty.
 
 ### 1. Provision the server
 
-- Ubuntu 24.04 LTS, 2 GB RAM minimum (t3.small / Hetzner CX21 / DO 2GB)
-- Security group / firewall allowing inbound **22, 80, 443** from `0.0.0.0/0`
-- Attach an initial SSH key that you control — you'll only use it to run bootstrap
-- Note the public IP
+- Ubuntu 24.04 LTS, 2 GB RAM minimum.
+- Firewall/security group allowing inbound 22, 80, and 443.
+- Attach an initial SSH key you control.
+- Point `news.vertexcover.io` at the server IP before the first real deploy.
 
-### 2. Point DNS at the server
-
-`news.vertexcover.io  A  <public IP>` (TTL 300 or less).
-
-Wait for `dig +short news.vertexcover.io` to return the right IP before running bootstrap — Caddy will request a cert during bootstrap and DNS must be live.
-
-### 3. Run bootstrap.sh on the server
+### 2. Run bootstrap.sh on the server
 
 ```bash
 ssh ubuntu@<public-ip>
@@ -85,130 +94,45 @@ EOF
 curl -fsSL https://raw.githubusercontent.com/vertexcover-io/ai-news-aggregator/main/deployment/bootstrap.sh | bash
 ```
 
-The script installs Docker, Caddy, UFW, SOPS, age; creates the `deploy` user with your GitHub Actions public key; hardens SSH; enables the firewall; clones the repo to `/opt/newsletter`; starts Caddy with the committed Caddyfile.
+The script installs Docker, Caddy, UFW, rsync, and unattended upgrades; creates the `deploy` user; writes restricted sudoers rules; hardens SSH; enables the firewall; and creates the directories CI will use.
 
-It takes about 8–10 minutes. It is idempotent — re-run any time to pick up changes to `bootstrap.sh`.
+It is idempotent and safe to rerun to pick up sudoers/bootstrap changes.
 
-### 4. Install the age private key (one time, as root)
+### 3. Trigger the first deploy
 
-```bash
-install -d -m 700 /root/.config/sops/age
-nano /root/.config/sops/age/keys.txt
-# paste the AGE-SECRET-KEY-1... line from step 0.1
-chmod 600 /root/.config/sops/age/keys.txt
-```
-
-### 5. Trigger the first deploy
-
-From your laptop, push any commit to `main` — the workflow runs automatically. Or manually:
+Push to `main`, or run:
 
 ```bash
 gh workflow run deploy.yml
 ```
 
-First deploy is ~5 minutes (no image cache yet). Subsequent deploys are ~90 seconds.
+First deploy is usually a few minutes. Subsequent deploys are faster because images are cached.
 
-### 6. Verify
+### 4. Verify
 
 ```bash
-curl -sI https://news.vertexcover.io/api/health   # 200
-curl -s  https://news.vertexcover.io/ | head       # React HTML
+curl -sI https://news.vertexcover.io/api/health
+curl -s  https://news.vertexcover.io/ | head
 ```
 
----
+On the server:
+
+```bash
+ssh deploy@news.vertexcover.io
+docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/compose.prod.yml ps
+```
 
 ## Day-to-day ops
 
-### Seed social-post tokens (LinkedIn / X) — one-time per platform
+### Rotate a production secret
 
-The auto-post feature reads tokens from the `social_tokens` table, NOT from `.env`. Env vars hold only the app-level Client ID/Secret; the per-user access + refresh tokens come from a one-time OAuth dance and live in the DB.
+1. Update the matching GitHub Environment secret in `production`.
+2. Trigger `deploy.yml`.
+3. The workflow rewrites `/etc/newsletter/.env` and restarts the containers.
 
-**Workflow:**
+No secret file is committed to git.
 
-1. **Get the tokens on your laptop** — the OAuth dance needs an interactive browser, which the headless server can't run. From the repo root locally:
-
-   ```bash
-   pnpm tsx scripts/auth-linkedin.ts
-   # → opens browser, click Allow on LinkedIn
-   # → prints LINKEDIN_TEST_ACCESS_TOKEN=..., LINKEDIN_TEST_REFRESH_TOKEN=..., LINKEDIN_TEST_PERSON_URN=...
-   ```
-
-   ```bash
-   pnpm tsx scripts/auth-twitter.ts
-   # → opens browser, click Authorize on X
-   # → prints TWITTER_TEST_ACCESS_TOKEN=..., TWITTER_TEST_REFRESH_TOKEN=...
-   ```
-
-   Copy the printed values somewhere safe (1Password or similar — you'll paste them in the next step).
-
-2. **SSH into the server and `INSERT` into `social_tokens`:**
-
-   ```bash
-   ssh deploy@news.vertexcover.io
-   docker compose -f /opt/newsletter/deployment/compose.prod.yml exec postgres \
-     psql -U newsletter newsletter
-   ```
-
-   In the psql prompt, run (paste your real values):
-
-   ```sql
-   -- LinkedIn (access tokens last ~60 days; refresh_token may be empty if
-   -- "Programmatic refresh tokens" isn't enabled on the LinkedIn app)
-   INSERT INTO social_tokens (platform, access_token, refresh_token, expires_at, metadata, updated_at)
-   VALUES (
-     'linkedin',
-     'PASTE_LINKEDIN_ACCESS_TOKEN_HERE',
-     'PASTE_LINKEDIN_REFRESH_TOKEN_HERE_OR_EMPTY',
-     NOW() + INTERVAL '55 days',
-     '{"personUrn":"urn:li:person:PASTE_SUB_HERE"}'::jsonb,
-     NOW()
-   )
-   ON CONFLICT (platform) DO UPDATE SET
-     access_token = EXCLUDED.access_token,
-     refresh_token = EXCLUDED.refresh_token,
-     expires_at = EXCLUDED.expires_at,
-     metadata = EXCLUDED.metadata,
-     updated_at = NOW();
-
-   -- X / Twitter (access tokens last ~2 hours; worker auto-refreshes via refresh_token)
-   INSERT INTO social_tokens (platform, access_token, refresh_token, expires_at, metadata, updated_at)
-   VALUES (
-     'twitter',
-     'PASTE_TWITTER_ACCESS_TOKEN_HERE',
-     'PASTE_TWITTER_REFRESH_TOKEN_HERE',
-     NOW() + INTERVAL '110 minutes',
-     NULL,
-     NOW()
-   )
-   ON CONFLICT (platform) DO UPDATE SET
-     access_token = EXCLUDED.access_token,
-     refresh_token = EXCLUDED.refresh_token,
-     expires_at = EXCLUDED.expires_at,
-     metadata = EXCLUDED.metadata,
-     updated_at = NOW();
-
-   -- Verify
-   SELECT platform, expires_at, length(access_token) AS tok_len, metadata
-   FROM social_tokens;
-   ```
-
-3. **Verify from the admin UI** — open `/admin/settings`. The "Social posting" section should show green "Connected" pills for both platforms. Click "Send test post" on each to confirm the live API call works end-to-end.
-
-**Re-seed only when:**
-- LinkedIn: every ~55 days **only if** the LinkedIn app does NOT have "Programmatic refresh tokens" enabled. If it does, the worker auto-refreshes forever.
-- X: never under normal operation — the worker auto-rotates the refresh token on every use and persists the new pair. Only re-run if the app was revoked or the refresh chain broke (you'll see `social.twitter.refresh_failed` in pipeline logs).
-
-### Rotate a secret
-
-```bash
-sops deployment/.env.prod.enc          # opens editor, edits in place, re-encrypts
-git commit -am "chore(deploy): rotate ANTHROPIC_API_KEY"
-git push
-```
-
-Next deploy (triggered by the push) picks up the new value.
-
-### Force-deploy the current main
+### Force-deploy current main
 
 ```bash
 gh workflow run deploy.yml
@@ -229,14 +153,14 @@ ssh deploy@news.vertexcover.io
 /opt/newsletter/deployment/deploy.sh <PREVIOUS_SHA>
 ```
 
-Migrations are forward-only; a rollback across a migration requires a manual schema revert.
+Manual rollback requires `/etc/newsletter/.env` to already exist. Migrations are forward-only; rollback across a migration may require a manual schema revert.
 
 ### Check container state
 
 ```bash
 ssh deploy@news.vertexcover.io
-docker compose -f /opt/newsletter/deployment/compose.prod.yml ps
-docker compose -f /opt/newsletter/deployment/compose.prod.yml logs -f api
+docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/compose.prod.yml ps
+docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/compose.prod.yml logs -f api
 ```
 
 ### Tail Caddy access log
@@ -253,31 +177,47 @@ Edit `deployment/Caddyfile` and push. Every deploy runs `install + systemctl rel
 
 ```bash
 ssh deploy@news.vertexcover.io
-docker compose -f /opt/newsletter/deployment/compose.prod.yml exec -T postgres \
+docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/compose.prod.yml exec -T postgres \
   pg_dump -U newsletter newsletter | gzip > ~/backup-$(date +%F).sql.gz
 ```
 
----
+## Seed social-post tokens (LinkedIn / X)
+
+The auto-post feature reads user tokens from the `social_tokens` table, not from GitHub Secrets. GitHub Secrets only store the app-level Client ID/Secret.
+
+1. Run the OAuth helper locally:
+
+   ```bash
+   pnpm tsx scripts/auth-linkedin.ts
+   pnpm tsx scripts/auth-twitter.ts
+   ```
+
+2. Insert or update the printed tokens in production Postgres:
+
+   ```bash
+   ssh deploy@news.vertexcover.io
+   docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/compose.prod.yml exec postgres \
+     psql -U newsletter newsletter
+   ```
+
+3. Verify without printing token values:
+
+   ```sql
+   SELECT platform, expires_at, length(access_token) AS access_len, length(refresh_token) AS refresh_len, metadata
+   FROM social_tokens
+   ORDER BY platform;
+   ```
+
+Re-seed only when the account/app authorization changes, a refresh chain breaks, or LinkedIn lacks programmatic refresh tokens and the access token is close to expiry.
 
 ## Move to a different VPS
 
-1. Provision a new Ubuntu 24.04 box (steps 1–2 above).
-2. (Optional) Take a manual `pg_dump` on the old box and `scp` it to your laptop.
-3. Run `bootstrap.sh` on the new box (step 3).
-4. Drop the **same** age private key at `/root/.config/sops/age/keys.txt` (step 4).
-5. Update `DEPLOY_HOST` in GitHub Actions secrets to the new IP/hostname.
-6. Update DNS to point at the new IP.
-7. Trigger a deploy (step 5).
-8. (Optional) Restore the pg_dump from step 2:
-   ```bash
-   scp ~/backup-<date>.sql.gz deploy@new-host:~
-   ssh deploy@new-host
-   gunzip < ~/backup-<date>.sql.gz | docker compose -f /opt/newsletter/deployment/compose.prod.yml exec -T postgres psql -U newsletter newsletter
-   ```
-
-Total: ~45 minutes.
-
----
+1. Provision a new Ubuntu 24.04 box.
+2. Run `bootstrap.sh` on the new box.
+3. Update `DEPLOY_HOST` in the `production` GitHub Environment.
+4. Update DNS to point at the new IP.
+5. Trigger `deploy.yml`; the workflow writes `/etc/newsletter/.env` from GitHub Secrets.
+6. Optionally restore a `pg_dump` from the old box.
 
 ## File map
 
@@ -285,25 +225,22 @@ Total: ~45 minutes.
 |---|---|
 | `deployment/bootstrap.sh` | One-shot setup for a fresh VPS. Idempotent. |
 | `deployment/deploy.sh` | Runs on the VPS, invoked over SSH by CI. |
-| `deployment/compose.prod.yml` | Production docker compose file. |
+| `deployment/compose.prod.yml` | Production Docker Compose file. |
 | `deployment/Caddyfile` | Caddy reverse proxy + TLS config. |
-| `deployment/.sops.yaml` | SOPS encryption rules (age public key). |
-| `deployment/.env.prod.example` | Template for the plaintext env file (never commit a filled copy). |
-| `deployment/.env.prod.enc` | SOPS-encrypted production env (committed). |
+| `deployment/.env.prod.example` | Template and checklist for GitHub Environment runtime secrets. |
 | `deployment/dockerfiles/*.Dockerfile` | Multi-stage builds for api and pipeline. |
-| `.github/workflows/deploy.yml` | CI/CD: build images → push GHCR → rsync web → SSH deploy.sh. |
+| `.github/workflows/deploy.yml` | CI/CD: build images → render env from secrets → deploy over SSH. |
 | `.dockerignore` | Repo-root ignore file; keeps the Docker build context small. |
-
----
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Caddy can't obtain a cert | DNS not propagated, or port 80 blocked | `dig +short news.vertexcover.io`; check cloud provider firewall |
-| `sops: no key could decrypt the data` | `/root/.config/sops/age/keys.txt` missing or wrong key | Paste the key that matches the `age1...` public key in `.sops.yaml` |
-| `docker login ghcr.io` fails | `GHCR_TOKEN` expired / missing | Generate a new PAT with `read:packages`, update `.env.prod.enc`, re-deploy |
-| GH Action `Permission denied (publickey)` | `DEPLOY_SSH_KEY` wrong format or not in server's `authorized_keys` | Re-run bootstrap with correct `DEPLOY_SSH_PUBKEY`; ensure secret includes BEGIN/END lines |
-| Migration command hangs | Postgres container not healthy yet | `docker compose logs postgres`; fix the underlying issue and re-run deploy |
-| Web bundle out of date | `build-web` job failed | Check the run's `build-web` logs; re-run the workflow |
-| Health check `/api/health` 502 | api container crashed on startup | `docker compose logs api` — usually a missing env var in `/etc/newsletter/.env` |
+| Deploy fails with `Missing required production secrets` | A required GitHub Environment secret is empty or missing | Add the secret under Environment `production`, then rerun deploy |
+| Deploy fails with `Missing /etc/newsletter/.env` | The env install step failed before `deploy.sh` ran | Check the `Install runtime env on server` workflow step |
+| Docker Compose says an interpolation variable is missing | The key is missing from GitHub Secrets or `runtime.env` generation | Compare `deployment/.env.prod.example` with the workflow env list |
+| `docker login ghcr.io` fails | `GHCR_TOKEN` expired or missing | Generate a PAT with `read:packages`, update the GitHub secret, rerun deploy |
+| GH Action `Permission denied (publickey)` | `DEPLOY_SSH_KEY` wrong format or not in server authorized keys | Rerun bootstrap with the matching `DEPLOY_SSH_PUBKEY` |
+| Migration command hangs | Postgres container not healthy yet | Check `docker compose ... logs postgres`, fix the root cause, rerun deploy |
+| Web bundle out of date | `build-web` job failed | Check the run's `build-web` logs; rerun the workflow |
+| Health check `/api/health` returns 502 | api container crashed on startup | Check `docker compose ... logs api`; usually a missing or invalid env var |
