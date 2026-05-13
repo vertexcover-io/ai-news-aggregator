@@ -13,7 +13,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { SourcesDialog } from "./SourcesDialog";
 
 interface RunsCardListProps {
   runs: RunSummary[];
@@ -150,6 +149,10 @@ function RunCardActions({
   );
 }
 
+function canViewSources(run: RunSummary): boolean {
+  return run.status === "completed";
+}
+
 export function RunsCardList({
   runs,
   onRetry,
@@ -158,11 +161,6 @@ export function RunsCardList({
 }: RunsCardListProps): ReactElement {
   const [confirmRunId, setConfirmRunId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
-  const [sourcesRunId, setSourcesRunId] = useState<string | null>(null);
-
-  const activeRun = sourcesRunId
-    ? (runs.find((r) => r.runId === sourcesRunId) ?? null)
-    : null;
 
   if (runs.length === 0) {
     return (
@@ -219,15 +217,6 @@ export function RunsCardList({
         </DialogContent>
       </Dialog>
 
-      <SourcesDialog
-        open={sourcesRunId !== null}
-        onOpenChange={(open) => {
-          if (!open) setSourcesRunId(null);
-        }}
-        runId={sourcesRunId}
-        runStartedAt={activeRun?.startedAt ?? null}
-      />
-
       <ul className="space-y-3">
         {runs.map((run) => {
           const derived = deriveStatus(run);
@@ -265,25 +254,16 @@ export function RunsCardList({
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                {(() => {
-                  const disabled =
-                    (derived === "failed" || derived === "cancelled") &&
-                    run.itemCount === 0;
-                  return (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={disabled}
-                      title={disabled ? "No items collected" : undefined}
-                      className="min-h-[44px] px-3"
-                      onClick={() => {
-                        setSourcesRunId(run.runId);
-                      }}
-                    >
-                      Sources
-                    </Button>
-                  );
-                })()}
+                {canViewSources(run) ? (
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="min-h-[44px] px-3"
+                  >
+                    <Link to={`/admin/sources/${run.runId}`}>Sources</Link>
+                  </Button>
+                ) : null}
                 <RunCardActions
                   run={run}
                   derived={derived}
