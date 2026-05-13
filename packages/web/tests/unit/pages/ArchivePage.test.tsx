@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { ReactElement } from "react";
 import { ArchivePage } from "../../../src/pages/ArchivePage";
 import type { RunStateResponse } from "../../../src/api/runs";
+import type { RankedItem } from "@newsletter/shared";
 
 vi.mock("../../../src/hooks/useArchive", () => ({
   useArchive: vi.fn(),
@@ -64,6 +65,30 @@ const completedData: RunStateResponse = {
   error: null,
 };
 
+function makeRankedItem(overrides: Partial<RankedItem> = {}): RankedItem {
+  return {
+    id: 1,
+    rawItemId: 1,
+    title: "Recursive Self-Improvement Launches in London and SF",
+    url: "https://example.com/story",
+    sourceType: "hn",
+    author: "author",
+    publishedAt: "2026-05-06T11:00:00.000Z",
+    engagement: { points: 10, commentCount: 2 },
+    score: 99,
+    rationale: "Important because it is the lead story.",
+    content: null,
+    imageUrl: null,
+    recap: {
+      title: "Recursive Self-Improvement Launches in London and SF",
+      summary: "A new AI lab launched around systems that can improve their own research process.",
+      bullets: ["The team is split between London and San Francisco."],
+      bottomLine: "This is the issue's lead story.",
+    },
+    ...overrides,
+  };
+}
+
 describe("ArchivePage — share metadata + share row (REQ-002, REQ-005, REQ-010, REQ-016)", () => {
   it("sets document.title and og:title for completed status", async () => {
     vi.mocked(useArchive).mockReturnValue(makeResult(completedData));
@@ -75,28 +100,30 @@ describe("ArchivePage — share metadata + share row (REQ-002, REQ-005, REQ-010,
     expect(og?.getAttribute("content")).toBe("AI news - May 6, 2026");
   });
 
-  it("uses digestHeadline for document.title and og:title when present", async () => {
+  it("uses the first story title for document.title and og:title when digestHeadline differs", async () => {
     vi.mocked(useArchive).mockReturnValue(
       makeResult({
         ...completedData,
-        digestHeadline: "OpenAI ships GPT-7 with native tool use",
+        rankedItems: [makeRankedItem()],
+        digestHeadline: "Cactus Distills Gemini Tool Calling into 26M Model",
       }),
     );
     renderPage();
     await waitFor(() => {
-      expect(document.title).toBe("OpenAI ships GPT-7 with native tool use");
+      expect(document.title).toBe("Recursive Self-Improvement Launches in London and SF");
     });
     const og = document.head.querySelector('meta[property="og:title"]');
     expect(og?.getAttribute("content")).toBe(
-      "OpenAI ships GPT-7 with native tool use",
+      "Recursive Self-Improvement Launches in London and SF",
     );
   });
 
-  it("passes digestHeadline as shareText so X composer prefills the heading", async () => {
+  it("passes the first story title as shareText so X composer prefills the heading", async () => {
     vi.mocked(useArchive).mockReturnValue(
       makeResult({
         ...completedData,
-        digestHeadline: "OpenAI ships GPT-7 with native tool use",
+        rankedItems: [makeRankedItem()],
+        digestHeadline: "Cactus Distills Gemini Tool Calling into 26M Model",
       }),
     );
     const { container } = renderPage();
@@ -107,9 +134,27 @@ describe("ArchivePage — share metadata + share row (REQ-002, REQ-005, REQ-010,
       const m = /text=([^&]+)/.exec(href);
       expect(m).not.toBeNull();
       expect(decodeURIComponent(m?.[1] ?? "")).toBe(
-        "OpenAI ships GPT-7 with native tool use",
+        "Recursive Self-Improvement Launches in London and SF",
       );
     });
+  });
+
+  it("uses the first story recap summary as the header dek when digestSummary refers to other stories", async () => {
+    vi.mocked(useArchive).mockReturnValue(
+      makeResult({
+        ...completedData,
+        rankedItems: [makeRankedItem()],
+        digestHeadline: "Cactus Distills Gemini Tool Calling into 26M Model",
+        digestSummary: "Plus: Recursive Self-Improvement launches in London.",
+      }),
+    );
+    const { queryByText, findAllByText } = renderPage();
+    expect(
+      await findAllByText(
+        "A new AI lab launched around systems that can improve their own research process.",
+      ),
+    ).toHaveLength(2);
+    expect(queryByText("Plus: Recursive Self-Improvement launches in London.")).toBeNull();
   });
 
   it("falls back to 'AI news - <Date>' shareText when digestHeadline is null", async () => {

@@ -223,7 +223,7 @@ describe("ArchivePage", () => {
     expect(screen.queryAllByRole("article")).toHaveLength(0);
   });
 
-  it("document.title updated to AI news - <formatted date> after completed render (REQ-002)", () => {
+  it("document.title updates to the first story title after completed render (REQ-002)", () => {
     vi.mocked(useArchive).mockReturnValue({
       isLoading: false,
       data: baseCompletedRun,
@@ -236,7 +236,7 @@ describe("ArchivePage", () => {
     } as ReturnType<typeof useArchive>);
 
     renderWithClient(<ArchivePage />);
-    expect(document.title).toContain("AI news -");
+    expect(document.title).toBe("Test Story One");
   });
 
   it("Mock-A: a single 'Back to archive' link at the top of the page points to '/'", () => {

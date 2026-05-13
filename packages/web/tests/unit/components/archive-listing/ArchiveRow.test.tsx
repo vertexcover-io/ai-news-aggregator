@@ -84,8 +84,7 @@ describe("ArchiveRow", () => {
     expect(screen.queryByText(/\+ \d+ more/)).toBeNull();
   });
 
-  // VER-96: headline prefers digestHeadline when present
-  it("VER-96: headline equals digestHeadline when set", () => {
+  it("headline equals the first story title when digestHeadline differs", () => {
     renderRow(
       makeItem({
         digestHeadline: "AI safety, regulation, and open models",
@@ -94,7 +93,7 @@ describe("ArchiveRow", () => {
       false,
     );
     const h3 = screen.getByRole("heading", { level: 3 });
-    expect(h3.textContent).toBe("AI safety, regulation, and open models");
+    expect(h3.textContent).toBe("Top story title");
   });
 
   // VER-96: headline falls back to topItems[0].title when digestHeadline null
@@ -242,13 +241,15 @@ describe("ArchiveRow", () => {
     expect(container.querySelector("[data-slot='dek']")).toBeNull();
   });
 
-  // Phase 5: highlightTerms wraps matches in <mark> in digestHeadline
-  it("highlights terms in the digest headline", () => {
+  it("highlights terms in the first story headline", () => {
     const { container } = render(
       <MemoryRouter>
         <ul>
           <ArchiveRow
-            item={makeItem({ digestHeadline: "Agentic systems break out" })}
+            item={makeItem({
+              digestHeadline: "Different digest headline",
+              topItems: [{ id: 1, title: "Agentic systems break out", sourceType: "hn" }],
+            })}
             issueNumber={1}
             featured={false}
             highlightTerms={["agentic"]}

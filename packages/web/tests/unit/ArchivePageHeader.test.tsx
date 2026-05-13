@@ -35,18 +35,15 @@ describe("ArchivePageHeader", () => {
     cleanup();
   });
 
-  it("renders leadSummary as h1 when present", () => {
+  it("renders topStoryTitle as h1 when leadSummary is present", () => {
     renderHeader({
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 5,
       leadSummary: "OpenAI launches GPT-5 with multimodal reasoning.",
       topStoryTitle: "Top Story Title",
     });
-    expect(
-      screen.getByRole("heading", {
-        name: "OpenAI launches GPT-5 with multimodal reasoning.",
-      }),
-    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Top Story Title" })).toBeTruthy();
+    expect(screen.getByText("OpenAI launches GPT-5 with multimodal reasoning.")).toBeTruthy();
   });
 
   it("falls back to topStoryTitle when leadSummary is null", () => {
@@ -141,7 +138,7 @@ describe("ArchivePageHeader", () => {
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 5,
       leadSummary: "Some lead summary",
-      topStoryTitle: null,
+      topStoryTitle: "Top Story Title",
     });
     const heading = screen.getByRole("heading");
     expect(heading.className).toContain("font-serif");
