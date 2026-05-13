@@ -249,6 +249,44 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     expect(result[0].topItems[1].id).toBe(3);
   });
 
+  it("buildTopItems title precedence: ref.title > recap.title > row.title", async () => {
+    const archive = makeDefaultArchive({
+      reviewed: true,
+      rankedItems: [
+        // ref.title set
+        { rawItemId: 100, score: 0.9, rationale: "a", title: "ref-override" },
+        // ref.title absent → recap.title used
+        { rawItemId: 200, score: 0.8, rationale: "b" },
+        // neither set → row.title fallback
+        { rawItemId: 300, score: 0.7, rationale: "c" },
+      ],
+    });
+    const db = makeFakeDbReviewed([archive]);
+    const rawRows: Partial<RawItemRow>[] = [
+      { id: 100, title: "source-100", sourceType: "hn" },
+      {
+        id: 200,
+        title: "source-200",
+        sourceType: "hn",
+        metadata: {
+          comments: [],
+          recap: {
+            title: "ai-title-200",
+            summary: "s",
+            bullets: ["b"],
+            bottomLine: "bl",
+          },
+        },
+      },
+      { id: 300, title: "source-300", sourceType: "hn" },
+    ];
+    const { repo } = makeFakeRawItemsRepo(rawRows);
+    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    expect(result[0].topItems[0].title).toBe("ref-override");
+    expect(result[0].topItems[1].title).toBe("ai-title-200");
+    expect(result[0].topItems[2].title).toBe("source-300");
+  });
+
   // 3. REQ-006: override summary takes precedence over raw recap
   it("uses override summary from rankedItems ref when present (REQ-006)", async () => {
     const archive = makeDefaultArchive({
@@ -395,11 +433,12 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     expect(spy.mock.calls[0][0][0]).toBe(sharedId);
   });
 
-  // 11. REQ-009: topItems title comes from raw row, not from rankedItemRef phantom fields
-  it("topItems title comes from raw row not from rankedItemRef phantom field (REQ-009)", async () => {
-    const ref = { rawItemId: 7, score: 0.9, rationale: "x" } as unknown as RankedItemRef & { title: string };
-    ref.title = "bogus title from ref";
-    const archive = makeDefaultArchive({ reviewed: true, rankedItems: [ref] });
+  // 11. topItems title falls back to raw row when ref.title and recap.title absent
+  it("topItems title falls back to raw row title when ref.title and recap.title are absent", async () => {
+    const archive = makeDefaultArchive({
+      reviewed: true,
+      rankedItems: [{ rawItemId: 7, score: 0.9, rationale: "x" }],
+    });
     const db = makeFakeDbReviewed([archive]);
     const rawRows: Partial<RawItemRow>[] = [{ id: 7, title: "Real Title From Raw", sourceType: "hn" }];
     const { repo } = makeFakeRawItemsRepo(rawRows);
