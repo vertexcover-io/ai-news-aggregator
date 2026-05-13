@@ -127,6 +127,7 @@ jobs:
           TWITTER_CLIENT_ID: ${{ secrets.TWITTER_CLIENT_ID }}
           TWITTER_CLIENT_SECRET: ${{ secrets.TWITTER_CLIENT_SECRET }}
           AUTO_REVIEW: ${{ secrets.AUTO_REVIEW }}
+          REDDIT_HTTP_PROXY: ${{ secrets.REDDIT_HTTP_PROXY }}
           GHCR_REPO_OWNER: ${{ secrets.GHCR_REPO_OWNER }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
@@ -168,6 +169,7 @@ jobs:
               "TWITTER_CLIENT_ID",
               "TWITTER_CLIENT_SECRET",
               "AUTO_REVIEW",
+              "REDDIT_HTTP_PROXY",
           ]
           names = required + optional
           template = Path("deployment/.env.prod.example").read_text()
