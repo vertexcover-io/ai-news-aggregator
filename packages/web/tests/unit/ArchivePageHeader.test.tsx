@@ -9,8 +9,9 @@ import {
 function renderHeader(props: {
   startedAt: string;
   storyCount: number;
-  leadSummary: string | null;
   topStoryTitle: string | null;
+  digestHeadline?: string | null;
+  digestSummary?: string | null;
 }): void {
   render(
     <MemoryRouter>
@@ -35,47 +36,49 @@ describe("ArchivePageHeader", () => {
     cleanup();
   });
 
-  it("renders topStoryTitle as h1 when leadSummary is present", () => {
+  it("renders topStoryTitle as h1 and digestSummary as dek", () => {
     renderHeader({
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 5,
-      leadSummary: "OpenAI launches GPT-5 with multimodal reasoning.",
       topStoryTitle: "Top Story Title",
+      digestSummary: "Plus: OpenAI launches GPT-5 with multimodal reasoning.",
     });
     expect(screen.getByRole("heading", { name: "Top Story Title" })).toBeTruthy();
-    expect(screen.getByText("OpenAI launches GPT-5 with multimodal reasoning.")).toBeTruthy();
+    expect(
+      screen.getByText("Plus: OpenAI launches GPT-5 with multimodal reasoning."),
+    ).toBeTruthy();
   });
 
-  it("falls back to topStoryTitle when leadSummary is null", () => {
+  it("falls back to topStoryTitle when digestSummary is null", () => {
     renderHeader({
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 5,
-      leadSummary: null,
       topStoryTitle: "Top Story Title",
+      digestSummary: null,
     });
     expect(
       screen.getByRole("heading", { name: "Top Story Title" }),
     ).toBeTruthy();
   });
 
-  it("falls back to topStoryTitle when leadSummary is empty string (EDGE-011)", () => {
+  it("falls back to topStoryTitle when digestSummary is empty string (EDGE-011)", () => {
     renderHeader({
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 5,
-      leadSummary: "",
       topStoryTitle: "Top Story Title",
+      digestSummary: "",
     });
     expect(
       screen.getByRole("heading", { name: "Top Story Title" }),
     ).toBeTruthy();
   });
 
-  it("uses 'An archived issue' when both leadSummary and topStoryTitle are null", () => {
+  it("uses 'An archived issue' when both digestHeadline and topStoryTitle are null", () => {
     renderHeader({
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 5,
-      leadSummary: null,
       topStoryTitle: null,
+      digestHeadline: null,
     });
     expect(
       screen.getByRole("heading", { name: "An archived issue" }),
@@ -86,7 +89,6 @@ describe("ArchivePageHeader", () => {
     renderHeader({
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 1,
-      leadSummary: null,
       topStoryTitle: null,
     });
     expect(screen.getByText("1 story")).toBeTruthy();
@@ -96,7 +98,6 @@ describe("ArchivePageHeader", () => {
     renderHeader({
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 8,
-      leadSummary: null,
       topStoryTitle: null,
     });
     expect(screen.getByText("8 stories")).toBeTruthy();
@@ -106,7 +107,6 @@ describe("ArchivePageHeader", () => {
     renderHeader({
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 0,
-      leadSummary: null,
       topStoryTitle: null,
     });
     expect(screen.getByText("0 stories")).toBeTruthy();
@@ -116,7 +116,6 @@ describe("ArchivePageHeader", () => {
     renderHeader({
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 5,
-      leadSummary: null,
       topStoryTitle: null,
     });
     expect(screen.queryByRole("link", { name: /All issues|Back to archive/i })).toBeNull();
@@ -126,7 +125,6 @@ describe("ArchivePageHeader", () => {
     renderHeader({
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 5,
-      leadSummary: null,
       topStoryTitle: null,
     });
     const eyebrow = screen.getByText(/SATURDAY/);
@@ -137,7 +135,6 @@ describe("ArchivePageHeader", () => {
     renderHeader({
       startedAt: "2026-04-18T10:00:00Z",
       storyCount: 5,
-      leadSummary: "Some lead summary",
       topStoryTitle: "Top Story Title",
     });
     const heading = screen.getByRole("heading");

@@ -1242,12 +1242,13 @@ describe("run-process worker", () => {
     };
     const expected = serializeArchiveSearchText({
       digestHeadline: "Pipeline Story Title",
-      digestSummary: "OVERRIDE_SUMMARY",
+      digestSummary: "Pipeline digest summary",
       rankedItems,
       rawItemsById: new Map([[101, rawRow]]),
     });
     expect(arg.searchText).toBe(expected);
     // Override precedence sanity
+    expect(arg.searchText).toContain("Pipeline digest summary");
     expect(arg.searchText).toContain("OVERRIDE_SUMMARY");
     expect(arg.searchText).not.toContain("RECAP_SUMMARY");
   });

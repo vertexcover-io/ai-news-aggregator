@@ -139,7 +139,7 @@ describe("ArchivePage — share metadata + share row (REQ-002, REQ-005, REQ-010,
     });
   });
 
-  it("uses the first story recap summary as the header dek when digestSummary refers to other stories", async () => {
+  it("uses the first story title as heading and digestSummary as the header dek", async () => {
     vi.mocked(useArchive).mockReturnValue(
       makeResult({
         ...completedData,
@@ -148,13 +148,18 @@ describe("ArchivePage — share metadata + share row (REQ-002, REQ-005, REQ-010,
         digestSummary: "Plus: Recursive Self-Improvement launches in London.",
       }),
     );
-    const { queryByText, findAllByText } = renderPage();
+    const { container, findByText, findAllByText } = renderPage();
+    expect(
+      await findByText("Plus: Recursive Self-Improvement launches in London."),
+    ).toBeTruthy();
+    expect(container.querySelector("h1")?.textContent).toBe(
+      "Recursive Self-Improvement Launches in London and SF",
+    );
     expect(
       await findAllByText(
         "A new AI lab launched around systems that can improve their own research process.",
       ),
-    ).toHaveLength(2);
-    expect(queryByText("Plus: Recursive Self-Improvement launches in London.")).toBeNull();
+    ).toHaveLength(1);
   });
 
   it("falls back to 'AI news - <Date>' shareText when digestHeadline is null", async () => {
