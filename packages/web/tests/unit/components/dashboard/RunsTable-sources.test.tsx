@@ -1,27 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement, ReactNode } from "react";
-import type { RunSourcesResponse, RunSummary } from "@newsletter/shared";
-
-vi.mock("../../../../src/api/runs", () => ({
-  getRunSources: vi.fn(),
-}));
-
-import { getRunSources } from "../../../../src/api/runs";
+import type { RunSummary } from "@newsletter/shared";
 import { RunsTable } from "../../../../src/components/dashboard/RunsTable";
+import { RunsCardList } from "../../../../src/components/dashboard/RunsCardList";
 
 afterEach(() => {
   cleanup();
-  vi.mocked(getRunSources).mockReset();
 });
 
 function makeRun(overrides: Partial<RunSummary>): RunSummary {
@@ -70,12 +57,12 @@ describe("RunsTable Sources column", () => {
     expect(actionIdx).toBe(sourcesIdx + 1);
   });
 
-  it("REQ-002: each row renders a Sources button", () => {
+  it("REQ-002: ready-to-review and reviewed rows render Sources links", () => {
     render(
       <Wrapper>
         <RunsTable
           runs={[
-            makeRun({ runId: "a", status: "running" }),
+            makeRun({ runId: "a", status: "completed", reviewed: false }),
             makeRun({ runId: "b", status: "completed", reviewed: true }),
           ]}
           onRetry={vi.fn()}
@@ -84,10 +71,10 @@ describe("RunsTable Sources column", () => {
         />
       </Wrapper>,
     );
-    expect(screen.getAllByRole("button", { name: "Sources" }).length).toBe(2);
+    expect(screen.getAllByRole("link", { name: "Sources" })).toHaveLength(2);
   });
 
-  it("REQ-003/EDGE-001: Sources button disabled when status=failed and itemCount=0", () => {
+  it("REQ-003/EDGE-001: Sources action is hidden for failed runs", () => {
     render(
       <Wrapper>
         <RunsTable
@@ -100,14 +87,11 @@ describe("RunsTable Sources column", () => {
         />
       </Wrapper>,
     );
-    const btn = screen.getByRole<HTMLButtonElement>("button", {
-      name: "Sources",
-    });
-    expect(btn.disabled).toBe(true);
-    expect(btn.getAttribute("title")).toBe("No items collected");
+    expect(screen.queryByRole("link", { name: "Sources" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sources" })).toBeNull();
   });
 
-  it("REQ-003: Sources button disabled when status=cancelled and itemCount=0", () => {
+  it("REQ-003: Sources action is hidden for cancelled runs", () => {
     render(
       <Wrapper>
         <RunsTable
@@ -120,13 +104,11 @@ describe("RunsTable Sources column", () => {
         />
       </Wrapper>,
     );
-    const btn = screen.getByRole<HTMLButtonElement>("button", {
-      name: "Sources",
-    });
-    expect(btn.disabled).toBe(true);
+    expect(screen.queryByRole("link", { name: "Sources" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sources" })).toBeNull();
   });
 
-  it("EDGE-002: Sources button enabled for a running run", () => {
+  it("EDGE-002: Sources action is hidden for running runs", () => {
     render(
       <Wrapper>
         <RunsTable
@@ -137,15 +119,26 @@ describe("RunsTable Sources column", () => {
         />
       </Wrapper>,
     );
-    const btn = screen.getByRole<HTMLButtonElement>("button", {
-      name: "Sources",
-    });
-    expect(btn.disabled).toBe(false);
+    expect(screen.queryByRole("link", { name: "Sources" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sources" })).toBeNull();
   });
 
-  it("REQ-004: clicking Sources opens dialog scoped to that row's runId", async () => {
-    const resp: RunSourcesResponse = { runId: "run-xyz", items: [] };
-    vi.mocked(getRunSources).mockResolvedValue(resp);
+  it("EDGE-003: Sources action is hidden for cancelling runs", () => {
+    render(
+      <Wrapper>
+        <RunsTable
+          runs={[makeRun({ runId: "run-1", status: "cancelling" })]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+        />
+      </Wrapper>,
+    );
+    expect(screen.queryByRole("link", { name: "Sources" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sources" })).toBeNull();
+  });
+
+  it("REQ-004: Sources link routes to the full-page preview", () => {
     render(
       <Wrapper>
         <RunsTable
@@ -158,11 +151,24 @@ describe("RunsTable Sources column", () => {
         />
       </Wrapper>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Sources" }));
-    await waitFor(() => {
-      expect(vi.mocked(getRunSources)).toHaveBeenCalledWith("run-xyz");
-    });
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/Sources/)).toBeTruthy();
+    const link = screen.getByRole("link", { name: "Sources" });
+    expect(link.getAttribute("href")).toBe("/admin/sources/run-xyz");
+  });
+
+  it("REQ-005: mobile card list routes Sources to the full-page preview", () => {
+    render(
+      <Wrapper>
+        <RunsCardList
+          runs={[
+            makeRun({ runId: "mobile-run", status: "completed", reviewed: true }),
+          ]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+        />
+      </Wrapper>,
+    );
+    const link = screen.getByRole("link", { name: "Sources" });
+    expect(link.getAttribute("href")).toBe("/admin/sources/mobile-run");
   });
 });

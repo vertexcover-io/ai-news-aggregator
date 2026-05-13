@@ -3,6 +3,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ArchivePage } from "./pages/ArchivePage";
 import { ReviewPage } from "./pages/ReviewPage";
+import { SourcesPreviewPage } from "./pages/SourcesPreviewPage";
 import { ArchiveListingPage } from "./pages/ArchiveListingPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { ConfirmPage } from "./pages/ConfirmPage";
@@ -36,6 +37,7 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <DashboardPage /> },
           { path: "review/:runId", element: <ReviewPage /> },
+          { path: "sources/:runId", element: <SourcesPreviewPage /> },
           { path: "settings", element: <SettingsPage /> },
           { path: "analytics", element: <AnalyticsPage /> },
         ],
