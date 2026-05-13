@@ -469,6 +469,29 @@ describe("archivePatchSchema (REQ-160 – REQ-162, EDGE-110)", () => {
     });
     expect(r.success).toBe(false);
   });
+
+  it("accepts a valid title", () => {
+    const r = archivePatchSchema.safeParse({
+      rankedItems: [
+        { id: 1, sourceType: "hn", title: "OpenAI ships GPT-5" },
+      ],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects empty title (min length 1)", () => {
+    const r = archivePatchSchema.safeParse({
+      rankedItems: [{ id: 1, sourceType: "hn", title: "" }],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects title longer than 160 chars", () => {
+    const r = archivePatchSchema.safeParse({
+      rankedItems: [{ id: 1, sourceType: "hn", title: "x".repeat(161) }],
+    });
+    expect(r.success).toBe(false);
+  });
 });
 
 describe("addPostSchema (REQ-024, REQ-144)", () => {

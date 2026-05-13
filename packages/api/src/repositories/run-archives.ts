@@ -463,7 +463,8 @@ function buildTopItems(
   for (const ref of rankedItems.slice(0, 3)) {
     const raw = byId.get(ref.rawItemId);
     if (!raw) continue;
-    top.push({ id: raw.id, title: raw.title, sourceType: raw.sourceType });
+    const title = ref.title ?? raw.metadata.recap?.title ?? raw.title;
+    top.push({ id: raw.id, title, sourceType: raw.sourceType });
   }
   return top;
 }

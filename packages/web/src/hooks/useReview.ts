@@ -39,7 +39,7 @@ export interface UseReviewResult {
   hasUrl: (url: string) => boolean;
   updateItemField: (
     id: number,
-    field: "summary" | "bullets" | "bottomLine" | "imageUrl",
+    field: "title" | "summary" | "bullets" | "bottomLine" | "imageUrl",
     value: string | string[] | null,
   ) => void;
 }
@@ -53,6 +53,7 @@ function sameOrder(a: RankedItem[], b: RankedItem[]): boolean {
 }
 
 function itemFieldsChanged(a: RankedItem, b: RankedItem): boolean {
+  if (a.title !== b.title) return true;
   if (a.imageUrl !== b.imageUrl) return true;
   if (a.recap?.summary !== b.recap?.summary) return true;
   if (a.recap?.bottomLine !== b.recap?.bottomLine) return true;
@@ -180,7 +181,7 @@ export function useReview(runId: string): UseReviewResult {
   const updateItemField = useCallback(
     (
       id: number,
-      field: "summary" | "bullets" | "bottomLine" | "imageUrl",
+      field: "title" | "summary" | "bullets" | "bottomLine" | "imageUrl",
       value: string | string[] | null,
     ) => {
       setCurrent((prev) =>
@@ -189,9 +190,20 @@ export function useReview(runId: string): UseReviewResult {
           if (field === "imageUrl") {
             return { ...item, imageUrl: value as string | null };
           }
+          if (field === "title") {
+            const next = value as string;
+            return {
+              ...item,
+              title: next,
+              recap: item.recap
+                ? { ...item.recap, title: next }
+                : item.recap,
+            };
+          }
           return {
             ...item,
             recap: {
+              title: item.recap?.title ?? item.title,
               summary: item.recap?.summary ?? "",
               bullets: item.recap?.bullets ?? [],
               bottomLine: item.recap?.bottomLine ?? "",

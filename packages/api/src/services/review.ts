@@ -14,6 +14,7 @@ export type GenerateRecapFn = (
 
 // These types are inlined to avoid a hard import (real fn is dynamically loaded)
 interface RecapContent {
+  title: string;
   summary: string;
   bullets: string[];
   bottomLine: string;
@@ -68,6 +69,7 @@ export interface PatchArchiveInput {
   rankedItems: {
     id: number;
     sourceType: string;
+    title?: string;
     summary?: string;
     bullets?: string[];
     bottomLine?: string;
@@ -96,6 +98,7 @@ export async function patchArchive(
 
   const refs: RankedItemRef[] = input.rankedItems.map((i) => {
     const ref: RankedItemRef = { rawItemId: i.id, score: 0, rationale: "" };
+    if (i.title !== undefined) ref.title = i.title;
     if (i.summary !== undefined) ref.summary = i.summary;
     if (i.bullets !== undefined) ref.bullets = i.bullets;
     if (i.bottomLine !== undefined) ref.bottomLine = i.bottomLine;
@@ -220,7 +223,7 @@ export async function promoteItem(
   return {
     id: rawItem.id,
     rawItemId: rawItem.id,
-    title: rawItem.title,
+    title: recap.title || rawItem.title,
     url: rawItem.url,
     sourceType: rawItem.sourceType,
     author: rawItem.author,

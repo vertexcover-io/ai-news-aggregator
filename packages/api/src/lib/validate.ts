@@ -162,6 +162,7 @@ export const archivePatchSchema = z
         z.object({
           id: z.number().int(),
           sourceType: z.string().min(1),
+          title: z.string().min(1).max(160).optional(),
           summary: z.string().optional(),
           bullets: z.array(z.string()).optional(),
           bottomLine: z.string().optional(),

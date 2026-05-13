@@ -25,7 +25,7 @@ interface ReviewListProps {
   onDelete: (id: number) => void;
   onUpdateField: (
     id: number,
-    field: "summary" | "bullets" | "bottomLine" | "imageUrl",
+    field: "title" | "summary" | "bullets" | "bottomLine" | "imageUrl",
     value: string | string[] | null,
   ) => void;
   pendingCount: number;

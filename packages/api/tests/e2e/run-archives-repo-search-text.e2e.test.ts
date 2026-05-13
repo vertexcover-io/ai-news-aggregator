@@ -48,6 +48,7 @@ beforeAll(async () => {
       metadata: {
         comments: [],
         recap: {
+          title: "ORIGINAL_TITLE_TOKEN_A",
           summary: "ORIGINAL_SUMMARY_TOKEN_A",
           bullets: ["original_bullet_one_a"],
           bottomLine: "ORIGINAL_BOTTOM_TOKEN_A",
@@ -69,6 +70,7 @@ beforeAll(async () => {
       metadata: {
         comments: [],
         recap: {
+          title: "REMOVED_ITEM_TITLE",
           summary: "REMOVED_ITEM_SUMMARY_TOKEN",
           bullets: ["removed_item_bullet"],
           bottomLine: "REMOVED_ITEM_BOTTOM",

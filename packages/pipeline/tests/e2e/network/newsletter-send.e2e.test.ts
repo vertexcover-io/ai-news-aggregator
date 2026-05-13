@@ -92,6 +92,7 @@ describe("Newsletter send — real Resend e2e", () => {
         metadata: {
           comments: [],
           recap: {
+            title: "OpenAI ships GPT-9",
             summary: "GPT-9 brings 10x throughput and a new tool-use schema.",
             bullets: ["10x throughput on long-context", "Native tool-use schema", "Pricing flat vs GPT-8"],
             bottomLine: "Worth re-running benchmarks against GPT-8.",
@@ -108,6 +109,7 @@ describe("Newsletter send — real Resend e2e", () => {
         metadata: {
           comments: [],
           recap: {
+            title: "Anthropic launches autonomous agents API",
             summary: "First-class agent framework with stateful memory.",
             bullets: ["Stateful agent memory", "Toolformer integration"],
             bottomLine: "Reduces glue code for agent stacks.",

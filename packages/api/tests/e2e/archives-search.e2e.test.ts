@@ -82,6 +82,7 @@ async function insertRaw(
       metadata: {
         comments: [],
         recap: {
+          title: "Test title",
           summary: recapSummary,
           bullets: [],
           bottomLine: "",
@@ -126,6 +127,7 @@ async function insertArchive(opts: {
         metadata: {
           comments: [],
           recap: {
+            title: "Test title",
             summary: opts.rawItemSummary,
             bullets: [],
             bottomLine: "",

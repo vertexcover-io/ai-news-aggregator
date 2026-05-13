@@ -130,6 +130,7 @@ export function ReviewPage(): ReactElement {
     const fieldEdits = state.current.filter((it) => {
       const orig = initialMap.get(it.id);
       if (!orig) return false;
+      if (it.title !== orig.title) return true;
       if (it.imageUrl !== orig.imageUrl) return true;
       if (it.recap?.summary !== orig.recap?.summary) return true;
       if (it.recap?.bottomLine !== orig.recap?.bottomLine) return true;
@@ -190,6 +191,7 @@ export function ReviewPage(): ReactElement {
         rankedItems: state.current.map((it) => ({
           id: it.id,
           sourceType: it.sourceType,
+          title: it.title,
           ...(it.recap !== null && {
             summary: it.recap.summary,
             bullets: it.recap.bullets,

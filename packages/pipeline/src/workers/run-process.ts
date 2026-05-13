@@ -478,12 +478,17 @@ export async function handleRunProcessJob(
 
     const recapUpdates = rankResult.rankedItems
       .filter(
-        (item): item is typeof item & { summary: string; bullets: string[]; bottomLine: string } =>
-          !!item.summary && !!item.bullets && !!item.bottomLine,
+        (item): item is typeof item & { title: string; summary: string; bullets: string[]; bottomLine: string } =>
+          !!item.title && !!item.summary && !!item.bullets && !!item.bottomLine,
       )
       .map((item) => ({
         id: item.rawItemId,
-        recap: { summary: item.summary, bullets: item.bullets, bottomLine: item.bottomLine },
+        recap: {
+          title: item.title,
+          summary: item.summary,
+          bullets: item.bullets,
+          bottomLine: item.bottomLine,
+        },
       }));
     if (recapUpdates.length > 0) {
       await deps.rawItemsRepo.updateRecapData(recapUpdates);

@@ -207,12 +207,14 @@ function hydrateItems(refs: RankedItemRef[], rows: RawItemRow[]): NewsletterStor
     if (!row) continue;
     const rawRecap = row.metadata.recap;
     const hasRefRecap =
+      ref.title !== undefined ||
       ref.summary !== undefined ||
       ref.bullets !== undefined ||
       ref.bottomLine !== undefined;
     let recap: RecapContent | null = null;
     if (hasRefRecap) {
       recap = {
+        title: ref.title ?? rawRecap?.title ?? "",
         summary: ref.summary ?? rawRecap?.summary ?? "",
         bullets: ref.bullets ?? rawRecap?.bullets ?? [],
         bottomLine: ref.bottomLine ?? rawRecap?.bottomLine ?? "",
@@ -220,8 +222,9 @@ function hydrateItems(refs: RankedItemRef[], rows: RawItemRow[]): NewsletterStor
     } else if (rawRecap) {
       recap = rawRecap;
     }
+    const displayTitle = ref.title ?? rawRecap?.title ?? row.title;
     stories.push({
-      title: row.title,
+      title: displayTitle,
       url: row.url,
       summary: recap?.summary,
       bullets: recap?.bullets,

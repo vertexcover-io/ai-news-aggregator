@@ -1070,6 +1070,7 @@ describe("run-process worker", () => {
         rawItemId: 1,
         score: 0.9,
         rationale: "top",
+        title: "Item one ships new feature",
         summary: "Item one summary for testing purposes.",
         bullets: [
           "First bullet point with enough detail.",
@@ -1082,6 +1083,7 @@ describe("run-process worker", () => {
         rawItemId: 2,
         score: 0.5,
         rationale: "ok",
+        title: "Item two announces new release",
         summary: "Item two summary for testing purposes.",
         bullets: [
           "First bullet for item two analysis.",
@@ -1111,14 +1113,16 @@ describe("run-process worker", () => {
     expect(mockUpdateRecapData).toHaveBeenCalledOnce();
     const updates = mockUpdateRecapData.mock.calls[0][0] as {
       id: number;
-      recap: { summary: string; bullets: string[]; bottomLine: string };
+      recap: { title: string; summary: string; bullets: string[]; bottomLine: string };
     }[];
     expect(updates).toHaveLength(2);
     expect(updates[0].id).toBe(1);
+    expect(updates[0].recap.title).toBe("Item one ships new feature");
     expect(updates[0].recap.summary).toBe("Item one summary for testing purposes.");
     expect(updates[0].recap.bullets).toHaveLength(3);
     expect(updates[0].recap.bottomLine).toBe("Strategic takeaway for item one.");
     expect(updates[1].id).toBe(2);
+    expect(updates[1].recap.title).toBe("Item two announces new release");
   });
 
   // REQ-002: archive repo is called on successful completion
@@ -1211,6 +1215,7 @@ describe("run-process worker", () => {
       metadata: {
         comments: [],
         recap: {
+          title: "RECAP_TITLE",
           summary: "RECAP_SUMMARY",
           bullets: ["recap_b1"],
           bottomLine: "RECAP_BOTTOM",

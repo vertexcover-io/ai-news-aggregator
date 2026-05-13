@@ -11,6 +11,7 @@ export interface RawItemComment {
 }
 
 export interface RecapContent {
+  title: string;
   summary: string;
   bullets: string[];
   bottomLine: string;

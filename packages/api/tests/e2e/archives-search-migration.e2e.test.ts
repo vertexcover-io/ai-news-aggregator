@@ -61,6 +61,7 @@ beforeAll(async () => {
       metadata: {
         comments: [],
         recap: {
+          title: "ORIGINAL_TITLE_TOKEN",
           summary: "ORIGINAL_SUMMARY_TOKEN",
           bullets: ["original_bullet_one"],
           bottomLine: "ORIGINAL_BOTTOM_TOKEN",

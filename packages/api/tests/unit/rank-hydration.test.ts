@@ -142,6 +142,7 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
         metadata: {
           comments: [],
           recap: {
+            title: "Recap title",
             summary: "A concise summary",
             bullets: ["Point 1", "Point 2"],
             bottomLine: "Key takeaway",
@@ -154,6 +155,7 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
     ];
     const result = await hydrateRankedItems(repo, refs);
     expect(result[0].recap).toEqual({
+      title: "Recap title",
       summary: "A concise summary",
       bullets: ["Point 1", "Point 2"],
       bottomLine: "Key takeaway",
@@ -195,6 +197,7 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
         metadata: {
           comments: [],
           recap: {
+            title: "Recap title",
             summary: "original",
             bullets: ["b1"],
             bottomLine: "original bottom",
@@ -254,6 +257,7 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
         metadata: {
           comments: [],
           recap: {
+            title: "Recap title",
             summary: "raw summary",
             bullets: ["raw bullet"],
             bottomLine: "raw bottom",
@@ -281,6 +285,7 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
         metadata: {
           comments: [],
           recap: {
+            title: "Recap title",
             summary: "raw summary",
             bullets: ["raw bullet"],
             bottomLine: "raw bottom",
@@ -293,6 +298,89 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
     ];
     const result = await hydrateRankedItems(repo, refs);
     expect(result[0].recap?.summary).toBe("");
+  });
+
+  it("title precedence: ref.title overrides recap.title and row.title", async () => {
+    const repo = makeRepo([
+      {
+        id: 20,
+        sourceType: "hn",
+        title: "source-title",
+        url: "https://example.com/20",
+        author: null,
+        publishedAt: null,
+        engagement: { points: 0, commentCount: 0 },
+        content: null,
+        imageUrl: null,
+        metadata: {
+          comments: [],
+          recap: {
+            title: "ai-title",
+            summary: "s",
+            bullets: ["b"],
+            bottomLine: "bl",
+          },
+        },
+      },
+    ]);
+    const refs: RankedItemRef[] = [
+      { rawItemId: 20, score: 0.5, rationale: "ok", title: "operator-title" },
+    ];
+    const result = await hydrateRankedItems(repo, refs);
+    expect(result[0].title).toBe("operator-title");
+    expect(result[0].recap?.title).toBe("operator-title");
+  });
+
+  it("title precedence: recap.title is used when ref.title is absent", async () => {
+    const repo = makeRepo([
+      {
+        id: 21,
+        sourceType: "hn",
+        title: "source-title",
+        url: "https://example.com/21",
+        author: null,
+        publishedAt: null,
+        engagement: { points: 0, commentCount: 0 },
+        content: null,
+        imageUrl: null,
+        metadata: {
+          comments: [],
+          recap: {
+            title: "ai-title",
+            summary: "s",
+            bullets: ["b"],
+            bottomLine: "bl",
+          },
+        },
+      },
+    ]);
+    const refs: RankedItemRef[] = [
+      { rawItemId: 21, score: 0.5, rationale: "ok" },
+    ];
+    const result = await hydrateRankedItems(repo, refs);
+    expect(result[0].title).toBe("ai-title");
+  });
+
+  it("title precedence: falls back to row.title when neither ref nor recap has a title (backcompat)", async () => {
+    const repo = makeRepo([
+      {
+        id: 22,
+        sourceType: "hn",
+        title: "source-title",
+        url: "https://example.com/22",
+        author: null,
+        publishedAt: null,
+        engagement: { points: 0, commentCount: 0 },
+        content: null,
+        imageUrl: null,
+        metadata: { comments: [] },
+      },
+    ]);
+    const refs: RankedItemRef[] = [
+      { rawItemId: 22, score: 0.5, rationale: "ok" },
+    ];
+    const result = await hydrateRankedItems(repo, refs);
+    expect(result[0].title).toBe("source-title");
   });
 
   it("EDGE-011: both ref.imageUrl and raw.imageUrl are null → hydrated imageUrl is null", async () => {

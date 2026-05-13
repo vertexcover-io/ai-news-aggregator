@@ -79,6 +79,7 @@ const completedRun = {
       content: null,
       imageUrl: null,
       recap: {
+        title: "AI-slop overwhelms platform moderators",
         summary:
           "A week of forum threads, abandoned subreddits, and one moderator post added up to the same conclusion — the cleanup tools are losing.",
         bullets: [
@@ -106,6 +107,7 @@ const completedRun = {
       content: null,
       imageUrl: null,
       recap: {
+        title: "Smart agents fail at long-horizon planning",
         summary:
           "Two papers and one production post-mortem this week converge on the same finding from different angles.",
         bullets: [
@@ -131,6 +133,7 @@ const completedRun = {
       content: null,
       imageUrl: null,
       recap: {
+        title: "Edge inference chips ship in stealth",
         summary: "No keynote. No livestream. Three open-source toolchains updated their hardware support lists in the same week.",
         bullets: [
           "llama.cpp, vLLM, and MLX merged support for two new edge accelerators.",
