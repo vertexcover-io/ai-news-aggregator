@@ -36,5 +36,44 @@ describe("rank prompts", () => {
         "move the AI story forward",
       );
     });
+
+    it("specifies the 3-4 minute total read budget framing", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("3-4 minute");
+    });
+
+    it("imposes a ≤25 word cap on summary", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("≤25 words");
+    });
+
+    it("requires exactly 3 bullets", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("Exactly 3");
+    });
+
+    it("imposes a ≤15 word cap per bullet", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("≤15 words");
+    });
+
+    it("forbids analysis phrases inside bullets", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE.toLowerCase()).toContain(
+        "this signals",
+      );
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE.toLowerCase()).toContain(
+        "this means",
+      );
+    });
+
+    it("includes at least one Good: example per field (title/summary/bullets/bottomLine)", () => {
+      const goodCount = (RANK_SYSTEM_PROMPT_NO_PROFILE.match(/Good:/g) ?? [])
+        .length;
+      // title (2 examples), summary (1), bullets (1 multi-line block), bottomLine (1) = 5 total
+      expect(goodCount).toBeGreaterThanOrEqual(4);
+    });
+
+    it("specifies the 110-word hard ceiling and cut-order guidance", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("110 words");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE.toLowerCase()).toContain(
+        "cut bullets first",
+      );
+    });
   });
 });

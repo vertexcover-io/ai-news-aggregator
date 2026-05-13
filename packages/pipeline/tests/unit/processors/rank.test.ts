@@ -597,4 +597,113 @@ describe("rankCandidates", () => {
 
     expect(capturedAbortSignal).toBe(controller.signal);
   });
+
+  it("emits rank.recap.over_budget warn when a story exceeds 130 words", async () => {
+    const longBullet = "word ".repeat(40).trim(); // 40 words
+    const overBudget = makeRankedEntry({
+      id: 1,
+      score: 80,
+      rationale: "strong Novelty",
+      summary: "word ".repeat(30).trim(), // 30 words
+      bullets: [longBullet, longBullet, longBullet, longBullet], // 4 × 40 = 160
+      bottomLine: "word ".repeat(20).trim(), // 20 words; total = 30 + 160 + 20 = 210
+    });
+    const generateObject = makeGenerate({ ranked: [overBudget] });
+
+    await rankCandidates([makeCandidate(1)], {
+      topN: 5,
+      generateObject,
+      loadBodies: stubLoadBodies,
+      runId: "run-abc",
+    });
+
+    const warnCalls = mockLoggerWarn.mock.calls.filter(
+      (call) =>
+        typeof call[0] === "object" &&
+        call[0] !== null &&
+        (call[0] as { event?: string }).event === "rank.recap.over_budget",
+    );
+    expect(warnCalls).toHaveLength(1);
+    const payload = warnCalls[0]?.[0] as {
+      rawItemId: number;
+      totalWords: number;
+      bulletCount: number;
+      runId?: string;
+      budget: number;
+    };
+    expect(payload.rawItemId).toBe(1);
+    expect(payload.bulletCount).toBe(4);
+    expect(payload.totalWords).toBe(210);
+    expect(payload.runId).toBe("run-abc");
+    expect(payload.budget).toBe(130);
+  });
+
+  it("does NOT emit rank.recap.over_budget when a story is under budget", async () => {
+    // Default makeRankedEntry: summary (~8 words) + 3 short bullets (~6 words each) + bottomLine (~7 words) ≈ 33 words.
+    const underBudget = makeRankedEntry({
+      id: 1,
+      score: 80,
+      rationale: "strong Novelty",
+    });
+    const generateObject = makeGenerate({ ranked: [underBudget] });
+
+    await rankCandidates([makeCandidate(1)], {
+      topN: 5,
+      generateObject,
+      loadBodies: stubLoadBodies,
+    });
+
+    const warnCalls = mockLoggerWarn.mock.calls.filter(
+      (call) =>
+        typeof call[0] === "object" &&
+        call[0] !== null &&
+        (call[0] as { event?: string }).event === "rank.recap.over_budget",
+    );
+    expect(warnCalls).toHaveLength(0);
+  });
+
+  it("emits one over_budget warn per offending story (not one per run)", async () => {
+    const longBullet = "word ".repeat(40).trim();
+    const ranked = [
+      makeRankedEntry({
+        id: 1,
+        score: 80,
+        rationale: "strong Novelty",
+        bullets: [longBullet, longBullet, longBullet, longBullet],
+      }),
+      makeRankedEntry({
+        id: 2,
+        score: 70,
+        rationale: "strong Actionability",
+      }), // under budget
+      makeRankedEntry({
+        id: 3,
+        score: 60,
+        rationale: "strong Signal-vs-hype",
+        bullets: [longBullet, longBullet, longBullet, longBullet],
+      }),
+    ];
+    const generateObject = makeGenerate({ ranked });
+
+    await rankCandidates(
+      [makeCandidate(1), makeCandidate(2), makeCandidate(3)],
+      {
+        topN: 5,
+        generateObject,
+        loadBodies: stubLoadBodies,
+      },
+    );
+
+    const warnCalls = mockLoggerWarn.mock.calls.filter(
+      (call) =>
+        typeof call[0] === "object" &&
+        call[0] !== null &&
+        (call[0] as { event?: string }).event === "rank.recap.over_budget",
+    );
+    expect(warnCalls).toHaveLength(2);
+    const ids = warnCalls
+      .map((c) => (c[0] as { rawItemId: number }).rawItemId)
+      .sort((a, b) => a - b);
+    expect(ids).toEqual([1, 3]);
+  });
 });

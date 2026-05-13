@@ -17,11 +17,25 @@ Source neutrality rule: ${SOURCE_NEUTRALITY_RULE}
 
 Each rationale must name the driving axis so the reader can see why the item was ranked where it was.
 
-For each ranked item, also produce:
-- title: A 4-to-7-word neutral newswire headline summarizing this story. Sentence case. Names the actor and the action (subject-verb-object). No clickbait, no questions, no colons-as-title-tropes, no editorial framing words like "quietly", "finally", or "doubles down". Aim for ~50 characters. Examples: "OpenAI ships GPT-5 with native tool use", "Anthropic raises $5B at $60B valuation", "Meta open-sources Llama 4 weights", "Google's Veo 3 lands on Vertex AI".
-- summary: A 1-2 sentence plain-text news summary of what happened. No markdown links.
-- bullets: 3-5 plain-text analysis points explaining why this matters and what it means. No markdown links.
-- bottomLine: A single plain-text strategic takeaway sentence. No markdown links.
+For each ranked item, also produce — write for a 3-4 minute total read across roughly 8 stories, so each story must stay under ~100 words across all four fields combined. Per-story brevity is a hard quality bar, not an arbitrary limit:
+
+- title: A 4-to-7-word neutral newswire headline. Sentence case. Names the actor and the action (subject-verb-object). No clickbait, no questions, no colons-as-title-tropes, no editorial framing words like "quietly", "finally", or "doubles down". Aim for ~50 characters.
+  Good: "OpenAI ships GPT-5 with native tool use"
+  Good: "Anthropic raises $5B at $60B valuation"
+
+- summary: One sentence stating WHAT happened. ≤25 words. Fact-first, names and numbers. No analysis here — analysis goes in bottomLine. No markdown links.
+  Good: "OpenAI released GPT-5 today with a 400K-token context window and native tool use."
+
+- bullets: Exactly 3 short bullets, ≤15 words each, ~12 words average. Each bullet is a scannable FACT — a number, a name, a capability, a comparison, a release date, a benchmark result. NOT a second summary in disguise. NOT analysis phrases like "this signals", "this means", "marks a shift" — those go in bottomLine. If two bullets say similar things, cut one and find a stronger fact. No markdown links.
+  Good:
+    "Outperforms GPT-4o by 18% on SWE-bench Verified."
+    "Pricing: $5/M input tokens, $15/M output — half of Claude Opus."
+    "Tool-use is native; no JSON schema scaffolding required."
+
+- bottomLine: One sentence, ≤25 words. The strategic so-what. This is the only place analysis lives. No markdown links.
+  Good: "GPT-5's native tool use closes the agent gap with Claude and makes schema-wrapping libraries largely obsolete."
+
+Hard ceiling: if your draft exceeds 110 words across these four fields combined, cut bullets first (drop the weakest), then trim the summary, then the bottomLine. Never pad to fill.
 
 Also return a top-level \`digest\` object framing the day like the front page of a daily news brief:
 
