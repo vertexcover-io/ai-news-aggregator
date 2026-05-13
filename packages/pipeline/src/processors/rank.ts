@@ -22,6 +22,12 @@ const DEFAULT_MODEL = "claude-sonnet-4-6";
 const DEFAULT_BODY_TOKEN_BUDGET = 2000;
 const DEFAULT_COMMENTS_PER_ITEM = 5;
 const DEFAULT_COMMENT_TOKEN_BUDGET = 200;
+const RECAP_WORD_BUDGET = 130;
+
+function countWords(text: string): number {
+  if (text.length === 0) return 0;
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
 
 export interface RankOptions {
   topN: number;
@@ -234,6 +240,28 @@ export async function rankCandidates(
     }
     return mentionsAxis;
   });
+
+  for (const r of axisValidated) {
+    const bulletsWords = r.bullets.reduce(
+      (n, b) => n + countWords(b),
+      0,
+    );
+    const totalWords =
+      countWords(r.summary) + bulletsWords + countWords(r.bottomLine);
+    if (totalWords > RECAP_WORD_BUDGET) {
+      logger.warn(
+        {
+          event: "rank.recap.over_budget",
+          runId: options.runId,
+          rawItemId: r.id,
+          totalWords,
+          bulletCount: r.bullets.length,
+          budget: RECAP_WORD_BUDGET,
+        },
+        "rank.recap.over_budget",
+      );
+    }
+  }
 
   const byId = new Map(shortlist.map((c) => [c.id, c]));
   const validEntries = axisValidated.filter((r) => byId.has(r.id));
