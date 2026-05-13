@@ -6,7 +6,7 @@
 # the repo to /opt/newsletter/deployment/ on every deploy. This script
 # only installs tools, creates the deploy user, hardens SSH, configures
 # UFW, installs Caddy, and creates the empty directories CI will rsync
-# into. NO git operations, no GitHub credentials.
+# into. NO git operations, no GitHub credentials, no production secrets.
 #
 # Run as root on the target server:
 #   export DEPLOY_SSH_PUBKEY="ssh-ed25519 AAAA... user@laptop"
@@ -35,8 +35,7 @@ apt-get install -y \
 	gnupg \
 	ufw \
 	rsync \
-	unattended-upgrades \
-	age
+	unattended-upgrades
 
 # ─── 2. Docker CE ─────────────────────────────────────────────────────────
 if ! command -v docker >/dev/null 2>&1; then
@@ -66,24 +65,7 @@ else
 	log "Caddy already installed — skipping"
 fi
 
-# ─── 4. SOPS ──────────────────────────────────────────────────────────────
-if ! command -v sops >/dev/null 2>&1; then
-	log "Installing SOPS"
-	SOPS_VERSION="v3.9.4"
-	ARCH="$(dpkg --print-architecture)"
-	case "$ARCH" in
-		amd64) SOPS_ARCH="amd64" ;;
-		arm64) SOPS_ARCH="arm64" ;;
-		*) die "Unsupported arch: $ARCH" ;;
-	esac
-	curl -fsSL -o /usr/local/bin/sops \
-		"https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.${SOPS_ARCH}"
-	chmod +x /usr/local/bin/sops
-else
-	log "SOPS already installed — skipping"
-fi
-
-# ─── 5. Deploy user ───────────────────────────────────────────────────────
+# ─── 4. Deploy user ───────────────────────────────────────────────────────
 if ! id -u "$DEPLOY_USER" >/dev/null 2>&1; then
 	log "Creating user '$DEPLOY_USER'"
 	useradd -m -s /bin/bash -G docker "$DEPLOY_USER"
@@ -112,13 +94,12 @@ $DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/tee /etc/newsletter/.env
 $DEPLOY_USER ALL=(root) NOPASSWD: /bin/chmod 640 /etc/newsletter/.env
 $DEPLOY_USER ALL=(root) NOPASSWD: /bin/chown root\:$DEPLOY_USER /etc/newsletter/.env
 $DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/install -m 644 /opt/newsletter/deployment/Caddyfile /etc/caddy/Caddyfile
-$DEPLOY_USER ALL=(root) NOPASSWD: /usr/local/bin/sops --decrypt /opt/newsletter/deployment/.env.prod.enc
 $DEPLOY_USER ALL=(root) NOPASSWD: /bin/cat /etc/newsletter/.env
 EOF
 chmod 440 "$SUDO_FILE"
 visudo -cf "$SUDO_FILE" >/dev/null
 
-# ─── 6. SSH hardening ─────────────────────────────────────────────────────
+# ─── 5. SSH hardening ─────────────────────────────────────────────────────
 log "Hardening SSH (disable password + root login)"
 SSHD_CONFIG="/etc/ssh/sshd_config"
 sed -i -E 's/^#?PasswordAuthentication.*/PasswordAuthentication no/' "$SSHD_CONFIG"
@@ -127,7 +108,7 @@ grep -q '^PasswordAuthentication no' "$SSHD_CONFIG" || echo 'PasswordAuthenticat
 grep -q '^PermitRootLogin no'       "$SSHD_CONFIG" || echo 'PermitRootLogin no'       >> "$SSHD_CONFIG"
 systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
 
-# ─── 7. Firewall ──────────────────────────────────────────────────────────
+# ─── 6. Firewall ──────────────────────────────────────────────────────────
 log "Configuring UFW (22/80/443)"
 ufw --force default deny incoming
 ufw --force default allow outgoing
@@ -136,11 +117,11 @@ ufw allow 80/tcp comment 'HTTP (Caddy + ACME)'
 ufw allow 443/tcp comment 'HTTPS (Caddy)'
 ufw --force enable
 
-# ─── 8. Unattended upgrades ───────────────────────────────────────────────
+# ─── 7. Unattended upgrades ───────────────────────────────────────────────
 log "Enabling unattended security upgrades"
 systemctl enable --now unattended-upgrades
 
-# ─── 9. Filesystem layout ─────────────────────────────────────────────────
+# ─── 8. Filesystem layout ─────────────────────────────────────────────────
 log "Creating app directories"
 install -d -m 755 /etc/newsletter
 install -d -m 755 /var/lib/newsletter/pgdata
@@ -165,17 +146,14 @@ fi
 systemctl enable --now caddy
 systemctl reload caddy || true
 
-# ─── 10. Done ─────────────────────────────────────────────────────────────
+# ─── 9. Done ─────────────────────────────────────────────────────────────
 cat <<EOF
 
 ✅ Bootstrap complete.
 
-Next steps (perform once, as root):
+Next steps:
 
-  1. Drop the age private key so deploy.sh can decrypt secrets:
-       install -d -m 700 /root/.config/sops/age
-       \$EDITOR /root/.config/sops/age/keys.txt   # paste AGE-SECRET-KEY-1...
-       chmod 600 /root/.config/sops/age/keys.txt
+  1. Create the production GitHub Environment secrets listed in deployment/README.md.
 
   2. Point DNS: news.vertexcover.io  A  \$(curl -s https://ipv4.icanhazip.com)
 

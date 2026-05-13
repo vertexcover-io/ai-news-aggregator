@@ -2,7 +2,8 @@
 # Required env vars at runtime:
 #   GIT_SHA        — image tag for api/pipeline (set by deploy.sh)
 #   GHCR_REPO_OWNER — GitHub owner for GHCR images (e.g. vertexcover-io)
-# Secrets are sourced from /etc/newsletter/.env (written by deploy.sh from SOPS).
+# Secrets are sourced from /etc/newsletter/.env (written by GitHub Actions from
+# production Environment secrets before deploy.sh runs).
 
 name: newsletter
 
