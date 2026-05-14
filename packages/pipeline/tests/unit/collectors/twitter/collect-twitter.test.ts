@@ -70,6 +70,7 @@ function makeTweet(overrides: Partial<NormalizedTweet> = {}): NormalizedTweet {
     authorHandle: "alice",
     fullText: "hello",
     createdAt: "2026-05-01T00:00:00.000Z",
+    eventCreatedAt: "2026-05-01T00:00:00.000Z",
     url: "https://x.com/alice/status/1",
     likeCount: 0,
     retweetCount: 0,
@@ -256,19 +257,76 @@ describe("collectTwitter", () => {
     expect(client.fetchUserTimeline).toHaveBeenCalledTimes(1);
   });
 
-  it("REQ-004: stops paginating at sinceHours cutoff", async () => {
+  it("REQ-004: filters out-of-window tweets but keeps paginating until consecutive streak", async () => {
     const now = new Date("2026-05-02T00:00:00.000Z");
     // sinceHours=24 => cutoff is 2026-05-01T00:00
+    const inWin = (id: string, t: string): NormalizedTweet =>
+      makeTweet({ id, createdAt: t, eventCreatedAt: t });
+    const outWin = (id: string): NormalizedTweet =>
+      makeTweet({
+        id,
+        createdAt: "2026-04-30T12:00:00.000Z",
+        eventCreatedAt: "2026-04-30T12:00:00.000Z",
+      });
+    // page1: one out-of-window tweet sandwiched between in-window ones must NOT
+    // truncate the rest of the page.
     const page1 = [
-      makeTweet({ id: "a", createdAt: "2026-05-01T23:00:00.000Z" }),
-      makeTweet({ id: "b", createdAt: "2026-05-01T12:00:00.000Z" }),
-      makeTweet({ id: "c", createdAt: "2026-04-30T12:00:00.000Z" }), // before cutoff
-      makeTweet({ id: "d", createdAt: "2026-04-30T00:00:00.000Z" }),
+      inWin("a", "2026-05-01T23:00:00.000Z"),
+      inWin("b", "2026-05-01T12:00:00.000Z"),
+      outWin("old1"),
+      inWin("c", "2026-05-01T06:00:00.000Z"),
     ];
+    // page2: more in-window tweets — pagination must continue past page1.
+    const page2 = [
+      inWin("d", "2026-05-01T05:00:00.000Z"),
+      inWin("e", "2026-05-01T02:00:00.000Z"),
+    ];
+    // page3: a streak of out-of-window tweets >= STREAK_LIMIT — collector stops.
+    const streak: NormalizedTweet[] = Array.from({ length: 30 }, (_, i) =>
+      outWin(`old-streak-${String(i)}`),
+    );
+    const client = createClientStub();
+    client.fetchListTweets
+      .mockResolvedValueOnce({ tweets: page1, nextCursor: "c1" })
+      .mockResolvedValueOnce({ tweets: page2, nextCursor: "c2" })
+      .mockResolvedValueOnce({ tweets: streak, nextCursor: "c3" });
+    const repo = createMockRepo();
+    const config: TwitterCollectConfig = {
+      listIds: ["L1"],
+      users: [],
+      sinceHours: 24,
+    };
+
+    await collectTwitter(
+      makeDeps(client, repo, { now: () => now }),
+      config,
+    );
+
+    expect(client.fetchListTweets).toHaveBeenCalledTimes(3);
+    const upserted = repo.upsertItems.mock.calls[0]?.[0] ?? [];
+    expect(upserted.map((u) => u.externalId)).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+    ]);
+  });
+
+  it("REQ-004: cutoff uses eventCreatedAt, not retweeted-tweet createdAt", async () => {
+    const now = new Date("2026-05-02T00:00:00.000Z");
+    // A retweet's outer event time is recent but the underlying tweet is old.
+    // The collector must include it, not bail on the first cursor.
+    const recentRetweetOfOldTweet = makeTweet({
+      id: "rt-1",
+      createdAt: "2024-01-01T00:00:00.000Z", // original (display time)
+      eventCreatedAt: "2026-05-01T23:00:00.000Z", // retweet event time (in-window)
+      isRetweet: true,
+    });
     const client = createClientStub();
     client.fetchListTweets.mockResolvedValueOnce({
-      tweets: page1,
-      nextCursor: "c1",
+      tweets: [recentRetweetOfOldTweet],
+      nextCursor: null,
     });
     const repo = createMockRepo();
     const config: TwitterCollectConfig = {
@@ -282,9 +340,8 @@ describe("collectTwitter", () => {
       config,
     );
 
-    expect(client.fetchListTweets).toHaveBeenCalledTimes(1);
     const upserted = repo.upsertItems.mock.calls[0]?.[0] ?? [];
-    expect(upserted.map((u) => u.externalId)).toEqual(["a", "b"]);
+    expect(upserted.map((u) => u.externalId)).toEqual(["rt-1"]);
   });
 
   it("REQ-014, EDGE-006, EDGE-008: dedups by externalId before upsert", async () => {
