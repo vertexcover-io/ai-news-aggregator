@@ -4,6 +4,7 @@ import {
   Controller,
   type Control,
   type UseFormRegister,
+  type UseFormSetValue,
   useFieldArray,
   useWatch,
 } from "react-hook-form";
@@ -19,7 +20,10 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { SettingsFormValues } from "../../pages/settingsSchema";
+import type {
+  SettingsFormValues,
+  TwitterFormConfig,
+} from "../../pages/settingsSchema";
 import type {
   RunSubmitHnConfig,
   RunSubmitRedditConfig,
@@ -53,9 +57,10 @@ const DEFAULT_WEB: RunSubmitWebConfig = {
 interface SourcesSectionProps {
   control: Control<SettingsFormValues>;
   register: UseFormRegister<SettingsFormValues>;
+  setValue: UseFormSetValue<SettingsFormValues>;
 }
 
-const DEFAULT_TWITTER: SettingsFormValues["twitterConfig"] = {
+const DEFAULT_TWITTER: TwitterFormConfig = {
   listIds: [],
   users: [],
   maxTweetsPerSource: 50,
@@ -106,18 +111,28 @@ function summarizeWeb(c: RunSubmitWebConfig | null): string {
   return `${String(c.sources.length)} blog${c.sources.length === 1 ? "" : "s"} configured: ${names}`;
 }
 
+function summarizeSource(enabled: boolean, configSummary: string): string {
+  if (enabled) return configSummary;
+  return configSummary === "Disabled" ? "Disabled" : `Disabled · ${configSummary}`;
+}
+
 export function SourcesSection({
   control,
   register,
+  setValue,
 }: SourcesSectionProps): ReactElement {
   const [expandedSource, setExpandedSource] = useState<
     "hn" | "reddit" | "web" | "twitter" | null
   >(null);
 
   const hn = useWatch({ control, name: "hnConfig" });
+  const hnEnabled = useWatch({ control, name: "hnEnabled" });
   const reddit = useWatch({ control, name: "redditConfig" });
+  const redditEnabled = useWatch({ control, name: "redditEnabled" });
   const web = useWatch({ control, name: "webConfig" });
+  const webEnabled = useWatch({ control, name: "webEnabled" });
   const twitter = useWatch({ control, name: "twitterConfig" });
+  const twitterEnabled = useWatch({ control, name: "twitterEnabled" });
 
   function toggleExpand(source: "hn" | "reddit" | "web" | "twitter"): void {
     setExpandedSource((prev) => (prev === source ? null : source));
@@ -134,10 +149,16 @@ export function SourcesSection({
       <CardContent className="space-y-3">
         <SourceRow
           label="Hacker News"
-          summary={summarizeHn(hn)}
-          enabled={hn !== null}
+          summary={summarizeSource(hnEnabled, summarizeHn(hn))}
+          editable={hn !== null}
           expanded={expandedSource === "hn"}
           onEdit={() => {
+            if (hn === null) {
+              setValue("hnConfig", DEFAULT_HN, {
+                shouldDirty: true,
+                shouldTouch: true,
+              });
+            }
             toggleExpand("hn");
           }}
           editPanel={
@@ -146,14 +167,19 @@ export function SourcesSection({
         >
           <Controller
             control={control}
-            name="hnConfig"
+            name="hnEnabled"
             render={({ field }) => (
               <Switch
                 aria-label="Hacker News"
-                checked={field.value !== null}
+                checked={field.value}
                 onCheckedChange={(checked) => {
-                  field.onChange(checked ? DEFAULT_HN : null);
-                  if (!checked) setExpandedSource(null);
+                  if (checked && hn === null) {
+                    setValue("hnConfig", DEFAULT_HN, {
+                      shouldDirty: true,
+                      shouldTouch: true,
+                    });
+                  }
+                  field.onChange(checked);
                 }}
               />
             )}
@@ -161,10 +187,16 @@ export function SourcesSection({
         </SourceRow>
         <SourceRow
           label="Reddit"
-          summary={summarizeReddit(reddit)}
-          enabled={reddit !== null}
+          summary={summarizeSource(redditEnabled, summarizeReddit(reddit))}
+          editable={reddit !== null}
           expanded={expandedSource === "reddit"}
           onEdit={() => {
+            if (reddit === null) {
+              setValue("redditConfig", DEFAULT_REDDIT, {
+                shouldDirty: true,
+                shouldTouch: true,
+              });
+            }
             toggleExpand("reddit");
           }}
           editPanel={
@@ -173,14 +205,19 @@ export function SourcesSection({
         >
           <Controller
             control={control}
-            name="redditConfig"
+            name="redditEnabled"
             render={({ field }) => (
               <Switch
                 aria-label="Reddit"
-                checked={field.value !== null}
+                checked={field.value}
                 onCheckedChange={(checked) => {
-                  field.onChange(checked ? DEFAULT_REDDIT : null);
-                  if (!checked) setExpandedSource(null);
+                  if (checked && reddit === null) {
+                    setValue("redditConfig", DEFAULT_REDDIT, {
+                      shouldDirty: true,
+                      shouldTouch: true,
+                    });
+                  }
+                  field.onChange(checked);
                 }}
               />
             )}
@@ -188,10 +225,16 @@ export function SourcesSection({
         </SourceRow>
         <SourceRow
           label="Web (blog listings)"
-          summary={summarizeWeb(web)}
-          enabled={web !== null}
+          summary={summarizeSource(webEnabled, summarizeWeb(web))}
+          editable={web !== null}
           expanded={expandedSource === "web"}
           onEdit={() => {
+            if (web === null) {
+              setValue("webConfig", DEFAULT_WEB, {
+                shouldDirty: true,
+                shouldTouch: true,
+              });
+            }
             toggleExpand("web");
           }}
           editPanel={
@@ -200,14 +243,19 @@ export function SourcesSection({
         >
           <Controller
             control={control}
-            name="webConfig"
+            name="webEnabled"
             render={({ field }) => (
               <Switch
                 aria-label="Web (blog listings)"
-                checked={field.value !== null}
+                checked={field.value}
                 onCheckedChange={(checked) => {
-                  field.onChange(checked ? DEFAULT_WEB : null);
-                  if (!checked) setExpandedSource(null);
+                  if (checked && web === null) {
+                    setValue("webConfig", DEFAULT_WEB, {
+                      shouldDirty: true,
+                      shouldTouch: true,
+                    });
+                  }
+                  field.onChange(checked);
                 }}
               />
             )}
@@ -215,10 +263,16 @@ export function SourcesSection({
         </SourceRow>
         <SourceRow
           label="Twitter / X"
-          summary={summarizeTwitter(twitter)}
-          enabled={twitter !== null}
+          summary={summarizeSource(twitterEnabled, summarizeTwitter(twitter))}
+          editable={twitter !== null}
           expanded={expandedSource === "twitter"}
           onEdit={() => {
+            if (twitter === null) {
+              setValue("twitterConfig", { ...DEFAULT_TWITTER }, {
+                shouldDirty: true,
+                shouldTouch: true,
+              });
+            }
             toggleExpand("twitter");
           }}
           editPanel={
@@ -227,14 +281,19 @@ export function SourcesSection({
         >
           <Controller
             control={control}
-            name="twitterConfig"
+            name="twitterEnabled"
             render={({ field }) => (
               <Switch
                 aria-label="Twitter / X"
-                checked={field.value !== null}
+                checked={field.value}
                 onCheckedChange={(checked) => {
-                  field.onChange(checked ? { ...DEFAULT_TWITTER } : null);
-                  if (!checked) setExpandedSource(null);
+                  if (checked && twitter === null) {
+                    setValue("twitterConfig", { ...DEFAULT_TWITTER }, {
+                      shouldDirty: true,
+                      shouldTouch: true,
+                    });
+                  }
+                  field.onChange(checked);
                 }}
               />
             )}
@@ -248,7 +307,7 @@ export function SourcesSection({
 interface SourceRowProps {
   label: string;
   summary: string;
-  enabled: boolean;
+  editable: boolean;
   expanded: boolean;
   onEdit: () => void;
   editPanel: ReactElement;
@@ -258,7 +317,7 @@ interface SourceRowProps {
 function SourceRow({
   label,
   summary,
-  enabled,
+  editable,
   expanded,
   onEdit,
   editPanel,
@@ -278,16 +337,16 @@ function SourceRow({
           type="button"
           variant="ghost"
           size="sm"
-          disabled={!enabled}
           onClick={onEdit}
           aria-expanded={expanded}
+          aria-label={`${label} ${expanded ? "Close" : "Edit"}`}
           className="min-h-[44px] min-w-[44px]"
         >
           {expanded ? <ChevronUp /> : <Pencil />}
           {expanded ? "Close" : "Edit"}
         </Button>
       </div>
-      {expanded && enabled && (
+      {expanded && editable && (
         <div className="border-t px-4 pb-4 pt-3">{editPanel}</div>
       )}
     </div>

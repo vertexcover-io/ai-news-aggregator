@@ -31,9 +31,13 @@ function Harness({ initialTz }: HarnessProps): ReactElement {
     defaultValues: {
       topN: 10,
       halfLifeHours: null,
+      hnEnabled: false,
       hnConfig: null,
+      redditEnabled: false,
       redditConfig: null,
+      webEnabled: false,
       webConfig: null,
+      twitterEnabled: false,
       twitterConfig: null,
       scheduleTime: "09:00",
       scheduleTimezone: initialTz,

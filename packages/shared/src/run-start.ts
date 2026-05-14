@@ -38,18 +38,22 @@ export async function startRun(
 ): Promise<{ runId: string }> {
   const runId = (deps.runId ?? randomUUID)();
   const nowIso = (deps.now ? deps.now() : new Date()).toISOString();
+  const hnConfig = settings.hnEnabled ? settings.hnConfig : null;
+  const redditConfig = settings.redditEnabled ? settings.redditConfig : null;
+  const webConfig = settings.webEnabled ? settings.webConfig : null;
+  const twitterConfig = settings.twitterEnabled ? settings.twitterConfig : null;
 
   const sources: RunState["sources"] = {};
-  if (settings.hnConfig) {
+  if (hnConfig) {
     sources.hn = { status: "pending", itemsFetched: 0, errors: [] };
   }
-  if (settings.redditConfig) {
+  if (redditConfig) {
     sources.reddit = { status: "pending", itemsFetched: 0, errors: [] };
   }
-  if (settings.webConfig) {
+  if (webConfig) {
     sources.blog = { status: "pending", itemsFetched: 0, errors: [] };
   }
-  if (settings.twitterConfig) {
+  if (twitterConfig) {
     sources.twitter = { status: "pending", itemsFetched: 0, errors: [] };
   }
 
@@ -76,21 +80,21 @@ export async function startRun(
 
   const sourceTypes: RunProcessJobPayload["sourceTypes"] = [];
   const collectors: RunProcessJobPayload["collectors"] = {};
-  if (settings.hnConfig) {
+  if (hnConfig) {
     sourceTypes.push("hn");
-    collectors.hn = settings.hnConfig;
+    collectors.hn = hnConfig;
   }
-  if (settings.redditConfig) {
+  if (redditConfig) {
     sourceTypes.push("reddit");
-    collectors.reddit = settings.redditConfig;
+    collectors.reddit = redditConfig;
   }
-  if (settings.webConfig) {
+  if (webConfig) {
     sourceTypes.push("blog");
-    collectors.web = settings.webConfig;
+    collectors.web = webConfig;
   }
-  if (settings.twitterConfig) {
+  if (twitterConfig) {
     sourceTypes.push("twitter");
-    collectors.twitter = settings.twitterConfig;
+    collectors.twitter = twitterConfig;
   }
 
   const jobPayload: RunProcessJobPayload = {

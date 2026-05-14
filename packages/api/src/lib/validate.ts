@@ -103,9 +103,13 @@ function isValidIanaTimezone(tz: string): boolean {
 const userSettingsCommonShape = {
   topN: z.number().int().min(1).max(50),
   halfLifeHours: z.number().positive().nullable(),
+  hnEnabled: z.boolean(),
   hnConfig: hnConfigSchema.nullable(),
+  redditEnabled: z.boolean(),
   redditConfig: redditConfigSchema.nullable(),
+  webEnabled: z.boolean(),
   webConfig: webConfigSchema.nullable(),
+  twitterEnabled: z.boolean(),
   scheduleTime: z
     .string()
     .regex(HH_MM_RE, { message: "scheduleTime must be HH:MM (24h)" }),
@@ -118,28 +122,87 @@ const userSettingsCommonShape = {
   scheduleEnabled: z.boolean(),
 } as const;
 
-const sourcesPresentRefinement = (payload: {
+interface SourceEnabledPayload {
   scheduleEnabled: boolean;
-  hnConfig: unknown;
-  redditConfig: unknown;
-  webConfig: unknown;
-}): boolean =>
+  hnEnabled: boolean;
+  redditEnabled: boolean;
+  webEnabled: boolean;
+  twitterEnabled: boolean;
+}
+
+const sourcesEnabledRefinement = (payload: SourceEnabledPayload): boolean =>
   !payload.scheduleEnabled ||
-  payload.hnConfig !== null ||
-  payload.redditConfig !== null ||
-  payload.webConfig !== null;
+  payload.hnEnabled ||
+  payload.redditEnabled ||
+  payload.webEnabled ||
+  payload.twitterEnabled;
 
 const sourcesPresentMessage = {
   message:
     "at least one source must be enabled when scheduleEnabled is true",
 };
 
+function addEnabledConfigIssues(
+  payload: {
+    hnEnabled: boolean;
+    hnConfig: unknown;
+    redditEnabled: boolean;
+    redditConfig: unknown;
+    webEnabled: boolean;
+    webConfig: unknown;
+    twitterEnabled: boolean;
+    twitterConfig: unknown;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  const pairs = [
+    { enabled: payload.hnEnabled, config: payload.hnConfig, path: "hnConfig" },
+    {
+      enabled: payload.redditEnabled,
+      config: payload.redditConfig,
+      path: "redditConfig",
+    },
+    { enabled: payload.webEnabled, config: payload.webConfig, path: "webConfig" },
+    {
+      enabled: payload.twitterEnabled,
+      config: payload.twitterConfig,
+      path: "twitterConfig",
+    },
+  ] as const;
+
+  pairs
+    .filter(({ enabled, config }) => enabled && config === null)
+    .forEach(({ path }) => {
+      ctx.addIssue({
+        code: "custom",
+        message: "enabled source must include a config",
+        path: [path],
+      });
+    });
+}
+
 export const userSettingsUpsertSchema = z
   .object({
     ...userSettingsCommonShape,
+    hnEnabled: z.boolean().optional(),
+    redditEnabled: z.boolean().optional(),
+    webEnabled: z.boolean().optional(),
+    twitterEnabled: z.boolean().optional(),
     twitterConfig: twitterConfigInputSchema.nullable(),
   })
-  .refine(sourcesPresentRefinement, sourcesPresentMessage);
+  .transform((payload) => ({
+    ...payload,
+    hnEnabled: payload.hnEnabled ?? payload.hnConfig !== null,
+    redditEnabled: payload.redditEnabled ?? payload.redditConfig !== null,
+    webEnabled: payload.webEnabled ?? payload.webConfig !== null,
+    twitterEnabled: payload.twitterEnabled ?? payload.twitterConfig !== null,
+  }))
+  .superRefine((payload, ctx) => {
+    if (!sourcesEnabledRefinement(payload)) {
+      ctx.addIssue({ code: "custom", ...sourcesPresentMessage });
+    }
+    addEnabledConfigIssues(payload, ctx);
+  });
 
 export type UserSettingsUpsertBody = z.infer<typeof userSettingsUpsertSchema>;
 
@@ -148,10 +211,12 @@ export const userSettingsPersistedSchema = z
     ...userSettingsCommonShape,
     twitterConfig: twitterConfigPersistedSchema.nullable(),
   })
-  .refine(
-    sourcesPresentRefinement,
-    sourcesPresentMessage,
-  ) satisfies z.ZodType<Omit<UserSettings, "id" | "updatedAt">>;
+  .superRefine((payload, ctx) => {
+    if (!sourcesEnabledRefinement(payload)) {
+      ctx.addIssue({ code: "custom", ...sourcesPresentMessage });
+    }
+    addEnabledConfigIssues(payload, ctx);
+  }) satisfies z.ZodType<Omit<UserSettings, "id" | "updatedAt">>;
 
 export type UserSettingsPersistedBody = z.infer<typeof userSettingsPersistedSchema>;
 

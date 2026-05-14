@@ -127,6 +127,13 @@
       "when": 1778755608372,
       "tag": "0017_drop_tldr",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1778775989029,
+      "tag": "0018_glamorous_silver_centurion",
+      "breakpoints": true
     }
   ]
 }

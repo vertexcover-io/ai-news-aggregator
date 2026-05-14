@@ -88,10 +88,10 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       return c.json({ error: "settings not configured" }, 409);
     }
     const anySource =
-      settings.hnConfig !== null ||
-      settings.redditConfig !== null ||
-      settings.webConfig !== null ||
-      settings.twitterConfig !== null;
+      (settings.hnEnabled && settings.hnConfig !== null) ||
+      (settings.redditEnabled && settings.redditConfig !== null) ||
+      (settings.webEnabled && settings.webConfig !== null) ||
+      (settings.twitterEnabled && settings.twitterConfig !== null);
     if (!anySource) {
       return c.json({ error: "no sources enabled" }, 409);
     }

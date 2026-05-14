@@ -1,34 +1,57 @@
 import { describe, expect, it, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import type { ReactElement } from "react";
 import { SourcesSection } from "../../../../src/components/settings/SourcesSection";
-import type { SettingsFormValues } from "../../../../src/pages/settingsSchema";
+import {
+  normalizeSettingsForSubmit,
+  type SettingsSubmitInput,
+  type SettingsFormValues,
+} from "../../../../src/pages/settingsSchema";
 
 interface WrapperProps {
   initialSources?: { name: string; listingUrl: string }[];
+  webEnabled?: boolean;
+  onSubmit?: (input: SettingsSubmitInput) => void;
 }
 
-function TestWrapper({ initialSources = [] }: WrapperProps): ReactElement {
-  const { control, register } = useForm<SettingsFormValues>({
+function TestWrapper({
+  initialSources = [],
+  webEnabled = true,
+  onSubmit,
+}: WrapperProps): ReactElement {
+  const { control, register, handleSubmit, setValue } = useForm<SettingsFormValues>({
     defaultValues: {
       topN: 10,
       halfLifeHours: null,
+      hnEnabled: false,
       hnConfig: null,
+      redditEnabled: false,
       redditConfig: null,
+      webEnabled,
       webConfig: {
         sources: initialSources,
         maxItems: 10,
         sinceDays: 7,
       },
+      twitterEnabled: false,
+      twitterConfig: null,
       scheduleTime: "09:00",
       scheduleTimezone: "UTC",
       scheduleEnabled: false,
     },
   });
   return (
-    <form>
-      <SourcesSection control={control} register={register} />
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void handleSubmit((values) => {
+          onSubmit?.(normalizeSettingsForSubmit(values));
+        })(event);
+      }}
+    >
+      <SourcesSection control={control} register={register} setValue={setValue} />
+      <button type="submit">Submit</button>
     </form>
   );
 }
@@ -39,14 +62,9 @@ afterEach(() => {
 
 describe("WebEditPanel — per-source Name+URL row inputs", () => {
   function openWebEditPanel(): void {
-    // There are three Edit buttons (HN, Reddit, Web). HN and Reddit are disabled
-    // because those configs are null. Find the enabled one (Web).
-    const editBtns = screen.getAllByRole("button", { name: /edit/i });
-    const enabledBtn = editBtns.find(
-      (btn) => !(btn as HTMLButtonElement).disabled,
+    fireEvent.click(
+      screen.getByRole("button", { name: /web \(blog listings\) edit/i }),
     );
-    if (!enabledBtn) throw new Error("No enabled Edit button found");
-    fireEvent.click(enabledBtn);
   }
 
   it("renders one Name and one URL input per source", () => {
@@ -151,5 +169,50 @@ describe("WebEditPanel — per-source Name+URL row inputs", () => {
     expect(
       screen.getByDisplayValue("https://www.anthropic.com/research"),
     ).toBeTruthy();
+  });
+
+  it("turning Web off preserves its config in the submitted payload", async () => {
+    const submissions: SettingsSubmitInput[] = [];
+    render(
+      <TestWrapper
+        initialSources={[
+          { name: "Anthropic", listingUrl: "https://www.anthropic.com/news" },
+        ]}
+        onSubmit={(input) => {
+          submissions.push(input);
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Web (blog listings)"));
+    fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+
+    await waitFor(() => {
+      expect(submissions).toHaveLength(1);
+    });
+    const submitted = submissions[0];
+    expect(submitted.webEnabled).toBe(false);
+    expect(submitted.webConfig).toEqual({
+      sources: [
+        { name: "Anthropic", listingUrl: "https://www.anthropic.com/news" },
+      ],
+      maxItems: 10,
+      sinceDays: 7,
+    });
+  });
+
+  it("keeps the disabled Web row editable", () => {
+    render(
+      <TestWrapper
+        webEnabled={false}
+        initialSources={[
+          { name: "Anthropic", listingUrl: "https://www.anthropic.com/news" },
+        ]}
+      />,
+    );
+
+    openWebEditPanel();
+
+    expect(screen.getByDisplayValue("Anthropic")).toBeTruthy();
   });
 });

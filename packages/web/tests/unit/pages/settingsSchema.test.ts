@@ -15,6 +15,7 @@ describe("settingsFormSchema — VS-6 regression", () => {
   const baseValid = {
     topN: 12,
     halfLifeHours: 24,
+    hnEnabled: true,
     hnConfig: {
       keywords: ["ai", "llm", "agents"],
       pointsThreshold: 100,
@@ -23,13 +24,16 @@ describe("settingsFormSchema — VS-6 regression", () => {
       feeds: ["newest", "best"],
       commentsPerItem: 10,
     },
+    redditEnabled: true,
     redditConfig: {
       subreddits: ["MachineLearning", "LocalLLaMA"],
       sort: "hot" as const,
       limit: 25,
       sinceDays: 1,
     },
+    webEnabled: false,
     webConfig: null,
+    twitterEnabled: false,
     scheduleTime: "07:00",
     scheduleTimezone: "Asia/Calcutta",
     scheduleEnabled: false,

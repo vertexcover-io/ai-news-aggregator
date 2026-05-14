@@ -45,9 +45,13 @@ function buildApp(queue: ReturnType<typeof makeQueue>) {
 const validBody = {
   topN: 10,
   halfLifeHours: null,
+  hnEnabled: true,
   hnConfig: { sinceDays: 1 },
+  redditEnabled: false,
   redditConfig: null,
+  webEnabled: false,
   webConfig: null,
+  twitterEnabled: false,
   twitterConfig: null,
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
@@ -117,9 +121,13 @@ describe("Settings routes (e2e)", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...validBody,
+        hnEnabled: false,
         hnConfig: null,
+        redditEnabled: false,
         redditConfig: null,
+        webEnabled: false,
         webConfig: null,
+        twitterEnabled: false,
         twitterConfig: null,
         }),
     });

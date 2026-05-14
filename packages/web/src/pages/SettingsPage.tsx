@@ -35,6 +35,7 @@ function getDefaults(): SettingsFormValues {
   return {
     topN: 12,
     halfLifeHours: 24,
+    hnEnabled: true,
     hnConfig: {
       keywords: ["ai", "llm", "agents"],
       pointsThreshold: 100,
@@ -43,13 +44,16 @@ function getDefaults(): SettingsFormValues {
       feeds: ["newest", "best"],
       commentsPerItem: 10,
     },
+    redditEnabled: true,
     redditConfig: {
       subreddits: ["MachineLearning", "LocalLLaMA"],
       sort: "hot",
       limit: 25,
       sinceDays: 1,
     },
+    webEnabled: false,
     webConfig: null,
+    twitterEnabled: false,
     twitterConfig: null,
     scheduleTime: "07:00",
     scheduleTimezone:
@@ -187,7 +191,11 @@ export function SettingsPage(): ReactElement {
             </p>
           </div>
 
-          <SourcesSection control={form.control} register={form.register} />
+          <SourcesSection
+            control={form.control}
+            register={form.register}
+            setValue={form.setValue}
+          />
           <ScheduleSection
             register={form.register}
             control={form.control}
