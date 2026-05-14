@@ -26,7 +26,7 @@ const hnConfigSchema = z.object({
 });
 
 const redditConfigSchema = z.object({
-  subreddits: z.array(z.string().min(1)).min(1),
+  subreddits: z.array(z.string()).min(1),
   sort: z.enum(["hot", "new", "top"]).optional(),
   limit: z.number().int().min(1).max(100).optional(),
   sinceDays: z.number().int().min(1).max(30),
@@ -148,11 +148,27 @@ export function normalizeTwitterConfigForSubmit(
 export function normalizeSettingsForSubmit(
   values: SettingsFormValues,
 ): SettingsSubmitInput {
+  const hnConfig = values.hnConfig
+    ? {
+        ...values.hnConfig,
+        keywords: values.hnConfig.keywords
+          ?.map((k) => k.trim())
+          .filter(Boolean),
+      }
+    : values.hnConfig;
+  const redditConfig = values.redditConfig
+    ? {
+        ...values.redditConfig,
+        subreddits: values.redditConfig.subreddits
+          .map((s) => s.trim())
+          .filter(Boolean),
+      }
+    : values.redditConfig;
   return {
     topN: values.topN,
     halfLifeHours: values.halfLifeHours,
-    hnConfig: values.hnConfig,
-    redditConfig: values.redditConfig,
+    hnConfig,
+    redditConfig,
     webConfig: values.webConfig,
     twitterConfig: normalizeTwitterConfigForSubmit(values.twitterConfig),
     scheduleTime: values.scheduleTime,
