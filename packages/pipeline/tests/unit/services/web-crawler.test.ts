@@ -144,7 +144,7 @@ describe("runWebCrawl", () => {
 
     const opts = getInstance().options;
     expect(opts.maxRequestRetries).toBe(3);
-    expect(opts.requestHandlerTimeoutSecs).toBe(20);
+    expect(opts.requestHandlerTimeoutSecs).toBe(30);
     expect(opts.sameDomainDelaySecs).toBe(1);
     expect(opts.respectRobotsTxtFile).toBe(true);
     expect(opts.renderingTypeDetectionRatio).toBe(0.1);

@@ -168,3 +168,15 @@ export function convert(input: ConvertInput): ConvertResult {
 export function isHealthyResult(r: ConvertResult): boolean {
   return r.textLength >= HEALTHY_TEXT_LENGTH;
 }
+
+const POST_LINK_RE = /\]\((https?:\/\/[^)\s]+\/(?:p|posts|post|blog|article|articles|entry|entries|news|story|stories|read)\/[^)\s]+)\)/gi;
+const MIN_LISTING_POST_LINKS = 2;
+
+// A listing page is only useful downstream if its markdown actually contains
+// links to individual posts. JS-rendered shells (e.g. Substack's "this site
+// requires JavaScript" landing) pass isHealthyResult on text length alone but
+// carry zero post anchors — they need browser fallback to paint the real list.
+export function hasListingPostLinks(markdown: string): boolean {
+  const matches = markdown.match(POST_LINK_RE);
+  return (matches?.length ?? 0) >= MIN_LISTING_POST_LINKS;
+}
