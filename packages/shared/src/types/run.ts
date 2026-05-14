@@ -1,5 +1,15 @@
 import type { SourceType } from "../db/schema.js";
-import type { RawItemEngagement, RecapContent } from "./index.js";
+import type { EnrichmentSkipReason, RawItemEngagement, RecapContent } from "./index.js";
+
+export interface EnrichmentTelemetry {
+  attempted: number;
+  ok: number;
+  failed: number;
+  skipped: number;
+  cacheHits: number;
+  avgFetchMs: number;
+  skippedReasons: Partial<Record<EnrichmentSkipReason, number>>;
+}
 
 export type RunStatus = "running" | "completed" | "failed" | "cancelling" | "cancelled";
 
@@ -161,6 +171,7 @@ export interface RunSourceTelemetry {
   sources: SourceTelemetryEntry[];
   totalItemsFetched: number;
   totalErrors: number;
+  enrichment?: EnrichmentTelemetry;
 }
 
 export interface RawItemSummary {

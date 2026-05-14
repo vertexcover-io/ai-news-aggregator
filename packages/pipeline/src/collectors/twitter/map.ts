@@ -10,11 +10,14 @@ function makeTitle(fullText: string): string {
 }
 
 export function tweetToRawItem(t: NormalizedTweet): RawItemInsert {
+  const external =
+    typeof t.externalUrl === "string" && t.externalUrl.length > 0 ? t.externalUrl : undefined;
   return {
     sourceType: "twitter",
     externalId: t.id,
     title: makeTitle(t.fullText),
-    url: t.url,
+    url: external ?? t.url,
+    sourceUrl: external ? t.url : undefined,
     author: t.authorHandle,
     content: t.fullText,
     imageUrl: t.photoUrls[0] ?? null,

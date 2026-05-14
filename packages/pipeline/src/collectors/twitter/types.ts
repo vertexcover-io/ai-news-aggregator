@@ -1,5 +1,6 @@
 import type { CollectorResult } from "@newsletter/shared/types";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
 
 export interface NormalizedTweet {
   id: string;
@@ -14,6 +15,7 @@ export interface NormalizedTweet {
   photoUrls: string[];
   isRetweet: boolean;
   isQuote: boolean;
+  externalUrl?: string;
 }
 
 export interface TwitterClientFetchOptions {
@@ -43,6 +45,7 @@ export interface TwitterCollectorDeps {
   signal?: AbortSignal;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
+  enrichment?: EnrichmentContext;
 }
 
 export interface TwitterCollectorResult extends CollectorResult {

@@ -10,6 +10,7 @@ import type {
 } from "@pipeline/collectors/twitter/types.js";
 import { tweetToRawItem } from "@pipeline/collectors/twitter/map.js";
 import type { TwitterCollectConfig } from "@pipeline/types.js";
+import { enrichRawItems } from "@pipeline/services/link-enrichment/index.js";
 
 const logger = createLogger("collector:twitter");
 
@@ -353,6 +354,16 @@ export async function collectTwitter(
 
   const deduped = dedupByExternalId(batch);
   if (deduped.length > 0) {
+    if (deps.enrichment) {
+      await enrichRawItems(deduped, deps.enrichment);
+      for (const item of deduped) {
+        if (item.imageUrl != null) continue;
+        const enriched = item.metadata?.enrichedLink;
+        if (enriched?.status === "ok" && enriched.imageUrl) {
+          item.imageUrl = enriched.imageUrl;
+        }
+      }
+    }
     await deps.rawItemsRepo.upsertItems(deduped);
   }
 

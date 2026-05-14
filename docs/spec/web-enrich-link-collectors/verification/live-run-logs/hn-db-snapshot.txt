@@ -1,0 +1,29 @@
+ source_type | external_id |                             url                              | status  |  skip_reason  |                   enriched_title                   | text_length | markdown_len | cache_hit 
+-------------+-------------+--------------------------------------------------------------+---------+---------------+----------------------------------------------------+-------------+--------------+-----------
+ hn          | 48130186    | https://github.com/glouw/nibble                              | ok      |               | GitHub - glouw/nibble: Generating LLVM IR without  |        1527 |         2212 | 
+ hn          | 48110529    | https://arstechnica.com/ai/2026/05/amazon-employees-are-toke | ok      |               | Amazon employees are "tokenmaxxing" due to pressur |        1951 |         1953 | 
+ hn          | 48126281    | https://x.com/i/trending/2054617957440143639                 | skipped | same-platform |                                                    |             |              | 
+ hn          | 48128003    |                                                              | skipped | no-url        |                                                    |             |              | 
+ hn          | 48130711    | https://mayerwin.github.io/AI-Arena-History/                 | ok      |               | Arena AI Model Elo History                         |        3552 |         3347 | 
+ hn          | 48109962    | https://voker.ai                                             | ok      |               | Voker | Analytics for AI Agents                    |        7145 |        16368 | 
+ hn          | 48124436    | https://www.tryardent.com/                                   | ok      |               | Ardent — Database branching for coding agents      |        2865 |         4967 | 
+ hn          | 48111143    | https://www.hypercubic.ai/hopper                             | ok      |               | Hopper — AI Agents for Mainframe Operations - Hype |        1535 |         3039 | 
+ hn          | 48115807    | https://www.savethearchive.com/newsleaders/                  | ok      |               | Tell New York Times, The Atlantic, and USA Today t |        3245 |         3693 | 
+ hn          | 48125617    | https://www.jdhodges.com/blog/macbook-neo-benchmarks-analysi | ok      |               | MacBook Neo Processor Benchmarks: A18 Pro CPU vs M |       25030 |        28689 | 
+ hn          | 48130950    | https://www.anthropic.com/news/claude-for-small-business     | ok      |               | Introducing Claude for Small Business              |       10527 |        13451 | 
+ hn          | 48111581    | https://deepmind.google/blog/ai-pointer/                     | ok      |               | Reimagining the mouse pointer for the AI era       |        4449 |         4921 | 
+ hn          | 48111896    | https://github.com/cactus-compute/needle                     | ok      |               | GitHub - cactus-compute/needle: 26m function call  |        4587 |         5233 | 
+ hn          | 48109600    | https://adola.app/                                           | ok      |               | Adola | Rose 1 prompt compression                  |        2371 |         2765 | 
+ hn          | 48121929    | https://avkcode.github.io/blog/us-winning-ai-race.html       | ok      |               | The US Is Winning the AI Race                      |        7011 |         5235 | 
+ hn          | 48121717    | https://www.404media.co/software-developers-say-ai-is-rottin | ok      |               | Software Developers Say AI Is Rotting Their Brains |        4005 |         5417 | 
+ hn          | 48129561    | https://personalaisafety.com/p/the-other-half-of-ai-safety   | ok      |               | The Other Half of AI Safety                        |        3479 |         4370 | 
+ hn          | 48126675    | https://bitplane.net/log/2026/05/rars/                       | ok      |               | rars in Rust, bro                                  |       10816 |        11159 | 
+ hn          | 48127815    | https://techcrunch.com/2026/05/12/medicares-new-payment-mode | ok      |               | Medicare’s new payment model is built for AI, and  |        6601 |         7213 | 
+ hn          | 48108778    | https://github.com/statewright/statewright                   | ok      |               | GitHub - statewright/statewright: State machine gu |        8149 |        11075 | 
+ hn          | 48126981    | https://www.theverge.com/tech/929091/meta-ai-threads-account | ok      |               | Meta won’t let you block its AI account on Threads |        2225 |         3305 | 
+ hn          | 48122624    | https://www.theatlantic.com/technology/2026/05/ai-backlash-d | ok      |               | The AI Backlash Could Get Very Ugly                |        8160 |         9796 | 
+ hn          | 48110593    |                                                              | skipped | no-url        |                                                    |             |              | 
+ hn          | 48130679    | https://github.com/DrCatHicks/learning-opportunities         | ok      |               | GitHub - DrCatHicks/learning-opportunities: A Clau |       14051 |        17248 | 
+ hn          | 48134400    | https://twitter.com/jediwolf/status/2054776716770320631      | skipped | same-platform |                                                    |             |              | 
+(25 rows)
+

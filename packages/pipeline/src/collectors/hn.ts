@@ -9,6 +9,8 @@ import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { delay } from "@pipeline/lib/delay.js";
 import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
+import { enrichRawItems } from "@pipeline/services/link-enrichment/index.js";
+import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
 
 const logger = createLogger("collector:hn");
 
@@ -144,54 +146,12 @@ const MAX_RETRIES = 3;
 const RATE_LIMIT_MS = 500;
 
 const ALGOLIA_BASE = "https://hn.algolia.com/api/v1";
-const OG_IMAGE_TIMEOUT_MS = 5000;
-const OG_IMAGE_MAX_BYTES = 50_000;
-
-const OG_IMAGE_REGEX = /<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/i;
-const OG_IMAGE_REGEX_ALT = /<meta\s+content="([^"]+)"\s+(?:property|name)="og:image"/i;
-
-export async function fetchOgImage(articleUrl: string, fetchFn: typeof fetch): Promise<string | null> {
-  if (!articleUrl.startsWith("http")) return null;
-
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      controller.abort();
-    }, OG_IMAGE_TIMEOUT_MS);
-
-    const response = await fetchFn(articleUrl, { signal: controller.signal });
-    clearTimeout(timer);
-
-    if (!response.ok) return null;
-
-    const contentType = response.headers.get("content-type") ?? "";
-    if (contentType && !contentType.includes("html")) return null;
-
-    const text = await response.text();
-    const html = text.slice(0, OG_IMAGE_MAX_BYTES);
-
-    const match = OG_IMAGE_REGEX.exec(html) ?? OG_IMAGE_REGEX_ALT.exec(html);
-    if (!match?.[1]) return null;
-
-    const ogUrl = match[1].replaceAll("&amp;", "&");
-
-    if (ogUrl.startsWith("http")) return ogUrl;
-
-    try {
-      return new URL(ogUrl, articleUrl).href;
-    } catch {
-      return null;
-    }
-  } catch (err) {
-    logger.debug({ url: articleUrl, err }, "og_image_fetch_failed");
-    return null;
-  }
-}
 
 export interface HnCollectorDeps {
   rawItemsRepo: RawItemsRepo;
   fetchFn?: typeof fetch;
   signal?: AbortSignal;
+  enrichment?: EnrichmentContext;
 }
 
 interface AlgoliaStoryHit {
@@ -479,19 +439,19 @@ export async function collectHn(
     }
   }
 
-  const ogResults = await Promise.allSettled(
-    allItems.map((item) => fetchOgImage(item.url, fetchFn)),
-  );
-  for (let i = 0; i < ogResults.length; i++) {
-    const result = ogResults[i];
-    if (result.status === "fulfilled" && result.value) {
-      allItems[i].imageUrl = result.value;
-    }
-  }
-
   let itemsStored = 0;
 
   if (allItems.length > 0) {
+    if (deps.enrichment) {
+      await enrichRawItems(allItems, deps.enrichment);
+      for (const item of allItems) {
+        if (item.imageUrl != null && item.imageUrl !== "") continue;
+        const enriched = item.metadata?.enrichedLink;
+        if (enriched?.status === "ok" && enriched.imageUrl) {
+          item.imageUrl = enriched.imageUrl;
+        }
+      }
+    }
     await deps.rawItemsRepo.upsertItems(allItems);
     itemsStored = allItems.length;
   }

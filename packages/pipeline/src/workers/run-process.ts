@@ -59,6 +59,12 @@ import {
   type CollectorOutcome,
   type CollectorSourceType,
 } from "@pipeline/services/source-telemetry.js";
+import {
+  createEnrichmentCache,
+  newCounters,
+  toEnrichmentTelemetry,
+} from "@pipeline/services/link-enrichment/index.js";
+import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
 
 const logger = createLogger("worker:run-process");
 
@@ -133,6 +139,7 @@ export type HnCollectFn = (
   deps: {
     rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
     signal?: AbortSignal;
+    enrichment?: EnrichmentContext;
   },
   config: HnCollectConfig,
 ) => Promise<CollectorResult>;
@@ -141,6 +148,7 @@ export type RedditCollectFn = (
   deps: {
     rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
     signal?: AbortSignal;
+    enrichment?: EnrichmentContext;
   },
   config: RedditCollectConfig,
 ) => Promise<CollectorResult>;
@@ -158,6 +166,7 @@ export type TwitterCollectFn = (
     client: TwitterClient;
     rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
     signal?: AbortSignal;
+    enrichment?: EnrichmentContext;
   },
   config: TwitterCollectConfig,
 ) => Promise<CollectorResult>;
@@ -195,6 +204,7 @@ async function runCollecting(
   runId: string,
   collectors: RunCollectorsPayload,
   signal: AbortSignal,
+  enrichmentCtx: EnrichmentContext,
 ): Promise<CollectingOutcome> {
   // In-process serializer for state writes: replicates the old
   // `concurrency: 1` invariant from the collection worker. Without this,
@@ -210,6 +220,7 @@ async function runCollecting(
   };
 
   const collectorDeps = { rawItemsRepo: deps.rawItemsRepo, signal };
+  const enrichingDeps = { ...collectorDeps, enrichment: enrichmentCtx };
 
   type SourceKey = CollectorSourceType;
   interface Task {
@@ -222,14 +233,14 @@ async function runCollecting(
     const config = collectors.hn;
     tasks.push({
       sourceKey: "hn",
-      run: () => deps.collectFns.hn(collectorDeps, config),
+      run: () => deps.collectFns.hn(enrichingDeps, config),
     });
   }
   if (collectors.reddit) {
     const config = collectors.reddit;
     tasks.push({
       sourceKey: "reddit",
-      run: () => deps.collectFns.reddit(collectorDeps, config),
+      run: () => deps.collectFns.reddit(enrichingDeps, config),
     });
   }
   if (collectors.web) {
@@ -245,7 +256,12 @@ async function runCollecting(
       sourceKey: "twitter",
       run: () =>
         deps.collectFns.twitter(
-          { client: deps.twitterClient, rawItemsRepo: deps.rawItemsRepo, signal },
+          {
+            client: deps.twitterClient,
+            rawItemsRepo: deps.rawItemsRepo,
+            signal,
+            enrichment: enrichmentCtx,
+          },
           config,
         ),
     });
@@ -350,6 +366,13 @@ export async function handleRunProcessJob(
     controller.abort(new CancelledError(runId));
   });
 
+  const enrichmentCtx: EnrichmentContext = {
+    logger: createLogger("collector:enrichment"),
+    signal,
+    cache: createEnrichmentCache(),
+    counters: newCounters(),
+  };
+
   // REQ-09: always close subscriber in a finally block
   try {
     // EDGE-04: re-check Redis run-state after subscribing — if already cancelling, abort immediately
@@ -361,7 +384,7 @@ export async function handleRunProcessJob(
     // Stage 1: collecting
     throwIfAborted(signal);
     await deps.runState.setStage(runId, "collecting");
-    const collecting = await runCollecting(deps, runId, collectors, signal);
+    const collecting = await runCollecting(deps, runId, collectors, signal, enrichmentCtx);
 
     // All collectors failed → terminal failure, skip dedup/rank
     if (collecting.failureCount > 0 && collecting.successCount === 0) {
@@ -529,6 +552,7 @@ export async function handleRunProcessJob(
 
     const autoReviewed = process.env.AUTO_REVIEW === "true";
     const sourceTelemetry = buildSourceTelemetry(collecting.outcomes);
+    sourceTelemetry.enrichment = toEnrichmentTelemetry(enrichmentCtx.counters);
     const { digestHeadline, digestSummary } = pickArchiveDigest(rankResult);
     const hook = nonEmptyText(rankResult.hook);
     const rankedRawIds = rankResult.rankedItems.map((r) => r.rawItemId);
