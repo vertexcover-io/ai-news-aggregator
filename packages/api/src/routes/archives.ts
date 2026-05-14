@@ -69,6 +69,8 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
         sourceTypes: string[] | null;
         digestHeadline: string | null;
         digestSummary: string | null;
+        hook: string | null;
+        tldr: string | null;
       } = {
         id: runId,
         status: archive.status,
@@ -84,6 +86,8 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
         sourceTypes: archive.sourceTypes,
         digestHeadline: archive.digestHeadline,
         digestSummary: archive.digestSummary,
+        hook: archive.hook,
+        tldr: archive.tldr,
       };
 
       if (archive.status === "completed" && Array.isArray(archive.rankedItems)) {

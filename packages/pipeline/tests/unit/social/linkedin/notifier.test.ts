@@ -48,6 +48,8 @@ function makeArchive(
     completedAt: NOW,
     digestHeadline: "Daily AI digest headline",
     digestSummary: "Today's recap.",
+    hook: "Hook line for social.",
+    tldr: "Tldr line for social.",
     sourceTelemetry: null,
     slackNotifiedAt: null,
     linkedinPostedAt: null,
@@ -77,6 +79,7 @@ interface TestDeps {
     markLinkedInPosted: ReturnType<typeof vi.fn>;
     recordSocialFailure: ReturnType<typeof vi.fn>;
   };
+  rawItems: { findByIds: ReturnType<typeof vi.fn> };
   tokens: { withTokenLock: ReturnType<typeof vi.fn> };
   refreshFn: ReturnType<typeof vi.fn>;
   saveTokenSpy: ReturnType<typeof vi.fn>;
@@ -107,6 +110,10 @@ function buildDeps(opts: {
     recordSocialFailure: vi.fn().mockResolvedValue(undefined),
   };
 
+  const rawItems = {
+    findByIds: vi.fn().mockResolvedValue([]),
+  };
+
   const tokens = {
     withTokenLock: vi
       .fn()
@@ -132,7 +139,7 @@ function buildDeps(opts: {
       },
     );
 
-  return { apiClient, archives, tokens, refreshFn, saveTokenSpy };
+  return { apiClient, archives, rawItems, tokens, refreshFn, saveTokenSpy };
 }
 
 function build(opts: Parameters<typeof buildDeps>[0]): {
@@ -146,6 +153,7 @@ function build(opts: Parameters<typeof buildDeps>[0]): {
       RunArchivesRepo,
       "findById" | "markLinkedInPosted" | "recordSocialFailure"
     >,
+    rawItems: deps.rawItems as unknown as Parameters<typeof createLinkedInNotifier>[0]["rawItems"],
     tokens: deps.tokens as unknown as Pick<SocialTokensRepo, "withTokenLock">,
     refreshFn: deps.refreshFn,
     config: {
@@ -184,7 +192,7 @@ describe("createLinkedInNotifier", () => {
     expect(callArg.accessToken).toBe("access-1");
     expect(callArg.personUrn).toBe("urn:li:person:abc");
     expect(callArg.apiVersion).toBe("202511");
-    expect(callArg.text).toContain("Daily AI digest headline");
+    expect(callArg.text).toContain("Hook line for social.");
     expect(callArg.text).toContain(
       `https://news.example.com/archive/${RUN_ID}`,
     );
@@ -208,9 +216,9 @@ describe("createLinkedInNotifier", () => {
     expect(deps.tokens.withTokenLock).not.toHaveBeenCalled();
   });
 
-  it("null digestHeadline → skipped, no api call", async () => {
+  it("null hook → skipped, no api call", async () => {
     const { notifier, deps } = build({
-      archive: makeArchive({ digestHeadline: null }),
+      archive: makeArchive({ hook: null }),
       tokenRow: makeTokenRow(),
     });
 

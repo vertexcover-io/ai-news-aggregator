@@ -214,6 +214,7 @@ export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
       ? createLinkedInNotifier({
           apiClient: createLinkedInApiClient(),
           archives: archiveRepo,
+          rawItems: rawItemsRepo,
           tokens: socialTokensRepo,
           config: {
             clientId: linkedinClientId,
@@ -232,6 +233,7 @@ export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
       ? createTwitterNotifier({
           apiClient: createTwitterApiClient(),
           archives: archiveRepo,
+          rawItems: rawItemsRepo,
           tokens: socialTokensRepo,
           config: {
             clientId: twitterClientId,

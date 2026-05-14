@@ -56,6 +56,8 @@ describe("run-archives repository", () => {
       reviewed: false,
       digestHeadline: null,
       digestSummary: null,
+      hook: null,
+      tldr: null,
       sourceTelemetry: null,
       searchText: null,
     });

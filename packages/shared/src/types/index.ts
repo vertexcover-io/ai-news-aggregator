@@ -81,6 +81,7 @@ export interface AnalyticsMetrics {
 export interface SocialMetadata {
   linkedinPermalink?: string;
   twitterPermalink?: string;
+  twitterThreadIds?: string[];
   linkedinError?: string;
   twitterError?: string;
 }

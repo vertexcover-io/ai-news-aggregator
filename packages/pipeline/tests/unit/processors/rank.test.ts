@@ -58,13 +58,15 @@ function makeRankedEntry(overrides: { id: number; score: number; rationale: stri
 const DEFAULT_DIGEST = {
   headline: "Test digest headline phrase",
   summary: "A one-sentence summary of the day's main stories for tests.",
+  hook: "A punchy hook line for the social post.",
+  tldr: "A 2-3 sentence tldr sweep across the day for social posts.",
 };
 
 function makeGenerate(
   response:
     | {
         ranked: RankedEntry[];
-        digest?: { headline: string; summary: string };
+        digest?: { headline: string; summary: string; hook: string; tldr: string };
       }
     | Error,
 ): ReturnType<typeof vi.fn> {
@@ -144,6 +146,8 @@ describe("rankCandidates", () => {
       rankedCount: 0,
       digestHeadline: "",
       digestSummary: "",
+      hook: "",
+      tldr: "",
     });
   });
 
@@ -538,6 +542,8 @@ describe("rankCandidates", () => {
       digest: {
         headline: "AI safety, regulation, open models",
         summary: "Five stories on regulation, new open-weight releases, and benchmark results across the day's main themes.",
+        hook: "Hook line.",
+        tldr: "Tldr.",
       },
       ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" })],
     });
@@ -552,6 +558,29 @@ describe("rankCandidates", () => {
     expect(result.digestSummary).toContain("regulation");
   });
 
+  it("propagates hook and tldr from LLM response", async () => {
+    const generateObject = makeGenerate({
+      digest: {
+        headline: "h",
+        summary: "s",
+        hook: "Big news today: someone shipped something interesting.",
+        tldr: "Three short prose sentences. Mentioning actors and events. Reads like a recap.",
+      },
+      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" })],
+    });
+
+    const result = await rankCandidates([makeCandidate(1)], {
+      topN: 5,
+      generateObject,
+      loadBodies: stubLoadBodies,
+    });
+
+    expect(result.hook).toBe(
+      "Big news today: someone shipped something interesting.",
+    );
+    expect(result.tldr).toContain("recap");
+  });
+
   it("VER-96: empty shortlist returns empty digest fields without calling LLM", async () => {
     const generateObject = makeGenerate({ ranked: [] });
     const result = await rankCandidates([], {
@@ -563,6 +592,8 @@ describe("rankCandidates", () => {
     expect(generateObject).not.toHaveBeenCalled();
     expect(result.digestHeadline).toBe("");
     expect(result.digestSummary).toBe("");
+    expect(result.hook).toBe("");
+    expect(result.tldr).toBe("");
   });
 
   it("VER-96: rankedResponseSchema rejects responses missing the digest field", () => {

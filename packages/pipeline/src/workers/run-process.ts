@@ -530,6 +530,8 @@ export async function handleRunProcessJob(
     const autoReviewed = process.env.AUTO_REVIEW === "true";
     const sourceTelemetry = buildSourceTelemetry(collecting.outcomes);
     const { digestHeadline, digestSummary } = pickArchiveDigest(rankResult);
+    const hook = nonEmptyText(rankResult.hook);
+    const tldr = nonEmptyText(rankResult.tldr);
     const rankedRawIds = rankResult.rankedItems.map((r) => r.rawItemId);
     const rankedRawRows = await deps.rawItemsRepo.findByIds(rankedRawIds);
     const rawItemsById = new Map(rankedRawRows.map((r) => [r.id, r]));
@@ -552,6 +554,8 @@ export async function handleRunProcessJob(
         reviewed: autoReviewed,
         digestHeadline,
         digestSummary,
+        hook,
+        tldr,
         sourceTelemetry,
         searchText,
       });
