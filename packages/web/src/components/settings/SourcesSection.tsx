@@ -315,10 +315,7 @@ function HnEditPanel({
               value={(field.value ?? []).join(", ")}
               onChange={(e) => {
                 field.onChange(
-                  e.target.value
-                    .split(",")
-                    .map((k) => k.trim())
-                    .filter(Boolean),
+                  e.target.value.split(",").map((k) => k.trimStart()),
                 );
               }}
             />
@@ -485,10 +482,7 @@ function RedditEditPanel({
               value={field.value.join(", ")}
               onChange={(e) => {
                 field.onChange(
-                  e.target.value
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean),
+                  e.target.value.split(",").map((s) => s.trimStart()),
                 );
               }}
             />
