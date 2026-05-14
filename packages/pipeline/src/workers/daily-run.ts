@@ -20,9 +20,10 @@ export interface DailyRunJobLike {
 
 function sourcesEnabled(settings: UserSettings): boolean {
   return (
-    settings.hnConfig !== null ||
-    settings.redditConfig !== null ||
-    settings.webConfig !== null
+    (settings.hnEnabled && settings.hnConfig !== null) ||
+    (settings.redditEnabled && settings.redditConfig !== null) ||
+    (settings.webEnabled && settings.webConfig !== null) ||
+    (settings.twitterEnabled && settings.twitterConfig !== null)
   );
 }
 

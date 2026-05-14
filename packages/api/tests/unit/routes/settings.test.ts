@@ -19,9 +19,13 @@ function makeRepo(initial: UserSettings | null = null): {
         id: "00000000-0000-0000-0000-000000000001",
         topN: input.topN,
         halfLifeHours: input.halfLifeHours,
+        hnEnabled: input.hnEnabled,
         hnConfig: input.hnConfig,
+        redditEnabled: input.redditEnabled,
         redditConfig: input.redditConfig,
+        webEnabled: input.webEnabled,
         webConfig: input.webConfig,
+        twitterEnabled: input.twitterEnabled,
         twitterConfig: input.twitterConfig,
         scheduleTime: input.scheduleTime,
         scheduleTimezone: input.scheduleTimezone,
@@ -72,9 +76,13 @@ function buildApp(
 const validBody = {
   topN: 10,
   halfLifeHours: null,
+  hnEnabled: true,
   hnConfig: { sinceDays: 1 },
+  redditEnabled: false,
   redditConfig: null,
+  webEnabled: false,
   webConfig: null,
+  twitterEnabled: false,
   twitterConfig: null,
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
@@ -96,9 +104,13 @@ describe("GET /api/settings", () => {
       id: "id-1",
       topN: 15,
       halfLifeHours: null,
+      hnEnabled: false,
       hnConfig: null,
+      redditEnabled: false,
       redditConfig: null,
+      webEnabled: false,
       webConfig: null,
+      twitterEnabled: false,
       twitterConfig: null,
       scheduleTime: "08:00",
       scheduleTimezone: "UTC",
@@ -150,9 +162,13 @@ describe("PUT /api/settings", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...validBody,
+        hnEnabled: false,
         hnConfig: null,
+        redditEnabled: false,
         redditConfig: null,
+        webEnabled: false,
         webConfig: null,
+        twitterEnabled: false,
         twitterConfig: null,
         }),
     });
@@ -171,6 +187,26 @@ describe("PUT /api/settings", () => {
     expect(res.status).toBe(200);
     expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(1);
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
+  });
+
+  it("preserves collector config when that collector is disabled", async () => {
+    const { repo, store } = makeRepo(null);
+    const app = buildApp(repo, makeQueue());
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        hnEnabled: false,
+        hnConfig: { sinceDays: 3, keywords: ["agents"] },
+        scheduleEnabled: false,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as UserSettings;
+    expect(body.hnEnabled).toBe(false);
+    expect(body.hnConfig).toEqual({ sinceDays: 3, keywords: ["agents"] });
+    expect(store.current?.hnConfig).toEqual({ sinceDays: 3, keywords: ["agents"] });
   });
 
   it("REQ-014/REQ-022: disabled schedule removes the scheduler", async () => {
@@ -276,9 +312,13 @@ describe("PUT /api/settings", () => {
       id: "id-1",
       topN: 5,
       halfLifeHours: null,
+      hnEnabled: false,
       hnConfig: null,
+      redditEnabled: false,
       redditConfig: null,
+      webEnabled: false,
       webConfig: null,
+      twitterEnabled: false,
       twitterConfig: null,
       scheduleTime: "08:00",
       scheduleTimezone: "UTC",
@@ -402,4 +442,3 @@ describe("PUT /api/settings", () => {
     expect(res.status).toBe(400);
   });
 });
-

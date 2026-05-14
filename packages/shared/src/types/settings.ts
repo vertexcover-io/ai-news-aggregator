@@ -9,9 +9,13 @@ export interface UserSettings {
   id: string;
   topN: number;
   halfLifeHours: number | null;
+  hnEnabled: boolean;
   hnConfig: RunSubmitHnConfig | null;
+  redditEnabled: boolean;
   redditConfig: RunSubmitRedditConfig | null;
+  webEnabled: boolean;
   webConfig: RunSubmitWebConfig | null;
+  twitterEnabled: boolean;
   twitterConfig: RunSubmitTwitterConfig | null;
   scheduleTime: string;
   scheduleTimezone: string;

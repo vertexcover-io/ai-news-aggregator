@@ -9,9 +9,13 @@ import {
 const validSettings = {
   topN: 10,
   halfLifeHours: null,
+  hnEnabled: true,
   hnConfig: { sinceDays: 1 },
+  redditEnabled: false,
   redditConfig: null,
+  webEnabled: false,
   webConfig: null,
+  twitterEnabled: false,
   twitterConfig: null,
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
@@ -27,20 +31,67 @@ describe("userSettingsUpsertSchema (REQ-012/REQ-013/EDGE-004)", () => {
   it("REQ-013: rejects scheduleEnabled=true with all sources null", () => {
     const r = userSettingsUpsertSchema.safeParse({
       ...validSettings,
+      hnEnabled: false,
       hnConfig: null,
+      redditEnabled: false,
       redditConfig: null,
+      webEnabled: false,
       webConfig: null,
+      twitterEnabled: false,
       twitterConfig: null,
       });
     expect(r.success).toBe(false);
   });
 
+  it("rejects scheduleEnabled=true when configs exist but all sources are disabled", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      hnEnabled: false,
+      redditEnabled: false,
+      redditConfig: { subreddits: ["LocalLLaMA"], sinceDays: 1 },
+      webEnabled: false,
+      twitterEnabled: false,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects an enabled source when its config is null", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      hnEnabled: true,
+      hnConfig: null,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("derives enabled flags from config presence when older clients omit them", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      topN: 10,
+      halfLifeHours: null,
+      hnConfig: { sinceDays: 1 },
+      redditConfig: null,
+      webConfig: null,
+      twitterConfig: null,
+      scheduleTime: "09:30",
+      scheduleTimezone: "America/New_York",
+      scheduleEnabled: true,
+    });
+    expect(r.success).toBe(true);
+    if (!r.success) return;
+    expect(r.data.hnEnabled).toBe(true);
+    expect(r.data.redditEnabled).toBe(false);
+  });
+
   it("accepts scheduleEnabled=false with all sources null", () => {
     const r = userSettingsUpsertSchema.safeParse({
       ...validSettings,
+      hnEnabled: false,
       hnConfig: null,
+      redditEnabled: false,
       redditConfig: null,
+      webEnabled: false,
       webConfig: null,
+      twitterEnabled: false,
       twitterConfig: null,
       scheduleEnabled: false,
     });

@@ -73,9 +73,13 @@ const baseSettings: UserSettings = {
   id: "s1",
   topN: 10,
   halfLifeHours: null,
+  hnEnabled: true,
   hnConfig: { sinceDays: 1 },
+  redditEnabled: false,
   redditConfig: null,
+  webEnabled: false,
   webConfig: null,
+  twitterEnabled: false,
   twitterConfig: null,
   scheduleTime: "09:00",
   scheduleTimezone: "UTC",
@@ -96,9 +100,13 @@ describe("POST /api/runs/now", () => {
     const { app } = buildApp({
       settings: {
         ...baseSettings,
+        hnEnabled: false,
         hnConfig: null,
+        redditEnabled: false,
         redditConfig: null,
+        webEnabled: false,
         webConfig: null,
+        twitterEnabled: false,
         twitterConfig: null,
         },
     });
@@ -125,6 +133,7 @@ describe("POST /api/runs/now", () => {
         hnConfig: null,
         redditConfig: null,
         webConfig: null,
+        twitterEnabled: true,
         twitterConfig: {
           listIds: ["1585430245762441216"],
           users: [{ handle: "sama", userId: "1605" }],

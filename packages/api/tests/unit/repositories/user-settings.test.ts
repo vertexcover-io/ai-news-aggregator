@@ -7,9 +7,13 @@ interface StoredRow {
   singleton: boolean;
   topN: number;
   halfLifeHours: number | null;
+  hnEnabled: boolean;
   hnConfig: unknown;
+  redditEnabled: boolean;
   redditConfig: unknown;
+  webEnabled: boolean;
   webConfig: unknown;
+  twitterEnabled: boolean;
   twitterConfig: unknown;
   scheduleTime: string;
   scheduleTimezone: string;
@@ -38,9 +42,13 @@ function makeFakeDb(): { db: Pick<AppDb, "select" | "insert">; rows: StoredRow[]
                 singleton: true,
                 topN: v.topN ?? 0,
                 halfLifeHours: v.halfLifeHours ?? null,
+                hnEnabled: v.hnEnabled ?? false,
                 hnConfig: v.hnConfig ?? null,
+                redditEnabled: v.redditEnabled ?? false,
                 redditConfig: v.redditConfig ?? null,
+                webEnabled: v.webEnabled ?? false,
                 webConfig: v.webConfig ?? null,
+                twitterEnabled: v.twitterEnabled ?? false,
                 twitterConfig: v.twitterConfig ?? null,
                 scheduleTime: v.scheduleTime ?? "00:00",
                 scheduleTimezone: v.scheduleTimezone ?? "UTC",
@@ -65,9 +73,13 @@ function makeFakeDb(): { db: Pick<AppDb, "select" | "insert">; rows: StoredRow[]
 const baseInput = {
   topN: 10,
   halfLifeHours: null,
+  hnEnabled: true,
   hnConfig: { sinceDays: 1 },
+  redditEnabled: false,
   redditConfig: null,
+  webEnabled: false,
   webConfig: null,
+  twitterEnabled: false,
   twitterConfig: null,
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",

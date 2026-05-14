@@ -23,13 +23,17 @@ function TestWrapper({
   },
   onSubmit,
 }: WrapperProps): ReactElement {
-  const { control, register, handleSubmit } = useForm<SettingsFormValues>({
+  const { control, register, handleSubmit, setValue } = useForm<SettingsFormValues>({
     defaultValues: {
       topN: 10,
       halfLifeHours: null,
+      hnEnabled: false,
       hnConfig: null,
+      redditEnabled: false,
       redditConfig: null,
+      webEnabled: false,
       webConfig: null,
+      twitterEnabled: initialTwitter !== null,
       twitterConfig: initialTwitter,
       scheduleTime: "09:00",
       scheduleTimezone: "UTC",
@@ -45,7 +49,7 @@ function TestWrapper({
         })(e);
       }}
     >
-      <SourcesSection control={control} register={register} />
+      <SourcesSection control={control} register={register} setValue={setValue} />
       <button type="submit">submit</button>
     </form>
   );
@@ -189,9 +193,13 @@ describe("API error surfacing", () => {
       await putSettings({
         topN: 12,
         halfLifeHours: 24,
+        hnEnabled: false,
         hnConfig: null,
+        redditEnabled: false,
         redditConfig: null,
+        webEnabled: false,
         webConfig: null,
+        twitterEnabled: true,
         twitterConfig: { listIds: [], users: [{ handle: "doesnotexist" }] },
         scheduleTime: "07:00",
         scheduleTimezone: "UTC",
@@ -229,9 +237,13 @@ describe("API error surfacing", () => {
       await putSettings({
         topN: 12,
         halfLifeHours: 24,
+        hnEnabled: false,
         hnConfig: null,
+        redditEnabled: false,
         redditConfig: null,
+        webEnabled: false,
         webConfig: null,
+        twitterEnabled: true,
         twitterConfig: { listIds: [], users: [{ handle: "jack" }] },
         scheduleTime: "07:00",
         scheduleTimezone: "UTC",

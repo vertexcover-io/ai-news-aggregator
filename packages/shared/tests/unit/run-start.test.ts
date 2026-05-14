@@ -45,9 +45,13 @@ const baseSettings: UserSettings = {
   id: "settings-id",
   topN: 10,
   halfLifeHours: 24,
+  hnEnabled: true,
   hnConfig: { sinceDays: 1 },
+  redditEnabled: true,
   redditConfig: { subreddits: ["LocalLLaMA"], sinceDays: 1 },
+  webEnabled: false,
   webConfig: null,
+  twitterEnabled: false,
   twitterConfig: null,
   scheduleTime: "07:00",
   scheduleTimezone: "America/Los_Angeles",
@@ -131,9 +135,12 @@ describe("startRun", () => {
 
     const webSettings: UserSettings = {
       ...baseSettings,
+      hnEnabled: false,
       hnConfig: null,
+      redditEnabled: false,
       redditConfig: null,
       halfLifeHours: null,
+      webEnabled: true,
       webConfig: {
         sources: [
           { name: "Anthropic", listingUrl: "https://www.anthropic.com/research" },
@@ -169,6 +176,37 @@ describe("startRun", () => {
     expect(payload.halfLifeHours).toBeUndefined();
   });
 
+  it("omits disabled collectors even when their configs are preserved", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "eeeeeeee-ffff-0000-1111-222222222222";
+
+    const settings: UserSettings = {
+      ...baseSettings,
+      hnEnabled: false,
+      redditEnabled: false,
+      redditConfig: { subreddits: ["LocalLLaMA"], sinceDays: 1 },
+    };
+
+    await startRun(settings, {
+      redis: redis as unknown as IORedis,
+      queue: q.queue,
+      runId: () => fixedId,
+    });
+
+    const entry = redis.store.get(`run:${fixedId}`);
+    if (!entry) throw new Error("expected redis entry");
+    const state = JSON.parse(entry.value) as RunState;
+    expect(state.sources.hn).toBeUndefined();
+    expect(state.sources.reddit).toBeUndefined();
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as RunProcessJobPayload;
+    expect(payload.sourceTypes).toEqual([]);
+    expect(payload.collectors.hn).toBeUndefined();
+    expect(payload.collectors.reddit).toBeUndefined();
+  });
+
   // REQ-024: twitterConfig flows from settings to job payload
   it("REQ-024: puts twitter on payload.collectors when settings has twitterConfig", async () => {
     const redis = makeRedis();
@@ -177,8 +215,11 @@ describe("startRun", () => {
 
     const twitterSettings: UserSettings = {
       ...baseSettings,
+      hnEnabled: false,
       hnConfig: null,
+      redditEnabled: false,
       redditConfig: null,
+      twitterEnabled: true,
       twitterConfig: {
         listIds: ["12345"],
         users: [{ handle: "openai", userId: "9999" }],

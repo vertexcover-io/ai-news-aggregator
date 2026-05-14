@@ -169,9 +169,13 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
     const upsertInput: UserSettingsUpsertInput = {
       topN: parsed.data.topN,
       halfLifeHours: parsed.data.halfLifeHours,
+      hnEnabled: parsed.data.hnEnabled,
       hnConfig: parsed.data.hnConfig,
+      redditEnabled: parsed.data.redditEnabled,
       redditConfig: parsed.data.redditConfig,
+      webEnabled: parsed.data.webEnabled,
       webConfig: parsed.data.webConfig,
+      twitterEnabled: parsed.data.twitterEnabled,
       twitterConfig: resolvedTwitterConfig,
       scheduleTime: parsed.data.scheduleTime,
       scheduleTimezone: parsed.data.scheduleTimezone,

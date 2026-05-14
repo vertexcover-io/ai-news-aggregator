@@ -61,9 +61,13 @@ export interface SettingsSubmitTwitterConfig {
 export interface SettingsSubmitInput {
   topN: number;
   halfLifeHours: number | null;
+  hnEnabled: boolean;
   hnConfig: RunSubmitHnConfig | null;
+  redditEnabled: boolean;
   redditConfig: RunSubmitRedditConfig | null;
+  webEnabled: boolean;
   webConfig: RunSubmitWebConfig | null;
+  twitterEnabled: boolean;
   twitterConfig: SettingsSubmitTwitterConfig | null;
   scheduleTime: string;
   scheduleTimezone: string;
@@ -87,9 +91,13 @@ export const settingsFormSchema = z
   .object({
     topN: z.number().int().min(1).max(50),
     halfLifeHours: z.number().positive().nullable(),
+    hnEnabled: z.boolean(),
     hnConfig: hnConfigSchema.nullable(),
+    redditEnabled: z.boolean(),
     redditConfig: redditConfigSchema.nullable(),
+    webEnabled: z.boolean(),
     webConfig: webConfigSchema.nullable(),
+    twitterEnabled: z.boolean(),
     twitterConfig: twitterConfigSchema.nullable(),
     scheduleTime: z
       .string()
@@ -102,9 +110,10 @@ export const settingsFormSchema = z
   .refine(
     (payload) =>
       !payload.scheduleEnabled ||
-      payload.hnConfig !== null ||
-      payload.redditConfig !== null ||
-      payload.webConfig !== null,
+      payload.hnEnabled ||
+      payload.redditEnabled ||
+      payload.webEnabled ||
+      payload.twitterEnabled,
     {
       message:
         "at least one source must be enabled when scheduleEnabled is true",
@@ -167,9 +176,13 @@ export function normalizeSettingsForSubmit(
   return {
     topN: values.topN,
     halfLifeHours: values.halfLifeHours,
+    hnEnabled: values.hnEnabled,
     hnConfig,
+    redditEnabled: values.redditEnabled,
     redditConfig,
+    webEnabled: values.webEnabled,
     webConfig: values.webConfig,
+    twitterEnabled: values.twitterEnabled,
     twitterConfig: normalizeTwitterConfigForSubmit(values.twitterConfig),
     scheduleTime: values.scheduleTime,
     scheduleTimezone: values.scheduleTimezone,
