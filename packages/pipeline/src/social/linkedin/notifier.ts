@@ -37,7 +37,6 @@ export interface LinkedInNotifierDeps {
 interface ArchiveLike {
   rankedItems: { rawItemId: number; title?: string; summary?: string }[];
   hook: string | null;
-  tldr: string | null;
 }
 
 async function buildStories(
@@ -134,7 +133,6 @@ export function createLinkedInNotifier(
         const archiveUrl = `${stripTrailingSlash(config.publicArchiveBaseUrl)}/archive/${runId}`;
         const composed = composePosts({
           hook,
-          tldr: archive.tldr,
           stories,
           archiveUrl,
         });

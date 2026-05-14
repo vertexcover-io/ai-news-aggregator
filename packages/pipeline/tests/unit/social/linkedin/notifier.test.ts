@@ -49,7 +49,6 @@ function makeArchive(
     digestHeadline: "Daily AI digest headline",
     digestSummary: "Today's recap.",
     hook: "Hook line for social.",
-    tldr: "Tldr line for social.",
     sourceTelemetry: null,
     slackNotifiedAt: null,
     linkedinPostedAt: null,

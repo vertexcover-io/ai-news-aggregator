@@ -17,7 +17,6 @@ export type RunStateResponse = Omit<RunState, "rankedItems"> & {
   digestHeadline?: string | null;
   digestSummary?: string | null;
   hook?: string | null;
-  tldr?: string | null;
 };
 
 interface ApiErrorBody {

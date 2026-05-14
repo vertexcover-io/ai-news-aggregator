@@ -51,7 +51,6 @@ export interface RankResult {
   digestHeadline: string;
   digestSummary: string;
   hook: string;
-  tldr: string;
 }
 
 const rankedEntrySchema = z.object({
@@ -68,7 +67,6 @@ const digestSchema = z.object({
   headline: z.string(),
   summary: z.string(),
   hook: z.string(),
-  tldr: z.string(),
 });
 
 export const rankedResponseSchema = z.object({
@@ -154,7 +152,6 @@ export async function rankCandidates(
       digestHeadline: "",
       digestSummary: "",
       hook: "",
-      tldr: "",
     };
   }
 
@@ -315,6 +312,5 @@ export async function rankCandidates(
     digestHeadline: result.object.digest.headline,
     digestSummary: result.object.digest.summary,
     hook: result.object.digest.hook,
-    tldr: result.object.digest.tldr,
   };
 }

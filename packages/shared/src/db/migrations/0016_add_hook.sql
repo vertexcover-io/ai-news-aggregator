@@ -1,0 +1,1 @@
+ALTER TABLE "run_archives" ADD COLUMN "hook" text;

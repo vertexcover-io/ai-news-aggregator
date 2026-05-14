@@ -1,5 +1,5 @@
 {
-  "id": "c9175ecb-a800-4dc7-baec-9084b7989fac",
+  "id": "bb91f7d5-d7bd-4679-a9df-ceb4de7295dc",
   "prevId": "1841e0dc-dfc0-45eb-84f1-293bb8fbdeed",
   "version": "7",
   "dialect": "postgresql",
@@ -283,12 +283,6 @@
         },
         "hook": {
           "name": "hook",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tldr": {
-          "name": "tldr",
           "type": "text",
           "primaryKey": false,
           "notNull": false
