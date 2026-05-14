@@ -69,6 +69,9 @@ docs/spec/**
 !docs/spec/add-archive-keyword-search/verification/*.md
 !docs/spec/add-archive-keyword-search/verification/*.json
 !docs/spec/add-archive-keyword-search/verification/*.log
+# web-enrich-link-collectors: ship design + library-probe alongside spec
+!docs/spec/web-enrich-link-collectors/design.md
+!docs/spec/web-enrich-link-collectors/library-probe.md
 .worktrees/
 .harness/
 .worktrees/
