@@ -5,7 +5,7 @@ import {
   Configuration,
 } from "crawlee";
 import type { ConvertResult, FetchMode } from "@pipeline/services/web-fetch/types.js";
-import { convert, isHealthyResult } from "@pipeline/services/web-fetch/convert.js";
+import { convert, isHealthyResult, hasListingPostLinks } from "@pipeline/services/web-fetch/convert.js";
 import { createLogger } from "@newsletter/shared/logger";
 
 const logger = createLogger("crawler:web");
@@ -36,6 +36,7 @@ interface PushedItem {
   url: string;
   result: ConvertResult;
   renderedWith: "static" | "browser";
+  mode: FetchMode;
 }
 
 function truncate(s: string, maxLen: number): string {
@@ -59,10 +60,24 @@ export async function runWebCrawl(
   const crawlerOptions: AdaptivePlaywrightCrawlerOptions = {
     maxConcurrency,
     maxRequestRetries: 3,
-    requestHandlerTimeoutSecs: 20,
+    requestHandlerTimeoutSecs: 30,
     sameDomainDelaySecs: 1,
     respectRobotsTxtFile: true,
     renderingTypeDetectionRatio: 0.1,
+
+    // When the browser path is used (Adaptive promotes a URL after the static
+    // path fails resultChecker), wait for network to go idle so client-side
+    // rendered listings (Substack, etc.) have time to paint their post list.
+    // The default `load` waits only for the document load event, which fires
+    // before React hydration completes.
+    preNavigationHooks: [
+      (ctx, gotoOptions) => {
+        if (ctx.page && gotoOptions) {
+          gotoOptions.waitUntil = "networkidle";
+          gotoOptions.timeout = 25_000;
+        }
+      },
+    ],
 
     requestHandler: async (context) => {
       const userData = context.request.userData as {
@@ -106,6 +121,7 @@ export async function runWebCrawl(
         url: context.request.url,
         result: convertResult,
         renderedWith,
+        mode: userData.mode,
       };
       await context.pushData(item);
       results.set(context.request.url, { ok: true, result: convertResult, renderedWith });
@@ -125,7 +141,14 @@ export async function runWebCrawl(
       // items[n] is typed non-nullable (noUncheckedIndexedAccess is off)
       const pushed = items[items.length - 1].item as PushedItem | undefined;
       if (!pushed?.result) return true;
-      return isHealthyResult(pushed.result);
+      if (!isHealthyResult(pushed.result)) return false;
+      // Listing pages must actually contain post links. JS-rendered shells
+      // (e.g. Substack landing) clear the text-length bar but ship zero post
+      // anchors in static HTML — force browser fallback to paint the real list.
+      if (pushed.mode === "listing" && !hasListingPostLinks(pushed.result.markdown)) {
+        return false;
+      }
+      return true;
     },
   };
 
