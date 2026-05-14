@@ -24,6 +24,18 @@ const COMMENT_RATE_LIMIT_MS = 1000;
 const MIN_COMMENTS_FOR_FETCH = 5;
 const USER_AGENT = "Mozilla/5.0 (compatible; NewsletterBot/1.0; +https://vertexcover.io)";
 
+function formatCause(cause: unknown): string | undefined {
+  if (cause === undefined) return undefined;
+  if (cause instanceof Error) return `${cause.name}: ${cause.message}`;
+  if (typeof cause === "string") return cause;
+  if (typeof cause === "number" || typeof cause === "boolean") return String(cause);
+  try {
+    return JSON.stringify(cause);
+  } catch {
+    return "[unserializable cause]";
+  }
+}
+
 export interface RedditCollectorDeps {
   rawItemsRepo: RawItemsRepo;
   fetchFn?: typeof fetch;
@@ -143,7 +155,14 @@ async function fetchWithRetry(
       }
       return await response.json();
     } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
+      if (err instanceof Error) {
+        const cause = formatCause(err.cause);
+        lastError = cause
+          ? new Error(`${err.message} (cause: ${cause})`, { cause: err.cause })
+          : err;
+      } else {
+        lastError = new Error(String(err));
+      }
       if (lastError.message.startsWith("Non-retryable")) {
         throw lastError;
       }
@@ -228,8 +247,14 @@ async function fetchComments(
 
     return comments;
   } catch (err) {
+    const cause = err instanceof Error ? formatCause(err.cause) : undefined;
     logger.warn(
-      { subreddit, postId, error: err instanceof Error ? err.message : String(err) },
+      {
+        subreddit,
+        postId,
+        error: err instanceof Error ? err.message : String(err),
+        cause,
+      },
       "comment fetch failed",
     );
     return [];
@@ -370,7 +395,18 @@ export async function collectReddit(
   const limit = config.limit ?? DEFAULT_LIMIT;
   const commentsPerItem = config.commentsPerItem ?? DEFAULT_COMMENTS_PER_ITEM;
 
-  logger.info({ subreddits, sort, timeframe, limit, commentsPerItem }, "collection started");
+  logger.info(
+    {
+      event: "collector.reddit.started",
+      subreddits,
+      sort,
+      timeframe,
+      limit,
+      sinceDays: config.sinceDays,
+      commentsPerItem,
+    },
+    "collection started",
+  );
 
   const seenIds = new Set<string>();
   const allItems: RawItemInsert[] = [];
@@ -394,7 +430,18 @@ export async function collectReddit(
           added++;
         }
       }
-      logger.info({ subreddit, fetched: items.length, added }, "subreddit fetched");
+      logger.info(
+        {
+          event: "collector.reddit.subreddit_completed",
+          subreddit,
+          url,
+          sinceDays: config.sinceDays,
+          fetched: items.length,
+          added,
+          durationMs: Date.now() - subStart,
+        },
+        "subreddit fetched",
+      );
       unitResults.push({
         identifier: `r/${subreddit}`,
         displayName: `r/${subreddit}`,
@@ -405,13 +452,25 @@ export async function collectReddit(
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error({ subreddit, error: message }, "failed to fetch subreddit");
+      const cause = err instanceof Error ? formatCause(err.cause) : undefined;
+      logger.error(
+        {
+          event: "collector.reddit.subreddit_failed",
+          subreddit,
+          url,
+          sinceDays: config.sinceDays,
+          error: message,
+          cause,
+          durationMs: Date.now() - subStart,
+        },
+        "failed to fetch subreddit",
+      );
       unitResults.push({
         identifier: `r/${subreddit}`,
         displayName: `r/${subreddit}`,
         itemsFetched: 0,
         status: "failed",
-        errors: [message],
+        errors: [cause ? `${message} (cause: ${cause})` : message],
         durationMs: Date.now() - subStart,
       });
     }
@@ -488,7 +547,7 @@ export async function collectReddit(
     unitResults,
   };
 
-  logger.info(result, "collection completed");
+  logger.info({ event: "collector.reddit.completed", ...result }, "collection completed");
 
   return result;
 }

@@ -214,7 +214,13 @@ export async function collectTwitter(
 
   if (config.listIds.length === 0 && config.users.length === 0) {
     logger.info(
-      { event: "collector.twitter.no_lists_configured" },
+      {
+        event: "collector.twitter.no_lists_configured",
+        sinceHours: config.sinceHours,
+        maxTweetsPerSource: config.maxTweetsPerSource,
+        listIds: config.listIds,
+        users: config.users,
+      },
       "no twitter sources configured",
     );
     return {
@@ -231,6 +237,13 @@ export async function collectTwitter(
       event: "collector.twitter.started",
       listCount: config.listIds.length,
       userCount: config.users.length,
+      sinceHours: config.sinceHours,
+      maxTweetsPerSource: config.maxTweetsPerSource,
+      listIds: config.listIds,
+      users: config.users.map((user) => ({
+        handle: user.handle,
+        userId: user.userId,
+      })),
     },
     "twitter collector started",
   );
@@ -277,6 +290,8 @@ export async function collectTwitter(
               : "collector.twitter.user_completed",
           kind: source.kind,
           sourceId: source.id,
+          displayName,
+          sinceHours: config.sinceHours,
           tweetsFetched: outcome.tweets.length,
           pagesFetched: outcome.pagesFetched,
         },
@@ -326,6 +341,8 @@ export async function collectTwitter(
               : "collector.twitter.user_failed",
           kind: source.kind,
           sourceId: source.id,
+          displayName,
+          sinceHours: config.sinceHours,
           code,
           error: errorObj.message,
         },
