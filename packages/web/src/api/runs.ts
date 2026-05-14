@@ -16,6 +16,8 @@ export type RunStateResponse = Omit<RunState, "rankedItems"> & {
   sourceTypes?: string[] | null;
   digestHeadline?: string | null;
   digestSummary?: string | null;
+  hook?: string | null;
+  tldr?: string | null;
 };
 
 interface ApiErrorBody {

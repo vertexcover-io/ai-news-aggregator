@@ -43,7 +43,11 @@ export function createTwitterApiClient(
     ): Promise<TwitterCreatePostResult> {
       try {
         const client = new Ctor(input.accessToken);
-        const response = await client.v2.tweet(input.text);
+        const response = input.replyToTweetId !== undefined
+          ? await client.v2.tweet(input.text, {
+              reply: { in_reply_to_tweet_id: input.replyToTweetId },
+            })
+          : await client.v2.tweet(input.text);
         const id = response.data.id;
         return {
           ok: true,

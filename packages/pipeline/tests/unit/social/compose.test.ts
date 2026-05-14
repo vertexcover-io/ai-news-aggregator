@@ -2,163 +2,149 @@ import { describe, expect, it } from "vitest";
 
 import {
   TWITTER_MAX_CHARS,
-  TWITTER_URL_LENGTH,
   composePosts,
+  type RankedStory,
 } from "../../../src/social/compose.js";
 
-const URL = "https://example.com/archive/abc123";
+const URL = "https://news.vertexcover.io/archive/abc123";
+
+function stories(n: number): RankedStory[] {
+  const out: RankedStory[] = [];
+  for (let i = 0; i < n; i += 1) {
+    out.push({
+      title: `Story ${String(i + 1)} title`,
+      summary: `Summary ${String(i + 1)} body.`,
+    });
+  }
+  return out;
+}
 
 describe("composePosts", () => {
-  it("REQ-010 builds full template with headline, summary, and url for both platforms", () => {
-    const result = composePosts({
-      digestHeadline: "AI labs ship new reasoning models",
-      digestSummary: "A short recap of today's biggest stories.",
-      archiveUrl: URL,
-    });
-
-    expect(result).not.toBeNull();
-    expect(result?.linkedinText).toBe(
-      `AI labs ship new reasoning models\n\nA short recap of today's biggest stories.\n\n${URL}`,
-    );
-    expect(result?.twitterText).toBe(
-      `AI labs ship new reasoning models\n\nA short recap of today's biggest stories.\n\n${URL}`,
-    );
+  it("REQ-030 returns null when hook is null or blank", () => {
+    expect(
+      composePosts({ hook: null, tldr: "x", stories: stories(2), archiveUrl: URL }),
+    ).toBeNull();
+    expect(
+      composePosts({ hook: "   ", tldr: "x", stories: stories(2), archiveUrl: URL }),
+    ).toBeNull();
   });
 
-  it("REQ-011 omits summary line and double-blank when summary is null", () => {
+  it("REQ-031 LinkedIn body starts with hook then TLDR line", () => {
     const result = composePosts({
-      digestHeadline: "Headline only",
-      digestSummary: null,
+      hook: "Hook line.",
+      tldr: "Two sentences. Three sentences.",
+      stories: stories(3),
       archiveUrl: URL,
     });
-
     expect(result).not.toBeNull();
-    expect(result?.linkedinText).toBe(`Headline only\n\n${URL}`);
-    expect(result?.twitterText).toBe(`Headline only\n\n${URL}`);
-    expect(result?.linkedinText).not.toContain("\n\n\n");
+    expect(result?.linkedinText.startsWith("Hook line.\n\nTLDR: Two sentences. Three sentences.\n\n")).toBe(true);
   });
 
-  it("REQ-011 treats empty-string summary the same as null", () => {
+  it("REQ-031 LinkedIn body omits TLDR line when tldr is null", () => {
     const result = composePosts({
-      digestHeadline: "Headline only",
-      digestSummary: "   ",
+      hook: "Hook line.",
+      tldr: null,
+      stories: stories(2),
       archiveUrl: URL,
     });
-
     expect(result).not.toBeNull();
-    expect(result?.linkedinText).toBe(`Headline only\n\n${URL}`);
-    expect(result?.twitterText).toBe(`Headline only\n\n${URL}`);
+    expect(result?.linkedinText.startsWith("Hook line.\n\n1)")).toBe(true);
+    expect(result?.linkedinText).not.toContain("TLDR:");
   });
 
-  it("REQ-014 returns null when headline is null", () => {
+  it("REQ-032 LinkedIn body includes numbered stories and promo line", () => {
     const result = composePosts({
-      digestHeadline: null,
-      digestSummary: "anything",
+      hook: "Hook.",
+      tldr: "Tldr.",
+      stories: stories(3),
       archiveUrl: URL,
     });
-    expect(result).toBeNull();
-
-    const blank = composePosts({
-      digestHeadline: "   ",
-      digestSummary: "anything",
-      archiveUrl: URL,
-    });
-    expect(blank).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result?.linkedinText).toContain("1) Story 1 title\n   Summary 1 body.");
+    expect(result?.linkedinText).toContain("2) Story 2 title\n   Summary 2 body.");
+    expect(result?.linkedinText).toContain("3) Story 3 title\n   Summary 3 body.");
+    expect(result?.linkedinText.endsWith(`\n\nFull breakdown: ${URL}`)).toBe(true);
   });
 
-  it("REQ-012 EDGE-002 keeps text intact when twitter length is exactly 280", () => {
-    // Budget for headline + summary = 255 chars (incl. one \n\n separator).
-    // Use headline of 100 chars, summary of 153 chars: 100 + 2 + 153 = 255.
-    const headline = "H".repeat(100);
-    const summary = "S".repeat(153);
-
+  it("REQ-032 LinkedIn includes all ranked stories (no cap)", () => {
     const result = composePosts({
-      digestHeadline: headline,
-      digestSummary: summary,
+      hook: "Hook.",
+      tldr: "Tldr.",
+      stories: stories(12),
       archiveUrl: URL,
     });
-
     expect(result).not.toBeNull();
-    const effectiveLen =
-      headline.length + 2 + summary.length + 2 + TWITTER_URL_LENGTH;
-    expect(effectiveLen).toBe(TWITTER_MAX_CHARS);
-    expect(result?.twitterText).toBe(`${headline}\n\n${summary}\n\n${URL}`);
-    expect(result?.linkedinText).toBe(`${headline}\n\n${summary}\n\n${URL}`);
+    expect(result?.linkedinText).toContain("1) Story 1 title");
+    expect(result?.linkedinText).toContain("12) Story 12 title");
   });
 
-  it("REQ-013 EDGE-003 truncates summary first with ellipsis when one char over", () => {
-    const headline = "H".repeat(100);
-    const summary = "S".repeat(154); // 100 + 2 + 154 = 256, total 281 with url+separator
-
+  it("REQ-034 Twitter thread first tweet contains hook+tldr when it fits", () => {
     const result = composePosts({
-      digestHeadline: headline,
-      digestSummary: summary,
+      hook: "Hook.",
+      tldr: "Short tldr.",
+      stories: stories(2),
       archiveUrl: URL,
     });
-
     expect(result).not.toBeNull();
-    expect(result?.linkedinText).toBe(`${headline}\n\n${summary}\n\n${URL}`);
-    // Summary truncated to fit (REQ-013), keeping as much of it as possible.
-    // Budget for headline+separator+summary = 280-23-2 = 255. Headline=100, separator=2, so summary budget = 153.
-    // Truncated summary = 152 chars of S + "…" = 153 chars total.
-    const expectedSummary = `${"S".repeat(152)}…`;
-    expect(result?.twitterText).toBe(`${headline}\n\n${expectedSummary}\n\n${URL}`);
-    expect(result).not.toBeNull();
-    if (result === null) return;
-    expect(result.twitterText.length - URL.length + TWITTER_URL_LENGTH).toBeLessThanOrEqual(TWITTER_MAX_CHARS);
+    expect(result?.twitterThread[0]).toBe("Hook.\n\nShort tldr.");
   });
 
-  it("REQ-013 drops summary entirely when even one-char summary won't fit", () => {
-    const headline = "H".repeat(254); // headline + separator + 1 char + separator + url = 254+2+1+2+23 = 282 > 280
-    const summary = "S".repeat(50);
-
-    const result = composePosts({
-      digestHeadline: headline,
-      digestSummary: summary,
-      archiveUrl: URL,
-    });
-
+  it("REQ-034 Twitter thread opener falls back to hook only when combined exceeds 280", () => {
+    const hook = "Hook".padEnd(140, ".");
+    const longTldr = "Tldr".padEnd(200, ".");
+    const result = composePosts({ hook, tldr: longTldr, stories: stories(1), archiveUrl: URL });
     expect(result).not.toBeNull();
-    // Headline alone fits (254+2+23=279), summary dropped entirely.
-    expect(result?.twitterText).toBe(`${headline}\n\n${URL}`);
+    expect(result?.twitterThread[0]).toBe(hook);
   });
 
-  it("REQ-013 EDGE-004 truncates long headline with ellipsis when even headline-only is over budget", () => {
-    const headline = "H".repeat(300);
-    const summary = "Some summary";
-
+  it("REQ-034 Twitter thread last tweet is the archive URL", () => {
     const result = composePosts({
-      digestHeadline: headline,
-      digestSummary: summary,
+      hook: "Hook.",
+      tldr: null,
+      stories: stories(2),
       archiveUrl: URL,
     });
-
     expect(result).not.toBeNull();
-    expect(result?.linkedinText).toBe(`${headline}\n\n${summary}\n\n${URL}`);
-
-    const expectedHeadline = `${"H".repeat(254)}…`;
-    expect(result?.twitterText).toBe(`${expectedHeadline}\n\n${URL}`);
-    // Effective tweet length: 255 (headline budget) + 2 + 23 = 280.
-    const effective = 255 + 2 + TWITTER_URL_LENGTH;
-    expect(effective).toBe(TWITTER_MAX_CHARS);
+    const thread = result?.twitterThread ?? [];
+    expect(thread[thread.length - 1]).toBe(`Full breakdown: ${URL}`);
   });
 
-  it("EDGE-014 preserves the archive url even when the headline contains url-like text", () => {
-    const headline = "Visit https://decoy.example.com/post/12345 today";
-    const summary = "Short summary";
-
+  it("REQ-035 Twitter per-story tweets format as 'N) title\\nsummary'", () => {
     const result = composePosts({
-      digestHeadline: headline,
-      digestSummary: summary,
+      hook: "Hook.",
+      tldr: null,
+      stories: stories(3),
       archiveUrl: URL,
     });
-
     expect(result).not.toBeNull();
-    // Archive URL preserved verbatim at the end of both bodies.
-    expect(result?.linkedinText.endsWith(`\n\n${URL}`)).toBe(true);
-    expect(result?.twitterText.endsWith(`\n\n${URL}`)).toBe(true);
-    // Headline text not stripped or mistaken for the URL.
-    expect(result?.linkedinText).toContain(headline);
-    expect(result?.twitterText).toContain(headline);
+    expect(result?.twitterThread[1]).toBe("1) Story 1 title\nSummary 1 body.");
+    expect(result?.twitterThread[2]).toBe("2) Story 2 title\nSummary 2 body.");
+    expect(result?.twitterThread[3]).toBe("3) Story 3 title\nSummary 3 body.");
+  });
+
+  it("REQ-035 Twitter per-story tweet truncates summary with ellipsis when over 280", () => {
+    const longSummary = "x".repeat(400);
+    const result = composePosts({
+      hook: "Hook.",
+      tldr: null,
+      stories: [{ title: "Short title", summary: longSummary }],
+      archiveUrl: URL,
+    });
+    expect(result).not.toBeNull();
+    const tweet = result?.twitterThread[1] ?? "";
+    expect(tweet.length).toBeLessThanOrEqual(TWITTER_MAX_CHARS);
+    expect(tweet.endsWith("…")).toBe(true);
+    expect(tweet.startsWith("1) Short title\n")).toBe(true);
+  });
+
+  it("REQ-036 Twitter thread is exactly opener + closer when stories are empty", () => {
+    const result = composePosts({
+      hook: "Hook only.",
+      tldr: null,
+      stories: [],
+      archiveUrl: URL,
+    });
+    expect(result).not.toBeNull();
+    expect(result?.twitterThread).toEqual(["Hook only.", `Full breakdown: ${URL}`]);
   });
 });

@@ -1,11 +1,12 @@
 import type { Logger } from "@newsletter/shared/logger";
 
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
+import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import type { SocialTokensRepo } from "@pipeline/repositories/social-tokens.js";
 
-import { composePosts } from "../compose.js";
+import { composePosts, type RankedStory } from "../compose.js";
 import type { SocialResult } from "../types.js";
-import type { TwitterApiClient } from "./types.js";
+import type { TwitterApiClient, TwitterCreatePostResult } from "./types.js";
 import { refreshTwitterToken } from "./oauth.js";
 
 const REFRESH_SKEW_MS = 60_000;
@@ -24,6 +25,7 @@ export interface TwitterNotifierDeps {
     RunArchivesRepo,
     "findById" | "markTwitterPosted" | "recordSocialFailure"
   >;
+  rawItems: Pick<RawItemsRepo, "findByIds">;
   tokens: Pick<SocialTokensRepo, "withTokenLock">;
   refreshFn?: typeof refreshTwitterToken;
   config: TwitterNotifierConfig;
@@ -53,10 +55,36 @@ function stripTrailingSlash(value: string): string {
   return value;
 }
 
+interface ArchiveLike {
+  rankedItems: { rawItemId: number; title?: string; summary?: string }[];
+  hook: string | null;
+  tldr: string | null;
+}
+
+async function buildStories(
+  archive: ArchiveLike,
+  rawItems: Pick<RawItemsRepo, "findByIds">,
+): Promise<RankedStory[]> {
+  const ids = archive.rankedItems.map((r) => r.rawItemId);
+  if (ids.length === 0) return [];
+  const rows = await rawItems.findByIds(ids);
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const stories: RankedStory[] = [];
+  for (const ref of archive.rankedItems) {
+    const raw = byId.get(ref.rawItemId);
+    const recap = raw?.metadata.recap;
+    const title = ref.title ?? recap?.title ?? raw?.title ?? "";
+    const summary = ref.summary ?? recap?.summary ?? "";
+    if (title.trim() === "" || summary.trim() === "") continue;
+    stories.push({ title, summary });
+  }
+  return stories;
+}
+
 export function createTwitterNotifier(
   deps: TwitterNotifierDeps,
 ): TwitterNotifier {
-  const { apiClient, archives, tokens, config, logger } = deps;
+  const { apiClient, archives, rawItems, tokens, config, logger } = deps;
   const refreshFn = deps.refreshFn ?? refreshTwitterToken;
   const now = deps.now ?? ((): Date => new Date());
 
@@ -87,19 +115,21 @@ export function createTwitterNotifier(
           return { status: "skipped", reason: "already_posted" };
         }
 
-        const headline = archive.digestHeadline;
-        if (headline === null || headline.trim() === "") {
+        const hook = archive.hook;
+        if (hook === null || hook.trim() === "") {
           logger.warn(
             { event: "social.twitter.skipped", reason: "no_headline", runId },
-            "twitter notification skipped (no headline)",
+            "twitter notification skipped (no hook)",
           );
           return { status: "skipped", reason: "no_headline" };
         }
 
+        const stories = await buildStories(archive, rawItems);
         const archiveUrl = `${stripTrailingSlash(config.publicArchiveBaseUrl)}/archive/${runId}`;
         const composed = composePosts({
-          digestHeadline: headline,
-          digestSummary: archive.digestSummary,
+          hook,
+          tldr: archive.tldr,
+          stories,
           archiveUrl,
         });
         if (composed === null) {
@@ -163,20 +193,18 @@ export function createTwitterNotifier(
           return acquired.result;
         }
 
-        let postResult = await apiClient.createPost({
+        // First tweet (head of thread). Reactive auth-retry if needed.
+        let headResult = await apiClient.createPost({
           accessToken: acquired.accessToken,
-          text: composed.twitterText,
+          text: composed.twitterThread[0],
         });
 
-        // Reactive refresh: if the platform rejects on auth (401/403), force a
-        // refresh and retry once. Guards against silent token invalidation that
-        // bypassed our TTL check.
-        if (!postResult.ok && AUTH_RETRY_STATUSES.has(postResult.status)) {
+        if (!headResult.ok && AUTH_RETRY_STATUSES.has(headResult.status)) {
           logger.warn(
             {
               event: "social.twitter.auth_retry",
               runId,
-              status: postResult.status,
+              status: headResult.status,
             },
             "twitter post got auth error; forcing refresh and retrying once",
           );
@@ -185,43 +213,77 @@ export function createTwitterNotifier(
             await archives.recordSocialFailure(
               runId,
               "twitter",
-              `${postResult.status}:${truncate(postResult.body)}`,
+              `${headResult.status}:${truncate(headResult.body)}`,
             );
             return reacquired.result;
           }
-          postResult = await apiClient.createPost({
+          headResult = await apiClient.createPost({
             accessToken: reacquired.accessToken,
-            text: composed.twitterText,
+            text: composed.twitterThread[0],
           });
         }
 
-        if (postResult.ok) {
-          await archives.markTwitterPosted(runId, now(), postResult.tweetUrl);
-          logger.info(
-            {
-              event: "social.twitter.sent",
-              runId,
-              permalink: postResult.tweetUrl,
-            },
-            "twitter post created",
+        if (!headResult.ok) {
+          await archives.recordSocialFailure(
+            runId,
+            "twitter",
+            `${headResult.status}:${truncate(headResult.body)}`,
           );
-          return { status: "posted", permalink: postResult.tweetUrl };
+          logger.error(
+            {
+              event: "social.twitter.post_failed",
+              runId,
+              status: headResult.status,
+            },
+            "twitter post failed",
+          );
+          return { status: "failed", reason: `http_${headResult.status}` };
         }
 
-        await archives.recordSocialFailure(
+        // Thread continues: post tweets 2..N as replies to the previous tweet.
+        // A failure mid-thread is logged but the head tweet stays posted —
+        // we mark the run as `posted` because the headline tweet is live.
+        const threadIds: string[] = [headResult.tweetId];
+        const accessTokenForThread = acquired.accessToken;
+        let previousTweetId = headResult.tweetId;
+        for (let i = 1; i < composed.twitterThread.length; i += 1) {
+          const result: TwitterCreatePostResult = await apiClient.createPost({
+            accessToken: accessTokenForThread,
+            text: composed.twitterThread[i],
+            replyToTweetId: previousTweetId,
+          });
+          if (!result.ok) {
+            logger.warn(
+              {
+                event: "social.twitter.thread_partial_failure",
+                runId,
+                tweetIndex: i,
+                status: result.status,
+              },
+              "twitter thread partial failure; keeping head tweet posted",
+            );
+            break;
+          }
+          threadIds.push(result.tweetId);
+          previousTweetId = result.tweetId;
+        }
+
+        await archives.markTwitterPosted(
           runId,
-          "twitter",
-          `${postResult.status}:${truncate(postResult.body)}`,
+          now(),
+          headResult.tweetUrl,
+          threadIds,
         );
-        logger.error(
+        logger.info(
           {
-            event: "social.twitter.post_failed",
+            event: "social.twitter.sent",
             runId,
-            status: postResult.status,
+            permalink: headResult.tweetUrl,
+            threadCount: threadIds.length,
           },
-          "twitter post failed",
+          "twitter post created",
         );
-        return { status: "failed", reason: `http_${postResult.status}` };
+        return { status: "posted", permalink: headResult.tweetUrl };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logger.error(

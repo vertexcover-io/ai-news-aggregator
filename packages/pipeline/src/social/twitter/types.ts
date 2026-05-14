@@ -1,6 +1,7 @@
 export interface TwitterCreatePostInput {
   accessToken: string;
   text: string;
+  replyToTweetId?: string;
 }
 
 export type TwitterCreatePostResult =

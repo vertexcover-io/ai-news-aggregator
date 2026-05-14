@@ -1,9 +1,10 @@
 import type { Logger } from "@newsletter/shared/logger";
 
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
+import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import type { SocialTokensRepo } from "@pipeline/repositories/social-tokens.js";
 
-import { composePosts } from "../compose.js";
+import { composePosts, type RankedStory } from "../compose.js";
 import type { SocialResult } from "../types.js";
 import type { LinkedInApiClient } from "./types.js";
 import { refreshLinkedInToken } from "./oauth.js";
@@ -25,11 +26,38 @@ export interface LinkedInNotifierDeps {
     RunArchivesRepo,
     "findById" | "markLinkedInPosted" | "recordSocialFailure"
   >;
+  rawItems: Pick<RawItemsRepo, "findByIds">;
   tokens: Pick<SocialTokensRepo, "withTokenLock">;
   refreshFn?: typeof refreshLinkedInToken;
   config: LinkedInNotifierConfig;
   logger: Logger;
   now?: () => Date;
+}
+
+interface ArchiveLike {
+  rankedItems: { rawItemId: number; title?: string; summary?: string }[];
+  hook: string | null;
+  tldr: string | null;
+}
+
+async function buildStories(
+  archive: ArchiveLike,
+  rawItems: Pick<RawItemsRepo, "findByIds">,
+): Promise<RankedStory[]> {
+  const ids = archive.rankedItems.map((r) => r.rawItemId);
+  if (ids.length === 0) return [];
+  const rows = await rawItems.findByIds(ids);
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const stories: RankedStory[] = [];
+  for (const ref of archive.rankedItems) {
+    const raw = byId.get(ref.rawItemId);
+    const recap = raw?.metadata.recap;
+    const title = ref.title ?? recap?.title ?? raw?.title ?? "";
+    const summary = ref.summary ?? recap?.summary ?? "";
+    if (title.trim() === "" || summary.trim() === "") continue;
+    stories.push({ title, summary });
+  }
+  return stories;
 }
 
 export interface NotifyArchiveReadyInput {
@@ -93,19 +121,21 @@ export function createLinkedInNotifier(
           return { status: "skipped", reason: "already_posted" };
         }
 
-        const headline = archive.digestHeadline;
-        if (headline === null || headline.trim() === "") {
+        const hook = archive.hook;
+        if (hook === null || hook.trim() === "") {
           logger.warn(
             { event: "social.linkedin.skipped", reason: "no_headline", runId },
-            "linkedin notification skipped (no headline)",
+            "linkedin notification skipped (no hook)",
           );
           return { status: "skipped", reason: "no_headline" };
         }
 
+        const stories = await buildStories(archive, deps.rawItems);
         const archiveUrl = `${stripTrailingSlash(config.publicArchiveBaseUrl)}/archive/${runId}`;
         const composed = composePosts({
-          digestHeadline: headline,
-          digestSummary: archive.digestSummary,
+          hook,
+          tldr: archive.tldr,
+          stories,
           archiveUrl,
         });
         if (composed === null) {

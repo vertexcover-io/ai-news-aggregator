@@ -19,6 +19,8 @@ export interface RunArchiveUpsertInput {
   reviewed?: boolean;
   digestHeadline?: string | null;
   digestSummary?: string | null;
+  hook?: string | null;
+  tldr?: string | null;
   sourceTelemetry?: RunSourceTelemetry | null;
   searchText?: string | null;
 }
@@ -32,6 +34,8 @@ export interface PipelineRunArchiveRow {
   completedAt: Date;
   digestHeadline: string | null;
   digestSummary: string | null;
+  hook: string | null;
+  tldr: string | null;
   sourceTelemetry: RunSourceTelemetry | null;
   slackNotifiedAt: Date | null;
   linkedinPostedAt: Date | null;
@@ -43,7 +47,12 @@ export interface RunArchivesRepo {
   findById(id: string): Promise<PipelineRunArchiveRow | null>;
   markSlackNotified(runId: string, at: Date): Promise<void>;
   markLinkedInPosted(runId: string, at: Date, permalink: string | null): Promise<void>;
-  markTwitterPosted(runId: string, at: Date, permalink: string | null): Promise<void>;
+  markTwitterPosted(
+    runId: string,
+    at: Date,
+    permalink: string | null,
+    threadIds?: string[],
+  ): Promise<void>;
   recordSocialFailure(
     runId: string,
     platform: "linkedin" | "twitter",
@@ -69,6 +78,8 @@ export function createRunArchivesRepo(
           completedAt: runArchives.completedAt,
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
+          hook: runArchives.hook,
+          tldr: runArchives.tldr,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
           linkedinPostedAt: runArchives.linkedinPostedAt,
@@ -112,15 +123,20 @@ export function createRunArchivesRepo(
       runId: string,
       at: Date,
       permalink: string | null,
+      threadIds?: string[],
     ): Promise<void> {
-      if (permalink === null) {
+      const patch: SocialMetadata = {};
+      if (permalink !== null) patch.twitterPermalink = permalink;
+      if (threadIds !== undefined && threadIds.length > 0) {
+        patch.twitterThreadIds = threadIds;
+      }
+      if (Object.keys(patch).length === 0) {
         await db
           .update(runArchives)
           .set({ twitterPostedAt: at })
           .where(eq(runArchives.id, runId));
         return;
       }
-      const patch: SocialMetadata = { twitterPermalink: permalink };
       await db
         .update(runArchives)
         .set({
@@ -159,6 +175,8 @@ export function createRunArchivesRepo(
           reviewed: input.reviewed ?? false,
           digestHeadline: input.digestHeadline ?? null,
           digestSummary: input.digestSummary ?? null,
+          hook: input.hook ?? null,
+          tldr: input.tldr ?? null,
           sourceTelemetry: input.sourceTelemetry ?? null,
           searchText: input.searchText ?? null,
         })
@@ -172,6 +190,8 @@ export function createRunArchivesRepo(
             reviewed: sql.raw(`excluded.${runArchives.reviewed.name}`),
             digestHeadline: sql.raw(`excluded.${runArchives.digestHeadline.name}`),
             digestSummary: sql.raw(`excluded.${runArchives.digestSummary.name}`),
+            hook: sql.raw(`excluded.${runArchives.hook.name}`),
+            tldr: sql.raw(`excluded.${runArchives.tldr.name}`),
             sourceTelemetry: sql.raw(`excluded.${runArchives.sourceTelemetry.name}`),
             searchText: sql.raw(`excluded.${runArchives.searchText.name}`),
           },

@@ -30,6 +30,8 @@ export interface RunArchiveRow {
   sourceTypes: SourceType[] | null;
   digestHeadline: string | null;
   digestSummary: string | null;
+  hook: string | null;
+  tldr: string | null;
   sourceTelemetry: RunSourceTelemetry | null;
   slackNotifiedAt: Date | null;
 }
@@ -136,6 +138,8 @@ export function createRunArchivesRepo(
           sourceTypes: runArchives.sourceTypes,
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
+          hook: runArchives.hook,
+          tldr: runArchives.tldr,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
         })
@@ -320,6 +324,8 @@ export function createRunArchivesRepo(
           sourceTypes: runArchives.sourceTypes,
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
+          hook: runArchives.hook,
+          tldr: runArchives.tldr,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
         })
@@ -359,6 +365,8 @@ export function createRunArchivesRepo(
           sourceTypes: runArchives.sourceTypes,
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
+          hook: runArchives.hook,
+          tldr: runArchives.tldr,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
         });

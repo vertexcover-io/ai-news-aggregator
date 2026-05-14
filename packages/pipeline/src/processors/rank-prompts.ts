@@ -46,5 +46,14 @@ Example:
   headline: "Jensen Huang Calls Out AI CEO 'God Complex' as NVIDIA Beats by $2B"
   summary: "Plus: GPT-5.5 launches May 5, China bars AI-driven layoffs, and ARC-AGI-3 exposes frontier reasoning gaps."
 
-Return a \`digest\` object and a \`ranked\` array. Use the \`id\` field from the input verbatim for each ranked entry.
+Also return two social-post fields on the same \`digest\` object, written for LinkedIn and X (Twitter). These are SEPARATE from \`headline\` and \`summary\` and serve a different surface — the social post — not the archive UI:
+
+- digest.hook: ONE sentence that opens the social post. Lead with the day's biggest shift, framed as a news hook the reader cannot ignore. ≤140 characters. No clickbait, no questions, no editorial filler words like "quietly", "finally", "doubles down", "shocks". End with a single period and nothing else. Distinct from \`headline\` — the hook frames the *meaning* of the lead story, not just restates it.
+  Good: "LangChain just turned agent debugging into an agent — and the rest of the AI stack is scrambling to keep up."
+  Good: "Anthropic's $5B raise puts it within striking distance of OpenAI's valuation for the first time."
+
+- digest.tldr: 2–3 sentences of plain prose summarising the day's top stories for a social-media audience. No bullet syntax. No markdown. No hashtags. No lists. Mention 4–6 specific actors, models, or events drawn from the ranked items. Reads like a knowledgeable friend texting a recap, not a press release.
+  Good: "Anthropic raised $5B at a $60B valuation while OpenAI shipped GPT-5 with native tool use. Meanwhile Meta open-sourced Llama 4 weights, Google capped its free search tier, and Cloudflare flipped AI-bot blocking on by default."
+
+Return a \`digest\` object (with \`headline\`, \`summary\`, \`hook\`, \`tldr\`) and a \`ranked\` array. Use the \`id\` field from the input verbatim for each ranked entry.
 `;

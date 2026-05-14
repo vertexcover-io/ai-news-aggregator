@@ -48,6 +48,8 @@ function makeArchive(
     completedAt: NOW,
     digestHeadline: "Daily AI digest headline",
     digestSummary: "Today's recap.",
+    hook: "Hook line for social.",
+    tldr: "Tldr line for social.",
     sourceTelemetry: null,
     slackNotifiedAt: null,
     linkedinPostedAt: null,
@@ -77,6 +79,7 @@ interface TestDeps {
     markTwitterPosted: ReturnType<typeof vi.fn>;
     recordSocialFailure: ReturnType<typeof vi.fn>;
   };
+  rawItems: { findByIds: ReturnType<typeof vi.fn> };
   tokens: { withTokenLock: ReturnType<typeof vi.fn> };
   refreshFn: ReturnType<typeof vi.fn>;
   saveTokenSpy: ReturnType<typeof vi.fn>;
@@ -111,6 +114,10 @@ function buildDeps(opts: {
     recordSocialFailure: vi.fn().mockResolvedValue(undefined),
   };
 
+  const rawItems = {
+    findByIds: vi.fn().mockResolvedValue([]),
+  };
+
   const tokens = {
     withTokenLock: vi
       .fn()
@@ -136,7 +143,7 @@ function buildDeps(opts: {
       },
     );
 
-  return { apiClient, archives, tokens, refreshFn, saveTokenSpy };
+  return { apiClient, archives, rawItems, tokens, refreshFn, saveTokenSpy };
 }
 
 function build(opts: Parameters<typeof buildDeps>[0]): {
@@ -150,6 +157,7 @@ function build(opts: Parameters<typeof buildDeps>[0]): {
       RunArchivesRepo,
       "findById" | "markTwitterPosted" | "recordSocialFailure"
     >,
+    rawItems: deps.rawItems as unknown as Parameters<typeof createTwitterNotifier>[0]["rawItems"],
     tokens: deps.tokens as unknown as Pick<SocialTokensRepo, "withTokenLock">,
     refreshFn: deps.refreshFn,
     config: {
@@ -189,17 +197,23 @@ describe("createTwitterNotifier", () => {
       status: "posted",
       permalink: "https://x.com/i/status/1234",
     });
-    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(1);
-    const callArg = deps.apiClient.createPost.mock.calls[0][0];
-    expect(callArg.accessToken).toBe("access-1");
-    expect(callArg.text).toContain("Daily AI digest headline");
-    expect(callArg.text).toContain(
-      `https://news.example.com/archive/${RUN_ID}`,
+    // Thread: head tweet + closer tweet (no stories in fixture → 2 calls).
+    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(2);
+    const headCall = deps.apiClient.createPost.mock.calls[0][0];
+    expect(headCall.accessToken).toBe("access-1");
+    expect(headCall.text).toContain("Hook line for social.");
+    expect(headCall.replyToTweetId).toBeUndefined();
+    const closerCall = deps.apiClient.createPost.mock.calls[1][0];
+    expect(closerCall.text).toBe(
+      `Full breakdown: https://news.example.com/archive/${RUN_ID}`,
     );
+    expect(closerCall.replyToTweetId).toBe("1234");
+    // mockImplementation returns postResult for every call, so head + closer both report 1234.
     expect(deps.archives.markTwitterPosted).toHaveBeenCalledWith(
       RUN_ID,
       NOW,
       "https://x.com/i/status/1234",
+      ["1234", "1234"],
     );
   });
 
@@ -216,9 +230,9 @@ describe("createTwitterNotifier", () => {
     expect(deps.tokens.withTokenLock).not.toHaveBeenCalled();
   });
 
-  it("null digestHeadline → skipped, no api call", async () => {
+  it("null hook → skipped, no api call", async () => {
     const { notifier, deps } = build({
-      archive: makeArchive({ digestHeadline: null }),
+      archive: makeArchive({ hook: null }),
       tokenRow: makeTokenRow(),
     });
 
@@ -361,8 +375,8 @@ describe("createTwitterNotifier", () => {
     });
     // refreshFn was called once even though DB TTL said "still valid".
     expect(deps.refreshFn).toHaveBeenCalledTimes(1);
-    // apiClient was retried: first with old token, second with refreshed token.
-    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(2);
+    // 3 calls: head (401), retry of head (ok), then thread closer.
+    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(3);
     expect(deps.apiClient.createPost.mock.calls[0][0].accessToken).toBe(
       "access-1",
     );
@@ -397,7 +411,8 @@ describe("createTwitterNotifier", () => {
       permalink: "https://x.com/i/status/222",
     });
     expect(deps.refreshFn).toHaveBeenCalledTimes(1);
-    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(2);
+    // 3 calls: head (403), retry of head (ok), then thread closer.
+    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(3);
   });
 
   it("401 then refresh fails → recordSocialFailure with original 401, returns refresh_failed", async () => {
