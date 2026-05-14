@@ -7,6 +7,7 @@ export interface NormalizedTweet {
   authorHandle: string;
   fullText: string;
   createdAt: string;
+  eventCreatedAt: string;
   url: string;
   likeCount: number;
   retweetCount: number;

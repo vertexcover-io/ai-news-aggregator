@@ -85,6 +85,7 @@ function makeTweet(overrides: Partial<NormalizedTweet> = {}): NormalizedTweet {
     authorHandle,
     fullText: "hello",
     createdAt: "2026-05-01T00:00:00.000Z",
+    eventCreatedAt: "2026-05-01T00:00:00.000Z",
     url: `https://x.com/${authorHandle}/status/${id}`,
     likeCount: 0,
     retweetCount: 0,

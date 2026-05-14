@@ -16,6 +16,8 @@ const logger = createLogger("collector:twitter");
 
 const DEFAULT_MAX_TWEETS_PER_SOURCE = 200;
 const RETRY_DELAYS_MS = [250, 1000, 4000] as const;
+const OUT_OF_WINDOW_STREAK_LIMIT = 30;
+const MAX_PAGES = 10;
 
 type SourceKind = "list" | "user";
 
@@ -140,8 +142,9 @@ async function fetchSource(
   const all: NormalizedTweet[] = [];
   let cursor: string | undefined;
   let pagesFetched = 0;
+  let outOfWindowStreak = 0;
 
-  while (all.length < max) {
+  while (all.length < max && pagesFetched < MAX_PAGES) {
     if (deps.signal?.aborted) throw new AbortError();
     const opts: TwitterClientFetchOptions = {
       maxTweets: max,
@@ -159,11 +162,16 @@ async function fetchSource(
 
     for (const t of res.tweets) {
       if (cutoff !== null) {
-        const tweetTime = new Date(t.createdAt).getTime();
-        if (!Number.isNaN(tweetTime) && tweetTime < cutoff) {
-          return { tweets: all, pagesFetched };
+        const eventTime = new Date(t.eventCreatedAt).getTime();
+        if (!Number.isNaN(eventTime) && eventTime < cutoff) {
+          outOfWindowStreak += 1;
+          if (outOfWindowStreak >= OUT_OF_WINDOW_STREAK_LIMIT) {
+            return { tweets: all, pagesFetched };
+          }
+          continue;
         }
       }
+      outOfWindowStreak = 0;
       all.push(t);
       if (all.length >= max) return { tweets: all, pagesFetched };
     }

@@ -85,6 +85,7 @@ function denormalize(t: RettiwtRawTweet): NormalizedTweet {
     authorHandle: handle,
     fullText: inner.fullText ?? "",
     createdAt: inner.createdAt,
+    eventCreatedAt: t.createdAt,
     url: `https://x.com/${handle}/status/${inner.id}`,
     likeCount: inner.likeCount ?? 0,
     retweetCount: inner.retweetCount ?? 0,
