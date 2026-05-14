@@ -20,7 +20,6 @@ export interface RunArchiveUpsertInput {
   digestHeadline?: string | null;
   digestSummary?: string | null;
   hook?: string | null;
-  tldr?: string | null;
   sourceTelemetry?: RunSourceTelemetry | null;
   searchText?: string | null;
 }
@@ -35,7 +34,6 @@ export interface PipelineRunArchiveRow {
   digestHeadline: string | null;
   digestSummary: string | null;
   hook: string | null;
-  tldr: string | null;
   sourceTelemetry: RunSourceTelemetry | null;
   slackNotifiedAt: Date | null;
   linkedinPostedAt: Date | null;
@@ -79,7 +77,6 @@ export function createRunArchivesRepo(
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
           hook: runArchives.hook,
-          tldr: runArchives.tldr,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
           linkedinPostedAt: runArchives.linkedinPostedAt,
@@ -176,7 +173,6 @@ export function createRunArchivesRepo(
           digestHeadline: input.digestHeadline ?? null,
           digestSummary: input.digestSummary ?? null,
           hook: input.hook ?? null,
-          tldr: input.tldr ?? null,
           sourceTelemetry: input.sourceTelemetry ?? null,
           searchText: input.searchText ?? null,
         })
@@ -191,7 +187,6 @@ export function createRunArchivesRepo(
             digestHeadline: sql.raw(`excluded.${runArchives.digestHeadline.name}`),
             digestSummary: sql.raw(`excluded.${runArchives.digestSummary.name}`),
             hook: sql.raw(`excluded.${runArchives.hook.name}`),
-            tldr: sql.raw(`excluded.${runArchives.tldr.name}`),
             sourceTelemetry: sql.raw(`excluded.${runArchives.sourceTelemetry.name}`),
             searchText: sql.raw(`excluded.${runArchives.searchText.name}`),
           },
