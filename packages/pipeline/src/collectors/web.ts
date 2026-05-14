@@ -156,7 +156,13 @@ export async function collectWeb(
   if (config.sources.length === 0) {
     const durationMs = Date.now() - startTime;
     logger.info(
-      { itemsFetched: 0, itemsStored: 0, failures: 0, durationMs },
+      {
+        event: "collector.web.completed",
+        itemsFetched: 0,
+        itemsStored: 0,
+        failures: 0,
+        durationMs,
+      },
       "collection completed",
     );
     return { itemsFetched: 0, itemsStored: 0, commentsFetched: 0, durationMs, failures: undefined, unitResults: [] };
@@ -168,6 +174,19 @@ export async function collectWeb(
     sourceName: s.name,
     url: s.listingUrl,
   }));
+  logger.info(
+    {
+      event: "collector.web.started",
+      sourceCount: config.sources.length,
+      maxItems: config.maxItems,
+      sinceDays: config.sinceDays,
+      sources: config.sources.map((source) => ({
+        name: source.name,
+        listingUrl: source.listingUrl,
+      })),
+    },
+    "web collector started",
+  );
   const listingResults = await fetcher(listingJobs, { signal: deps.signal });
 
   // Per source: run discovery LLM + dedup + filter
@@ -182,6 +201,16 @@ export async function collectWeb(
     config.sources.map(async (source) => {
       const r = listingResults.get(source.listingUrl);
       if (!r?.ok) {
+        logger.warn(
+          {
+            event: "collector.web.listing_failed",
+            source: source.name,
+            listingUrl: source.listingUrl,
+            sinceDays: config.sinceDays,
+            error: r?.error ?? "no result",
+          },
+          "web listing failed",
+        );
         return {
           source,
           capped: [],
@@ -195,8 +224,31 @@ export async function collectWeb(
         const sorted = sortPostsByPublishedAtDesc(validated);
         const filtered = applySinceDays(sorted, config.sinceDays);
         const capped = filtered.slice(0, config.maxItems);
+        logger.info(
+          {
+            event: "collector.web.listing_completed",
+            source: source.name,
+            listingUrl: source.listingUrl,
+            sinceDays: config.sinceDays,
+            discovered: discovered.length,
+            validated: validated.length,
+            afterSinceDays: filtered.length,
+            capped: capped.length,
+          },
+          "web listing processed",
+        );
         return { source, capped, sourceFailed: false };
       } catch (err) {
+        logger.warn(
+          {
+            event: "collector.web.discovery_failed",
+            source: source.name,
+            listingUrl: source.listingUrl,
+            sinceDays: config.sinceDays,
+            error: truncateError(err),
+          },
+          "web listing discovery failed",
+        );
         return { source, capped: [], failure: truncateError(err), sourceFailed: true };
       }
     }),
@@ -252,6 +304,15 @@ export async function collectWeb(
     for (const post of posts) {
       const dr = detailResults.get(post.url);
       if (!dr?.ok) {
+        logger.warn(
+          {
+            event: "collector.web.detail_failed",
+            source: ps.source.name,
+            postUrl: post.url,
+            error: dr?.error ?? "no result",
+          },
+          "web detail fetch failed",
+        );
         allFailures.push({
           source: ps.source.name,
           postUrl: post.url,
@@ -285,6 +346,15 @@ export async function collectWeb(
         allItems.push(buildRawItem(post.url, dr.result.markdown, merged));
         itemsBySource.set(ps.source.name, (itemsBySource.get(ps.source.name) ?? 0) + 1);
       } catch (err) {
+        logger.warn(
+          {
+            event: "collector.web.detail_failed",
+            source: ps.source.name,
+            postUrl: post.url,
+            error: truncateError(err),
+          },
+          "web detail extraction failed",
+        );
         allFailures.push({ source: ps.source.name, postUrl: post.url, error: truncateError(err) });
       }
     }
@@ -332,6 +402,7 @@ export async function collectWeb(
 
   logger.info(
     {
+      event: "collector.web.completed",
       itemsFetched: result.itemsFetched,
       itemsStored: result.itemsStored,
       failures: result.failures?.length ?? 0,

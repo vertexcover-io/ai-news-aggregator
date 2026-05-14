@@ -1,5 +1,9 @@
 import type { RawItemInsert } from "@newsletter/shared/db";
-import type { CollectorResult, RawItemComment } from "@newsletter/shared/types";
+import type {
+  CollectorResult,
+  RawItemComment,
+  SourceUnitResult,
+} from "@newsletter/shared/types";
 import type { HnCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -400,21 +404,53 @@ export async function collectHn(
   const feeds = config.feeds ?? DEFAULT_FEEDS;
   const commentsPerItem = config.commentsPerItem ?? DEFAULT_COMMENTS_PER_ITEM;
 
-  logger.info({ feeds, commentsPerItem }, "collection started");
+  logger.info(
+    {
+      event: "collector.hn.started",
+      feeds,
+      sinceDays: config.sinceDays,
+      commentsPerItem,
+    },
+    "collection started",
+  );
 
   const seenIds = new Set<string>();
   const allItems: RawItemInsert[] = [];
+  const unitResults: SourceUnitResult[] = [];
 
   for (const feed of feeds) {
     const url = buildSearchUrl(feed, config);
+    const feedStart = Date.now();
     const response = await fetchWithRetry(fetchFn, url, parseAlgoliaStoryResponse);
     const items = parseStories(response);
+    let added = 0;
     for (const item of items) {
       if (!seenIds.has(item.externalId)) {
         seenIds.add(item.externalId);
         allItems.push(item);
+        added += 1;
       }
     }
+    logger.info(
+      {
+        event: "collector.hn.feed_completed",
+        feed,
+        url,
+        sinceDays: config.sinceDays,
+        fetched: items.length,
+        added,
+        durationMs: Date.now() - feedStart,
+      },
+      "hn feed fetched",
+    );
+    unitResults.push({
+      identifier: `hn:${feed}`,
+      displayName: `Hacker News ${feed}`,
+      itemsFetched: added,
+      status: "completed",
+      errors: [],
+      durationMs: Date.now() - feedStart,
+    });
     if (feed !== feeds[feeds.length - 1]) {
       await delay(RATE_LIMIT_MS, deps.signal);
     }
@@ -465,9 +501,13 @@ export async function collectHn(
     commentsFetched: totalComments,
     itemsStored,
     durationMs: Date.now() - startTime,
+    unitResults,
   };
 
-  logger.info(result, "collection completed");
+  logger.info(
+    { event: "collector.hn.completed", ...result },
+    "collection completed",
+  );
 
   return result;
 }
