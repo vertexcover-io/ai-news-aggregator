@@ -1,0 +1,1 @@
+ALTER TABLE "run_archives" DROP COLUMN "tldr";

@@ -5,7 +5,6 @@ export interface RankedStory {
 
 export interface ComposeInput {
   hook: string | null;
-  tldr: string | null;
   stories: RankedStory[];
   archiveUrl: string;
 }
@@ -37,24 +36,15 @@ function buildLinkedinStoryLine(index: number, story: RankedStory): string {
 
 function buildLinkedin(
   hook: string,
-  tldr: string | null,
   stories: RankedStory[],
   archiveUrl: string,
 ): string {
   const parts: string[] = [hook];
-  if (tldr !== null) parts.push(`TLDR: ${tldr}`);
   for (let i = 0; i < stories.length; i += 1) {
     parts.push(buildLinkedinStoryLine(i + 1, stories[i]));
   }
   parts.push(`Full breakdown: ${archiveUrl}`);
   return parts.join("\n\n");
-}
-
-function buildTwitterOpener(hook: string, tldr: string | null): string {
-  if (tldr === null) return hook;
-  const combined = `${hook}\n\n${tldr}`;
-  if (combined.length <= TWITTER_MAX_CHARS) return combined;
-  return hook;
 }
 
 function buildTwitterStoryTweet(index: number, story: RankedStory): string {
@@ -69,12 +59,10 @@ function buildTwitterStoryTweet(index: number, story: RankedStory): string {
 
 function buildTwitterThread(
   hook: string,
-  tldr: string | null,
   stories: RankedStory[],
   archiveUrl: string,
 ): string[] {
-  const thread: string[] = [];
-  thread.push(buildTwitterOpener(hook, tldr));
+  const thread: string[] = [hook];
   for (let i = 0; i < stories.length; i += 1) {
     thread.push(buildTwitterStoryTweet(i + 1, stories[i]));
   }
@@ -86,13 +74,12 @@ export function composePosts(input: ComposeInput): ComposedPosts | null {
   const hook = normalize(input.hook);
   if (hook === null) return null;
 
-  const tldr = normalize(input.tldr);
   const stories = input.stories.filter(
     (s) => s.title.trim() !== "" && s.summary.trim() !== "",
   );
 
   return {
-    linkedinText: buildLinkedin(hook, tldr, stories, input.archiveUrl),
-    twitterThread: buildTwitterThread(hook, tldr, stories, input.archiveUrl),
+    linkedinText: buildLinkedin(hook, stories, input.archiveUrl),
+    twitterThread: buildTwitterThread(hook, stories, input.archiveUrl),
   };
 }
