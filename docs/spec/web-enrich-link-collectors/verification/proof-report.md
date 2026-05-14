@@ -32,6 +32,45 @@ counters: {"attempted":1,"ok":2,"failed":0,"skipped":2,"cacheHits":1,"totalFetch
 | Telemetry counters aggregate correctly | `skippedReasons: { "no-url": 1, "invalid-url": 1 }` |
 | Structured logging (`enrichment.fetched`) | Pino JSON line with `event`, `url`, `domain`, `status`, `durationMs`, `contentType`, `textLength` |
 
+## Live end-to-end run (post-merge verification, 2026-05-14)
+
+Triggered `POST /api/runs/now` against the worktree's pipeline worker connected to real Postgres + Redis. Run ID `e49d3e91-809d-4cc8-9500-e66a3a395eae`.
+
+### HN — 25 items, 21 enriched live
+
+`SELECT` on `raw_items` filtered to the run window confirms enrichment landed in `metadata.enrichedLink`:
+
+| source | external URL | status | skipReason | title snippet | textLength | markdownLen |
+|---|---|---|---|---|---|---|
+| hn | github.com/cactus-compute/needle | ok | — | GitHub - cactus-compute/needle: 26m func… | 4587 | 5233 |
+| hn | anthropic.com/news/claude-for-small-business | ok | — | Introducing Claude for Small Business | 10527 | 13451 |
+| hn | deepmind.google/blog/ai-pointer/ | ok | — | Reimagining the mouse pointer for the AI… | 4449 | 4921 |
+| hn | arstechnica.com/ai/2026/05/amazon-employees… | ok | — | Amazon employees are "tokenmaxxing" due … | 1951 | 1953 |
+| hn | theatlantic.com/technology/2026/05/ai-back… | ok | — | The AI Backlash Could Get Very Ugly | 8160 | 9796 |
+| hn | jdhodges.com/blog/macbook-neo-benchmarks… | ok | — | MacBook Neo Processor Benchmarks… | 25030 | 28689 |
+| hn | (Ask HN — no url) | skipped | no-url | — | — | — |
+| hn | x.com/i/trending/2054617957440143639 | skipped | same-platform | — | — | — |
+
+21 fresh fetches, all `ok`. 4 correct skips: 2× `no-url` (Ask HN posts), 2× `same-platform` (x.com/twitter.com links). Zero false positives, zero failures, zero unhandled exceptions.
+
+### Twitter — list 1585430245762441216, 197 tweets
+
+Drove `collectTwitter` against the live rettiwt API:
+
+```
+Items: 197
+With external URL: 21
+Enrichment OK: 19
+Counters: { attempted: 20, ok: 19, failed: 1, skipped: 177, cacheHits: 0,
+            totalFetchMs: 25479, skippedReasons: { "same-platform": 177 } }
+```
+
+The 21 tweets that had `entities.urls[]` external links → `RawItemInsert.url` (was the tweet permalink before P3c). Examples: `langchain.com/blog/introducing-smithdb`, `theinformation.com/articles/startup-modal-talks-…`, `nyudatascience.medium.com/…`. 1 failed (paywalled), 177 same-platform tweets correctly skipped without a fetch.
+
+### Verdict
+
+End-to-end behaviour matches the spec exactly. No code changes required after live run.
+
 ## Scenarios covered by unit tests (no live re-run needed)
 
 | Scenario | Test file |
