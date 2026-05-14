@@ -78,94 +78,7 @@ function errorResponse(status: number): MockResponse {
   return { ok: false, status, body: "<html>Error</html>" };
 }
 
-function ogResponse(html: string): MockResponse {
-  return { ok: true, status: 200, body: null, text: html, headers: { "content-type": "text/html" } };
-}
-
-function ogEmptyResponse(): MockResponse {
-  return { ok: true, status: 200, body: null, text: "<html><head></head><body></body></html>", headers: { "content-type": "text/html" } };
-}
-
 type CollectHnFn = (deps: { rawItemsRepo: RawItemsRepo & { upsertItems: MockUpsertFn }; fetchFn: MockFetchFn }, config: HnCollectConfig) => Promise<CollectorResult>;
-
-type FetchOgImageFn = (url: string, fetchFn: typeof fetch) => Promise<string | null>;
-
-describe("fetchOgImage", () => {
-  let fetchOgImage: FetchOgImageFn;
-
-  beforeEach(async () => {
-    const mod = await import("@pipeline/collectors/hn.js");
-    fetchOgImage = mod.fetchOgImage as FetchOgImageFn;
-  });
-
-  it("extracts og:image from property attribute", async () => {
-    const html = '<html><head><meta property="og:image" content="https://example.com/hero.jpg"></head></html>';
-    const mockFetch = createMockFetch([ogResponse(html)]);
-    const result = await fetchOgImage("https://example.com/article", mockFetch as unknown as typeof fetch);
-    expect(result).toBe("https://example.com/hero.jpg");
-  });
-
-  it("extracts og:image from name attribute", async () => {
-    const html = '<html><head><meta name="og:image" content="https://example.com/hero.jpg"></head></html>';
-    const mockFetch = createMockFetch([ogResponse(html)]);
-    const result = await fetchOgImage("https://example.com/article", mockFetch as unknown as typeof fetch);
-    expect(result).toBe("https://example.com/hero.jpg");
-  });
-
-  it("extracts og:image with reversed attribute order (content before property)", async () => {
-    const html = '<html><head><meta content="https://example.com/hero.jpg" property="og:image"></head></html>';
-    const mockFetch = createMockFetch([ogResponse(html)]);
-    const result = await fetchOgImage("https://example.com/article", mockFetch as unknown as typeof fetch);
-    expect(result).toBe("https://example.com/hero.jpg");
-  });
-
-  it("resolves relative og:image URL against article URL", async () => {
-    const html = '<html><head><meta property="og:image" content="/images/hero.jpg"></head></html>';
-    const mockFetch = createMockFetch([ogResponse(html)]);
-    const result = await fetchOgImage("https://example.com/article/page", mockFetch as unknown as typeof fetch);
-    expect(result).toBe("https://example.com/images/hero.jpg");
-  });
-
-  it("decodes HTML entities in og:image URL", async () => {
-    const html = '<html><head><meta property="og:image" content="https://example.com/img.jpg?w=800&amp;h=600"></head></html>';
-    const mockFetch = createMockFetch([ogResponse(html)]);
-    const result = await fetchOgImage("https://example.com/article", mockFetch as unknown as typeof fetch);
-    expect(result).toBe("https://example.com/img.jpg?w=800&h=600");
-  });
-
-  it("returns null when no og:image tag exists", async () => {
-    const mockFetch = createMockFetch([ogEmptyResponse()]);
-    const result = await fetchOgImage("https://example.com/article", mockFetch as unknown as typeof fetch);
-    expect(result).toBeNull();
-  });
-
-  it("returns null on non-HTML response", async () => {
-    const mockFetch = createMockFetch([
-      { ok: true, status: 200, body: null, text: "%PDF-1.4", headers: { "content-type": "application/pdf" } },
-    ]);
-    const result = await fetchOgImage("https://example.com/article.pdf", mockFetch as unknown as typeof fetch);
-    expect(result).toBeNull();
-  });
-
-  it("returns null on HTTP error", async () => {
-    const mockFetch = createMockFetch([errorResponse(404)]);
-    const result = await fetchOgImage("https://example.com/article", mockFetch as unknown as typeof fetch);
-    expect(result).toBeNull();
-  });
-
-  it("returns null on network error", async () => {
-    const mockFetch = vi.fn().mockRejectedValue(new Error("network error"));
-    const result = await fetchOgImage("https://example.com/article", mockFetch as unknown as typeof fetch);
-    expect(result).toBeNull();
-  });
-
-  it("returns null for empty or non-http URL", async () => {
-    const mockFetch = createMockFetch([]);
-    const result = await fetchOgImage("", mockFetch as unknown as typeof fetch);
-    expect(result).toBeNull();
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-});
 
 describe("collectHn", () => {
   let collectHn: CollectHnFn;
@@ -421,8 +334,8 @@ describe("collectHn", () => {
     const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     expect(result.commentsFetched).toBe(2);
-    // 1 story + 2 failed comment retries + 1 successful comment + 1 OG image fetch = 5
-    expect(mockFetch).toHaveBeenCalledTimes(5);
+    // 1 story + 2 failed comment retries + 1 successful comment = 4
+    expect(mockFetch).toHaveBeenCalledTimes(4);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     expect(rows[0].metadata.comments).toHaveLength(2);
     expect(rows[0].metadata.comments[0].author).toBe("dave");
@@ -688,37 +601,6 @@ describe("collectHn", () => {
     const cutoff = Number(match[1]);
     expect(cutoff).toBeGreaterThanOrEqual(before - 1);
     expect(cutoff).toBeLessThanOrEqual(after + 1);
-  });
-
-  it("fetches og:image for each item and sets imageUrl", async () => {
-    const singleHit = { ...hnAlgoliaStoriesFixture, hits: [hnAlgoliaStoriesFixture.hits[0]] };
-    const ogHtml = '<html><head><meta property="og:image" content="https://example.com/og-hero.jpg"></head></html>';
-    const mockFetch = createMockFetch([
-      storiesResponse(singleHit),
-      commentsResponse(emptyAlgoliaResponse),
-      ogResponse(ogHtml),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
-
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    expect(rows[0].imageUrl).toBe("https://example.com/og-hero.jpg");
-  });
-
-  it("sets imageUrl undefined when og:image fetch fails", async () => {
-    const singleHit = { ...hnAlgoliaStoriesFixture, hits: [hnAlgoliaStoriesFixture.hits[0]] };
-    const mockFetch = createMockFetch([
-      storiesResponse(singleHit),
-      commentsResponse(emptyAlgoliaResponse),
-      errorResponse(500),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
-
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    expect(rows[0].imageUrl).toBeUndefined();
   });
 
   // REQ-021: sinceDays undefined → no created_at_i clause in the URL

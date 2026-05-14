@@ -170,6 +170,89 @@ describe("createRettiwtClient", () => {
     });
   });
 
+  describe("entities.urls → externalUrl", () => {
+    it("populates externalUrl with the first non-platform URL", async () => {
+      const stub = makeRettiwtStub();
+      stub.list.tweets.mockResolvedValueOnce(
+        makeCursored(
+          [
+            makeFakeTweet({
+              id: "x1",
+              entities: {
+                urls: [
+                  "https://t.co/abc",
+                  "https://x.com/foo/status/1",
+                  "https://arxiv.org/abs/2401.00001",
+                  "https://example.com/other",
+                ],
+              },
+            }),
+          ],
+          null,
+        ),
+      );
+      const client = createRettiwtClient({ rettiwt: stub });
+
+      const result = await client.fetchListTweets("L");
+
+      expect(result.tweets[0].externalUrl).toBe("https://arxiv.org/abs/2401.00001");
+    });
+
+    it("leaves externalUrl undefined when entities.urls is missing", async () => {
+      const stub = makeRettiwtStub();
+      stub.list.tweets.mockResolvedValueOnce(
+        makeCursored([makeFakeTweet({ id: "x2" })], null),
+      );
+      const client = createRettiwtClient({ rettiwt: stub });
+
+      const result = await client.fetchListTweets("L");
+
+      expect(result.tweets[0].externalUrl).toBeUndefined();
+    });
+
+    it("leaves externalUrl undefined when all entity URLs are same-platform", async () => {
+      const stub = makeRettiwtStub();
+      stub.list.tweets.mockResolvedValueOnce(
+        makeCursored(
+          [
+            makeFakeTweet({
+              id: "x3",
+              entities: {
+                urls: ["https://t.co/x", "https://twitter.com/a/status/1"],
+              },
+            }),
+          ],
+          null,
+        ),
+      );
+      const client = createRettiwtClient({ rettiwt: stub });
+
+      const result = await client.fetchListTweets("L");
+
+      expect(result.tweets[0].externalUrl).toBeUndefined();
+    });
+
+    it("uses the inner (retweeted) tweet's entities for retweets", async () => {
+      const stub = makeRettiwtStub();
+      const inner = makeFakeTweet({
+        id: "inner",
+        tweetBy: { userName: "orig" },
+        entities: { urls: ["https://arxiv.org/abs/9999"] },
+      });
+      const outer = makeFakeTweet({
+        id: "outer",
+        tweetBy: { userName: "rt" },
+        retweetedTweet: inner,
+      });
+      stub.list.tweets.mockResolvedValueOnce(makeCursored([outer], null));
+      const client = createRettiwtClient({ rettiwt: stub });
+
+      const result = await client.fetchListTweets("L");
+
+      expect(result.tweets[0].externalUrl).toBe("https://arxiv.org/abs/9999");
+    });
+  });
+
   describe("AbortSignal", () => {
     it("rejects with AbortError when signal is already aborted", async () => {
       const stub = makeRettiwtStub();

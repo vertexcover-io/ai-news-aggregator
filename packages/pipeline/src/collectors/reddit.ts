@@ -7,6 +7,8 @@ import { delay } from "@pipeline/lib/delay.js";
 import { UrlParseError } from "@pipeline/collectors/hn.js";
 import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
 import { createProxyFetch } from "@pipeline/lib/proxy-fetch.js";
+import { enrichRawItems } from "@pipeline/services/link-enrichment/index.js";
+import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
 
 const logger = createLogger("collector:reddit");
 
@@ -40,6 +42,7 @@ export interface RedditCollectorDeps {
   rawItemsRepo: RawItemsRepo;
   fetchFn?: typeof fetch;
   signal?: AbortSignal;
+  enrichment?: EnrichmentContext;
 }
 
 interface RedditPostData {
@@ -535,6 +538,9 @@ export async function collectReddit(
   let itemsStored = 0;
 
   if (filteredItems.length > 0) {
+    if (deps.enrichment) {
+      await enrichRawItems(filteredItems, deps.enrichment);
+    }
     await deps.rawItemsRepo.upsertItems(filteredItems);
     itemsStored = filteredItems.length;
   }

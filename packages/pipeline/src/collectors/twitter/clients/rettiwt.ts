@@ -18,6 +18,10 @@ export interface RettiwtRawUser {
   userName: string;
 }
 
+export interface RettiwtRawEntities {
+  urls?: string[];
+}
+
 export interface RettiwtRawTweet {
   id: string;
   fullText?: string;
@@ -28,8 +32,21 @@ export interface RettiwtRawTweet {
   replyCount?: number;
   quoteCount?: number;
   media?: RettiwtRawMedia[];
+  entities?: RettiwtRawEntities;
   retweetedTweet?: RettiwtRawTweet;
   quoted?: RettiwtRawTweet;
+}
+
+const SAME_PLATFORM_URL_RE = /^https?:\/\/(?:[^/]*\.)?(?:x\.com|twitter\.com|t\.co)\//i;
+
+function pickExternalUrl(entities: RettiwtRawEntities | undefined): string | undefined {
+  const urls = entities?.urls ?? [];
+  for (const u of urls) {
+    if (typeof u !== "string") continue;
+    if (SAME_PLATFORM_URL_RE.test(u)) continue;
+    return u;
+  }
+  return undefined;
 }
 
 // The published rettiwt types declare `CursoredData.next: string`, but the live runtime
@@ -76,6 +93,7 @@ function denormalize(t: RettiwtRawTweet): NormalizedTweet {
     photoUrls,
     isRetweet: !!t.retweetedTweet,
     isQuote: !!t.quoted,
+    externalUrl: pickExternalUrl(inner.entities),
   };
 }
 

@@ -17,10 +17,35 @@ export interface RecapContent {
   bottomLine: string;
 }
 
+export type EnrichmentSkipReason =
+  | "no-url"
+  | "invalid-url"
+  | "same-platform"
+  | "non-html-media"
+  | "cache-hit";
+
+export interface EnrichedLinkContent {
+  url: string;
+  fetchedAt: string;
+  status: "ok" | "skipped" | "failed";
+  skipReason?: EnrichmentSkipReason;
+  failureReason?: string;
+  cacheHit?: boolean;
+  title?: string;
+  byline?: string;
+  description?: string;
+  imageUrl?: string;
+  domain?: string;
+  contentType?: "html" | "pdf" | "image" | "video" | "other";
+  markdown?: string;
+  textLength?: number;
+}
+
 export interface RawItemMetadata {
   comments: RawItemComment[];
   recap?: RecapContent;
   addedInReview?: boolean;
+  enrichedLink?: EnrichedLinkContent;
 }
 
 export interface SourceUnitResult {
