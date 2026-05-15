@@ -15,7 +15,11 @@ vi.mock("@newsletter/shared/logger", () => ({
   }),
 }));
 
-import { generateRecap, recapContentSchema } from "@pipeline/processors/recap.js";
+import {
+  generateRecap,
+  recapContentSchema,
+  RECAP_SYSTEM_PROMPT,
+} from "@pipeline/processors/recap.js";
 import type { RecapInputItem } from "@pipeline/processors/recap.js";
 
 interface GenerateArgs {
@@ -36,9 +40,9 @@ function validRecap(): {
     title: "Test recap title",
     summary: "This is a meaningful summary of the item.",
     bullets: [
-      "First analysis point explaining significance.",
-      "Second analysis point about broader impact.",
-      "Third analysis point on practical implications.",
+      "First concrete detail with a specific product change.",
+      "Second concrete detail with a relevant number.",
+      "Third concrete detail with an important caveat.",
     ],
     bottomLine: "This is the strategic takeaway for readers.",
   };
@@ -127,5 +131,18 @@ describe("generateRecap", () => {
       modelId: "claude-haiku-custom",
     });
     expect(generate).toHaveBeenCalledOnce();
+  });
+
+  it("defines summary, bullets, and bottomLine as non-overlapping editorial layers", () => {
+    expect(RECAP_SYSTEM_PROMPT).toContain("summary = ORIENT");
+    expect(RECAP_SYSTEM_PROMPT).toContain("bullets = EXPLAIN");
+    expect(RECAP_SYSTEM_PROMPT).toContain("bottomLine = INTERPRET");
+    expect(RECAP_SYSTEM_PROMPT).toContain("Exactly 3");
+    expect(RECAP_SYSTEM_PROMPT).toContain(
+      "Each bullet must add new information not already stated in the summary",
+    );
+    expect(RECAP_SYSTEM_PROMPT).not.toContain(
+      "3-5 plain-text analysis points explaining why this matters",
+    );
   });
 });
