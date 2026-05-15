@@ -1,6 +1,6 @@
 import { JSDOM, VirtualConsole } from "jsdom";
 import type { RawItemInsert } from "@newsletter/shared/db";
-import type { CollectorResult, RawItemComment, RawItemEngagement, SourceUnitResult } from "@newsletter/shared/types";
+import type { CollectorResult, RawItemEngagement, SourceUnitResult } from "@newsletter/shared/types";
 import type { RedditCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -19,10 +19,8 @@ const DEFAULT_SUBREDDITS = [
 const DEFAULT_SORT = "top";
 const DEFAULT_TIMEFRAME = "day";
 const DEFAULT_LIMIT = 25;
-const DEFAULT_COMMENTS_PER_ITEM = 10;
 const MAX_RETRIES = 3;
 const RATE_LIMIT_MS = 500;
-const COMMENT_RATE_LIMIT_MS = 1000;
 const USER_AGENT = "Mozilla/5.0 (compatible; NewsletterBot/1.0; +https://vertexcover.io)";
 const ZERO_ENGAGEMENT: RawItemEngagement = { points: 0, commentCount: 0 };
 
@@ -140,7 +138,6 @@ function extractEntryUrl(contentDoc: Document, sourceUrl: string): string {
 
 interface ParsedPostEntry {
   readonly item: RawItemInsert;
-  readonly subreddit: string;
 }
 
 function parsePostEntry(entry: Element, subreddit: string, now: Date): ParsedPostEntry | null {
@@ -157,7 +154,6 @@ function parsePostEntry(entry: Element, subreddit: string, now: Date): ParsedPos
   const publishedAt = parseDateOrNow(firstText(entry, "published"));
 
   return {
-    subreddit,
     item: {
       sourceType: "reddit",
       externalId: stripThingPrefix(rawId),
@@ -184,30 +180,6 @@ function parseListingItems(xml: string, subreddit: string): ParsedPostEntry[] {
     .filter((entry): entry is ParsedPostEntry => entry !== null);
 }
 
-function parseCommentEntry(entry: Element): RawItemComment | null {
-  const rawId = firstText(entry, "id");
-  if (!rawId.startsWith("t1_")) return null;
-
-  const contentDoc = getEntryContentDocument(entry);
-  const content = extractEntryBody(contentDoc) || normalizeText(contentDoc.body.textContent);
-  if (content === "") return null;
-
-  return {
-    id: stripThingPrefix(rawId),
-    author: getEntryAuthor(entry) ?? "[deleted]",
-    content,
-    publishedAt: parseDateOrNow(firstText(entry, "published")).toISOString(),
-  };
-}
-
-function parseCommentItems(xml: string, limit: number): RawItemComment[] {
-  const doc = parseXmlDocument(xml);
-  return Array.from(doc.getElementsByTagName("entry"))
-    .map(parseCommentEntry)
-    .filter((comment): comment is RawItemComment => comment !== null)
-    .slice(0, limit);
-}
-
 function buildListingUrl(
   subreddit: string,
   sort: string,
@@ -218,14 +190,6 @@ function buildListingUrl(
   if (sort === "top") params.set("t", timeframe);
   params.set("limit", String(limit));
   return `https://www.reddit.com/r/${subreddit}/${sort}.rss?${params.toString()}`;
-}
-
-function buildCommentsUrl(
-  subreddit: string,
-  postId: string,
-  limit: number,
-): string {
-  return `https://www.reddit.com/r/${subreddit}/comments/${postId}/.rss?limit=${limit}`;
 }
 
 async function fetchTextWithRetry(
@@ -268,31 +232,6 @@ async function fetchTextWithRetry(
   }
 
   throw lastError ?? new Error("Fetch failed after retries");
-}
-
-async function fetchComments(
-  fetchFn: typeof fetch,
-  subreddit: string,
-  postId: string,
-  limit: number,
-): Promise<RawItemComment[]> {
-  try {
-    const url = buildCommentsUrl(subreddit, postId, limit);
-    const xml = await fetchTextWithRetry(fetchFn, url);
-    return parseCommentItems(xml, limit);
-  } catch (err) {
-    const cause = err instanceof Error ? formatCause(err.cause) : undefined;
-    logger.warn(
-      {
-        subreddit,
-        postId,
-        error: err instanceof Error ? err.message : String(err),
-        cause,
-      },
-      "comment fetch failed",
-    );
-    return [];
-  }
 }
 
 // ── Single-post fetch (add-post flow) ────────────────────────────────────────
@@ -365,8 +304,7 @@ export async function fetchRedditPost(
     throw new Error(`Reddit post ${parsed.postId} not found in RSS response`);
   }
 
-  const comments = parseCommentItems(xml, DEFAULT_COMMENTS_PER_ITEM);
-  return { ...firstPost.item, metadata: { comments } };
+  return { ...firstPost.item, metadata: { comments: [] } };
 }
 
 // ── Batch collection ──────────────────────────────────────────────────────────
@@ -382,7 +320,6 @@ export async function collectReddit(
   const sort = config.sort ?? DEFAULT_SORT;
   const timeframe = config.timeframe ?? DEFAULT_TIMEFRAME;
   const limit = config.limit ?? DEFAULT_LIMIT;
-  const commentsPerItem = config.commentsPerItem ?? DEFAULT_COMMENTS_PER_ITEM;
 
   logger.info(
     {
@@ -392,14 +329,14 @@ export async function collectReddit(
       timeframe,
       limit,
       sinceDays: config.sinceDays,
-      commentsPerItem,
+      commentsPerItem: 0,
+      requestedCommentsPerItem: config.commentsPerItem ?? 0,
     },
     "collection started",
   );
 
   const seenIds = new Set<string>();
   const allItems: RawItemInsert[] = [];
-  const subredditByExternalId = new Map<string, string>();
   const unitResults: SourceUnitResult[] = [];
 
   for (const subreddit of subreddits) {
@@ -414,7 +351,6 @@ export async function collectReddit(
       for (const { item } of entries) {
         if (!seenIds.has(item.externalId)) {
           seenIds.add(item.externalId);
-          subredditByExternalId.set(item.externalId, subreddit);
           allItems.push(item);
           added++;
         }
@@ -469,30 +405,6 @@ export async function collectReddit(
     }
   }
 
-  let totalComments = 0;
-
-  if (commentsPerItem > 0) {
-    let commentRequests = 0;
-    for (const item of allItems) {
-      if (deps.signal?.aborted) break;
-
-      if (commentRequests > 0) {
-        await delay(COMMENT_RATE_LIMIT_MS, deps.signal);
-      }
-      commentRequests++;
-
-      const itemSubreddit = subredditByExternalId.get(item.externalId) ?? "";
-      const comments = await fetchComments(
-        fetchFn,
-        itemSubreddit,
-        item.externalId,
-        commentsPerItem,
-      );
-      item.metadata = { comments };
-      totalComments += comments.length;
-    }
-  }
-
   let filteredItems = allItems;
   if (config.sinceDays !== undefined && config.sinceDays > 0) {
     const cutoff = Date.now() - config.sinceDays * 86_400_000;
@@ -523,7 +435,7 @@ export async function collectReddit(
 
   const result: CollectorResult = {
     itemsFetched: filteredItems.length,
-    commentsFetched: totalComments,
+    commentsFetched: 0,
     itemsStored,
     durationMs: Date.now() - startTime,
     unitResults,

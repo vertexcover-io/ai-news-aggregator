@@ -115,22 +115,6 @@ function postEntry(options: {
   </entry>`;
 }
 
-function commentEntry(options: {
-  readonly id: string;
-  readonly author: string;
-  readonly body: string;
-  readonly published?: string;
-}): string {
-  const published = options.published ?? "2026-05-14T13:00:00+00:00";
-  return `<entry>
-    <author><name>/u/${options.author}</name></author>
-    <content type="html">${escapeXml(`<div class="md"><p>${options.body}</p></div>`)}</content>
-    <id>t1_${options.id}</id>
-    <published>${published}</published>
-    <title>${escapeXml(options.body)}</title>
-  </entry>`;
-}
-
 function escapeXml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -243,19 +227,14 @@ describe("collectReddit RSS", () => {
     expect(rows[0].content).toBe("I've been experimenting with local LLM setups. Here are my findings.");
   });
 
-  it("fetches per-post RSS comments and skips the post entry", async () => {
+  it("does not fetch per-post RSS comments even when commentsPerItem is configured", async () => {
     const listing = atomFeed(
       postEntry({
         id: "post001",
         title: "New open-source LLM beats GPT-4 on benchmarks",
       }),
     );
-    const comments = atomFeed(
-      `${postEntry({ id: "post001", title: "New open-source LLM beats GPT-4 on benchmarks" })}
-       ${commentEntry({ id: "comment001", author: "deep_learner", body: "The benchmark methodology looks solid." })}
-       ${commentEntry({ id: "comment002", author: "skeptic_ml", body: "We should wait for independent verification." })}`,
-    );
-    const mockFetch = createMockFetch([rssResponse(listing), rssResponse(comments)]);
+    const mockFetch = createMockFetch([rssResponse(listing)]);
     const rawItemsRepo = createMockRepo();
 
     const result = await collectReddit(
@@ -263,35 +242,16 @@ describe("collectReddit RSS", () => {
       { subreddits: ["MachineLearning"], commentsPerItem: 2, sinceDays: 7 },
     );
 
-    expect(result.commentsFetched).toBe(2);
-    expect(mockFetch.mock.calls[1][0]).toBe(
-      "https://www.reddit.com/r/MachineLearning/comments/post001/.rss?limit=2",
-    );
+    expect(result.commentsFetched).toBe(0);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    const metadata = rows[0].metadata as { comments: readonly { id: string; author: string; content: string }[] };
-    expect(metadata.comments).toEqual([
-      {
-        id: "comment001",
-        author: "deep_learner",
-        content: "The benchmark methodology looks solid.",
-        publishedAt: "2026-05-14T13:00:00.000Z",
-      },
-      {
-        id: "comment002",
-        author: "skeptic_ml",
-        content: "We should wait for independent verification.",
-        publishedAt: "2026-05-14T13:00:00.000Z",
-      },
-    ]);
+    expect(rows[0].metadata).toEqual({ comments: [] });
   });
 
-  it("stores items with empty comments when comment RSS fetch fails", async () => {
+  it("ignores stale commentsPerItem config and avoids comment request failures", async () => {
     const listing = atomFeed(postEntry({ id: "post001", title: "New open-source LLM beats GPT-4 on benchmarks" }));
     const mockFetch = createMockFetch([
       rssResponse(listing),
-      errorResponse(502),
-      errorResponse(502),
-      errorResponse(502),
     ]);
     const rawItemsRepo = createMockRepo();
 
@@ -302,6 +262,7 @@ describe("collectReddit RSS", () => {
 
     expect(result.itemsFetched).toBe(1);
     expect(result.commentsFetched).toBe(0);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     expect(rows[0].metadata).toEqual({ comments: [] });
   });

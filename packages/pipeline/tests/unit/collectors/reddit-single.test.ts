@@ -122,16 +122,7 @@ describe("fetchRedditPost", () => {
     expect(result.sourceUrl).toBe("https://www.reddit.com/r/test/comments/abc123/a_reddit_post/");
     expect(result.content).toBe("body");
     expect(result.engagement).toEqual({ points: 0, commentCount: 0 });
-    expect(result.metadata).toEqual({
-      comments: [
-        {
-          id: "c1",
-          author: "carol",
-          content: "nice",
-          publishedAt: "2023-11-14T22:15:00.000Z",
-        },
-      ],
-    });
+    expect(result.metadata).toEqual({ comments: [] });
     const firstCall = calls[0];
     expect(firstCall?.url).toMatch(/\.rss$/);
     const headers = firstCall?.init?.headers as Record<string, string> | undefined;

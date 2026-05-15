@@ -49,7 +49,7 @@ describe("Reddit Collector E2E", () => {
     }
   });
 
-  it("fetches comments and stores them in metadata", async () => {
+  it("does not fetch comments and stores empty comment metadata", async () => {
     const cfg: RedditCollectConfig = {
       subreddits: ["MachineLearning"],
       sort: "top",
@@ -60,12 +60,11 @@ describe("Reddit Collector E2E", () => {
 
     const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
 
-    expect(result.commentsFetched).toBeGreaterThanOrEqual(0);
+    expect(result.commentsFetched).toBe(0);
 
     const rows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
     for (const row of rows) {
-      expect(row.metadata).toHaveProperty("comments");
-      expect(Array.isArray(row.metadata.comments)).toBe(true);
+      expect(row.metadata.comments).toEqual([]);
     }
   });
 
