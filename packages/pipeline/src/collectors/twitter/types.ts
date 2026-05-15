@@ -2,6 +2,15 @@ import type { CollectorResult } from "@newsletter/shared/types";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
 
+export interface QuotedTweet {
+  id: string;
+  authorHandle: string;
+  fullText: string;
+  url: string;
+  createdAt: string;
+  photoUrls: string[];
+}
+
 export interface NormalizedTweet {
   id: string;
   authorHandle: string;
@@ -17,6 +26,7 @@ export interface NormalizedTweet {
   isRetweet: boolean;
   isQuote: boolean;
   externalUrl?: string;
+  quotedTweet?: QuotedTweet;
 }
 
 export interface TwitterClientFetchOptions {

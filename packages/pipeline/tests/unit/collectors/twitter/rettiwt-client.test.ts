@@ -253,6 +253,125 @@ describe("createRettiwtClient", () => {
     });
   });
 
+  describe("quoted tweet extraction", () => {
+    // VS-1: direct quote
+    it("extracts quoted into quotedTweet when outer has `quoted`", async () => {
+      const stub = makeRettiwtStub();
+      const quotedInner = makeFakeTweet({
+        id: "quoted-id",
+        fullText: "original tweet body",
+        tweetBy: { userName: "originalAuthor" },
+        createdAt: "2026-04-30T10:00:00.000Z",
+        media: [
+          { type: MediaType.PHOTO, url: "https://pbs/q.jpg" },
+          { type: MediaType.VIDEO, url: "https://video/q.mp4" },
+        ],
+      });
+      const outer = makeFakeTweet({
+        id: "outer-id",
+        fullText: "my hot take",
+        tweetBy: { userName: "commenter" },
+        quoted: quotedInner,
+      });
+      stub.list.tweets.mockResolvedValueOnce(makeCursored([outer], null));
+
+      const client = createRettiwtClient({ rettiwt: stub });
+      const result = await client.fetchListTweets("L");
+
+      expect(result.tweets[0].quotedTweet).toEqual({
+        id: "quoted-id",
+        authorHandle: "originalAuthor",
+        fullText: "original tweet body",
+        url: "https://x.com/originalAuthor/status/quoted-id",
+        createdAt: "2026-04-30T10:00:00.000Z",
+        photoUrls: ["https://pbs/q.jpg"],
+      });
+      // VS-7: isQuote is true (outer has `quoted`), isRetweet is false
+      expect(result.tweets[0].isQuote).toBe(true);
+      expect(result.tweets[0].isRetweet).toBe(false);
+    });
+
+    // VS-2: retweet-of-quote — outer has retweetedTweet, and the retweeted tweet has quoted
+    it("extracts quotedTweet from retweet-of-quote", async () => {
+      const stub = makeRettiwtStub();
+      const deepInner = makeFakeTweet({
+        id: "deep-quoted-id",
+        fullText: "the deepest thought",
+        tweetBy: { userName: "deepAuthor" },
+        createdAt: "2026-04-29T10:00:00.000Z",
+        media: [{ type: MediaType.PHOTO, url: "https://pbs/deep.jpg" }],
+      });
+      const retweetedInner = makeFakeTweet({
+        id: "rt-inner-id",
+        fullText: "the quote-tweeter's take",
+        tweetBy: { userName: "quoter" },
+        quoted: deepInner,
+      });
+      const outer = makeFakeTweet({
+        id: "outer-rt-id",
+        fullText: "RT @quoter: ...",
+        tweetBy: { userName: "rter" },
+        retweetedTweet: retweetedInner,
+      });
+      stub.list.tweets.mockResolvedValueOnce(makeCursored([outer], null));
+
+      const client = createRettiwtClient({ rettiwt: stub });
+      const result = await client.fetchListTweets("L");
+
+      // outer fields come from retweetedInner (existing behaviour preserved)
+      expect(result.tweets[0].id).toBe("rt-inner-id");
+      expect(result.tweets[0].authorHandle).toBe("quoter");
+      expect(result.tweets[0].fullText).toBe("the quote-tweeter's take");
+
+      // quoted tweet is the deep inner
+      expect(result.tweets[0].quotedTweet).toEqual({
+        id: "deep-quoted-id",
+        authorHandle: "deepAuthor",
+        fullText: "the deepest thought",
+        url: "https://x.com/deepAuthor/status/deep-quoted-id",
+        createdAt: "2026-04-29T10:00:00.000Z",
+        photoUrls: ["https://pbs/deep.jpg"],
+      });
+      // VS-7 trade-off: isRetweet is true; isQuote is false because we check
+      // `!!t.quoted` on the OUTER envelope (the retweet wrapper has no top-level
+      // `quoted`). The quoted content is still extracted via inner unwrap.
+      expect(result.tweets[0].isRetweet).toBe(true);
+      expect(result.tweets[0].isQuote).toBe(false);
+    });
+
+    // VS-3: plain tweets, retweets of non-quotes, tweets with no quoted field
+    it("leaves quotedTweet undefined for plain tweets", async () => {
+      const stub = makeRettiwtStub();
+      stub.list.tweets.mockResolvedValueOnce(
+        makeCursored([makeFakeTweet({ id: "plain" })], null),
+      );
+      const client = createRettiwtClient({ rettiwt: stub });
+      const result = await client.fetchListTweets("L");
+      expect(result.tweets[0].quotedTweet).toBeUndefined();
+    });
+
+    it("leaves quotedTweet undefined for retweet of non-quote", async () => {
+      const stub = makeRettiwtStub();
+      const inner = makeFakeTweet({ id: "inner-non-quote", tweetBy: { userName: "orig" } });
+      const outer = makeFakeTweet({ id: "rt-outer", retweetedTweet: inner });
+      stub.list.tweets.mockResolvedValueOnce(makeCursored([outer], null));
+      const client = createRettiwtClient({ rettiwt: stub });
+      const result = await client.fetchListTweets("L");
+      expect(result.tweets[0].quotedTweet).toBeUndefined();
+    });
+
+    it("leaves quotedTweet undefined when no quoted field present", async () => {
+      const stub = makeRettiwtStub();
+      // makeFakeTweet does not set quoted — the field is absent by default
+      stub.list.tweets.mockResolvedValueOnce(
+        makeCursored([makeFakeTweet({ id: "no-quoted" })], null),
+      );
+      const client = createRettiwtClient({ rettiwt: stub });
+      const result = await client.fetchListTweets("L");
+      expect(result.tweets[0].quotedTweet).toBeUndefined();
+    });
+  });
+
   describe("AbortSignal", () => {
     it("rejects with AbortError when signal is already aborted", async () => {
       const stub = makeRettiwtStub();

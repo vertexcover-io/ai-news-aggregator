@@ -12,6 +12,12 @@ function makeTitle(fullText: string): string {
 export function tweetToRawItem(t: NormalizedTweet): RawItemInsert {
   const external =
     typeof t.externalUrl === "string" && t.externalUrl.length > 0 ? t.externalUrl : undefined;
+  const content = t.quotedTweet
+    ? `${t.fullText}\n\nQuoting @${t.quotedTweet.authorHandle}: ${t.quotedTweet.fullText}`
+    : t.fullText;
+  const metadata = t.quotedTweet
+    ? { comments: [], quotedTweet: t.quotedTweet }
+    : { comments: [] };
   return {
     sourceType: "twitter",
     externalId: t.id,
@@ -19,13 +25,13 @@ export function tweetToRawItem(t: NormalizedTweet): RawItemInsert {
     url: external ?? t.url,
     sourceUrl: external ? t.url : undefined,
     author: t.authorHandle,
-    content: t.fullText,
+    content,
     imageUrl: t.photoUrls[0] ?? null,
     publishedAt: new Date(t.createdAt),
     engagement: {
       points: t.likeCount,
       commentCount: t.retweetCount + t.replyCount + t.quoteCount,
     },
-    metadata: { comments: [] },
+    metadata,
   };
 }

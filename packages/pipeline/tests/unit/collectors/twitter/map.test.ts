@@ -82,10 +82,50 @@ describe("tweetToRawItem", () => {
   });
 
   describe("REQ-009 — quote tweets", () => {
-    it("content is outer fullText (quoted text dropped upstream)", () => {
-      const t = makeTweet({ fullText: "my hot take about a thing", isQuote: true });
+    // VS-4: updated — quotedTweet is now surfaced in content
+    it("appends `Quoting @handle: …` to content when quotedTweet is set", () => {
+      const t = makeTweet({
+        fullText: "my hot take",
+        isQuote: true,
+        quotedTweet: {
+          id: "quoted-id",
+          authorHandle: "originalAuthor",
+          fullText: "original tweet body",
+          url: "https://x.com/originalAuthor/status/quoted-id",
+          createdAt: "2026-04-30T10:00:00.000Z",
+          photoUrls: [],
+        },
+      });
       const item = tweetToRawItem(t);
-      expect(item.content).toBe("my hot take about a thing");
+      expect(item.content).toBe("my hot take\n\nQuoting @originalAuthor: original tweet body");
+      // title is still derived from outer text only
+      expect(item.title).toBe("my hot take");
+    });
+  });
+
+  describe("VS-5 — metadata.quotedTweet", () => {
+    it("writes quotedTweet to metadata alongside comments", () => {
+      const quoted = {
+        id: "quoted-id",
+        authorHandle: "originalAuthor",
+        fullText: "original tweet body",
+        url: "https://x.com/originalAuthor/status/quoted-id",
+        createdAt: "2026-04-30T10:00:00.000Z",
+        photoUrls: ["https://pbs/q.jpg"],
+      };
+      const t = makeTweet({ isQuote: true, quotedTweet: quoted });
+      const item = tweetToRawItem(t);
+      expect(item.metadata).toEqual({ comments: [], quotedTweet: quoted });
+    });
+  });
+
+  describe("VS-6 — plain tweet unchanged", () => {
+    it("leaves content + metadata unchanged when quotedTweet is undefined", () => {
+      const t = makeTweet({ fullText: "plain tweet text" });
+      const item = tweetToRawItem(t);
+      expect(item.content).toBe("plain tweet text");
+      expect(item.metadata).toEqual({ comments: [] });
+      expect(item.metadata.quotedTweet).toBeUndefined();
     });
   });
 
