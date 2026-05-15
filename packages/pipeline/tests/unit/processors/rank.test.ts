@@ -159,7 +159,7 @@ describe("rankCandidates", () => {
       comments: [makeComment("c1", "first comment")],
     });
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" })],
+      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Developer-relevance" })],
     });
     const now = new Date("2026-04-07T04:00:00Z");
 
@@ -174,6 +174,7 @@ describe("rankCandidates", () => {
     });
 
     const call = generateObject.mock.calls[0]?.[0] as GenerateArgs;
+    expect(call.prompt).toContain('"requestedTopN": 5');
     expect(call.prompt).toContain('"id": 1');
     expect(call.prompt).toContain("An article");
     expect(call.prompt).toContain("https://x.test/1");
@@ -185,9 +186,15 @@ describe("rankCandidates", () => {
     expect(call.prompt).toContain("first comment");
   });
 
-  it("uses RANK_SYSTEM_PROMPT_NO_PROFILE (REQ-070)", async () => {
+  it("uses a general developer-and-engineering-team ranking prompt (REQ-070)", async () => {
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
+      ranked: [
+        makeRankedEntry({
+          id: 1,
+          score: 50,
+          rationale: "strong Developer-relevance",
+        }),
+      ],
     });
 
     await rankCandidates([makeCandidate(1)], {
@@ -197,15 +204,27 @@ describe("rankCandidates", () => {
     });
 
     const call = generateObject.mock.calls[0]?.[0] as GenerateArgs;
-    expect(call.system).not.toContain("Relevance");
-    expect(call.system).toContain("Novelty");
+    expect(call.system).toContain("software developer");
+    expect(call.system).toContain("tech lead");
+    expect(call.system).toContain("engineering manager");
+    expect(call.system).toContain("share with their teams");
+    expect(call.system).toContain("Direct developer-tool");
+    expect(call.system).toContain("requestedTopN");
+    expect(call.system).toContain("coding agents");
+    expect(call.system).toContain("agentic AI tooling");
+    expect(call.system).toContain("Developer-relevance");
+    expect(call.system).toContain("Builder-impact");
+    expect(call.system).toContain("Agentic-systems-relevance");
+    expect(call.system).toContain("Evidence-quality");
     expect(call.system).toContain("Signal-vs-hype");
-    expect(call.system).toContain("Actionability");
+    expect(call.system).not.toContain("Vertexcover");
+    expect(call.system).not.toContain("Harness engineering");
+    expect(call.system).not.toContain("feel the pulse of the field");
   });
 
   it("calls generateObject with temperature 0 (REQ-064)", async () => {
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Developer-relevance" })],
     });
 
     await rankCandidates([makeCandidate(1)], {
@@ -226,9 +245,9 @@ describe("rankCandidates", () => {
     // valid but lexically doesn't match a single axis name).
     const generateObject = makeGenerate({
       ranked: [
-        makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" }),
+        makeRankedEntry({ id: 1, score: 80, rationale: "strong Developer-relevance" }),
         makeRankedEntry({ id: 2, score: 50, rationale: "just because" }),
-        makeRankedEntry({ id: 3, score: 70, rationale: "good Actionability" }),
+        makeRankedEntry({ id: 3, score: 70, rationale: "good Builder-impact" }),
       ],
     });
 
@@ -263,9 +282,9 @@ describe("rankCandidates", () => {
     ).rejects.toThrow(/no valid items/i);
   });
 
-  it("accepts lowercase axis names in rationales (REQ-065 case-insensitive)", async () => {
-    // Regression: Claude naturally writes "strong novelty — ..." mid-sentence
-    // rather than "Strong Novelty — ...". The validator must be case-insensitive
+  it("accepts lowercase new axis names in rationales (REQ-065 case-insensitive)", async () => {
+    // Regression: Claude naturally writes "strong developer-relevance — ..." mid-sentence
+    // rather than "Strong developer-relevance — ...". The validator must be case-insensitive
     // so grammatically natural rationales don't trip the guard.
     const generateObject = makeGenerate({
       ranked: [
@@ -273,7 +292,7 @@ describe("rankCandidates", () => {
           id: 1,
           score: 80,
           rationale:
-            "Strong novelty — new research results. Good signal-vs-hype, real actionability.",
+            "Strong developer-relevance — this directly helps agentic systems teams improve production workflows.",
         }),
       ],
     });
@@ -288,13 +307,38 @@ describe("rankCandidates", () => {
     expect(result.rankedItems[0].rawItemId).toBe(1);
   });
 
+  it("rejects old-only ranking axes when every rationale lacks the new axes", async () => {
+    const generateObject = makeGenerate({
+      ranked: [
+        makeRankedEntry({
+          id: 1,
+          score: 80,
+          rationale: "strong Novelty and practical utility",
+        }),
+        makeRankedEntry({
+          id: 2,
+          score: 60,
+          rationale: "good Actionability for AI practitioners",
+        }),
+      ],
+    });
+
+    await expect(
+      rankCandidates([makeCandidate(1), makeCandidate(2)], {
+        topN: 5,
+        generateObject,
+        loadBodies: stubLoadBodies,
+      }),
+    ).rejects.toThrow(/no valid items/i);
+  });
+
   it("multiplies LLM score by recencyDecay for a 48h-old item (REQ-066)", async () => {
     const publishedAt = new Date("2026-04-05T00:00:00Z");
     const now = new Date("2026-04-07T00:00:00Z"); // 48 h later
     const candidate = makeCandidate(1, { publishedAt });
 
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 90, rationale: "strong Novelty" })],
+      ranked: [makeRankedEntry({ id: 1, score: 90, rationale: "strong Developer-relevance" })],
     });
 
     const result = await rankCandidates([candidate], {
@@ -318,7 +362,7 @@ describe("rankCandidates", () => {
       return Promise.resolve({
         object: {
           digest: DEFAULT_DIGEST,
-          ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
+          ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Developer-relevance" })],
         },
       });
     });
@@ -336,7 +380,7 @@ describe("rankCandidates", () => {
     const candidate = makeCandidate(1, { publishedAt });
 
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" })],
+      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Developer-relevance" })],
     });
 
     const result = await rankCandidates([candidate], {
@@ -368,7 +412,7 @@ describe("rankCandidates", () => {
     const candidate = makeCandidate(1, { content: hugeBody });
 
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Developer-relevance" })],
     });
 
     await rankCandidates([candidate], {
@@ -387,7 +431,7 @@ describe("rankCandidates", () => {
   it("omits the comments section for candidates with zero comments (REQ-053, EDGE-016)", async () => {
     const candidate = makeCandidate(1, { comments: [] });
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Developer-relevance" })],
     });
 
     await rankCandidates([candidate], {
@@ -407,7 +451,7 @@ describe("rankCandidates", () => {
     );
     const candidate = makeCandidate(1, { comments });
     const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Novelty" })],
+      ranked: [makeRankedEntry({ id: 1, score: 50, rationale: "strong Developer-relevance" })],
     });
 
     await rankCandidates([candidate], {
@@ -433,10 +477,10 @@ describe("rankCandidates", () => {
     ];
     const generateObject = makeGenerate({
       ranked: [
-        makeRankedEntry({ id: 1, score: 10, rationale: "Novelty" }),
-        makeRankedEntry({ id: 2, score: 90, rationale: "Novelty" }),
-        makeRankedEntry({ id: 3, score: 50, rationale: "Novelty" }),
-        makeRankedEntry({ id: 4, score: 80, rationale: "Novelty" }),
+        makeRankedEntry({ id: 1, score: 10, rationale: "Developer-relevance" }),
+        makeRankedEntry({ id: 2, score: 90, rationale: "Developer-relevance" }),
+        makeRankedEntry({ id: 3, score: 50, rationale: "Developer-relevance" }),
+        makeRankedEntry({ id: 4, score: 80, rationale: "Developer-relevance" }),
       ],
     });
 
@@ -454,8 +498,8 @@ describe("rankCandidates", () => {
   it("emits run.rank INFO log with runId and counts (REQ-103)", async () => {
     const generateObject = makeGenerate({
       ranked: [
-        makeRankedEntry({ id: 1, score: 50, rationale: "Novelty" }),
-        makeRankedEntry({ id: 2, score: 70, rationale: "Novelty" }),
+        makeRankedEntry({ id: 1, score: 50, rationale: "Developer-relevance" }),
+        makeRankedEntry({ id: 2, score: 70, rationale: "Developer-relevance" }),
       ],
     });
 
@@ -485,7 +529,7 @@ describe("rankCandidates", () => {
       ranked: [makeRankedEntry({
         id: 1,
         score: 80,
-        rationale: "strong Novelty",
+        rationale: "strong Developer-relevance",
         summary: "OpenAI released a new model with improved reasoning.",
         bullets: [
           "The new model shows 30% improvement on benchmarks.",
@@ -518,7 +562,7 @@ describe("rankCandidates", () => {
           ranked: [makeRankedEntry({
             id: 1,
             score: 50,
-            rationale: "strong Novelty",
+            rationale: "strong Developer-relevance",
             summary: "Short summary.",
             bullets: ["Only one bullet."],
             bottomLine: "Takeaway.",
@@ -542,7 +586,7 @@ describe("rankCandidates", () => {
         summary: "Five stories on regulation, new open-weight releases, and benchmark results across the day's main themes.",
         hook: "Hook line.",
       },
-      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" })],
+      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Developer-relevance" })],
     });
 
     const result = await rankCandidates([makeCandidate(1)], {
@@ -562,7 +606,7 @@ describe("rankCandidates", () => {
         summary: "s",
         hook: "Big news today: someone shipped something interesting.",
       },
-      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" })],
+      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Developer-relevance" })],
     });
 
     const result = await rankCandidates([makeCandidate(1)], {
@@ -593,7 +637,7 @@ describe("rankCandidates", () => {
   it("VER-96: rankedResponseSchema rejects responses missing the digest field", () => {
     const without = {
       ranked: [
-        { id: 1, score: 50, rationale: "strong Novelty", summary: "x", bullets: ["a"], bottomLine: "b" },
+        { id: 1, score: 50, rationale: "strong Developer-relevance", summary: "x", bullets: ["a"], bottomLine: "b" },
       ],
     };
     expect(rankedResponseSchema.safeParse(without).success).toBe(false);
@@ -608,7 +652,7 @@ describe("rankCandidates", () => {
       return Promise.resolve({
         object: {
           digest: DEFAULT_DIGEST,
-          ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Novelty" })],
+          ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Developer-relevance" })],
         },
       });
     });
@@ -628,7 +672,7 @@ describe("rankCandidates", () => {
     const overBudget = makeRankedEntry({
       id: 1,
       score: 80,
-      rationale: "strong Novelty",
+      rationale: "strong Developer-relevance",
       summary: "word ".repeat(30).trim(), // 30 words
       bullets: [longBullet, longBullet, longBullet, longBullet], // 4 × 40 = 160
       bottomLine: "word ".repeat(20).trim(), // 20 words; total = 30 + 160 + 20 = 210
@@ -668,7 +712,7 @@ describe("rankCandidates", () => {
     const underBudget = makeRankedEntry({
       id: 1,
       score: 80,
-      rationale: "strong Novelty",
+      rationale: "strong Developer-relevance",
     });
     const generateObject = makeGenerate({ ranked: [underBudget] });
 
@@ -693,13 +737,13 @@ describe("rankCandidates", () => {
       makeRankedEntry({
         id: 1,
         score: 80,
-        rationale: "strong Novelty",
+        rationale: "strong Developer-relevance",
         bullets: [longBullet, longBullet, longBullet, longBullet],
       }),
       makeRankedEntry({
         id: 2,
         score: 70,
-        rationale: "strong Actionability",
+        rationale: "strong Builder-impact",
       }), // under budget
       makeRankedEntry({
         id: 3,

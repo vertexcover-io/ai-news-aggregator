@@ -24,16 +24,51 @@ describe("rank prompts", () => {
       expect(RANK_SYSTEM_PROMPT_NO_PROFILE).not.toContain("Relevance");
     });
 
-    it("names the three topic-agnostic axes (REQ-070)", () => {
-      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("Novelty");
+    it("names the general developer-and-engineering-team axes (REQ-070)", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("Developer-relevance");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("Builder-impact");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
+        "Agentic-systems-relevance",
+      );
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("Evidence-quality");
       expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("Signal-vs-hype");
-      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("Actionability");
     });
 
-    it("frames the reader as an AI practitioner tracking the AI world", () => {
-      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("AI practitioner");
+    it("frames the reader as a developer, tech lead, or engineering manager", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("software developer");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("tech lead");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("engineering manager");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("share with their teams");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("coding agents");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("agentic AI tooling");
       expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
-        "move the AI story forward",
+        "Prefer stories with practical consequences",
+      );
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).not.toContain("Vertexcover");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).not.toContain("Harness engineering");
+    });
+
+    it("contains boost and downrank guidance for opinionated selection", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
+        "Boost primary-source releases",
+      );
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("eval frameworks");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("observability");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("Downrank generic AI hype");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("funding-only stories");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("prompt-listicles");
+    });
+
+    it("tells the model to omit invalid or unrankable items instead of emitting placeholders", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("omit it entirely");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
+        "Never emit placeholder ranked entries",
+      );
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
+        "Never invent, merge, concatenate, or alter item ids",
+      );
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
+        "Every returned title must be non-empty",
       );
     });
 
