@@ -66,15 +66,29 @@ export async function runWebCrawl(
     renderingTypeDetectionRatio: 0.1,
 
     // When the browser path is used (Adaptive promotes a URL after the static
-    // path fails resultChecker), wait for network to go idle so client-side
-    // rendered listings (Substack, etc.) have time to paint their post list.
-    // The default `load` waits only for the document load event, which fires
-    // before React hydration completes.
+    // path fails resultChecker), navigate only to domcontentloaded — `load`
+    // and `networkidle` both hang on chatty pages (Substack with analytics,
+    // RUM, ads beacons keeps the network busy past 25s).
     preNavigationHooks: [
       (ctx, gotoOptions) => {
         if (ctx.page && gotoOptions) {
-          gotoOptions.waitUntil = "networkidle";
+          gotoOptions.waitUntil = "domcontentloaded";
           gotoOptions.timeout = 25_000;
+        }
+      },
+    ],
+    // After domcontentloaded fires, chase a short networkidle window. Quiet
+    // pages settle within the budget so we don't read mid-hydration; chatty
+    // pages hit the chase timeout and proceed anyway. Generic across sources
+    // — no per-site selector knowledge required.
+    postNavigationHooks: [
+      async (ctx) => {
+        if (ctx.page) {
+          await ctx.page
+            .waitForLoadState("networkidle", { timeout: 4_000 })
+            .catch(() => {
+              // Networkidle never fires on chatty pages — proceed anyway.
+            });
         }
       },
     ],
