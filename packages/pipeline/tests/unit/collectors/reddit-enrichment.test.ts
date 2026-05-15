@@ -10,7 +10,6 @@ import {
   newCounters,
   type EnrichmentContext,
 } from "@pipeline/services/link-enrichment/index.js";
-import redditListingFixture from "@pipeline-tests/unit/fixtures/reddit-listing.json";
 
 const fetchAdaptiveMock = vi.hoisted(() => vi.fn());
 
@@ -66,12 +65,68 @@ function createMockRepo(): RawItemsRepo & { upsertItems: MockUpsert } {
   };
 }
 
+function escapeXml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function atomFeed(entries: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+  ${entries}
+</feed>`;
+}
+
+function postEntry(options: {
+  readonly id: string;
+  readonly title: string;
+  readonly author: string;
+  readonly sourceUrl: string;
+  readonly linkUrl: string;
+  readonly body?: string;
+}): string {
+  const bodyHtml = options.body ? `<div class="md"><p>${options.body}</p></div>` : "";
+  const content = `<table><tr><td>${bodyHtml} submitted by <a href="https://www.reddit.com/user/${options.author}">/u/${options.author}</a><br/><span><a href="${options.linkUrl}">[link]</a></span> <span><a href="${options.sourceUrl}">[comments]</a></span></td></tr></table>`;
+  return `<entry>
+    <author><name>/u/${options.author}</name></author>
+    <content type="html">${escapeXml(content)}</content>
+    <id>t3_${options.id}</id>
+    <link href="${options.sourceUrl}" />
+    <published>2026-05-14T12:00:00+00:00</published>
+    <title>${escapeXml(options.title)}</title>
+  </entry>`;
+}
+
+function redditListingFeed(): string {
+  const selfUrl = "https://www.reddit.com/r/MachineLearning/comments/post002/discussion_whats_the_best/";
+  return atomFeed(
+    `${postEntry({
+      id: "post001",
+      title: "New open-source LLM beats GPT-4 on benchmarks",
+      author: "ml_researcher",
+      sourceUrl: "https://www.reddit.com/r/MachineLearning/comments/post001/new_opensource_llm/",
+      linkUrl: "https://example.com/new-llm",
+    })}
+    ${postEntry({
+      id: "post002",
+      title: "Discussion: What's the best local LLM setup in 2026?",
+      author: "ai_enthusiast",
+      sourceUrl: selfUrl,
+      linkUrl: selfUrl,
+      body: "I've been experimenting with different local LLM setups.",
+    })}`,
+  );
+}
+
 function makeFetchFn(): typeof fetch {
   return vi.fn().mockImplementation(() =>
     Promise.resolve({
       ok: true,
       status: 200,
-      json: () => Promise.resolve(redditListingFixture),
+      text: () => Promise.resolve(redditListingFeed()),
     }),
   ) as unknown as typeof fetch;
 }

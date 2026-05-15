@@ -28,7 +28,7 @@ interface MockCall {
 interface MockResp {
   ok: boolean;
   status: number;
-  body: unknown;
+  body: string;
 }
 
 function makeFetch(
@@ -44,56 +44,47 @@ function makeFetch(
     return Promise.resolve({
       ok: r.ok,
       status: r.status,
-      json: () => Promise.resolve(r.body),
+      text: () => Promise.resolve(r.body),
     });
   });
   return { fn, calls };
 }
 
-function postJson(): unknown {
-  return [
-    {
-      kind: "Listing",
-      data: {
-        children: [
-          {
-            kind: "t3",
-            data: {
-              id: "abc123",
-              title: "A Reddit Post",
-              url: "https://example.com/x",
-              permalink: "/r/test/comments/abc123/a_reddit_post/",
-              author: "bob",
-              selftext: "body",
-              is_self: false,
-              score: 10,
-              num_comments: 3,
-              created_utc: 1_700_000_000,
-              stickied: false,
-              subreddit: "test",
-              thumbnail: "",
-            },
-          },
-        ],
-      },
-    },
-    {
-      kind: "Listing",
-      data: {
-        children: [
-          {
-            kind: "t1",
-            data: {
-              id: "c1",
-              author: "carol",
-              body: "nice",
-              created_utc: 1_700_000_100,
-            },
-          },
-        ],
-      },
-    },
-  ];
+function escapeXml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function atomFeed(entries: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+  ${entries}
+</feed>`;
+}
+
+function postRss(): string {
+  const sourceUrl = "https://www.reddit.com/r/test/comments/abc123/a_reddit_post/";
+  const content = `<table><tr><td><div class="md"><p>body</p></div> submitted by <a href="https://www.reddit.com/user/bob">/u/bob</a><br/><span><a href="https://example.com/x">[link]</a></span> <span><a href="${sourceUrl}">[comments]</a></span></td></tr></table>`;
+  return atomFeed(`
+    <entry>
+      <author><name>/u/bob</name></author>
+      <content type="html">${escapeXml(content)}</content>
+      <id>t3_abc123</id>
+      <link href="${sourceUrl}" />
+      <published>2023-11-14T22:13:20+00:00</published>
+      <title>A Reddit Post</title>
+    </entry>
+    <entry>
+      <author><name>/u/carol</name></author>
+      <content type="html">${escapeXml('<div class="md"><p>nice</p></div>')}</content>
+      <id>t1_c1</id>
+      <published>2023-11-14T22:15:00+00:00</published>
+      <title>nice</title>
+    </entry>
+  `);
 }
 
 describe("parseRedditPostUrl", () => {
@@ -119,7 +110,7 @@ describe("parseRedditPostUrl", () => {
 
 describe("fetchRedditPost", () => {
   it("fetches a post and returns a RawItemInsert", async () => {
-    const { fn, calls } = makeFetch([{ ok: true, status: 200, body: postJson() }]);
+    const { fn, calls } = makeFetch([{ ok: true, status: 200, body: postRss() }]);
     const result = await fetchRedditPost(
       "https://www.reddit.com/r/test/comments/abc123/a_reddit_post/",
       { fetchFn: fn },
@@ -127,9 +118,22 @@ describe("fetchRedditPost", () => {
     expect(result.sourceType).toBe("reddit");
     expect(result.externalId).toBe("abc123");
     expect(result.title).toBe("A Reddit Post");
-    expect(result.engagement).toEqual({ points: 10, commentCount: 3 });
+    expect(result.url).toBe("https://example.com/x");
+    expect(result.sourceUrl).toBe("https://www.reddit.com/r/test/comments/abc123/a_reddit_post/");
+    expect(result.content).toBe("body");
+    expect(result.engagement).toEqual({ points: 0, commentCount: 0 });
+    expect(result.metadata).toEqual({
+      comments: [
+        {
+          id: "c1",
+          author: "carol",
+          content: "nice",
+          publishedAt: "2023-11-14T22:15:00.000Z",
+        },
+      ],
+    });
     const firstCall = calls[0];
-    expect(firstCall?.url).toMatch(/\.json$/);
+    expect(firstCall?.url).toMatch(/\.rss$/);
     const headers = firstCall?.init?.headers as Record<string, string> | undefined;
     expect(headers?.["User-Agent"]).toBeTruthy();
   });
@@ -153,7 +157,7 @@ describe("fetchRedditPost", () => {
 
   it("forwards AbortSignal to the underlying fetch call", async () => {
     const { fn, calls } = makeFetch([
-      { ok: true, status: 200, body: postJson() },
+      { ok: true, status: 200, body: postRss() },
     ]);
     const ac = new AbortController();
     await fetchRedditPost(

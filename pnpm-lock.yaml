@@ -234,9 +234,6 @@ importers:
       twitter-api-v2:
         specifier: 1.29.0
         version: 1.29.0
-      undici:
-        specifier: 7.6.0
-        version: 7.6.0
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -5529,10 +5526,6 @@ packages:
 
   undici@7.24.7:
     resolution: {integrity: sha512-H/nlJ/h0ggGC+uRL3ovD+G0i4bqhvsDOpbDv7At5eFLlj2b41L8QliGbnl2H7SnDiYhENphh1tQFJZf+MyfLsQ==}
-    engines: {node: '>=20.18.1'}
-
-  undici@7.6.0:
-    resolution: {integrity: sha512-gaFsbThjrDGvAaD670r81RZro/s6H2PVZF640Qn0p5kZK+/rim7/mmyfp2W7VB5vOMaFM8vuFBJUaMlaZTYHlA==}
     engines: {node: '>=20.18.1'}
 
   universalify@0.2.0:
@@ -11144,8 +11137,6 @@ snapshots:
   undici-types@6.21.0: {}
 
   undici@7.24.7: {}
-
-  undici@7.6.0: {}
 
   universalify@0.2.0:
     optional: true

@@ -1,10 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { CollectorResult } from "@newsletter/shared/types";
-import type { RedditCollectConfig } from "@pipeline/types.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RawItemInsert } from "@newsletter/shared/db";
+import type { CollectorResult } from "@newsletter/shared/types";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
-import redditListingFixture from "@pipeline-tests/unit/fixtures/reddit-listing.json";
-import redditCommentsFixture from "@pipeline-tests/unit/fixtures/reddit-comments.json";
+import type { RedditCollectConfig } from "@pipeline/types.js";
 
 const warnSpy = vi.fn<[obj: unknown, msg?: string], undefined>();
 vi.mock("@newsletter/shared/logger", () => ({
@@ -24,14 +22,22 @@ vi.mock("@newsletter/shared/logger", () => ({
   }),
 }));
 
-type ExtractRedditImageUrlFn = (post: {
-  thumbnail: string;
-  preview?: { images: { source: { url: string; width: number; height: number } }[] };
-}) => string | null;
-
-const SINGLE_SUB: RedditCollectConfig = { subreddits: ["MachineLearning"] };
-
 type MockUpsertFn = ReturnType<typeof vi.fn<[items: RawItemInsert[]], Promise<void>>>;
+interface MockFetchResponse {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly body: string;
+}
+type MockFetchFn = ReturnType<
+  typeof vi.fn<
+    [url: string, init?: RequestInit],
+    Promise<{ ok: boolean; status: number; text: () => Promise<string> }>
+  >
+>;
+type CollectRedditFn = (
+  deps: { rawItemsRepo: RawItemsRepo & { upsertItems: MockUpsertFn }; fetchFn: MockFetchFn },
+  config: RedditCollectConfig,
+) => Promise<CollectorResult>;
 
 function createMockRepo(): RawItemsRepo & { upsertItems: MockUpsertFn } {
   return {
@@ -39,155 +45,101 @@ function createMockRepo(): RawItemsRepo & { upsertItems: MockUpsertFn } {
   };
 }
 
-type MockFetchFn = ReturnType<typeof vi.fn<[url: string, init?: RequestInit], Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>>>;
-
-function createMockFetch(responses: { ok: boolean; status: number; body: unknown }[]): MockFetchFn {
+function createMockFetch(responses: readonly MockFetchResponse[]): MockFetchFn {
   let callIndex = 0;
-  return vi.fn<[url: string, init?: RequestInit], Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>>().mockImplementation(() => {
-    const resp = responses[callIndex] ?? responses[responses.length - 1];
+  return vi.fn<
+    [url: string, init?: RequestInit],
+    Promise<{ ok: boolean; status: number; text: () => Promise<string> }>
+  >().mockImplementation(() => {
+    const response = responses[callIndex] ?? responses[responses.length - 1];
     callIndex++;
-    if (!resp) {
+    if (!response) {
       return Promise.reject(new Error("Network error"));
     }
     return Promise.resolve({
-      ok: resp.ok,
-      status: resp.status,
-      json: () => Promise.resolve(resp.body),
+      ok: response.ok,
+      status: response.status,
+      text: () => Promise.resolve(response.body),
     });
   });
 }
 
-function listingResponse(body: unknown = redditListingFixture): { ok: boolean; status: number; body: unknown } {
+function rssResponse(body: string): MockFetchResponse {
   return { ok: true, status: 200, body };
 }
 
-function commentsResponse(body: unknown = redditCommentsFixture): { ok: boolean; status: number; body: unknown } {
-  return { ok: true, status: 200, body };
-}
-
-function errorResponse(status: number): { ok: boolean; status: number; body: unknown } {
+function errorResponse(status: number): MockFetchResponse {
   return { ok: false, status, body: "<html>Error</html>" };
 }
 
-type CollectRedditFn = (deps: { rawItemsRepo: RawItemsRepo & { upsertItems: MockUpsertFn }; fetchFn: MockFetchFn }, config: RedditCollectConfig) => Promise<CollectorResult>;
+function atomFeed(entries: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+  <title>MachineLearning</title>
+  ${entries}
+</feed>`;
+}
 
-describe("extractRedditImageUrl", () => {
-  let extractRedditImageUrl: ExtractRedditImageUrlFn;
+function postEntry(options: {
+  readonly id: string;
+  readonly title: string;
+  readonly author?: string;
+  readonly published?: string;
+  readonly sourceUrl?: string;
+  readonly externalUrl?: string;
+  readonly contentHtml?: string;
+  readonly thumbnailUrl?: string;
+}): string {
+  const author = options.author ?? "ml_researcher";
+  const published = options.published ?? "2026-05-14T12:00:00+00:00";
+  const sourceUrl =
+    options.sourceUrl ??
+    `https://www.reddit.com/r/MachineLearning/comments/${options.id}/slug/`;
+  const externalUrl = options.externalUrl ?? "https://example.com/new-llm";
+  const contentHtml =
+    options.contentHtml ??
+    `<table><tr><td><a href="${sourceUrl}"><img src="${options.thumbnailUrl ?? ""}" /></a></td><td> submitted by <a href="https://www.reddit.com/user/${author}">/u/${author}</a><br/><span><a href="${externalUrl}">[link]</a></span> <span><a href="${sourceUrl}">[comments]</a></span></td></tr></table>`;
+  const thumbnail = options.thumbnailUrl
+    ? `<media:thumbnail url="${options.thumbnailUrl}" />`
+    : "";
 
-  beforeEach(async () => {
-    const mod = await import("@pipeline/collectors/reddit.js");
-    extractRedditImageUrl = mod.extractRedditImageUrl as ExtractRedditImageUrlFn;
-  });
+  return `<entry>
+    <author><name>/u/${author}</name><uri>https://www.reddit.com/user/${author}</uri></author>
+    <content type="html">${escapeXml(contentHtml)}</content>
+    <id>t3_${options.id}</id>
+    ${thumbnail}
+    <link href="${sourceUrl}" />
+    <updated>${published}</updated>
+    <published>${published}</published>
+    <title>${escapeXml(options.title)}</title>
+  </entry>`;
+}
 
-  it("extracts preview.images[0].source.url when present", () => {
-    const post = {
-      thumbnail: "https://thumb.example.com/img.jpg",
-      preview: {
-        images: [{ source: { url: "https://preview.redd.it/hero.jpg?width=1024&height=768", width: 1024, height: 768 } }],
-      },
-    };
-    expect(extractRedditImageUrl(post)).toBe("https://preview.redd.it/hero.jpg?width=1024&height=768");
-  });
+function commentEntry(options: {
+  readonly id: string;
+  readonly author: string;
+  readonly body: string;
+  readonly published?: string;
+}): string {
+  const published = options.published ?? "2026-05-14T13:00:00+00:00";
+  return `<entry>
+    <author><name>/u/${options.author}</name></author>
+    <content type="html">${escapeXml(`<div class="md"><p>${options.body}</p></div>`)}</content>
+    <id>t1_${options.id}</id>
+    <published>${published}</published>
+    <title>${escapeXml(options.body)}</title>
+  </entry>`;
+}
 
-  it("decodes HTML entities in preview URL", () => {
-    const post = {
-      thumbnail: "self",
-      preview: {
-        images: [{ source: { url: "https://preview.redd.it/img.jpg?w=1024&amp;h=768&amp;s=abc", width: 1024, height: 768 } }],
-      },
-    };
-    expect(extractRedditImageUrl(post)).toBe("https://preview.redd.it/img.jpg?w=1024&h=768&s=abc");
-  });
+function escapeXml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
 
-  it("falls back to thumbnail when preview.images is empty", () => {
-    const post = {
-      thumbnail: "https://b.thumbs.redditmedia.com/thumb.jpg",
-      preview: { images: [] },
-    };
-    expect(extractRedditImageUrl(post)).toBe("https://b.thumbs.redditmedia.com/thumb.jpg");
-  });
-
-  it("falls back to thumbnail when preview is undefined", () => {
-    const post = {
-      thumbnail: "https://b.thumbs.redditmedia.com/thumb.jpg",
-    };
-    expect(extractRedditImageUrl(post)).toBe("https://b.thumbs.redditmedia.com/thumb.jpg");
-  });
-
-  it("returns null for thumbnail 'self'", () => {
-    const post = { thumbnail: "self" };
-    expect(extractRedditImageUrl(post)).toBeNull();
-  });
-
-  it("returns null for thumbnail 'default'", () => {
-    const post = { thumbnail: "default" };
-    expect(extractRedditImageUrl(post)).toBeNull();
-  });
-
-  it("returns null for thumbnail 'nsfw'", () => {
-    const post = { thumbnail: "nsfw" };
-    expect(extractRedditImageUrl(post)).toBeNull();
-  });
-
-  it("returns null for thumbnail 'spoiler'", () => {
-    const post = { thumbnail: "spoiler" };
-    expect(extractRedditImageUrl(post)).toBeNull();
-  });
-
-  it("returns null for empty thumbnail", () => {
-    const post = { thumbnail: "" };
-    expect(extractRedditImageUrl(post)).toBeNull();
-  });
-
-  it("returns null when no preview and no valid thumbnail", () => {
-    const post = { thumbnail: "self", preview: undefined };
-    expect(extractRedditImageUrl(post)).toBeNull();
-  });
-
-  // REQ-010: thumbnail path decodes &amp; entities
-  it("decodes &amp; entities in thumbnail URL when no preview", () => {
-    const post = {
-      thumbnail: "https://b.thumbs.redditmedia.com/x.jpg?width=140&amp;height=90&amp;s=abc",
-    };
-    expect(extractRedditImageUrl(post)).toBe(
-      "https://b.thumbs.redditmedia.com/x.jpg?width=140&height=90&s=abc",
-    );
-  });
-
-  // REQ-010 (preview regression): preview URL with &amp; is decoded
-  it("decodes &amp; entities in preview URL (regression)", () => {
-    const post = {
-      thumbnail: "https://b.thumbs.redditmedia.com/thumb.jpg",
-      preview: {
-        images: [{ source: { url: "https://preview.redd.it/img.jpg?w=640&amp;h=480&amp;s=xyz", width: 640, height: 480 } }],
-      },
-    };
-    expect(extractRedditImageUrl(post)).toBe(
-      "https://preview.redd.it/img.jpg?w=640&h=480&s=xyz",
-    );
-  });
-
-  // REQ-012: sentinel values return null
-  it.each(["self", "default", "nsfw", "image", "spoiler", ""])(
-    "returns null for sentinel thumbnail %j",
-    (sentinel) => {
-      const post = { thumbnail: sentinel };
-      expect(extractRedditImageUrl(post)).toBeNull();
-    },
-  );
-
-  // EDGE-010: thumbnail with no &amp; is returned verbatim
-  it("returns thumbnail verbatim when it contains no &amp; entities", () => {
-    const post = {
-      thumbnail: "https://b.thumbs.redditmedia.com/x.jpg?width=140&height=90&s=abc",
-    };
-    expect(extractRedditImageUrl(post)).toBe(
-      "https://b.thumbs.redditmedia.com/x.jpg?width=140&height=90&s=abc",
-    );
-  });
-});
-
-describe("collectReddit", () => {
+describe("collectReddit RSS", () => {
   let collectReddit: CollectRedditFn;
 
   beforeEach(async () => {
@@ -197,536 +149,210 @@ describe("collectReddit", () => {
     collectReddit = mod.collectReddit as CollectRedditFn;
   });
 
-  it("builds Reddit URL with default config", async () => {
+  it("builds Reddit RSS URLs for hot/new/top listings", async () => {
     const mockFetch = createMockFetch([
-      listingResponse({ kind: "Listing", data: { children: [] } }),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
-
-    const url = mockFetch.mock.calls[0][0];
-    expect(url).toContain("https://www.reddit.com/r/MachineLearning/");
-    expect(url).toContain("top");
-    expect(url).toContain("t=day");
-    expect(url).toContain("limit=25");
-  });
-
-  it("builds URL with custom subreddits and sort", async () => {
-    const mockFetch = createMockFetch([
-      listingResponse({ kind: "Listing", data: { children: [] } }),
-      listingResponse({ kind: "Listing", data: { children: [] } }),
+      rssResponse(atomFeed("")),
+      rssResponse(atomFeed("")),
+      rssResponse(atomFeed("")),
     ]);
     const rawItemsRepo = createMockRepo();
 
     await collectReddit(
       { rawItemsRepo, fetchFn: mockFetch },
-      { subreddits: ["LocalLLaMA", "OpenAI"], sort: "hot", timeframe: "week", limit: 10 },
+      { subreddits: ["HotSub", "NewSub", "TopSub"], sort: "hot", limit: 7, commentsPerItem: 0 },
+    );
+    await collectReddit(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { subreddits: ["NewSub"], sort: "new", limit: 7, commentsPerItem: 0 },
+    );
+    await collectReddit(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { subreddits: ["TopSub"], sort: "top", timeframe: "week", limit: 7, commentsPerItem: 0 },
     );
 
-    const url1 = mockFetch.mock.calls[0][0];
-    expect(url1).toContain("/r/LocalLLaMA/hot.json");
-    expect(url1).toContain("t=week");
-    expect(url1).toContain("limit=10");
-
-    const url2 = mockFetch.mock.calls[1][0];
-    expect(url2).toContain("/r/OpenAI/hot.json");
+    expect(mockFetch.mock.calls[0][0]).toBe("https://www.reddit.com/r/HotSub/hot.rss?limit=7");
+    expect(mockFetch.mock.calls[3][0]).toBe("https://www.reddit.com/r/NewSub/new.rss?limit=7");
+    expect(mockFetch.mock.calls[4][0]).toBe("https://www.reddit.com/r/TopSub/top.rss?t=week&limit=7");
   });
 
-  it("parses listing items extracting title, url, externalId, author, publishedAt, engagement", async () => {
-    const mockFetch = createMockFetch([
-      listingResponse(),
-      commentsResponse(),
-      commentsResponse({ ...redditCommentsFixture, 1: { kind: "Listing", data: { children: [] } } }),
-    ]);
+  it("parses RSS listing entries into raw Reddit items", async () => {
+    const thumbnail = "https://external-preview.redd.it/hero.jpg?width=640&amp;crop=smart";
+    const listing = atomFeed(
+      postEntry({
+        id: "post001",
+        title: "New open-source LLM beats GPT-4 on benchmarks",
+        author: "ml_researcher",
+        published: "2026-05-14T12:00:00+00:00",
+        externalUrl: "https://example.com/new-llm",
+        thumbnailUrl: thumbnail,
+      }),
+    );
+    const mockFetch = createMockFetch([rssResponse(listing)]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
+    const result = await collectReddit(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { subreddits: ["MachineLearning"], sinceDays: 7, commentsPerItem: 0 },
+    );
 
-    // Fixture has 3 posts, but post003 is stickied so only 2 are parsed
-    expect(result.itemsFetched).toBe(2);
-    expect(result.itemsStored).toBe(2);
-
+    expect(result.itemsFetched).toBe(1);
     expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    expect(rows).toHaveLength(2);
-
-    const firstItem = rows[0];
-    expect(firstItem.title).toBe("New open-source LLM beats GPT-4 on benchmarks");
-    expect(firstItem.url).toBe("https://example.com/new-llm");
-    expect(firstItem.externalId).toBe("post001");
-    expect(firstItem.author).toBe("ml_researcher");
-    expect(firstItem.sourceType).toBe("reddit");
-    expect(firstItem.sourceUrl).toBe("https://www.reddit.com/r/MachineLearning/comments/post001/new_opensource_llm/");
-    expect(firstItem.engagement).toEqual({ points: 1542, commentCount: 234 });
-    expect(firstItem.publishedAt).toBeInstanceOf(Date);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      sourceType: "reddit",
+      externalId: "post001",
+      title: "New open-source LLM beats GPT-4 on benchmarks",
+      url: "https://example.com/new-llm",
+      sourceUrl: "https://www.reddit.com/r/MachineLearning/comments/post001/slug/",
+      author: "ml_researcher",
+      content: "",
+      engagement: { points: 0, commentCount: 0 },
+      metadata: { comments: [] },
+      imageUrl: "https://external-preview.redd.it/hero.jpg?width=640&crop=smart",
+    });
+    expect(rows[0].publishedAt).toEqual(new Date("2026-05-14T12:00:00+00:00"));
   });
 
-  it("filters out stickied posts", async () => {
+  it("uses the embedded self-post body and falls back to the source URL for self posts", async () => {
+    const sourceUrl = "https://www.reddit.com/r/MachineLearning/comments/post002/discussion/";
+    const contentHtml = `<table><tr><td><div class="md"><p>I've been experimenting with local LLM setups.</p><p>Here are my findings.</p></div> submitted by <a href="https://www.reddit.com/user/ai_enthusiast">/u/ai_enthusiast</a><br/><span><a href="${sourceUrl}">[link]</a></span> <span><a href="${sourceUrl}">[comments]</a></span></td></tr></table>`;
     const mockFetch = createMockFetch([
-      listingResponse(),
-      commentsResponse([redditCommentsFixture[0], { kind: "Listing", data: { children: [] } }]),
-      commentsResponse([redditCommentsFixture[0], { kind: "Listing", data: { children: [] } }]),
+      rssResponse(
+        atomFeed(
+          postEntry({
+            id: "post002",
+            title: "Discussion: What's the best local LLM setup in 2026?",
+            author: "ai_enthusiast",
+            sourceUrl,
+            externalUrl: sourceUrl,
+            contentHtml,
+          }),
+        ),
+      ),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
-
-    // post003 is stickied, should be excluded
-    expect(result.itemsFetched).toBe(2);
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    const externalIds = rows.map((r) => r.externalId);
-    expect(externalIds).not.toContain("post003");
-    expect(externalIds).toContain("post001");
-    expect(externalIds).toContain("post002");
-  });
-
-  it("skips items missing title", async () => {
-    const malformedListing = {
-      kind: "Listing",
-      data: {
-        children: [
-          {
-            kind: "t3",
-            data: {
-              ...redditListingFixture.data.children[0].data,
-              title: "",
-            },
-          },
-          redditListingFixture.data.children[1],
-        ],
-      },
-    };
-    const mockFetch = createMockFetch([
-      listingResponse(malformedListing),
-      commentsResponse([redditCommentsFixture[0], { kind: "Listing", data: { children: [] } }]),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
-
-    // Only post002 should remain (post001 has empty title)
-    expect(result.itemsFetched).toBe(1);
-  });
-
-  it("defaults engagement to 0 for missing score/num_comments", async () => {
-    const noEngagementListing = {
-      kind: "Listing",
-      data: {
-        children: [
-          {
-            kind: "t3",
-            data: {
-              ...redditListingFixture.data.children[0].data,
-              score: undefined,
-              num_comments: undefined,
-            },
-          },
-        ],
-      },
-    };
-    const mockFetch = createMockFetch([
-      listingResponse(noEngagementListing),
-      commentsResponse([redditCommentsFixture[0], { kind: "Listing", data: { children: [] } }]),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
+    await collectReddit(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { subreddits: ["MachineLearning"], sinceDays: 7, commentsPerItem: 0 },
+    );
 
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    expect(rows[0].engagement).toEqual({ points: undefined, commentCount: undefined });
+    expect(rows[0].url).toBe(sourceUrl);
+    expect(rows[0].content).toBe("I've been experimenting with local LLM setups. Here are my findings.");
   });
 
-  it("fetches comments and attaches them to items", async () => {
-    const singleItemListing = {
-      kind: "Listing",
-      data: { children: [redditListingFixture.data.children[0]] },
-    };
-    const mockFetch = createMockFetch([
-      listingResponse(singleItemListing),
-      commentsResponse(),
-    ]);
+  it("fetches per-post RSS comments and skips the post entry", async () => {
+    const listing = atomFeed(
+      postEntry({
+        id: "post001",
+        title: "New open-source LLM beats GPT-4 on benchmarks",
+      }),
+    );
+    const comments = atomFeed(
+      `${postEntry({ id: "post001", title: "New open-source LLM beats GPT-4 on benchmarks" })}
+       ${commentEntry({ id: "comment001", author: "deep_learner", body: "The benchmark methodology looks solid." })}
+       ${commentEntry({ id: "comment002", author: "skeptic_ml", body: "We should wait for independent verification." })}`,
+    );
+    const mockFetch = createMockFetch([rssResponse(listing), rssResponse(comments)]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
+    const result = await collectReddit(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { subreddits: ["MachineLearning"], commentsPerItem: 2, sinceDays: 7 },
+    );
 
     expect(result.commentsFetched).toBe(2);
+    expect(mockFetch.mock.calls[1][0]).toBe(
+      "https://www.reddit.com/r/MachineLearning/comments/post001/.rss?limit=2",
+    );
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    const metadata = rows[0].metadata as { comments: { author: string; id: string; content: string }[] };
-    expect(metadata.comments).toHaveLength(2);
-    expect(metadata.comments[0].author).toBe("deep_learner");
-    expect(metadata.comments[0].id).toBe("comment001");
-    expect(metadata.comments[0].content).toBe("The benchmark methodology looks solid. Interesting that it outperforms on reasoning tasks.");
+    const metadata = rows[0].metadata as { comments: readonly { id: string; author: string; content: string }[] };
+    expect(metadata.comments).toEqual([
+      {
+        id: "comment001",
+        author: "deep_learner",
+        content: "The benchmark methodology looks solid.",
+        publishedAt: "2026-05-14T13:00:00.000Z",
+      },
+      {
+        id: "comment002",
+        author: "skeptic_ml",
+        content: "We should wait for independent verification.",
+        publishedAt: "2026-05-14T13:00:00.000Z",
+      },
+    ]);
   });
 
-  it("stores item without comments when comment fetch fails", async () => {
-    const singleItemListing = {
-      kind: "Listing",
-      data: { children: [redditListingFixture.data.children[0]] },
-    };
+  it("stores items with empty comments when comment RSS fetch fails", async () => {
+    const listing = atomFeed(postEntry({ id: "post001", title: "New open-source LLM beats GPT-4 on benchmarks" }));
     const mockFetch = createMockFetch([
-      listingResponse(singleItemListing),
+      rssResponse(listing),
       errorResponse(502),
       errorResponse(502),
       errorResponse(502),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
+    const result = await collectReddit(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { subreddits: ["MachineLearning"], commentsPerItem: 2, sinceDays: 7 },
+    );
 
     expect(result.itemsFetched).toBe(1);
     expect(result.commentsFetched).toBe(0);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    const metadata = rows[0].metadata as { comments: unknown[] };
-    expect(metadata.comments).toEqual([]);
+    expect(rows[0].metadata).toEqual({ comments: [] });
   });
 
-  it("retries on 502 up to 3 times", async () => {
-    const mockFetch = createMockFetch([
-      errorResponse(502),
-      errorResponse(502),
-      errorResponse(502),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    // Listing fetch fails after 3 retries; collectReddit catches per-subreddit errors
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
-
-    expect(mockFetch).toHaveBeenCalledTimes(3);
-    expect(result.itemsFetched).toBe(0);
-  });
-
-  it("enforces 500ms+ delay between consecutive requests", async () => {
-    const twoItemListing = {
-      kind: "Listing",
-      data: {
-        children: [
-          redditListingFixture.data.children[0],
-          redditListingFixture.data.children[1],
-        ],
-      },
-    };
-    const timestamps: number[] = [];
-    const mockFetchFn = vi.fn().mockImplementation((url: string) => {
-      timestamps.push(Date.now());
-      if (url.includes("/top.json") || url.includes("/hot.json") || url.includes("/new.json")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve(twoItemListing),
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve([
-          redditCommentsFixture[0],
-          { kind: "Listing", data: { children: [] } },
-        ]),
-      });
+  it("applies sinceDays, deduplicates posts, and reports per-subreddit unit results", async () => {
+    const freshPost = postEntry({
+      id: "fresh001",
+      title: "Fresh post",
+      published: new Date().toISOString(),
     });
-    const rawItemsRepo = createMockRepo();
-
-    await collectReddit({ rawItemsRepo, fetchFn: mockFetchFn },SINGLE_SUB);
-
-    // There should be delays between comment fetches (index 1 onward)
-    for (let i = 2; i < timestamps.length; i++) {
-      const gap = timestamps[i] - timestamps[i - 1];
-      expect(gap).toBeGreaterThanOrEqual(490);
-    }
-  });
-
-  it("handles empty listing with 0 items", async () => {
-    const emptyListing = { kind: "Listing", data: { children: [] } };
+    const oldPost = postEntry({
+      id: "old001",
+      title: "Old post",
+      published: new Date(Date.now() - 10 * 86_400_000).toISOString(),
+    });
     const mockFetch = createMockFetch([
-      listingResponse(emptyListing),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
-
-    expect(result.itemsFetched).toBe(0);
-    expect(result.commentsFetched).toBe(0);
-    expect(result.itemsStored).toBe(0);
-    expect(result.durationMs).toBeGreaterThanOrEqual(0);
-    expect(rawItemsRepo.upsertItems).not.toHaveBeenCalled();
-  });
-
-  it("calls upsertItems with correct row shape", async () => {
-    const singleItemListing = {
-      kind: "Listing",
-      data: { children: [redditListingFixture.data.children[0]] },
-    };
-    const mockFetch = createMockFetch([
-      listingResponse(singleItemListing),
-      commentsResponse([redditCommentsFixture[0], { kind: "Listing", data: { children: [] } }]),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
-
-    expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveProperty("sourceType", "reddit");
-    expect(rows[0]).toHaveProperty("externalId");
-    expect(rows[0]).toHaveProperty("title");
-    expect(rows[0]).toHaveProperty("url");
-    expect(rows[0]).toHaveProperty("sourceUrl");
-    expect(rows[0]).toHaveProperty("author");
-    expect(rows[0]).toHaveProperty("engagement");
-    expect(rows[0]).toHaveProperty("metadata");
-    expect(rows[0]).toHaveProperty("publishedAt");
-    expect(rows[0]).toHaveProperty("collectedAt");
-  });
-
-  it("returns CollectorResult with all metric fields", async () => {
-    const mockFetch = createMockFetch([
-      listingResponse(),
-      commentsResponse(),
-      commentsResponse([redditCommentsFixture[0], { kind: "Listing", data: { children: [] } }]),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    const result = await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
-
-    expect(result).toHaveProperty("itemsFetched");
-    expect(result).toHaveProperty("commentsFetched");
-    expect(result).toHaveProperty("itemsStored");
-    expect(result).toHaveProperty("durationMs");
-    expect(typeof result.durationMs).toBe("number");
-  });
-
-  it("deduplicates items across multiple subreddits", async () => {
-    // Same post (post001) appears in both subreddits
-    const listing1 = {
-      kind: "Listing",
-      data: { children: [redditListingFixture.data.children[0]] },
-    };
-    const listing2 = {
-      kind: "Listing",
-      data: { children: [redditListingFixture.data.children[0]] },
-    };
-    const mockFetch = createMockFetch([
-      listingResponse(listing1),
-      listingResponse(listing2),
-      commentsResponse([redditCommentsFixture[0], { kind: "Listing", data: { children: [] } }]),
+      rssResponse(atomFeed(`${freshPost}${oldPost}`)),
+      rssResponse(atomFeed(freshPost)),
     ]);
     const rawItemsRepo = createMockRepo();
 
     const result = await collectReddit(
       { rawItemsRepo, fetchFn: mockFetch },
-      { subreddits: ["MachineLearning", "LocalLLaMA"] },
+      { subreddits: ["MachineLearning", "LocalLLaMA"], sinceDays: 7, commentsPerItem: 0 },
     );
 
-    // post001 appears in both subs, should only be stored once
     expect(result.itemsFetched).toBe(1);
+    expect(result.unitResults).toHaveLength(2);
+    expect(result.unitResults?.[0]).toMatchObject({ identifier: "r/MachineLearning", status: "completed", itemsFetched: 2 });
+    expect(result.unitResults?.[1]).toMatchObject({ identifier: "r/LocalLLaMA", status: "completed", itemsFetched: 0 });
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    expect(rows).toHaveLength(1);
+    expect(rows.map((row) => row.externalId)).toEqual(["fresh001"]);
   });
 
-  it("handles self-posts using permalink as url and selftext as content", async () => {
-    // post002 is a self-post
-    const selfPostListing = {
-      kind: "Listing",
-      data: { children: [redditListingFixture.data.children[1]] },
-    };
+  it("marks one subreddit as failed and continues collecting the rest", async () => {
     const mockFetch = createMockFetch([
-      listingResponse(selfPostListing),
-      commentsResponse([redditCommentsFixture[0], { kind: "Listing", data: { children: [] } }]),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
-
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    const selfPost = rows[0];
-    // Self-posts use reddit permalink as the URL
-    expect(selfPost.url).toContain("reddit.com");
-    expect(selfPost.url).toContain("post002");
-    // Content should be the selftext
-    expect(selfPost.content).toContain("experimenting with different local LLM setups");
-  });
-
-  it("sets User-Agent header on every request", async () => {
-    const singleItemListing = {
-      kind: "Listing",
-      data: { children: [redditListingFixture.data.children[0]] },
-    };
-    const mockFetch = createMockFetch([
-      listingResponse(singleItemListing),
-      commentsResponse(),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    await collectReddit({ rawItemsRepo, fetchFn: mockFetch },SINGLE_SUB);
-
-    // Check that every call includes User-Agent header
-    for (const call of mockFetch.mock.calls) {
-      const init = call[1] as RequestInit | undefined;
-      expect(init).toBeDefined();
-      const headers = init?.headers as Record<string, string>;
-      expect(headers["User-Agent"]).toContain("NewsletterBot/1.0");
-    }
-  });
-
-  // REQ-023: sinceDays filter drops items older than the cutoff
-  it("drops items older than sinceDays cutoff before upsert", async () => {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const daySec = 86_400;
-    const makeChild = (id: string, ageDays: number): unknown => ({
-      kind: "t3",
-      data: {
-        id,
-        title: `Title ${id}`,
-        url: `https://example.com/${id}`,
-        permalink: `/r/MachineLearning/comments/${id}/slug/`,
-        author: "tester",
-        selftext: "",
-        is_self: false,
-        score: 10,
-        num_comments: 2,
-        created_utc: nowSec - ageDays * daySec,
-        stickied: false,
-        subreddit: "MachineLearning",
-      },
-    });
-    const listing = {
-      kind: "Listing",
-      data: {
-        children: [
-          makeChild("sd001", 0),
-          makeChild("sd002", 3),
-          makeChild("sd003", 6),
-          makeChild("sd004", 10),
-          makeChild("sd005", 30),
-        ],
-      },
-    };
-    const mockFetch = createMockFetch([listingResponse(listing)]);
-    const rawItemsRepo = createMockRepo();
-
-    await collectReddit(
-      { rawItemsRepo, fetchFn: mockFetch },
-      { subreddits: ["MachineLearning"], sinceDays: 7, commentsPerItem: 0 },
-    );
-
-    expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    const ids = rows.map((r) => r.externalId).sort();
-    expect(ids).toEqual(["sd001", "sd002", "sd003"]);
-  });
-
-  it("extracts imageUrl from preview.images when available", async () => {
-    const mockFetch = createMockFetch([
-      listingResponse(),
-      commentsResponse(),
-      commentsResponse(),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    await collectReddit({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_SUB);
-
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    // post001 has preview with &amp; encoded URL
-    expect(rows[0].imageUrl).toBe("https://preview.redd.it/post001-preview.jpg?width=1024&height=768&crop=smart");
-    // post002 has thumbnail: "self" — should be null
-    expect(rows[1].imageUrl).toBeNull();
-  });
-
-  // EDGE-004: filter dropping zero items emits warn log
-  it("warns when sinceDays filter drops zero items", async () => {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const daySec = 86_400;
-    const makeChild = (id: string, ageDays: number): unknown => ({
-      kind: "t3",
-      data: {
-        id,
-        title: `Title ${id}`,
-        url: `https://example.com/${id}`,
-        permalink: `/r/MachineLearning/comments/${id}/slug/`,
-        author: "tester",
-        selftext: "",
-        is_self: false,
-        score: 10,
-        num_comments: 2,
-        created_utc: nowSec - ageDays * daySec,
-        stickied: false,
-        subreddit: "MachineLearning",
-      },
-    });
-    const listing = {
-      kind: "Listing",
-      data: {
-        children: [makeChild("sw001", 0), makeChild("sw002", 1)],
-      },
-    };
-    const mockFetch = createMockFetch([listingResponse(listing)]);
-    const rawItemsRepo = createMockRepo();
-
-    await collectReddit(
-      { rawItemsRepo, fetchFn: mockFetch },
-      { subreddits: ["MachineLearning"], sinceDays: 7, commentsPerItem: 0 },
-    );
-
-    const messages = warnSpy.mock.calls.map((c) => c[1] ?? "");
-    const hasDropWarn = messages.some((m) => m.includes("sinceDays filter dropped 0 items"));
-    expect(hasDropWarn).toBe(true);
-  });
-
-  // P2 telemetry: per-subreddit unitResults
-  it("populates unitResults with one entry per subreddit (all success)", async () => {
-    const emptyListing = { kind: "Listing", data: { children: [] } };
-    const mockFetch = createMockFetch([
-      listingResponse(emptyListing),
-      listingResponse(emptyListing),
+      errorResponse(502),
+      errorResponse(502),
+      errorResponse(502),
+      rssResponse(atomFeed(postEntry({ id: "good001", title: "Good post" }))),
     ]);
     const rawItemsRepo = createMockRepo();
 
     const result = await collectReddit(
       { rawItemsRepo, fetchFn: mockFetch },
-      { subreddits: ["MachineLearning", "LocalLLaMA"], commentsPerItem: 0 },
+      { subreddits: ["BadSub", "GoodSub"], commentsPerItem: 0, sinceDays: 7 },
     );
 
-    expect(result.unitResults).toBeDefined();
-    expect(result.unitResults).toHaveLength(2);
-    expect(result.unitResults?.[0]).toMatchObject({
-      identifier: "r/MachineLearning",
-      displayName: "r/MachineLearning",
-      status: "completed",
-      errors: [],
-      itemsFetched: 0,
-    });
-    expect(result.unitResults?.[1]).toMatchObject({
-      identifier: "r/LocalLLaMA",
-      status: "completed",
-    });
-  });
-
-  it("marks one subreddit as failed and others as completed when its fetch fails", async () => {
-    // First subreddit: 3 retry failures (502); second: success
-    const emptyListing = { kind: "Listing", data: { children: [] } };
-    const mockFetch = createMockFetch([
-      errorResponse(502),
-      errorResponse(502),
-      errorResponse(502),
-      listingResponse(emptyListing),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    const result = await collectReddit(
-      { rawItemsRepo, fetchFn: mockFetch },
-      { subreddits: ["BadSub", "GoodSub"], commentsPerItem: 0 },
-    );
-
-    expect(result.unitResults).toHaveLength(2);
+    expect(result.itemsFetched).toBe(1);
     const [bad, good] = result.unitResults ?? [];
-    expect(bad.identifier).toBe("r/BadSub");
-    expect(bad.status).toBe("failed");
-    expect(bad.errors.length).toBeGreaterThan(0);
-    expect(bad.itemsFetched).toBe(0);
-    expect(good.identifier).toBe("r/GoodSub");
-    expect(good.status).toBe("completed");
-    expect(good.errors).toEqual([]);
+    expect(bad).toMatchObject({ identifier: "r/BadSub", status: "failed", itemsFetched: 0 });
+    expect(good).toMatchObject({ identifier: "r/GoodSub", status: "completed", itemsFetched: 1 });
   });
 });

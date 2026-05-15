@@ -1,3 +1,4 @@
+import { JSDOM, VirtualConsole } from "jsdom";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import type { CollectorResult, RawItemComment, RawItemEngagement, SourceUnitResult } from "@newsletter/shared/types";
 import type { RedditCollectConfig } from "@pipeline/types.js";
@@ -6,7 +7,6 @@ import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { delay } from "@pipeline/lib/delay.js";
 import { UrlParseError } from "@pipeline/collectors/hn.js";
 import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
-import { createProxyFetch } from "@pipeline/lib/proxy-fetch.js";
 import { enrichRawItems } from "@pipeline/services/link-enrichment/index.js";
 import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
 
@@ -23,8 +23,8 @@ const DEFAULT_COMMENTS_PER_ITEM = 10;
 const MAX_RETRIES = 3;
 const RATE_LIMIT_MS = 500;
 const COMMENT_RATE_LIMIT_MS = 1000;
-const MIN_COMMENTS_FOR_FETCH = 5;
 const USER_AGENT = "Mozilla/5.0 (compatible; NewsletterBot/1.0; +https://vertexcover.io)";
+const ZERO_ENGAGEMENT: RawItemEngagement = { points: 0, commentCount: 0 };
 
 function formatCause(cause: unknown): string | undefined {
   if (cause === undefined) return undefined;
@@ -45,79 +45,167 @@ export interface RedditCollectorDeps {
   enrichment?: EnrichmentContext;
 }
 
-interface RedditPostData {
-  id: string;
-  title: string;
-  url: string;
-  permalink: string;
-  author: string;
-  selftext: string;
-  is_self: boolean;
-  score: number;
-  num_comments: number;
-  created_utc: number;
-  stickied: boolean;
-  subreddit: string;
-  thumbnail: string;
-  preview?: {
-    images: {
-      source: { url: string; width: number; height: number };
-    }[];
-  };
-}
-
-const REDDIT_THUMBNAIL_SENTINELS = new Set([
-  "self", "default", "nsfw", "image", "spoiler", "",
-]);
+const silentConsole = new VirtualConsole();
+silentConsole.on("jsdomError", () => undefined);
 
 function decodeAmp(url: string): string {
   return url.replaceAll("&amp;", "&");
 }
 
-export function extractRedditImageUrl(post: RedditPostData): string | null {
-  const previewUrl = post.preview?.images[0]?.source.url;
-  if (previewUrl) return decodeAmp(previewUrl);
-  const thumb = post.thumbnail;
-  if (!thumb) return null;
-  if (REDDIT_THUMBNAIL_SENTINELS.has(thumb)) return null;
-  if (!thumb.startsWith("http")) return null;
-  return decodeAmp(thumb);
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? "").replace(/\s+/g, " ").trim();
 }
 
-interface RedditCommentData {
-  id: string;
-  author: string;
-  body: string;
-  created_utc: number;
+function parseDateOrNow(value: string): Date {
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? new Date() : new Date(timestamp);
 }
 
-interface RedditChild<T> {
-  kind: string;
-  data: T;
+function parseXmlDocument(xml: string): Document {
+  const dom = new JSDOM(xml, { contentType: "application/xml", virtualConsole: silentConsole });
+  const doc = dom.window.document;
+  const parseError = doc.querySelector("parsererror");
+  if (parseError) {
+    throw new Error(`Reddit RSS returned invalid XML: ${normalizeText(parseError.textContent).slice(0, 160)}`);
+  }
+  return doc;
 }
 
-interface RedditListing<T> {
-  kind: string;
-  data: {
-    children: RedditChild<T>[];
+function parseHtmlDocument(html: string): Document {
+  return new JSDOM(html, { virtualConsole: silentConsole }).window.document;
+}
+
+function firstElement(parent: Document | Element, tagName: string): Element | null {
+  return parent.getElementsByTagName(tagName).item(0);
+}
+
+function firstText(parent: Document | Element, tagName: string): string {
+  return normalizeText(firstElement(parent, tagName)?.textContent);
+}
+
+function firstAttribute(parent: Document | Element, tagName: string, attribute: string): string {
+  return firstElement(parent, tagName)?.getAttribute(attribute) ?? "";
+}
+
+function stripThingPrefix(id: string): string {
+  return id.replace(/^t[13]_/, "");
+}
+
+function stripTrailingSlash(url: string): string {
+  return url.endsWith("/") ? url.slice(0, -1) : url;
+}
+
+function isSameUrl(a: string, b: string): boolean {
+  return stripTrailingSlash(a) === stripTrailingSlash(b);
+}
+
+function getAnchorHrefByLabel(doc: Document, label: string): string | null {
+  const anchors = Array.from(doc.querySelectorAll("a[href]"));
+  const anchor = anchors.find((a) => normalizeText(a.textContent) === label);
+  return anchor?.getAttribute("href") ?? null;
+}
+
+function getEntryContentDocument(entry: Element): Document {
+  return parseHtmlDocument(firstText(entry, "content"));
+}
+
+function getEntryAuthor(entry: Element): string | null {
+  const author = firstText(entry, "name").replace(/^\/u\//, "");
+  return author === "" ? null : author;
+}
+
+function extractEntryImageUrl(entry: Element, contentDoc: Document): string | null {
+  const mediaThumbnail = firstAttribute(entry, "media:thumbnail", "url");
+  if (mediaThumbnail.startsWith("http")) return decodeAmp(mediaThumbnail);
+
+  const image = contentDoc.querySelector("img[src]");
+  const src = image?.getAttribute("src") ?? "";
+  return src.startsWith("http") ? decodeAmp(src) : null;
+}
+
+function extractEntryBody(contentDoc: Document): string {
+  const markdownBody = contentDoc.querySelector(".md");
+  if (!markdownBody) return "";
+  const blockTexts = Array.from(markdownBody.querySelectorAll("p, li, pre, blockquote"))
+    .map((el) => normalizeText(el.textContent))
+    .filter((text) => text !== "");
+  return blockTexts.length > 0 ? blockTexts.join(" ") : normalizeText(markdownBody.textContent);
+}
+
+function extractEntryUrl(contentDoc: Document, sourceUrl: string): string {
+  const linkHref = getAnchorHrefByLabel(contentDoc, "[link]");
+  if (!linkHref) return sourceUrl;
+  return isSameUrl(linkHref, sourceUrl) ? sourceUrl : decodeAmp(linkHref);
+}
+
+interface ParsedPostEntry {
+  readonly item: RawItemInsert;
+  readonly subreddit: string;
+}
+
+function parsePostEntry(entry: Element, subreddit: string, now: Date): ParsedPostEntry | null {
+  const rawId = firstText(entry, "id");
+  if (!rawId.startsWith("t3_")) return null;
+
+  const title = firstText(entry, "title");
+  if (title === "") return null;
+
+  const sourceUrl = firstAttribute(entry, "link", "href");
+  if (sourceUrl === "") return null;
+
+  const contentDoc = getEntryContentDocument(entry);
+  const publishedAt = parseDateOrNow(firstText(entry, "published"));
+
+  return {
+    subreddit,
+    item: {
+      sourceType: "reddit",
+      externalId: stripThingPrefix(rawId),
+      title,
+      url: extractEntryUrl(contentDoc, sourceUrl),
+      sourceUrl,
+      author: getEntryAuthor(entry),
+      content: extractEntryBody(contentDoc),
+      publishedAt,
+      collectedAt: now,
+      engagement: { ...ZERO_ENGAGEMENT },
+      metadata: { comments: [] },
+      imageUrl: extractEntryImageUrl(entry, contentDoc),
+      updatedAt: now,
+    },
   };
 }
 
-function isRedditListing(value: unknown): value is RedditListing<RedditPostData> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "kind" in value &&
-    "data" in value &&
-    typeof (value as Record<string, unknown>).data === "object" &&
-    (value as Record<string, unknown>).data !== null &&
-    "children" in ((value as Record<string, unknown>).data as Record<string, unknown>) &&
-    Array.isArray(((value as Record<string, unknown>).data as Record<string, unknown[]>).children)
-  );
+function parseListingItems(xml: string, subreddit: string): ParsedPostEntry[] {
+  const doc = parseXmlDocument(xml);
+  const now = new Date();
+  return Array.from(doc.getElementsByTagName("entry"))
+    .map((entry) => parsePostEntry(entry, subreddit, now))
+    .filter((entry): entry is ParsedPostEntry => entry !== null);
 }
 
-function isRedditCommentsResponse(value: unknown): value is [RedditListing<RedditPostData>, RedditListing<RedditCommentData>] {
-  return Array.isArray(value) && value.length >= 2;
+function parseCommentEntry(entry: Element): RawItemComment | null {
+  const rawId = firstText(entry, "id");
+  if (!rawId.startsWith("t1_")) return null;
+
+  const contentDoc = getEntryContentDocument(entry);
+  const content = extractEntryBody(contentDoc) || normalizeText(contentDoc.body.textContent);
+  if (content === "") return null;
+
+  return {
+    id: stripThingPrefix(rawId),
+    author: getEntryAuthor(entry) ?? "[deleted]",
+    content,
+    publishedAt: parseDateOrNow(firstText(entry, "published")).toISOString(),
+  };
+}
+
+function parseCommentItems(xml: string, limit: number): RawItemComment[] {
+  const doc = parseXmlDocument(xml);
+  return Array.from(doc.getElementsByTagName("entry"))
+    .map(parseCommentEntry)
+    .filter((comment): comment is RawItemComment => comment !== null)
+    .slice(0, limit);
 }
 
 function buildListingUrl(
@@ -126,7 +214,10 @@ function buildListingUrl(
   timeframe: string,
   limit: number,
 ): string {
-  return `https://www.reddit.com/r/${subreddit}/${sort}.json?t=${timeframe}&limit=${limit}`;
+  const params = new URLSearchParams();
+  if (sort === "top") params.set("t", timeframe);
+  params.set("limit", String(limit));
+  return `https://www.reddit.com/r/${subreddit}/${sort}.rss?${params.toString()}`;
 }
 
 function buildCommentsUrl(
@@ -134,20 +225,20 @@ function buildCommentsUrl(
   postId: string,
   limit: number,
 ): string {
-  return `https://www.reddit.com/r/${subreddit}/comments/${postId}.json?limit=${limit}`;
+  return `https://www.reddit.com/r/${subreddit}/comments/${postId}/.rss?limit=${limit}`;
 }
 
-async function fetchWithRetry(
+async function fetchTextWithRetry(
   fetchFn: typeof fetch,
   url: string,
   retries: number = MAX_RETRIES,
-): Promise<unknown> {
+): Promise<string> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await fetchFn(url, {
-        headers: { "User-Agent": USER_AGENT, "Accept": "application/json" },
+        headers: { "User-Agent": USER_AGENT, Accept: "application/atom+xml, application/xml, text/xml" },
       });
       if (!response.ok) {
         const status = response.status;
@@ -156,7 +247,7 @@ async function fetchWithRetry(
         }
         throw new Error(`HTTP error: ${status}`);
       }
-      return await response.json();
+      return await response.text();
     } catch (err) {
       if (err instanceof Error) {
         const cause = formatCause(err.cause);
@@ -179,46 +270,6 @@ async function fetchWithRetry(
   throw lastError ?? new Error("Fetch failed after retries");
 }
 
-function parseListingItems(data: unknown): RawItemInsert[] {
-  if (!isRedditListing(data)) {
-    return [];
-  }
-
-  const items: RawItemInsert[] = [];
-
-  for (const child of data.data.children) {
-    if (child.kind !== "t3") continue;
-
-    const post = child.data;
-    if (post.stickied) continue;
-    if (!post.title) continue;
-
-    const postUrl = post.is_self
-      ? `https://www.reddit.com${post.permalink}`
-      : post.url;
-
-    const engagement: RawItemEngagement = { points: post.score, commentCount: post.num_comments };
-
-    items.push({
-      sourceType: "reddit" as const,
-      externalId: post.id,
-      title: post.title,
-      url: postUrl,
-      sourceUrl: `https://www.reddit.com${post.permalink}`,
-      author: post.author,
-      content: post.selftext,
-      publishedAt: new Date(post.created_utc * 1000),
-      collectedAt: new Date(),
-      engagement,
-      metadata: { comments: [] },
-      imageUrl: extractRedditImageUrl(post),
-      updatedAt: new Date(),
-    });
-  }
-
-  return items;
-}
-
 async function fetchComments(
   fetchFn: typeof fetch,
   subreddit: string,
@@ -227,28 +278,8 @@ async function fetchComments(
 ): Promise<RawItemComment[]> {
   try {
     const url = buildCommentsUrl(subreddit, postId, limit);
-    const data = await fetchWithRetry(fetchFn, url);
-
-    if (!isRedditCommentsResponse(data)) {
-      return [];
-    }
-
-    const commentListing = data[1];
-    const comments: RawItemComment[] = [];
-
-    for (const child of commentListing.data.children) {
-      if (child.kind !== "t1") continue;
-
-      const comment = child.data;
-      comments.push({
-        id: comment.id,
-        author: comment.author,
-        content: comment.body,
-        publishedAt: new Date(comment.created_utc * 1000).toISOString(),
-      });
-    }
-
-    return comments;
+    const xml = await fetchTextWithRetry(fetchFn, url);
+    return parseCommentItems(xml, limit);
   } catch (err) {
     const cause = err instanceof Error ? formatCause(err.cause) : undefined;
     logger.warn(
@@ -265,9 +296,6 @@ async function fetchComments(
 }
 
 // ── Single-post fetch (add-post flow) ────────────────────────────────────────
-
-const USER_AGENT_SINGLE =
-  "Mozilla/5.0 (compatible; NewsletterBot/1.0; +https://vertexcover.io)";
 
 export interface FetchRedditPostDeps {
   fetchFn?: typeof fetch;
@@ -300,7 +328,7 @@ export function parseRedditPostUrl(url: string): ParsedRedditPostUrl | null {
   // Comment permalink adds one more segment: ["r","<sub>","comments","<postId>","<slug>","<commentId>"]
   if (parts.length < 4) return null;
   if (parts[0] !== "r" || parts[2] !== "comments") return null;
-  if (parts.length > 5) return null; // comment permalink
+  if (parts.length > 5) return null;
 
   const subreddit = parts[1];
   const postId = parts[3];
@@ -318,69 +346,27 @@ export async function fetchRedditPost(
     throw new UrlParseError(`not a recognized Reddit post URL: ${url}`);
   }
 
-  const fetchFn = deps.fetchFn ?? createProxyFetch(process.env.REDDIT_HTTP_PROXY);
+  const baseFetch = deps.fetchFn ?? globalThis.fetch;
+  const fetchFn = deps.signal ? withAbortSignal(baseFetch, deps.signal) : baseFetch;
   const cleanUrl = url.endsWith("/") ? url.slice(0, -1) : url;
-  const jsonUrl = `${cleanUrl}.json`;
+  const rssUrl = `${cleanUrl}.rss`;
 
   logger.info(
     { event: "reddit.single.fetch", ...parsed, url },
     "reddit.single.fetch",
   );
 
-  const response = await fetchFn(jsonUrl, {
-    headers: { "User-Agent": USER_AGENT_SINGLE, Accept: "application/json" },
-    signal: deps.signal,
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Reddit API HTTP ${response.status} for post ${parsed.postId}`,
-    );
-  }
-  const body: unknown = await response.json();
-  if (!isRedditCommentsResponse(body)) {
-    throw new Error(
-      `Reddit API returned unexpected shape for post ${parsed.postId}`,
-    );
+  const xml = await fetchTextWithRetry(fetchFn, rssUrl);
+  const posts = parseListingItems(xml, parsed.subreddit).filter(
+    ({ item }) => item.externalId === parsed.postId,
+  );
+  const firstPost = posts.at(0);
+  if (!firstPost) {
+    throw new Error(`Reddit post ${parsed.postId} not found in RSS response`);
   }
 
-  const postChild = body[0].data.children.find((c) => c.kind === "t3");
-  if (!postChild) {
-    throw new Error(`Reddit post ${parsed.postId} not found in response`);
-  }
-  const post = postChild.data;
-
-  const comments: RawItemComment[] = [];
-  for (const child of body[1].data.children) {
-    if (child.kind !== "t1") continue;
-    const c = child.data;
-    comments.push({
-      id: c.id,
-      author: c.author,
-      content: c.body,
-      publishedAt: new Date(c.created_utc * 1000).toISOString(),
-    });
-  }
-
-  const now = new Date();
-  const postUrl = post.is_self
-    ? `https://www.reddit.com${post.permalink}`
-    : post.url;
-
-  return {
-    sourceType: "reddit",
-    externalId: post.id,
-    title: post.title,
-    url: postUrl,
-    sourceUrl: `https://www.reddit.com${post.permalink}`,
-    author: post.author,
-    content: post.selftext,
-    publishedAt: new Date(post.created_utc * 1000),
-    collectedAt: now,
-    engagement: { points: post.score, commentCount: post.num_comments },
-    metadata: { comments },
-    imageUrl: extractRedditImageUrl(post),
-    updatedAt: now,
-  };
+  const comments = parseCommentItems(xml, DEFAULT_COMMENTS_PER_ITEM);
+  return { ...firstPost.item, metadata: { comments } };
 }
 
 // ── Batch collection ──────────────────────────────────────────────────────────
@@ -390,7 +376,7 @@ export async function collectReddit(
   config: RedditCollectConfig,
 ): Promise<CollectorResult> {
   const startTime = Date.now();
-  const baseFetch = deps.fetchFn ?? createProxyFetch(process.env.REDDIT_HTTP_PROXY);
+  const baseFetch = deps.fetchFn ?? globalThis.fetch;
   const fetchFn = deps.signal ? withAbortSignal(baseFetch, deps.signal) : baseFetch;
   const subreddits = config.subreddits ?? DEFAULT_SUBREDDITS;
   const sort = config.sort ?? DEFAULT_SORT;
@@ -421,11 +407,11 @@ export async function collectReddit(
     const subStart = Date.now();
 
     try {
-      const data = await fetchWithRetry(fetchFn, url);
-      const items = parseListingItems(data);
+      const xml = await fetchTextWithRetry(fetchFn, url);
+      const entries = parseListingItems(xml, subreddit);
 
       let added = 0;
-      for (const item of items) {
+      for (const { item } of entries) {
         if (!seenIds.has(item.externalId)) {
           seenIds.add(item.externalId);
           subredditByExternalId.set(item.externalId, subreddit);
@@ -439,7 +425,7 @@ export async function collectReddit(
           subreddit,
           url,
           sinceDays: config.sinceDays,
-          fetched: items.length,
+          fetched: entries.length,
           added,
           durationMs: Date.now() - subStart,
         },
@@ -489,9 +475,6 @@ export async function collectReddit(
     let commentRequests = 0;
     for (const item of allItems) {
       if (deps.signal?.aborted) break;
-      if (!item.engagement || item.engagement.commentCount < MIN_COMMENTS_FOR_FETCH) {
-        continue;
-      }
 
       if (commentRequests > 0) {
         await delay(COMMENT_RATE_LIMIT_MS, deps.signal);
@@ -507,13 +490,6 @@ export async function collectReddit(
       );
       item.metadata = { comments };
       totalComments += comments.length;
-
-      if (comments.length === 0 && item.engagement.commentCount > 0) {
-        logger.warn(
-          { externalId: item.externalId, commentCount: item.engagement.commentCount },
-          "comment fetch returned empty",
-        );
-      }
     }
   }
 
