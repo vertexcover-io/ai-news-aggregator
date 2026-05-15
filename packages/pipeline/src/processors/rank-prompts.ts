@@ -37,23 +37,37 @@ Only return ranked entries for actual input items that you can rank. If an item 
 
 Treat same-event coverage as duplicates even when the URLs, titles, or source types differ. If multiple items describe the same announcement, launch, benchmark, outage, funding round, policy change, paper, model release, or product update, they are one story. Return only the strongest representative and omit the rest. Prefer the primary-source item when it is available and sufficiently informative; otherwise choose the item with the clearest evidence, richest body text, and strongest engagement. Example duplicate pair: "OpenAI ships Codex in ChatGPT mobile" and "OpenAI launches Codex on ChatGPT mobile" are one story, not two rankable stories.
 
-For each ranked item, also produce — write for a 3-4 minute total read across roughly 8 stories, so each story must stay under ~100 words across all four fields combined. Per-story brevity is a hard quality bar, not an arbitrary limit:
+For each ranked item, also produce structured story content. Write for a 3-4 minute total read across roughly 8 stories, so each story must stay under ~100 words across all four fields combined. Per-story brevity is a hard quality bar, not an arbitrary limit.
+
+Each story has three distinct editorial layers. Do not let them repeat each other:
+
+- summary = ORIENT. State what happened. Fact-first. No analysis, no implications, no "why it matters".
+- bullets = EXPLAIN. Give exactly 3 specific details that help the reader understand the story: numbers, names, product changes, constraints, evidence, caveats, timeline, or comparisons. Each bullet must add new information not already stated in the summary. No generic analysis phrases like "this signals", "this means", "this highlights", "this underscores", or "marks a shift".
+- bottomLine = INTERPRET. Answer "so what?" for developers, AI teams, or the market. This is the only place for strategic meaning or implication.
+
+Before returning, check:
+1. If summary and bottomLine could both answer "what happened?", rewrite bottomLine.
+2. If a bullet merely rephrases the summary, replace it with a concrete detail.
+3. If a bullet says why it matters instead of what detail matters, move that idea to bottomLine or delete it.
 
 - title: A 4-to-7-word neutral newswire headline. Sentence case. Names the actor and the action (subject-verb-object). No clickbait, no questions, no colons-as-title-tropes, no editorial framing words like "quietly", "finally", or "doubles down". Aim for ~50 characters.
   Good: "OpenAI ships GPT-5 with native tool use"
   Good: "Anthropic raises $5B at $60B valuation"
 
-- summary: One sentence stating WHAT happened. ≤25 words. Fact-first, names and numbers. No analysis here — analysis goes in bottomLine. No markdown links.
+- summary: One sentence stating WHAT happened. ≤25 words. Actor + action + object + important number/name if available. No analysis here; analysis goes in bottomLine. No markdown links.
   Good: "OpenAI released GPT-5 today with a 400K-token context window and native tool use."
+  Bad: "OpenAI's release shows the race for agentic tooling is heating up."
 
-- bullets: Exactly 3 short bullets, ≤15 words each, ~12 words average. Each bullet is a scannable FACT — a number, a name, a capability, a comparison, a release date, a benchmark result. NOT a second summary in disguise. NOT analysis phrases like "this signals", "this means", "marks a shift" — those go in bottomLine. If two bullets say similar things, cut one and find a stronger fact. No markdown links.
+- bullets: Exactly 3 short bullets, ≤15 words each, ~12 words average. Each bullet is a scannable FACT: metric, feature, date, product name, limitation, evidence, affected user, or comparison. NOT a second summary in disguise. NOT analysis phrases like "this signals", "this means", "this highlights", "this underscores", or "marks a shift"; those go in bottomLine. If two bullets say similar things, cut one and find a stronger fact. No markdown links.
   Good:
     "Outperforms GPT-4o by 18% on SWE-bench Verified."
-    "Pricing: $5/M input tokens, $15/M output — half of Claude Opus."
+    "Pricing: $5/M input tokens, $15/M output; half of Claude Opus."
     "Tool-use is native; no JSON schema scaffolding required."
+  Bad: "This could change how developers build with AI."
 
 - bottomLine: One sentence, ≤25 words. The strategic so-what. This is the only place analysis lives. No markdown links.
   Good: "GPT-5's native tool use closes the agent gap with Claude and makes schema-wrapping libraries largely obsolete."
+  Bad: "OpenAI released GPT-5 with native tool use."
 
 Hard ceiling: if your draft exceeds 110 words across these four fields combined, cut bullets first (drop the weakest), then trim the summary, then the bottomLine. Never pad to fill.
 

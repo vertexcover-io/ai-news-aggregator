@@ -125,5 +125,17 @@ describe("rank prompts", () => {
         "cut bullets first",
       );
     });
+
+    it("defines summary, bullets, and bottomLine as non-overlapping editorial layers", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("summary = ORIENT");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("bullets = EXPLAIN");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("bottomLine = INTERPRET");
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
+        "Each bullet must add new information not already stated in the summary",
+      );
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
+        "If summary and bottomLine could both answer",
+      );
+    });
   });
 });
