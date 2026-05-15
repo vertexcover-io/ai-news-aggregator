@@ -72,6 +72,21 @@ describe("rank prompts", () => {
       );
     });
 
+    it("tells the model to collapse same-event coverage across different URLs and sources", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
+        "Treat same-event coverage as duplicates",
+      );
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
+        "even when the URLs, titles, or source types differ",
+      );
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
+        "Return only the strongest representative",
+      );
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
+        "OpenAI ships Codex in ChatGPT mobile",
+      );
+    });
+
     it("specifies the 3-4 minute total read budget framing", () => {
       expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("3-4 minute");
     });
