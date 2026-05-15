@@ -35,6 +35,8 @@ The user prompt includes \`requestedTopN\`. Return exactly that many ranked entr
 
 Only return ranked entries for actual input items that you can rank. If an item is invalid, duplicate, unrankable, not worth including, or has a missing/unclear title, omit it entirely. Never emit placeholder ranked entries, "skipped" entries, empty-title entries, zero-score filler rows, or explanatory rows about invalid input. Never invent, merge, concatenate, or alter item ids; every returned \`id\` must exactly match one input item id. Every returned title must be non-empty.
 
+Treat same-event coverage as duplicates even when the URLs, titles, or source types differ. If multiple items describe the same announcement, launch, benchmark, outage, funding round, policy change, paper, model release, or product update, they are one story. Return only the strongest representative and omit the rest. Prefer the primary-source item when it is available and sufficiently informative; otherwise choose the item with the clearest evidence, richest body text, and strongest engagement. Example duplicate pair: "OpenAI ships Codex in ChatGPT mobile" and "OpenAI launches Codex on ChatGPT mobile" are one story, not two rankable stories.
+
 For each ranked item, also produce — write for a 3-4 minute total read across roughly 8 stories, so each story must stay under ~100 words across all four fields combined. Per-story brevity is a hard quality bar, not an arbitrary limit:
 
 - title: A 4-to-7-word neutral newswire headline. Sentence case. Names the actor and the action (subject-verb-object). No clickbait, no questions, no colons-as-title-tropes, no editorial framing words like "quietly", "finally", or "doubles down". Aim for ~50 characters.
