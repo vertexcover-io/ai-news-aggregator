@@ -241,14 +241,20 @@ function PoolItemCard({ item }: { readonly item: PoolItem }): ReactElement {
           ) : null}
           <span className="text-gray-400">{formatRelative(item.publishedAt)}</span>
         </div>
-        <a
-          href={item.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-0.5 inline-flex items-center font-medium text-gray-900 hover:underline truncate text-sm min-h-[44px] w-full"
-        >
-          {item.title}
-        </a>
+        <div className="mt-0.5 flex items-start gap-2">
+          <h3 className="flex-1 min-w-0 truncate text-sm font-medium text-gray-900">
+            {item.title}
+          </h3>
+          <a
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open ${item.title}`}
+            className="shrink-0 text-xs text-stone-400 hover:text-stone-700 hover:underline mt-1"
+          >
+            open ↗
+          </a>
+        </div>
       </div>
     </article>
   );

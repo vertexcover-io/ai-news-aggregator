@@ -217,7 +217,7 @@ describe("SourcesPreviewPage", () => {
     });
   });
 
-  it("renders pool source links with safe external attributes", async () => {
+  it("renders pool source open links with safe external attributes", async () => {
     vi.mocked(getArchive).mockResolvedValue(makeRun());
     vi.mocked(getPool).mockResolvedValue({
       items: [
@@ -229,8 +229,9 @@ describe("SourcesPreviewPage", () => {
       total: 1,
     });
     renderPage();
+    await screen.findByText("External pool story");
     const link = await screen.findByRole("link", {
-      name: "External pool story",
+      name: "Open External pool story",
     });
     expect(link.getAttribute("href")).toBe("https://example.com/source");
     expect(link.getAttribute("target")).toBe("_blank");
