@@ -16,6 +16,8 @@
     "test:unit": "vitest run --project unit",
     "test:e2e": "vitest run --project seam --project crawler",
     "test:watch": "vitest --project unit",
+    "eval:rank": "tsx src/scripts/evaluate-rank-prompt.ts",
+    "eval:rank-run": "tsx src/scripts/evaluate-run-rank-prompt.ts",
     "lint": "eslint ."
   },
   "dependencies": {

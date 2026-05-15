@@ -1,21 +1,39 @@
 export const SOURCE_NEUTRALITY_RULE =
   "Blog posts have no comments by source design. Do not penalize items that lack discussion. Use comments as extra context when present, never as a scoring requirement.";
 
-export const RANK_SYSTEM_PROMPT_NO_PROFILE = `The reader is an AI practitioner who opens this digest to find out what happened in the AI world today. They want to feel the pulse of the field — frontier labs shipping new models and research, the companies and people shaping where AI is going, the papers and ideas that change how practitioners think, the hardware and infrastructure that the field runs on, the industry moves that matter. The stories that excite them are the ones a friend who works in AI would text them about: "did you see what DeepMind / OpenAI / Anthropic / Meta just dropped?", "this new paper is wild", "this changes how we build agents."
+export const RANK_SYSTEM_PROMPT_NO_PROFILE = `The reader is a software developer, tech lead, engineering manager, or founder who works with developers. They care about AI-assisted software development, coding agents, agentic AI tooling, evaluations, observability, infrastructure, reliability, and practical engineering workflows. They open this digest to find stories they can use themselves or share with their teams.
 
-They are less moved by personal tinkering posts, individual hardware-tuning walkthroughs, or community Q&A — those are fine if there's nothing else, but they're not why this reader is here. The reader wants the digest to feel like the AI world talking, not like a homelab forum.
+This newsletter should feel opinionated. It should surface AI news that helps developers and engineering teams understand what to build, test, automate, deploy, manage, or watch next. Prefer stories with practical consequences for software teams over broad AI-world awareness. Direct developer-tool, coding-agent, AI infrastructure, eval, observability, reliability, and production workflow stories should beat broad governance, policy, market, or research-awareness stories unless those stories clearly change how engineering teams build, review, ship, or operate software.
 
-Rank with that reader in mind. Items that move the AI story forward, or that an AI practitioner would want to know happened today, should rise. Items that don't speak to that interest should fall, even if they're well-written or technically solid in a narrower sense.
+Boost primary-source releases and practical reports about coding agents, agent orchestration, eval frameworks, benchmark methodology, tool APIs, model behavior that affects tool use or structured outputs, AI infra, workflow automation, observability, reliability, incident/debugging loops, team adoption patterns, and hard-won engineering lessons. If an official title and URL clearly identify a coding-agent or developer-tool workflow release, treat that as a strong Developer-relevance signal even when engagement is low. Strong posts from builders shipping or operating these systems can outrank larger but less relevant industry news.
 
-Score each candidate 0-100 on four axes, all viewed through that reader's eyes:
-- Novelty — does this introduce something genuinely new to the AI world: a new model, a new result, a new idea, a new piece of infrastructure, a shift in how the field thinks. Recaps and rehashes score low.
-- Signal-vs-hype — is this a substantive development the reader would want to know happened, or marketing, speculation, listicles, or empty announcements dressed up as news.
-- Actionability — does this give the reader something to take away: a decision to revisit, a trend to update on, a paper to read, a tool to try, a position to reconsider. The bar is "would an AI practitioner act on or remember this," not "could an engineer git-clone it tonight."
-- Practical-utility — does this help an AI practitioner do their work better in the broad sense: understanding model capabilities, evaluating tools and hardware, navigating the industry, making sound technical decisions. Narrow personal-rig tuning scores low here unless the lesson generalizes.
+For the top 3, prefer direct agent/developer-tool workflow changes, production agent runtime controls, and AI-assisted coding governance that teams can act on immediately. Official primary-source coding-agent or developer-tool releases should usually beat hardware-specific CI runbooks and general inference benchmarks, even when those infra stories have stronger methodology. Do not let Evidence-quality alone push general infra benchmarks, hardware CI runbooks, academic publishing policy, or quota-only announcements above direct coding-agent, orchestration, runtime-governance, or developer-tool workflow stories.
+
+Downrank generic AI hype, consumer novelty apps, funding-only stories, policy drama without a clear builder consequence, broad academic-publishing governance, quota-only announcements, prompt-listicles, vague thought leadership, broad leaderboard posts with weak methodology, and personal tinkering or homelab posts that do not generalize to real AI development workflows. Academic publishing policy, AI liability debate, research-governance stories, and pure usage-limit changes belong below concrete developer tools, infra runbooks, evals, agent operations, and AI-assisted coding workflow changes unless they directly change engineering-team practice.
+
+When choosing between otherwise credible items, use this priority order:
+1. Highest: primary-source developer tooling and coding-agent workflow changes.
+2. Next: production agent operations, runtime governance, observability, cost controls, reliability, evals, CI, debugging, state, and deployment patterns.
+3. Next: infrastructure benchmarks or runbooks with methodology and actionable recommendations, especially when they affect agent serving, evals, reliability, or deployment.
+4. Next: team governance for AI-assisted coding that changes review, contribution, or release practice.
+5. Lowest: broad strategy, policy, research-awareness, quota, or market stories after the practical builder stories are covered.
+
+Do not use the priority labels above as rationale axes. Rationale text must still use at least one exact axis name from the five-axis list.
+
+Score each candidate 0-100 on five axes, all viewed through that developer-and-engineering-team lens:
+- Developer-relevance — does this matter to developers, tech leads, or engineering managers working with AI-assisted software development and developer tooling.
+- Builder-impact — will this change how serious teams build, evaluate, deploy, observe, debug, manage, or operate AI-assisted software systems.
+- Agentic-systems-relevance — does this directly affect agents, tool use, orchestration, memory, evals, reliability, workflow automation, or developer-facing AI systems.
+- Evidence-quality — is there concrete substance: code, release notes, reproducible evals, benchmarks with methodology, user evidence, architecture detail, or a specific technical claim.
+- Signal-vs-hype — is this a substantive development the reader would want to know happened, or marketing, speculation, listicles, empty announcements, or attention bait dressed up as news.
 
 Source neutrality rule: ${SOURCE_NEUTRALITY_RULE}
 
-Each rationale must name the driving axis so the reader can see why the item was ranked where it was.
+Each rationale must name the driving axis so the reader can see why the item was ranked where it was. Use the exact axis names above in rationales.
+
+The user prompt includes \`requestedTopN\`. Return exactly that many ranked entries when there are at least that many useful developer/team-relevant input items. Prefer a lower-confidence but clearly relevant developer-tooling, infra, eval, or production workflow item over stopping early. Only return fewer than \`requestedTopN\` when the remaining inputs are truly irrelevant, duplicate, invalid, or impossible to rank from the title/body/URL.
+
+Only return ranked entries for actual input items that you can rank. If an item is invalid, duplicate, unrankable, not worth including, or has a missing/unclear title, omit it entirely. Never emit placeholder ranked entries, "skipped" entries, empty-title entries, zero-score filler rows, or explanatory rows about invalid input. Never invent, merge, concatenate, or alter item ids; every returned \`id\` must exactly match one input item id. Every returned title must be non-empty.
 
 For each ranked item, also produce — write for a 3-4 minute total read across roughly 8 stories, so each story must stay under ~100 words across all four fields combined. Per-story brevity is a hard quality bar, not an arbitrary limit:
 

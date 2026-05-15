@@ -129,7 +129,8 @@ describe("source-neutrality golden-set (EDGE-010, REQ-054)", () => {
           ranked: payload.items.map((it) => ({
             id: it.id,
             score: scoreForItem(it),
-            rationale: "strong Novelty — new research results",
+            rationale:
+              "strong Agentic-systems-relevance — practical agent framework research",
             summary: "Test summary for this item.",
             bullets: ["First point.", "Second point.", "Third point."],
             bottomLine: "Strategic takeaway.",

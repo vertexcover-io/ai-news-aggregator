@@ -74,7 +74,13 @@ export const rankedResponseSchema = z.object({
   ranked: z.array(rankedEntrySchema),
 });
 
-const AXES = ["Novelty", "Signal-vs-hype", "Actionability", "Practical-utility"] as const;
+const AXES = [
+  "Developer-relevance",
+  "Builder-impact",
+  "Agentic-systems-relevance",
+  "Evidence-quality",
+  "Signal-vs-hype",
+] as const;
 
 // Approximate token count as ceil(chars / 4). This is coarse but good enough
 // for a truncation budget; swap in a real tokenizer if precision ever matters.
@@ -194,7 +200,11 @@ export async function rankCandidates(
     result = (await generate({
       model: anthropic(modelId),
       system: systemPrompt,
-      prompt: JSON.stringify({ items: promptItems }, null, 2),
+      prompt: JSON.stringify(
+        { requestedTopN: options.topN, items: promptItems },
+        null,
+        2,
+      ),
       schema: rankedResponseSchema,
       providerOptions: {
         anthropic: { structuredOutputMode: "outputFormat" },
