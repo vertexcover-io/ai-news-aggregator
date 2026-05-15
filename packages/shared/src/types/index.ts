@@ -41,11 +41,21 @@ export interface EnrichedLinkContent {
   textLength?: number;
 }
 
+export interface QuotedTweetMetadata {
+  id: string;
+  authorHandle: string;
+  fullText: string;
+  url: string;
+  createdAt: string;
+  photoUrls: string[];
+}
+
 export interface RawItemMetadata {
   comments: RawItemComment[];
   recap?: RecapContent;
   addedInReview?: boolean;
   enrichedLink?: EnrichedLinkContent;
+  quotedTweet?: QuotedTweetMetadata;
 }
 
 export interface SourceUnitResult {

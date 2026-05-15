@@ -1,6 +1,7 @@
 import { MediaType } from "rettiwt-api";
 import type {
   NormalizedTweet,
+  QuotedTweet,
   TwitterClient,
   TwitterClientFetchOptions,
   TwitterClientFetchResult,
@@ -73,13 +74,32 @@ function extractCursor(next: RettiwtCursoredPage["next"]): string | null {
   return next.value.length > 0 ? next.value : null;
 }
 
-function denormalize(t: RettiwtRawTweet): NormalizedTweet {
-  const inner = t.retweetedTweet ?? t;
-  const handle = inner.tweetBy?.userName ?? "i";
-  const photoUrls = (inner.media ?? [])
+function pickPhotoUrls(media: RettiwtRawMedia[] | undefined): string[] {
+  return (media ?? [])
     .filter((m) => m.type === MediaType.PHOTO)
     .map((m) => m.url)
     .filter((u): u is string => typeof u === "string");
+}
+
+function denormalize(t: RettiwtRawTweet): NormalizedTweet {
+  const inner = t.retweetedTweet ?? t;
+  const handle = inner.tweetBy?.userName ?? "i";
+  const photoUrls = pickPhotoUrls(inner.media);
+
+  let quotedTweet: QuotedTweet | undefined;
+  if (inner.quoted) {
+    const q = inner.quoted;
+    const qHandle = q.tweetBy?.userName ?? "i";
+    quotedTweet = {
+      id: q.id,
+      authorHandle: qHandle,
+      fullText: q.fullText ?? "",
+      url: `https://x.com/${qHandle}/status/${q.id}`,
+      createdAt: q.createdAt,
+      photoUrls: pickPhotoUrls(q.media),
+    };
+  }
+
   return {
     id: inner.id,
     authorHandle: handle,
@@ -95,6 +115,7 @@ function denormalize(t: RettiwtRawTweet): NormalizedTweet {
     isRetweet: !!t.retweetedTweet,
     isQuote: !!t.quoted,
     externalUrl: pickExternalUrl(inner.entities),
+    quotedTweet,
   };
 }
 
