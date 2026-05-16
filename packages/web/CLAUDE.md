@@ -8,7 +8,7 @@ React + Vite frontend for the admin review dashboard and public archive.
 - Admin login (`/admin/login`): password gate for operator pages
 - Dashboard (`/admin`): shows recent runs table, schedule status banner, and "Run Now" button
 - Review (`/admin/review/:runId`): curate ranked items before publishing — reorder (DnD), remove, add by URL
-- Settings (`/admin/settings`): configure schedule and HN/Reddit source config
+- Settings (`/admin/settings`): configure schedule, HN/Reddit source config, and the editorial ranking workflow (free-form English textarea, ≤ 8000 chars, with character counter and "Reset to default" button — persisted to `user_settings.ranking_workflow`)
 - Communicates with `@newsletter/api` via HTTP only
 
 ## Layout
