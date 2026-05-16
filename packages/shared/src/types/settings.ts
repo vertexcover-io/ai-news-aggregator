@@ -20,6 +20,7 @@ export interface UserSettings {
   scheduleTime: string;
   scheduleTimezone: string;
   scheduleEnabled: boolean;
+  rankingWorkflow: string;
   updatedAt: string;
 }
 

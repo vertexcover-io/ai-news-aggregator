@@ -180,6 +180,7 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       scheduleTime: parsed.data.scheduleTime,
       scheduleTimezone: parsed.data.scheduleTimezone,
       scheduleEnabled: parsed.data.scheduleEnabled,
+      rankingWorkflow: parsed.data.rankingWorkflow,
     };
 
     const saved = await deps.getSettingsRepo().upsert(upsertInput);

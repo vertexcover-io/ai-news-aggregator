@@ -56,6 +56,7 @@ const baseSettings: UserSettings = {
   scheduleTime: "07:00",
   scheduleTimezone: "America/Los_Angeles",
   scheduleEnabled: false,
+  rankingWorkflow: "",
   updatedAt: "2026-04-14T00:00:00.000Z",
 };
 

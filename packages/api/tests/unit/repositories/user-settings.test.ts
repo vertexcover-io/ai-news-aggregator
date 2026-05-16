@@ -18,6 +18,7 @@ interface StoredRow {
   scheduleTime: string;
   scheduleTimezone: string;
   scheduleEnabled: boolean;
+  rankingWorkflow: string;
   updatedAt: Date;
 }
 
@@ -53,6 +54,7 @@ function makeFakeDb(): { db: Pick<AppDb, "select" | "insert">; rows: StoredRow[]
                 scheduleTime: v.scheduleTime ?? "00:00",
                 scheduleTimezone: v.scheduleTimezone ?? "UTC",
                 scheduleEnabled: v.scheduleEnabled ?? false,
+                rankingWorkflow: v.rankingWorkflow ?? "",
                 updatedAt: v.updatedAt ?? new Date(),
               };
               rows.push(row);
@@ -84,6 +86,7 @@ const baseInput = {
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
+  rankingWorkflow: "",
 };
 
 describe("UserSettingsRepo", () => {
@@ -127,5 +130,23 @@ describe("UserSettingsRepo", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].topN).toBe(25);
     expect(rows[0].scheduleTime).toBe("07:00");
+  });
+
+  it("get() resolves an empty stored ranking_workflow to the default workflow", async () => {
+    const { db, rows } = makeFakeDb();
+    const repo = createUserSettingsRepo(db);
+    await repo.upsert({ ...baseInput, rankingWorkflow: "" });
+    expect(rows[0].rankingWorkflow).toBe("");
+    const got = await repo.get();
+    expect(got?.rankingWorkflow.length).toBeGreaterThan(0);
+    expect(got?.rankingWorkflow).not.toBe("");
+  });
+
+  it("get() returns a custom ranking_workflow verbatim (after trim)", async () => {
+    const { db } = makeFakeDb();
+    const repo = createUserSettingsRepo(db);
+    await repo.upsert({ ...baseInput, rankingWorkflow: "boost agent stuff" });
+    const got = await repo.get();
+    expect(got?.rankingWorkflow).toBe("boost agent stuff");
   });
 });

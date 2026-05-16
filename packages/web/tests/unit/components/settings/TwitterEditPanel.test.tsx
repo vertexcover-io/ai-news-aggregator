@@ -38,6 +38,7 @@ function TestWrapper({
       scheduleTime: "09:00",
       scheduleTimezone: "UTC",
       scheduleEnabled: false,
+      rankingWorkflow: "",
     },
   });
   return (
@@ -204,6 +205,7 @@ describe("API error surfacing", () => {
         scheduleTime: "07:00",
         scheduleTimezone: "UTC",
         scheduleEnabled: false,
+        rankingWorkflow: "",
       });
     } catch (e) {
       caught = e;
@@ -248,6 +250,7 @@ describe("API error surfacing", () => {
         scheduleTime: "07:00",
         scheduleTimezone: "UTC",
         scheduleEnabled: false,
+        rankingWorkflow: "",
       });
     } catch (e) {
       caught = e;

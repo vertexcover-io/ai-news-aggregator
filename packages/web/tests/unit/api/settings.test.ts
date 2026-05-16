@@ -28,6 +28,7 @@ const sample: UserSettings = {
   scheduleTime: "07:00",
   scheduleTimezone: "UTC",
   scheduleEnabled: false,
+  rankingWorkflow: "",
   updatedAt: "2026-04-14T00:00:00Z",
 };
 
@@ -75,6 +76,7 @@ describe("settings api", () => {
       scheduleTime: sample.scheduleTime,
       scheduleTimezone: sample.scheduleTimezone,
       scheduleEnabled: sample.scheduleEnabled,
+      rankingWorkflow: sample.rankingWorkflow,
     };
     const out = await putSettings(input);
     expect(out).toEqual(sample);
@@ -103,6 +105,7 @@ describe("settings api", () => {
         scheduleTime: "07:00",
         scheduleTimezone: "UTC",
         scheduleEnabled: false,
+        rankingWorkflow: "",
       }),
     ).rejects.toThrow("bad input");
   });

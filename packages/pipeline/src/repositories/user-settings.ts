@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { userSettings } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
+import { resolveRankingWorkflow } from "@newsletter/shared";
 import type { UserSettings } from "@newsletter/shared";
 
 export interface UserSettingsRepo {
@@ -34,6 +35,7 @@ export function createUserSettingsRepo(
         scheduleTime: row.scheduleTime,
         scheduleTimezone: row.scheduleTimezone,
         scheduleEnabled: row.scheduleEnabled,
+        rankingWorkflow: resolveRankingWorkflow(row.rankingWorkflow),
         updatedAt:
           row.updatedAt instanceof Date
             ? row.updatedAt.toISOString()

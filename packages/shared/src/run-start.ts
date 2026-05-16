@@ -23,6 +23,7 @@ export interface RunProcessJobPayload {
     twitter?: RunSubmitTwitterConfig;
   };
   halfLifeHours?: number;
+  rankingWorkflow: string;
 }
 
 export interface StartRunDeps {
@@ -102,6 +103,7 @@ export async function startRun(
     topN: settings.topN,
     sourceTypes,
     collectors,
+    rankingWorkflow: settings.rankingWorkflow,
     ...(settings.halfLifeHours !== null
       ? { halfLifeHours: settings.halfLifeHours }
       : {}),

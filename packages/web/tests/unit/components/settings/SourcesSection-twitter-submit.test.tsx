@@ -56,6 +56,7 @@ function SubmitHarness({
       scheduleTime: "07:00",
       scheduleTimezone: "Asia/Calcutta",
       scheduleEnabled: false,
+      rankingWorkflow: "",
     },
   });
 

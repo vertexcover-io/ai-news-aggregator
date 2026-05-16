@@ -90,6 +90,7 @@ export const userSettings = pgTable(
     scheduleTime: text("schedule_time").notNull(),
     scheduleTimezone: text("schedule_timezone").notNull(),
     scheduleEnabled: boolean("schedule_enabled").notNull().default(false),
+    rankingWorkflow: text("ranking_workflow").notNull().default(""),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("user_settings_singleton_uq").on(t.singleton)],

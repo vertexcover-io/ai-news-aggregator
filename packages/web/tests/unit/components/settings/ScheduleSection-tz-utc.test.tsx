@@ -42,6 +42,7 @@ function Harness({ initialTz }: HarnessProps): ReactElement {
       scheduleTime: "09:00",
       scheduleTimezone: initialTz,
       scheduleEnabled: false,
+      rankingWorkflow: "",
     },
   });
   return <ScheduleSection register={form.register} control={form.control} />;

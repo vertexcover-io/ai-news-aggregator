@@ -37,6 +37,7 @@ describe("settingsFormSchema — VS-6 regression", () => {
     scheduleTime: "07:00",
     scheduleTimezone: "Asia/Calcutta",
     scheduleEnabled: false,
+    rankingWorkflow: "",
   };
 
   it("VS-6: parses Twitter form state with one list + one handle (no userId)", () => {
