@@ -120,6 +120,7 @@ const userSettingsCommonShape = {
       message: "scheduleTimezone must be a valid IANA timezone",
     }),
   scheduleEnabled: z.boolean(),
+  rankingWorkflow: z.string().max(8000).default(""),
 } as const;
 
 interface SourceEnabledPayload {

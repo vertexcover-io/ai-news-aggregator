@@ -20,6 +20,7 @@ const validSettings = {
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
+  rankingWorkflow: "",
 };
 
 describe("userSettingsUpsertSchema (REQ-012/REQ-013/EDGE-004)", () => {

@@ -113,6 +113,7 @@ export interface RunProcessJobData {
   sourceTypes: SourceType[];
   collectors: RunCollectorsPayload;
   halfLifeHours?: number;
+  rankingWorkflow?: string;
 }
 
 export interface RunProcessJobLike {
@@ -354,7 +355,7 @@ export async function handleRunProcessJob(
   if (job.name !== "run-process") {
     return { rankedCount: 0 };
   }
-  const { runId, topN, sourceTypes, collectors, halfLifeHours } = job.data;
+  const { runId, topN, sourceTypes, collectors, halfLifeHours, rankingWorkflow } = job.data;
   const started = Date.now();
   let runStartedAt: Date = new Date(started);
 
@@ -507,6 +508,7 @@ export async function handleRunProcessJob(
         topN,
         runId,
         halfLifeHours,
+        rankingWorkflow,
         shortlistBreakdowns: breakdowns,
         abortSignal: signal,
       });

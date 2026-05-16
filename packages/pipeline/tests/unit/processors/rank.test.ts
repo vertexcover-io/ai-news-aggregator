@@ -186,7 +186,13 @@ describe("rankCandidates", () => {
     expect(call.prompt).toContain("first comment");
   });
 
-  it("uses a general developer-and-engineering-team ranking prompt (REQ-070)", async () => {
+  it("forwards the caller's rankingWorkflow into the system prompt", async () => {
+    // The behaviour we care about: whatever editorial workflow the caller
+    // passes in must reach the LLM. The framing words used to live in code;
+    // now they live in user_settings.ranking_workflow and the caller threads
+    // them through. Concrete contents are not this function's concern.
+    const customWorkflow =
+      "MARKER_PROBE_WORKFLOW_XYZ — boost agent-ops stories, downrank funding-only.";
     const generateObject = makeGenerate({
       ranked: [
         makeRankedEntry({
@@ -201,25 +207,12 @@ describe("rankCandidates", () => {
       topN: 5,
       generateObject,
       loadBodies: stubLoadBodies,
+      rankingWorkflow: customWorkflow,
     });
 
     const call = generateObject.mock.calls[0]?.[0] as GenerateArgs;
-    expect(call.system).toContain("software developer");
-    expect(call.system).toContain("tech lead");
-    expect(call.system).toContain("engineering manager");
-    expect(call.system).toContain("share with their teams");
-    expect(call.system).toContain("Direct developer-tool");
-    expect(call.system).toContain("requestedTopN");
-    expect(call.system).toContain("coding agents");
-    expect(call.system).toContain("agentic AI tooling");
-    expect(call.system).toContain("Developer-relevance");
-    expect(call.system).toContain("Builder-impact");
-    expect(call.system).toContain("Agentic-systems-relevance");
-    expect(call.system).toContain("Evidence-quality");
-    expect(call.system).toContain("Signal-vs-hype");
-    expect(call.system).not.toContain("Vertexcover");
-    expect(call.system).not.toContain("Harness engineering");
-    expect(call.system).not.toContain("feel the pulse of the field");
+    expect(call.system).toContain(customWorkflow);
+    expect(call.system).toContain("====== EDITORIAL WORKFLOW ======");
   });
 
   it("calls generateObject with temperature 0 (REQ-064)", async () => {
@@ -237,89 +230,15 @@ describe("rankCandidates", () => {
     expect(call.temperature).toBe(0);
   });
 
-  it("skips items whose rationale does not name a scoring axis, run continues (REQ-065 softened)", async () => {
-    // Previously this threw and killed the entire run. New behaviour: drop the
-    // unvalidated item, log a warn, keep the rest. One bad rationale must not
-    // brick a daily run (Stage-5 finding 2026-05-04: a tweet with terse
-    // content produced rationale "Low on all axes..." which is semantically
-    // valid but lexically doesn't match a single axis name).
+  it("throws when every entry's id is missing from the shortlist", async () => {
+    // The remaining 'no valid items' guard fires only when the LLM
+    // hallucinates ids that don't match any input candidate. Rationale
+    // content is now opaque — what counts as a valid rationale lives in
+    // the editorial workflow (admin-owned).
     const generateObject = makeGenerate({
       ranked: [
-        makeRankedEntry({ id: 1, score: 80, rationale: "strong Developer-relevance" }),
-        makeRankedEntry({ id: 2, score: 50, rationale: "just because" }),
-        makeRankedEntry({ id: 3, score: 70, rationale: "good Builder-impact" }),
-      ],
-    });
-
-    const result = await rankCandidates(
-      [makeCandidate(1), makeCandidate(2), makeCandidate(3)],
-      {
-        topN: 5,
-        generateObject,
-        loadBodies: stubLoadBodies,
-      },
-    );
-
-    // Items 1 and 3 survive; item 2 is dropped.
-    const ids = result.rankedItems.map((r) => r.rawItemId).sort();
-    expect(ids).toEqual([1, 3]);
-  });
-
-  it("throws if EVERY rationale fails axis validation (REQ-065 still gates totally-bad runs)", async () => {
-    const generateObject = makeGenerate({
-      ranked: [
-        makeRankedEntry({ id: 1, score: 50, rationale: "just because" }),
-        makeRankedEntry({ id: 2, score: 40, rationale: "no reason" }),
-      ],
-    });
-
-    await expect(
-      rankCandidates([makeCandidate(1), makeCandidate(2)], {
-        topN: 5,
-        generateObject,
-        loadBodies: stubLoadBodies,
-      }),
-    ).rejects.toThrow(/no valid items/i);
-  });
-
-  it("accepts lowercase new axis names in rationales (REQ-065 case-insensitive)", async () => {
-    // Regression: Claude naturally writes "strong developer-relevance — ..." mid-sentence
-    // rather than "Strong developer-relevance — ...". The validator must be case-insensitive
-    // so grammatically natural rationales don't trip the guard.
-    const generateObject = makeGenerate({
-      ranked: [
-        makeRankedEntry({
-          id: 1,
-          score: 80,
-          rationale:
-            "Strong developer-relevance — this directly helps agentic systems teams improve production workflows.",
-        }),
-      ],
-    });
-
-    const result = await rankCandidates([makeCandidate(1)], {
-      topN: 5,
-      generateObject,
-      loadBodies: stubLoadBodies,
-    });
-
-    expect(result.rankedItems).toHaveLength(1);
-    expect(result.rankedItems[0].rawItemId).toBe(1);
-  });
-
-  it("rejects old-only ranking axes when every rationale lacks the new axes", async () => {
-    const generateObject = makeGenerate({
-      ranked: [
-        makeRankedEntry({
-          id: 1,
-          score: 80,
-          rationale: "strong Novelty and practical utility",
-        }),
-        makeRankedEntry({
-          id: 2,
-          score: 60,
-          rationale: "good Actionability for AI practitioners",
-        }),
+        makeRankedEntry({ id: 999, score: 50, rationale: "anything" }),
+        makeRankedEntry({ id: 1000, score: 40, rationale: "anything" }),
       ],
     });
 

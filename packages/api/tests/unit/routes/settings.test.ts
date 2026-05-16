@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import type { UserSettings } from "@newsletter/shared";
 import { createSettingsRouter } from "@api/routes/settings.js";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
+import { resolveRankingWorkflow } from "@newsletter/shared";
 
 function makeRepo(initial: UserSettings | null = null): {
   repo: UserSettingsRepo;
@@ -30,6 +31,8 @@ function makeRepo(initial: UserSettings | null = null): {
         scheduleTime: input.scheduleTime,
         scheduleTimezone: input.scheduleTimezone,
         scheduleEnabled: input.scheduleEnabled,
+
+        rankingWorkflow: resolveRankingWorkflow(input.rankingWorkflow),
         updatedAt: new Date().toISOString(),
       };
       store.current = saved;
@@ -87,6 +90,7 @@ const validBody = {
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
+  rankingWorkflow: "",
 };
 
 describe("GET /api/settings", () => {
@@ -115,6 +119,7 @@ describe("GET /api/settings", () => {
       scheduleTime: "08:00",
       scheduleTimezone: "UTC",
       scheduleEnabled: false,
+      rankingWorkflow: "",
       updatedAt: new Date().toISOString(),
     };
     const { repo } = makeRepo(existing);
@@ -323,6 +328,7 @@ describe("PUT /api/settings", () => {
       scheduleTime: "08:00",
       scheduleTimezone: "UTC",
       scheduleEnabled: false,
+      rankingWorkflow: "",
       updatedAt: new Date().toISOString(),
     };
     const { repo, store } = makeRepo(existing);
@@ -440,5 +446,52 @@ describe("PUT /api/settings", () => {
       body: "not-json{",
     });
     expect(res.status).toBe(400);
+  });
+
+  it("VS-6: rejects a rankingWorkflow longer than 8000 chars with 400", async () => {
+    const { repo } = makeRepo(null);
+    const app = buildApp(repo, makeQueue());
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        rankingWorkflow: "x".repeat(8001),
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; issues: unknown[] };
+    expect(Array.isArray(body.issues)).toBe(true);
+  });
+
+  it("VS-7: round-trips a custom rankingWorkflow through PUT/GET", async () => {
+    const { repo } = makeRepo(null);
+    const app = buildApp(repo, makeQueue());
+    const customWorkflow =
+      "Boost agent-ops releases. Downrank funding-only stories.";
+    const putRes = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...validBody, rankingWorkflow: customWorkflow }),
+    });
+    expect(putRes.status).toBe(200);
+    const getRes = await app.request("/api/settings");
+    const body = (await getRes.json()) as UserSettings;
+    expect(body.rankingWorkflow).toBe(customWorkflow);
+  });
+
+  it("VS-8: PUT empty rankingWorkflow then GET returns the resolved default", async () => {
+    const { repo } = makeRepo(null);
+    const app = buildApp(repo, makeQueue());
+    const putRes = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...validBody, rankingWorkflow: "" }),
+    });
+    expect(putRes.status).toBe(200);
+    const getRes = await app.request("/api/settings");
+    const body = (await getRes.json()) as UserSettings;
+    expect(body.rankingWorkflow.length).toBeGreaterThan(0);
+    expect(body.rankingWorkflow).not.toBe("");
   });
 });

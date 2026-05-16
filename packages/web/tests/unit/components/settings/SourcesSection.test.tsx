@@ -39,6 +39,7 @@ function TestWrapper({
       scheduleTime: "09:00",
       scheduleTimezone: "UTC",
       scheduleEnabled: false,
+      rankingWorkflow: "",
     },
   });
   return (

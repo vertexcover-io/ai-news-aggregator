@@ -72,6 +72,7 @@ export interface SettingsSubmitInput {
   scheduleTime: string;
   scheduleTimezone: string;
   scheduleEnabled: boolean;
+  rankingWorkflow: string;
 }
 
 const webConfigSchema = z.object({
@@ -106,6 +107,7 @@ export const settingsFormSchema = z
       message: "scheduleTimezone must be a valid IANA timezone",
     }),
     scheduleEnabled: z.boolean(),
+    rankingWorkflow: z.string().max(8000),
   })
   .refine(
     (payload) =>
@@ -187,5 +189,6 @@ export function normalizeSettingsForSubmit(
     scheduleTime: values.scheduleTime,
     scheduleTimezone: values.scheduleTimezone,
     scheduleEnabled: values.scheduleEnabled,
+    rankingWorkflow: values.rankingWorkflow,
   };
 }

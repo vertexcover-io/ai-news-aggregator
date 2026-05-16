@@ -29,6 +29,7 @@ function persistedToFormTwitter(
 }
 import { SourcesSection } from "../components/settings/SourcesSection";
 import { ScheduleSection } from "../components/settings/ScheduleSection";
+import { RankingSection } from "../components/settings/RankingSection";
 import { SaveBar } from "../components/settings/SaveBar";
 
 function getDefaults(): SettingsFormValues {
@@ -59,6 +60,7 @@ function getDefaults(): SettingsFormValues {
     scheduleTimezone:
       Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     scheduleEnabled: false,
+    rankingWorkflow: "",
   };
 }
 
@@ -194,6 +196,11 @@ export function SettingsPage(): ReactElement {
           <SourcesSection
             control={form.control}
             register={form.register}
+            setValue={form.setValue}
+          />
+          <RankingSection
+            register={form.register}
+            control={form.control}
             setValue={form.setValue}
           />
           <ScheduleSection

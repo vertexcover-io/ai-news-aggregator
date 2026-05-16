@@ -1,6 +1,10 @@
 import type IORedis from "ioredis";
 import { Queue } from "bullmq";
-import { createRedisConnection, startRun } from "@newsletter/shared";
+import {
+  createRedisConnection,
+  DEFAULT_RANKING_WORKFLOW,
+  startRun,
+} from "@newsletter/shared";
 import type {
   RunProcessJobPayload,
   RunSubmitPayload,
@@ -45,6 +49,7 @@ export async function createRun(
     scheduleTime: "00:00",
     scheduleTimezone: "UTC",
     scheduleEnabled: false,
+    rankingWorkflow: DEFAULT_RANKING_WORKFLOW,
     updatedAt: new Date().toISOString(),
   };
 

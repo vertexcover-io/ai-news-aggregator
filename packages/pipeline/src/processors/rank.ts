@@ -1,13 +1,16 @@
 import { generateObject as defaultGenerateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
-import { createLogger } from "@newsletter/shared";
+import {
+  createLogger,
+  DEFAULT_RANKING_WORKFLOW,
+} from "@newsletter/shared";
 import type {
   Candidate,
   RankedItemRef,
   RawItemComment,
 } from "@newsletter/shared";
-import { RANK_SYSTEM_PROMPT_NO_PROFILE } from "@pipeline/processors/rank-prompts.js";
+import { buildRankSystemPrompt } from "@pipeline/processors/rank-prompts.js";
 import { loadBodiesForShortlist as defaultLoadBodies } from "@pipeline/processors/rank-body-loader.js";
 import {
   ageHoursFromPublishedAt,
@@ -38,6 +41,7 @@ export interface RankOptions {
   commentTokenBudget?: number;
   modelId?: string;
   runId?: string;
+  rankingWorkflow?: string;
   generateObject?: typeof defaultGenerateObject;
   loadBodies?: typeof defaultLoadBodies;
   now?: Date;
@@ -73,14 +77,6 @@ export const rankedResponseSchema = z.object({
   digest: digestSchema,
   ranked: z.array(rankedEntrySchema),
 });
-
-const AXES = [
-  "Developer-relevance",
-  "Builder-impact",
-  "Agentic-systems-relevance",
-  "Evidence-quality",
-  "Signal-vs-hype",
-] as const;
 
 // Approximate token count as ceil(chars / 4). This is coarse but good enough
 // for a truncation budget; swap in a real tokenizer if precision ever matters.
@@ -192,8 +188,9 @@ export async function rankCandidates(
     ),
   );
 
-  const systemPrompt = RANK_SYSTEM_PROMPT_NO_PROFILE;
-  const axes = AXES;
+  const systemPrompt = buildRankSystemPrompt(
+    options.rankingWorkflow ?? DEFAULT_RANKING_WORKFLOW,
+  );
 
   let result: { object: z.infer<typeof rankedResponseSchema> };
   try {
@@ -235,26 +232,7 @@ export async function rankCandidates(
     throw new Error(`ranking failed: ${message}`, { cause: err });
   }
 
-  const axisValidated = result.object.ranked.filter((entry) => {
-    const rationaleLower = entry.rationale.toLowerCase();
-    const mentionsAxis = axes.some((axis) =>
-      rationaleLower.includes(axis.toLowerCase()),
-    );
-    if (!mentionsAxis) {
-      logger.warn(
-        {
-          event: "run.rank.rationale_axis_missing",
-          runId: options.runId,
-          itemId: entry.id,
-          rationale: entry.rationale,
-        },
-        "skipping ranked item: rationale does not name a scoring axis",
-      );
-    }
-    return mentionsAxis;
-  });
-
-  for (const r of axisValidated) {
+  for (const r of result.object.ranked) {
     const bulletsWords = r.bullets.reduce(
       (n, b) => n + countWords(b),
       0,
@@ -277,7 +255,7 @@ export async function rankCandidates(
   }
 
   const byId = new Map(shortlist.map((c) => [c.id, c]));
-  const validEntries = axisValidated.filter((r) => byId.has(r.id));
+  const validEntries = result.object.ranked.filter((r) => byId.has(r.id));
   if (validEntries.length === 0) {
     throw new Error("ranking returned no valid items");
   }

@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { userSettings } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
+import { resolveRankingWorkflow } from "@newsletter/shared";
 import type { UserSettings } from "@newsletter/shared";
 
 export type UserSettingsUpsertInput = Omit<UserSettings, "id" | "updatedAt">;
@@ -28,6 +29,7 @@ function toDomain(
     scheduleTime: row.scheduleTime,
     scheduleTimezone: row.scheduleTimezone,
     scheduleEnabled: row.scheduleEnabled,
+    rankingWorkflow: resolveRankingWorkflow(row.rankingWorkflow),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -65,6 +67,7 @@ export function createUserSettingsRepo(
           scheduleTime: input.scheduleTime,
           scheduleTimezone: input.scheduleTimezone,
           scheduleEnabled: input.scheduleEnabled,
+          rankingWorkflow: input.rankingWorkflow,
           updatedAt: now,
         })
         .onConflictDoUpdate({
@@ -83,6 +86,7 @@ export function createUserSettingsRepo(
             scheduleTime: input.scheduleTime,
             scheduleTimezone: input.scheduleTimezone,
             scheduleEnabled: input.scheduleEnabled,
+            rankingWorkflow: input.rankingWorkflow,
             updatedAt: now,
           },
         })
