@@ -134,6 +134,13 @@
       "when": 1778775989029,
       "tag": "0018_glamorous_silver_centurion",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1778941200000,
+      "tag": "0019_add_twitter_summary",
+      "breakpoints": true
     }
   ]
 }

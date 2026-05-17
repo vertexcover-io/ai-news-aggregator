@@ -23,6 +23,7 @@ const DEFAULT_BODY_TOKEN_BUDGET = 2000;
 const DEFAULT_COMMENTS_PER_ITEM = 5;
 const DEFAULT_COMMENT_TOKEN_BUDGET = 200;
 const RECAP_WORD_BUDGET = 130;
+export const TWITTER_SUMMARY_MAX_CHARS = 180;
 
 function countWords(text: string): number {
   if (text.length === 0) return 0;
@@ -51,13 +52,14 @@ export interface RankResult {
   digestHeadline: string;
   digestSummary: string;
   hook: string;
+  twitterSummary: string;
 }
 
 const rankedEntrySchema = z.object({
   id: z.number(),
   score: z.number(),
   rationale: z.string(),
-  title: z.string().min(1),
+  title: z.string(),
   summary: z.string(),
   bullets: z.array(z.string()),
   bottomLine: z.string(),
@@ -67,12 +69,15 @@ const digestSchema = z.object({
   headline: z.string(),
   summary: z.string(),
   hook: z.string(),
+  twitterSummary: z.string(),
 });
 
 export const rankedResponseSchema = z.object({
   digest: digestSchema,
   ranked: z.array(rankedEntrySchema),
 });
+
+type RankedResponseEntry = z.infer<typeof rankedEntrySchema>;
 
 const AXES = [
   "Developer-relevance",
@@ -94,6 +99,11 @@ function humanAge(ageHours: number): string {
   if (ageHours < 1) return `${Math.round(ageHours * 60)}m ago`;
   if (ageHours < 24) return `${Math.round(ageHours)}h ago`;
   return `${Math.round(ageHours / 24)}d ago`;
+}
+
+function getRankedTitle(entry: RankedResponseEntry, candidate: Candidate | undefined): string {
+  if (typeof entry.title !== "string") return candidate?.title.trim() ?? "";
+  return entry.title.trim();
 }
 
 interface PromptItem {
@@ -158,6 +168,7 @@ export async function rankCandidates(
       digestHeadline: "",
       digestSummary: "",
       hook: "",
+      twitterSummary: "",
     };
   }
 
@@ -195,13 +206,26 @@ export async function rankCandidates(
   const systemPrompt = RANK_SYSTEM_PROMPT_NO_PROFILE;
   const axes = AXES;
 
-  let result: { object: z.infer<typeof rankedResponseSchema> };
-  try {
-    result = (await generate({
+  const promptPayload = {
+    requestedTopN: options.topN,
+    twitterSummaryMaxChars: TWITTER_SUMMARY_MAX_CHARS,
+    items: promptItems,
+  };
+
+  const generateRanked = (
+    retryTwitterSummary: boolean,
+  ): Promise<{ object: z.infer<typeof rankedResponseSchema> }> =>
+    generate({
       model: anthropic(modelId),
       system: systemPrompt,
       prompt: JSON.stringify(
-        { requestedTopN: options.topN, items: promptItems },
+        retryTwitterSummary
+          ? {
+              ...promptPayload,
+              retryInstruction:
+                "The previous digest.twitterSummary exceeded twitterSummaryMaxChars. Regenerate the full response with digest.twitterSummary as ONE sentence within twitterSummaryMaxChars. Count every letter, space, and punctuation mark. Do not include more than two facts.",
+            }
+          : promptPayload,
         null,
         2,
       ),
@@ -212,7 +236,23 @@ export async function rankCandidates(
       temperature: 0,
       maxRetries: 2,
       abortSignal: options.abortSignal,
-    })) as { object: z.infer<typeof rankedResponseSchema> };
+    }) as Promise<{ object: z.infer<typeof rankedResponseSchema> }>;
+
+  let result: { object: z.infer<typeof rankedResponseSchema> };
+  try {
+    result = await generateRanked(false);
+    if (result.object.digest.twitterSummary.length > TWITTER_SUMMARY_MAX_CHARS) {
+      logger.warn(
+        {
+          event: "run.rank.twitter_summary_over_budget",
+          runId: options.runId,
+          length: result.object.digest.twitterSummary.length,
+          budget: TWITTER_SUMMARY_MAX_CHARS,
+        },
+        "run.rank.twitter_summary_over_budget",
+      );
+      result = await generateRanked(true);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // The AI SDK attaches the raw LLM text to the error as `text` when schema validation fails
@@ -277,7 +317,20 @@ export async function rankCandidates(
   }
 
   const byId = new Map(shortlist.map((c) => [c.id, c]));
-  const validEntries = axisValidated.filter((r) => byId.has(r.id));
+  const validEntries = axisValidated.filter((r) => {
+    const candidate = byId.get(r.id);
+    if (candidate === undefined) return false;
+    if (getRankedTitle(r, candidate) !== "") return true;
+    logger.warn(
+      {
+        event: "run.rank.empty_title",
+        runId: options.runId,
+        itemId: r.id,
+      },
+      "skipping ranked item: title is empty",
+    );
+    return false;
+  });
   if (validEntries.length === 0) {
     throw new Error("ranking returned no valid items");
   }
@@ -293,7 +346,7 @@ export async function rankCandidates(
       rawItemId: r.id,
       score: r.score * factor,
       rationale: r.rationale,
-      title: r.title,
+      title: getRankedTitle(r, cand),
       summary: r.summary,
       bullets: r.bullets,
       bottomLine: r.bottomLine,
@@ -322,5 +375,6 @@ export async function rankCandidates(
     digestHeadline: result.object.digest.headline,
     digestSummary: result.object.digest.summary,
     hook: result.object.digest.hook,
+    twitterSummary: result.object.digest.twitterSummary,
   };
 }

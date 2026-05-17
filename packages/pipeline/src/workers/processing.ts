@@ -239,6 +239,7 @@ export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
             clientId: twitterClientId,
             clientSecret: twitterClientSecret,
             publicArchiveBaseUrl,
+            twitterIsPremium: process.env.TWITTER_IS_PREMIUM === "true",
           },
           logger: createLogger("social.twitter"),
         })

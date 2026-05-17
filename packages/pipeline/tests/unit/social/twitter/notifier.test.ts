@@ -49,6 +49,7 @@ function makeArchive(
     digestHeadline: "Daily AI digest headline",
     digestSummary: "Today's recap.",
     hook: "Hook line for social.",
+    twitterSummary: "Twitter-native summary for the feed.",
     sourceTelemetry: null,
     slackNotifiedAt: null,
     linkedinPostedAt: null,
@@ -71,6 +72,14 @@ function makeTokenRow(
   };
 }
 
+function rankedItem(rawItemId: number): PipelineRunArchiveRow["rankedItems"][number] {
+  return {
+    rawItemId,
+    score: rawItemId,
+    rationale: "test rationale",
+  };
+}
+
 interface TestDeps {
   apiClient: { createPost: ReturnType<typeof vi.fn> };
   archives: {
@@ -90,6 +99,7 @@ function buildDeps(opts: {
   postResult?: TwitterCreatePostResult;
   postThrows?: Error;
   refreshResult?: TwitterRefreshResult;
+  rawItems?: unknown[];
 }): TestDeps {
   const saveTokenSpy = vi.fn().mockResolvedValue(undefined);
   const tx: SocialTokensTx = { saveToken: saveTokenSpy };
@@ -114,7 +124,7 @@ function buildDeps(opts: {
   };
 
   const rawItems = {
-    findByIds: vi.fn().mockResolvedValue([]),
+    findByIds: vi.fn().mockResolvedValue(opts.rawItems ?? []),
   };
 
   const tokens = {
@@ -163,6 +173,7 @@ function build(opts: Parameters<typeof buildDeps>[0]): {
       clientId: "cid",
       clientSecret: "csec",
       publicArchiveBaseUrl: "https://news.example.com",
+      twitterIsPremium: false,
     },
     logger: makeLogger(),
     now: () => NOW,
@@ -179,10 +190,44 @@ describe("createTwitterNotifier", () => {
     vi.restoreAllMocks();
   });
 
-  it("happy path: composes, posts, marks twitter_posted_at + permalink", async () => {
+  it("happy path: composes one non-premium summary post and marks twitter_posted_at + permalink", async () => {
     const { notifier, deps } = build({
-      archive: makeArchive(),
+      archive: makeArchive({
+        rankedItems: [rankedItem(1), rankedItem(2), rankedItem(3)],
+      }),
       tokenRow: makeTokenRow(),
+      rawItems: [
+        {
+          id: 1,
+          title: "Fallback title 1",
+          metadata: {
+            recap: {
+              title: "Google folds Gemini into Android",
+              summary: "Summary 1.",
+            },
+          },
+        },
+        {
+          id: 2,
+          title: "Fallback title 2",
+          metadata: {
+            recap: {
+              title: "HubSpot ships AI dashboard",
+              summary: "Summary 2.",
+            },
+          },
+        },
+        {
+          id: 3,
+          title: "Fallback title 3",
+          metadata: {
+            recap: {
+              title: "Mira Murati previews multimodal models",
+              summary: "Summary 3.",
+            },
+          },
+        },
+      ],
       postResult: {
         ok: true,
         tweetId: "1234",
@@ -196,23 +241,97 @@ describe("createTwitterNotifier", () => {
       status: "posted",
       permalink: "https://x.com/i/status/1234",
     });
-    // Thread: head tweet + closer tweet (no stories in fixture → 2 calls).
-    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(2);
+    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(1);
     const headCall = deps.apiClient.createPost.mock.calls[0][0];
     expect(headCall.accessToken).toBe("access-1");
-    expect(headCall.text).toContain("Hook line for social.");
-    expect(headCall.replyToTweetId).toBeUndefined();
-    const closerCall = deps.apiClient.createPost.mock.calls[1][0];
-    expect(closerCall.text).toBe(
-      `Full breakdown: https://news.example.com/archive/${RUN_ID}`,
+    expect(headCall.text).toContain("Twitter-native summary for the feed.");
+    expect(headCall.text).not.toContain("Daily AI digest headline");
+    expect(headCall.text).not.toContain("Hook line for social.");
+    expect(headCall.text).toContain("Full breakdown ↓");
+    expect(headCall.text).toContain(
+      `https://news.example.com/archive/${RUN_ID}`,
     );
-    expect(closerCall.replyToTweetId).toBe("1234");
-    // mockImplementation returns postResult for every call, so head + closer both report 1234.
+    expect(headCall.text).not.toContain("→ ");
+    expect(headCall.text.indexOf("Twitter-native summary for the feed.")).toBeLessThan(
+      headCall.text.indexOf("Full breakdown ↓"),
+    );
+    expect(headCall.replyToTweetId).toBeUndefined();
     expect(deps.archives.markTwitterPosted).toHaveBeenCalledWith(
       RUN_ID,
       NOW,
       "https://x.com/i/status/1234",
-      ["1234", "1234"],
+      ["1234"],
+    );
+  });
+
+  it("premium mode: uses digest headline as lead and lists ranks two through four", async () => {
+    const deps = buildDeps({
+      archive: makeArchive({
+        rankedItems: [rankedItem(1), rankedItem(2), rankedItem(3), rankedItem(4)],
+      }),
+      tokenRow: makeTokenRow(),
+      rawItems: [
+        { id: 1, title: "Fallback title 1", metadata: { recap: { title: "Rank one title" } } },
+        { id: 2, title: "Rank two title", metadata: { recap: null } },
+        { id: 3, title: "Rank three title", metadata: { recap: null } },
+        { id: 4, title: "Rank four title", metadata: { recap: null } },
+      ],
+      postResult: {
+        ok: true,
+        tweetId: "5678",
+        tweetUrl: "https://x.com/i/status/5678",
+      },
+    });
+    const notifier = createTwitterNotifier({
+      apiClient: deps.apiClient as unknown as TwitterApiClient,
+      archives: deps.archives as unknown as Pick<
+        RunArchivesRepo,
+        "findById" | "markTwitterPosted" | "recordSocialFailure"
+      >,
+      rawItems: deps.rawItems as unknown as Parameters<typeof createTwitterNotifier>[0]["rawItems"],
+      tokens: deps.tokens as unknown as Pick<SocialTokensRepo, "withTokenLock">,
+      refreshFn: deps.refreshFn,
+      config: {
+        clientId: "cid",
+        clientSecret: "csec",
+        publicArchiveBaseUrl: "https://news.example.com",
+        twitterIsPremium: true,
+      },
+      logger: makeLogger(),
+      now: () => NOW,
+    });
+
+    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
+
+    expect(result).toEqual({
+      status: "posted",
+      permalink: "https://x.com/i/status/5678",
+    });
+    const headCall = deps.apiClient.createPost.mock.calls[0][0];
+    expect(headCall.text).toContain("Daily AI digest headline");
+    expect(headCall.text).not.toContain("→ Rank one title");
+    expect(headCall.text).toContain("Also inside:");
+    expect(headCall.text).toContain("→ Rank two title");
+    expect(headCall.text).toContain("→ Rank three title");
+    expect(headCall.text).toContain("→ Rank four title");
+    expect(headCall.text).toContain("Twitter-native summary for the feed.");
+    expect(headCall.replyToTweetId).toBeUndefined();
+  });
+
+  it("non-premium over-limit summary records failure and does not post", async () => {
+    const { notifier, deps } = build({
+      archive: makeArchive({ twitterSummary: "x".repeat(260) }),
+      tokenRow: makeTokenRow(),
+    });
+
+    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
+
+    expect(result).toEqual({ status: "failed", reason: "free_plan_over_limit" });
+    expect(deps.apiClient.createPost).not.toHaveBeenCalled();
+    expect(deps.archives.recordSocialFailure).toHaveBeenCalledWith(
+      RUN_ID,
+      "twitter",
+      "free_plan_over_limit",
     );
   });
 
@@ -229,9 +348,9 @@ describe("createTwitterNotifier", () => {
     expect(deps.tokens.withTokenLock).not.toHaveBeenCalled();
   });
 
-  it("null hook → skipped, no api call", async () => {
+  it("null hook and null twitterSummary → skipped, no api call", async () => {
     const { notifier, deps } = build({
-      archive: makeArchive({ hook: null }),
+      archive: makeArchive({ hook: null, twitterSummary: null }),
       tokenRow: makeTokenRow(),
     });
 
@@ -374,8 +493,7 @@ describe("createTwitterNotifier", () => {
     });
     // refreshFn was called once even though DB TTL said "still valid".
     expect(deps.refreshFn).toHaveBeenCalledTimes(1);
-    // 3 calls: head (401), retry of head (ok), then thread closer.
-    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(3);
+    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(2);
     expect(deps.apiClient.createPost.mock.calls[0][0].accessToken).toBe(
       "access-1",
     );
@@ -410,8 +528,7 @@ describe("createTwitterNotifier", () => {
       permalink: "https://x.com/i/status/222",
     });
     expect(deps.refreshFn).toHaveBeenCalledTimes(1);
-    // 3 calls: head (403), retry of head (ok), then thread closer.
-    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(3);
+    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(2);
   });
 
   it("401 then refresh fails → recordSocialFailure with original 401, returns refresh_failed", async () => {

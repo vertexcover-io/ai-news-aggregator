@@ -555,6 +555,7 @@ export async function handleRunProcessJob(
     sourceTelemetry.enrichment = toEnrichmentTelemetry(enrichmentCtx.counters);
     const { digestHeadline, digestSummary } = pickArchiveDigest(rankResult);
     const hook = nonEmptyText(rankResult.hook);
+    const twitterSummary = nonEmptyText(rankResult.twitterSummary);
     const rankedRawIds = rankResult.rankedItems.map((r) => r.rawItemId);
     const rankedRawRows = await deps.rawItemsRepo.findByIds(rankedRawIds);
     const rawItemsById = new Map(rankedRawRows.map((r) => [r.id, r]));
@@ -578,6 +579,7 @@ export async function handleRunProcessJob(
         digestHeadline,
         digestSummary,
         hook,
+        twitterSummary,
         sourceTelemetry,
         searchText,
       });

@@ -103,7 +103,12 @@ describe("source-neutrality golden-set (EDGE-010, REQ-054)", () => {
       args: GenerateArgs,
     ): Promise<{
       object: {
-        digest: { headline: string; summary: string };
+        digest: {
+          headline: string;
+          summary: string;
+          hook: string;
+          twitterSummary: string;
+        };
         ranked: { id: number; score: number; rationale: string }[];
       };
     }> => {
@@ -125,6 +130,8 @@ describe("source-neutrality golden-set (EDGE-010, REQ-054)", () => {
           digest: {
             headline: "Source neutrality test digest",
             summary: "Stub digest summary used by source-neutrality test fixture.",
+            hook: "Stub social hook.",
+            twitterSummary: "Stub Twitter summary.",
           },
           ranked: payload.items.map((it) => ({
             id: it.id,
