@@ -66,8 +66,10 @@ Production secrets live in GitHub Environment secrets under the `production` env
    - `LINKEDIN_CLIENT_ID`
    - `LINKEDIN_CLIENT_SECRET`
    - `LINKEDIN_API_VERSION`
-   - `TWITTER_CLIENT_ID`
-   - `TWITTER_CLIENT_SECRET`
+   - `TWITTER_API_KEY`
+   - `TWITTER_API_SECRET`
+   - `TWITTER_ACCESS_TOKEN`
+   - `TWITTER_ACCESS_TOKEN_SECRET`
    - `AUTO_REVIEW` if used
    - `GHCR_REPO_OWNER`
    - `GHCR_USERNAME`
@@ -181,18 +183,17 @@ docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/com
   pg_dump -U newsletter newsletter | gzip > ~/backup-$(date +%F).sql.gz
 ```
 
-## Seed social-post tokens (LinkedIn / X)
+## Seed social-post tokens (LinkedIn) and X OAuth1 credentials
 
-The auto-post feature reads user tokens from the `social_tokens` table, not from GitHub Secrets. GitHub Secrets only store the app-level Client ID/Secret.
+LinkedIn auto-posting reads user tokens from the `social_tokens` table. X auto-posting uses OAuth 1.0a user-context credentials from GitHub Environment secrets, which avoids the OAuth2 refresh-token chain for the owned posting account.
 
 1. Run the OAuth helper locally:
 
    ```bash
    pnpm tsx scripts/auth-linkedin.ts
-   pnpm tsx scripts/auth-twitter.ts
    ```
 
-2. Insert or update the printed tokens in production Postgres:
+2. Insert or update the printed LinkedIn tokens in production Postgres:
 
    ```bash
    ssh deploy@news.vertexcover.io
@@ -200,7 +201,7 @@ The auto-post feature reads user tokens from the `social_tokens` table, not from
      psql -U newsletter newsletter
    ```
 
-3. Verify without printing token values:
+3. Verify LinkedIn without printing token values:
 
    ```sql
    SELECT platform, expires_at, length(access_token) AS access_len, length(refresh_token) AS refresh_len, metadata
@@ -208,7 +209,26 @@ The auto-post feature reads user tokens from the `social_tokens` table, not from
    ORDER BY platform;
    ```
 
-Re-seed only when the account/app authorization changes, a refresh chain breaks, or LinkedIn lacks programmatic refresh tokens and the access token is close to expiry.
+Re-seed LinkedIn only when the account/app authorization changes, a refresh chain breaks, or LinkedIn lacks programmatic refresh tokens and the access token is close to expiry.
+
+4. For X, create/regenerate credentials in the X Developer Portal:
+
+   - App permissions: Read and write.
+   - Keys and tokens: API Key, API Secret, Access Token, Access Token Secret.
+   - Regenerate the Access Token/Secret after changing permissions.
+
+5. Store the X values as production GitHub Environment secrets:
+
+   - `TWITTER_API_KEY`
+   - `TWITTER_API_SECRET`
+   - `TWITTER_ACCESS_TOKEN`
+   - `TWITTER_ACCESS_TOKEN_SECRET`
+
+6. Validate X credentials without posting:
+
+   ```bash
+   pnpm tsx scripts/probe-twitter-oauth1.ts
+   ```
 
 ## Move to a different VPS
 

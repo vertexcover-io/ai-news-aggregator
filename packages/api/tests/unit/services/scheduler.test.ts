@@ -2,7 +2,9 @@ import { describe, it, expect, vi } from "vitest";
 import type { UserSettings } from "@newsletter/shared";
 import {
   DAILY_RUN_SCHEDULER_KEY,
+  SOCIAL_HEALTH_SCHEDULER_KEY,
   reconcileDailyRunSchedule,
+  toCronMinusMinutes,
   toCron,
 } from "@api/services/scheduler.js";
 
@@ -46,6 +48,16 @@ describe("toCron", () => {
   });
 });
 
+describe("toCronMinusMinutes", () => {
+  it("subtracts minutes from the configured local wall-clock time", () => {
+    expect(toCronMinusMinutes("09:30", 15)).toBe("15 9 * * *");
+  });
+
+  it("wraps before midnight when the health check precedes an early run", () => {
+    expect(toCronMinusMinutes("00:05", 15)).toBe("50 23 * * *");
+  });
+});
+
 describe("reconcileDailyRunSchedule", () => {
   it("REQ-014/REQ-021: enabled -> upsertJobScheduler with correct pattern + tz", async () => {
     const queue = makeQueue();
@@ -54,6 +66,11 @@ describe("reconcileDailyRunSchedule", () => {
       DAILY_RUN_SCHEDULER_KEY,
       { pattern: "30 9 * * *", tz: "America/New_York" },
       { name: "daily-run", data: {} },
+    );
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      SOCIAL_HEALTH_SCHEDULER_KEY,
+      { pattern: "15 9 * * *", tz: "America/New_York" },
+      { name: "social-health", data: {} },
     );
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
   });
@@ -66,6 +83,9 @@ describe("reconcileDailyRunSchedule", () => {
     );
     expect(queue.removeJobScheduler).toHaveBeenCalledWith(
       DAILY_RUN_SCHEDULER_KEY,
+    );
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(
+      SOCIAL_HEALTH_SCHEDULER_KEY,
     );
     expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
   });
@@ -81,8 +101,8 @@ describe("reconcileDailyRunSchedule", () => {
       queue,
       baseSettings({ scheduleEnabled: false }),
     );
-    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(1);
-    expect(queue.removeJobScheduler).toHaveBeenCalledTimes(2);
+    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(2);
+    expect(queue.removeJobScheduler).toHaveBeenCalledTimes(4);
   });
 
   it("REQ-023/EDGE-002: DST — 09:30 America/New_York produces consistent local fire times across spring-forward", () => {

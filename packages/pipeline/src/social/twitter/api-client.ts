@@ -4,7 +4,15 @@ import type {
   TwitterApiClient,
   TwitterCreatePostInput,
   TwitterCreatePostResult,
+  TwitterCredentialValidationResult,
 } from "./types.js";
+
+export interface TwitterOAuth1Credentials {
+  appKey: string;
+  appSecret: string;
+  accessToken: string;
+  accessSecret: string;
+}
 
 export interface CreateTwitterApiClientOptions {
   TwitterApiCtor?: typeof TwitterApi;
@@ -34,33 +42,63 @@ function extractBody(err: unknown): string {
 }
 
 export function createTwitterApiClient(
+  credentials: TwitterOAuth1Credentials,
   options: CreateTwitterApiClientOptions = {},
 ): TwitterApiClient {
   const Ctor = options.TwitterApiCtor ?? TwitterApi;
+  const client = new Ctor(credentials);
+
+  const run = async <T>(
+    fn: () => Promise<T>,
+  ): Promise<
+    | { ok: true; value: T }
+    | { ok: false; status: number; body: string }
+  > => {
+    try {
+      return { ok: true, value: await fn() };
+    } catch (err: unknown) {
+      return {
+        ok: false,
+        status: extractStatus(err),
+        body: extractBody(err),
+      };
+    }
+  };
+
   return {
     async createPost(
       input: TwitterCreatePostInput,
     ): Promise<TwitterCreatePostResult> {
-      try {
-        const client = new Ctor(input.accessToken);
-        const response = input.replyToTweetId !== undefined
-          ? await client.v2.tweet(input.text, {
+      const result = await run(() =>
+        input.replyToTweetId !== undefined
+          ? client.v2.tweet(input.text, {
               reply: { in_reply_to_tweet_id: input.replyToTweetId },
             })
-          : await client.v2.tweet(input.text);
-        const id = response.data.id;
-        return {
-          ok: true,
-          tweetId: id,
-          tweetUrl: `https://x.com/i/status/${id}`,
-        };
-      } catch (err: unknown) {
+          : client.v2.tweet(input.text),
+      );
+      if (!result.ok) {
         return {
           ok: false,
-          status: extractStatus(err),
-          body: extractBody(err),
+          status: result.status,
+          body: result.body,
         };
       }
+      const id = result.value.data.id;
+      return {
+        ok: true,
+        tweetId: id,
+        tweetUrl: `https://x.com/i/status/${id}`,
+      };
+    },
+
+    async validateCredentials(): Promise<TwitterCredentialValidationResult> {
+      const result = await run(() => client.currentUserV2(true));
+      if (result.ok) return { ok: true };
+      return {
+        ok: false,
+        status: result.status,
+        body: result.body,
+      };
     },
   };
 }
