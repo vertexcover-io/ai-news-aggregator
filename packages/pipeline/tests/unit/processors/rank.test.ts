@@ -59,13 +59,19 @@ const DEFAULT_DIGEST = {
   headline: "Test digest headline phrase",
   summary: "A one-sentence summary of the day's main stories for tests.",
   hook: "A punchy hook line for the social post.",
+  twitterSummary: "A Twitter-native summary for the feed.",
 };
 
 function makeGenerate(
   response:
     | {
         ranked: RankedEntry[];
-        digest?: { headline: string; summary: string; hook: string };
+        digest?: {
+          headline: string;
+          summary: string;
+          hook: string;
+          twitterSummary: string;
+        };
       }
     | Error,
 ): ReturnType<typeof vi.fn> {
@@ -146,6 +152,7 @@ describe("rankCandidates", () => {
       digestHeadline: "",
       digestSummary: "",
       hook: "",
+      twitterSummary: "",
     });
   });
 
@@ -175,6 +182,7 @@ describe("rankCandidates", () => {
 
     const call = generateObject.mock.calls[0]?.[0] as GenerateArgs;
     expect(call.prompt).toContain('"requestedTopN": 5');
+    expect(call.prompt).toContain('"twitterSummaryMaxChars"');
     expect(call.prompt).toContain('"id": 1');
     expect(call.prompt).toContain("An article");
     expect(call.prompt).toContain("https://x.test/1");
@@ -263,6 +271,33 @@ describe("rankCandidates", () => {
     // Items 1 and 3 survive; item 2 is dropped.
     const ids = result.rankedItems.map((r) => r.rawItemId).sort();
     expect(ids).toEqual([1, 3]);
+  });
+
+  it("skips empty-title ranked rows instead of failing the whole run", async () => {
+    const generateObject = makeGenerate({
+      ranked: [
+        makeRankedEntry({
+          id: 1,
+          score: 80,
+          rationale: "strong Developer-relevance",
+          title: "Valid ranked title",
+        }),
+        makeRankedEntry({
+          id: 2,
+          score: 70,
+          rationale: "strong Builder-impact",
+          title: "",
+        }),
+      ],
+    });
+
+    const result = await rankCandidates([makeCandidate(1), makeCandidate(2)], {
+      topN: 5,
+      generateObject,
+      loadBodies: stubLoadBodies,
+    });
+
+    expect(result.rankedItems.map((r) => r.rawItemId)).toEqual([1]);
   });
 
   it("throws if EVERY rationale fails axis validation (REQ-065 still gates totally-bad runs)", async () => {
@@ -585,6 +620,7 @@ describe("rankCandidates", () => {
         headline: "AI safety, regulation, open models",
         summary: "Five stories on regulation, new open-weight releases, and benchmark results across the day's main themes.",
         hook: "Hook line.",
+        twitterSummary: "A Twitter-native digest summary.",
       },
       ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Developer-relevance" })],
     });
@@ -605,6 +641,7 @@ describe("rankCandidates", () => {
         headline: "h",
         summary: "s",
         hook: "Big news today: someone shipped something interesting.",
+        twitterSummary: "A feed-native version of the same story.",
       },
       ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Developer-relevance" })],
     });
@@ -618,6 +655,51 @@ describe("rankCandidates", () => {
     expect(result.hook).toBe(
       "Big news today: someone shipped something interesting.",
     );
+    expect(result.twitterSummary).toBe("A feed-native version of the same story.");
+  });
+
+  it("retries once when twitterSummary exceeds the non-premium budget", async () => {
+    const generateObject = vi
+      .fn()
+      .mockResolvedValueOnce({
+        object: {
+          digest: {
+            ...DEFAULT_DIGEST,
+            twitterSummary: "x".repeat(240),
+          },
+          ranked: [
+            makeRankedEntry({
+              id: 1,
+              score: 80,
+              rationale: "strong Developer-relevance",
+            }),
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        object: {
+          digest: {
+            ...DEFAULT_DIGEST,
+            twitterSummary: "A shorter Twitter summary.",
+          },
+          ranked: [
+            makeRankedEntry({
+              id: 1,
+              score: 80,
+              rationale: "strong Developer-relevance",
+            }),
+          ],
+        },
+      });
+
+    const result = await rankCandidates([makeCandidate(1)], {
+      topN: 5,
+      generateObject,
+      loadBodies: stubLoadBodies,
+    });
+
+    expect(generateObject).toHaveBeenCalledTimes(2);
+    expect(result.twitterSummary).toBe("A shorter Twitter summary.");
   });
 
   it("VER-96: empty shortlist returns empty digest fields without calling LLM", async () => {
@@ -632,6 +714,7 @@ describe("rankCandidates", () => {
     expect(result.digestHeadline).toBe("");
     expect(result.digestSummary).toBe("");
     expect(result.hook).toBe("");
+    expect(result.twitterSummary).toBe("");
   });
 
   it("VER-96: rankedResponseSchema rejects responses missing the digest field", () => {

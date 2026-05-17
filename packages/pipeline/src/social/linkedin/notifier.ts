@@ -143,6 +143,13 @@ export function createLinkedInNotifier(
           );
           return { status: "skipped", reason: "no_headline" };
         }
+        if (composed.linkedinText === null) {
+          logger.warn(
+            { event: "social.linkedin.skipped", reason: "no_headline", runId },
+            "linkedin notification skipped (compose returned no linkedin text)",
+          );
+          return { status: "skipped", reason: "no_headline" };
+        }
 
         const acquire = (forceRefresh: boolean): Promise<AcquireResult> =>
           tokens.withTokenLock<AcquireResult>("linkedin", async (row, tx) => {
@@ -320,4 +327,3 @@ export function createLinkedInNotifier(
     },
   };
 }
-

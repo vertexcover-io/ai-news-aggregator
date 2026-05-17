@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   TWITTER_MAX_CHARS,
   composePosts,
+  twitterWeightedLength,
   type RankedStory,
 } from "../../../src/social/compose.js";
 
@@ -20,13 +21,17 @@ function stories(n: number): RankedStory[] {
 }
 
 describe("composePosts", () => {
-  it("REQ-030 returns null when hook is null or blank", () => {
+  it("REQ-030 returns null only when both hook and twitterSummary are blank", () => {
+    expect(composePosts({ hook: null, stories: stories(2), archiveUrl: URL })).toBeNull();
+    expect(composePosts({ hook: "   ", stories: stories(2), archiveUrl: URL })).toBeNull();
     expect(
-      composePosts({ hook: null, stories: stories(2), archiveUrl: URL }),
-    ).toBeNull();
-    expect(
-      composePosts({ hook: "   ", stories: stories(2), archiveUrl: URL }),
-    ).toBeNull();
+      composePosts({
+        hook: null,
+        twitterSummary: "Twitter summary.",
+        stories: stories(2),
+        archiveUrl: URL,
+      }),
+    ).not.toBeNull();
   });
 
   it("REQ-031 LinkedIn body starts with hook followed by first story", () => {
@@ -63,60 +68,176 @@ describe("composePosts", () => {
     expect(result?.linkedinText).toContain("12) Story 12 title");
   });
 
-  it("REQ-034 Twitter thread first tweet is the hook", () => {
+  it("REQ-034 non-premium X post uses twitterSummary before CTA", () => {
     const result = composePosts({
-      hook: "Hook.",
-      stories: stories(2),
-      archiveUrl: URL,
-    });
-    expect(result).not.toBeNull();
-    expect(result?.twitterThread[0]).toBe("Hook.");
-  });
-
-  it("REQ-034 Twitter thread last tweet is the archive URL", () => {
-    const result = composePosts({
-      hook: "Hook.",
-      stories: stories(2),
-      archiveUrl: URL,
-    });
-    expect(result).not.toBeNull();
-    const thread = result?.twitterThread ?? [];
-    expect(thread[thread.length - 1]).toBe(`Full breakdown: ${URL}`);
-  });
-
-  it("REQ-035 Twitter per-story tweets format as 'N) title\\nsummary'", () => {
-    const result = composePosts({
-      hook: "Hook.",
+      heading: "The interface becomes ambient",
+      hook: "The interface is collapsing into one ambient layer.",
+      twitterSummary: "A Twitter-native summary written for the feed.",
       stories: stories(3),
       archiveUrl: URL,
     });
     expect(result).not.toBeNull();
-    expect(result?.twitterThread[1]).toBe("1) Story 1 title\nSummary 1 body.");
-    expect(result?.twitterThread[2]).toBe("2) Story 2 title\nSummary 2 body.");
-    expect(result?.twitterThread[3]).toBe("3) Story 3 title\nSummary 3 body.");
+    expect(result?.twitter.ok).toBe(true);
+    expect(result?.twitter.text).toBe(
+      [
+        "A Twitter-native summary written for the feed.",
+        "Full breakdown ↓",
+        URL,
+      ].join("\n"),
+    );
   });
 
-  it("REQ-035 Twitter per-story tweet truncates summary with ellipsis when over 280", () => {
-    const longSummary = "x".repeat(400);
+  it("REQ-034 X post includes the archive URL and stays within the character limit", () => {
     const result = composePosts({
       hook: "Hook.",
-      stories: [{ title: "Short title", summary: longSummary }],
+      twitterSummary: "Short Twitter summary.",
+      stories: stories(2),
       archiveUrl: URL,
     });
     expect(result).not.toBeNull();
-    const tweet = result?.twitterThread[1] ?? "";
-    expect(tweet.length).toBeLessThanOrEqual(TWITTER_MAX_CHARS);
-    expect(tweet.endsWith("…")).toBe(true);
-    expect(tweet.startsWith("1) Short title\n")).toBe(true);
+    expect(result?.twitter.text).toContain(URL);
+    expect(twitterWeightedLength(result?.twitter.text ?? "")).toBeLessThanOrEqual(TWITTER_MAX_CHARS);
   });
 
-  it("REQ-036 Twitter thread is exactly opener + closer when stories are empty", () => {
+  it("REQ-035 non-premium X post excludes story bullets", () => {
+    const result = composePosts({
+      heading: "Digest heading",
+      hook: "Hook.",
+      twitterSummary: "Summary only.",
+      stories: stories(4),
+      archiveUrl: URL,
+    });
+    expect(result).not.toBeNull();
+    expect(result?.twitter.text).not.toContain("→ Story 1 title");
+    expect(result?.twitter.text).not.toContain("→ Story 2 title");
+    expect(result?.twitter.text).not.toContain("→ Story 3 title");
+    expect(result?.twitter.text).not.toContain("→ Story 4 title");
+  });
+
+  it("REQ-035 non-premium X post rejects over-limit text without truncation", () => {
+    const longSummary = "x".repeat(260);
+    const result = composePosts({
+      heading:
+        "Anthropic details Claude Code large-codebase patterns across enterprise monorepos",
+      hook: "Fallback hook.",
+      twitterSummary: longSummary,
+      stories: [
+        {
+          title: "Anthropic details Claude Code large-codebase patterns across enterprise monorepos",
+          summary: "Summary body.",
+        },
+        {
+          title: "Anthropic valuation hits $900B with $45B ARR",
+          summary: "Summary body.",
+        },
+        {
+          title: "OpenAI ships Codex in ChatGPT mobile app",
+          summary: "Summary body.",
+        },
+      ],
+      archiveUrl: URL,
+    });
+    expect(result).not.toBeNull();
+    const twitter = result?.twitter;
+    expect(twitter?.ok).toBe(false);
+    expect(twitter?.text).toContain(longSummary);
+    expect(twitter?.text).not.toContain("…");
+    expect(twitterWeightedLength(twitter?.text ?? "")).toBeGreaterThan(TWITTER_MAX_CHARS);
+  });
+
+  it("REQ-035 premium X post uses headline as lead and lists ranks two through four", () => {
+    const longSummary = "Premium summary ".repeat(30).trim();
+    const result = composePosts({
+      heading: "Daily AI digest headline",
+      hook: "Fallback hook.",
+      twitterSummary: longSummary,
+      twitterIsPremium: true,
+      stories: stories(4),
+      archiveUrl: URL,
+    });
+    expect(result).not.toBeNull();
+    const twitter = result?.twitter;
+    expect(twitter?.ok).toBe(true);
+    const text = twitter?.text ?? "";
+    expect(text.startsWith("Daily AI digest headline\n\n")).toBe(true);
+    expect(text).toContain(`${longSummary}\n\nAlso inside:`);
+    expect(text).not.toContain("→ Story 1 title");
+    expect(text).toContain("→ Story 2 title");
+    expect(text).toContain("→ Story 3 title");
+    expect(text).toContain("→ Story 4 title");
+    expect(text).not.toContain("Today in AI");
+    expect(text).toContain(longSummary);
+    expect(text).toContain("Full breakdown ↓");
+    expect(text).toContain(URL);
+    expect(text).not.toContain("…");
+    expect(text.length).toBeGreaterThan(TWITTER_MAX_CHARS);
+  });
+
+  it("REQ-035 premium X post omits Also inside when there are no follow-up stories", () => {
+    const result = composePosts({
+      heading: "Daily AI digest headline",
+      hook: "Fallback hook.",
+      twitterSummary: "Premium summary.",
+      twitterIsPremium: true,
+      stories: stories(1),
+      archiveUrl: URL,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.twitter.text).toBe(
+      [
+        "Daily AI digest headline",
+        "Premium summary.",
+        ["Full breakdown ↓", URL].join("\n"),
+      ].join("\n\n"),
+    );
+    expect(result?.twitter.text).not.toContain("Also inside:");
+    expect(result?.twitter.text).not.toContain("→ Story 1 title");
+  });
+
+  it("REQ-035 non-premium legacy fallback uses hook only when twitterSummary is missing", () => {
+    const result = composePosts({
+      heading: "Codex supports multi-device remote control",
+      hook: "OpenAI patched a 48-hour GPT-5.5 capability regression in Codex and immediately reset usage limits — a live look at production agent reliability under pressure.",
+      stories: [
+        {
+          title: "Codex supports multi-device remote control",
+          summary: "Summary body.",
+        },
+        {
+          title: "OpenClaw creator spends $1.3M on OpenAI tokens monthly",
+          summary: "Summary body.",
+        },
+        {
+          title: "Frontier AI breaks open CTF competition format",
+          summary: "Summary body.",
+        },
+      ],
+      archiveUrl:
+        "https://news.vertexcover.io/archive/b7856949-d7eb-4374-97ab-e6a99c0050be",
+    });
+
+    expect(result).not.toBeNull();
+    const text = result?.twitter.text ?? "";
+    expect(text.split("\n")[0]).toContain("OpenAI patched a 48-hour");
+    expect(text).not.toContain("→ ");
+    expect(text).not.toContain("Codex supports multi-device remote control\n");
+    expect(text).toContain("Full breakdown ↓");
+    expect(twitterWeightedLength(text)).toBeLessThanOrEqual(TWITTER_MAX_CHARS);
+  });
+
+  it("REQ-036 premium X post does not invent a generic heading when heading is missing", () => {
     const result = composePosts({
       hook: "Hook only.",
+      twitterSummary: "Twitter summary.",
+      twitterIsPremium: true,
       stories: [],
       archiveUrl: URL,
     });
     expect(result).not.toBeNull();
-    expect(result?.twitterThread).toEqual(["Hook only.", `Full breakdown: ${URL}`]);
+    expect(result?.twitter.text).toBe(
+      ["Twitter summary.", ["Full breakdown ↓", URL].join("\n")].join("\n\n"),
+    );
+    expect(result?.twitter.text).not.toContain("Today in AI");
   });
 });

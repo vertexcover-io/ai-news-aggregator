@@ -86,5 +86,9 @@ Also return a social-post hook on the same \`digest\` object, written for Linked
   Good: "LangChain just turned agent debugging into an agent — and the rest of the AI stack is scrambling to keep up."
   Good: "Anthropic's $5B raise puts it within striking distance of OpenAI's valuation for the first time."
 
-Return a \`digest\` object (with \`headline\`, \`summary\`, \`hook\`) and a \`ranked\` array. Use the \`id\` field from the input verbatim for each ranked entry.
+Also return a dedicated X/Twitter summary on the same \`digest\` object:
+
+- digest.twitterSummary: ONE standalone X-native post body for the non-premium format. It must fit within the user prompt's \`twitterSummaryMaxChars\`. No hashtags, no emojis, no markdown links, no URL, no "thread below", no "read more". Write it for AI builders on X: concrete, current, and conversational without hype. Do not truncate with ellipses; rewrite shorter until it fits.
+
+Return a \`digest\` object (with \`headline\`, \`summary\`, \`hook\`, \`twitterSummary\`) and a \`ranked\` array. Use the \`id\` field from the input verbatim for each ranked entry.
 `;

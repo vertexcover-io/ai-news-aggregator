@@ -6,7 +6,7 @@ import type { SocialTokensRepo } from "@pipeline/repositories/social-tokens.js";
 
 import { composePosts, type RankedStory } from "../compose.js";
 import type { SocialResult } from "../types.js";
-import type { TwitterApiClient, TwitterCreatePostResult } from "./types.js";
+import type { TwitterApiClient } from "./types.js";
 import { refreshTwitterToken } from "./oauth.js";
 
 const REFRESH_SKEW_MS = 60_000;
@@ -17,6 +17,7 @@ export interface TwitterNotifierConfig {
   clientId: string;
   clientSecret: string;
   publicArchiveBaseUrl: string;
+  twitterIsPremium?: boolean;
 }
 
 export interface TwitterNotifierDeps {
@@ -57,7 +58,6 @@ function stripTrailingSlash(value: string): string {
 
 interface ArchiveLike {
   rankedItems: { rawItemId: number; title?: string; summary?: string }[];
-  hook: string | null;
 }
 
 async function buildStories(
@@ -68,16 +68,16 @@ async function buildStories(
   if (ids.length === 0) return [];
   const rows = await rawItems.findByIds(ids);
   const byId = new Map(rows.map((r) => [r.id, r]));
-  const stories: RankedStory[] = [];
-  for (const ref of archive.rankedItems) {
-    const raw = byId.get(ref.rawItemId);
-    const recap = raw?.metadata.recap;
-    const title = ref.title ?? recap?.title ?? raw?.title ?? "";
-    const summary = ref.summary ?? recap?.summary ?? "";
-    if (title.trim() === "" || summary.trim() === "") continue;
-    stories.push({ title, summary });
-  }
-  return stories;
+  return archive.rankedItems
+    .map((ref) => {
+      const raw = byId.get(ref.rawItemId);
+      const recap = raw?.metadata.recap;
+      return {
+        title: ref.title ?? recap?.title ?? raw?.title ?? "",
+        summary: ref.summary ?? recap?.summary ?? "",
+      };
+    })
+    .filter((story) => story.title.trim() !== "");
 }
 
 export function createTwitterNotifier(
@@ -114,19 +114,24 @@ export function createTwitterNotifier(
           return { status: "skipped", reason: "already_posted" };
         }
 
-        const hook = archive.hook;
-        if (hook === null || hook.trim() === "") {
+        const socialSummary = archive.twitterSummary ?? archive.hook;
+        if (socialSummary === null || socialSummary.trim() === "") {
           logger.warn(
             { event: "social.twitter.skipped", reason: "no_headline", runId },
-            "twitter notification skipped (no hook)",
+            "twitter notification skipped (no twitter summary)",
           );
           return { status: "skipped", reason: "no_headline" };
         }
 
-        const stories = await buildStories(archive, rawItems);
+        const stories = config.twitterIsPremium === true
+          ? await buildStories(archive, rawItems)
+          : [];
         const archiveUrl = `${stripTrailingSlash(config.publicArchiveBaseUrl)}/archive/${runId}`;
         const composed = composePosts({
-          hook,
+          heading: archive.digestHeadline,
+          hook: archive.hook,
+          twitterSummary: archive.twitterSummary,
+          twitterIsPremium: config.twitterIsPremium === true,
           stories,
           archiveUrl,
         });
@@ -136,6 +141,22 @@ export function createTwitterNotifier(
             "twitter notification skipped (compose returned null)",
           );
           return { status: "skipped", reason: "no_headline" };
+        }
+        if (!composed.twitter.ok) {
+          await archives.recordSocialFailure(
+            runId,
+            "twitter",
+            composed.twitter.reason,
+          );
+          logger.warn(
+            {
+              event: "social.twitter.skipped",
+              reason: composed.twitter.reason,
+              runId,
+            },
+            "twitter notification skipped (composition invalid)",
+          );
+          return { status: "failed", reason: composed.twitter.reason };
         }
 
         const acquire = (forceRefresh: boolean): Promise<AcquireResult> =>
@@ -191,10 +212,10 @@ export function createTwitterNotifier(
           return acquired.result;
         }
 
-        // First tweet (head of thread). Reactive auth-retry if needed.
+        // Single X post. Reactive auth-retry if needed.
         let headResult = await apiClient.createPost({
           accessToken: acquired.accessToken,
-          text: composed.twitterThread[0],
+          text: composed.twitter.text,
         });
 
         if (!headResult.ok && AUTH_RETRY_STATUSES.has(headResult.status)) {
@@ -217,7 +238,7 @@ export function createTwitterNotifier(
           }
           headResult = await apiClient.createPost({
             accessToken: reacquired.accessToken,
-            text: composed.twitterThread[0],
+            text: composed.twitter.text,
           });
         }
 
@@ -238,46 +259,18 @@ export function createTwitterNotifier(
           return { status: "failed", reason: `http_${headResult.status}` };
         }
 
-        // Thread continues: post tweets 2..N as replies to the previous tweet.
-        // A failure mid-thread is logged but the head tweet stays posted —
-        // we mark the run as `posted` because the headline tweet is live.
-        const threadIds: string[] = [headResult.tweetId];
-        const accessTokenForThread = acquired.accessToken;
-        let previousTweetId = headResult.tweetId;
-        for (let i = 1; i < composed.twitterThread.length; i += 1) {
-          const result: TwitterCreatePostResult = await apiClient.createPost({
-            accessToken: accessTokenForThread,
-            text: composed.twitterThread[i],
-            replyToTweetId: previousTweetId,
-          });
-          if (!result.ok) {
-            logger.warn(
-              {
-                event: "social.twitter.thread_partial_failure",
-                runId,
-                tweetIndex: i,
-                status: result.status,
-              },
-              "twitter thread partial failure; keeping head tweet posted",
-            );
-            break;
-          }
-          threadIds.push(result.tweetId);
-          previousTweetId = result.tweetId;
-        }
-
         await archives.markTwitterPosted(
           runId,
           now(),
           headResult.tweetUrl,
-          threadIds,
+          [headResult.tweetId],
         );
         logger.info(
           {
             event: "social.twitter.sent",
             runId,
             permalink: headResult.tweetUrl,
-            threadCount: threadIds.length,
+            tweetCount: 1,
           },
           "twitter post created",
         );
