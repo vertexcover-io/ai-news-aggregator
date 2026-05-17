@@ -24,8 +24,16 @@ import {
   type NewsletterSendDeps,
   type NewsletterSendJobLike,
 } from "@pipeline/workers/newsletter-send.js";
+import {
+  handleSocialHealthJob,
+  type SocialHealthDeps,
+  type SocialHealthJobLike,
+} from "@pipeline/workers/social-health.js";
 import { createLinkedInApiClient } from "@pipeline/social/linkedin/api-client.js";
-import { createTwitterApiClient } from "@pipeline/social/twitter/api-client.js";
+import {
+  createTwitterApiClient,
+  type TwitterOAuth1Credentials,
+} from "@pipeline/social/twitter/api-client.js";
 import { createLinkedInNotifier } from "@pipeline/social/linkedin/notifier.js";
 import { createTwitterNotifier } from "@pipeline/social/twitter/notifier.js";
 import {
@@ -80,6 +88,7 @@ export interface CreateProcessingWorkerOptions {
   runProcessDeps?: RunProcessDeps;
   dailyRunDeps?: DailyRunDeps;
   newsletterSendDeps?: NewsletterSendDeps;
+  socialHealthDeps?: SocialHealthDeps;
 }
 
 // Discriminated by job.name; payload shape is heterogeneous between routes.
@@ -94,6 +103,8 @@ export function createProcessingWorker(
     options.runProcessDeps ?? buildDefaultRunProcessDeps(connection);
   const dailyRunDeps =
     options.dailyRunDeps ?? buildDefaultDailyRunDeps(connection);
+  const socialHealthDeps =
+    options.socialHealthDeps ?? buildDefaultSocialHealthDeps();
   // Lazily build newsletter send deps to avoid eager DB connection in tests.
   let resolvedNewsletterSendDeps: NewsletterSendDeps | undefined =
     options.newsletterSendDeps;
@@ -127,6 +138,15 @@ export function createProcessingWorker(
             data: job.data as unknown as NewsletterSendJobPayload,
           };
           await handleNewsletterSendJob(resolvedNewsletterSendDeps, typed);
+          return undefined;
+        }
+        case "social-health": {
+          const typed: SocialHealthJobLike = {
+            name: job.name,
+            id: job.id,
+            data: job.data,
+          };
+          await handleSocialHealthJob(socialHealthDeps, typed);
           return undefined;
         }
         default: {
@@ -187,6 +207,65 @@ function buildDefaultDailyRunDeps(connection: IORedis): DailyRunDeps {
   };
 }
 
+const TWITTER_OAUTH1_ENV_KEYS = [
+  "TWITTER_API_KEY",
+  "TWITTER_API_SECRET",
+  "TWITTER_ACCESS_TOKEN",
+  "TWITTER_ACCESS_TOKEN_SECRET",
+] as const;
+
+type TwitterOAuth1EnvKey = (typeof TWITTER_OAUTH1_ENV_KEYS)[number];
+
+type TwitterOAuth1Config =
+  | { status: "configured"; credentials: TwitterOAuth1Credentials }
+  | { status: "unset" }
+  | { status: "partial"; missing: readonly TwitterOAuth1EnvKey[] };
+
+function readTwitterOAuth1Config(
+  env: NodeJS.ProcessEnv = process.env,
+): TwitterOAuth1Config {
+  const values = {
+    TWITTER_API_KEY: env.TWITTER_API_KEY,
+    TWITTER_API_SECRET: env.TWITTER_API_SECRET,
+    TWITTER_ACCESS_TOKEN: env.TWITTER_ACCESS_TOKEN,
+    TWITTER_ACCESS_TOKEN_SECRET: env.TWITTER_ACCESS_TOKEN_SECRET,
+  };
+  const present = TWITTER_OAUTH1_ENV_KEYS.filter(
+    (key) => values[key] !== undefined && values[key] !== "",
+  );
+  if (present.length === 0) return { status: "unset" };
+  if (present.length !== TWITTER_OAUTH1_ENV_KEYS.length) {
+    return {
+      status: "partial",
+      missing: TWITTER_OAUTH1_ENV_KEYS.filter(
+        (key) => values[key] === undefined || values[key] === "",
+      ),
+    };
+  }
+  return {
+    status: "configured",
+    credentials: {
+      appKey: values.TWITTER_API_KEY ?? "",
+      appSecret: values.TWITTER_API_SECRET ?? "",
+      accessToken: values.TWITTER_ACCESS_TOKEN ?? "",
+      accessSecret: values.TWITTER_ACCESS_TOKEN_SECRET ?? "",
+    },
+  };
+}
+
+function warnInvalidTwitterConfig(
+  log: ReturnType<typeof createLogger>,
+  missing: readonly TwitterOAuth1EnvKey[],
+): void {
+  log.warn(
+    {
+      event: "social.twitter.invalid_config",
+      missing: [...missing],
+    },
+    "twitter notifier disabled: incomplete OAuth1 configuration",
+  );
+}
+
 export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
   const db = getDb();
   const archiveRepo = createRunArchivesRepo(db);
@@ -226,22 +305,22 @@ export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
         })
       : null;
 
-  const twitterClientId = process.env.TWITTER_CLIENT_ID;
-  const twitterClientSecret = process.env.TWITTER_CLIENT_SECRET;
+  const twitterLogger = createLogger("social.twitter");
+  const twitterOAuth1 = readTwitterOAuth1Config();
+  if (twitterOAuth1.status === "partial") {
+    warnInvalidTwitterConfig(twitterLogger, twitterOAuth1.missing);
+  }
   const twitterNotifier =
-    twitterClientId && twitterClientSecret
+    twitterOAuth1.status === "configured"
       ? createTwitterNotifier({
-          apiClient: createTwitterApiClient(),
+          apiClient: createTwitterApiClient(twitterOAuth1.credentials),
           archives: archiveRepo,
           rawItems: rawItemsRepo,
-          tokens: socialTokensRepo,
           config: {
-            clientId: twitterClientId,
-            clientSecret: twitterClientSecret,
             publicArchiveBaseUrl,
             twitterIsPremium: process.env.TWITTER_IS_PREMIUM === "true",
           },
-          logger: createLogger("social.twitter"),
+          logger: twitterLogger,
         })
       : null;
 
@@ -264,10 +343,31 @@ export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
   };
 }
 
+export function buildDefaultSocialHealthDeps(): SocialHealthDeps {
+  const twitterLogger = createLogger("social.twitter");
+  const twitterOAuth1 = readTwitterOAuth1Config();
+  if (twitterOAuth1.status === "partial") {
+    warnInvalidTwitterConfig(twitterLogger, twitterOAuth1.missing);
+  }
+  return {
+    twitterApiClient: twitterOAuth1.status === "configured"
+      ? createTwitterApiClient(twitterOAuth1.credentials)
+      : null,
+    slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
+    logger: twitterLogger,
+  };
+}
+
 let cachedSocialTokensRepo: SocialTokensRepo | undefined;
 function getSharedSocialTokensRepo(): SocialTokensRepo {
   cachedSocialTokensRepo ??= createSocialTokensRepo(getDb());
   return cachedSocialTokensRepo;
 }
 
-export type { RunProcessDeps, DailyRunDeps, NewsletterSendDeps, RunProcessResult };
+export type {
+  RunProcessDeps,
+  DailyRunDeps,
+  NewsletterSendDeps,
+  SocialHealthDeps,
+  RunProcessResult,
+};

@@ -2,20 +2,15 @@ import type { Logger } from "@newsletter/shared/logger";
 
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
-import type { SocialTokensRepo } from "@pipeline/repositories/social-tokens.js";
 
 import { composePosts, type RankedStory } from "../compose.js";
 import type { SocialResult } from "../types.js";
 import type { TwitterApiClient } from "./types.js";
-import { refreshTwitterToken } from "./oauth.js";
 
-const REFRESH_SKEW_MS = 60_000;
 const FAILURE_BODY_MAX = 500;
 const AUTH_RETRY_STATUSES = new Set([401, 403]);
 
 export interface TwitterNotifierConfig {
-  clientId: string;
-  clientSecret: string;
   publicArchiveBaseUrl: string;
   twitterIsPremium?: boolean;
 }
@@ -27,8 +22,6 @@ export interface TwitterNotifierDeps {
     "findById" | "markTwitterPosted" | "recordSocialFailure"
   >;
   rawItems: Pick<RawItemsRepo, "findByIds">;
-  tokens: Pick<SocialTokensRepo, "withTokenLock">;
-  refreshFn?: typeof refreshTwitterToken;
   config: TwitterNotifierConfig;
   logger: Logger;
   now?: () => Date;
@@ -42,13 +35,14 @@ export interface TwitterNotifier {
   notifyArchiveReady(input: NotifyArchiveReadyInput): Promise<SocialResult>;
 }
 
-type AcquireResult =
-  | { ok: true; accessToken: string }
-  | { ok: false; result: SocialResult };
-
 function truncate(value: string): string {
   if (value.length <= FAILURE_BODY_MAX) return value;
   return `${value.slice(0, FAILURE_BODY_MAX)}…`;
+}
+
+function postFailureReason(status: number): string {
+  if (AUTH_RETRY_STATUSES.has(status)) return "auth_failed";
+  return `http_${status}`;
 }
 
 function stripTrailingSlash(value: string): string {
@@ -83,8 +77,7 @@ async function buildStories(
 export function createTwitterNotifier(
   deps: TwitterNotifierDeps,
 ): TwitterNotifier {
-  const { apiClient, archives, rawItems, tokens, config, logger } = deps;
-  const refreshFn = deps.refreshFn ?? refreshTwitterToken;
+  const { apiClient, archives, rawItems, config, logger } = deps;
   const now = deps.now ?? ((): Date => new Date());
 
   return {
@@ -159,90 +152,12 @@ export function createTwitterNotifier(
           return { status: "failed", reason: composed.twitter.reason };
         }
 
-        const acquire = (forceRefresh: boolean): Promise<AcquireResult> =>
-          tokens.withTokenLock<AcquireResult>("twitter", async (row, tx) => {
-            if (row === null) {
-              logger.warn(
-                { event: "social.twitter.skipped", reason: "no_token", runId },
-                "twitter token row missing",
-              );
-              return {
-                ok: false,
-                result: { status: "skipped", reason: "no_token" },
-              };
-            }
-
-            const expiredPerDb =
-              row.expiresAt.getTime() <= now().getTime() + REFRESH_SKEW_MS;
-            if (!forceRefresh && !expiredPerDb) {
-              return { ok: true, accessToken: row.accessToken };
-            }
-
-            const refreshed = await refreshFn({
-              clientId: config.clientId,
-              clientSecret: config.clientSecret,
-              refreshToken: row.refreshToken,
-            });
-            if (!refreshed.ok) {
-              logger.error(
-                {
-                  event: "social.twitter.refresh_failed",
-                  runId,
-                  status: refreshed.status,
-                  forced: forceRefresh,
-                },
-                "twitter token refresh failed",
-              );
-              return {
-                ok: false,
-                result: { status: "failed", reason: "refresh_failed" },
-              };
-            }
-            await tx.saveToken("twitter", {
-              accessToken: refreshed.accessToken,
-              refreshToken: refreshed.refreshToken,
-              expiresAt: refreshed.expiresAt,
-              metadata: row.metadata,
-            });
-            return { ok: true, accessToken: refreshed.accessToken };
-          });
-
-        const acquired = await acquire(false);
-        if (!acquired.ok) {
-          return acquired.result;
-        }
-
-        // Single X post. Reactive auth-retry if needed.
-        let headResult = await apiClient.createPost({
-          accessToken: acquired.accessToken,
+        const headResult = await apiClient.createPost({
           text: composed.twitter.text,
         });
 
-        if (!headResult.ok && AUTH_RETRY_STATUSES.has(headResult.status)) {
-          logger.warn(
-            {
-              event: "social.twitter.auth_retry",
-              runId,
-              status: headResult.status,
-            },
-            "twitter post got auth error; forcing refresh and retrying once",
-          );
-          const reacquired = await acquire(true);
-          if (!reacquired.ok) {
-            await archives.recordSocialFailure(
-              runId,
-              "twitter",
-              `${headResult.status}:${truncate(headResult.body)}`,
-            );
-            return reacquired.result;
-          }
-          headResult = await apiClient.createPost({
-            accessToken: reacquired.accessToken,
-            text: composed.twitter.text,
-          });
-        }
-
         if (!headResult.ok) {
+          const reason = postFailureReason(headResult.status);
           await archives.recordSocialFailure(
             runId,
             "twitter",
@@ -256,7 +171,7 @@ export function createTwitterNotifier(
             },
             "twitter post failed",
           );
-          return { status: "failed", reason: `http_${headResult.status}` };
+          return { status: "failed", reason };
         }
 
         await archives.markTwitterPosted(

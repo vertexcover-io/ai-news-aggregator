@@ -42,6 +42,11 @@ vi.mock("@pipeline/workers/daily-run.js", () => ({
   handleDailyRunJob: (...args: unknown[]) => mockHandleDailyRunJob(...args),
 }));
 
+const mockHandleSocialHealthJob = vi.fn();
+vi.mock("@pipeline/workers/social-health.js", () => ({
+  handleSocialHealthJob: (...args: unknown[]) => mockHandleSocialHealthJob(...args),
+}));
+
 const mockCreateLinkedInNotifier = vi.fn(() => ({
   notifyArchiveReady: vi.fn(),
 }));
@@ -147,6 +152,16 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
     expect(mockHandleRunProcessJob).not.toHaveBeenCalled();
   });
 
+  it("routes job.name === 'social-health' to handleSocialHealthJob", async () => {
+    mockHandleSocialHealthJob.mockResolvedValue(undefined);
+    const worker = makeWorker();
+    const job = { name: "social-health", id: "j-health", data: {} };
+    await worker.handler(job);
+    expect(mockHandleSocialHealthJob).toHaveBeenCalledOnce();
+    expect(mockHandleDailyRunJob).not.toHaveBeenCalled();
+    expect(mockHandleRunProcessJob).not.toHaveBeenCalled();
+  });
+
   describe("buildDefaultNewsletterSendDeps env-var construction", () => {
     const originalEnv = { ...process.env };
     beforeEach(() => {
@@ -155,6 +170,10 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
       delete process.env.LINKEDIN_CLIENT_SECRET;
       delete process.env.TWITTER_CLIENT_ID;
       delete process.env.TWITTER_CLIENT_SECRET;
+      delete process.env.TWITTER_API_KEY;
+      delete process.env.TWITTER_API_SECRET;
+      delete process.env.TWITTER_ACCESS_TOKEN;
+      delete process.env.TWITTER_ACCESS_TOKEN_SECRET;
     });
 
     it("constructs linkedinNotifier when LINKEDIN_CLIENT_ID + SECRET set; null otherwise", () => {
@@ -168,15 +187,34 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
       expect(mockCreateLinkedInNotifier).toHaveBeenCalled();
     });
 
-    it("constructs twitterNotifier when TWITTER_CLIENT_ID + SECRET set; null otherwise", () => {
+    it("constructs twitterNotifier when all OAuth1 credentials are set; null otherwise", () => {
       const depsWithout = buildDefaultNewsletterSendDeps();
       expect(depsWithout.twitterNotifier).toBeNull();
 
-      process.env.TWITTER_CLIENT_ID = "tw-id";
-      process.env.TWITTER_CLIENT_SECRET = "tw-secret";
+      process.env.TWITTER_API_KEY = "tw-api-key";
+      process.env.TWITTER_API_SECRET = "tw-api-secret";
+      process.env.TWITTER_ACCESS_TOKEN = "tw-access-token";
+      process.env.TWITTER_ACCESS_TOKEN_SECRET = "tw-access-secret";
       const depsWith = buildDefaultNewsletterSendDeps();
       expect(depsWith.twitterNotifier).not.toBeNull();
       expect(mockCreateTwitterNotifier).toHaveBeenCalled();
+    });
+
+    it("returns twitterNotifier=null and logs missing key names when OAuth1 config is partial", () => {
+      process.env.TWITTER_API_KEY = "tw-api-key";
+      process.env.TWITTER_ACCESS_TOKEN = "tw-access-token";
+
+      const deps = buildDefaultNewsletterSendDeps();
+
+      expect(deps.twitterNotifier).toBeNull();
+      expect(mockCreateTwitterNotifier).not.toHaveBeenCalled();
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        {
+          event: "social.twitter.invalid_config",
+          missing: ["TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN_SECRET"],
+        },
+        "twitter notifier disabled: incomplete OAuth1 configuration",
+      );
     });
 
     it("returns linkedinNotifier=null when only LINKEDIN_CLIENT_ID is set (missing secret)", () => {

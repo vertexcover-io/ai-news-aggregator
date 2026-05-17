@@ -1,6 +1,10 @@
 #!/usr/bin/env tsx
 /**
- * Production OAuth helper for X / Twitter (OAuth 2.0 + PKCE).
+ * Deprecated production OAuth helper for X / Twitter (OAuth 2.0 + PKCE).
+ *
+ * Auto-posting now uses OAuth 1.0a credentials from TWITTER_API_KEY,
+ * TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, and TWITTER_ACCESS_TOKEN_SECRET.
+ * Use scripts/probe-twitter-oauth1.ts to validate production posting creds.
  *
  * Spins up a localhost callback server, captures the authorization code,
  * exchanges (with PKCE code_verifier + Basic auth) for tokens, then upserts
