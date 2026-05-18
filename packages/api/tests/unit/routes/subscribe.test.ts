@@ -47,6 +47,7 @@ function makeRepo(existing: SubscriberSelect | null = null): SubscribersRepo & {
       return Promise.resolve(makeSubscriber({ id, status }));
     }),
     listConfirmed: vi.fn(() => Promise.resolve([])),
+    countConfirmed: vi.fn(() => Promise.resolve(0)),
   };
 
   return Object.assign(repo, { created, updated });
@@ -263,5 +264,111 @@ describe("POST /api/unsubscribe", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ ok: true });
+  });
+
+  it("JSON body with valid unsub token → unsubscribes and returns { ok: true }", async () => {
+    const subscriber = makeSubscriber({ status: "confirmed" });
+    const repo = makeRepo(subscriber);
+    const app = buildApp({ repo });
+
+    const token = issueSubscriberToken(subscriber.id, "unsub", SECRET);
+    const res = await app.request("/api/unsubscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true });
+    expect(repo.updateStatus).toHaveBeenCalledWith(
+      subscriber.id,
+      "unsubscribed",
+      expect.objectContaining({ unsubscribedAt: expect.any(Date) }),
+    );
+  });
+
+  it("JSON body with invalid token → does NOT call updateStatus, returns { ok: true }", async () => {
+    const repo = makeRepo(null);
+    const app = buildApp({ repo });
+
+    const res = await app.request("/api/unsubscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "totally-invalid-token" }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true });
+    expect(repo.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it("no token in JSON body → returns { ok: true } without crashing", async () => {
+    const repo = makeRepo(null);
+    const app = buildApp({ repo });
+
+    const res = await app.request("/api/unsubscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true });
+    expect(repo.updateStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/confirm — additional edge cases", () => {
+  it("wrong-type token (unsub token used on confirm endpoint) → redirects to /confirm?status=invalid", async () => {
+    const subscriber = makeSubscriber();
+    const repo = makeRepo(subscriber);
+    const app = buildApp({ repo });
+
+    const unsubToken = issueSubscriberToken(subscriber.id, "unsub", SECRET);
+    const res = await app.request(`/api/confirm?token=${unsubToken}`);
+
+    expect(res.status).toBe(302);
+    const location = res.headers.get("location");
+    expect(location).toBe(`${BASE_URL}/confirm?status=invalid`);
+    expect(repo.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it("missing token → redirects to /confirm?status=invalid", async () => {
+    const repo = makeRepo(null);
+    const app = buildApp({ repo });
+
+    const res = await app.request("/api/confirm");
+
+    expect(res.status).toBe(302);
+    const location = res.headers.get("location");
+    expect(location).toBe(`${BASE_URL}/confirm?status=invalid`);
+    expect(repo.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it("welcome send throws → still redirects to /confirm?status=success", async () => {
+    const subscriber = makeSubscriber();
+    const repo = makeRepo(subscriber);
+    const sendNewsletterToSubscriber = vi.fn().mockRejectedValue(new Error("email service down"));
+    const app = buildApp({
+      repo,
+      sendNewsletterToSubscriber,
+      getMostRecentReviewedArchiveId: () => Promise.resolve("archive-999"),
+    });
+
+    const token = issueSubscriberToken(subscriber.id, "confirm", SECRET);
+    const res = await app.request(`/api/confirm?token=${token}`);
+
+    expect(res.status).toBe(302);
+    const location = res.headers.get("location");
+    expect(location).toBe(`${BASE_URL}/confirm?status=success`);
+    // subscriber was still confirmed even though the welcome send failed
+    expect(repo.updateStatus).toHaveBeenCalledWith(
+      subscriber.id,
+      "confirmed",
+      expect.objectContaining({ subscribedAt: expect.any(Date) }),
+    );
   });
 });
