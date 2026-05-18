@@ -1,8 +1,8 @@
-import { useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Newspaper, Play, Settings as SettingsIcon } from "lucide-react";
+import { ChevronDown, Newspaper, Play, Settings as SettingsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRunList } from "../hooks/useRunList";
 import { useSettings } from "../hooks/useSettings";
@@ -25,10 +25,10 @@ export function DashboardPage(): ReactElement {
   const settings = settingsQuery.data;
   const settingsLoaded = settingsQuery.isFetched;
 
-  async function handleRunNow(): Promise<void> {
+  async function handleRunNow(dryRun = false): Promise<void> {
     setPending(true);
     try {
-      await triggerRunNow();
+      await triggerRunNow(dryRun ? { dryRun: true } : undefined);
       await queryClient.invalidateQueries({ queryKey: ["runs", { limit: null }] });
     } catch (err) {
       const message =
@@ -70,17 +70,15 @@ export function DashboardPage(): ReactElement {
               Settings
             </Link>
           </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              void handleRunNow();
-            }}
+          <RunNowSplitButton
             disabled={runNowDisabled}
-            className="bg-black text-white hover:bg-black/90 min-h-[44px] px-4"
-          >
-            <Play />
-            Run now
-          </Button>
+            onRun={() => {
+              void handleRunNow(false);
+            }}
+            onRunDry={() => {
+              void handleRunNow(true);
+            }}
+          />
         </div>
       </header>
 
@@ -129,6 +127,96 @@ export function DashboardPage(): ReactElement {
         )}
 
       </main>
+    </div>
+  );
+}
+
+interface RunNowSplitButtonProps {
+  disabled: boolean;
+  onRun: () => void;
+  onRunDry: () => void;
+}
+
+function RunNowSplitButton({
+  disabled,
+  onRun,
+  onRunDry,
+}: RunNowSplitButtonProps): ReactElement {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent): void {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleKey(e: KeyboardEvent): void {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative inline-flex">
+      <Button
+        size="sm"
+        onClick={onRun}
+        disabled={disabled}
+        className="bg-black text-white hover:bg-black/90 min-h-[44px] px-4 rounded-r-none"
+      >
+        <Play />
+        Run now
+      </Button>
+      <Button
+        size="sm"
+        type="button"
+        aria-label="More run options"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => { setOpen((v) => !v); }}
+        disabled={disabled}
+        className="bg-black text-white hover:bg-black/90 min-h-[44px] px-2 rounded-l-none border-l border-white/20"
+      >
+        <ChevronDown />
+      </Button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-50 mt-1 min-w-[12rem] rounded-md border bg-white shadow-md"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            disabled={disabled}
+            onClick={() => {
+              setOpen(false);
+              onRun();
+            }}
+            className="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50"
+          >
+            Run now
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={disabled}
+            onClick={() => {
+              setOpen(false);
+              onRunDry();
+            }}
+            className="block w-full px-3 py-2 text-left text-sm italic text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+          >
+            Run now (dry run)
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

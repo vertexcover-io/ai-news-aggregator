@@ -5,7 +5,10 @@ import type {
   PoolResponse,
   RankedItem,
 } from "@newsletter/shared";
-import { createArchivesRouter } from "@api/routes/archives.js";
+import {
+  createArchivesRouter,
+  createAdminArchivesRouter,
+} from "@api/routes/archives.js";
 import type {
   RawItemRow,
   RawItemsRepo,
@@ -109,6 +112,85 @@ describe("GET /api/archives/:runId", () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: string };
     expect(body).toEqual({ error: "not found" });
+  });
+
+  it("R-14: returns 404 { error: 'not found' } for a dry-run archive (avoids leaking existence)", async () => {
+    const completedAt = new Date("2026-04-12T10:00:00Z");
+    const archiveRepo = makeArchiveRepo({
+      id: "dry-run-archive",
+      status: "completed",
+      rankedItems: [{ rawItemId: 42, score: 0.85, rationale: "x" }],
+      topN: 5,
+      reviewed: true,
+      completedAt,
+      createdAt: completedAt,
+      startedAt: null,
+      sourceTypes: null,
+      isDryRun: true,
+    });
+    const app = makeApp({ archiveRepo });
+    const res = await app.request("/api/archives/dry-run-archive");
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: string };
+    expect(body).toEqual({ error: "not found" });
+  });
+
+  it("Phase 5: admin GET /api/admin/archives/:runId returns 200 for a dry-run archive (bypasses public 404 guard)", async () => {
+    const completedAt = new Date("2026-04-12T10:00:00Z");
+    const archiveRepo = makeArchiveRepo({
+      id: "dry-run-archive",
+      status: "completed",
+      rankedItems: [],
+      topN: 5,
+      reviewed: true,
+      completedAt,
+      createdAt: completedAt,
+      startedAt: null,
+      sourceTypes: null,
+      isDryRun: true,
+    } as unknown as RunArchiveRow);
+    const app = new Hono();
+    const adminRouter = createAdminArchivesRouter({
+      getRawItemsRepo: () => makeRepo(),
+      getArchiveRepo: () => archiveRepo,
+    });
+    app.route("/api/admin/archives", adminRouter);
+    const res = await app.request("/api/admin/archives/dry-run-archive");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; isDryRun: boolean };
+    expect(body.status).toBe("completed");
+    expect(body.isDryRun).toBe(true);
+  });
+
+  it("Phase 5: admin GET /api/admin/archives/:runId returns 404 when archive not found", async () => {
+    const archiveRepo = makeArchiveRepo(null);
+    const app = new Hono();
+    const adminRouter = createAdminArchivesRouter({
+      getRawItemsRepo: () => makeRepo(),
+      getArchiveRepo: () => archiveRepo,
+    });
+    app.route("/api/admin/archives", adminRouter);
+    const res = await app.request("/api/admin/archives/missing");
+    expect(res.status).toBe(404);
+  });
+
+  it("R-14: returns 200 for a live archive with the same shape (regression)", async () => {
+    const completedAt = new Date("2026-04-12T10:00:00Z");
+    const archiveRepo = makeArchiveRepo({
+      id: "live-archive",
+      status: "completed",
+      rankedItems: [],
+      topN: 5,
+      reviewed: true,
+      completedAt,
+      createdAt: completedAt,
+      startedAt: null,
+      sourceTypes: null,
+      isDryRun: false,
+    });
+    const app = makeApp({ archiveRepo });
+    const res = await app.request("/api/archives/live-archive");
+    expect(res.status).toBe(200);
   });
 
   it("returns valid RunState with empty rankedItems array", async () => {

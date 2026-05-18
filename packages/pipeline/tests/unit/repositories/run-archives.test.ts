@@ -60,8 +60,51 @@ describe("run-archives repository", () => {
       twitterSummary: null,
       sourceTelemetry: null,
       searchText: null,
+      isDryRun: false,
     });
     expect(mockOnConflictDoUpdate).toHaveBeenCalledOnce();
+  });
+
+  // Phase 2: upsert writes isDryRun when provided
+  it("writes isDryRun=true to the row when input.isDryRun is true", async () => {
+    resetMocks();
+    const db = makeMockDb();
+    const { createRunArchivesRepo } = await import(
+      "@pipeline/repositories/run-archives.js"
+    );
+    const repo = createRunArchivesRepo(db as never);
+
+    await repo.upsert({
+      id: "run-dry",
+      status: "completed",
+      rankedItems: [],
+      topN: 3,
+      completedAt: new Date("2026-05-18T12:00:00Z"),
+      isDryRun: true,
+    });
+
+    const insertedValues = mockValues.mock.calls[0]?.[0] as { isDryRun: boolean };
+    expect(insertedValues.isDryRun).toBe(true);
+  });
+
+  it("defaults isDryRun to false when omitted", async () => {
+    resetMocks();
+    const db = makeMockDb();
+    const { createRunArchivesRepo } = await import(
+      "@pipeline/repositories/run-archives.js"
+    );
+    const repo = createRunArchivesRepo(db as never);
+
+    await repo.upsert({
+      id: "run-live",
+      status: "completed",
+      rankedItems: [],
+      topN: 3,
+      completedAt: new Date("2026-05-18T12:00:00Z"),
+    });
+
+    const insertedValues = mockValues.mock.calls[0]?.[0] as { isDryRun: boolean };
+    expect(insertedValues.isDryRun).toBe(false);
   });
 
   describe("social-marker methods", () => {

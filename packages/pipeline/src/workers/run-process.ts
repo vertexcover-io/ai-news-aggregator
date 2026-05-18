@@ -115,6 +115,7 @@ export interface RunProcessJobData {
   sourceTypes: SourceType[];
   collectors: RunCollectorsPayload;
   halfLifeHours?: number;
+  dryRun?: boolean;
 }
 
 export interface RunProcessJobLike {
@@ -359,6 +360,7 @@ export async function handleRunProcessJob(
     return { rankedCount: 0 };
   }
   const { runId, topN, sourceTypes, collectors, halfLifeHours } = job.data;
+  const dryRun = job.data.dryRun ?? false;
   const started = Date.now();
   let runStartedAt: Date = new Date(started);
 
@@ -587,6 +589,7 @@ export async function handleRunProcessJob(
         twitterSummary,
         sourceTelemetry,
         searchText,
+        isDryRun: dryRun,
       });
       archiveWritten = true;
     } catch (err) {
@@ -636,6 +639,7 @@ export async function handleRunProcessJob(
         runId,
         totalDurationMs: Date.now() - started,
         rankedItemCount: rankResult.rankedItems.length,
+        dryRun,
       },
       "run.completed",
     );
@@ -660,6 +664,7 @@ export async function handleRunProcessJob(
           completedAt: new Date(),
           startedAt: runStartedAt,
           sourceTypes,
+          isDryRun: dryRun,
         });
       } catch (archiveErr) {
         logger.error(
@@ -671,7 +676,7 @@ export async function handleRunProcessJob(
           "archive.write_failed",
         );
       }
-      logger.info({ event: "run.cancelled", runId }, "run.cancelled");
+      logger.info({ event: "run.cancelled", runId, dryRun }, "run.cancelled");
       return { rankedCount: 0 };
     }
     throw err;

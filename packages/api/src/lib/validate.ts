@@ -89,6 +89,12 @@ export const runSubmitSchema = z
 
 export type RunSubmitBody = z.infer<typeof runSubmitSchema>;
 
+export const runNowBodySchema = z
+  .object({ dryRun: z.boolean().optional() })
+  .strict();
+
+export type RunNowBody = z.infer<typeof runNowBodySchema>;
+
 const HH_MM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const hhmmSchema = z
   .string()

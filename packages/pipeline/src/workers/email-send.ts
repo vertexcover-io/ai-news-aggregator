@@ -220,6 +220,13 @@ export async function handleEmailSendJob(
     );
     return;
   }
+  if (archive.isDryRun) {
+    logger.info(
+      { event: "publish.dry_run_bypassed", runId, channel: "email-send" },
+      "skipped: dry-run archive",
+    );
+    return;
+  }
   if (!archive.reviewed) {
     await deps.slackNotifier?.notifyPublishFailed({ runId, channel: "email-send" });
     return;

@@ -31,6 +31,7 @@ function makeItem(overrides: Partial<ArchiveListItem> = {}): ArchiveListItem {
     leadSummary: null,
     digestHeadline: null,
     digestSummary: null,
+    isDryRun: false,
     ...overrides,
   };
 }

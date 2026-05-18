@@ -44,4 +44,5 @@ export interface RunSummary {
   status: RunSummaryStatus;
   itemCount: number;
   reviewed: boolean;
+  isDryRun: boolean;
 }

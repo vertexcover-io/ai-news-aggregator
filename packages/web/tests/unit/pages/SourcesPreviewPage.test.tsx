@@ -17,7 +17,7 @@ vi.mock("../../../src/api/runs", async () => {
   const actual = await vi.importActual<typeof import("../../../src/api/runs")>(
     "../../../src/api/runs",
   );
-  return { ...actual, getArchive: vi.fn() };
+  return { ...actual, getAdminArchive: vi.fn() };
 });
 
 vi.mock("../../../src/api/archives", async () => {
@@ -28,7 +28,7 @@ vi.mock("../../../src/api/archives", async () => {
 });
 
 import { getPool } from "../../../src/api/archives";
-import { getArchive } from "../../../src/api/runs";
+import { getAdminArchive } from "../../../src/api/runs";
 
 afterEach(() => {
   cleanup();
@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  vi.mocked(getArchive).mockReset();
+  vi.mocked(getAdminArchive).mockReset();
   vi.mocked(getPool).mockReset();
 });
 
@@ -111,7 +111,7 @@ function renderPage(runId = "run-1"): ReturnType<typeof render> {
 
 describe("SourcesPreviewPage", () => {
   it("renders not-found state when the archive is missing", async () => {
-    vi.mocked(getArchive).mockResolvedValue(null);
+    vi.mocked(getAdminArchive).mockResolvedValue(null);
     renderPage("missing");
     await screen.findByText("This run was not found.");
     expect(
@@ -121,7 +121,7 @@ describe("SourcesPreviewPage", () => {
   });
 
   it("renders not-ready state for non-completed runs", async () => {
-    vi.mocked(getArchive).mockResolvedValue(
+    vi.mocked(getAdminArchive).mockResolvedValue(
       makeRun({
         status: "running",
         stage: "collecting",
@@ -135,7 +135,7 @@ describe("SourcesPreviewPage", () => {
   });
 
   it("renders ranked items above the source pool for completed runs", async () => {
-    vi.mocked(getArchive).mockResolvedValue(
+    vi.mocked(getAdminArchive).mockResolvedValue(
       makeRun({
         rankedItems: [
           makeRankedItem({
@@ -174,7 +174,7 @@ describe("SourcesPreviewPage", () => {
   });
 
   it("renders rationale fallback for ranked items without recap", async () => {
-    vi.mocked(getArchive).mockResolvedValue(
+    vi.mocked(getAdminArchive).mockResolvedValue(
       makeRun({
         rankedItems: [
           makeRankedItem({
@@ -192,7 +192,7 @@ describe("SourcesPreviewPage", () => {
   });
 
   it("renders pool filters/search/sort and sends pool query changes", async () => {
-    vi.mocked(getArchive).mockResolvedValue(makeRun());
+    vi.mocked(getAdminArchive).mockResolvedValue(makeRun());
     vi.mocked(getPool).mockResolvedValue({
       items: [makePoolItem({ title: "Pool story" })],
       total: 1,
@@ -218,7 +218,7 @@ describe("SourcesPreviewPage", () => {
   });
 
   it("renders pool source open links with safe external attributes", async () => {
-    vi.mocked(getArchive).mockResolvedValue(makeRun());
+    vi.mocked(getAdminArchive).mockResolvedValue(makeRun());
     vi.mocked(getPool).mockResolvedValue({
       items: [
         makePoolItem({
@@ -239,7 +239,7 @@ describe("SourcesPreviewPage", () => {
   });
 
   it("does not render review mutation controls", async () => {
-    vi.mocked(getArchive).mockResolvedValue(makeRun());
+    vi.mocked(getAdminArchive).mockResolvedValue(makeRun());
     vi.mocked(getPool).mockResolvedValue({
       items: [makePoolItem({ title: "Read-only pool story" })],
       total: 1,

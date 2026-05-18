@@ -24,6 +24,7 @@ function makeRun(overrides: Partial<RunSummary>): RunSummary {
     status: "completed",
     itemCount: 10,
     reviewed: false,
+    isDryRun: false,
     ...overrides,
   };
 }

@@ -51,6 +51,7 @@ describe("reconcilePerArchiveJobs", () => {
         emailSentAt: null,
         linkedinPostedAt: null,
         twitterPostedAt: null,
+        isDryRun: false,
       },
     );
 
@@ -75,6 +76,7 @@ describe("reconcilePerArchiveJobs", () => {
         emailSentAt: null,
         linkedinPostedAt: null,
         twitterPostedAt: null,
+        isDryRun: false,
       },
     );
 
@@ -99,6 +101,7 @@ describe("reconcilePerArchiveJobs", () => {
         emailSentAt: null,
         linkedinPostedAt: null,
         twitterPostedAt: null,
+        isDryRun: false,
       },
     );
 
@@ -107,5 +110,28 @@ describe("reconcilePerArchiveJobs", () => {
       { runId: "run-1" },
       { jobId: "email-send:run-1", delay: 0 },
     );
+  });
+
+  it("short-circuits without enqueuing or removing when archive is dry-run", async () => {
+    const queue = makeQueue();
+
+    const result = await reconcilePerArchiveJobs(
+      { queue, now: () => new Date("2026-05-18T20:00:00.000Z") },
+      "run-1",
+      settings,
+      {
+        id: "run-1",
+        status: "completed",
+        completedAt: new Date("2026-05-18T19:05:00.000Z"),
+        emailSentAt: null,
+        linkedinPostedAt: null,
+        twitterPostedAt: null,
+        isDryRun: true,
+      },
+    );
+
+    expect(result).toEqual({ removed: [], enqueued: [] });
+    expect(queue.add).not.toHaveBeenCalled();
+    expect(queue.remove).not.toHaveBeenCalled();
   });
 });

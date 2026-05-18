@@ -43,6 +43,7 @@ export const runArchives = pgTable("run_archives", {
   rankedItems: jsonb("ranked_items").$type<RankedItemRef[]>().notNull(),
   topN: integer("top_n").notNull(),
   reviewed: boolean("reviewed").notNull().default(false),
+  isDryRun: boolean("is_dry_run").notNull().default(false),
   completedAt: timestamp("completed_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

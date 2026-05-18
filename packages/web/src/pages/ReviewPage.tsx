@@ -225,9 +225,19 @@ export function ReviewPage(): ReactElement {
       </header>
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 md:px-8 py-4 sm:py-6 space-y-5">
         <div>
-          <h2 className="text-2xl font-bold">
-            {formatHeading(query.data.startedAt)}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold">
+              {formatHeading(query.data.startedAt)}
+            </h2>
+            {query.data.isDryRun === true ? (
+              <span
+                className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-700"
+                data-testid="dry-run-pill"
+              >
+                Dry run
+              </span>
+            ) : null}
+          </div>
           <p className="text-sm text-muted-foreground">
             Remove, reorder, or add posts before the archive renders.
           </p>

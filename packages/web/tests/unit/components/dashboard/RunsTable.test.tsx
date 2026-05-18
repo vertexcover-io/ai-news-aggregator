@@ -16,6 +16,7 @@ function makeRun(overrides: Partial<RunSummary>): RunSummary {
     status: "completed",
     itemCount: 10,
     reviewed: false,
+    isDryRun: false,
     ...overrides,
   };
 }
@@ -233,5 +234,53 @@ describe("RunsTable cancel button (REQ-11, REQ-12)", () => {
       expect(screen.queryByText("Cancel this run?")).toBeNull();
     });
     expect(onCancel).not.toHaveBeenCalled();
+  });
+});
+
+describe("RunsTable dry-run badge", () => {
+  it("renders DRY RUN pill when run.isDryRun is true", () => {
+    render(
+      <MemoryRouter>
+        <RunsTable
+          runs={[
+            makeRun({
+              runId: "run-dry",
+              status: "completed",
+              reviewed: false,
+              isDryRun: true,
+            }),
+          ]}
+          onRetry={() => undefined}
+          retrying={false}
+          onCancel={() => Promise.resolve()}
+          onDelete={() => Promise.resolve()}
+        />
+      </MemoryRouter>,
+    );
+    const badges = screen.getAllByTestId("dry-run-badge");
+    expect(badges.length).toBeGreaterThan(0);
+    expect(badges[0].textContent).toMatch(/dry run/i);
+  });
+
+  it("does not render DRY RUN pill when run.isDryRun is false", () => {
+    render(
+      <MemoryRouter>
+        <RunsTable
+          runs={[
+            makeRun({
+              runId: "run-live",
+              status: "completed",
+              reviewed: true,
+              isDryRun: false,
+            }),
+          ]}
+          onRetry={() => undefined}
+          retrying={false}
+          onCancel={() => Promise.resolve()}
+          onDelete={() => Promise.resolve()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId("dry-run-badge")).toBeNull();
   });
 });

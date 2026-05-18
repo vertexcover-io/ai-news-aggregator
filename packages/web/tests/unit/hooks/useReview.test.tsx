@@ -19,11 +19,11 @@ vi.mock("../../../src/api/runs", async () => {
   );
   return {
     ...actual,
-    getArchive: vi.fn(),
+    getAdminArchive: vi.fn(),
   };
 });
 
-import { getArchive } from "../../../src/api/runs";
+import { getAdminArchive } from "../../../src/api/runs";
 
 function makeItem(id: number, url: string): RankedItem {
   return {
@@ -76,14 +76,14 @@ const completedResponse: RunStateResponse = {
 
 describe("useReview", () => {
   beforeEach(() => {
-    vi.mocked(getArchive).mockReset();
+    vi.mocked(getAdminArchive).mockReset();
   });
   afterEach(() => {
     vi.clearAllMocks();
   });
 
   it("hydrates initial + current from server response", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -95,7 +95,7 @@ describe("useReview", () => {
   });
 
   it("reorder swaps positions and marks dirty", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -110,7 +110,7 @@ describe("useReview", () => {
   });
 
   it("remove drops an item and marks dirty", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -125,7 +125,7 @@ describe("useReview", () => {
   });
 
   it("addPending -> resolvePending appends an added card and marks dirty", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -150,7 +150,7 @@ describe("useReview", () => {
   });
 
   it("failPending removes the pending entry", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -170,7 +170,7 @@ describe("useReview", () => {
   });
 
   it("discard resets current back to initial and clears pending", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -190,7 +190,7 @@ describe("useReview", () => {
   });
 
   it("hasUrl matches existing items and pending URLs", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -211,7 +211,7 @@ describe("useReview", () => {
 
   // REQ-009: updateItemField updates recap.summary
   it("updateItemField summary updates current item recap.summary", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -226,7 +226,7 @@ describe("useReview", () => {
 
   // REQ-009: updateItemField sets isDirty = true
   it("updateItemField on any field sets isDirty = true", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -242,7 +242,7 @@ describe("useReview", () => {
 
   // REQ-016: field edit survives reorder
   it("updateItemField edit is preserved after reorder", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -262,7 +262,7 @@ describe("useReview", () => {
 
   // discard reverts field edits
   it("discard reverts field edits back to initial", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -291,7 +291,7 @@ describe("useReview", () => {
         makeItem(3, "https://c.com"),
       ],
     };
-    vi.mocked(getArchive).mockResolvedValue(responseWithRecap);
+    vi.mocked(getAdminArchive).mockResolvedValue(responseWithRecap);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -307,7 +307,7 @@ describe("useReview", () => {
 
   // updateItemField imageUrl
   it("updateItemField imageUrl updates item.imageUrl", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -324,7 +324,7 @@ describe("useReview", () => {
   // --- Promote lifecycle tests ---
 
   it("addPromotePending adds to pendingPromotes array", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -345,7 +345,7 @@ describe("useReview", () => {
   });
 
   it("resolvePromotePending removes from pendingPromotes and adds item to current", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -370,7 +370,7 @@ describe("useReview", () => {
   });
 
   it("failPromotePending removes from pendingPromotes", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });
@@ -391,7 +391,7 @@ describe("useReview", () => {
   });
 
   it("isDirty is true when pendingPromotes is non-empty", async () => {
-    vi.mocked(getArchive).mockResolvedValue(completedResponse);
+    vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {
       wrapper: wrapper(),
     });

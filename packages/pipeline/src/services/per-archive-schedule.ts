@@ -7,6 +7,9 @@ import {
   type ScheduledChannel,
   type UserSettings,
 } from "@newsletter/shared";
+import { createLogger } from "@newsletter/shared/logger";
+
+const logger = createLogger("publish.schedule");
 
 export interface ArchiveForSchedule {
   readonly id: string;
@@ -15,6 +18,7 @@ export interface ArchiveForSchedule {
   readonly emailSentAt: Date | null;
   readonly linkedinPostedAt: Date | null;
   readonly twitterPostedAt: Date | null;
+  readonly isDryRun: boolean;
 }
 
 export type QueueForSchedule = Pick<Queue, "add" | "remove" | "getJob">;
@@ -119,6 +123,13 @@ export async function reconcilePerArchiveJobs(
   settings: UserSettings,
   archive: ArchiveForSchedule,
 ): Promise<ReconcilePerArchiveResult> {
+  if (archive.isDryRun) {
+    logger.info(
+      { event: "publish.skipped_dry_run", runId: archive.id },
+      "dry-run archive — skipping email/linkedin/twitter scheduling",
+    );
+    return { removed: [], enqueued: [] };
+  }
   const now = (deps.now ?? (() => new Date()))();
   const shouldRemoveAll = archive.status !== "completed" || !settings.scheduleEnabled;
   const removed: ScheduledChannel[] = [];

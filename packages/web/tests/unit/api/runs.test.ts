@@ -20,6 +20,7 @@ const summary: RunSummary = {
   status: "completed",
   itemCount: 12,
   reviewed: false,
+  isDryRun: false,
 };
 
 describe("listRuns", () => {
@@ -67,6 +68,26 @@ describe("triggerRunNow", () => {
       }),
     );
     await expect(triggerRunNow()).rejects.toThrow("settings not configured");
+  });
+
+  it("sends body { dryRun: true } when opts.dryRun is true", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ runId: "r2" }), { status: 202 }),
+    );
+    await triggerRunNow({ dryRun: true });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/runs/now");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify({ dryRun: true }));
+  });
+
+  it("omits body when opts is undefined", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ runId: "r3" }), { status: 202 }),
+    );
+    await triggerRunNow();
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.body).toBeUndefined();
   });
 });
 
