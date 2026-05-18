@@ -1,10 +1,7 @@
 import type { ReactElement } from "react";
-import {
-  CLAUDE_PRICING,
-  type LlmStage,
-  type RunCostBreakdown,
-  type StageCost,
-} from "@newsletter/shared";
+import type { LlmStage, RunCostBreakdown, StageCost } from "@newsletter/shared";
+
+const PRICING_LAST_VERIFIED = "2026-05-18";
 import {
   Card,
   CardContent,
@@ -67,16 +64,6 @@ function StageRow({ label, stage }: { label: string; stage: StageCost }): ReactE
   );
 }
 
-function pickLastVerified(costBreakdown: RunCostBreakdown): string | null {
-  for (const stageKey of STAGE_ORDER) {
-    const stage = costBreakdown.stages[stageKey];
-    if (!stage) continue;
-    if (Object.prototype.hasOwnProperty.call(CLAUDE_PRICING, stage.model)) {
-      return CLAUDE_PRICING[stage.model].lastVerified;
-    }
-  }
-  return null;
-}
 
 export interface CostBreakdownCardProps {
   costBreakdown: RunCostBreakdown | null;
@@ -100,8 +87,6 @@ export function CostBreakdownCard({
       </Card>
     );
   }
-
-  const lastVerified = pickLastVerified(costBreakdown);
 
   return (
     <Card data-testid="cost-breakdown-card">
@@ -143,11 +128,9 @@ export function CostBreakdownCard({
             </tr>
           </tbody>
         </table>
-        {lastVerified ? (
-          <p className="text-xs text-muted-foreground mt-4">
-            Rates as of {lastVerified}
-          </p>
-        ) : null}
+        <p className="text-xs text-muted-foreground mt-4">
+          Rates as of {PRICING_LAST_VERIFIED}
+        </p>
       </CardContent>
     </Card>
   );
