@@ -5,6 +5,7 @@ import type { EmailSendsRepo } from "@api/repositories/email-sends.js";
 import type { SubscribersRepo } from "@api/repositories/subscribers.js";
 import type { createLogger } from "@newsletter/shared";
 import type { SesEventType } from "@newsletter/shared";
+import { captureAnalytics } from "@api/lib/posthog.js";
 
 type Logger = ReturnType<typeof createLogger>;
 
@@ -100,6 +101,22 @@ export function createWebhooksRouter(deps: WebhooksRouterDeps): Hono {
     });
 
     deps.logger.info({ messageId, eventType, subscriberId }, "SES event recorded");
+
+    if (inner.notificationType === "Delivery" && subscriberId) {
+      void captureAnalytics({
+        distinctId: subscriberId,
+        event: "email_delivered",
+        properties: { message_id: messageId },
+      });
+    }
+
+    if (inner.notificationType === "Open" && subscriberId) {
+      void captureAnalytics({
+        distinctId: subscriberId,
+        event: "email_opened",
+        properties: { message_id: messageId },
+      });
+    }
 
     if (inner.notificationType === "Bounce" && inner.bounce?.bounceType === "Permanent" && subscriberId) {
       await deps.subscribersRepo.updateStatus(subscriberId, "bounced");

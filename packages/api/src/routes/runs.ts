@@ -33,6 +33,7 @@ import {
   type UserSettingsRepo,
 } from "@api/repositories/user-settings.js";
 import { listRuns } from "@api/services/run-list.js";
+import { captureAnalytics } from "@api/lib/posthog.js";
 
 export interface RunsRouterDeps {
   redis: IORedis;
@@ -75,6 +76,11 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       { event: "run.started", runId, topN: parsed.data.topN, sources },
       "run.started",
     );
+    void captureAnalytics({
+      distinctId: "admin",
+      event: "run_started",
+      properties: { run_id: runId, top_n: parsed.data.topN, sources },
+    });
     return c.json({ runId }, 201);
   });
 
@@ -103,6 +109,11 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       { event: "run.now", runId, topN: settings.topN },
       "run.now",
     );
+    void captureAnalytics({
+      distinctId: "admin",
+      event: "run_now_triggered",
+      properties: { run_id: runId, top_n: settings.topN },
+    });
     return c.json({ runId }, 202);
   });
 
@@ -160,6 +171,11 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
         archiveRepo,
       });
       logger.info({ event: "run.cancelling", runId }, "run.cancelling");
+      void captureAnalytics({
+        distinctId: "admin",
+        event: "run_cancelled",
+        properties: { run_id: runId },
+      });
       return c.json({ run });
     } catch (err) {
       if (err instanceof CancelNotFoundError) {

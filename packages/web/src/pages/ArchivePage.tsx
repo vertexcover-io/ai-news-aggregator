@@ -8,6 +8,7 @@ import { setMeta } from "../lib/meta";
 import { SubscribeInline } from "../components/archive-listing/SubscribeInline";
 import { ScrollToTop } from "../components/ScrollToTop";
 import { readingTimeMinutes } from "../lib/readingTime";
+import { captureBrowserEvent } from "../lib/analytics";
 
 function formatIssueDate(iso: string): string {
   const d = new Date(iso);
@@ -80,6 +81,14 @@ export function ArchivePage(): ReactElement {
       );
     }
   }, [data, topStoryTitle, digestHeadline, digestSummary, shareTitle]);
+
+  useEffect(() => {
+    if (data?.status !== "completed") return;
+    captureBrowserEvent("archive_opened", {
+      run_id: data.id,
+      story_count: items.length,
+    });
+  }, [data?.id, data?.status, items.length]);
 
   if (isLoading) {
     return (
@@ -180,6 +189,7 @@ export function ArchivePage(): ReactElement {
         <ArchiveShareRow
           archiveUrl={typeof window === "undefined" ? "" : window.location.href}
           shareText={shareTitle}
+          runId={data.id}
         />
         {items.length === 0 ? (
           <p className="py-8 text-center font-serif text-xl italic text-[#6b6557]">

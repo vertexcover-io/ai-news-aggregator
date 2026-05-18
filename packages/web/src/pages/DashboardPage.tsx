@@ -6,6 +6,7 @@ import { Newspaper, Play, Settings as SettingsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRunList } from "../hooks/useRunList";
 import { useSettings } from "../hooks/useSettings";
+import { useDeleteArchive } from "../hooks/useDeleteArchive";
 import { cancelRun, triggerRunNow } from "../api/runs";
 import { RunsTable } from "../components/dashboard/RunsTable";
 import { RunsCardList } from "../components/dashboard/RunsCardList";
@@ -16,6 +17,7 @@ export function DashboardPage(): ReactElement {
   const settingsQuery = useSettings();
   const runsQuery = useRunList();
   const queryClient = useQueryClient();
+  const deleteMutation = useDeleteArchive();
   const [pending, setPending] = useState(false);
 
   const runs = runsQuery.data ?? [];
@@ -46,6 +48,10 @@ export function DashboardPage(): ReactElement {
     }
     await queryClient.invalidateQueries({ queryKey: ["runs", { limit: null }] });
     await queryClient.invalidateQueries({ queryKey: ["run", runId] });
+  }
+
+  async function handleDelete(runId: string): Promise<void> {
+    await deleteMutation.mutateAsync(runId);
   }
 
   const runNowDisabled = pending || hasActive;
@@ -105,6 +111,7 @@ export function DashboardPage(): ReactElement {
                 }}
                 retrying={pending}
                 onCancel={handleCancel}
+                onDelete={handleDelete}
               />
             </div>
             <div className="sm:hidden">
@@ -115,6 +122,7 @@ export function DashboardPage(): ReactElement {
                 }}
                 retrying={pending}
                 onCancel={handleCancel}
+                onDelete={handleDelete}
               />
             </div>
           </>

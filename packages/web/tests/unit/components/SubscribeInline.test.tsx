@@ -7,8 +7,14 @@ vi.mock("../../../src/api/subscribe", () => ({
   postSubscribe: vi.fn(),
 }));
 
+vi.mock("../../../src/lib/analytics", () => ({
+  captureBrowserEvent: vi.fn(),
+}));
+
 import { postSubscribe } from "../../../src/api/subscribe";
+import { captureBrowserEvent } from "../../../src/lib/analytics";
 const mockPostSubscribe = vi.mocked(postSubscribe);
+const mockCaptureBrowserEvent = vi.mocked(captureBrowserEvent);
 
 afterEach(() => {
   cleanup();
@@ -70,6 +76,14 @@ describe("SubscribeInline", () => {
     await waitFor(() => {
       expect(mockPostSubscribe).toHaveBeenCalledWith("x@y.com");
     });
+    expect(mockCaptureBrowserEvent).toHaveBeenCalledWith(
+      "subscribe_form_submitted",
+      { source: "hero" },
+    );
+    expect(mockCaptureBrowserEvent).toHaveBeenCalledWith(
+      "subscribe_form_succeeded",
+      { source: "hero" },
+    );
   });
 
   it("shows success state after successful submit", async () => {
@@ -82,6 +96,22 @@ describe("SubscribeInline", () => {
     fireEvent.click(screen.getByRole("button", { name: /subscribe/i }));
     await waitFor(() => {
       expect(screen.getByText(/check your inbox/i)).toBeTruthy();
+    });
+  });
+
+  it("captures a safe error code when submit fails", async () => {
+    mockPostSubscribe.mockResolvedValueOnce({ error: "network_error" });
+    renderInline({ variant: "interlude" });
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: "x@y.com" },
+    });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /subscribe/i }));
+    await waitFor(() => {
+      expect(mockCaptureBrowserEvent).toHaveBeenCalledWith(
+        "subscribe_form_failed",
+        { source: "interlude", error_code: "network_error" },
+      );
     });
   });
 });

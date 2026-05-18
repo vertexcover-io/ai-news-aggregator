@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import type { Queue } from "bullmq";
+import type IORedis from "ioredis";
+import { z } from "zod";
 import {
   createLogger,
   getDb as defaultGetDb,
@@ -40,6 +42,7 @@ import {
   type HydrateAddedPostFn,
   type GenerateRecapFn,
 } from "@api/services/review.js";
+import { captureAnalytics } from "@api/lib/posthog.js";
 
 export interface ArchivesRouterDeps {
   getRawItemsRepo: () => RawItemsRepo;
@@ -49,6 +52,7 @@ export interface ArchivesRouterDeps {
   logger?: ReturnType<typeof createLogger>;
   settingsRepo?: UserSettingsRepo;
   processingQueue?: Pick<Queue, "add" | "remove" | "getJob">;
+  redis?: Pick<IORedis, "del">;
 }
 
 export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
@@ -134,6 +138,11 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         { event: "archive.patched", runId, count: parsed.data.rankedItems.length },
         "archive.patched",
       );
+      void captureAnalytics({
+        distinctId: "admin",
+        event: "archive_reviewed",
+        properties: { run_id: runId, item_count: parsed.data.rankedItems.length },
+      });
       if (deps.settingsRepo && deps.processingQueue) {
         const settings = await deps.settingsRepo.get();
         if (settings !== null) {
@@ -175,6 +184,11 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         { event: "archive.send_enqueued", runId, trigger: "force-send" },
         "archive: email-send job enqueued (force-send)",
       );
+      void captureAnalytics({
+        distinctId: "admin",
+        event: "newsletter_send_enqueued",
+        properties: { run_id: runId, trigger: "force-send" },
+      });
     }
     return c.json({ ok: true }, 202);
   });
@@ -201,6 +215,11 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         { event: "archive.add-post", runId },
         "archive.add-post",
       );
+      void captureAnalytics({
+        distinctId: "admin",
+        event: "post_added_to_archive",
+        properties: { run_id: runId },
+      });
       return c.json(ranked);
     } catch (err) {
       if (err instanceof NotFoundError) {
@@ -270,6 +289,11 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         { event: "archive.promote", runId, rawItemId: parsed.data.rawItemId },
         "archive.promote",
       );
+      void captureAnalytics({
+        distinctId: "admin",
+        event: "item_promoted",
+        properties: { run_id: runId, raw_item_id: parsed.data.rawItemId },
+      });
       return c.json(ranked);
     } catch (err) {
       if (err instanceof NotFoundError) {
@@ -280,6 +304,33 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
       }
       throw err;
     }
+  });
+
+  archives.delete("/:runId", async (c) => {
+    const runId = c.req.param("runId");
+    const parsed = z.uuid().safeParse(runId);
+    if (!parsed.success) {
+      return c.json({ error: "invalid runId" }, 400);
+    }
+    const result = await deps.getArchiveRepo().delete(runId);
+    if (!result.deleted) {
+      return c.json({ error: "not found" }, 404);
+    }
+    if (deps.redis) {
+      try {
+        await deps.redis.del(`run:${runId}`);
+      } catch (err) {
+        logger.warn(
+          { event: "archive.deleted.redis_cleanup_failed", runId, err: String(err) },
+          "redis del failed",
+        );
+      }
+    }
+    logger.info(
+      { event: "archive.deleted", runId, removedEmailSends: result.removedEmailSends },
+      "archive.deleted",
+    );
+    return c.body(null, 204);
   });
 
   return archives;
@@ -335,6 +386,7 @@ function createDefaultArchivesDeps(): ArchivesRouterDeps {
     generateRecapFn: createDefaultGenerateRecapFn(),
     settingsRepo: createUserSettingsRepo(defaultGetDb()),
     processingQueue: getDefaultProcessingQueue(),
+    redis: createRedisConnection(),
   };
 }
 

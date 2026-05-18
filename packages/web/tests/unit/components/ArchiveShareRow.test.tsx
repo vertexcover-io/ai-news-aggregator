@@ -8,6 +8,13 @@ import {
 } from "@testing-library/react";
 import { ArchiveShareRow } from "../../../src/components/ArchiveShareRow";
 
+vi.mock("../../../src/lib/analytics", () => ({
+  captureBrowserEvent: vi.fn(),
+}));
+
+import { captureBrowserEvent } from "../../../src/lib/analytics";
+const mockCaptureBrowserEvent = vi.mocked(captureBrowserEvent);
+
 const ARCHIVE_URL = "https://example.com/archive/abc";
 const SHARE_TEXT = "AI news - May 6, 2026";
 
@@ -78,6 +85,10 @@ describe("ArchiveShareRow", () => {
     });
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(writeText).toHaveBeenCalledWith(ARCHIVE_URL);
+    expect(mockCaptureBrowserEvent).toHaveBeenCalledWith(
+      "archive_share_clicked",
+      { target: "copy", run_id: undefined },
+    );
 
     const live = document.querySelector('[aria-live="polite"]');
     expect(live?.textContent).toBe("Copied");

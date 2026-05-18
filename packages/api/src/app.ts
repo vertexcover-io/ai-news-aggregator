@@ -19,6 +19,7 @@ export interface BuildAppDeps {
   subscribeRouter: Hono;
   webhooksRouter: Hono;
   analyticsRouter: Hono;
+  analyticsConfigRouter: Hono;
 }
 
 const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
@@ -50,6 +51,9 @@ export function buildApp(deps: BuildAppDeps): Hono {
 
   // Public SNS/SES webhook — no auth required.
   app.route("/api/webhooks", deps.webhooksRouter);
+
+  // Public runtime analytics configuration for the browser SDK.
+  app.route("/api/public/analytics-config", deps.analyticsConfigRouter);
 
   // Public archives. /search MUST be mounted before the public router so
   // it does not collide with the GET /:runId catch-all.

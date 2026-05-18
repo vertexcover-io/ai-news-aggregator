@@ -590,6 +590,106 @@ describe("RunArchivesRepo social-marker methods", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// delete() — Phase 1 (REQ-8, REQ-9, REQ-12)
+// ---------------------------------------------------------------------------
+
+interface DeleteSpies {
+  db: Pick<AppDb, "select" | "update" | "execute" | "delete" | "transaction">;
+  transactionSpy: ReturnType<typeof vi.fn>;
+  emailSendsDeleteSpy: ReturnType<typeof vi.fn>;
+  archivesDeleteSpy: ReturnType<typeof vi.fn>;
+  deleteCallOrder: string[];
+}
+
+function makeDeleteCapturingDb(opts: {
+  emailSendsReturned: { id: string }[];
+  archivesReturned: { id: string }[];
+}): DeleteSpies {
+  const deleteCallOrder: string[] = [];
+  const emailSendsDeleteSpy = vi.fn();
+  const archivesDeleteSpy = vi.fn();
+
+  // Whether the next tx.delete() refers to emailSends or runArchives is
+  // determined by the order of calls inside the implementation (per the
+  // spec: emailSends first, then runArchives).
+  let nextDeleteIndex = 0;
+
+  function buildTx(): { delete: ReturnType<typeof vi.fn> } {
+    const txDelete = vi.fn(() => {
+      const callIdx = nextDeleteIndex++;
+      const isEmailSends = callIdx === 0;
+      deleteCallOrder.push(isEmailSends ? "emailSends" : "runArchives");
+      const spy = isEmailSends ? emailSendsDeleteSpy : archivesDeleteSpy;
+      spy();
+      const returning = vi.fn().mockResolvedValue(
+        isEmailSends ? opts.emailSendsReturned : opts.archivesReturned,
+      );
+      const where = vi.fn(() => ({ returning }));
+      return { where };
+    });
+    return { delete: txDelete };
+  }
+
+  const transactionSpy = vi.fn(
+    async <T>(cb: (tx: { delete: ReturnType<typeof vi.fn> }) => Promise<T>): Promise<T> => {
+      nextDeleteIndex = 0;
+      return cb(buildTx());
+    },
+  );
+
+  const db = {
+    select: vi.fn(),
+    update: vi.fn(),
+    execute: vi.fn(),
+    delete: vi.fn(),
+    transaction: transactionSpy,
+  } as unknown as Pick<AppDb, "select" | "update" | "execute" | "delete" | "transaction">;
+
+  return {
+    db,
+    transactionSpy,
+    emailSendsDeleteSpy,
+    archivesDeleteSpy,
+    deleteCallOrder,
+  };
+}
+
+describe("RunArchivesRepo.delete (REQ-8, REQ-9, REQ-12)", () => {
+  it("returns { deleted: true, removedEmailSends: N } and deletes email_sends before run_archives", async () => {
+    const spies = makeDeleteCapturingDb({
+      emailSendsReturned: [{ id: "es-1" }, { id: "es-2" }],
+      archivesReturned: [{ id: "00000000-0000-0000-0000-000000000001" }],
+    });
+    const repo = createRunArchivesRepo(spies.db);
+    const result = await repo.delete("00000000-0000-0000-0000-000000000001");
+    expect(result).toEqual({ deleted: true, removedEmailSends: 2 });
+    expect(spies.deleteCallOrder).toEqual(["emailSends", "runArchives"]);
+    expect(spies.emailSendsDeleteSpy).toHaveBeenCalledOnce();
+    expect(spies.archivesDeleteSpy).toHaveBeenCalledOnce();
+  });
+
+  it("returns { deleted: false, removedEmailSends: 0 } when the archive does not exist (REQ-9)", async () => {
+    const spies = makeDeleteCapturingDb({
+      emailSendsReturned: [],
+      archivesReturned: [],
+    });
+    const repo = createRunArchivesRepo(spies.db);
+    const result = await repo.delete("00000000-0000-0000-0000-000000000099");
+    expect(result).toEqual({ deleted: false, removedEmailSends: 0 });
+  });
+
+  it("performs all deletes inside a single db.transaction call", async () => {
+    const spies = makeDeleteCapturingDb({
+      emailSendsReturned: [{ id: "es-1" }],
+      archivesReturned: [{ id: "00000000-0000-0000-0000-000000000001" }],
+    });
+    const repo = createRunArchivesRepo(spies.db);
+    await repo.delete("00000000-0000-0000-0000-000000000001");
+    expect(spies.transactionSpy).toHaveBeenCalledOnce();
+  });
+});
+
 describe("findMostRecentReviewed", () => {
   it("returns null when no reviewed archives exist", async () => {
     const db = makeFakeDbForMostRecent([]);

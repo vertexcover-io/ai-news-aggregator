@@ -17,6 +17,9 @@ export interface UserSettings {
   webConfig: RunSubmitWebConfig | null;
   twitterEnabled: boolean;
   twitterConfig: RunSubmitTwitterConfig | null;
+  posthogEnabled: boolean;
+  posthogProjectToken: string | null;
+  posthogHost: string | null;
   /** @deprecated Use pipelineTime. Kept as a read-only compatibility alias. */
   scheduleTime: string;
   pipelineTime: string;

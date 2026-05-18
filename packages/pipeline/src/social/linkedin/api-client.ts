@@ -1,10 +1,13 @@
 import type {
   LinkedInApiClient,
+  LinkedInCreateCommentInput,
+  LinkedInCreateCommentResult,
   LinkedInCreatePostInput,
   LinkedInCreatePostResult,
 } from "./types.js";
 
-const ENDPOINT = "https://api.linkedin.com/rest/posts";
+const POSTS_ENDPOINT = "https://api.linkedin.com/rest/posts";
+const SOCIAL_ACTIONS_BASE = "https://api.linkedin.com/rest/socialActions";
 
 interface LinkedInInputError {
   code?: string;
@@ -52,7 +55,7 @@ export function createLinkedInApiClient(
       };
 
       try {
-        const response = await fetchFn(ENDPOINT, {
+        const response = await fetchFn(POSTS_ENDPOINT, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${input.accessToken}`,
@@ -80,6 +83,39 @@ export function createLinkedInApiClient(
           return { ...result, errorCode };
         }
         return result;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { ok: false, status: 0, body: message };
+      }
+    },
+
+    async createComment(
+      input: LinkedInCreateCommentInput,
+    ): Promise<LinkedInCreateCommentResult> {
+      const body = {
+        actor: input.personUrn,
+        object: input.postUrn,
+        message: { text: input.text },
+      };
+
+      const url = `${SOCIAL_ACTIONS_BASE}/${encodeURIComponent(input.postUrn)}/comments`;
+
+      try {
+        const response = await fetchFn(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${input.accessToken}`,
+            "LinkedIn-Version": input.apiVersion,
+            "X-Restli-Protocol-Version": "2.0.0",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+
+        if (response.status === 201) return { ok: true };
+
+        const rawBody = await response.text();
+        return { ok: false, status: response.status, body: rawBody };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { ok: false, status: 0, body: message };

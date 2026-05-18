@@ -126,7 +126,6 @@ export function createTwitterNotifier(
           twitterSummary: archive.twitterSummary,
           twitterIsPremium: config.twitterIsPremium === true,
           stories,
-          archiveUrl,
         });
         if (composed === null) {
           logger.warn(
@@ -174,18 +173,45 @@ export function createTwitterNotifier(
           return { status: "failed", reason };
         }
 
+        const tweetIds: string[] = [headResult.tweetId];
+        const replyResult = await apiClient.createPost({
+          text: archiveUrl,
+          replyToTweetId: headResult.tweetId,
+        });
+        if (replyResult.ok) {
+          tweetIds.push(replyResult.tweetId);
+          logger.info(
+            {
+              event: "social.twitter.reply_sent",
+              runId,
+              replyId: replyResult.tweetId,
+            },
+            "twitter link reply created",
+          );
+        } else {
+          logger.warn(
+            {
+              event: "social.twitter.reply_failed",
+              runId,
+              status: replyResult.status,
+              body: truncate(replyResult.body),
+            },
+            "twitter post created but link reply failed",
+          );
+        }
+
         await archives.markTwitterPosted(
           runId,
           now(),
           headResult.tweetUrl,
-          [headResult.tweetId],
+          tweetIds,
         );
         logger.info(
           {
             event: "social.twitter.sent",
             runId,
             permalink: headResult.tweetUrl,
-            tweetCount: 1,
+            tweetCount: tweetIds.length,
           },
           "twitter post created",
         );

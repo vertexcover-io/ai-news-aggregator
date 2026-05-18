@@ -94,6 +94,16 @@ const hhmmSchema = z
   .string()
   .regex(HH_MM_RE, { message: "time must be HH:MM (24h)" });
 
+const nullableTrimmedStringSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+  z.string().trim().min(1).nullable(),
+);
+
+const nullableUrlSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+  z.url().nullable(),
+);
+
 function isValidIanaTimezone(tz: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: tz });
@@ -113,6 +123,9 @@ const userSettingsCommonShape = {
   webEnabled: z.boolean(),
   webConfig: webConfigSchema.nullable(),
   twitterEnabled: z.boolean(),
+  posthogEnabled: z.boolean().default(false),
+  posthogProjectToken: nullableTrimmedStringSchema.default(null),
+  posthogHost: nullableUrlSchema.default(null),
   pipelineTime: hhmmSchema.optional(),
   scheduleTime: hhmmSchema.optional(),
   emailTime: hhmmSchema.optional(),
@@ -255,6 +268,9 @@ export const userSettingsUpsertSchema = z
   .pipe(
     z.object({
       ...userSettingsCommonShape,
+      posthogEnabled: z.boolean(),
+      posthogProjectToken: z.string().nullable(),
+      posthogHost: z.string().nullable(),
       pipelineTime: hhmmSchema,
       scheduleTime: hhmmSchema.optional(),
       emailTime: hhmmSchema,

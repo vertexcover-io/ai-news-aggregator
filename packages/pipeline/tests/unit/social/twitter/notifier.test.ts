@@ -175,31 +175,44 @@ describe("createTwitterNotifier", () => {
       },
     });
 
+    // Default mock returns tweetId "999" for the second (reply) call.
+    deps.apiClient.createPost.mockResolvedValueOnce({
+      ok: true,
+      tweetId: "1234",
+      tweetUrl: "https://x.com/i/status/1234",
+    });
+    deps.apiClient.createPost.mockResolvedValueOnce({
+      ok: true,
+      tweetId: "5678",
+      tweetUrl: "https://x.com/i/status/5678",
+    });
+
     const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
 
     expect(result).toEqual({
       status: "posted",
       permalink: "https://x.com/i/status/1234",
     });
-    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(1);
+    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(2);
     const headCall = deps.apiClient.createPost.mock.calls[0][0];
     expect(headCall.text).toContain("Twitter-native summary for the feed.");
     expect(headCall.text).not.toContain("Daily AI digest headline");
     expect(headCall.text).not.toContain("Hook line for social.");
+    // Body should end with the teaser pointing at the reply, but never embed the URL.
     expect(headCall.text).toContain("Full breakdown ↓");
-    expect(headCall.text).toContain(
-      `https://news.example.com/archive/${RUN_ID}`,
-    );
+    expect(headCall.text).not.toContain("https://");
     expect(headCall.text).not.toContain("→ ");
-    expect(headCall.text.indexOf("Twitter-native summary for the feed.")).toBeLessThan(
-      headCall.text.indexOf("Full breakdown ↓"),
-    );
     expect(headCall.replyToTweetId).toBeUndefined();
+
+    const replyCall = deps.apiClient.createPost.mock.calls[1][0];
+    expect(replyCall.text).toBe(`https://news.example.com/archive/${RUN_ID}`);
+    expect(replyCall.replyToTweetId).toBe("1234");
+
     expect(deps.archives.markTwitterPosted).toHaveBeenCalledWith(
       RUN_ID,
       NOW,
       "https://x.com/i/status/1234",
-      ["1234"],
+      ["1234", "5678"],
     );
   });
 
@@ -254,7 +267,7 @@ describe("createTwitterNotifier", () => {
 
   it("non-premium over-limit summary records failure and does not post", async () => {
     const { notifier, deps } = build({
-      archive: makeArchive({ twitterSummary: "x".repeat(260) }),
+      archive: makeArchive({ twitterSummary: "x".repeat(281) }),
     });
 
     const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
@@ -375,6 +388,61 @@ describe("createTwitterNotifier", () => {
       '403:{"title":"Forbidden"}',
     );
     expect(deps.archives.markTwitterPosted).not.toHaveBeenCalled();
+  });
+
+  it("reply tweet failure: head still treated as posted, no recordSocialFailure, only head tweetId stored", async () => {
+    const { notifier, deps } = build({
+      archive: makeArchive(),
+    });
+    deps.apiClient.createPost
+      .mockResolvedValueOnce({
+        ok: true,
+        tweetId: "head-1",
+        tweetUrl: "https://x.com/i/status/head-1",
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        body: "rate limited",
+      });
+
+    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
+
+    expect(result).toEqual({
+      status: "posted",
+      permalink: "https://x.com/i/status/head-1",
+    });
+    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(2);
+    expect(deps.archives.recordSocialFailure).not.toHaveBeenCalled();
+    expect(deps.archives.markTwitterPosted).toHaveBeenCalledWith(
+      RUN_ID,
+      NOW,
+      "https://x.com/i/status/head-1",
+      ["head-1"],
+    );
+  });
+
+  it("reply tweet contains only the archive URL and replies to the head tweet", async () => {
+    const { notifier, deps } = build({
+      archive: makeArchive(),
+    });
+    deps.apiClient.createPost
+      .mockResolvedValueOnce({
+        ok: true,
+        tweetId: "head-2",
+        tweetUrl: "https://x.com/i/status/head-2",
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tweetId: "reply-2",
+        tweetUrl: "https://x.com/i/status/reply-2",
+      });
+
+    await notifier.notifyArchiveReady({ runId: RUN_ID });
+
+    const replyCall = deps.apiClient.createPost.mock.calls[1][0];
+    expect(replyCall.text).toBe(`https://news.example.com/archive/${RUN_ID}`);
+    expect(replyCall.replyToTweetId).toBe("head-2");
   });
 
   it("non-auth error (402) → no retry, recorded as failure as before", async () => {

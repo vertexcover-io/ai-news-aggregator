@@ -31,6 +31,7 @@ import {
   TwitterHandleResolutionError,
   type TwitterHandleResolverDeps,
 } from "@api/services/twitter-handle-resolver.js";
+import { captureAnalytics, refreshPostHogConfig } from "@api/lib/posthog.js";
 
 type RettiwtFactory = TwitterHandleResolverDeps["rettiwtFactory"];
 
@@ -63,7 +64,7 @@ async function resolveTwitterConfig(
   const unresolvedHandles: string[] = [];
   const placeholderIndex: number[] = [];
 
-  config.users.forEach((u, idx) => {
+  config.users.forEach((u: NonNullable<UserSettingsUpsertBody["twitterConfig"]>["users"][number], idx: number) => {
     if (u.userId !== undefined) {
       resolved[idx] = { handle: u.handle, userId: u.userId };
     } else {
@@ -189,6 +190,9 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       webConfig: parsed.data.webConfig,
       twitterEnabled: parsed.data.twitterEnabled,
       twitterConfig: resolvedTwitterConfig,
+      posthogEnabled: parsed.data.posthogEnabled,
+      posthogProjectToken: parsed.data.posthogProjectToken,
+      posthogHost: parsed.data.posthogHost,
       scheduleTime: parsed.data.pipelineTime,
       pipelineTime: parsed.data.pipelineTime,
       emailTime: parsed.data.emailTime,
@@ -203,6 +207,7 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
     };
 
     const saved = await deps.getSettingsRepo().upsert(upsertInput);
+    refreshPostHogConfig(saved);
     await reconcilePipelineSchedule(deps.processingQueue, saved);
     if (deps.getArchiveRepo !== undefined) {
       const archives = await deps.getArchiveRepo().findRecentUnpublished({ withinDays: 2 });
@@ -224,6 +229,16 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       },
       "settings.saved",
     );
+    void captureAnalytics({
+      distinctId: "admin",
+      event: "settings_updated",
+      properties: {
+        schedule_enabled: saved.scheduleEnabled,
+        schedule_time: saved.pipelineTime,
+        schedule_timezone: saved.scheduleTimezone,
+        top_n: saved.topN,
+      },
+    });
     return c.json(saved);
   });
 

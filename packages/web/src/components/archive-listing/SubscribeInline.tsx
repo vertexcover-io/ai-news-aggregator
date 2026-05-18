@@ -8,6 +8,7 @@ import { Link } from "react-router-dom";
 import { postSubscribe } from "../../api/subscribe";
 import { useIsSubscribed } from "../../hooks/useIsSubscribed";
 import { markSubscribed } from "../../lib/subscriptionStorage";
+import { captureBrowserEvent } from "../../lib/analytics";
 
 type Variant = "hero" | "interlude";
 type State = "idle" | "loading" | "success" | "error";
@@ -28,10 +29,16 @@ export function SubscribeInline({ variant = "hero" }: Props): ReactElement | nul
     e.preventDefault();
     if (!email || !agreed || state === "loading") return;
     setState("loading");
+    captureBrowserEvent("subscribe_form_submitted", { source: variant });
     void postSubscribe(email).then((result) => {
       if ("error" in result) {
+        captureBrowserEvent("subscribe_form_failed", {
+          source: variant,
+          error_code: result.error,
+        });
         setState("error");
       } else {
+        captureBrowserEvent("subscribe_form_succeeded", { source: variant });
         setState("success");
         markSubscribed();
       }
