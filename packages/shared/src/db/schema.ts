@@ -4,6 +4,7 @@ import type {
   RawItemEngagement,
   RawItemMetadata,
   RankedItemRef,
+  RunCostBreakdown,
   RunSourceTelemetry,
   RunSubmitHnConfig,
   RunSubmitRedditConfig,
@@ -61,6 +62,7 @@ export const runArchives = pgTable("run_archives", {
   emailSentAt: timestamp("email_sent_at", { withTimezone: true }),
   notificationState: jsonb("notification_state").$type<NotificationState | null>(),
   socialMetadata: jsonb("social_metadata").$type<SocialMetadata | null>(),
+  costBreakdown: jsonb("cost_breakdown").$type<RunCostBreakdown | null>(),
 });
 
 export const socialTokens = pgTable("social_tokens", {
