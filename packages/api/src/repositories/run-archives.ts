@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, ilike, inArray, lte, notInArray, sql } from "drizzle-orm";
-import { rawItems, runArchives } from "@newsletter/shared/db";
+import { emailSends, rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import {
   serializeArchiveSearchText,
@@ -91,10 +91,11 @@ export interface RunArchivesRepo {
     platform: "linkedin" | "twitter",
     error: string,
   ): Promise<void>;
+  delete(id: string): Promise<{ deleted: boolean; removedEmailSends: number }>;
 }
 
 export function createRunArchivesRepo(
-  db: Pick<AppDb, "select" | "update" | "execute">,
+  db: Pick<AppDb, "select" | "update" | "execute" | "delete" | "transaction">,
 ): RunArchivesRepo {
   function toPoolItem(row: {
     id: number;
@@ -416,6 +417,24 @@ export function createRunArchivesRepo(
         .offset(opts.offset);
 
       return { items: rows.map(toPoolItem), total: countRow.count };
+    },
+    async delete(
+      id: string,
+    ): Promise<{ deleted: boolean; removedEmailSends: number }> {
+      return db.transaction(async (tx) => {
+        const removed = await tx
+          .delete(emailSends)
+          .where(eq(emailSends.runArchiveId, id))
+          .returning({ id: emailSends.id });
+        const archiveRows = await tx
+          .delete(runArchives)
+          .where(eq(runArchives.id, id))
+          .returning({ id: runArchives.id });
+        return {
+          deleted: archiveRows.length === 1,
+          removedEmailSends: removed.length,
+        };
+      });
     },
   };
 }

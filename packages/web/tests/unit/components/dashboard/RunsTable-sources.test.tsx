@@ -43,6 +43,7 @@ describe("RunsTable Sources column", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </Wrapper>,
     );
@@ -68,6 +69,7 @@ describe("RunsTable Sources column", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </Wrapper>,
     );
@@ -84,6 +86,7 @@ describe("RunsTable Sources column", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </Wrapper>,
     );
@@ -101,6 +104,7 @@ describe("RunsTable Sources column", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </Wrapper>,
     );
@@ -116,6 +120,7 @@ describe("RunsTable Sources column", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </Wrapper>,
     );
@@ -131,6 +136,7 @@ describe("RunsTable Sources column", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </Wrapper>,
     );
@@ -148,6 +154,7 @@ describe("RunsTable Sources column", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </Wrapper>,
     );
@@ -165,6 +172,7 @@ describe("RunsTable Sources column", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </Wrapper>,
     );

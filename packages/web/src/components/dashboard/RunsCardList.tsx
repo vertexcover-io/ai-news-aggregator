@@ -1,7 +1,7 @@
 import { useState, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 import type { RunSummary } from "@newsletter/shared";
-import { ArrowRight, ExternalLink, RotateCw } from "lucide-react";
+import { ArrowRight, ExternalLink, RotateCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +19,7 @@ interface RunsCardListProps {
   onRetry: () => void;
   retrying: boolean;
   onCancel: (runId: string) => Promise<void>;
+  onDelete: (runId: string) => Promise<void>;
 }
 
 type DerivedStatus =
@@ -158,9 +159,12 @@ export function RunsCardList({
   onRetry,
   retrying,
   onCancel,
+  onDelete,
 }: RunsCardListProps): ReactElement {
   const [confirmRunId, setConfirmRunId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [deleteRunId, setDeleteRunId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   if (runs.length === 0) {
     return (
@@ -181,8 +185,63 @@ export function RunsCardList({
     }
   }
 
+  async function handleConfirmDelete(): Promise<void> {
+    if (deleteRunId === null) return;
+    setDeleting(true);
+    try {
+      await onDelete(deleteRunId);
+    } finally {
+      setDeleting(false);
+      setDeleteRunId(null);
+    }
+  }
+
+  function showDeleteFor(status: DerivedStatus): boolean {
+    return (
+      status === "ready-to-review" ||
+      status === "reviewed" ||
+      status === "failed" ||
+      status === "cancelled"
+    );
+  }
+
   return (
     <>
+      <Dialog
+        open={deleteRunId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteRunId(null);
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Delete this newsletter?</DialogTitle>
+            <DialogDescription>
+              This permanently removes the archive and all delivery records.
+              This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setDeleteRunId(null); }}
+              disabled={deleting}
+            >
+              Keep it
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                void handleConfirmDelete();
+              }}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting…" : "Delete newsletter"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={confirmRunId !== null}
         onOpenChange={(open) => {
@@ -271,6 +330,17 @@ export function RunsCardList({
                   retrying={retrying}
                   onCancelClick={() => { setConfirmRunId(run.runId); }}
                 />
+                {showDeleteFor(derived) ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Delete newsletter"
+                    onClick={() => { setDeleteRunId(run.runId); }}
+                    className="min-h-[44px] min-w-[44px]"
+                  >
+                    <Trash2 />
+                  </Button>
+                ) : null}
               </div>
             </li>
           );

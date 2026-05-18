@@ -51,6 +51,16 @@ export async function searchArchives(
   return (await res.json()) as ArchiveListResponse;
 }
 
+export async function deleteArchive(runId: string): Promise<void> {
+  const res = await apiFetchAdmin(`/api/admin/archives/${runId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(data.error ?? `Failed to delete archive: ${String(res.status)}`);
+  }
+}
+
 export async function patchArchive(
   runId: string,
   body: PatchArchiveBody,
