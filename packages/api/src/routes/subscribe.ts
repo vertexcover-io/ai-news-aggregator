@@ -16,6 +16,9 @@ export interface SubscribeRouterDeps {
   logger?: ReturnType<typeof createLogger>;
 }
 
+const PG_UNIQUE_VIOLATION = "23505";
+const CONFIRM_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
 function maskEmail(email: string): string {
   const [local, domain] = email.split("@");
   if (!domain) return "***";
@@ -68,7 +71,7 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       });
     } catch (err) {
       const code = (err as { code?: unknown }).code;
-      if (code === "23505") {
+      if (code === PG_UNIQUE_VIOLATION) {
         logger.info(
           { event: "subscribe.race_won", email: masked },
           "subscribe: concurrent insert lost the race, returning idempotent ok",
@@ -91,7 +94,7 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       event: "subscriber_created",
     });
 
-    const confirmTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const confirmTokenExpiresAt = new Date(Date.now() + CONFIRM_TOKEN_TTL_MS);
     const confirmToken = issueSubscriberToken(
       subscriber.id,
       "confirm",

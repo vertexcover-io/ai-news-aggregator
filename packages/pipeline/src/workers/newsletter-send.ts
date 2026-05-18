@@ -12,6 +12,7 @@ import type { SocialResult } from "@pipeline/social/types.js";
 const logger = createLogger("worker:newsletter-send");
 
 const BATCH_SIZE = 50;
+const UNSUB_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 const SEND_RATE_PER_SECOND = 5;
 
 export interface SendPacer {
@@ -137,7 +138,7 @@ export interface NewsletterSendJobLike {
 }
 
 function issueUnsubToken(subscriberId: string, secret: string): string {
-  const expires = Date.now() + 365 * 24 * 60 * 60 * 1000;
+  const expires = Date.now() + UNSUB_TOKEN_TTL_MS;
   const payload = `${subscriberId}:unsub:${expires}`;
   const mac = createHmac("sha256", secret).update(payload).digest("hex");
   return Buffer.from(payload).toString("base64url") + "." + mac;
@@ -409,6 +410,7 @@ export async function handleNewsletterSendJob(
           twitter: toSocialPostReport(twitterResult),
         },
       });
+    // intentional: Slack is optional, failures must not block the send flow
     } catch (err) {
       logger.error(
         {

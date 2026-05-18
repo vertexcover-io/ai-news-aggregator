@@ -9,6 +9,7 @@ import type { RawItemsRepo, RawItemRow } from "@pipeline/repositories/raw-items.
 const logger = createLogger("worker:email-send");
 
 const BATCH_SIZE = 50;
+const UNSUB_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 const SEND_RATE_PER_SECOND = 5;
 
 export interface SendPacer {
@@ -106,7 +107,7 @@ export interface EmailSendJobLike {
 }
 
 function issueUnsubToken(subscriberId: string, secret: string): string {
-  const expires = Date.now() + 365 * 24 * 60 * 60 * 1000;
+  const expires = Date.now() + UNSUB_TOKEN_TTL_MS;
   const payload = `${subscriberId}:unsub:${expires}`;
   const mac = createHmac("sha256", secret).update(payload).digest("hex");
   return Buffer.from(payload).toString("base64url") + "." + mac;
@@ -370,6 +371,7 @@ export async function handleEmailSendJob(
           failureReasons: failureReasons.length > 0 ? failureReasons : undefined,
         },
       });
+    // intentional: Slack is optional, failures must not block the send flow
     } catch (err) {
       logger.error(
         {
