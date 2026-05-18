@@ -16,7 +16,7 @@ export function SaveBar({
   lastSavedLabel,
 }: SaveBarProps): ReactElement {
   return (
-    <div className="sticky bottom-0 -mx-8 flex items-center justify-between gap-4 border-t bg-white px-8 py-4">
+    <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-4 border-t bg-white px-4 py-4 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         {lastSavedLabel !== undefined && (
           <>

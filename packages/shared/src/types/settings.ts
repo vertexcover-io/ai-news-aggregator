@@ -20,9 +20,18 @@ export interface UserSettings {
   posthogEnabled: boolean;
   posthogProjectToken: string | null;
   posthogHost: string | null;
+  /** @deprecated Use pipelineTime. Kept as a read-only compatibility alias. */
   scheduleTime: string;
+  pipelineTime: string;
+  emailTime: string;
+  linkedinTime: string;
+  twitterTime: string;
   scheduleTimezone: string;
   scheduleEnabled: boolean;
+  emailEnabled: boolean;
+  linkedinEnabled: boolean;
+  twitterPostEnabled: boolean;
+  autoReview: boolean;
   updatedAt: string;
 }
 

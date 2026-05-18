@@ -9,6 +9,7 @@
     "./redis": "./dist/redis.js",
     "./types": "./dist/types/index.js",
     "./constants": "./dist/constants/index.js",
+    "./scheduling": "./dist/scheduling/index.js",
     "./utils": "./dist/utils/index.js",
     "./logger": "./dist/logger.js"
   },

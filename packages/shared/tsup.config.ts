@@ -10,6 +10,7 @@ export default defineConfig((options) => ({
     "src/run-start.ts",
     "src/send-newsletter.ts",
     "src/constants/index.ts",
+    "src/scheduling/index.ts",
     "src/utils/index.ts",
     "src/logger.ts",
     "src/slack/index.ts",

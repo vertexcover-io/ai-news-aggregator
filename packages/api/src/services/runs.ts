@@ -46,8 +46,16 @@ export async function createRun(
     posthogProjectToken: null,
     posthogHost: null,
     scheduleTime: "00:00",
+    pipelineTime: "00:00",
+    emailTime: "00:30",
+    linkedinTime: "00:30",
+    twitterTime: "00:30",
     scheduleTimezone: "UTC",
     scheduleEnabled: false,
+    emailEnabled: true,
+    linkedinEnabled: true,
+    twitterPostEnabled: true,
+    autoReview: false,
     updatedAt: new Date().toISOString(),
   };
 

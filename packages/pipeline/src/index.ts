@@ -2,15 +2,10 @@ import { config } from "dotenv";
 config({ path: "../../.env" });
 import { Configuration } from "crawlee";
 import { assertChromiumInstalled } from "@pipeline/lib/boot.js";
-import { Worker, type Job } from "bullmq";
-import type { NewsletterSendJobPayload } from "@newsletter/shared";
+import type { Job } from "bullmq";
 import type { CollectionJobLike } from "@pipeline/workers/collection.js";
 import { collectionWorker } from "@pipeline/workers/collection.js";
-import {
-  createProcessingWorker,
-  buildDefaultNewsletterSendDeps,
-} from "@pipeline/workers/processing.js";
-import { handleNewsletterSendJob } from "@pipeline/workers/newsletter-send.js";
+import { createProcessingWorker } from "@pipeline/workers/processing.js";
 import { createLogger } from "@newsletter/shared/logger";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { createRunStateService } from "@pipeline/services/run-state.js";
@@ -51,22 +46,6 @@ const processingConnection = createRedisConnection();
 const runState = createRunStateService(processingConnection);
 const processingWorker = createProcessingWorker({ connection: processingConnection });
 
-const newsletterSendConnection = createRedisConnection();
-let resolvedNewsletterSendDeps: ReturnType<typeof buildDefaultNewsletterSendDeps> | undefined;
-const newsletterSendWorker = new Worker<NewsletterSendJobPayload, unknown>(
-  "send-newsletter",
-  async (job: Job<NewsletterSendJobPayload>) => {
-    resolvedNewsletterSendDeps ??= buildDefaultNewsletterSendDeps();
-    await handleNewsletterSendJob(resolvedNewsletterSendDeps, {
-      name: job.name,
-      id: job.id,
-      data: job.data,
-    });
-    return undefined;
-  },
-  { connection: newsletterSendConnection },
-);
-
 const shutdown = async (): Promise<void> => {
   logger.info({ queue: "collection" }, "worker shutting down");
   await collectionWorker.close();
@@ -74,9 +53,6 @@ const shutdown = async (): Promise<void> => {
   logger.info({ queue: "processing" }, "worker shutting down");
   await processingWorker.close();
   logger.info({ queue: "processing" }, "worker shut down");
-  logger.info({ queue: "send-newsletter" }, "worker shutting down");
-  await newsletterSendWorker.close();
-  logger.info({ queue: "send-newsletter" }, "worker shut down");
   process.exit(0);
 };
 
@@ -121,24 +97,6 @@ processingWorker.on("failed", (job: Job | undefined, err: Error) => {
       });
     }
   }
-});
-
-newsletterSendWorker.on("ready", () => {
-  logger.info({ queue: "send-newsletter" }, "worker ready");
-});
-
-newsletterSendWorker.on("completed", (job: Job<NewsletterSendJobPayload>) => {
-  logger.info(
-    { jobId: job.id, jobName: job.name, runId: job.data.runId },
-    "send-newsletter completed",
-  );
-});
-
-newsletterSendWorker.on("failed", (job: Job<NewsletterSendJobPayload> | undefined, err: Error) => {
-  logger.error(
-    { jobId: job?.id, jobName: job?.name, runId: job?.data.runId, error: err.message },
-    "send-newsletter failed",
-  );
 });
 
 processingWorker.on("stalled", (jobId: string) => {

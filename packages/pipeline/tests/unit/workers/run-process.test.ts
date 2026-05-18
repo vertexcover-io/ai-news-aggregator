@@ -1302,134 +1302,204 @@ describe("run-process worker", () => {
     expect(payload.error).toBe("pg connection lost");
   });
 
-  // BUG-FIX: auto-reviewed runs must enqueue a send-newsletter job
-  it("enqueues send-newsletter when AUTO_REVIEW=true and archive write succeeds", async () => {
-    const prevAutoReview = process.env.AUTO_REVIEW;
-    process.env.AUTO_REVIEW = "true";
-    try {
-      const runStateMock = makeMockRunState(makeRunState());
-      const candidates = [makeCandidate(1)];
-      const loadFn = vi.fn(
-        (): Promise<Candidate[]> => Promise.resolve(candidates),
-      );
-      const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
-      const rankFn = vi.fn(
-        (): Promise<RankResult> =>
+  // BUG-FIX: auto-reviewed runs must reconcile scheduled publish jobs
+  it("reconciles publish jobs when autoReview=true and archive write succeeds", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+          candidateCount: 1,
+          rankedCount: 1,
+        }),
+    );
+    const archiveUpsert = vi.fn(() => Promise.resolve());
+    const processingQueueAdd = vi.fn(() => Promise.resolve({ id: "email-send:run-1" }));
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+      archiveRepo: {
+        upsert: archiveUpsert,
+        findById: vi.fn(() =>
           Promise.resolve({
+            id: "run-1",
+            status: "completed",
             rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
-            candidateCount: 1,
-            rankedCount: 1,
+            topN: 3,
+            reviewed: true,
+            completedAt: new Date("2026-04-07T10:00:00.000Z"),
+            createdAt: new Date("2026-04-07T10:00:00.000Z"),
+            startedAt: new Date("2026-04-07T10:00:00.000Z"),
+            sourceTypes: ["hn"],
+            emailSentAt: null,
+            linkedinPostedAt: null,
+            twitterPostedAt: null,
+            notificationState: {},
           }),
-      );
-      const archiveUpsert = vi.fn(() => Promise.resolve());
-      const sendQueueAdd = vi.fn(() => Promise.resolve({ id: "send-run-1" }));
-      const worker = createRunProcessWorker({
-        runState: runStateMock.service,
-        loadFn,
-        shortlistFn,
-        rankFn,
-        archiveRepo: { upsert: archiveUpsert },
-        sendQueue: { add: sendQueueAdd } as unknown as Parameters<
-          typeof createRunProcessWorker
-        >[0]["sendQueue"],
-      });
+        ),
+      },
+      userSettingsRepo: {
+        get: vi.fn(() =>
+          Promise.resolve({
+            id: "settings-1",
+            topN: 3,
+            halfLifeHours: null,
+            hnEnabled: true,
+            hnConfig: null,
+            redditEnabled: false,
+            redditConfig: null,
+            webEnabled: false,
+            webConfig: null,
+            twitterEnabled: false,
+            twitterConfig: null,
+            scheduleTime: "07:00",
+            pipelineTime: "07:00",
+            emailTime: "07:30",
+            linkedinTime: "08:00",
+            twitterTime: "08:30",
+            scheduleTimezone: "UTC",
+            scheduleEnabled: true,
+            emailEnabled: true,
+            linkedinEnabled: true,
+            twitterPostEnabled: true,
+            autoReview: true,
+            updatedAt: new Date("2026-04-07T10:00:00.000Z"),
+          }),
+        ),
+        upsert: vi.fn(),
+      },
+      processingQueue: {
+        add: processingQueueAdd,
+        remove: vi.fn(() => Promise.resolve(1)),
+        getJob: vi.fn(() => Promise.resolve(null)),
+      } as unknown as Parameters<
+        typeof createRunProcessWorker
+      >[0]["processingQueue"],
+    });
 
-      await worker.handler(baseJob);
+    await worker.handler(baseJob);
 
-      expect(sendQueueAdd).toHaveBeenCalledOnce();
-      const [name, payload, opts] = sendQueueAdd.mock.calls[0] as [
-        string,
-        { runId: string; subscriberIds: string },
-        { jobId: string },
-      ];
-      expect(name).toBe("send-newsletter");
-      expect(payload).toEqual({ runId: "run-1", subscriberIds: "all" });
-      expect(opts.jobId).toBe("send-run-1");
-    } finally {
-      if (prevAutoReview === undefined) delete process.env.AUTO_REVIEW;
-      else process.env.AUTO_REVIEW = prevAutoReview;
-    }
+    expect(archiveUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ reviewed: true }),
+    );
+    expect(processingQueueAdd).toHaveBeenCalledWith(
+      "email-send",
+      { runId: "run-1" },
+      expect.objectContaining({ jobId: "email-send:run-1" }),
+    );
   });
 
-  it("does not enqueue send-newsletter when AUTO_REVIEW is unset", async () => {
-    const prevAutoReview = process.env.AUTO_REVIEW;
-    delete process.env.AUTO_REVIEW;
-    try {
-      const runStateMock = makeMockRunState(makeRunState());
-      const candidates = [makeCandidate(1)];
-      const loadFn = vi.fn(
-        (): Promise<Candidate[]> => Promise.resolve(candidates),
-      );
-      const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
-      const rankFn = vi.fn(
-        (): Promise<RankResult> =>
-          Promise.resolve({
-            rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
-            candidateCount: 1,
-            rankedCount: 1,
-          }),
-      );
-      const archiveUpsert = vi.fn(() => Promise.resolve());
-      const sendQueueAdd = vi.fn(() => Promise.resolve({ id: "send-run-1" }));
-      const worker = createRunProcessWorker({
-        runState: runStateMock.service,
-        loadFn,
-        shortlistFn,
-        rankFn,
-        archiveRepo: { upsert: archiveUpsert },
-        sendQueue: { add: sendQueueAdd } as unknown as Parameters<
-          typeof createRunProcessWorker
-        >[0]["sendQueue"],
-      });
+  it("does not reconcile publish jobs when settings are unavailable", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+          candidateCount: 1,
+          rankedCount: 1,
+        }),
+    );
+    const archiveUpsert = vi.fn(() => Promise.resolve());
+    const processingQueueAdd = vi.fn(() => Promise.resolve({ id: "email-send:run-1" }));
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+      archiveRepo: { upsert: archiveUpsert },
+      processingQueue: {
+        add: processingQueueAdd,
+        remove: vi.fn(() => Promise.resolve(1)),
+        getJob: vi.fn(() => Promise.resolve(null)),
+      } as unknown as Parameters<
+        typeof createRunProcessWorker
+      >[0]["processingQueue"],
+    });
 
-      await worker.handler(baseJob);
+    await worker.handler(baseJob);
 
-      expect(sendQueueAdd).not.toHaveBeenCalled();
-    } finally {
-      if (prevAutoReview !== undefined) process.env.AUTO_REVIEW = prevAutoReview;
-    }
+    expect(processingQueueAdd).not.toHaveBeenCalled();
   });
 
-  it("does not enqueue send-newsletter when archive write fails even with AUTO_REVIEW=true", async () => {
-    const prevAutoReview = process.env.AUTO_REVIEW;
-    process.env.AUTO_REVIEW = "true";
-    try {
-      const runStateMock = makeMockRunState(makeRunState());
-      const candidates = [makeCandidate(1)];
-      const loadFn = vi.fn(
-        (): Promise<Candidate[]> => Promise.resolve(candidates),
-      );
-      const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
-      const rankFn = vi.fn(
-        (): Promise<RankResult> =>
+  it("does not reconcile publish jobs when archive write fails", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+          candidateCount: 1,
+          rankedCount: 1,
+        }),
+    );
+    const archiveUpsert = vi.fn(() =>
+      Promise.reject(new Error("pg connection lost")),
+    );
+    const processingQueueAdd = vi.fn(() => Promise.resolve({ id: "email-send:run-1" }));
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+      archiveRepo: { upsert: archiveUpsert },
+      userSettingsRepo: {
+        get: vi.fn(() =>
           Promise.resolve({
-            rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
-            candidateCount: 1,
-            rankedCount: 1,
+            id: "settings-1",
+            topN: 3,
+            halfLifeHours: null,
+            hnEnabled: true,
+            hnConfig: null,
+            redditEnabled: false,
+            redditConfig: null,
+            webEnabled: false,
+            webConfig: null,
+            twitterEnabled: false,
+            twitterConfig: null,
+            scheduleTime: "07:00",
+            pipelineTime: "07:00",
+            emailTime: "07:30",
+            linkedinTime: "08:00",
+            twitterTime: "08:30",
+            scheduleTimezone: "UTC",
+            scheduleEnabled: true,
+            emailEnabled: true,
+            linkedinEnabled: true,
+            twitterPostEnabled: true,
+            autoReview: true,
+            updatedAt: new Date("2026-04-07T10:00:00.000Z"),
           }),
-      );
-      const archiveUpsert = vi.fn(() =>
-        Promise.reject(new Error("pg connection lost")),
-      );
-      const sendQueueAdd = vi.fn(() => Promise.resolve({ id: "send-run-1" }));
-      const worker = createRunProcessWorker({
-        runState: runStateMock.service,
-        loadFn,
-        shortlistFn,
-        rankFn,
-        archiveRepo: { upsert: archiveUpsert },
-        sendQueue: { add: sendQueueAdd } as unknown as Parameters<
-          typeof createRunProcessWorker
-        >[0]["sendQueue"],
-      });
+        ),
+        upsert: vi.fn(),
+      },
+      processingQueue: {
+        add: processingQueueAdd,
+        remove: vi.fn(() => Promise.resolve(1)),
+        getJob: vi.fn(() => Promise.resolve(null)),
+      } as unknown as Parameters<
+        typeof createRunProcessWorker
+      >[0]["processingQueue"],
+    });
 
-      await worker.handler(baseJob);
+    await worker.handler(baseJob);
 
-      expect(sendQueueAdd).not.toHaveBeenCalled();
-    } finally {
-      if (prevAutoReview === undefined) delete process.env.AUTO_REVIEW;
-      else process.env.AUTO_REVIEW = prevAutoReview;
-    }
+    expect(processingQueueAdd).not.toHaveBeenCalled();
   });
 
   // REQ-002: factory falls back to default archiveRepo when none is injected

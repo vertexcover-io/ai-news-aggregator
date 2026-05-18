@@ -2,6 +2,8 @@ import { eq, sql } from "drizzle-orm";
 import { runArchives } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type {
+  NotificationKey,
+  NotificationState,
   RankedItemRef,
   RunSourceTelemetry,
   SocialMetadata,
@@ -38,14 +40,18 @@ export interface PipelineRunArchiveRow {
   twitterSummary: string | null;
   sourceTelemetry: RunSourceTelemetry | null;
   slackNotifiedAt: Date | null;
+  emailSentAt: Date | null;
   linkedinPostedAt: Date | null;
   twitterPostedAt: Date | null;
+  notificationState: NotificationState | null;
 }
 
 export interface RunArchivesRepo {
   upsert(input: RunArchiveUpsertInput): Promise<void>;
   findById(id: string): Promise<PipelineRunArchiveRow | null>;
   markSlackNotified(runId: string, at: Date): Promise<void>;
+  markEmailSent(runId: string, at: Date): Promise<void>;
+  markNotification(runId: string, key: NotificationKey, at: Date): Promise<void>;
   markLinkedInPosted(runId: string, at: Date, permalink: string | null): Promise<void>;
   markTwitterPosted(
     runId: string,
@@ -82,8 +88,10 @@ export function createRunArchivesRepo(
           twitterSummary: runArchives.twitterSummary,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
+          emailSentAt: runArchives.emailSentAt,
           linkedinPostedAt: runArchives.linkedinPostedAt,
           twitterPostedAt: runArchives.twitterPostedAt,
+          notificationState: runArchives.notificationState,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
@@ -94,6 +102,24 @@ export function createRunArchivesRepo(
       await db
         .update(runArchives)
         .set({ slackNotifiedAt: at })
+        .where(eq(runArchives.id, runId));
+    },
+    async markEmailSent(runId: string, at: Date): Promise<void> {
+      await db
+        .update(runArchives)
+        .set({ emailSentAt: at })
+        .where(eq(runArchives.id, runId));
+    },
+    async markNotification(
+      runId: string,
+      key: NotificationKey,
+      at: Date,
+    ): Promise<void> {
+      await db
+        .update(runArchives)
+        .set({
+          notificationState: sql`coalesce(${runArchives.notificationState}, '{}'::jsonb) || jsonb_build_object(${key}, ${at.toISOString()})`,
+        })
         .where(eq(runArchives.id, runId));
     },
 

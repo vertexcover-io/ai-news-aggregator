@@ -94,7 +94,7 @@ export function DashboardPage(): ReactElement {
 
         {settings?.scheduleEnabled === true && (
           <ScheduleBanner
-            scheduleTime={settings.scheduleTime}
+            scheduleTime={settings.pipelineTime}
             scheduleTimezone={settings.scheduleTimezone}
           />
         )}

@@ -17,9 +17,16 @@ describe("schema: userSettings", () => {
       "redditConfig",
       "webConfig",
       "twitterConfig",
-      "scheduleTime",
+      "pipelineTime",
+      "emailTime",
+      "linkedinTime",
+      "twitterTime",
       "scheduleTimezone",
       "scheduleEnabled",
+      "emailEnabled",
+      "linkedinEnabled",
+      "twitterPostEnabled",
+      "autoReview",
       "updatedAt",
     ] as const;
     for (const col of columns) {
@@ -35,6 +42,11 @@ describe("schema: userSettings", () => {
 describe("schema: runArchives", () => {
   it("has a reviewed boolean column", () => {
     expect(runArchives.reviewed).toBeDefined();
+  });
+
+  it("has publish and notification idempotency columns", () => {
+    expect(runArchives.emailSentAt).toBeDefined();
+    expect(runArchives.notificationState).toBeDefined();
   });
 });
 

@@ -11,9 +11,9 @@ import type {
   RawItemsRepo,
 } from "@api/repositories/raw-items.js";
 import type { RunArchivesRepo, RunArchiveRow } from "@api/repositories/run-archives.js";
+import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
 import type { GenerateRecapFn } from "@api/services/review.js";
 import type { Queue } from "bullmq";
-import type { NewsletterSendJobPayload } from "@newsletter/shared";
 
 function makeRepo(rows: RawItemRow[] = []): RawItemsRepo {
   return {
@@ -43,14 +43,16 @@ function makeApp(opts: {
   repo?: RawItemsRepo;
   archiveRepo: RunArchivesRepo;
   generateRecapFn?: GenerateRecapFn;
-  sendQueue?: Queue<NewsletterSendJobPayload>;
+  processingQueue?: Pick<Queue, "add" | "remove" | "getJob">;
+  settingsRepo?: UserSettingsRepo;
 }): Hono {
   const app = new Hono();
   const router = createArchivesRouter({
     getRawItemsRepo: () => opts.repo ?? makeRepo(),
     getArchiveRepo: () => opts.archiveRepo,
     generateRecapFn: opts.generateRecapFn,
-    sendQueue: opts.sendQueue,
+    processingQueue: opts.processingQueue,
+    settingsRepo: opts.settingsRepo,
   });
   app.route("/api/archives", router);
   return app;
@@ -481,7 +483,7 @@ describe("POST /api/archives/:runId/promote (REQ-010, REQ-011, EDGE-007)", () =>
   });
 });
 
-describe("PATCH /api/archives/:runId enqueues send-newsletter only (Slack moved to send worker)", () => {
+describe("PATCH /api/archives/:runId reconciles scheduled publish jobs", () => {
   const date = new Date("2026-04-10T00:00:00Z");
 
   function makeRow(): RunArchiveRow {
@@ -495,6 +497,10 @@ describe("PATCH /api/archives/:runId enqueues send-newsletter only (Slack moved 
       createdAt: date,
       startedAt: null,
       sourceTypes: null,
+      emailSentAt: null,
+      linkedinPostedAt: null,
+      twitterPostedAt: null,
+      notificationState: {},
     };
   }
 
@@ -525,24 +531,61 @@ describe("PATCH /api/archives/:runId enqueues send-newsletter only (Slack moved 
     return JSON.stringify({ rankedItems: [{ id: 1, sourceType: "hn" }] });
   }
 
-  function makeSendQueue(): Queue<NewsletterSendJobPayload> & {
+  function makeProcessingQueue(): Pick<Queue, "add" | "remove" | "getJob"> & {
     add: ReturnType<typeof vi.fn>;
+    remove: ReturnType<typeof vi.fn>;
   } {
     const add = vi.fn().mockResolvedValue({ id: "job-1" });
-    return { add } as unknown as Queue<NewsletterSendJobPayload> & {
+    const remove = vi.fn().mockResolvedValue(1);
+    return { add, remove, getJob: vi.fn().mockResolvedValue(null) } as unknown as Pick<Queue, "add" | "remove" | "getJob"> & {
       add: ReturnType<typeof vi.fn>;
+      remove: ReturnType<typeof vi.fn>;
     };
   }
 
-  it("PATCH enqueues send-newsletter and returns 200; Slack notification fires from the send worker, not the route", async () => {
+  function makeSettingsRepo(): UserSettingsRepo {
+    return {
+      get: vi.fn(() =>
+        Promise.resolve({
+          id: "settings-1",
+          topN: 10,
+          halfLifeHours: null,
+          hnEnabled: true,
+          hnConfig: null,
+          redditEnabled: false,
+          redditConfig: null,
+          webEnabled: false,
+          webConfig: null,
+          twitterEnabled: false,
+          twitterConfig: null,
+          scheduleTime: "07:00",
+          pipelineTime: "07:00",
+          emailTime: "07:30",
+          linkedinTime: "08:00",
+          twitterTime: "08:30",
+          scheduleTimezone: "UTC",
+          scheduleEnabled: true,
+          emailEnabled: true,
+          linkedinEnabled: true,
+          twitterPostEnabled: true,
+          autoReview: false,
+          updatedAt: date,
+        }),
+      ),
+      upsert: vi.fn(),
+    };
+  }
+
+  it("PATCH enqueues scheduled publish jobs and returns 200", async () => {
     const archiveRepo = makeArchiveRepo(makeRow());
     archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(makeUpdatedRow()));
-    const sendQueue = makeSendQueue();
+    const processingQueue = makeProcessingQueue();
 
     const app = makeApp({
       archiveRepo,
       repo: makeRepo([makeRawForId(1)]),
-      sendQueue,
+      processingQueue,
+      settingsRepo: makeSettingsRepo(),
     });
 
     const res = await app.request("/api/archives/run-1", {
@@ -552,6 +595,10 @@ describe("PATCH /api/archives/:runId enqueues send-newsletter only (Slack moved 
     });
 
     expect(res.status).toBe(200);
-    expect(sendQueue.add).toHaveBeenCalledTimes(1);
+    expect(processingQueue.add).toHaveBeenCalledWith(
+      "email-send",
+      { runId: "run-1" },
+      expect.objectContaining({ jobId: "email-send:run-1" }),
+    );
   });
 });

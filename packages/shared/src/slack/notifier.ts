@@ -1,9 +1,13 @@
 import { buildReviewedMessage } from "./message-builder.js";
+import { buildPublishFailedMessage } from "./builders/publish-failed.js";
+import { buildReviewPendingMessage } from "./builders/review-pending.js";
+import { buildReviewWarningMessage } from "./builders/review-warning.js";
 import type {
   NotifyNewsletterSentInput,
   SlackNotifier,
   SlackNotifierDeps,
 } from "./types.js";
+import type { NotificationKey } from "../types/notifications.js";
 import { postToWebhook } from "./webhook-client.js";
 
 const SLACK_WEBHOOK_PREFIX = "https://hooks.slack.com/";
@@ -26,6 +30,9 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
     );
     return {
       notifyNewsletterSent: (): Promise<void> => Promise.resolve(),
+      notifyReviewPending: (): Promise<void> => Promise.resolve(),
+      notifyReviewWarning: (): Promise<void> => Promise.resolve(),
+      notifyPublishFailed: (): Promise<void> => Promise.resolve(),
     };
   }
 
@@ -38,6 +45,60 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
       "slack webhook URL does not match expected hooks.slack.com prefix",
     );
   }
+
+  const notifyWithMarker = async (input: {
+    readonly runId: string;
+    readonly key: NotificationKey;
+    readonly event: string;
+    readonly blocks: (archive: Awaited<ReturnType<typeof deps.archives.findById>>) => unknown[];
+  }): Promise<void> => {
+    try {
+      const archive = await deps.archives.findById(input.runId);
+      if (archive === null) {
+        logger.warn(
+          { event: `${input.event}.archive_missing`, runId: input.runId },
+          "archive not found for slack notification",
+        );
+        return;
+      }
+      if (archive.notificationState?.[input.key] !== undefined) {
+        logger.info(
+          { event: `${input.event}.skipped`, reason: "already_notified", runId: input.runId },
+          "slack notification skipped (already notified)",
+        );
+        return;
+      }
+      const result = await postToWebhook({
+        url: webhookUrl,
+        blocks: input.blocks(archive),
+        fetchFn: deps.fetchFn,
+      });
+      if (!result.ok) {
+        logger.warn(
+          {
+            event: `${input.event}.failed`,
+            runId: input.runId,
+            status: result.status,
+            responseBody: result.error,
+          },
+          "slack notification failed",
+        );
+        return;
+      }
+      const now = (deps.now ?? ((): Date => new Date()))();
+      await deps.archives.markNotification(input.runId, input.key, now);
+      logger.info({ event: `${input.event}.sent`, runId: input.runId }, "slack notification sent");
+    } catch (err) {
+      logger.warn(
+        {
+          event: `${input.event}.failed`,
+          runId: input.runId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "slack notification threw unexpectedly",
+      );
+    }
+  };
 
   return {
     async notifyNewsletterSent(input: NotifyNewsletterSentInput): Promise<void> {
@@ -126,6 +187,60 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
           "slack notification threw unexpectedly",
         );
       }
+    },
+    notifyReviewPending(input: { runId: string }): Promise<void> {
+      return notifyWithMarker({
+        runId: input.runId,
+        key: "reviewPending",
+        event: "slack.review_pending",
+        blocks: (archive) =>
+          buildReviewPendingMessage({
+            runId: input.runId,
+            digestHeadline: archive?.digestHeadline ?? null,
+            publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
+          }).blocks as unknown[],
+      });
+    },
+    notifyReviewWarning(input: {
+      runId: string;
+      earliestChannel: "email-send" | "linkedin-post" | "twitter-post";
+      earliestTime: string;
+      minutesUntil: number;
+    }): Promise<void> {
+      return notifyWithMarker({
+        runId: input.runId,
+        key: "reviewWarning",
+        event: "slack.review_warning",
+        blocks: () =>
+          buildReviewWarningMessage({
+            runId: input.runId,
+            earliestChannel: input.earliestChannel,
+            earliestTime: input.earliestTime,
+            minutesUntil: input.minutesUntil,
+            publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
+          }).blocks as unknown[],
+      });
+    },
+    notifyPublishFailed(input: {
+      runId: string;
+      channel: "email-send" | "linkedin-post" | "twitter-post";
+    }): Promise<void> {
+      const keyByChannel = {
+        "email-send": "emailFailure",
+        "linkedin-post": "linkedinFailure",
+        "twitter-post": "twitterFailure",
+      } as const;
+      return notifyWithMarker({
+        runId: input.runId,
+        key: keyByChannel[input.channel],
+        event: "slack.publish_failed",
+        blocks: () =>
+          buildPublishFailedMessage({
+            runId: input.runId,
+            channel: input.channel,
+            publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
+          }).blocks as unknown[],
+      });
     },
   };
 }

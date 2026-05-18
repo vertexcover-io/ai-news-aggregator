@@ -2,8 +2,8 @@ import { Worker } from "bullmq";
 import type { Queue } from "bullmq";
 import type IORedis from "ioredis";
 import { createRedisConnection } from "@newsletter/shared/redis";
-import { getDb, enqueueSendNewsletter, serializeArchiveSearchText } from "@newsletter/shared";
-import type { NewsletterSendJobPayload } from "@newsletter/shared";
+import { getDb, serializeArchiveSearchText } from "@newsletter/shared";
+import type { SlackNotifier } from "@newsletter/shared";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
 import { dedupCandidates } from "@pipeline/processors/dedup.js";
@@ -42,6 +42,8 @@ import {
   createRunArchivesRepo,
   type RunArchivesRepo,
 } from "@pipeline/repositories/run-archives.js";
+import type { UserSettingsRepo } from "@pipeline/repositories/user-settings.js";
+import { reconcilePerArchiveJobs } from "@pipeline/services/per-archive-schedule.js";
 import type {
   HnCollectConfig,
   RedditCollectConfig,
@@ -187,9 +189,11 @@ export interface RunProcessDeps {
   rankFn: RankFn;
   collectFns: CollectFns;
   archiveRepo: RunArchivesRepo;
+  userSettingsRepo?: UserSettingsRepo;
   cancelSubscriber: CancelSubscriberFactory;
   twitterClient: TwitterClient;
-  sendQueue?: Queue<NewsletterSendJobPayload>;
+  processingQueue?: Pick<Queue, "add" | "remove" | "getJob">;
+  slackNotifier?: SlackNotifier;
 }
 
 interface CollectingOutcome {
@@ -550,7 +554,8 @@ export async function handleRunProcessJob(
       completedAt: new Date().toISOString(),
     }));
 
-    const autoReviewed = process.env.AUTO_REVIEW === "true";
+    const settings = deps.userSettingsRepo ? await deps.userSettingsRepo.get() : null;
+    const autoReviewed = settings?.autoReview === true;
     const sourceTelemetry = buildSourceTelemetry(collecting.outcomes);
     sourceTelemetry.enrichment = toEnrichmentTelemetry(enrichmentCtx.counters);
     const { digestHeadline, digestSummary } = pickArchiveDigest(rankResult);
@@ -595,21 +600,32 @@ export async function handleRunProcessJob(
       );
     }
 
-    if (archiveWritten && autoReviewed && deps.sendQueue) {
+    if (archiveWritten && settings && deps.processingQueue) {
       try {
-        await enqueueSendNewsletter(deps.sendQueue, runId);
+        const archive = await deps.archiveRepo.findById(runId);
+        if (archive !== null) {
+          await reconcilePerArchiveJobs(
+            { queue: deps.processingQueue, now: () => new Date() },
+            runId,
+            settings,
+            archive,
+          );
+        }
+        if (!settings.autoReview) {
+          await deps.slackNotifier?.notifyReviewPending({ runId });
+        }
         logger.info(
-          { event: "archive.send_enqueued", runId, trigger: "auto-review" },
-          "archive: send-newsletter job enqueued (auto-review)",
+          { event: "archive.publish_jobs_reconciled", runId },
+          "archive publish jobs reconciled",
         );
       } catch (err) {
         logger.error(
           {
-            event: "archive.send_enqueue_failed",
+            event: "archive.publish_jobs_reconcile_failed",
             runId,
             error: err instanceof Error ? err.message : String(err),
           },
-          "archive.send_enqueue_failed",
+          "archive.publish_jobs_reconcile_failed",
         );
       }
     }
@@ -674,9 +690,11 @@ export interface CreateRunProcessWorkerOptions {
   rankFn?: RankFn;
   collectFns?: Partial<CollectFns>;
   archiveRepo?: RunArchivesRepo;
+  userSettingsRepo?: UserSettingsRepo;
   cancelSubscriber?: CancelSubscriberFactory;
   twitterClient?: TwitterClient;
-  sendQueue?: Queue<NewsletterSendJobPayload>;
+  processingQueue?: Pick<Queue, "add" | "remove" | "getJob">;
+  slackNotifier?: SlackNotifier;
 }
 
 export function createRunProcessWorker(
@@ -714,6 +732,7 @@ export function createRunProcessWorker(
 
   const archiveRepo =
     options.archiveRepo ?? createRunArchivesRepo(ensureDb(db));
+  const userSettingsRepo = options.userSettingsRepo;
 
   const cancelSubscriber =
     options.cancelSubscriber ?? createCancelSubscriber(connection);
@@ -727,9 +746,11 @@ export function createRunProcessWorker(
     rankFn,
     collectFns,
     archiveRepo,
+    userSettingsRepo,
     cancelSubscriber,
     twitterClient,
-    sendQueue: options.sendQueue,
+    processingQueue: options.processingQueue,
+    slackNotifier: options.slackNotifier,
   };
 
   return new Worker<RunProcessJobData, RunProcessResult>(

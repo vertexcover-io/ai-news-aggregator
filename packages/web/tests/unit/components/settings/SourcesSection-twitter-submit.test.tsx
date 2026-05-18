@@ -57,8 +57,16 @@ function SubmitHarness({
       posthogProjectToken: null,
       posthogHost: null,
       scheduleTime: "07:00",
+      pipelineTime: "07:00",
+      emailTime: "07:30",
+      linkedinTime: "08:00",
+      twitterTime: "08:30",
       scheduleTimezone: "Asia/Calcutta",
       scheduleEnabled: false,
+      emailEnabled: true,
+      linkedinEnabled: true,
+      twitterPostEnabled: true,
+      autoReview: false,
     },
   });
 
