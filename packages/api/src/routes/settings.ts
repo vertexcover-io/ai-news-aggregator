@@ -6,7 +6,6 @@ import {
   getDb as defaultGetDb,
 } from "@newsletter/shared";
 import type {
-  RunProcessJobPayload,
   RunSubmitTwitterConfig,
   RunSubmitTwitterUser,
 } from "@newsletter/shared";
@@ -20,7 +19,12 @@ import {
   type UserSettingsRepo,
   type UserSettingsUpsertInput,
 } from "@api/repositories/user-settings.js";
-import { reconcileDailyRunSchedule } from "@api/services/scheduler.js";
+import {
+  createRunArchivesRepo,
+  type RunArchivesRepo,
+} from "@api/repositories/run-archives.js";
+import { reconcilePipelineSchedule } from "@api/services/scheduler.js";
+import { reconcilePerArchiveJobs } from "@api/services/per-archive-schedule.js";
 import {
   defaultRettiwtFactory,
   resolveTwitterHandles,
@@ -32,9 +36,10 @@ type RettiwtFactory = TwitterHandleResolverDeps["rettiwtFactory"];
 
 export interface SettingsRouterDeps {
   getSettingsRepo: () => UserSettingsRepo;
+  getArchiveRepo?: () => RunArchivesRepo;
   processingQueue: Pick<
     Queue,
-    "upsertJobScheduler" | "removeJobScheduler"
+    "upsertJobScheduler" | "removeJobScheduler" | "add" | "remove" | "getJob"
   >;
   resolveHandles?: (
     handles: string[],
@@ -106,8 +111,15 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
 
     const parsed = userSettingsUpsertSchema.safeParse(body);
     if (!parsed.success) {
+      const fields = parsed.error.issues
+        .map((issue) => issue.path[0])
+        .filter((field): field is string => typeof field === "string");
       return c.json(
-        { error: parsed.error.message, issues: parsed.error.issues },
+        {
+          error: parsed.error.message,
+          issues: parsed.error.issues,
+          ...(fields.length > 0 ? { fields } : {}),
+        },
         400,
       );
     }
@@ -177,18 +189,37 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       webConfig: parsed.data.webConfig,
       twitterEnabled: parsed.data.twitterEnabled,
       twitterConfig: resolvedTwitterConfig,
-      scheduleTime: parsed.data.scheduleTime,
+      scheduleTime: parsed.data.pipelineTime,
+      pipelineTime: parsed.data.pipelineTime,
+      emailTime: parsed.data.emailTime,
+      linkedinTime: parsed.data.linkedinTime,
+      twitterTime: parsed.data.twitterTime,
       scheduleTimezone: parsed.data.scheduleTimezone,
       scheduleEnabled: parsed.data.scheduleEnabled,
+      emailEnabled: parsed.data.emailEnabled,
+      linkedinEnabled: parsed.data.linkedinEnabled,
+      twitterPostEnabled: parsed.data.twitterPostEnabled,
+      autoReview: parsed.data.autoReview,
     };
 
     const saved = await deps.getSettingsRepo().upsert(upsertInput);
-    await reconcileDailyRunSchedule(deps.processingQueue, saved);
+    await reconcilePipelineSchedule(deps.processingQueue, saved);
+    if (deps.getArchiveRepo !== undefined) {
+      const archives = await deps.getArchiveRepo().findRecentUnpublished({ withinDays: 2 });
+      for (const archive of archives) {
+        await reconcilePerArchiveJobs(
+          { queue: deps.processingQueue, now: () => new Date() },
+          archive.id,
+          saved,
+          archive,
+        );
+      }
+    }
     logger.info(
       {
         event: "settings.saved",
         scheduleEnabled: saved.scheduleEnabled,
-        scheduleTime: saved.scheduleTime,
+        pipelineTime: saved.pipelineTime,
         scheduleTimezone: saved.scheduleTimezone,
       },
       "settings.saved",
@@ -199,9 +230,9 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
   return app;
 }
 
-let defaultProcessingQueue: Queue<RunProcessJobPayload> | null = null;
-function getDefaultProcessingQueue(): Queue<RunProcessJobPayload> {
-  defaultProcessingQueue ??= new BullQueue<RunProcessJobPayload>("processing", {
+let defaultProcessingQueue: Queue | null = null;
+function getDefaultProcessingQueue(): Queue {
+  defaultProcessingQueue ??= new BullQueue("processing", {
     connection: createRedisConnection(),
   });
   return defaultProcessingQueue;
@@ -210,6 +241,7 @@ function getDefaultProcessingQueue(): Queue<RunProcessJobPayload> {
 export function createDefaultSettingsRouter(): Hono {
   return createSettingsRouter({
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
     processingQueue: getDefaultProcessingQueue(),
   });
 }

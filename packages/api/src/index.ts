@@ -34,6 +34,8 @@ import { createSesEventsRepo } from "@api/repositories/ses-events.js";
 import { createEmailSendsRepo } from "@api/repositories/email-sends.js";
 import { verifySnsMessage } from "@api/lib/sns-verifier.js";
 import { resolveBaseUrls } from "@api/lib/base-urls.js";
+import { createUserSettingsRepo } from "@api/repositories/user-settings.js";
+import { reconcilePipelineSchedule, removeLegacySchedulers } from "@api/services/scheduler.js";
 
 const logger = createLogger("api");
 
@@ -67,7 +69,14 @@ const { baseUrl: apiBaseUrl, webBaseUrl: newsletterBaseUrl } = resolveBaseUrls(p
 
 const { Queue: BullQueue } = await import("bullmq");
 const { createRedisConnection } = await import("@newsletter/shared/redis");
-const sendQueue = new BullQueue("send-newsletter", { connection: createRedisConnection() });
+const processingQueue = new BullQueue("processing", { connection: createRedisConnection() });
+
+const settingsRepoForBootstrap = createUserSettingsRepo(getDb());
+await removeLegacySchedulers(processingQueue);
+const settingsForBootstrap = await settingsRepoForBootstrap.get();
+if (settingsForBootstrap !== null) {
+  await reconcilePipelineSchedule(processingQueue, settingsForBootstrap);
+}
 
 const runArchivesRepoForSubscribe = createRunArchivesRepo(getDb());
 
@@ -88,10 +97,10 @@ const subscribeRouter = createSubscribeRouter({
     });
   },
   sendNewsletterToSubscriber: async (runId, subscriberId) => {
-    await sendQueue.add(
-      "send-newsletter",
+    await processingQueue.add(
+      "email-send",
       { runId, subscriberIds: [subscriberId] },
-      { jobId: `send-${runId}-${subscriberId}` },
+      { jobId: `email-send-${runId}-${subscriberId}` },
     );
   },
   getMostRecentReviewedArchiveId: async () => {

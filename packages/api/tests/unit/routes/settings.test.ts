@@ -27,9 +27,17 @@ function makeRepo(initial: UserSettings | null = null): {
         webConfig: input.webConfig,
         twitterEnabled: input.twitterEnabled,
         twitterConfig: input.twitterConfig,
-        scheduleTime: input.scheduleTime,
+        scheduleTime: input.pipelineTime,
+        pipelineTime: input.pipelineTime,
+        emailTime: input.emailTime,
+        linkedinTime: input.linkedinTime,
+        twitterTime: input.twitterTime,
         scheduleTimezone: input.scheduleTimezone,
         scheduleEnabled: input.scheduleEnabled,
+        emailEnabled: input.emailEnabled,
+        linkedinEnabled: input.linkedinEnabled,
+        twitterPostEnabled: input.twitterPostEnabled,
+        autoReview: input.autoReview,
         updatedAt: new Date().toISOString(),
       };
       store.current = saved;
@@ -85,8 +93,16 @@ const validBody = {
   twitterEnabled: false,
   twitterConfig: null,
   scheduleTime: "09:30",
+  pipelineTime: "09:30",
+  emailTime: "10:00",
+  linkedinTime: "10:15",
+  twitterTime: "10:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
+  emailEnabled: true,
+  linkedinEnabled: true,
+  twitterPostEnabled: true,
+  autoReview: false,
 };
 
 describe("GET /api/settings", () => {
@@ -113,8 +129,16 @@ describe("GET /api/settings", () => {
       twitterEnabled: false,
       twitterConfig: null,
       scheduleTime: "08:00",
+      pipelineTime: "08:00",
+      emailTime: "08:30",
+      linkedinTime: "08:45",
+      twitterTime: "09:00",
       scheduleTimezone: "UTC",
       scheduleEnabled: false,
+      emailEnabled: true,
+      linkedinEnabled: true,
+      twitterPostEnabled: true,
+      autoReview: false,
       updatedAt: new Date().toISOString(),
     };
     const { repo } = makeRepo(existing);
@@ -152,6 +176,51 @@ describe("PUT /api/settings", () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string; issues: unknown[] };
     expect(Array.isArray(body.issues)).toBe(true);
+  });
+
+  it("accepts overnight publish windows where publish times are earlier than pipelineTime", async () => {
+    const { repo, store } = makeRepo(null);
+    const app = buildApp(repo, makeQueue());
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        pipelineTime: "19:00",
+        scheduleTime: "19:00",
+        emailTime: "09:00",
+        linkedinTime: "09:15",
+        twitterTime: "09:30",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(store.current?.emailTime).toBe("09:00");
+  });
+
+  it("rejects publish times equal to pipelineTime", async () => {
+    const { repo } = makeRepo(null);
+    const app = buildApp(repo, makeQueue());
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        pipelineTime: "19:00",
+        scheduleTime: "19:00",
+        emailTime: "19:00",
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual(
+      expect.objectContaining({
+        fields: expect.arrayContaining(["emailTime"]),
+        issues: expect.arrayContaining([
+          expect.objectContaining({ message: "must differ from pipelineTime" }),
+        ]),
+      }),
+    );
   });
 
   it("REQ-013: returns 400 when scheduleEnabled=true with no sources", async () => {

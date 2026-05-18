@@ -1,10 +1,12 @@
-import { and, desc, eq, gte, ilike, inArray, lte, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, isNull, lte, notInArray, or, sql } from "drizzle-orm";
 import { rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import {
   serializeArchiveSearchText,
   type ArchiveListItem,
   type ArchiveTopItem,
+  type NotificationKey,
+  type NotificationState,
   type PoolItem,
   type RankedItemRef,
   type RunSourceTelemetry,
@@ -33,6 +35,10 @@ export interface RunArchiveRow {
   hook: string | null;
   sourceTelemetry: RunSourceTelemetry | null;
   slackNotifiedAt: Date | null;
+  emailSentAt: Date | null;
+  linkedinPostedAt: Date | null;
+  twitterPostedAt: Date | null;
+  notificationState: NotificationState | null;
 }
 
 export interface FindPoolItemsOpts {
@@ -74,6 +80,7 @@ export interface RunArchivesRepo {
    * digest they missed — even if it was published before today.
    */
   findMostRecentReviewed(): Promise<{ id: string } | null>;
+  findRecentUnpublished(input: { withinDays: number }): Promise<RunArchiveRow[]>;
   updateRankedItems(
     id: string,
     items: RankedItemRef[],
@@ -84,6 +91,12 @@ export interface RunArchivesRepo {
     opts: FindPoolItemsOpts,
   ): Promise<{ items: PoolItem[]; total: number }>;
   markSlackNotified(runId: string, at: Date): Promise<void>;
+  markEmailSent(runId: string, at: Date): Promise<void>;
+  markNotification(
+    runId: string,
+    key: NotificationKey,
+    at: Date,
+  ): Promise<void>;
   markLinkedInPosted(runId: string, at: Date, permalink: string | null): Promise<void>;
   markTwitterPosted(runId: string, at: Date, permalink: string | null): Promise<void>;
   recordSocialFailure(
@@ -140,6 +153,10 @@ export function createRunArchivesRepo(
           hook: runArchives.hook,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
+          emailSentAt: runArchives.emailSentAt,
+          linkedinPostedAt: runArchives.linkedinPostedAt,
+          twitterPostedAt: runArchives.twitterPostedAt,
+          notificationState: runArchives.notificationState,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
@@ -149,6 +166,24 @@ export function createRunArchivesRepo(
       await db
         .update(runArchives)
         .set({ slackNotifiedAt: at })
+        .where(eq(runArchives.id, runId));
+    },
+    async markEmailSent(runId: string, at: Date): Promise<void> {
+      await db
+        .update(runArchives)
+        .set({ emailSentAt: at })
+        .where(eq(runArchives.id, runId));
+    },
+    async markNotification(
+      runId: string,
+      key: NotificationKey,
+      at: Date,
+    ): Promise<void> {
+      await db
+        .update(runArchives)
+        .set({
+          notificationState: sql`coalesce(${runArchives.notificationState}, '{}'::jsonb) || jsonb_build_object(${key}, ${at.toISOString()})`,
+        })
         .where(eq(runArchives.id, runId));
     },
     async markLinkedInPosted(
@@ -216,6 +251,41 @@ export function createRunArchivesRepo(
         .limit(1);
       if (rows.length === 0) return null;
       return { id: rows[0].id };
+    },
+    async findRecentUnpublished(input: { withinDays: number }): Promise<RunArchiveRow[]> {
+      const since = new Date(Date.now() - input.withinDays * 24 * 60 * 60 * 1000);
+      return db
+        .select({
+          id: runArchives.id,
+          status: runArchives.status,
+          rankedItems: runArchives.rankedItems,
+          topN: runArchives.topN,
+          reviewed: runArchives.reviewed,
+          completedAt: runArchives.completedAt,
+          createdAt: runArchives.createdAt,
+          startedAt: runArchives.startedAt,
+          sourceTypes: runArchives.sourceTypes,
+          digestHeadline: runArchives.digestHeadline,
+          digestSummary: runArchives.digestSummary,
+          hook: runArchives.hook,
+          sourceTelemetry: runArchives.sourceTelemetry,
+          slackNotifiedAt: runArchives.slackNotifiedAt,
+          emailSentAt: runArchives.emailSentAt,
+          linkedinPostedAt: runArchives.linkedinPostedAt,
+          twitterPostedAt: runArchives.twitterPostedAt,
+          notificationState: runArchives.notificationState,
+        })
+        .from(runArchives)
+        .where(and(
+          eq(runArchives.status, "completed"),
+          gte(runArchives.completedAt, since),
+          or(
+            isNull(runArchives.emailSentAt),
+            isNull(runArchives.linkedinPostedAt),
+            isNull(runArchives.twitterPostedAt),
+          ),
+        ))
+        .orderBy(desc(runArchives.completedAt));
     },
     async listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]> {
       const rows = await db
@@ -325,6 +395,10 @@ export function createRunArchivesRepo(
           hook: runArchives.hook,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
+          emailSentAt: runArchives.emailSentAt,
+          linkedinPostedAt: runArchives.linkedinPostedAt,
+          twitterPostedAt: runArchives.twitterPostedAt,
+          notificationState: runArchives.notificationState,
         })
         .from(runArchives)
         .orderBy(desc(runArchives.completedAt))
@@ -365,6 +439,10 @@ export function createRunArchivesRepo(
           hook: runArchives.hook,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
+          emailSentAt: runArchives.emailSentAt,
+          linkedinPostedAt: runArchives.linkedinPostedAt,
+          twitterPostedAt: runArchives.twitterPostedAt,
+          notificationState: runArchives.notificationState,
         });
       return row;
     },

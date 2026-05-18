@@ -4,12 +4,9 @@ import {
   createLogger,
   getDb as defaultGetDb,
   createRedisConnection,
-  enqueueSendNewsletter,
-  SEND_NEWSLETTER_QUEUE,
 } from "@newsletter/shared";
 import type {
   ArchiveListResponse,
-  NewsletterSendJobPayload,
   RunState,
 } from "@newsletter/shared";
 import { Queue as BullQueue } from "bullmq";
@@ -22,6 +19,11 @@ import {
   createRunArchivesRepo,
   type RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
+import {
+  createUserSettingsRepo,
+  type UserSettingsRepo,
+} from "@api/repositories/user-settings.js";
+import { reconcilePerArchiveJobs } from "@api/services/per-archive-schedule.js";
 import {
   archivePatchSchema,
   addPostSchema,
@@ -45,7 +47,8 @@ export interface ArchivesRouterDeps {
   hydrateAddedPost?: HydrateAddedPostFn;
   generateRecapFn?: GenerateRecapFn;
   logger?: ReturnType<typeof createLogger>;
-  sendQueue?: Queue<NewsletterSendJobPayload>;
+  settingsRepo?: UserSettingsRepo;
+  processingQueue?: Pick<Queue, "add" | "remove" | "getJob">;
 }
 
 export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
@@ -131,11 +134,19 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         { event: "archive.patched", runId, count: parsed.data.rankedItems.length },
         "archive.patched",
       );
-      if (deps.sendQueue) {
-        await enqueueSendNewsletter(deps.sendQueue, runId);
+      if (deps.settingsRepo && deps.processingQueue) {
+        const settings = await deps.settingsRepo.get();
+        if (settings !== null) {
+          await reconcilePerArchiveJobs(
+            { queue: deps.processingQueue, now: () => new Date() },
+            runId,
+            settings,
+            updated,
+          );
+        }
         logger.info(
-          { event: "archive.send_enqueued", runId },
-          "archive: send-newsletter job enqueued",
+          { event: "archive.publish_jobs_reconciled", runId },
+          "archive publish jobs reconciled",
         );
       }
       return c.json(updated);
@@ -154,11 +165,15 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     const runId = c.req.param("runId");
     const archive = await deps.getArchiveRepo().findById(runId);
     if (!archive) return c.json({ error: "not found" }, 404);
-    if (deps.sendQueue) {
-      await enqueueSendNewsletter(deps.sendQueue, runId);
+    if (deps.processingQueue) {
+      await deps.processingQueue.add(
+        "email-send",
+        { runId },
+        { jobId: `email-send:${runId}`, delay: 0 },
+      );
       logger.info(
         { event: "archive.send_enqueued", runId, trigger: "force-send" },
-        "archive: send-newsletter job enqueued (force-send)",
+        "archive: email-send job enqueued (force-send)",
       );
     }
     return c.json({ ok: true }, 202);
@@ -303,13 +318,13 @@ export function createDefaultAdminArchivesRouter(): Hono {
   return createAdminArchivesRouter(createDefaultArchivesDeps());
 }
 
-let defaultSendQueue: Queue<NewsletterSendJobPayload> | null = null;
-function getDefaultSendQueue(): Queue<NewsletterSendJobPayload> {
-  defaultSendQueue ??= new BullQueue<NewsletterSendJobPayload>(
-    SEND_NEWSLETTER_QUEUE,
+let defaultProcessingQueue: Queue | null = null;
+function getDefaultProcessingQueue(): Queue {
+  defaultProcessingQueue ??= new BullQueue(
+    "processing",
     { connection: createRedisConnection() },
   );
-  return defaultSendQueue;
+  return defaultProcessingQueue;
 }
 
 function createDefaultArchivesDeps(): ArchivesRouterDeps {
@@ -318,7 +333,8 @@ function createDefaultArchivesDeps(): ArchivesRouterDeps {
     getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
     hydrateAddedPost: createDefaultHydrateAddedPost(),
     generateRecapFn: createDefaultGenerateRecapFn(),
-    sendQueue: getDefaultSendQueue(),
+    settingsRepo: createUserSettingsRepo(defaultGetDb()),
+    processingQueue: getDefaultProcessingQueue(),
   };
 }
 

@@ -15,9 +15,16 @@ interface StoredRow {
   webConfig: unknown;
   twitterEnabled: boolean;
   twitterConfig: unknown;
-  scheduleTime: string;
+  pipelineTime: string;
+  emailTime: string;
+  linkedinTime: string;
+  twitterTime: string;
   scheduleTimezone: string;
   scheduleEnabled: boolean;
+  emailEnabled: boolean;
+  linkedinEnabled: boolean;
+  twitterPostEnabled: boolean;
+  autoReview: boolean;
   updatedAt: Date;
 }
 
@@ -50,9 +57,16 @@ function makeFakeDb(): { db: Pick<AppDb, "select" | "insert">; rows: StoredRow[]
                 webConfig: v.webConfig ?? null,
                 twitterEnabled: v.twitterEnabled ?? false,
                 twitterConfig: v.twitterConfig ?? null,
-                scheduleTime: v.scheduleTime ?? "00:00",
+                pipelineTime: v.pipelineTime ?? "00:00",
+                emailTime: v.emailTime ?? "00:30",
+                linkedinTime: v.linkedinTime ?? "00:30",
+                twitterTime: v.twitterTime ?? "00:30",
                 scheduleTimezone: v.scheduleTimezone ?? "UTC",
                 scheduleEnabled: v.scheduleEnabled ?? false,
+                emailEnabled: v.emailEnabled ?? true,
+                linkedinEnabled: v.linkedinEnabled ?? true,
+                twitterPostEnabled: v.twitterPostEnabled ?? true,
+                autoReview: v.autoReview ?? false,
                 updatedAt: v.updatedAt ?? new Date(),
               };
               rows.push(row);
@@ -82,8 +96,16 @@ const baseInput = {
   twitterEnabled: false,
   twitterConfig: null,
   scheduleTime: "09:30",
+  pipelineTime: "09:30",
+  emailTime: "10:00",
+  linkedinTime: "10:15",
+  twitterTime: "10:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
+  emailEnabled: true,
+  linkedinEnabled: true,
+  twitterPostEnabled: true,
+  autoReview: false,
 };
 
 describe("UserSettingsRepo", () => {
@@ -123,9 +145,14 @@ describe("UserSettingsRepo", () => {
     const { db, rows } = makeFakeDb();
     const repo = createUserSettingsRepo(db);
     await repo.upsert(baseInput);
-    await repo.upsert({ ...baseInput, topN: 25, scheduleTime: "07:00" });
+    await repo.upsert({
+      ...baseInput,
+      topN: 25,
+      scheduleTime: "07:00",
+      pipelineTime: "07:00",
+    });
     expect(rows).toHaveLength(1);
     expect(rows[0].topN).toBe(25);
-    expect(rows[0].scheduleTime).toBe("07:00");
+    expect(rows[0].pipelineTime).toBe("07:00");
   });
 });

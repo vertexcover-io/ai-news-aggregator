@@ -12,17 +12,20 @@ export interface TwitterHandleFailure {
 interface ApiErrorBody {
   error?: string;
   failures?: TwitterHandleFailure[];
+  fields?: string[];
 }
 
 export class SettingsApiError extends Error {
   readonly status: number;
   readonly failures: TwitterHandleFailure[];
+  readonly fields: string[];
 
-  constructor(message: string, status: number, failures: TwitterHandleFailure[]) {
+  constructor(message: string, status: number, failures: TwitterHandleFailure[], fields: string[] = []) {
     super(message);
     this.name = "SettingsApiError";
     this.status = status;
     this.failures = failures;
+    this.fields = fields;
   }
 }
 
@@ -43,7 +46,7 @@ export async function putSettings(
     const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
     const message = body.error ?? "Failed to save settings";
     const failures = body.failures ?? [];
-    throw new SettingsApiError(message, res.status, failures);
+    throw new SettingsApiError(message, res.status, failures, body.fields ?? []);
   }
   return (await res.json()) as UserSettings;
 }

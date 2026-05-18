@@ -26,8 +26,16 @@ const sample: UserSettings = {
   twitterEnabled: false,
   twitterConfig: null,
   scheduleTime: "07:00",
+  pipelineTime: "07:00",
+  emailTime: "07:30",
+  linkedinTime: "07:45",
+  twitterTime: "08:00",
   scheduleTimezone: "UTC",
   scheduleEnabled: false,
+  emailEnabled: true,
+  linkedinEnabled: true,
+  twitterPostEnabled: true,
+  autoReview: false,
   updatedAt: "2026-04-14T00:00:00Z",
 };
 
@@ -72,9 +80,16 @@ describe("settings api", () => {
       webConfig: sample.webConfig,
       twitterEnabled: sample.twitterEnabled,
       twitterConfig: sample.twitterConfig,
-      scheduleTime: sample.scheduleTime,
+      pipelineTime: sample.pipelineTime,
+      emailTime: sample.emailTime,
+      linkedinTime: sample.linkedinTime,
+      twitterTime: sample.twitterTime,
       scheduleTimezone: sample.scheduleTimezone,
       scheduleEnabled: sample.scheduleEnabled,
+      emailEnabled: sample.emailEnabled,
+      linkedinEnabled: sample.linkedinEnabled,
+      twitterPostEnabled: sample.twitterPostEnabled,
+      autoReview: sample.autoReview,
     };
     const out = await putSettings(input);
     expect(out).toEqual(sample);

@@ -1,5 +1,6 @@
 import { boolean, integer, jsonb, pgTable, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type {
+  NotificationState,
   RawItemEngagement,
   RawItemMetadata,
   RankedItemRef,
@@ -56,6 +57,8 @@ export const runArchives = pgTable("run_archives", {
   searchText: text("search_text"),
   linkedinPostedAt: timestamp("linkedin_posted_at", { withTimezone: true }),
   twitterPostedAt: timestamp("twitter_posted_at", { withTimezone: true }),
+  emailSentAt: timestamp("email_sent_at", { withTimezone: true }),
+  notificationState: jsonb("notification_state").$type<NotificationState | null>(),
   socialMetadata: jsonb("social_metadata").$type<SocialMetadata | null>(),
 });
 
@@ -88,9 +91,16 @@ export const userSettings = pgTable(
     webConfig: jsonb("web_config").$type<RunSubmitWebConfig | null>(),
     twitterEnabled: boolean("twitter_enabled").notNull().default(false),
     twitterConfig: jsonb("twitter_config").$type<RunSubmitTwitterConfig | null>(),
-    scheduleTime: text("schedule_time").notNull(),
+    pipelineTime: text("pipeline_time").notNull(),
+    emailTime: text("email_time").notNull(),
+    linkedinTime: text("linkedin_time").notNull(),
+    twitterTime: text("twitter_time").notNull(),
     scheduleTimezone: text("schedule_timezone").notNull(),
     scheduleEnabled: boolean("schedule_enabled").notNull().default(false),
+    emailEnabled: boolean("email_enabled").notNull().default(true),
+    linkedinEnabled: boolean("linkedin_enabled").notNull().default(true),
+    twitterPostEnabled: boolean("twitter_post_enabled").notNull().default(true),
+    autoReview: boolean("auto_review").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("user_settings_singleton_uq").on(t.singleton)],

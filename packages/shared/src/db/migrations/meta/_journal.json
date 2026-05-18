@@ -141,6 +141,13 @@
       "when": 1778941200000,
       "tag": "0019_add_twitter_summary",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789588800000,
+      "tag": "0020_configurable_schedule_settings",
+      "breakpoints": true
     }
   ]
 }

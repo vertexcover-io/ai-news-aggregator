@@ -31,9 +31,17 @@ export function createUserSettingsRepo(
         webConfig: row.webConfig,
         twitterEnabled: row.twitterEnabled,
         twitterConfig: row.twitterConfig,
-        scheduleTime: row.scheduleTime,
+        scheduleTime: row.pipelineTime,
+        pipelineTime: row.pipelineTime,
+        emailTime: row.emailTime,
+        linkedinTime: row.linkedinTime,
+        twitterTime: row.twitterTime,
         scheduleTimezone: row.scheduleTimezone,
         scheduleEnabled: row.scheduleEnabled,
+        emailEnabled: row.emailEnabled,
+        linkedinEnabled: row.linkedinEnabled,
+        twitterPostEnabled: row.twitterPostEnabled,
+        autoReview: row.autoReview,
         updatedAt:
           row.updatedAt instanceof Date
             ? row.updatedAt.toISOString()

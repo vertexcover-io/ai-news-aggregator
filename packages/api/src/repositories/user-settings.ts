@@ -3,7 +3,9 @@ import { userSettings } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { UserSettings } from "@newsletter/shared";
 
-export type UserSettingsUpsertInput = Omit<UserSettings, "id" | "updatedAt">;
+export type UserSettingsUpsertInput = Omit<UserSettings, "id" | "updatedAt" | "scheduleTime"> & {
+  readonly scheduleTime?: string;
+};
 
 export interface UserSettingsRepo {
   get(): Promise<UserSettings | null>;
@@ -13,6 +15,7 @@ export interface UserSettingsRepo {
 function toDomain(
   row: typeof userSettings.$inferSelect,
 ): UserSettings {
+  const pipelineTime = row.pipelineTime;
   return {
     id: row.id,
     topN: row.topN,
@@ -25,9 +28,17 @@ function toDomain(
     webConfig: row.webConfig ?? null,
     twitterEnabled: row.twitterEnabled,
     twitterConfig: row.twitterConfig ?? null,
-    scheduleTime: row.scheduleTime,
+    scheduleTime: pipelineTime,
+    pipelineTime,
+    emailTime: row.emailTime,
+    linkedinTime: row.linkedinTime,
+    twitterTime: row.twitterTime,
     scheduleTimezone: row.scheduleTimezone,
     scheduleEnabled: row.scheduleEnabled,
+    emailEnabled: row.emailEnabled,
+    linkedinEnabled: row.linkedinEnabled,
+    twitterPostEnabled: row.twitterPostEnabled,
+    autoReview: row.autoReview,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -48,6 +59,7 @@ export function createUserSettingsRepo(
 
     async upsert(input: UserSettingsUpsertInput): Promise<UserSettings> {
       const now = new Date();
+      const pipelineTime = input.pipelineTime;
       const [row] = await db
         .insert(userSettings)
         .values({
@@ -62,9 +74,16 @@ export function createUserSettingsRepo(
           webConfig: input.webConfig ?? null,
           twitterEnabled: input.twitterEnabled,
           twitterConfig: input.twitterConfig ?? null,
-          scheduleTime: input.scheduleTime,
+          pipelineTime,
+          emailTime: input.emailTime,
+          linkedinTime: input.linkedinTime,
+          twitterTime: input.twitterTime,
           scheduleTimezone: input.scheduleTimezone,
           scheduleEnabled: input.scheduleEnabled,
+          emailEnabled: input.emailEnabled,
+          linkedinEnabled: input.linkedinEnabled,
+          twitterPostEnabled: input.twitterPostEnabled,
+          autoReview: input.autoReview,
           updatedAt: now,
         })
         .onConflictDoUpdate({
@@ -80,9 +99,16 @@ export function createUserSettingsRepo(
             webConfig: input.webConfig,
             twitterEnabled: input.twitterEnabled,
             twitterConfig: input.twitterConfig,
-            scheduleTime: input.scheduleTime,
+            pipelineTime,
+            emailTime: input.emailTime,
+            linkedinTime: input.linkedinTime,
+            twitterTime: input.twitterTime,
             scheduleTimezone: input.scheduleTimezone,
             scheduleEnabled: input.scheduleEnabled,
+            emailEnabled: input.emailEnabled,
+            linkedinEnabled: input.linkedinEnabled,
+            twitterPostEnabled: input.twitterPostEnabled,
+            autoReview: input.autoReview,
             updatedAt: now,
           },
         })

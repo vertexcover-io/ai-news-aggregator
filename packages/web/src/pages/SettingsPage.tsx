@@ -55,10 +55,17 @@ function getDefaults(): SettingsFormValues {
     webConfig: null,
     twitterEnabled: false,
     twitterConfig: null,
-    scheduleTime: "07:00",
+    pipelineTime: "07:00",
+    emailTime: "07:30",
+    linkedinTime: "07:45",
+    twitterTime: "08:00",
     scheduleTimezone:
       Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     scheduleEnabled: false,
+    emailEnabled: true,
+    linkedinEnabled: true,
+    twitterPostEnabled: true,
+    autoReview: false,
   };
 }
 
@@ -114,6 +121,14 @@ export function SettingsPage(): ReactElement {
             toast.error(`Failed to resolve @${f.handle}: ${f.reason}`);
           }
           return;
+        }
+        if (err.status === 400 && err.fields.length > 0) {
+          err.fields.forEach((field) => {
+            form.setError(field as keyof SettingsFormValues, {
+              type: "server",
+              message: "must differ from pipelineTime",
+            });
+          });
         }
         toast.error(err.message);
         return;
@@ -199,6 +214,7 @@ export function SettingsPage(): ReactElement {
           <ScheduleSection
             register={form.register}
             control={form.control}
+            errors={form.formState.errors}
           />
 
           <SaveBar

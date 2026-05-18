@@ -34,9 +34,18 @@ describe("settingsFormSchema — VS-6 regression", () => {
     webEnabled: false,
     webConfig: null,
     twitterEnabled: false,
+    twitterConfig: null,
     scheduleTime: "07:00",
+    pipelineTime: "07:00",
+    emailTime: "07:30",
+    linkedinTime: "08:00",
+    twitterTime: "08:30",
     scheduleTimezone: "Asia/Calcutta",
     scheduleEnabled: false,
+    emailEnabled: true,
+    linkedinEnabled: true,
+    twitterPostEnabled: true,
+    autoReview: false,
   };
 
   it("VS-6: parses Twitter form state with one list + one handle (no userId)", () => {
@@ -114,5 +123,38 @@ describe("settingsFormSchema — VS-6 regression", () => {
       maxTweetsPerSource: 50,
       sinceHours: 24,
     });
+  });
+
+  it("accepts overnight publish windows where publish times are earlier than pipelineTime", () => {
+    const result = settingsFormSchema.safeParse({
+      ...baseValid,
+      pipelineTime: "19:00",
+      scheduleTime: "19:00",
+      emailTime: "09:00",
+      linkedinTime: "09:15",
+      twitterTime: "09:30",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects publish times equal to pipelineTime", () => {
+    const result = settingsFormSchema.safeParse({
+      ...baseValid,
+      pipelineTime: "19:00",
+      scheduleTime: "19:00",
+      emailTime: "19:00",
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ["emailTime"],
+          message: "must differ from pipelineTime",
+        }),
+      ]),
+    );
   });
 });

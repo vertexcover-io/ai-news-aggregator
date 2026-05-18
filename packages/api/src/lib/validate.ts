@@ -90,6 +90,9 @@ export const runSubmitSchema = z
 export type RunSubmitBody = z.infer<typeof runSubmitSchema>;
 
 const HH_MM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const hhmmSchema = z
+  .string()
+  .regex(HH_MM_RE, { message: "time must be HH:MM (24h)" });
 
 function isValidIanaTimezone(tz: string): boolean {
   try {
@@ -110,9 +113,11 @@ const userSettingsCommonShape = {
   webEnabled: z.boolean(),
   webConfig: webConfigSchema.nullable(),
   twitterEnabled: z.boolean(),
-  scheduleTime: z
-    .string()
-    .regex(HH_MM_RE, { message: "scheduleTime must be HH:MM (24h)" }),
+  pipelineTime: hhmmSchema.optional(),
+  scheduleTime: hhmmSchema.optional(),
+  emailTime: hhmmSchema.optional(),
+  linkedinTime: hhmmSchema.optional(),
+  twitterTime: hhmmSchema.optional(),
   scheduleTimezone: z
     .string()
     .min(1)
@@ -120,6 +125,10 @@ const userSettingsCommonShape = {
       message: "scheduleTimezone must be a valid IANA timezone",
     }),
   scheduleEnabled: z.boolean(),
+  emailEnabled: z.boolean().optional(),
+  linkedinEnabled: z.boolean().optional(),
+  twitterPostEnabled: z.boolean().optional(),
+  autoReview: z.boolean().optional(),
 } as const;
 
 interface SourceEnabledPayload {
@@ -181,6 +190,44 @@ function addEnabledConfigIssues(
     });
 }
 
+function minutesFromHHMM(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function addMinutesToHHMM(hhmm: string, minutesToAdd: number): string {
+  const dayMinutes = 24 * 60;
+  const total = (minutesFromHHMM(hhmm) + minutesToAdd + dayMinutes) % dayMinutes;
+  const h = Math.floor(total / 60).toString().padStart(2, "0");
+  const m = (total % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
+}
+
+function addScheduleOrderingIssues(
+  payload: {
+    pipelineTime: string;
+    emailTime: string;
+    linkedinTime: string;
+    twitterTime: string;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  const pipelineMinutes = minutesFromHHMM(payload.pipelineTime);
+  ([
+    "emailTime",
+    "linkedinTime",
+    "twitterTime",
+  ] as const).forEach((field) => {
+    if (minutesFromHHMM(payload[field]) === pipelineMinutes) {
+      ctx.addIssue({
+        code: "custom",
+        message: "must differ from pipelineTime",
+        path: [field],
+      });
+    }
+  });
+}
+
 export const userSettingsUpsertSchema = z
   .object({
     ...userSettingsCommonShape,
@@ -192,16 +239,44 @@ export const userSettingsUpsertSchema = z
   })
   .transform((payload) => ({
     ...payload,
+    pipelineTime: payload.pipelineTime ?? payload.scheduleTime,
+    emailTime: payload.emailTime ?? addMinutesToHHMM(payload.pipelineTime ?? payload.scheduleTime ?? "00:00", 30),
+    linkedinTime: payload.linkedinTime ?? addMinutesToHHMM(payload.pipelineTime ?? payload.scheduleTime ?? "00:00", 30),
+    twitterTime: payload.twitterTime ?? addMinutesToHHMM(payload.pipelineTime ?? payload.scheduleTime ?? "00:00", 30),
+    emailEnabled: payload.emailEnabled ?? true,
+    linkedinEnabled: payload.linkedinEnabled ?? true,
+    twitterPostEnabled: payload.twitterPostEnabled ?? true,
+    autoReview: payload.autoReview ?? false,
     hnEnabled: payload.hnEnabled ?? payload.hnConfig !== null,
     redditEnabled: payload.redditEnabled ?? payload.redditConfig !== null,
     webEnabled: payload.webEnabled ?? payload.webConfig !== null,
     twitterEnabled: payload.twitterEnabled ?? payload.twitterConfig !== null,
   }))
+  .pipe(
+    z.object({
+      ...userSettingsCommonShape,
+      pipelineTime: hhmmSchema,
+      scheduleTime: hhmmSchema.optional(),
+      emailTime: hhmmSchema,
+      linkedinTime: hhmmSchema,
+      twitterTime: hhmmSchema,
+      emailEnabled: z.boolean(),
+      linkedinEnabled: z.boolean(),
+      twitterPostEnabled: z.boolean(),
+      autoReview: z.boolean(),
+      hnEnabled: z.boolean(),
+      redditEnabled: z.boolean(),
+      webEnabled: z.boolean(),
+      twitterEnabled: z.boolean(),
+      twitterConfig: twitterConfigInputSchema.nullable(),
+    }),
+  )
   .superRefine((payload, ctx) => {
     if (!sourcesEnabledRefinement(payload)) {
       ctx.addIssue({ code: "custom", ...sourcesPresentMessage });
     }
     addEnabledConfigIssues(payload, ctx);
+    addScheduleOrderingIssues(payload, ctx);
   });
 
 export type UserSettingsUpsertBody = z.infer<typeof userSettingsUpsertSchema>;
@@ -209,6 +284,14 @@ export type UserSettingsUpsertBody = z.infer<typeof userSettingsUpsertSchema>;
 export const userSettingsPersistedSchema = z
   .object({
     ...userSettingsCommonShape,
+    pipelineTime: hhmmSchema,
+    emailTime: hhmmSchema,
+    linkedinTime: hhmmSchema,
+    twitterTime: hhmmSchema,
+    emailEnabled: z.boolean(),
+    linkedinEnabled: z.boolean(),
+    twitterPostEnabled: z.boolean(),
+    autoReview: z.boolean(),
     twitterConfig: twitterConfigPersistedSchema.nullable(),
   })
   .superRefine((payload, ctx) => {
@@ -216,7 +299,8 @@ export const userSettingsPersistedSchema = z
       ctx.addIssue({ code: "custom", ...sourcesPresentMessage });
     }
     addEnabledConfigIssues(payload, ctx);
-  }) satisfies z.ZodType<Omit<UserSettings, "id" | "updatedAt">>;
+    addScheduleOrderingIssues(payload, ctx);
+  }) satisfies z.ZodType<Omit<UserSettings, "id" | "updatedAt" | "scheduleTime">>;
 
 export type UserSettingsPersistedBody = z.infer<typeof userSettingsPersistedSchema>;
 

@@ -4,7 +4,7 @@ import type { Job } from "bullmq";
 import { getDb, createSlackNotifier } from "@newsletter/shared";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { createLogger } from "@newsletter/shared/logger";
-import type { NewsletterSendJobPayload, RunProcessJobPayload } from "@newsletter/shared";
+import type { RunProcessJobPayload } from "@newsletter/shared";
 import {
   handleRunProcessJob,
   type RunProcessDeps,
@@ -20,10 +20,25 @@ import {
   type DailyRunJobLike,
 } from "@pipeline/workers/daily-run.js";
 import {
-  handleNewsletterSendJob,
-  type NewsletterSendDeps,
-  type NewsletterSendJobLike,
-} from "@pipeline/workers/newsletter-send.js";
+  handleEmailSendJob,
+  type EmailSendDeps,
+  type EmailSendJobLike,
+} from "@pipeline/workers/email-send.js";
+import {
+  handleLinkedInPostJob,
+  type LinkedInPostDeps,
+  type LinkedInPostJobLike,
+} from "@pipeline/workers/linkedin-post.js";
+import {
+  handleTwitterPostJob,
+  type TwitterPostDeps,
+  type TwitterPostJobLike,
+} from "@pipeline/workers/twitter-post.js";
+import {
+  handleReviewWarningJob,
+  type ReviewWarningDeps,
+  type ReviewWarningJobLike,
+} from "@pipeline/workers/review-warning.js";
 import {
   handleSocialHealthJob,
   type SocialHealthDeps,
@@ -87,9 +102,11 @@ export interface CreateProcessingWorkerOptions {
   connection?: IORedis;
   runProcessDeps?: RunProcessDeps;
   dailyRunDeps?: DailyRunDeps;
-  newsletterSendDeps?: NewsletterSendDeps;
+  publishDeps?: PublishDeps;
   socialHealthDeps?: SocialHealthDeps;
 }
+
+type PublishDeps = EmailSendDeps & LinkedInPostDeps & TwitterPostDeps & ReviewWarningDeps;
 
 // Discriminated by job.name; payload shape is heterogeneous between routes.
 type ProcessingJobData = Record<string, unknown>;
@@ -105,9 +122,7 @@ export function createProcessingWorker(
     options.dailyRunDeps ?? buildDefaultDailyRunDeps(connection);
   const socialHealthDeps =
     options.socialHealthDeps ?? buildDefaultSocialHealthDeps();
-  // Lazily build newsletter send deps to avoid eager DB connection in tests.
-  let resolvedNewsletterSendDeps: NewsletterSendDeps | undefined =
-    options.newsletterSendDeps;
+  let resolvedPublishDeps: PublishDeps | undefined = options.publishDeps;
 
   return new Worker<ProcessingJobData, unknown>(
     "processing",
@@ -121,7 +136,8 @@ export function createProcessingWorker(
           };
           return handleRunProcessJob(runProcessDeps, typed);
         }
-        case "daily-run": {
+        case "daily-run":
+        case "pipeline-run": {
           const typed: DailyRunJobLike = {
             name: job.name,
             id: job.id,
@@ -130,14 +146,44 @@ export function createProcessingWorker(
           await handleDailyRunJob(dailyRunDeps, typed);
           return undefined;
         }
-        case "send-newsletter": {
-          resolvedNewsletterSendDeps ??= buildDefaultNewsletterSendDeps();
-          const typed: NewsletterSendJobLike = {
+        case "email-send": {
+          resolvedPublishDeps ??= buildDefaultPublishDeps();
+          const typed: EmailSendJobLike = {
             name: job.name,
             id: job.id,
-            data: job.data as unknown as NewsletterSendJobPayload,
+            data: job.data as unknown as { runId: string },
           };
-          await handleNewsletterSendJob(resolvedNewsletterSendDeps, typed);
+          await handleEmailSendJob(resolvedPublishDeps, typed);
+          return undefined;
+        }
+        case "linkedin-post": {
+          resolvedPublishDeps ??= buildDefaultPublishDeps();
+          const typed: LinkedInPostJobLike = {
+            name: job.name,
+            id: job.id,
+            data: job.data as unknown as { runId: string },
+          };
+          await handleLinkedInPostJob(resolvedPublishDeps, typed);
+          return undefined;
+        }
+        case "twitter-post": {
+          resolvedPublishDeps ??= buildDefaultPublishDeps();
+          const typed: TwitterPostJobLike = {
+            name: job.name,
+            id: job.id,
+            data: job.data as unknown as { runId: string },
+          };
+          await handleTwitterPostJob(resolvedPublishDeps, typed);
+          return undefined;
+        }
+        case "review-warning": {
+          resolvedPublishDeps ??= buildDefaultPublishDeps();
+          const typed: ReviewWarningJobLike = {
+            name: job.name,
+            id: job.id,
+            data: job.data as unknown as { runId: string },
+          };
+          await handleReviewWarningJob(resolvedPublishDeps, typed);
           return undefined;
         }
         case "social-health": {
@@ -168,6 +214,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db);
   const candidatesRepo: CandidatesRepo = createCandidatesRepo(db);
   const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db);
+  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db);
   const loadFn: LoadCandidatesFn = loadCandidatesSince;
   const collectFns: CollectFns = {
     hn: collectHn,
@@ -178,8 +225,19 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   const twitterClient = createRettiwtClient({
     rettiwt: new Rettiwt({ apiKey: process.env.RETTIWT_API_KEY }),
   });
-  const sendQueue = new Queue<NewsletterSendJobPayload>("send-newsletter", {
-    connection,
+  const processingQueue = new Queue("processing", { connection });
+  const slackNotifier = createSlackNotifier({
+    webhookUrl: process.env.SLACK_WEBHOOK_URL,
+    archives: archiveRepo,
+    resolveTopRankedTitle: async (archive) => {
+      if (archive.rankedItems.length === 0) return null;
+      const items = await rawItemsRepo.findByIds([
+        archive.rankedItems[0].rawItemId,
+      ]);
+      return items[0]?.title ?? null;
+    },
+    logger: createLogger("slack"),
+    publicArchiveBaseUrl: process.env.PUBLIC_BASE_URL,
   });
   return {
     runState,
@@ -190,9 +248,11 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     rankFn: (candidates, opts) => rankCandidates(candidates, opts),
     collectFns,
     archiveRepo,
+    userSettingsRepo,
     cancelSubscriber: createCancelSubscriber(connection),
     twitterClient,
-    sendQueue,
+    processingQueue,
+    slackNotifier,
   };
 }
 
@@ -266,10 +326,11 @@ function warnInvalidTwitterConfig(
   );
 }
 
-export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
+export function buildDefaultPublishDeps(): PublishDeps {
   const db = getDb();
   const archiveRepo = createRunArchivesRepo(db);
   const rawItemsRepo = createRawItemsRepo(db);
+  const userSettingsRepo = createUserSettingsRepo(db);
   const socialTokensRepo = getSharedSocialTokensRepo();
   const slackNotifier = createSlackNotifier({
     webhookUrl: process.env.SLACK_WEBHOOK_URL,
@@ -340,8 +401,11 @@ export function buildDefaultNewsletterSendDeps(): NewsletterSendDeps {
     slackNotifier,
     linkedinNotifier,
     twitterNotifier,
+    userSettingsRepo,
   };
 }
+
+export const buildDefaultNewsletterSendDeps = buildDefaultPublishDeps;
 
 export function buildDefaultSocialHealthDeps(): SocialHealthDeps {
   const twitterLogger = createLogger("social.twitter");
@@ -367,7 +431,8 @@ function getSharedSocialTokensRepo(): SocialTokensRepo {
 export type {
   RunProcessDeps,
   DailyRunDeps,
-  NewsletterSendDeps,
+  EmailSendDeps,
+  PublishDeps,
   SocialHealthDeps,
   RunProcessResult,
 };

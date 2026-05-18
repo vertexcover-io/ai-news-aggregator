@@ -69,9 +69,17 @@ export interface SettingsSubmitInput {
   webConfig: RunSubmitWebConfig | null;
   twitterEnabled: boolean;
   twitterConfig: SettingsSubmitTwitterConfig | null;
-  scheduleTime: string;
+  scheduleTime?: string;
+  pipelineTime?: string;
+  emailTime?: string;
+  linkedinTime?: string;
+  twitterTime?: string;
   scheduleTimezone: string;
   scheduleEnabled: boolean;
+  emailEnabled?: boolean;
+  linkedinEnabled?: boolean;
+  twitterPostEnabled?: boolean;
+  autoReview?: boolean;
 }
 
 const webConfigSchema = z.object({
@@ -99,13 +107,45 @@ export const settingsFormSchema = z
     webConfig: webConfigSchema.nullable(),
     twitterEnabled: z.boolean(),
     twitterConfig: twitterConfigSchema.nullable(),
-    scheduleTime: z
+    pipelineTime: z
       .string()
-      .regex(HH_MM_RE, { message: "scheduleTime must be HH:MM (24h)" }),
+      .regex(HH_MM_RE, { message: "pipelineTime must be HH:MM (24h)" }),
+    scheduleTime: z.string().regex(HH_MM_RE).optional(),
+    emailTime: z
+      .string()
+      .regex(HH_MM_RE, { message: "emailTime must be HH:MM (24h)" }),
+    linkedinTime: z
+      .string()
+      .regex(HH_MM_RE, { message: "linkedinTime must be HH:MM (24h)" }),
+    twitterTime: z
+      .string()
+      .regex(HH_MM_RE, { message: "twitterTime must be HH:MM (24h)" }),
     scheduleTimezone: z.string().min(1).refine(isValidIanaTimezone, {
       message: "scheduleTimezone must be a valid IANA timezone",
     }),
     scheduleEnabled: z.boolean(),
+    emailEnabled: z.boolean(),
+    linkedinEnabled: z.boolean(),
+    twitterPostEnabled: z.boolean(),
+    autoReview: z.boolean(),
+  })
+  .superRefine((payload, ctx) => {
+    const [pipelineHour, pipelineMinute] = payload.pipelineTime.split(":").map(Number);
+    const pipelineMinutes = pipelineHour * 60 + pipelineMinute;
+    ([
+      "emailTime",
+      "linkedinTime",
+      "twitterTime",
+    ] as const).forEach((field) => {
+      const [hour, minute] = payload[field].split(":").map(Number);
+      if (hour * 60 + minute === pipelineMinutes) {
+        ctx.addIssue({
+          code: "custom",
+          path: [field],
+          message: "must differ from pipelineTime",
+        });
+      }
+    });
   })
   .refine(
     (payload) =>
@@ -184,8 +224,15 @@ export function normalizeSettingsForSubmit(
     webConfig: values.webConfig,
     twitterEnabled: values.twitterEnabled,
     twitterConfig: normalizeTwitterConfigForSubmit(values.twitterConfig),
-    scheduleTime: values.scheduleTime,
+    pipelineTime: values.pipelineTime,
+    emailTime: values.emailTime,
+    linkedinTime: values.linkedinTime,
+    twitterTime: values.twitterTime,
     scheduleTimezone: values.scheduleTimezone,
     scheduleEnabled: values.scheduleEnabled,
+    emailEnabled: values.emailEnabled,
+    linkedinEnabled: values.linkedinEnabled,
+    twitterPostEnabled: values.twitterPostEnabled,
+    autoReview: values.autoReview,
   };
 }
