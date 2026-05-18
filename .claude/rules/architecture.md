@@ -8,7 +8,7 @@ Always check `docs/superpowers/specs/` before making architectural decisions. Do
 
 Each package has a clear responsibility. Don't leak concerns across boundaries:
 
-- **`@newsletter/shared`** — owns all Drizzle schema definitions, migrations, shared types, and the DB client. This is the only package that defines database tables.
+- **`@newsletter/shared`** — owns all Drizzle schema definitions, migrations, shared types, the DB client, and cross-package utility functions (e.g. `detectAddPostSourceType`). This is the only package that defines database tables. Utility functions that would otherwise create a circular import between `api` and `pipeline` belong here.
 - **`@newsletter/api`** — HTTP layer only. Route handlers, auth middleware, job enqueueing, email delivery via Resend. No direct scraping or processing logic.
 - **`@newsletter/pipeline`** — BullMQ workers only. No HTTP framework (no Express, no Hono). Runs as a standalone Node process.
 - **`@newsletter/web`** — React UI only. Communicates with the backend exclusively through the typed API client. No direct DB access.
