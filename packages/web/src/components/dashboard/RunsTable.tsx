@@ -1,7 +1,8 @@
 import { useState, type ReactElement } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import type { RunSummary } from "@newsletter/shared";
-import { ArrowRight, ExternalLink, RotateCw, Trash2 } from "lucide-react";
+import { ArrowRight, DollarSign, ExternalLink, RotateCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { CostBreakdownCard } from "@/components/admin/CostBreakdownCard";
+import { fetchArchiveCost } from "@/api/archives";
 import {
   Table,
   TableBody,
@@ -165,6 +168,7 @@ function RunActionCell({
   retrying,
   onCancelClick,
   onDeleteClick,
+  onCostClick,
 }: {
   run: RunSummary;
   derived: DerivedStatus;
@@ -172,6 +176,7 @@ function RunActionCell({
   retrying: boolean;
   onCancelClick: () => void;
   onDeleteClick: (runId: string) => void;
+  onCostClick: (runId: string) => void;
 }): ReactElement | null {
   const primary = renderPrimaryAction({
     run,
@@ -185,11 +190,24 @@ function RunActionCell({
     derived === "reviewed" ||
     derived === "failed" ||
     derived === "cancelled";
+  const showCost = canViewCost(derived);
 
-  if (primary === null && !showDelete) return null;
+  if (primary === null && !showDelete && !showCost) return null;
 
   return (
     <div className="flex items-center justify-end gap-2">
+      {showCost ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="View pipeline cost"
+          onClick={() => {
+            onCostClick(run.runId);
+          }}
+        >
+          <DollarSign />
+        </Button>
+      ) : null}
       {primary}
       {showDelete ? (
         <Button
@@ -204,6 +222,61 @@ function RunActionCell({
         </Button>
       ) : null}
     </div>
+  );
+}
+
+function canViewCost(derived: DerivedStatus): boolean {
+  return (
+    derived === "ready-to-review" ||
+    derived === "reviewed" ||
+    derived === "failed" ||
+    derived === "cancelled"
+  );
+}
+
+function CostDialog({
+  runId,
+  onClose,
+}: {
+  runId: string | null;
+  onClose: () => void;
+}): ReactElement {
+  const enabled = runId !== null;
+  const query = useQuery({
+    queryKey: ["archive-cost", runId],
+    queryFn: () => {
+      if (runId === null) throw new Error("runId required");
+      return fetchArchiveCost(runId);
+    },
+    enabled,
+    staleTime: 60_000,
+  });
+
+  return (
+    <Dialog
+      open={enabled}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Pipeline cost</DialogTitle>
+          <DialogDescription>API spend for this run</DialogDescription>
+        </DialogHeader>
+        {query.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : query.isError ? (
+          <p className="text-sm text-destructive">
+            Failed to load cost data.
+          </p>
+        ) : (
+          <CostBreakdownCard
+            costBreakdown={query.data?.costBreakdown ?? null}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -222,6 +295,7 @@ export function RunsTable({
   const [cancelling, setCancelling] = useState(false);
   const [deleteRunId, setDeleteRunId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [costRunId, setCostRunId] = useState<string | null>(null);
 
   if (runs.length === 0) {
     return (
@@ -324,6 +398,13 @@ export function RunsTable({
         </DialogContent>
       </Dialog>
 
+      {costRunId !== null ? (
+        <CostDialog
+          runId={costRunId}
+          onClose={() => { setCostRunId(null); }}
+        />
+      ) : null}
+
       <div className="rounded-lg border bg-white">
         <Table>
           <TableHeader>
@@ -380,6 +461,7 @@ export function RunsTable({
                       retrying={retrying}
                       onCancelClick={() => { setConfirmRunId(run.runId); }}
                       onDeleteClick={(id) => { setDeleteRunId(id); }}
+                      onCostClick={(id) => { setCostRunId(id); }}
                     />
                   </TableCell>
                 </TableRow>

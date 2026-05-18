@@ -5,6 +5,7 @@ import type {
   NotificationKey,
   NotificationState,
   RankedItemRef,
+  RunCostBreakdown,
   RunSourceTelemetry,
   SocialMetadata,
   SourceType,
@@ -26,6 +27,7 @@ export interface RunArchiveUpsertInput {
   sourceTelemetry?: RunSourceTelemetry | null;
   searchText?: string | null;
   isDryRun?: boolean;
+  costBreakdown?: RunCostBreakdown | null;
 }
 
 export interface PipelineRunArchiveRow {
@@ -209,6 +211,7 @@ export function createRunArchivesRepo(
           sourceTelemetry: input.sourceTelemetry ?? null,
           searchText: input.searchText ?? null,
           isDryRun: input.isDryRun ?? false,
+          costBreakdown: input.costBreakdown ?? null,
         })
         .onConflictDoUpdate({
           target: runArchives.id,
@@ -225,6 +228,7 @@ export function createRunArchivesRepo(
             sourceTelemetry: sql.raw(`excluded.${runArchives.sourceTelemetry.name}`),
             searchText: sql.raw(`excluded.${runArchives.searchText.name}`),
             isDryRun: sql.raw(`excluded.${runArchives.isDryRun.name}`),
+            costBreakdown: sql.raw(`excluded.${runArchives.costBreakdown.name}`),
           },
         });
     },
