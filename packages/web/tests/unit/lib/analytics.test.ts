@@ -59,6 +59,7 @@ describe("initBrowserAnalytics", () => {
         capture_pageview: "history_change",
         capture_pageleave: "if_capture_pageview",
         disable_session_recording: true,
+        property_denylist: ["email", "password"],
       }),
     );
   });

@@ -28,7 +28,7 @@ export async function initBrowserAnalytics(): Promise<boolean> {
       autocapture: true,
       disable_session_recording: true,
       mask_all_element_attributes: true,
-      property_denylist: ["email", "token", "password"],
+      property_denylist: ["email", "password"],
     });
     initialized = true;
     initKey = nextKey;
