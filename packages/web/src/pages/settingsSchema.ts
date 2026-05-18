@@ -48,6 +48,17 @@ const twitterConfigSchema = z.object({
   sinceHours: z.number().int().min(1).max(168).optional(),
 });
 
+const nullableTrimmedStringSchema = z
+  .string()
+  .trim()
+  .transform((value) => (value.length === 0 ? null : value))
+  .nullable();
+
+const nullableUrlSchema = nullableTrimmedStringSchema.refine(
+  (value) => value === null || z.url().safeParse(value).success,
+  { message: "Invalid URL" },
+);
+
 export type TwitterFormConfig = z.infer<typeof twitterConfigSchema>;
 export type TwitterFormUser = z.infer<typeof twitterUserSchema>;
 
@@ -69,6 +80,9 @@ export interface SettingsSubmitInput {
   webConfig: RunSubmitWebConfig | null;
   twitterEnabled: boolean;
   twitterConfig: SettingsSubmitTwitterConfig | null;
+  posthogEnabled: boolean;
+  posthogProjectToken: string | null;
+  posthogHost: string | null;
   scheduleTime: string;
   scheduleTimezone: string;
   scheduleEnabled: boolean;
@@ -99,6 +113,9 @@ export const settingsFormSchema = z
     webConfig: webConfigSchema.nullable(),
     twitterEnabled: z.boolean(),
     twitterConfig: twitterConfigSchema.nullable(),
+    posthogEnabled: z.boolean(),
+    posthogProjectToken: nullableTrimmedStringSchema,
+    posthogHost: nullableUrlSchema,
     scheduleTime: z
       .string()
       .regex(HH_MM_RE, { message: "scheduleTime must be HH:MM (24h)" }),
@@ -184,6 +201,9 @@ export function normalizeSettingsForSubmit(
     webConfig: values.webConfig,
     twitterEnabled: values.twitterEnabled,
     twitterConfig: normalizeTwitterConfigForSubmit(values.twitterConfig),
+    posthogEnabled: values.posthogEnabled,
+    posthogProjectToken: values.posthogProjectToken,
+    posthogHost: values.posthogHost,
     scheduleTime: values.scheduleTime,
     scheduleTimezone: values.scheduleTimezone,
     scheduleEnabled: values.scheduleEnabled,

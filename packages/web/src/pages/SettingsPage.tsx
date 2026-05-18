@@ -29,6 +29,7 @@ function persistedToFormTwitter(
 }
 import { SourcesSection } from "../components/settings/SourcesSection";
 import { ScheduleSection } from "../components/settings/ScheduleSection";
+import { AnalyticsSection } from "../components/settings/AnalyticsSection";
 import { SaveBar } from "../components/settings/SaveBar";
 
 function getDefaults(): SettingsFormValues {
@@ -55,6 +56,9 @@ function getDefaults(): SettingsFormValues {
     webConfig: null,
     twitterEnabled: false,
     twitterConfig: null,
+    posthogEnabled: false,
+    posthogProjectToken: null,
+    posthogHost: "https://us.i.posthog.com",
     scheduleTime: "07:00",
     scheduleTimezone:
       Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
@@ -197,6 +201,10 @@ export function SettingsPage(): ReactElement {
             setValue={form.setValue}
           />
           <ScheduleSection
+            register={form.register}
+            control={form.control}
+          />
+          <AnalyticsSection
             register={form.register}
             control={form.control}
           />

@@ -80,6 +80,18 @@ function makeStubAnalyticsRouter(): Hono {
   return new Hono();
 }
 
+function makeStubAnalyticsConfigRouter(): Hono {
+  const app = new Hono();
+  app.get("/", (c) =>
+    c.json({
+      posthogEnabled: false,
+      posthogProjectToken: null,
+      posthogHost: null,
+    }),
+  );
+  return app;
+}
+
 function makeApp(
   archiveRepo: RunArchivesRepo = makeArchiveRepo(),
 ): Hono {
@@ -101,6 +113,7 @@ function makeApp(
     subscribeRouter: makeStubSubscribeRouter(),
     webhooksRouter: makeStubWebhooksRouter(),
     analyticsRouter: makeStubAnalyticsRouter(),
+    analyticsConfigRouter: makeStubAnalyticsConfigRouter(),
   });
 }
 
@@ -259,5 +272,16 @@ describe("route gating (phase 4)", () => {
     // Should hit the handler (not the gate) even without a cookie.
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "invalid_password" });
+  });
+
+  it("GET /api/public/analytics-config remains reachable without a cookie", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/public/analytics-config");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      posthogEnabled: false,
+      posthogProjectToken: null,
+      posthogHost: null,
+    });
   });
 });

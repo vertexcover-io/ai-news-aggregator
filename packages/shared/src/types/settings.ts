@@ -17,6 +17,9 @@ export interface UserSettings {
   webConfig: RunSubmitWebConfig | null;
   twitterEnabled: boolean;
   twitterConfig: RunSubmitTwitterConfig | null;
+  posthogEnabled: boolean;
+  posthogProjectToken: string | null;
+  posthogHost: string | null;
   scheduleTime: string;
   scheduleTimezone: string;
   scheduleEnabled: boolean;

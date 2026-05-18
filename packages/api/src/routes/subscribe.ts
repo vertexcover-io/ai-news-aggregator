@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createLogger } from "@newsletter/shared";
 import { issueSubscriberToken, verifySubscriberToken } from "@api/lib/subscriber-token.js";
 import type { SubscribersRepo } from "@api/repositories/subscribers.js";
+import { captureAnalytics } from "@api/lib/posthog.js";
 
 export interface SubscribeRouterDeps {
   subscribersRepo: SubscribersRepo;
@@ -85,6 +86,10 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       { event: "subscribe.created", subscriberId: subscriber.id, email: masked },
       "subscribe: new subscriber persisted (pending)",
     );
+    void captureAnalytics({
+      distinctId: subscriber.id,
+      event: "subscriber_created",
+    });
 
     const confirmTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const confirmToken = issueSubscriberToken(
@@ -153,6 +158,10 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       { event: "confirm.success", subscriberId: result.subscriberId },
       "confirm: subscriber moved pending -> confirmed",
     );
+    void captureAnalytics({
+      distinctId: result.subscriberId,
+      event: "subscriber_confirmed",
+    });
 
     const recentArchiveId = await deps.getMostRecentReviewedArchiveId();
     if (recentArchiveId) {
@@ -194,6 +203,11 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
         { event: "unsubscribe.success", subscriberId: result.subscriberId, via: "GET" },
         "unsubscribe: subscriber unsubscribed",
       );
+      void captureAnalytics({
+        distinctId: result.subscriberId,
+        event: "subscriber_unsubscribed",
+        properties: { via: "GET" },
+      });
     } else {
       logger.warn(
         { event: "unsubscribe.invalid_token", via: "GET", reason: result.reason },
@@ -232,6 +246,11 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
           { event: "unsubscribe.success", subscriberId: result.subscriberId, via: "POST" },
           "unsubscribe: subscriber unsubscribed (one-click)",
         );
+        void captureAnalytics({
+          distinctId: result.subscriberId,
+          event: "subscriber_unsubscribed",
+          properties: { via: "POST" },
+        });
       } else {
         logger.warn(
           { event: "unsubscribe.invalid_token", via: "POST", reason: result.reason },

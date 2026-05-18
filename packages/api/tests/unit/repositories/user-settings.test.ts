@@ -15,6 +15,9 @@ interface StoredRow {
   webConfig: unknown;
   twitterEnabled: boolean;
   twitterConfig: unknown;
+  posthogEnabled: boolean;
+  posthogProjectToken: string | null;
+  posthogHost: string | null;
   scheduleTime: string;
   scheduleTimezone: string;
   scheduleEnabled: boolean;
@@ -50,6 +53,9 @@ function makeFakeDb(): { db: Pick<AppDb, "select" | "insert">; rows: StoredRow[]
                 webConfig: v.webConfig ?? null,
                 twitterEnabled: v.twitterEnabled ?? false,
                 twitterConfig: v.twitterConfig ?? null,
+                posthogEnabled: v.posthogEnabled ?? false,
+                posthogProjectToken: v.posthogProjectToken ?? null,
+                posthogHost: v.posthogHost ?? null,
                 scheduleTime: v.scheduleTime ?? "00:00",
                 scheduleTimezone: v.scheduleTimezone ?? "UTC",
                 scheduleEnabled: v.scheduleEnabled ?? false,
@@ -81,6 +87,9 @@ const baseInput = {
   webConfig: null,
   twitterEnabled: false,
   twitterConfig: null,
+  posthogEnabled: false,
+  posthogProjectToken: null,
+  posthogHost: null,
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
@@ -117,6 +126,22 @@ describe("UserSettingsRepo", () => {
     expect(saved.twitterConfig).toEqual(twitterConfig);
     const got = await repo.get();
     expect(got?.twitterConfig).toEqual(twitterConfig);
+  });
+
+  it("upsert() round-trips PostHog config through get()", async () => {
+    const { db } = makeFakeDb();
+    const repo = createUserSettingsRepo(db);
+    const saved = await repo.upsert({
+      ...baseInput,
+      posthogEnabled: true,
+      posthogProjectToken: "phc_project_token",
+      posthogHost: "https://us.i.posthog.com",
+    });
+    expect(saved.posthogEnabled).toBe(true);
+    expect(saved.posthogProjectToken).toBe("phc_project_token");
+    expect(saved.posthogHost).toBe("https://us.i.posthog.com");
+    const got = await repo.get();
+    expect(got?.posthogProjectToken).toBe("phc_project_token");
   });
 
   it("upsert() twice keeps exactly one row (singleton)", async () => {

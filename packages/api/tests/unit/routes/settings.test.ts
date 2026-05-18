@@ -27,6 +27,9 @@ function makeRepo(initial: UserSettings | null = null): {
         webConfig: input.webConfig,
         twitterEnabled: input.twitterEnabled,
         twitterConfig: input.twitterConfig,
+        posthogEnabled: input.posthogEnabled,
+        posthogProjectToken: input.posthogProjectToken,
+        posthogHost: input.posthogHost,
         scheduleTime: input.scheduleTime,
         scheduleTimezone: input.scheduleTimezone,
         scheduleEnabled: input.scheduleEnabled,
@@ -84,6 +87,9 @@ const validBody = {
   webConfig: null,
   twitterEnabled: false,
   twitterConfig: null,
+  posthogEnabled: false,
+  posthogProjectToken: null,
+  posthogHost: null,
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
@@ -112,6 +118,9 @@ describe("GET /api/settings", () => {
       webConfig: null,
       twitterEnabled: false,
       twitterConfig: null,
+      posthogEnabled: false,
+      posthogProjectToken: null,
+      posthogHost: null,
       scheduleTime: "08:00",
       scheduleTimezone: "UTC",
       scheduleEnabled: false,
@@ -139,6 +148,47 @@ describe("PUT /api/settings", () => {
     const body = (await res.json()) as UserSettings;
     expect(body.topN).toBe(10);
     expect(store.current).not.toBeNull();
+  });
+
+  it("accepts and persists PostHog analytics config", async () => {
+    const { repo, store } = makeRepo(null);
+    const app = buildApp(repo, makeQueue());
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        posthogEnabled: true,
+        posthogProjectToken: "phc_project_token",
+        posthogHost: "https://us.i.posthog.com",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.posthogEnabled).toBe(true);
+    expect(body.posthogProjectToken).toBe("phc_project_token");
+    expect(body.posthogHost).toBe("https://us.i.posthog.com");
+    expect(store.current).toMatchObject({
+      posthogEnabled: true,
+      posthogProjectToken: "phc_project_token",
+      posthogHost: "https://us.i.posthog.com",
+    });
+  });
+
+  it("rejects invalid PostHog host URLs", async () => {
+    const { repo } = makeRepo(null);
+    const app = buildApp(repo, makeQueue());
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        posthogEnabled: true,
+        posthogProjectToken: "phc_project_token",
+        posthogHost: "not-a-url",
+      }),
+    });
+    expect(res.status).toBe(400);
   });
 
   it("REQ-012: returns 400 with issues on invalid body", async () => {

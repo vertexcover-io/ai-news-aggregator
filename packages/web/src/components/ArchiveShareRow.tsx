@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { buildLinkedInShareUrl, buildXShareUrl } from "../lib/shareLinks";
+import { captureBrowserEvent } from "../lib/analytics";
 
 interface Props {
   archiveUrl: string;
   shareText: string;
+  runId?: string;
 }
 
 type CopyState = "idle" | "copied" | "failed";
@@ -59,7 +61,7 @@ function LinkIcon(): ReactElement {
 const iconBtn =
   "inline-flex h-[30px] w-[30px] min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-[#6b6557] transition-colors hover:bg-[#f1ede2] hover:text-[#8c3a1e] sm:min-h-[30px] sm:min-w-[30px]";
 
-export function ArchiveShareRow({ archiveUrl, shareText }: Props): ReactElement {
+export function ArchiveShareRow({ archiveUrl, shareText, runId }: Props): ReactElement {
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const timerRef = useRef<number | null>(null);
 
@@ -82,6 +84,10 @@ export function ArchiveShareRow({ archiveUrl, shareText }: Props): ReactElement 
   }
 
   async function handleCopy(): Promise<void> {
+    captureBrowserEvent("archive_share_clicked", {
+      target: "copy",
+      run_id: runId,
+    });
     try {
       const clip = (navigator as NavigatorClipboardLike).clipboard;
       if (clip !== undefined) {
@@ -141,6 +147,12 @@ export function ArchiveShareRow({ archiveUrl, shareText }: Props): ReactElement 
           rel="noopener noreferrer"
           aria-label="Share this issue on X"
           data-share-target="x"
+          onClick={() => {
+            captureBrowserEvent("archive_share_clicked", {
+              target: "x",
+              run_id: runId,
+            });
+          }}
           className={iconBtn}
         >
           <XIcon />
@@ -152,6 +164,12 @@ export function ArchiveShareRow({ archiveUrl, shareText }: Props): ReactElement 
           rel="noopener noreferrer"
           aria-label="Share this issue on LinkedIn"
           data-share-target="linkedin"
+          onClick={() => {
+            captureBrowserEvent("archive_share_clicked", {
+              target: "linkedin",
+              run_id: runId,
+            });
+          }}
           className={iconBtn}
         >
           <LinkedInIcon />
