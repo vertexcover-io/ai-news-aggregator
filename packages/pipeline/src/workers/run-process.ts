@@ -67,6 +67,8 @@ import {
   toEnrichmentTelemetry,
 } from "@pipeline/services/link-enrichment/index.js";
 import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
+import { RunCostAccumulator } from "@pipeline/services/cost-accumulator.js";
+import type { RunCostBreakdown } from "@newsletter/shared";
 
 const logger = createLogger("worker:run-process");
 
@@ -160,6 +162,7 @@ export type WebCollectFn = (
   deps: {
     rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
     signal?: AbortSignal;
+    costAccumulator?: RunCostAccumulator;
   },
   config: WebCollectConfig,
 ) => Promise<CollectorResult>;
@@ -210,6 +213,7 @@ async function runCollecting(
   collectors: RunCollectorsPayload,
   signal: AbortSignal,
   enrichmentCtx: EnrichmentContext,
+  costAccumulator: RunCostAccumulator,
 ): Promise<CollectingOutcome> {
   // In-process serializer for state writes: replicates the old
   // `concurrency: 1` invariant from the collection worker. Without this,
@@ -252,7 +256,7 @@ async function runCollecting(
     const config = collectors.web;
     tasks.push({
       sourceKey: "blog",
-      run: () => deps.collectFns.web(collectorDeps, config),
+      run: () => deps.collectFns.web({ ...collectorDeps, costAccumulator }, config),
     });
   }
   if (collectors.twitter) {
@@ -379,6 +383,11 @@ export async function handleRunProcessJob(
     counters: newCounters(),
   };
 
+  const costAccumulator = new RunCostAccumulator();
+
+  const snapshotCost = (): RunCostBreakdown | null =>
+    costAccumulator.hasAnyData() ? costAccumulator.snapshot() : null;
+
   // REQ-09: always close subscriber in a finally block
   try {
     // EDGE-04: re-check Redis run-state after subscribing — if already cancelling, abort immediately
@@ -390,7 +399,7 @@ export async function handleRunProcessJob(
     // Stage 1: collecting
     throwIfAborted(signal);
     await deps.runState.setStage(runId, "collecting");
-    const collecting = await runCollecting(deps, runId, collectors, signal, enrichmentCtx);
+    const collecting = await runCollecting(deps, runId, collectors, signal, enrichmentCtx, costAccumulator);
 
     // All collectors failed → terminal failure, skip dedup/rank
     if (collecting.failureCount > 0 && collecting.successCount === 0) {
@@ -515,6 +524,7 @@ export async function handleRunProcessJob(
         halfLifeHours,
         shortlistBreakdowns: breakdowns,
         abortSignal: signal,
+        costAccumulator,
       });
     } catch (err) {
       // Re-throw CancelledError to be handled by the outer catch
@@ -527,6 +537,28 @@ export async function handleRunProcessJob(
         error: message,
         completedAt: new Date().toISOString(),
       }));
+      try {
+        await deps.archiveRepo.upsert({
+          id: runId,
+          status: "failed",
+          rankedItems: [],
+          topN,
+          completedAt: new Date(),
+          startedAt: runStartedAt,
+          sourceTypes,
+          isDryRun: dryRun,
+          costBreakdown: snapshotCost(),
+        });
+      } catch (archiveErr) {
+        logger.error(
+          {
+            event: "archive.write_failed",
+            runId,
+            error: archiveErr instanceof Error ? archiveErr.message : String(archiveErr),
+          },
+          "archive.write_failed",
+        );
+      }
       throw err;
     }
 
@@ -590,6 +622,7 @@ export async function handleRunProcessJob(
         sourceTelemetry,
         searchText,
         isDryRun: dryRun,
+        costBreakdown: snapshotCost(),
       });
       archiveWritten = true;
     } catch (err) {
@@ -665,6 +698,7 @@ export async function handleRunProcessJob(
           startedAt: runStartedAt,
           sourceTypes,
           isDryRun: dryRun,
+          costBreakdown: snapshotCost(),
         });
       } catch (archiveErr) {
         logger.error(
