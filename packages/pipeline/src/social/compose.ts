@@ -22,9 +22,12 @@ export interface ComposedPosts {
 
 export const TWITTER_MAX_CHARS = 280;
 export const TWITTER_URL_CHARS = 23;
-// The archive URL is posted as a reply, not in the body, so the full 280-char
-// budget is available for the body itself.
-export const TWITTER_SUMMARY_MAX_CHARS = TWITTER_MAX_CHARS;
+
+// "Full breakdown ↓" lives at the bottom of the body to point readers at the
+// follow-up reply where the archive URL is posted (the body never contains a
+// link itself — outbound links in the body penalise reach on X/LinkedIn).
+const TEASER_CTA = "Full breakdown ↓";
+const TEASER_SUFFIX = `\n\n${TEASER_CTA}`;
 
 const TWITTER_STORY_PREFIX = "→ ";
 const TWITTER_MAX_PREMIUM_STORIES = 3;
@@ -46,6 +49,7 @@ function buildLinkedin(hook: string, stories: RankedStory[]): string {
   for (let i = 0; i < stories.length; i += 1) {
     parts.push(buildLinkedinStoryLine(i + 1, stories[i]));
   }
+  parts.push(TEASER_CTA);
   return parts.join("\n\n");
 }
 
@@ -55,7 +59,7 @@ function buildTwitterText(
   stories: RankedStory[],
   premium: boolean,
 ): string {
-  if (!premium) return summary;
+  if (!premium) return `${summary}${TEASER_SUFFIX}`;
   const storyLines = stories
     .map((story) => story.title.trim())
     .filter((title) => title !== "")
@@ -71,6 +75,7 @@ function buildTwitterText(
     ...(heading === null ? [] : [heading]),
     summary,
     ...alsoInside,
+    TEASER_CTA,
   ].join("\n\n");
 }
 

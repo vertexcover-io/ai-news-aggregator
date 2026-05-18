@@ -198,7 +198,8 @@ describe("createTwitterNotifier", () => {
     expect(headCall.text).toContain("Twitter-native summary for the feed.");
     expect(headCall.text).not.toContain("Daily AI digest headline");
     expect(headCall.text).not.toContain("Hook line for social.");
-    expect(headCall.text).not.toContain("Full breakdown");
+    // Body should end with the teaser pointing at the reply, but never embed the URL.
+    expect(headCall.text).toContain("Full breakdown ↓");
     expect(headCall.text).not.toContain("https://");
     expect(headCall.text).not.toContain("→ ");
     expect(headCall.replyToTweetId).toBeUndefined();

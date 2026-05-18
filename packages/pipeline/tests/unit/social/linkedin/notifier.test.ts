@@ -196,9 +196,11 @@ describe("createLinkedInNotifier", () => {
     expect(callArg.personUrn).toBe("urn:li:person:abc");
     expect(callArg.apiVersion).toBe("202511");
     expect(callArg.text).toContain("Hook line for social.");
-    // The archive URL is posted as a comment, not embedded in the post body.
+    // Body ends with the teaser pointing at the comment, but the URL itself
+    // is only ever in the comment (createComment call below), never in the body.
+    expect(callArg.text).toContain("Full breakdown ↓");
+    expect(callArg.text).not.toContain("Full breakdown:");
     expect(callArg.text).not.toContain("https://");
-    expect(callArg.text).not.toContain("Full breakdown");
 
     expect(deps.apiClient.createComment).toHaveBeenCalledTimes(1);
     const commentArg = deps.apiClient.createComment.mock.calls[0][0];
@@ -207,7 +209,7 @@ describe("createLinkedInNotifier", () => {
     expect(commentArg.postUrn).toBe("urn:li:share:1234");
     expect(commentArg.apiVersion).toBe("202511");
     expect(commentArg.text).toBe(
-      `Full breakdown: https://news.example.com/archive/${RUN_ID}`,
+      `https://news.example.com/archive/${RUN_ID}`,
     );
 
     expect(deps.archives.markLinkedInPosted).toHaveBeenCalledWith(

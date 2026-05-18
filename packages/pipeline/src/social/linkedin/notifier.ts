@@ -273,11 +273,13 @@ export function createLinkedInNotifier(
         }
 
         if (postResult.ok) {
+          // Body ends with "Full breakdown ↓" pointing here; comment is just
+          // the URL so it renders as a clickable preview without extra prose.
           const commentResult = await apiClient.createComment({
             accessToken: acquired.token.accessToken,
             personUrn: acquired.token.personUrn,
             postUrn: postResult.postUrn,
-            text: `Full breakdown: ${archiveUrl}`,
+            text: archiveUrl,
             apiVersion: config.apiVersion,
           });
           if (!commentResult.ok) {
