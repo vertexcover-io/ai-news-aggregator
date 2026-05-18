@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import type { Queue } from "bullmq";
+import type IORedis from "ioredis";
+import { z } from "zod";
 import {
   createLogger,
   getDb as defaultGetDb,
@@ -46,6 +48,7 @@ export interface ArchivesRouterDeps {
   generateRecapFn?: GenerateRecapFn;
   logger?: ReturnType<typeof createLogger>;
   sendQueue?: Queue<NewsletterSendJobPayload>;
+  redis?: Pick<IORedis, "del">;
 }
 
 export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
@@ -267,6 +270,33 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     }
   });
 
+  archives.delete("/:runId", async (c) => {
+    const runId = c.req.param("runId");
+    const parsed = z.uuid().safeParse(runId);
+    if (!parsed.success) {
+      return c.json({ error: "invalid runId" }, 400);
+    }
+    const result = await deps.getArchiveRepo().delete(runId);
+    if (!result.deleted) {
+      return c.json({ error: "not found" }, 404);
+    }
+    if (deps.redis) {
+      try {
+        await deps.redis.del(`run:${runId}`);
+      } catch (err) {
+        logger.warn(
+          { event: "archive.deleted.redis_cleanup_failed", runId, err: String(err) },
+          "redis del failed",
+        );
+      }
+    }
+    logger.info(
+      { event: "archive.deleted", runId, removedEmailSends: result.removedEmailSends },
+      "archive.deleted",
+    );
+    return c.body(null, 204);
+  });
+
   return archives;
 }
 
@@ -319,6 +349,7 @@ function createDefaultArchivesDeps(): ArchivesRouterDeps {
     hydrateAddedPost: createDefaultHydrateAddedPost(),
     generateRecapFn: createDefaultGenerateRecapFn(),
     sendQueue: getDefaultSendQueue(),
+    redis: createRedisConnection(),
   };
 }
 

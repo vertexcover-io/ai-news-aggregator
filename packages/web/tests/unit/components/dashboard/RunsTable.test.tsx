@@ -29,6 +29,7 @@ describe("RunsTable running state (REQ-001..REQ-005)", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -44,6 +45,7 @@ describe("RunsTable running state (REQ-001..REQ-005)", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -59,6 +61,7 @@ describe("RunsTable running state (REQ-001..REQ-005)", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -81,6 +84,7 @@ describe("RunsTable CTA routing (REQ-110, REQ-111)", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -102,6 +106,7 @@ describe("RunsTable CTA routing (REQ-110, REQ-111)", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -119,6 +124,7 @@ describe("RunsTable cancel button (REQ-11, REQ-12)", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -134,6 +140,7 @@ describe("RunsTable cancel button (REQ-11, REQ-12)", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -150,6 +157,7 @@ describe("RunsTable cancel button (REQ-11, REQ-12)", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -167,6 +175,7 @@ describe("RunsTable cancel button (REQ-11, REQ-12)", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
+          onDelete={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -187,6 +196,7 @@ describe("RunsTable cancel button (REQ-11, REQ-12)", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={onCancel}
+          onDelete={vi.fn()}
         />
       </MemoryRouter>,
     );
@@ -210,6 +220,7 @@ describe("RunsTable cancel button (REQ-11, REQ-12)", () => {
           onRetry={vi.fn()}
           retrying={false}
           onCancel={onCancel}
+          onDelete={vi.fn()}
         />
       </MemoryRouter>,
     );
