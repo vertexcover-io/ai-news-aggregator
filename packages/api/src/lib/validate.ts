@@ -91,6 +91,16 @@ export type RunSubmitBody = z.infer<typeof runSubmitSchema>;
 
 const HH_MM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+const nullableTrimmedStringSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+  z.string().trim().min(1).nullable(),
+);
+
+const nullableUrlSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+  z.url().nullable(),
+);
+
 function isValidIanaTimezone(tz: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: tz });
@@ -110,6 +120,9 @@ const userSettingsCommonShape = {
   webEnabled: z.boolean(),
   webConfig: webConfigSchema.nullable(),
   twitterEnabled: z.boolean(),
+  posthogEnabled: z.boolean().default(false),
+  posthogProjectToken: nullableTrimmedStringSchema.default(null),
+  posthogHost: nullableUrlSchema.default(null),
   scheduleTime: z
     .string()
     .regex(HH_MM_RE, { message: "scheduleTime must be HH:MM (24h)" }),

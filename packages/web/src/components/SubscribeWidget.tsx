@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { postSubscribe } from "../api/subscribe.js";
 import { useIsSubscribed } from "../hooks/useIsSubscribed.js";
 import { markSubscribed } from "../lib/subscriptionStorage.js";
+import { captureBrowserEvent } from "../lib/analytics.js";
 import { Button } from "./ui/button.js";
 import { Input } from "./ui/input.js";
 
@@ -20,10 +21,16 @@ export function SubscribeWidget({ className }: { className?: string }): ReactEle
     e.preventDefault();
     if (!email || !agreed) return;
     setState("loading");
+    captureBrowserEvent("subscribe_form_submitted", { source: "widget" });
     void postSubscribe(email).then((result) => {
       if ("error" in result) {
+        captureBrowserEvent("subscribe_form_failed", {
+          source: "widget",
+          error_code: result.error,
+        });
         setState("error");
       } else {
+        captureBrowserEvent("subscribe_form_succeeded", { source: "widget" });
         setState("success");
         markSubscribed();
       }

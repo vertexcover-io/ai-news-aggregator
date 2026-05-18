@@ -7,6 +7,7 @@ import {
   COOKIE_NAME,
   MAX_AGE_MS,
 } from "../auth/session.js";
+import { captureAnalytics, identifyAnalytics } from "@api/lib/posthog.js";
 
 const loginSchema = z.object({ password: z.string().min(1) });
 
@@ -57,6 +58,8 @@ export function createAdminRouter(opts: AdminRouterOptions): Hono {
     opts.logger.info("admin_login_ok", {
       timestamp: new Date().toISOString(),
     });
+    void identifyAnalytics({ distinctId: "admin" });
+    void captureAnalytics({ distinctId: "admin", event: "admin_logged_in" });
     return c.json({ ok: true });
   });
 

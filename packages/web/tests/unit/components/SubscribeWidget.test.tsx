@@ -8,8 +8,14 @@ vi.mock("../../../src/api/subscribe", () => ({
   postSubscribe: vi.fn(),
 }));
 
+vi.mock("../../../src/lib/analytics.js", () => ({
+  captureBrowserEvent: vi.fn(),
+}));
+
 import { postSubscribe } from "../../../src/api/subscribe";
+import { captureBrowserEvent } from "../../../src/lib/analytics.js";
 const mockPostSubscribe = vi.mocked(postSubscribe);
+const mockCaptureBrowserEvent = vi.mocked(captureBrowserEvent);
 
 afterEach(() => {
   cleanup();
@@ -75,6 +81,14 @@ describe("SubscribeWidget", () => {
     await waitFor(() => {
       expect(mockPostSubscribe).toHaveBeenCalledWith("test@example.com");
     });
+    expect(mockCaptureBrowserEvent).toHaveBeenCalledWith(
+      "subscribe_form_submitted",
+      { source: "widget" },
+    );
+    expect(mockCaptureBrowserEvent).toHaveBeenCalledWith(
+      "subscribe_form_succeeded",
+      { source: "widget" },
+    );
   });
 
   it("shows success message after successful submit", async () => {
@@ -105,5 +119,9 @@ describe("SubscribeWidget", () => {
         screen.getByText("Something went wrong. Please try again."),
       ).toBeTruthy();
     });
+    expect(mockCaptureBrowserEvent).toHaveBeenCalledWith(
+      "subscribe_form_failed",
+      { source: "widget", error_code: "request_failed" },
+    );
   });
 });

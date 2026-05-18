@@ -27,6 +27,7 @@ import {
   TwitterHandleResolutionError,
   type TwitterHandleResolverDeps,
 } from "@api/services/twitter-handle-resolver.js";
+import { captureAnalytics, refreshPostHogConfig } from "@api/lib/posthog.js";
 
 type RettiwtFactory = TwitterHandleResolverDeps["rettiwtFactory"];
 
@@ -177,12 +178,16 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       webConfig: parsed.data.webConfig,
       twitterEnabled: parsed.data.twitterEnabled,
       twitterConfig: resolvedTwitterConfig,
+      posthogEnabled: parsed.data.posthogEnabled,
+      posthogProjectToken: parsed.data.posthogProjectToken,
+      posthogHost: parsed.data.posthogHost,
       scheduleTime: parsed.data.scheduleTime,
       scheduleTimezone: parsed.data.scheduleTimezone,
       scheduleEnabled: parsed.data.scheduleEnabled,
     };
 
     const saved = await deps.getSettingsRepo().upsert(upsertInput);
+    refreshPostHogConfig(saved);
     await reconcileDailyRunSchedule(deps.processingQueue, saved);
     logger.info(
       {
@@ -193,6 +198,16 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       },
       "settings.saved",
     );
+    void captureAnalytics({
+      distinctId: "admin",
+      event: "settings_updated",
+      properties: {
+        schedule_enabled: saved.scheduleEnabled,
+        schedule_time: saved.scheduleTime,
+        schedule_timezone: saved.scheduleTimezone,
+        top_n: saved.topN,
+      },
+    });
     return c.json(saved);
   });
 

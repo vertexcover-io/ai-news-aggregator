@@ -23,7 +23,9 @@ export function PrivacyPolicyPage(): ReactElement {
             <p>
               When you subscribe to the AI Newsletter, we collect your email
               address. We use this solely to send you the newsletter digest. We
-              do not collect any other personal information.
+              do not collect any other personal information. We may also use
+              PostHog analytics to understand page visits, archive reads, share
+              clicks, and subscription form outcomes.
             </p>
           </section>
 

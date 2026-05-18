@@ -38,6 +38,7 @@ import {
   type HydrateAddedPostFn,
   type GenerateRecapFn,
 } from "@api/services/review.js";
+import { captureAnalytics } from "@api/lib/posthog.js";
 
 export interface ArchivesRouterDeps {
   getRawItemsRepo: () => RawItemsRepo;
@@ -131,12 +132,22 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         { event: "archive.patched", runId, count: parsed.data.rankedItems.length },
         "archive.patched",
       );
+      void captureAnalytics({
+        distinctId: "admin",
+        event: "archive_reviewed",
+        properties: { run_id: runId, item_count: parsed.data.rankedItems.length },
+      });
       if (deps.sendQueue) {
         await enqueueSendNewsletter(deps.sendQueue, runId);
         logger.info(
           { event: "archive.send_enqueued", runId },
           "archive: send-newsletter job enqueued",
         );
+        void captureAnalytics({
+          distinctId: "admin",
+          event: "newsletter_send_enqueued",
+          properties: { run_id: runId, trigger: "review" },
+        });
       }
       return c.json(updated);
     } catch (err) {
@@ -160,6 +171,11 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         { event: "archive.send_enqueued", runId, trigger: "force-send" },
         "archive: send-newsletter job enqueued (force-send)",
       );
+      void captureAnalytics({
+        distinctId: "admin",
+        event: "newsletter_send_enqueued",
+        properties: { run_id: runId, trigger: "force-send" },
+      });
     }
     return c.json({ ok: true }, 202);
   });
@@ -186,6 +202,11 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         { event: "archive.add-post", runId },
         "archive.add-post",
       );
+      void captureAnalytics({
+        distinctId: "admin",
+        event: "post_added_to_archive",
+        properties: { run_id: runId },
+      });
       return c.json(ranked);
     } catch (err) {
       if (err instanceof NotFoundError) {
@@ -255,6 +276,11 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         { event: "archive.promote", runId, rawItemId: parsed.data.rawItemId },
         "archive.promote",
       );
+      void captureAnalytics({
+        distinctId: "admin",
+        event: "item_promoted",
+        properties: { run_id: runId, raw_item_id: parsed.data.rawItemId },
+      });
       return c.json(ranked);
     } catch (err) {
       if (err instanceof NotFoundError) {
