@@ -1,9 +1,7 @@
 import type { SlackNotifier } from "@newsletter/shared";
-import { createLogger } from "@newsletter/shared/logger";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { TwitterNotifier } from "@pipeline/social/twitter/index.js";
-
-const logger = createLogger("worker:twitter-post");
+import { resolvePublishTarget } from "./publish-target.js";
 
 export interface TwitterPostDeps {
   readonly archiveRepo: RunArchivesRepo;
@@ -14,7 +12,7 @@ export interface TwitterPostDeps {
 export interface TwitterPostJobLike {
   readonly name: string;
   readonly id?: string;
-  readonly data: { readonly runId: string };
+  readonly data: { readonly runId?: string };
 }
 
 export async function handleTwitterPostJob(
@@ -22,20 +20,11 @@ export async function handleTwitterPostJob(
   job: TwitterPostJobLike,
 ): Promise<void> {
   if (job.name !== "twitter-post") return;
-  const { runId } = job.data;
-  const archive = await deps.archiveRepo.findById(runId);
+  const archive = await resolvePublishTarget(deps, {
+    channel: "twitter-post",
+    runId: job.data.runId,
+  });
   if (archive === null) return;
-  if (archive.isDryRun) {
-    logger.info(
-      { event: "publish.dry_run_bypassed", runId, channel: "twitter-post" },
-      "skipped: dry-run archive",
-    );
-    return;
-  }
-  if (!archive.reviewed) {
-    await deps.slackNotifier?.notifyPublishFailed({ runId, channel: "twitter-post" });
-    return;
-  }
   if (archive.twitterPostedAt !== null) return;
-  await deps.twitterNotifier?.notifyArchiveReady({ runId });
+  await deps.twitterNotifier?.notifyArchiveReady({ runId: archive.id });
 }

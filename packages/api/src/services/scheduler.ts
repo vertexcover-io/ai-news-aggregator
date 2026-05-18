@@ -1,12 +1,35 @@
 import type { Queue } from "bullmq";
 import {
+  EMAIL_SEND_SCHEDULER_KEY,
   LEGACY_DAILY_RUN_SCHEDULER_KEY,
+  LINKEDIN_POST_SCHEDULER_KEY,
   PIPELINE_RUN_SCHEDULER_KEY,
+  TWITTER_POST_SCHEDULER_KEY,
   type UserSettings,
 } from "@newsletter/shared";
 
 export const SOCIAL_HEALTH_SCHEDULER_KEY = "social-health:default";
 const SOCIAL_HEALTH_LEAD_MINUTES = 15;
+const PUBLISH_SCHEDULERS = [
+  {
+    key: EMAIL_SEND_SCHEDULER_KEY,
+    jobName: "email-send",
+    enabled: (settings: UserSettings) => settings.emailEnabled,
+    time: (settings: UserSettings) => settings.emailTime,
+  },
+  {
+    key: LINKEDIN_POST_SCHEDULER_KEY,
+    jobName: "linkedin-post",
+    enabled: (settings: UserSettings) => settings.linkedinEnabled,
+    time: (settings: UserSettings) => settings.linkedinTime,
+  },
+  {
+    key: TWITTER_POST_SCHEDULER_KEY,
+    jobName: "twitter-post",
+    enabled: (settings: UserSettings) => settings.twitterPostEnabled,
+    time: (settings: UserSettings) => settings.twitterTime,
+  },
+] as const;
 
 export function toCron(hhmm: string): string {
   const [h, m] = hhmm.split(":").map((s) => Number(s));
@@ -30,6 +53,9 @@ export async function reconcilePipelineSchedule(
   if (!settings.scheduleEnabled) {
     await queue.removeJobScheduler(PIPELINE_RUN_SCHEDULER_KEY);
     await queue.removeJobScheduler(SOCIAL_HEALTH_SCHEDULER_KEY);
+    for (const scheduler of PUBLISH_SCHEDULERS) {
+      await queue.removeJobScheduler(scheduler.key);
+    }
     return;
   }
   await queue.upsertJobScheduler(
@@ -48,6 +74,17 @@ export async function reconcilePipelineSchedule(
     },
     { name: "social-health", data: {} },
   );
+  for (const scheduler of PUBLISH_SCHEDULERS) {
+    if (!scheduler.enabled(settings)) {
+      await queue.removeJobScheduler(scheduler.key);
+      continue;
+    }
+    await queue.upsertJobScheduler(
+      scheduler.key,
+      { pattern: toCron(scheduler.time(settings)), tz: settings.scheduleTimezone },
+      { name: scheduler.jobName, data: {} },
+    );
+  }
 }
 
 export async function removeLegacySchedulers(
@@ -56,7 +93,13 @@ export async function removeLegacySchedulers(
   await queue.removeJobScheduler(LEGACY_DAILY_RUN_SCHEDULER_KEY);
 }
 
-export { LEGACY_DAILY_RUN_SCHEDULER_KEY, PIPELINE_RUN_SCHEDULER_KEY };
+export {
+  EMAIL_SEND_SCHEDULER_KEY,
+  LEGACY_DAILY_RUN_SCHEDULER_KEY,
+  LINKEDIN_POST_SCHEDULER_KEY,
+  PIPELINE_RUN_SCHEDULER_KEY,
+  TWITTER_POST_SCHEDULER_KEY,
+};
 
 export const DAILY_RUN_SCHEDULER_KEY = LEGACY_DAILY_RUN_SCHEDULER_KEY;
 

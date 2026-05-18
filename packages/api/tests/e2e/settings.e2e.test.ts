@@ -53,9 +53,20 @@ const validBody = {
   webConfig: null,
   twitterEnabled: false,
   twitterConfig: null,
+  posthogEnabled: false,
+  posthogProjectToken: null,
+  posthogHost: null,
   scheduleTime: "09:30",
+  pipelineTime: "09:30",
+  emailTime: "10:00",
+  linkedinTime: "10:15",
+  twitterTime: "10:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
+  emailEnabled: true,
+  linkedinEnabled: true,
+  twitterPostEnabled: true,
+  autoReview: false,
 };
 
 describe("Settings routes (e2e)", () => {
@@ -81,7 +92,7 @@ describe("Settings routes (e2e)", () => {
     expect(putBody.topN).toBe(10);
     expect(putBody.scheduleTime).toBe("09:30");
 
-    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(1);
+    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(5);
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
 
     const got = await app.request("/api/settings");
@@ -102,7 +113,7 @@ describe("Settings routes (e2e)", () => {
     await app.request("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...validBody, scheduleTime: "07:00" }),
+      body: JSON.stringify({ ...validBody, scheduleTime: "07:00", pipelineTime: "07:00" }),
     });
 
     const rows = await db
@@ -111,7 +122,7 @@ describe("Settings routes (e2e)", () => {
       .where(eq(userSettings.singleton, true));
     expect(rows).toHaveLength(1);
     expect(rows[0].scheduleTime).toBe("07:00");
-    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(2);
+    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(10);
   });
 
   it("REQ-013: rejects scheduleEnabled=true with no sources", async () => {

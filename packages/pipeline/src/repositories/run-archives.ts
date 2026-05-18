@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { runArchives } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type {
@@ -53,6 +53,7 @@ export interface PipelineRunArchiveRow {
 export interface RunArchivesRepo {
   upsert(input: RunArchiveUpsertInput): Promise<void>;
   findById(id: string): Promise<PipelineRunArchiveRow | null>;
+  findLatestTerminal(): Promise<PipelineRunArchiveRow | null>;
   markSlackNotified(runId: string, at: Date): Promise<void>;
   markEmailSent(runId: string, at: Date): Promise<void>;
   markNotification(runId: string, key: NotificationKey, at: Date): Promise<void>;
@@ -73,33 +74,44 @@ export interface RunArchivesRepo {
 export function createRunArchivesRepo(
   db: Pick<AppDb, "insert" | "select" | "update">,
 ): RunArchivesRepo {
+  const selectArchiveRow = {
+    id: runArchives.id,
+    status: runArchives.status,
+    rankedItems: runArchives.rankedItems,
+    topN: runArchives.topN,
+    reviewed: runArchives.reviewed,
+    completedAt: runArchives.completedAt,
+    digestHeadline: runArchives.digestHeadline,
+    digestSummary: runArchives.digestSummary,
+    hook: runArchives.hook,
+    twitterSummary: runArchives.twitterSummary,
+    sourceTelemetry: runArchives.sourceTelemetry,
+    slackNotifiedAt: runArchives.slackNotifiedAt,
+    emailSentAt: runArchives.emailSentAt,
+    linkedinPostedAt: runArchives.linkedinPostedAt,
+    twitterPostedAt: runArchives.twitterPostedAt,
+    notificationState: runArchives.notificationState,
+    isDryRun: runArchives.isDryRun,
+  } as const;
+
   return {
     async findById(id: string): Promise<PipelineRunArchiveRow | null> {
       const UUID_RE =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!UUID_RE.test(id)) return null;
       const rows = await db
-        .select({
-          id: runArchives.id,
-          status: runArchives.status,
-          rankedItems: runArchives.rankedItems,
-          topN: runArchives.topN,
-          reviewed: runArchives.reviewed,
-          completedAt: runArchives.completedAt,
-          digestHeadline: runArchives.digestHeadline,
-          digestSummary: runArchives.digestSummary,
-          hook: runArchives.hook,
-          twitterSummary: runArchives.twitterSummary,
-          sourceTelemetry: runArchives.sourceTelemetry,
-          slackNotifiedAt: runArchives.slackNotifiedAt,
-          emailSentAt: runArchives.emailSentAt,
-          linkedinPostedAt: runArchives.linkedinPostedAt,
-          twitterPostedAt: runArchives.twitterPostedAt,
-          notificationState: runArchives.notificationState,
-          isDryRun: runArchives.isDryRun,
-        })
+        .select(selectArchiveRow)
         .from(runArchives)
         .where(eq(runArchives.id, id));
+      return rows[0] ?? null;
+    },
+
+    async findLatestTerminal(): Promise<PipelineRunArchiveRow | null> {
+      const rows = await db
+        .select(selectArchiveRow)
+        .from(runArchives)
+        .orderBy(desc(runArchives.completedAt))
+        .limit(1);
       return rows[0] ?? null;
     },
 
