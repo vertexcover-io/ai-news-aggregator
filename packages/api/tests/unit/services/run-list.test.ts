@@ -83,7 +83,8 @@ describe("listRuns", () => {
         reviewed: false,
         completedAt: new Date("2026-04-13T10:00:00.000Z"),
         createdAt: new Date("2026-04-13T10:00:00.000Z"),
-      },
+        isDryRun: false,
+      } as unknown as RunArchiveRow,
     ];
     const result = await listRuns(10, {
       redis: makeRedis(redisEntries) as unknown as IORedis,
@@ -121,7 +122,8 @@ describe("listRuns", () => {
         reviewed: true,
         completedAt: new Date("2026-04-14T10:00:00.000Z"),
         createdAt: new Date("2026-04-14T10:00:00.000Z"),
-      },
+        isDryRun: false,
+      } as unknown as RunArchiveRow,
     ];
     const result = await listRuns(10, {
       redis: makeRedis(redisEntries) as unknown as IORedis,
@@ -164,6 +166,41 @@ describe("listRuns", () => {
       archiveRepo: makeArchiveRepo([]),
     });
     expect(result.map((r) => r.runId)).toEqual(["b", "c", "a"]);
+  });
+
+  it("R-17: admin listing includes both live and dry-run archives (no public filter applied)", async () => {
+    const archiveRows: RunArchiveRow[] = [
+      {
+        id: "live-1",
+        status: "completed",
+        rankedItems: [],
+        topN: 10,
+        reviewed: true,
+        completedAt: new Date("2026-04-14T10:00:00.000Z"),
+        createdAt: new Date("2026-04-14T10:00:00.000Z"),
+        isDryRun: false,
+      } as unknown as RunArchiveRow,
+      {
+        id: "dry-1",
+        status: "completed",
+        rankedItems: [],
+        topN: 10,
+        reviewed: true,
+        completedAt: new Date("2026-04-13T10:00:00.000Z"),
+        createdAt: new Date("2026-04-13T10:00:00.000Z"),
+        isDryRun: true,
+      } as unknown as RunArchiveRow,
+    ];
+    const result = await listRuns(10, {
+      redis: makeRedis(new Map()) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo(archiveRows),
+    });
+    const ids = result.map((r) => r.runId).sort();
+    expect(ids).toEqual(["dry-1", "live-1"]);
+    const dry = result.find((r) => r.runId === "dry-1");
+    const live = result.find((r) => r.runId === "live-1");
+    expect(dry?.isDryRun).toBe(true);
+    expect(live?.isDryRun).toBe(false);
   });
 
   it("enforces limit", async () => {

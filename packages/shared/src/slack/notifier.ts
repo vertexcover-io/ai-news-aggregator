@@ -61,6 +61,13 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
         );
         return;
       }
+      if (archive.isDryRun) {
+        logger.info(
+          { event: "publish.skipped_dry_run", runId: input.runId, channel: "slack" },
+          "slack notification skipped (dry-run archive)",
+        );
+        return;
+      }
       if (archive.notificationState?.[input.key] !== undefined) {
         logger.info(
           { event: `${input.event}.skipped`, reason: "already_notified", runId: input.runId },
@@ -111,6 +118,14 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
               runId: input.runId,
             },
             "archive not found for slack notification",
+          );
+          return;
+        }
+
+        if (archive.isDryRun) {
+          logger.info(
+            { event: "publish.skipped_dry_run", runId: input.runId, channel: "slack" },
+            "slack notification skipped (dry-run archive)",
           );
           return;
         }

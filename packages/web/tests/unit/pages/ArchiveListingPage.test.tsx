@@ -80,6 +80,7 @@ function makeArchive(
     leadSummary,
     digestHeadline: null,
     digestSummary: null,
+    isDryRun: false,
   };
 }
 

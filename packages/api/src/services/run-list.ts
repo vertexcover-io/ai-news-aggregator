@@ -50,6 +50,7 @@ export async function listRuns(
       status: state.status,
       itemCount: Array.isArray(state.rankedItems) ? state.rankedItems.length : 0,
       reviewed: false,
+      isDryRun: false,
     });
   }
 
@@ -63,6 +64,7 @@ export async function listRuns(
       status: row.status,
       itemCount: row.rankedItems.length,
       reviewed: row.reviewed,
+      isDryRun: row.isDryRun,
     };
   });
 

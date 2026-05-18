@@ -2223,3 +2223,76 @@ describe("run-process slack notifier + telemetry (P4)", () => {
     expect(arg.sourceTelemetry.totalItemsFetched).toBe(7);
   });
 });
+
+// ---- Dry-run flag propagation (Phase 2) ----
+
+describe("run-process dry-run flag (Phase 2)", () => {
+  beforeEach(() => {
+    mockLoggerInfo.mockClear();
+  });
+
+  it("passes isDryRun: true to archiveRepo.upsert when job.data.dryRun is true (completed path)", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+          candidateCount: 1,
+          rankedCount: 1,
+        }),
+    );
+    const archiveUpsert = vi.fn(() => Promise.resolve());
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+      archiveRepo: { upsert: archiveUpsert },
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: { ...baseJob.data, dryRun: true },
+    });
+
+    expect(archiveUpsert).toHaveBeenCalledOnce();
+    const arg = archiveUpsert.mock.calls[0]?.[0] as { isDryRun: boolean };
+    expect(arg.isDryRun).toBe(true);
+  });
+
+  it("passes isDryRun: false to archiveRepo.upsert when job.data.dryRun is absent (completed path)", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+          candidateCount: 1,
+          rankedCount: 1,
+        }),
+    );
+    const archiveUpsert = vi.fn(() => Promise.resolve());
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+      archiveRepo: { upsert: archiveUpsert },
+    });
+
+    await worker.handler(baseJob);
+
+    expect(archiveUpsert).toHaveBeenCalledOnce();
+    const arg = archiveUpsert.mock.calls[0]?.[0] as { isDryRun: boolean };
+    expect(arg.isDryRun).toBe(false);
+  });
+});

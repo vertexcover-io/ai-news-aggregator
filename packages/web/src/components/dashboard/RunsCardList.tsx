@@ -287,8 +287,16 @@ export function RunsCardList({
             >
               <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
                 <span className="text-muted-foreground font-medium">Status</span>
-                <span>
+                <span className="flex items-center gap-2">
                   <StatusBadge status={derived} />
+                  {run.isDryRun ? (
+                    <span
+                      className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700"
+                      data-testid="dry-run-badge"
+                    >
+                      Dry run
+                    </span>
+                  ) : null}
                 </span>
 
                 <span className="text-muted-foreground font-medium">Started</span>

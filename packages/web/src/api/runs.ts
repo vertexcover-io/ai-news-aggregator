@@ -17,6 +17,7 @@ export type RunStateResponse = Omit<RunState, "rankedItems"> & {
   digestHeadline?: string | null;
   digestSummary?: string | null;
   hook?: string | null;
+  isDryRun?: boolean;
 };
 
 interface ApiErrorBody {
@@ -62,6 +63,15 @@ export async function getArchive(runId: string): Promise<RunStateResponse | null
   return (await res.json()) as RunStateResponse;
 }
 
+export async function getAdminArchive(
+  runId: string,
+): Promise<RunStateResponse | null> {
+  const res = await apiFetchAdmin(`/api/admin/archives/${runId}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Failed to fetch archive");
+  return (await res.json()) as RunStateResponse;
+}
+
 interface ListRunsResponse {
   runs: RunSummary[];
 }
@@ -82,8 +92,15 @@ export interface TriggerRunNowResponse {
   runId: string;
 }
 
-export async function triggerRunNow(): Promise<TriggerRunNowResponse> {
-  const res = await apiFetchAdmin("/api/runs/now", { method: "POST" });
+export async function triggerRunNow(
+  opts?: { dryRun?: boolean },
+): Promise<TriggerRunNowResponse> {
+  const init: RequestInit = { method: "POST" };
+  if (opts?.dryRun === true) {
+    init.body = JSON.stringify({ dryRun: true });
+    init.headers = { "content-type": "application/json" };
+  }
+  const res = await apiFetchAdmin("/api/runs/now", init);
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
     throw new Error(body.error ?? "Failed to start run");

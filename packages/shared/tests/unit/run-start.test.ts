@@ -258,6 +258,43 @@ describe("startRun", () => {
     expect(payload.sourceTypes).not.toContain("twitter");
   });
 
+  it("includes dryRun: true on the job payload when opts.dryRun is true", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "dddddd00-0000-0000-0000-000000000001";
+
+    await startRun(
+      baseSettings,
+      {
+        redis: redis as unknown as IORedis,
+        queue: q.queue,
+        runId: () => fixedId,
+      },
+      { dryRun: true },
+    );
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as RunProcessJobPayload;
+    expect(payload.dryRun).toBe(true);
+  });
+
+  it("omits dryRun from the job payload when opts is undefined", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "dddddd00-0000-0000-0000-000000000002";
+
+    await startRun(baseSettings, {
+      redis: redis as unknown as IORedis,
+      queue: q.queue,
+      runId: () => fixedId,
+    });
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as RunProcessJobPayload;
+    expect(payload.dryRun).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(payload, "dryRun")).toBe(false);
+  });
+
   it("generates a uuid for runId when no generator is injected", async () => {
     const redis = makeRedis();
     const q = makeQueue();

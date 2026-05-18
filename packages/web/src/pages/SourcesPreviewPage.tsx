@@ -11,7 +11,7 @@ import {
   SOURCE_LABELS,
 } from "@/lib/sourceDisplay";
 import { usePool } from "../hooks/usePool";
-import { getArchive, type RunStateResponse } from "../api/runs";
+import { getAdminArchive, type RunStateResponse } from "../api/runs";
 
 type PoolSort = "engagement" | "recency";
 type KnownSourceType = keyof typeof SOURCE_LABELS;
@@ -468,7 +468,7 @@ export function SourcesPreviewPage(): ReactElement {
   const { runId = "" } = useParams<{ runId: string }>();
   const query = useQuery<RunStateResponse | null>({
     queryKey: ["archive", runId],
-    queryFn: () => getArchive(runId),
+    queryFn: () => getAdminArchive(runId),
     retry: false,
     refetchOnWindowFocus: false,
   });

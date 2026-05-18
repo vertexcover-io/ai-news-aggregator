@@ -690,6 +690,157 @@ describe("RunArchivesRepo.delete (REQ-8, REQ-9, REQ-12)", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Phase 4: dry-run filtering (R-12, R-13)
+// ---------------------------------------------------------------------------
+
+/**
+ * Walk a Drizzle SQL/composite filter object and extract every
+ * (column-name, param-value) eq() pair, in tree order.
+ */
+function extractEqPairs(sql: unknown): [string, unknown][] {
+  const seen = new Set<unknown>();
+  const out: [string, unknown][] = [];
+  function walk(o: unknown): void {
+    if (!o || typeof o !== "object" || seen.has(o)) return;
+    seen.add(o);
+    const chunks = (o as { queryChunks?: unknown[] }).queryChunks;
+    if (!chunks) return;
+    let lastCol: string | null = null;
+    for (const c of chunks) {
+      if (!c || typeof c !== "object") continue;
+      const cls = (c as { constructor?: { name?: string } }).constructor?.name;
+      if (cls === "PgBoolean" || cls === "PgColumn" || cls?.startsWith("Pg")) {
+        const name = (c as { name?: string }).name;
+        if (typeof name === "string") lastCol = name;
+      } else if (cls === "Param" && lastCol) {
+        out.push([lastCol, (c as { value?: unknown }).value]);
+        lastCol = null;
+      } else if (cls === "SQL") {
+        walk(c);
+      }
+    }
+  }
+  walk(sql);
+  return out;
+}
+
+/**
+ * Fake db that captures every .where(...) argument for both .select()...
+ * and .execute() calls so tests can assert filter composition.
+ */
+function makeWhereCapturingDb(): {
+  db: Pick<AppDb, "select" | "update" | "execute">;
+  selectWhereArgs: unknown[];
+  executeArgs: unknown[];
+} {
+  const selectWhereArgs: unknown[] = [];
+  const executeArgs: unknown[] = [];
+  const db = {
+    select: () => ({
+      from: () => ({
+        where: (arg: unknown) => {
+          selectWhereArgs.push(arg);
+          // Return a chainable that supports:
+          //   .where(...).orderBy(...)            → awaits to rows
+          //   .where(...).orderBy(...).limit(...) → awaits to rows
+          //   .where(...)                          → awaits to count rows
+          const limitThenable = {
+            then: (resolve: (v: unknown) => void) => { resolve([]); },
+          };
+          const orderByThenable = {
+            limit: () => limitThenable,
+            then: (resolve: (v: unknown) => void) => { resolve([]); },
+          };
+          const tail = {
+            orderBy: () => orderByThenable,
+            then: (resolve: (v: unknown) => void) => { resolve([{ count: 0 }]); },
+          };
+          return tail;
+        },
+      }),
+    }),
+    update: () => ({
+      set: () => ({ where: () => ({ returning: () => Promise.resolve([]) }) }),
+    }),
+    execute: (arg: unknown) => {
+      executeArgs.push(arg);
+      // First call returns matched rows (empty), second call returns count row.
+      const isCount = executeArgs.length >= 2;
+      return Promise.resolve(isCount ? [{ c: 0 }] : []);
+    },
+  } as unknown as Pick<AppDb, "select" | "update" | "execute">;
+  return { db, selectWhereArgs, executeArgs };
+}
+
+describe("RunArchivesRepo.listReviewed — dry-run filtering (R-12)", () => {
+  it("filters where reviewed = true AND is_dry_run = false", async () => {
+    const { db, selectWhereArgs } = makeWhereCapturingDb();
+    const repo = createRunArchivesRepo(db);
+    const { repo: rawRepo } = makeFakeRawItemsRepo([]);
+    await repo.listReviewed({ rawItemsRepo: rawRepo });
+    expect(selectWhereArgs).toHaveLength(1);
+    const pairs = extractEqPairs(selectWhereArgs[0]);
+    expect(pairs).toEqual(
+      expect.arrayContaining([
+        ["reviewed", true],
+        ["is_dry_run", false],
+      ]),
+    );
+  });
+});
+
+describe("RunArchivesRepo.searchReviewed — dry-run filtering (R-13)", () => {
+  it("no-query branch: list query and count(*) query both filter is_dry_run = false", async () => {
+    const { db, selectWhereArgs } = makeWhereCapturingDb();
+    const repo = createRunArchivesRepo(db);
+    const { repo: rawRepo } = makeFakeRawItemsRepo([]);
+    await repo.searchReviewed({
+      from: new Date("2026-01-01T00:00:00Z"),
+      to: new Date("2026-12-31T23:59:59Z"),
+      rawItemsRepo: rawRepo,
+    });
+    // Two .where() invocations: one for the list, one for count(*)
+    expect(selectWhereArgs).toHaveLength(2);
+    for (const arg of selectWhereArgs) {
+      const pairs = extractEqPairs(arg);
+      expect(pairs).toEqual(
+        expect.arrayContaining([
+          ["reviewed", true],
+          ["is_dry_run", false],
+        ]),
+      );
+    }
+  });
+
+  it("FTS branch: list SQL and count(*) SQL both contain `is_dry_run = false`", async () => {
+    const { db, executeArgs } = makeWhereCapturingDb();
+    const repo = createRunArchivesRepo(db);
+    const { repo: rawRepo } = makeFakeRawItemsRepo([]);
+    await repo.searchReviewed({ q: "agentic", rawItemsRepo: rawRepo });
+    expect(executeArgs).toHaveLength(2);
+    function sqlText(arg: unknown): string {
+      const chunks = (arg as { queryChunks?: unknown[] }).queryChunks ?? [];
+      let s = "";
+      for (const c of chunks) {
+        if (c && typeof c === "object") {
+          const cls = (c as { constructor?: { name?: string } }).constructor?.name;
+          if (cls === "StringChunk") {
+            const v = (c as { value?: unknown }).value;
+            s += Array.isArray(v) ? v.join("") : String(v);
+          } else if (cls === "SQL") {
+            s += sqlText(c);
+          }
+        }
+      }
+      return s;
+    }
+    for (const arg of executeArgs) {
+      expect(sqlText(arg)).toMatch(/is_dry_run\s*=\s*false/);
+    }
+  });
+});
+
 describe("findMostRecentReviewed", () => {
   it("returns null when no reviewed archives exist", async () => {
     const db = makeFakeDbForMostRecent([]);

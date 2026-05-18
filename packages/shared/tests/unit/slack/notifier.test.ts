@@ -46,6 +46,8 @@ function makeArchive(
     rankedItems: [{ rawItemId: 1 }],
     sourceTelemetry: null,
     slackNotifiedAt: null,
+    notificationState: null,
+    isDryRun: false,
     ...overrides,
   };
 }
@@ -315,6 +317,54 @@ describe("createSlackNotifier", () => {
       "🟢 LinkedIn: posted — <https://www.linkedin.com/feed/update/urn:li:share:7777|view>",
     );
     expect(social).toContain("🔴 X: failed — http_402");
+  });
+
+  it("skips webhook POST when archive is a dry run", async () => {
+    const { calls, logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ isDryRun: true }));
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyNewsletterSent({
+      runId: "run-1",
+      delivery: { attempted: 3, sent: 3, failed: 0 },
+    });
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(archives.markSlackNotified).not.toHaveBeenCalled();
+    const skipped = calls.find(
+      (c) =>
+        (c.obj as { event?: string; channel?: string } | undefined)?.event ===
+          "publish.skipped_dry_run" &&
+        (c.obj as { channel?: string }).channel === "slack",
+    );
+    expect(skipped).toBeDefined();
+  });
+
+  it("notifyReviewPending skips webhook POST when archive is a dry run", async () => {
+    const { calls, logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ isDryRun: true }));
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyReviewPending({ runId: "run-1" });
+    expect(fetchFn).not.toHaveBeenCalled();
+    const skipped = calls.find(
+      (c) =>
+        (c.obj as { event?: string; channel?: string } | undefined)?.event ===
+          "publish.skipped_dry_run" &&
+        (c.obj as { channel?: string }).channel === "slack",
+    );
+    expect(skipped).toBeDefined();
   });
 
   it("never logs the webhook URL or its secret path token", async () => {

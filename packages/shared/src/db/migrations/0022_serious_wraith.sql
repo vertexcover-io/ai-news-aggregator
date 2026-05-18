@@ -1,0 +1,1 @@
+ALTER TABLE "run_archives" ADD COLUMN "is_dry_run" boolean DEFAULT false NOT NULL;

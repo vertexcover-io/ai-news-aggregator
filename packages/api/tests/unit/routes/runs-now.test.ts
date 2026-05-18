@@ -126,6 +126,60 @@ describe("POST /api/runs/now", () => {
     expect(q.calls[0].name).toBe("run-process");
   });
 
+  it("Phase 2: empty body → live run (dryRun field absent on job payload)", async () => {
+    const { app, q } = buildApp({ settings: baseSettings });
+    const res = await app.request("/api/runs/now", { method: "POST" });
+    expect(res.status).toBe(202);
+    expect(q.calls).toHaveLength(1);
+    expect(q.calls[0].data.dryRun).toBeUndefined();
+  });
+
+  it("Phase 2: { dryRun: false } body → live run (dryRun field absent on job payload)", async () => {
+    const { app, q } = buildApp({ settings: baseSettings });
+    const res = await app.request("/api/runs/now", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dryRun: false }),
+    });
+    expect(res.status).toBe(202);
+    expect(q.calls).toHaveLength(1);
+    expect(q.calls[0].data.dryRun).toBeUndefined();
+  });
+
+  it("Phase 2: { dryRun: true } body → dry-run job payload carries dryRun: true", async () => {
+    const { app, q } = buildApp({ settings: baseSettings });
+    const res = await app.request("/api/runs/now", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dryRun: true }),
+    });
+    expect(res.status).toBe(202);
+    expect(q.calls).toHaveLength(1);
+    expect(q.calls[0].data.dryRun).toBe(true);
+  });
+
+  it("Phase 2: rejects non-boolean dryRun with 400", async () => {
+    const { app, q } = buildApp({ settings: baseSettings });
+    const res = await app.request("/api/runs/now", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dryRun: "true" }),
+    });
+    expect(res.status).toBe(400);
+    expect(q.calls).toHaveLength(0);
+  });
+
+  it("Phase 2: rejects unknown keys with 400 (strict schema)", async () => {
+    const { app, q } = buildApp({ settings: baseSettings });
+    const res = await app.request("/api/runs/now", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ foo: 1 }),
+    });
+    expect(res.status).toBe(400);
+    expect(q.calls).toHaveLength(0);
+  });
+
   it("REQ-031: twitter-only config triggers a run (no other sources required)", async () => {
     const { app, q } = buildApp({
       settings: {

@@ -12,7 +12,7 @@ import type {
   RunProcessJobPayload,
   RunState,
 } from "@newsletter/shared";
-import { runSubmitSchema } from "@api/lib/validate.js";
+import { runNowBodySchema, runSubmitSchema } from "@api/lib/validate.js";
 import { createRun } from "@api/services/runs.js";
 import {
   cancelRun,
@@ -101,18 +101,34 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     if (!anySource) {
       return c.json({ error: "no sources enabled" }, 409);
     }
-    const { runId } = await startRun(settings, {
-      redis: deps.redis,
-      queue: deps.processingQueue,
-    });
+
+    // Body is optional — empty body / no body means a live run.
+    // c.req.json() throws on an empty body, so treat that as `{}`.
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      rawBody = {};
+    }
+    const parsed = runNowBodySchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.message }, 400);
+    }
+    const dryRun = parsed.data.dryRun ?? false;
+
+    const { runId } = await startRun(
+      settings,
+      { redis: deps.redis, queue: deps.processingQueue },
+      { dryRun },
+    );
     logger.info(
-      { event: "run.now", runId, topN: settings.topN },
+      { event: "run.now", runId, topN: settings.topN, dryRun },
       "run.now",
     );
     void captureAnalytics({
       distinctId: "admin",
       event: "run_now_triggered",
-      properties: { run_id: runId, top_n: settings.topN },
+      properties: { run_id: runId, top_n: settings.topN, dry_run: dryRun },
     });
     return c.json({ runId }, 202);
   });

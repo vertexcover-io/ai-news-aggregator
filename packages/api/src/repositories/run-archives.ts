@@ -39,6 +39,7 @@ export interface RunArchiveRow {
   linkedinPostedAt: Date | null;
   twitterPostedAt: Date | null;
   notificationState: NotificationState | null;
+  isDryRun: boolean;
 }
 
 export interface FindPoolItemsOpts {
@@ -158,6 +159,7 @@ export function createRunArchivesRepo(
           linkedinPostedAt: runArchives.linkedinPostedAt,
           twitterPostedAt: runArchives.twitterPostedAt,
           notificationState: runArchives.notificationState,
+          isDryRun: runArchives.isDryRun,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
@@ -275,6 +277,7 @@ export function createRunArchivesRepo(
           linkedinPostedAt: runArchives.linkedinPostedAt,
           twitterPostedAt: runArchives.twitterPostedAt,
           notificationState: runArchives.notificationState,
+          isDryRun: runArchives.isDryRun,
         })
         .from(runArchives)
         .where(and(
@@ -296,9 +299,10 @@ export function createRunArchivesRepo(
           rankedItems: runArchives.rankedItems,
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
+          isDryRun: runArchives.isDryRun,
         })
         .from(runArchives)
-        .where(eq(runArchives.reviewed, true))
+        .where(and(eq(runArchives.reviewed, true), eq(runArchives.isDryRun, false)))
         .orderBy(desc(runArchives.completedAt));
 
       return hydrateListItems(rows, deps.rawItemsRepo);
@@ -314,6 +318,7 @@ export function createRunArchivesRepo(
       if (!q) {
         const where = and(
           eq(runArchives.reviewed, true),
+          eq(runArchives.isDryRun, false),
           gte(runArchives.completedAt, fromTs),
           lte(runArchives.completedAt, toTs),
         );
@@ -324,6 +329,7 @@ export function createRunArchivesRepo(
             rankedItems: runArchives.rankedItems,
             digestHeadline: runArchives.digestHeadline,
             digestSummary: runArchives.digestSummary,
+            isDryRun: runArchives.isDryRun,
           })
           .from(runArchives)
           .where(where)
@@ -348,11 +354,13 @@ export function createRunArchivesRepo(
         ranked_items: RankedItemRef[];
         digest_headline: string | null;
         digest_summary: string | null;
+        is_dry_run: boolean;
       }>(sql`
-        SELECT id, completed_at, ranked_items, digest_headline, digest_summary,
+        SELECT id, completed_at, ranked_items, digest_headline, digest_summary, is_dry_run,
                ts_rank_cd(search_tsv, ${tsq}) AS rank
         FROM run_archives
         WHERE reviewed = true
+          AND is_dry_run = false
           AND completed_at BETWEEN ${fromIso}::timestamptz AND ${toIso}::timestamptz
           AND search_tsv @@ ${tsq}
         ORDER BY rank DESC, completed_at DESC
@@ -363,6 +371,7 @@ export function createRunArchivesRepo(
         SELECT count(*)::int AS c
         FROM run_archives
         WHERE reviewed = true
+          AND is_dry_run = false
           AND completed_at BETWEEN ${fromIso}::timestamptz AND ${toIso}::timestamptz
           AND search_tsv @@ ${tsq}
       `);
@@ -374,6 +383,7 @@ export function createRunArchivesRepo(
         rankedItems: Array.isArray(r.ranked_items) ? r.ranked_items : [],
         digestHeadline: r.digest_headline,
         digestSummary: r.digest_summary,
+        isDryRun: r.is_dry_run,
       }));
 
       const archives = await hydrateListItems(rows, input.rawItemsRepo);
@@ -400,6 +410,7 @@ export function createRunArchivesRepo(
           linkedinPostedAt: runArchives.linkedinPostedAt,
           twitterPostedAt: runArchives.twitterPostedAt,
           notificationState: runArchives.notificationState,
+          isDryRun: runArchives.isDryRun,
         })
         .from(runArchives)
         .orderBy(desc(runArchives.completedAt))
@@ -444,6 +455,7 @@ export function createRunArchivesRepo(
           linkedinPostedAt: runArchives.linkedinPostedAt,
           twitterPostedAt: runArchives.twitterPostedAt,
           notificationState: runArchives.notificationState,
+          isDryRun: runArchives.isDryRun,
         });
       return row;
     },
@@ -523,6 +535,7 @@ interface ArchiveListSourceRow {
   rankedItems: RankedItemRef[];
   digestHeadline: string | null;
   digestSummary: string | null;
+  isDryRun: boolean;
 }
 
 async function hydrateListItems(
@@ -553,6 +566,7 @@ function toArchiveListItem(
     leadSummary: computeLeadSummary(r.rankedItems, byId),
     digestHeadline: r.digestHeadline,
     digestSummary: r.digestSummary,
+    isDryRun: r.isDryRun,
   };
 }
 

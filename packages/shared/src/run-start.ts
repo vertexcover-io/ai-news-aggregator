@@ -23,6 +23,7 @@ export interface RunProcessJobPayload {
     twitter?: RunSubmitTwitterConfig;
   };
   halfLifeHours?: number;
+  dryRun?: boolean;
 }
 
 export interface StartRunDeps {
@@ -35,6 +36,7 @@ export interface StartRunDeps {
 export async function startRun(
   settings: UserSettings,
   deps: StartRunDeps,
+  opts?: { dryRun?: boolean },
 ): Promise<{ runId: string }> {
   const runId = (deps.runId ?? randomUUID)();
   const nowIso = (deps.now ? deps.now() : new Date()).toISOString();
@@ -105,6 +107,7 @@ export async function startRun(
     ...(settings.halfLifeHours !== null
       ? { halfLifeHours: settings.halfLifeHours }
       : {}),
+    ...(opts?.dryRun === true ? { dryRun: true } : {}),
   };
 
   await deps.queue.add("run-process", jobPayload, { jobId: runId });

@@ -11,10 +11,10 @@ vi.mock("../../../src/api/runs", async () => {
   const actual = await vi.importActual<typeof import("../../../src/api/runs")>(
     "../../../src/api/runs",
   );
-  return { ...actual, getArchive: vi.fn() };
+  return { ...actual, getAdminArchive: vi.fn() };
 });
 
-import { getArchive } from "../../../src/api/runs";
+import { getAdminArchive } from "../../../src/api/runs";
 
 function makeItem(id: number, title: string): RankedItem {
   return {
@@ -51,7 +51,7 @@ function renderAt(runId: string): ReturnType<typeof render> {
 }
 
 beforeEach(() => {
-  vi.mocked(getArchive).mockReset();
+  vi.mocked(getAdminArchive).mockReset();
 });
 
 afterEach(() => {
@@ -61,7 +61,7 @@ afterEach(() => {
 
 describe("ReviewPage", () => {
   it("renders empty state with exact copy 'This run was not found.' on 404 (REQ-102)", async () => {
-    vi.mocked(getArchive).mockResolvedValue(null);
+    vi.mocked(getAdminArchive).mockResolvedValue(null);
     renderAt("missing");
     await screen.findByText("This run was not found.");
     const link = screen.getByRole("link", { name: /back to dashboard/i });
@@ -82,7 +82,7 @@ describe("ReviewPage", () => {
       warnings: [],
       error: null,
     };
-    vi.mocked(getArchive).mockResolvedValue(running);
+    vi.mocked(getAdminArchive).mockResolvedValue(running);
     renderAt("run-1");
     await screen.findByText(
       "This run is still in progress — check back once it finishes.",
@@ -141,7 +141,7 @@ describe("ReviewPage", () => {
     }
 
     it("blocks navigation when dirty and the user cancels confirmation", async () => {
-      vi.mocked(getArchive).mockResolvedValue(makeCompletedResponse());
+      vi.mocked(getAdminArchive).mockResolvedValue(makeCompletedResponse());
       const confirmSpy = vi
         .spyOn(window, "confirm")
         .mockReturnValueOnce(false);
@@ -171,7 +171,7 @@ describe("ReviewPage", () => {
     });
 
     it("does not prompt confirmation when not dirty (blocker returns false)", async () => {
-      vi.mocked(getArchive).mockResolvedValue(makeCompletedResponse());
+      vi.mocked(getAdminArchive).mockResolvedValue(makeCompletedResponse());
       const confirmSpy = vi.spyOn(window, "confirm");
 
       renderWithLink();
@@ -182,7 +182,7 @@ describe("ReviewPage", () => {
     });
 
     it("registers a beforeunload listener", async () => {
-      vi.mocked(getArchive).mockResolvedValue(makeCompletedResponse());
+      vi.mocked(getAdminArchive).mockResolvedValue(makeCompletedResponse());
       const addSpy = vi.spyOn(window, "addEventListener");
       const removeSpy = vi.spyOn(window, "removeEventListener");
 
@@ -220,7 +220,7 @@ describe("ReviewPage", () => {
       warnings: [],
       error: null,
     };
-    vi.mocked(getArchive).mockResolvedValue(response);
+    vi.mocked(getAdminArchive).mockResolvedValue(response);
     renderAt("run-1");
     const articles = await screen.findAllByRole("article");
     expect(articles).toHaveLength(3);
@@ -229,5 +229,47 @@ describe("ReviewPage", () => {
     expect(articles[0].textContent).toContain("First Story");
     expect(articles[1].textContent).toContain("Second Story");
     expect(articles[2].textContent).toContain("Third Story");
+  });
+
+  it("renders DRY RUN pill when archive.isDryRun is true", async () => {
+    const dry: RunStateResponse = {
+      id: "run-dry",
+      status: "completed",
+      stage: "completed",
+      topN: 10,
+      startedAt: "2026-04-14T00:00:00Z",
+      updatedAt: "2026-04-14T00:00:00Z",
+      completedAt: "2026-04-14T00:00:00Z",
+      sources: {},
+      rankedItems: [makeItem(1, "T1")],
+      warnings: [],
+      error: null,
+      isDryRun: true,
+    };
+    vi.mocked(getAdminArchive).mockResolvedValue(dry);
+    renderAt("run-dry");
+    const pill = await screen.findByTestId("dry-run-pill");
+    expect(pill.textContent).toMatch(/dry run/i);
+  });
+
+  it("does not render DRY RUN pill when archive.isDryRun is false/undefined", async () => {
+    const live: RunStateResponse = {
+      id: "run-live",
+      status: "completed",
+      stage: "completed",
+      topN: 10,
+      startedAt: "2026-04-14T00:00:00Z",
+      updatedAt: "2026-04-14T00:00:00Z",
+      completedAt: "2026-04-14T00:00:00Z",
+      sources: {},
+      rankedItems: [makeItem(1, "T1")],
+      warnings: [],
+      error: null,
+      isDryRun: false,
+    };
+    vi.mocked(getAdminArchive).mockResolvedValue(live);
+    renderAt("run-live");
+    await screen.findByRole("article");
+    expect(screen.queryByTestId("dry-run-pill")).toBeNull();
   });
 });

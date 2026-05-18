@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { RankedItem } from "@newsletter/shared";
-import { getArchive, type RunStateResponse } from "../api/runs";
+import { getAdminArchive, type RunStateResponse } from "../api/runs";
 
 export interface PendingAdd {
   tempId: string;
@@ -66,7 +66,7 @@ function itemFieldsChanged(a: RankedItem, b: RankedItem): boolean {
 export function useReview(runId: string): UseReviewResult {
   const query = useQuery<RunStateResponse | null>({
     queryKey: ["archive", runId],
-    queryFn: () => getArchive(runId),
+    queryFn: () => getAdminArchive(runId),
     retry: false,
     refetchOnWindowFocus: false,
   });

@@ -346,7 +346,17 @@ export function RunsTable({
                     <div className="text-xs text-muted-foreground">{time}</div>
                   </TableCell>
                   <TableCell className="px-6 py-4 align-middle">
-                    <StatusBadge status={derived} />
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={derived} />
+                      {run.isDryRun ? (
+                        <span
+                          className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700"
+                          data-testid="dry-run-badge"
+                        >
+                          Dry run
+                        </span>
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell className="px-6 py-4 align-middle text-sm text-muted-foreground">
                     {derived === "failed" || derived === "cancelled"

@@ -14,6 +14,7 @@ export interface ArchiveListItem {
   leadSummary: string | null;
   digestHeadline: string | null;
   digestSummary: string | null;
+  isDryRun: boolean;
 }
 
 export interface ArchiveListResponse {

@@ -55,6 +55,7 @@ export interface NotifierArchiveView {
   sourceTelemetry: RunSourceTelemetry | null;
   slackNotifiedAt: Date | null;
   notificationState: NotificationState | null;
+  isDryRun: boolean;
 }
 
 export interface NotifierArchiveAccess {

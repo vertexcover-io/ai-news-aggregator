@@ -36,6 +36,7 @@ const completed: RunSummary = {
   status: "completed",
   itemCount: 10,
   reviewed: false,
+  isDryRun: false,
 };
 
 const running: RunSummary = {
@@ -45,6 +46,7 @@ const running: RunSummary = {
   status: "running",
   itemCount: 0,
   reviewed: false,
+  isDryRun: false,
 };
 
 describe("useRunList", () => {

@@ -71,6 +71,7 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
     try {
       const archive = await deps.getArchiveRepo().findById(runId);
       if (!archive) return c.json({ error: "not found" }, 404);
+      if (archive.isDryRun) return c.json({ error: "not found" }, 404);
 
       const state: RunState & {
         sourceTypes: string[] | null;
@@ -116,6 +117,52 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
 export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
   const logger = deps.logger ?? createLogger("api:archives");
   const archives = new Hono();
+
+  archives.get("/:runId", async (c) => {
+    const runId = c.req.param("runId");
+    try {
+      const archive = await deps.getArchiveRepo().findById(runId);
+      if (!archive) return c.json({ error: "not found" }, 404);
+
+      const state: RunState & {
+        sourceTypes: string[] | null;
+        digestHeadline: string | null;
+        digestSummary: string | null;
+        hook: string | null;
+        isDryRun: boolean;
+      } = {
+        id: runId,
+        status: archive.status,
+        stage: archive.status === "completed" ? "completed" : "failed",
+        topN: archive.topN,
+        startedAt: archive.startedAt?.toISOString() ?? archive.completedAt.toISOString(),
+        updatedAt: archive.completedAt.toISOString(),
+        completedAt: archive.completedAt.toISOString(),
+        sources: {},
+        rankedItems: archive.rankedItems,
+        warnings: [],
+        error: null,
+        sourceTypes: archive.sourceTypes,
+        digestHeadline: archive.digestHeadline,
+        digestSummary: archive.digestSummary,
+        hook: archive.hook,
+        isDryRun: archive.isDryRun,
+      };
+
+      if (archive.status === "completed" && Array.isArray(archive.rankedItems)) {
+        const hydrated = await hydrateRankedItems(
+          deps.getRawItemsRepo(),
+          archive.rankedItems,
+        );
+        return c.json({ ...state, rankedItems: hydrated });
+      }
+
+      return c.json(state);
+    } catch (err) {
+      logger.error({ err, runId }, "admin.archive.fetch_failed");
+      return c.json({ error: "internal error" }, 500);
+    }
+  });
 
   archives.patch("/:runId", async (c) => {
     const runId = c.req.param("runId");

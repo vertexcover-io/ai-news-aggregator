@@ -25,6 +25,7 @@ export interface RunArchiveUpsertInput {
   twitterSummary?: string | null;
   sourceTelemetry?: RunSourceTelemetry | null;
   searchText?: string | null;
+  isDryRun?: boolean;
 }
 
 export interface PipelineRunArchiveRow {
@@ -44,6 +45,7 @@ export interface PipelineRunArchiveRow {
   linkedinPostedAt: Date | null;
   twitterPostedAt: Date | null;
   notificationState: NotificationState | null;
+  isDryRun: boolean;
 }
 
 export interface RunArchivesRepo {
@@ -92,6 +94,7 @@ export function createRunArchivesRepo(
           linkedinPostedAt: runArchives.linkedinPostedAt,
           twitterPostedAt: runArchives.twitterPostedAt,
           notificationState: runArchives.notificationState,
+          isDryRun: runArchives.isDryRun,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
@@ -205,6 +208,7 @@ export function createRunArchivesRepo(
           twitterSummary: input.twitterSummary ?? null,
           sourceTelemetry: input.sourceTelemetry ?? null,
           searchText: input.searchText ?? null,
+          isDryRun: input.isDryRun ?? false,
         })
         .onConflictDoUpdate({
           target: runArchives.id,
@@ -220,6 +224,7 @@ export function createRunArchivesRepo(
             twitterSummary: sql.raw(`excluded.${runArchives.twitterSummary.name}`),
             sourceTelemetry: sql.raw(`excluded.${runArchives.sourceTelemetry.name}`),
             searchText: sql.raw(`excluded.${runArchives.searchText.name}`),
+            isDryRun: sql.raw(`excluded.${runArchives.isDryRun.name}`),
           },
         });
     },
