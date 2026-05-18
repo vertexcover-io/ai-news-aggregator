@@ -19,12 +19,7 @@ import {
   type UserSettingsRepo,
   type UserSettingsUpsertInput,
 } from "@api/repositories/user-settings.js";
-import {
-  createRunArchivesRepo,
-  type RunArchivesRepo,
-} from "@api/repositories/run-archives.js";
 import { reconcilePipelineSchedule } from "@api/services/scheduler.js";
-import { reconcilePerArchiveJobs } from "@api/services/per-archive-schedule.js";
 import {
   defaultRettiwtFactory,
   resolveTwitterHandles,
@@ -37,11 +32,7 @@ type RettiwtFactory = TwitterHandleResolverDeps["rettiwtFactory"];
 
 export interface SettingsRouterDeps {
   getSettingsRepo: () => UserSettingsRepo;
-  getArchiveRepo?: () => RunArchivesRepo;
-  processingQueue: Pick<
-    Queue,
-    "upsertJobScheduler" | "removeJobScheduler" | "add" | "remove" | "getJob"
-  >;
+  processingQueue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">;
   resolveHandles?: (
     handles: string[],
     deps: TwitterHandleResolverDeps,
@@ -209,17 +200,6 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
     const saved = await deps.getSettingsRepo().upsert(upsertInput);
     refreshPostHogConfig(saved);
     await reconcilePipelineSchedule(deps.processingQueue, saved);
-    if (deps.getArchiveRepo !== undefined) {
-      const archives = await deps.getArchiveRepo().findRecentUnpublished({ withinDays: 2 });
-      for (const archive of archives) {
-        await reconcilePerArchiveJobs(
-          { queue: deps.processingQueue, now: () => new Date() },
-          archive.id,
-          saved,
-          archive,
-        );
-      }
-    }
     logger.info(
       {
         event: "settings.saved",
@@ -256,7 +236,6 @@ function getDefaultProcessingQueue(): Queue {
 export function createDefaultSettingsRouter(): Hono {
   return createSettingsRouter({
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
     processingQueue: getDefaultProcessingQueue(),
   });
 }

@@ -35,11 +35,6 @@ import {
   type TwitterPostJobLike,
 } from "@pipeline/workers/twitter-post.js";
 import {
-  handleReviewWarningJob,
-  type ReviewWarningDeps,
-  type ReviewWarningJobLike,
-} from "@pipeline/workers/review-warning.js";
-import {
   handleSocialHealthJob,
   type SocialHealthDeps,
   type SocialHealthJobLike,
@@ -106,7 +101,7 @@ export interface CreateProcessingWorkerOptions {
   socialHealthDeps?: SocialHealthDeps;
 }
 
-type PublishDeps = EmailSendDeps & LinkedInPostDeps & TwitterPostDeps & ReviewWarningDeps;
+type PublishDeps = EmailSendDeps & LinkedInPostDeps & TwitterPostDeps;
 
 // Discriminated by job.name; payload shape is heterogeneous between routes.
 type ProcessingJobData = Record<string, unknown>;
@@ -151,7 +146,7 @@ export function createProcessingWorker(
           const typed: EmailSendJobLike = {
             name: job.name,
             id: job.id,
-            data: job.data as unknown as { runId: string },
+            data: job.data as { runId?: string },
           };
           await handleEmailSendJob(resolvedPublishDeps, typed);
           return undefined;
@@ -161,7 +156,7 @@ export function createProcessingWorker(
           const typed: LinkedInPostJobLike = {
             name: job.name,
             id: job.id,
-            data: job.data as unknown as { runId: string },
+            data: job.data as { runId?: string },
           };
           await handleLinkedInPostJob(resolvedPublishDeps, typed);
           return undefined;
@@ -171,19 +166,9 @@ export function createProcessingWorker(
           const typed: TwitterPostJobLike = {
             name: job.name,
             id: job.id,
-            data: job.data as unknown as { runId: string },
+            data: job.data as { runId?: string },
           };
           await handleTwitterPostJob(resolvedPublishDeps, typed);
-          return undefined;
-        }
-        case "review-warning": {
-          resolvedPublishDeps ??= buildDefaultPublishDeps();
-          const typed: ReviewWarningJobLike = {
-            name: job.name,
-            id: job.id,
-            data: job.data as unknown as { runId: string },
-          };
-          await handleReviewWarningJob(resolvedPublishDeps, typed);
           return undefined;
         }
         case "social-health": {
@@ -225,7 +210,6 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   const twitterClient = createRettiwtClient({
     rettiwt: new Rettiwt({ apiKey: process.env.RETTIWT_API_KEY }),
   });
-  const processingQueue = new Queue("processing", { connection });
   const slackNotifier = createSlackNotifier({
     webhookUrl: process.env.SLACK_WEBHOOK_URL,
     archives: archiveRepo,
@@ -237,7 +221,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
       return items[0]?.title ?? null;
     },
     logger: createLogger("slack"),
-    publicArchiveBaseUrl: process.env.PUBLIC_BASE_URL,
+    publicArchiveBaseUrl: process.env.PUBLIC_BASE_URL ?? process.env.NEWSLETTER_BASE_URL,
   });
   return {
     runState,
@@ -251,7 +235,6 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     userSettingsRepo,
     cancelSubscriber: createCancelSubscriber(connection),
     twitterClient,
-    processingQueue,
     slackNotifier,
   };
 }
@@ -330,7 +313,6 @@ export function buildDefaultPublishDeps(): PublishDeps {
   const db = getDb();
   const archiveRepo = createRunArchivesRepo(db);
   const rawItemsRepo = createRawItemsRepo(db);
-  const userSettingsRepo = createUserSettingsRepo(db);
   const socialTokensRepo = getSharedSocialTokensRepo();
   const slackNotifier = createSlackNotifier({
     webhookUrl: process.env.SLACK_WEBHOOK_URL,
@@ -343,10 +325,11 @@ export function buildDefaultPublishDeps(): PublishDeps {
       return items[0]?.title ?? null;
     },
     logger: createLogger("slack"),
-    publicArchiveBaseUrl: process.env.PUBLIC_BASE_URL,
+    publicArchiveBaseUrl: process.env.PUBLIC_BASE_URL ?? process.env.NEWSLETTER_BASE_URL,
   });
 
-  const publicArchiveBaseUrl = process.env.PUBLIC_BASE_URL ?? "";
+  const publicArchiveBaseUrl =
+    process.env.PUBLIC_BASE_URL ?? process.env.NEWSLETTER_BASE_URL ?? "";
   const linkedinClientId = process.env.LINKEDIN_CLIENT_ID;
   const linkedinClientSecret = process.env.LINKEDIN_CLIENT_SECRET;
   const linkedinNotifier =
@@ -401,7 +384,6 @@ export function buildDefaultPublishDeps(): PublishDeps {
     slackNotifier,
     linkedinNotifier,
     twitterNotifier,
-    userSettingsRepo,
   };
 }
 

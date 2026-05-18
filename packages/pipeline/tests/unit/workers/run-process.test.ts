@@ -296,11 +296,13 @@ describe("run-process worker", () => {
     const rankFn = vi.fn(
       (): Promise<RankResult> => Promise.reject(new Error("rank blew up")),
     );
+    const archiveUpsert = vi.fn(() => Promise.resolve());
     const worker = createRunProcessWorker({
       runState: runStateMock.service,
       loadFn,
       rankFn,
       shortlistFn: makeShortlistFn(passthroughShortlist),
+      archiveRepo: { upsert: archiveUpsert },
     });
 
     await expect(worker.handler(baseJob)).rejects.toThrow("rank blew up");
@@ -309,6 +311,14 @@ describe("run-process worker", () => {
     expect(last?.stage).toBe("failed");
     expect(last?.error).toBe("rank blew up");
     expect(last?.completedAt).not.toBeNull();
+    expect(archiveUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "run-1",
+        status: "failed",
+        reviewed: false,
+        rankedItems: [],
+      }),
+    );
   });
 
   // Happy path: load → dedup → rank → completed
@@ -806,11 +816,13 @@ describe("run-process worker", () => {
     const reddit = vi.fn(() => Promise.reject(new Error("reddit boom")));
     const loadFn = vi.fn((): Promise<Candidate[]> => Promise.resolve([]));
     const rankFn = vi.fn();
+    const archiveUpsert = vi.fn(() => Promise.resolve());
     const worker = createRunProcessWorker({
       runState: runStateMock.service,
       loadFn,
       rankFn,
       collectFns: { hn, reddit, web: vi.fn() },
+      archiveRepo: { upsert: archiveUpsert },
     });
 
     const result = await worker.handler({
@@ -836,6 +848,14 @@ describe("run-process worker", () => {
     expect(last?.error).toContain("hn boom");
     expect(last?.error).toContain("reddit boom");
     expect(last?.rankedItems).toBeNull();
+    expect(archiveUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "run-1",
+        status: "failed",
+        reviewed: false,
+        rankedItems: [],
+      }),
+    );
     expect(result).toEqual({ rankedCount: 0 });
   });
 
@@ -1302,8 +1322,7 @@ describe("run-process worker", () => {
     expect(payload.error).toBe("pg connection lost");
   });
 
-  // BUG-FIX: auto-reviewed runs must reconcile scheduled publish jobs
-  it("reconciles publish jobs when autoReview=true and archive write succeeds", async () => {
+  it("does not schedule per-archive publish jobs when autoReview=true", async () => {
     const runStateMock = makeMockRunState(makeRunState());
     const candidates = [makeCandidate(1)];
     const loadFn = vi.fn(
@@ -1319,7 +1338,7 @@ describe("run-process worker", () => {
         }),
     );
     const archiveUpsert = vi.fn(() => Promise.resolve());
-    const processingQueueAdd = vi.fn(() => Promise.resolve({ id: "email-send:run-1" }));
+    const notifyReviewPending = vi.fn(() => Promise.resolve());
     const worker = createRunProcessWorker({
       runState: runStateMock.service,
       loadFn,
@@ -1327,23 +1346,6 @@ describe("run-process worker", () => {
       rankFn,
       archiveRepo: {
         upsert: archiveUpsert,
-        findById: vi.fn(() =>
-          Promise.resolve({
-            id: "run-1",
-            status: "completed",
-            rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
-            topN: 3,
-            reviewed: true,
-            completedAt: new Date("2026-04-07T10:00:00.000Z"),
-            createdAt: new Date("2026-04-07T10:00:00.000Z"),
-            startedAt: new Date("2026-04-07T10:00:00.000Z"),
-            sourceTypes: ["hn"],
-            emailSentAt: null,
-            linkedinPostedAt: null,
-            twitterPostedAt: null,
-            notificationState: {},
-          }),
-        ),
       },
       userSettingsRepo: {
         get: vi.fn(() =>
@@ -1375,13 +1377,12 @@ describe("run-process worker", () => {
         ),
         upsert: vi.fn(),
       },
-      processingQueue: {
-        add: processingQueueAdd,
-        remove: vi.fn(() => Promise.resolve(1)),
-        getJob: vi.fn(() => Promise.resolve(null)),
-      } as unknown as Parameters<
-        typeof createRunProcessWorker
-      >[0]["processingQueue"],
+      slackNotifier: {
+        notifyNewsletterSent: vi.fn(),
+        notifyReviewPending,
+        notifyReviewWarning: vi.fn(),
+        notifyPublishFailed: vi.fn(),
+      },
     });
 
     await worker.handler(baseJob);
@@ -1389,14 +1390,10 @@ describe("run-process worker", () => {
     expect(archiveUpsert).toHaveBeenCalledWith(
       expect.objectContaining({ reviewed: true }),
     );
-    expect(processingQueueAdd).toHaveBeenCalledWith(
-      "email-send",
-      { runId: "run-1" },
-      expect.objectContaining({ jobId: "email-send:run-1" }),
-    );
+    expect(notifyReviewPending).not.toHaveBeenCalled();
   });
 
-  it("does not reconcile publish jobs when settings are unavailable", async () => {
+  it("sends ready-for-review Slack when archive write succeeds and autoReview=false", async () => {
     const runStateMock = makeMockRunState(makeRunState());
     const candidates = [makeCandidate(1)];
     const loadFn = vi.fn(
@@ -1412,46 +1409,7 @@ describe("run-process worker", () => {
         }),
     );
     const archiveUpsert = vi.fn(() => Promise.resolve());
-    const processingQueueAdd = vi.fn(() => Promise.resolve({ id: "email-send:run-1" }));
-    const worker = createRunProcessWorker({
-      runState: runStateMock.service,
-      loadFn,
-      shortlistFn,
-      rankFn,
-      archiveRepo: { upsert: archiveUpsert },
-      processingQueue: {
-        add: processingQueueAdd,
-        remove: vi.fn(() => Promise.resolve(1)),
-        getJob: vi.fn(() => Promise.resolve(null)),
-      } as unknown as Parameters<
-        typeof createRunProcessWorker
-      >[0]["processingQueue"],
-    });
-
-    await worker.handler(baseJob);
-
-    expect(processingQueueAdd).not.toHaveBeenCalled();
-  });
-
-  it("does not reconcile publish jobs when archive write fails", async () => {
-    const runStateMock = makeMockRunState(makeRunState());
-    const candidates = [makeCandidate(1)];
-    const loadFn = vi.fn(
-      (): Promise<Candidate[]> => Promise.resolve(candidates),
-    );
-    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
-    const rankFn = vi.fn(
-      (): Promise<RankResult> =>
-        Promise.resolve({
-          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
-          candidateCount: 1,
-          rankedCount: 1,
-        }),
-    );
-    const archiveUpsert = vi.fn(() =>
-      Promise.reject(new Error("pg connection lost")),
-    );
-    const processingQueueAdd = vi.fn(() => Promise.resolve({ id: "email-send:run-1" }));
+    const notifyReviewPending = vi.fn(() => Promise.resolve());
     const worker = createRunProcessWorker({
       runState: runStateMock.service,
       loadFn,
@@ -1482,24 +1440,23 @@ describe("run-process worker", () => {
             emailEnabled: true,
             linkedinEnabled: true,
             twitterPostEnabled: true,
-            autoReview: true,
+            autoReview: false,
             updatedAt: new Date("2026-04-07T10:00:00.000Z"),
           }),
         ),
         upsert: vi.fn(),
       },
-      processingQueue: {
-        add: processingQueueAdd,
-        remove: vi.fn(() => Promise.resolve(1)),
-        getJob: vi.fn(() => Promise.resolve(null)),
-      } as unknown as Parameters<
-        typeof createRunProcessWorker
-      >[0]["processingQueue"],
+      slackNotifier: {
+        notifyNewsletterSent: vi.fn(),
+        notifyReviewPending,
+        notifyReviewWarning: vi.fn(),
+        notifyPublishFailed: vi.fn(),
+      },
     });
 
     await worker.handler(baseJob);
 
-    expect(processingQueueAdd).not.toHaveBeenCalled();
+    expect(notifyReviewPending).toHaveBeenCalledWith({ runId: "run-1" });
   });
 
   // REQ-002: factory falls back to default archiveRepo when none is injected

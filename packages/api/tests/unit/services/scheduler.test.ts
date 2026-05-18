@@ -2,7 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import type { UserSettings } from "@newsletter/shared";
 import {
   DAILY_RUN_SCHEDULER_KEY,
+  EMAIL_SEND_SCHEDULER_KEY,
+  LINKEDIN_POST_SCHEDULER_KEY,
+  PIPELINE_RUN_SCHEDULER_KEY,
   SOCIAL_HEALTH_SCHEDULER_KEY,
+  TWITTER_POST_SCHEDULER_KEY,
+  reconcilePipelineSchedule,
   reconcileDailyRunSchedule,
   toCronMinusMinutes,
   toCron,
@@ -21,9 +26,20 @@ function baseSettings(overrides: Partial<UserSettings> = {}): UserSettings {
     webConfig: null,
     twitterEnabled: false,
     twitterConfig: null,
+    posthogEnabled: false,
+    posthogProjectToken: null,
+    posthogHost: null,
     scheduleTime: "09:30",
+    pipelineTime: "09:30",
+    emailTime: "10:00",
+    linkedinTime: "10:15",
+    twitterTime: "10:30",
     scheduleTimezone: "America/New_York",
     scheduleEnabled: true,
+    emailEnabled: true,
+    linkedinEnabled: true,
+    twitterPostEnabled: true,
+    autoReview: false,
     updatedAt: new Date().toISOString(),
     ...overrides,
   };
@@ -55,6 +71,71 @@ describe("toCronMinusMinutes", () => {
 
   it("wraps before midnight when the health check precedes an early run", () => {
     expect(toCronMinusMinutes("00:05", 15)).toBe("50 23 * * *");
+  });
+});
+
+describe("reconcilePipelineSchedule", () => {
+  it("upserts standing pipeline, health, and enabled publish channel schedulers", async () => {
+    const queue = makeQueue();
+
+    await reconcilePipelineSchedule(queue, baseSettings());
+
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      PIPELINE_RUN_SCHEDULER_KEY,
+      { pattern: "30 9 * * *", tz: "America/New_York" },
+      { name: "pipeline-run", data: {} },
+    );
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      SOCIAL_HEALTH_SCHEDULER_KEY,
+      { pattern: "15 9 * * *", tz: "America/New_York" },
+      { name: "social-health", data: {} },
+    );
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      EMAIL_SEND_SCHEDULER_KEY,
+      { pattern: "0 10 * * *", tz: "America/New_York" },
+      { name: "email-send", data: {} },
+    );
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      LINKEDIN_POST_SCHEDULER_KEY,
+      { pattern: "15 10 * * *", tz: "America/New_York" },
+      { name: "linkedin-post", data: {} },
+    );
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      TWITTER_POST_SCHEDULER_KEY,
+      { pattern: "30 10 * * *", tz: "America/New_York" },
+      { name: "twitter-post", data: {} },
+    );
+    expect(queue.removeJobScheduler).not.toHaveBeenCalled();
+  });
+
+  it("removes all standing schedulers when the schedule is disabled", async () => {
+    const queue = makeQueue();
+
+    await reconcilePipelineSchedule(queue, baseSettings({ scheduleEnabled: false }));
+
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(PIPELINE_RUN_SCHEDULER_KEY);
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(SOCIAL_HEALTH_SCHEDULER_KEY);
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(EMAIL_SEND_SCHEDULER_KEY);
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(LINKEDIN_POST_SCHEDULER_KEY);
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(TWITTER_POST_SCHEDULER_KEY);
+    expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
+  });
+
+  it("removes disabled channel schedulers while keeping enabled channels", async () => {
+    const queue = makeQueue();
+
+    await reconcilePipelineSchedule(
+      queue,
+      baseSettings({ linkedinEnabled: false, twitterPostEnabled: false }),
+    );
+
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      EMAIL_SEND_SCHEDULER_KEY,
+      { pattern: "0 10 * * *", tz: "America/New_York" },
+      { name: "email-send", data: {} },
+    );
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(LINKEDIN_POST_SCHEDULER_KEY);
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(TWITTER_POST_SCHEDULER_KEY);
   });
 });
 

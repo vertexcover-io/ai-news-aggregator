@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildReviewedMessage } from "@shared/slack/message-builder.js";
+import { buildReviewPendingMessage } from "@shared/slack/builders/review-pending.js";
+import { buildPublishUnavailableMessage } from "@shared/slack/builders/publish-unavailable.js";
 import type { RunSourceTelemetry } from "@shared/types/run.js";
 
 const baseTelemetry: RunSourceTelemetry = {
@@ -411,5 +413,35 @@ describe("buildReviewedMessage", () => {
       delivery: { attempted: 1, sent: 1, failed: 0 },
     });
     expect(contextTexts(blocks)[0]).toBe("runId: r-99");
+  });
+});
+
+describe("publish scheduling Slack messages", () => {
+  it("ready-for-review includes the admin review link when a base URL is configured", () => {
+    const { blocks } = buildReviewPendingMessage({
+      runId: "run-123",
+      digestHeadline: "Agents digest",
+      publicArchiveBaseUrl: "https://news.example.com/",
+    });
+
+    expect(findHeader(blocks)).toBe("Newsletter ready for review");
+    expect(contextTexts(blocks)[0]).toBe(
+      "<https://news.example.com/admin/review/run-123|Open review> · runId: run-123",
+    );
+  });
+
+  it("publish-unavailable explains that the latest failed run blocks fallback publishing", () => {
+    const { blocks } = buildPublishUnavailableMessage({
+      channel: "linkedin-post",
+      reason: "latest_failed",
+      runId: "run-456",
+      publicArchiveBaseUrl: "https://news.example.com",
+    });
+
+    expect(findHeader(blocks)).toBe("LinkedIn was not posted");
+    expect(sectionTexts(blocks)[0]).toContain("The latest pipeline run failed.");
+    expect(contextTexts(blocks)[0]).toBe(
+      "<https://news.example.com/admin/review/run-456|Open review> · runId: run-456",
+    );
   });
 });

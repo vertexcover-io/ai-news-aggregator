@@ -1,5 +1,6 @@
 import { buildReviewedMessage } from "./message-builder.js";
 import { buildPublishFailedMessage } from "./builders/publish-failed.js";
+import { buildPublishUnavailableMessage } from "./builders/publish-unavailable.js";
 import { buildReviewPendingMessage } from "./builders/review-pending.js";
 import { buildReviewWarningMessage } from "./builders/review-warning.js";
 import type {
@@ -33,6 +34,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
       notifyReviewPending: (): Promise<void> => Promise.resolve(),
       notifyReviewWarning: (): Promise<void> => Promise.resolve(),
       notifyPublishFailed: (): Promise<void> => Promise.resolve(),
+      notifyPublishUnavailable: (): Promise<void> => Promise.resolve(),
     };
   }
 
@@ -255,6 +257,51 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
             channel: input.channel,
             publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
           }).blocks as unknown[],
+      });
+    },
+    async notifyPublishUnavailable(input: {
+      channel: "email-send" | "linkedin-post" | "twitter-post";
+      reason: "no_archive" | "latest_failed" | "latest_cancelled" | "latest_unreviewed";
+      runId?: string;
+    }): Promise<void> {
+      const keyByChannel = {
+        "email-send": "emailFailure",
+        "linkedin-post": "linkedinFailure",
+        "twitter-post": "twitterFailure",
+      } as const;
+      const blocks = buildPublishUnavailableMessage({
+        channel: input.channel,
+        reason: input.reason,
+        runId: input.runId,
+        publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
+      }).blocks as unknown[];
+
+      if (input.runId === undefined) {
+        const result = await postToWebhook({
+          url: webhookUrl,
+          blocks,
+          fetchFn: deps.fetchFn,
+        });
+        if (!result.ok) {
+          logger.warn(
+            {
+              event: "slack.publish_unavailable.failed",
+              reason: input.reason,
+              channel: input.channel,
+              status: result.status,
+              responseBody: result.error,
+            },
+            "slack notification failed",
+          );
+        }
+        return;
+      }
+
+      return notifyWithMarker({
+        runId: input.runId,
+        key: keyByChannel[input.channel],
+        event: "slack.publish_unavailable",
+        blocks: () => blocks,
       });
     },
   };
