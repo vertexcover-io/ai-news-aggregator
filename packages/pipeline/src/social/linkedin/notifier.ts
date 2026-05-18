@@ -134,7 +134,6 @@ export function createLinkedInNotifier(
         const composed = composePosts({
           hook,
           stories,
-          archiveUrl,
         });
         if (composed === null) {
           logger.warn(
@@ -274,6 +273,34 @@ export function createLinkedInNotifier(
         }
 
         if (postResult.ok) {
+          const commentResult = await apiClient.createComment({
+            accessToken: acquired.token.accessToken,
+            personUrn: acquired.token.personUrn,
+            postUrn: postResult.postUrn,
+            text: `Full breakdown: ${archiveUrl}`,
+            apiVersion: config.apiVersion,
+          });
+          if (!commentResult.ok) {
+            logger.warn(
+              {
+                event: "social.linkedin.comment_failed",
+                runId,
+                postUrn: postResult.postUrn,
+                status: commentResult.status,
+                body: truncate(commentResult.body),
+              },
+              "linkedin post created but link comment failed",
+            );
+          } else {
+            logger.info(
+              {
+                event: "social.linkedin.comment_sent",
+                runId,
+                postUrn: postResult.postUrn,
+              },
+              "linkedin link comment created",
+            );
+          }
           await archives.markLinkedInPosted(runId, now(), postResult.postUrn);
           logger.info(
             {

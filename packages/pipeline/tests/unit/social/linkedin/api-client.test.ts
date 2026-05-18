@@ -116,4 +116,61 @@ describe("createLinkedInApiClient", () => {
 
     expect(result).toEqual({ ok: false, status: 0, body: "ECONNRESET" });
   });
+
+  describe("createComment", () => {
+    const COMMENT_INPUT = {
+      accessToken: "tok",
+      personUrn: "urn:li:person:abc",
+      postUrn: "urn:li:share:7459582142512033793",
+      text: "Full breakdown: https://news.example.com/archive/abc",
+      apiVersion: "202511",
+    };
+
+    it("posts to socialActions/{postUrn}/comments with actor/object/message body and returns ok on 201", async () => {
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValue(makeResponse({ status: 201 }));
+      const client = createLinkedInApiClient({ fetchFn });
+
+      const result = await client.createComment(COMMENT_INPUT);
+
+      expect(result).toEqual({ ok: true });
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchFn.mock.calls[0] as [string, RequestInit];
+      // Post URN must be URL-encoded in the path since it contains colons.
+      expect(url).toBe(
+        `https://api.linkedin.com/rest/socialActions/${encodeURIComponent(COMMENT_INPUT.postUrn)}/comments`,
+      );
+      expect(init.method).toBe("POST");
+      const headers = init.headers as Record<string, string>;
+      expect(headers.Authorization).toBe("Bearer tok");
+      expect(headers["LinkedIn-Version"]).toBe("202511");
+      expect(headers["X-Restli-Protocol-Version"]).toBe("2.0.0");
+      expect(headers["Content-Type"]).toBe("application/json");
+      const sentBody = JSON.parse(init.body as string) as Record<string, unknown>;
+      expect(sentBody.actor).toBe("urn:li:person:abc");
+      expect(sentBody.object).toBe(COMMENT_INPUT.postUrn);
+      expect(sentBody.message).toEqual({ text: COMMENT_INPUT.text });
+    });
+
+    it("returns ok:false with status and body on non-201", async () => {
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValue(makeResponse({ status: 403, body: "forbidden" }));
+      const client = createLinkedInApiClient({ fetchFn });
+
+      const result = await client.createComment(COMMENT_INPUT);
+
+      expect(result).toEqual({ ok: false, status: 403, body: "forbidden" });
+    });
+
+    it("returns status 0 sentinel on fetch throw", async () => {
+      const fetchFn = vi.fn().mockRejectedValue(new Error("ECONNRESET"));
+      const client = createLinkedInApiClient({ fetchFn });
+
+      const result = await client.createComment(COMMENT_INPUT);
+
+      expect(result).toEqual({ ok: false, status: 0, body: "ECONNRESET" });
+    });
+  });
 });

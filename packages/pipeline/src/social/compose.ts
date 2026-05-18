@@ -9,7 +9,6 @@ export interface ComposeInput {
   twitterSummary?: string | null;
   twitterIsPremium?: boolean;
   stories: RankedStory[];
-  archiveUrl: string;
 }
 
 export type TwitterComposeResult =
@@ -23,10 +22,10 @@ export interface ComposedPosts {
 
 export const TWITTER_MAX_CHARS = 280;
 export const TWITTER_URL_CHARS = 23;
-export const TWITTER_SUMMARY_MAX_CHARS =
-  TWITTER_MAX_CHARS - "Full breakdown ↓".length - TWITTER_URL_CHARS - 2;
+// The archive URL is posted as a reply, not in the body, so the full 280-char
+// budget is available for the body itself.
+export const TWITTER_SUMMARY_MAX_CHARS = TWITTER_MAX_CHARS;
 
-const TWITTER_CTA = "Full breakdown ↓";
 const TWITTER_STORY_PREFIX = "→ ";
 const TWITTER_MAX_PREMIUM_STORIES = 3;
 const TWITTER_LEAD_STORY_COUNT = 1;
@@ -42,16 +41,11 @@ function buildLinkedinStoryLine(index: number, story: RankedStory): string {
   return `${String(index)}) ${story.title}\n   ${story.summary ?? ""}`;
 }
 
-function buildLinkedin(
-  hook: string,
-  stories: RankedStory[],
-  archiveUrl: string,
-): string {
+function buildLinkedin(hook: string, stories: RankedStory[]): string {
   const parts: string[] = [hook];
   for (let i = 0; i < stories.length; i += 1) {
     parts.push(buildLinkedinStoryLine(i + 1, stories[i]));
   }
-  parts.push(`Full breakdown: ${archiveUrl}`);
   return parts.join("\n\n");
 }
 
@@ -59,10 +53,9 @@ function buildTwitterText(
   heading: string | null,
   summary: string,
   stories: RankedStory[],
-  archiveUrl: string,
   premium: boolean,
 ): string {
-  if (!premium) return [summary, TWITTER_CTA, archiveUrl].join("\n");
+  if (!premium) return summary;
   const storyLines = stories
     .map((story) => story.title.trim())
     .filter((title) => title !== "")
@@ -78,7 +71,6 @@ function buildTwitterText(
     ...(heading === null ? [] : [heading]),
     summary,
     ...alsoInside,
-    [TWITTER_CTA, archiveUrl].join("\n"),
   ].join("\n\n");
 }
 
@@ -113,7 +105,6 @@ export function composePosts(input: ComposeInput): ComposedPosts | null {
     heading,
     twitterSummary ?? "",
     twitterStories,
-    input.archiveUrl,
     premium,
   );
   const twitter =
@@ -122,8 +113,7 @@ export function composePosts(input: ComposeInput): ComposedPosts | null {
       : ({ ok: true, text: twitterText } as const);
 
   return {
-    linkedinText:
-      hook === null ? null : buildLinkedin(hook, stories, input.archiveUrl),
+    linkedinText: hook === null ? null : buildLinkedin(hook, stories),
     twitter,
   };
 }

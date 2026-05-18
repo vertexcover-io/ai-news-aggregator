@@ -72,7 +72,10 @@ function makeTokenRow(
 }
 
 interface TestDeps {
-  apiClient: { createPost: ReturnType<typeof vi.fn> };
+  apiClient: {
+    createPost: ReturnType<typeof vi.fn>;
+    createComment: ReturnType<typeof vi.fn>;
+  };
   archives: {
     findById: ReturnType<typeof vi.fn>;
     markLinkedInPosted: ReturnType<typeof vi.fn>;
@@ -101,6 +104,7 @@ function buildDeps(opts: {
         opts.postResult ?? { ok: true, postUrn: "urn:li:share:999" },
       );
     }),
+    createComment: vi.fn().mockResolvedValue({ ok: true }),
   };
 
   const archives = {
@@ -192,14 +196,67 @@ describe("createLinkedInNotifier", () => {
     expect(callArg.personUrn).toBe("urn:li:person:abc");
     expect(callArg.apiVersion).toBe("202511");
     expect(callArg.text).toContain("Hook line for social.");
-    expect(callArg.text).toContain(
-      `https://news.example.com/archive/${RUN_ID}`,
+    // The archive URL is posted as a comment, not embedded in the post body.
+    expect(callArg.text).not.toContain("https://");
+    expect(callArg.text).not.toContain("Full breakdown");
+
+    expect(deps.apiClient.createComment).toHaveBeenCalledTimes(1);
+    const commentArg = deps.apiClient.createComment.mock.calls[0][0];
+    expect(commentArg.accessToken).toBe("access-1");
+    expect(commentArg.personUrn).toBe("urn:li:person:abc");
+    expect(commentArg.postUrn).toBe("urn:li:share:1234");
+    expect(commentArg.apiVersion).toBe("202511");
+    expect(commentArg.text).toBe(
+      `Full breakdown: https://news.example.com/archive/${RUN_ID}`,
     );
+
     expect(deps.archives.markLinkedInPosted).toHaveBeenCalledWith(
       RUN_ID,
       NOW,
       "urn:li:share:1234",
     );
+  });
+
+  it("comment failure: post is still treated as posted, no recordSocialFailure called", async () => {
+    const { notifier, deps } = build({
+      archive: makeArchive(),
+      tokenRow: makeTokenRow(),
+      postResult: { ok: true, postUrn: "urn:li:share:abcd" },
+    });
+    deps.apiClient.createComment.mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      body: "rate limited",
+    });
+
+    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
+
+    expect(result).toEqual({ status: "posted", permalink: "urn:li:share:abcd" });
+    expect(deps.apiClient.createComment).toHaveBeenCalledTimes(1);
+    expect(deps.archives.markLinkedInPosted).toHaveBeenCalledWith(
+      RUN_ID,
+      NOW,
+      "urn:li:share:abcd",
+    );
+    expect(deps.archives.recordSocialFailure).not.toHaveBeenCalled();
+  });
+
+  it("duplicate post (422): does not post a comment, still marks posted with null permalink", async () => {
+    const { notifier, deps } = build({
+      archive: makeArchive(),
+      tokenRow: makeTokenRow(),
+      postResult: {
+        ok: false,
+        status: 422,
+        body: '{"errorDetails":{"inputErrors":[{"code":"DUPLICATE_POST"}]}}',
+        errorCode: "DUPLICATE_POST",
+      },
+    });
+
+    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
+
+    expect(result).toEqual({ status: "posted", permalink: null });
+    expect(deps.apiClient.createComment).not.toHaveBeenCalled();
   });
 
   it("idempotency: skipped when linkedinPostedAt is set, no api call (REQ-022)", async () => {
