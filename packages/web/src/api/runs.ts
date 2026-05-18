@@ -1,5 +1,6 @@
 import type {
   RankedItem,
+  RunCostBreakdown,
   RunState,
   RunSourcesResponse,
   RunSubmitPayload,
@@ -18,6 +19,7 @@ export type RunStateResponse = Omit<RunState, "rankedItems"> & {
   digestSummary?: string | null;
   hook?: string | null;
   isDryRun?: boolean;
+  costBreakdown?: RunCostBreakdown | null;
 };
 
 interface ApiErrorBody {

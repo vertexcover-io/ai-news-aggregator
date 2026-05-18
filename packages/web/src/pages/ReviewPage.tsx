@@ -7,6 +7,7 @@ import { ReviewList } from "../components/review/ReviewList";
 import { AddPostPanel } from "../components/review/AddPostPanel";
 import { SaveBar } from "../components/review/SaveBar";
 import { PoolSection } from "../components/review/PoolSection";
+import { CostBreakdownCard } from "../components/admin/CostBreakdownCard";
 
 function formatHeading(startedAt: string | null | undefined): string {
   if (!startedAt) return "Review";
@@ -272,6 +273,7 @@ export function ReviewPage(): ReactElement {
           startedAt={query.data.startedAt}
           sourceTypes={query.data.sourceTypes ?? null}
         />
+        <CostBreakdownCard costBreakdown={query.data.costBreakdown ?? null} />
       </main>
       <SaveBar
         unsavedCount={unsavedCount}

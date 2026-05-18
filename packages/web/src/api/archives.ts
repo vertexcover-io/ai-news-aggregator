@@ -2,8 +2,24 @@ import type {
   RankedItem,
   PoolResponse,
   ArchiveListResponse,
+  RunCostBreakdown,
 } from "@newsletter/shared";
 import { apiFetch, apiFetchAdmin } from "./client";
+
+export interface ArchiveCostResponse {
+  runId: string;
+  costBreakdown: RunCostBreakdown | null;
+}
+
+export async function fetchArchiveCost(
+  runId: string,
+): Promise<ArchiveCostResponse> {
+  const res = await apiFetchAdmin(`/api/admin/archives/${runId}/cost`);
+  if (!res.ok) {
+    throw new Error(`fetchArchiveCost: ${String(res.status)}`);
+  }
+  return (await res.json()) as ArchiveCostResponse;
+}
 
 export interface PatchArchiveBody {
   rankedItems: {
