@@ -49,14 +49,20 @@ if [[ -n "$GHCR_TOKEN" && -n "$GHCR_USERNAME" ]]; then
 	echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 fi
 
-# ─── 2. Pull + up ─────────────────────────────────────────────────────────
+# ─── 2. Pull + migrate + up ───────────────────────────────────────────────
 log "Pulling images"
 "${COMPOSE[@]}" pull
 
-log "Starting containers"
+log "Starting database services"
+"${COMPOSE[@]}" up -d postgres redis
+
+log "Running database migrations"
+"${COMPOSE[@]}" run --rm --no-deps api node /app/migrate.mjs
+
+log "Starting application containers"
 "${COMPOSE[@]}" up -d --remove-orphans
 
-# ─── 3. Migrations ────────────────────────────────────────────────────────
+# ─── 3. Health check ──────────────────────────────────────────────────────
 log "Waiting for api to be healthy"
 for i in $(seq 1 30); do
 	state="$(docker inspect --format='{{.State.Health.Status}}' "$("${COMPOSE[@]}" ps -q api)" 2>/dev/null || echo unknown)"
@@ -64,9 +70,6 @@ for i in $(seq 1 30); do
 	sleep 2
 	[[ $i -eq 30 ]] && die "api container did not become healthy within 60s"
 done
-
-log "Running database migrations"
-"${COMPOSE[@]}" exec -T api node /app/migrate.mjs
 
 # ─── 4. Sync Caddyfile + reload ──────────────────────────────────────────
 log "Syncing Caddyfile and reloading Caddy"
