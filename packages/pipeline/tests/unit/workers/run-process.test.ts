@@ -2356,8 +2356,11 @@ describe("run-process cost capture", () => {
           rank?: {
             inputTokens: number;
             outputTokens: number;
+            totalTokens: number;
             callCount: number;
             usdCost: number;
+            inputUsdCost: number;
+            outputUsdCost: number;
             model: string;
           };
         };
@@ -2368,13 +2371,18 @@ describe("run-process cost capture", () => {
     };
     expect(arg.status).toBe("completed");
     expect(arg.costBreakdown).not.toBeNull();
-    expect(arg.costBreakdown?.stages.rank).toEqual({
-      inputTokens: 5000,
-      outputTokens: 800,
-      callCount: 1,
-      usdCost: 0.009,
-      model: "claude-haiku-4-5-20251001",
-    });
+    expect(arg.costBreakdown?.stages.rank).toEqual(
+      expect.objectContaining({
+        inputTokens: 5000,
+        outputTokens: 800,
+        totalTokens: 5800,
+        callCount: 1,
+        usdCost: 0.009,
+        inputUsdCost: 0.005,
+        outputUsdCost: 0.004,
+        model: "claude-haiku-4-5-20251001",
+      }),
+    );
     expect(arg.costBreakdown?.totalInputTokens).toBe(5000);
     expect(arg.costBreakdown?.totalOutputTokens).toBe(800);
     expect(arg.costBreakdown?.totalUsdCost).toBe(0.009);

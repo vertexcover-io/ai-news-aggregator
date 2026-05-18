@@ -32,23 +32,28 @@ describe("RunCostAccumulator", () => {
     );
 
     const snap = acc.snapshot();
-    expect(snap.stages.rank).toEqual({
+    expect(snap.stages.rank).toEqual(expect.objectContaining({
       inputTokens: 2000,
       outputTokens: 1000,
+      totalTokens: 3000,
       callCount: 2,
       usdCost: 0.007,
+      inputUsdCost: 0.002,
+      outputUsdCost: 0.005,
       model: HAIKU,
-    });
-    expect(snap.stages.recap).toEqual({
+    }));
+    expect(snap.stages.recap).toEqual(expect.objectContaining({
       inputTokens: 2000,
       outputTokens: 1000,
+      totalTokens: 3000,
       callCount: 1,
       usdCost: 0.007,
       model: HAIKU,
-    });
+    }));
     expect(snap.totalUsdCost).toBe(0.014);
     expect(snap.totalInputTokens).toBe(4000);
     expect(snap.totalOutputTokens).toBe(2000);
+    expect(snap.totalTokens).toBe(6000);
     expect(typeof snap.capturedAt).toBe("string");
   });
 
@@ -90,6 +95,83 @@ describe("RunCostAccumulator", () => {
     expect(rank.usdCost).toBe(0);
     expect(rank.inputTokens).toBe(100);
     expect(rank.outputTokens).toBe(50);
+  });
+
+  it("extracts cached, reasoning, total, raw usage, and per-category costs", () => {
+    const acc = new RunCostAccumulator();
+    acc.record(
+      "rank",
+      {
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1800,
+          reasoningTokens: 300,
+          cachedInputTokens: 700,
+        },
+        response: { modelId: HAIKU },
+        providerMetadata: {
+          anthropic: {
+            usage: {
+              input_tokens: 1000,
+              output_tokens: 500,
+              cache_creation_input_tokens: 300,
+              cache_read_input_tokens: 700,
+              cache_creation: {
+                ephemeral_5m_input_tokens: 200,
+                ephemeral_1h_input_tokens: 100,
+              },
+            },
+            cacheCreationInputTokens: 300,
+          },
+        },
+      },
+      HAIKU,
+    );
+
+    const snap = acc.snapshot();
+    const rank = snap.stages.rank;
+    if (!rank) throw new Error("unreachable");
+    expect(rank).toEqual(
+      expect.objectContaining({
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1800,
+        reasoningTokens: 300,
+        cacheCreationInputTokens: 300,
+        cacheCreation5mInputTokens: 200,
+        cacheCreation1hInputTokens: 100,
+        cacheReadInputTokens: 700,
+        inputUsdCost: 0.001,
+        outputUsdCost: 0.0025,
+        cacheCreationInputUsdCost: 0.00045,
+        cacheCreation5mInputUsdCost: 0.00025,
+        cacheCreation1hInputUsdCost: 0.0002,
+        cacheReadInputUsdCost: 0.00007,
+        usdCost: 0.00402,
+      }),
+    );
+    expect(rank.rawUsage).toEqual([
+      {
+        input_tokens: 1000,
+        output_tokens: 500,
+        cache_creation_input_tokens: 300,
+        cache_read_input_tokens: 700,
+        cache_creation: {
+          ephemeral_5m_input_tokens: 200,
+          ephemeral_1h_input_tokens: 100,
+        },
+      },
+    ]);
+    expect(snap.totalReasoningTokens).toBe(300);
+    expect(snap.totalCacheCreationInputTokens).toBe(300);
+    expect(snap.totalCacheCreation5mInputTokens).toBe(200);
+    expect(snap.totalCacheCreation1hInputTokens).toBe(100);
+    expect(snap.totalCacheReadInputTokens).toBe(700);
+    expect(snap.totalCacheCreationInputUsdCost).toBe(0.00045);
+    expect(snap.totalCacheCreation5mInputUsdCost).toBe(0.00025);
+    expect(snap.totalCacheCreation1hInputUsdCost).toBe(0.0002);
+    expect(snap.totalCacheReadInputUsdCost).toBe(0.00007);
   });
 
   it("hasAnyData reflects whether any records exist", () => {
