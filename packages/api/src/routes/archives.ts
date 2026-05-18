@@ -22,11 +22,6 @@ import {
   type RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
 import {
-  createUserSettingsRepo,
-  type UserSettingsRepo,
-} from "@api/repositories/user-settings.js";
-import { reconcilePerArchiveJobs } from "@api/services/per-archive-schedule.js";
-import {
   archivePatchSchema,
   addPostSchema,
   promoteSchema,
@@ -50,8 +45,7 @@ export interface ArchivesRouterDeps {
   hydrateAddedPost?: HydrateAddedPostFn;
   generateRecapFn?: GenerateRecapFn;
   logger?: ReturnType<typeof createLogger>;
-  settingsRepo?: UserSettingsRepo;
-  processingQueue?: Pick<Queue, "add" | "remove" | "getJob">;
+  processingQueue?: Pick<Queue, "add">;
   redis?: Pick<IORedis, "del">;
 }
 
@@ -143,21 +137,6 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         event: "archive_reviewed",
         properties: { run_id: runId, item_count: parsed.data.rankedItems.length },
       });
-      if (deps.settingsRepo && deps.processingQueue) {
-        const settings = await deps.settingsRepo.get();
-        if (settings !== null) {
-          await reconcilePerArchiveJobs(
-            { queue: deps.processingQueue, now: () => new Date() },
-            runId,
-            settings,
-            updated,
-          );
-        }
-        logger.info(
-          { event: "archive.publish_jobs_reconciled", runId },
-          "archive publish jobs reconciled",
-        );
-      }
       return c.json(updated);
     } catch (err) {
       if (err instanceof NotFoundError) {
@@ -384,7 +363,6 @@ function createDefaultArchivesDeps(): ArchivesRouterDeps {
     getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
     hydrateAddedPost: createDefaultHydrateAddedPost(),
     generateRecapFn: createDefaultGenerateRecapFn(),
-    settingsRepo: createUserSettingsRepo(defaultGetDb()),
     processingQueue: getDefaultProcessingQueue(),
     redis: createRedisConnection(),
   };

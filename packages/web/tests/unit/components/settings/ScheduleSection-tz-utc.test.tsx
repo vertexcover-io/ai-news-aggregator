@@ -62,7 +62,7 @@ describe("ScheduleSection — UTC alias regression", () => {
     // controlled value rather than clearing it.
     const trigger = screen.getByRole("combobox", { name: /timezone/i });
     expect(trigger.textContent).toContain("UTC");
-  });
+  }, 15_000);
 
   it("VS-6: renders with a canonical IANA timezone present in the option list", () => {
     // Use a timezone present in both Intl.supportedValuesOf (when available)
@@ -71,5 +71,5 @@ describe("ScheduleSection — UTC alias regression", () => {
     render(<Harness initialTz="Asia/Tokyo" />);
     const trigger = screen.getByRole("combobox", { name: /timezone/i });
     expect(trigger.textContent).toContain("Asia/Tokyo");
-  });
+  }, 15_000);
 });

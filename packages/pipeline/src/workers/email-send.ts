@@ -5,6 +5,7 @@ import type { PipelineSubscribersRepo } from "@pipeline/repositories/subscribers
 import type { PipelineEmailSendsRepo } from "@pipeline/repositories/email-sends.js";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { RawItemsRepo, RawItemRow } from "@pipeline/repositories/raw-items.js";
+import { resolvePublishTarget } from "./publish-target.js";
 
 const logger = createLogger("worker:email-send");
 
@@ -102,7 +103,7 @@ export interface EmailSendDeps {
 export interface EmailSendJobLike {
   name: string;
   id?: string;
-  data: { runId: string; subscriberIds?: string[] | "all" };
+  data: { runId?: string; subscriberIds?: string[] | "all" };
 }
 
 function issueUnsubToken(subscriberId: string, secret: string): string {
@@ -210,21 +211,21 @@ export async function handleEmailSendJob(
 ): Promise<void> {
   if (job.name !== "email-send") return;
 
-  const { runId, subscriberIds = "all" } = job.data;
+  const { runId: explicitRunId, subscriberIds = "all" } = job.data;
 
-  const archive = await deps.archiveRepo.findById(runId);
+  const archive = await resolvePublishTarget(deps, {
+    channel: "email-send",
+    runId: explicitRunId,
+  });
   if (!archive) {
     logger.warn(
-      { event: "newsletter-send.archive-not-found", runId, jobId: job.id },
+      { event: "newsletter-send.archive-not-found", runId: explicitRunId, jobId: job.id },
       "newsletter-send: archive not found",
     );
     return;
   }
-  if (!archive.reviewed) {
-    await deps.slackNotifier?.notifyPublishFailed({ runId, channel: "email-send" });
-    return;
-  }
   if (archive.emailSentAt !== null) return;
+  const runId = archive.id;
 
   const rawIds = archive.rankedItems.map((r) => r.rawItemId);
   const rawRows = await deps.rawItemsRepo.findByIds(rawIds);

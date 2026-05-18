@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, inArray, isNull, lte, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lte, notInArray, sql } from "drizzle-orm";
 import { emailSends, rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import {
@@ -80,7 +80,6 @@ export interface RunArchivesRepo {
    * digest they missed — even if it was published before today.
    */
   findMostRecentReviewed(): Promise<{ id: string } | null>;
-  findRecentUnpublished(input: { withinDays: number }): Promise<RunArchiveRow[]>;
   updateRankedItems(
     id: string,
     items: RankedItemRef[],
@@ -252,41 +251,6 @@ export function createRunArchivesRepo(
         .limit(1);
       if (rows.length === 0) return null;
       return { id: rows[0].id };
-    },
-    async findRecentUnpublished(input: { withinDays: number }): Promise<RunArchiveRow[]> {
-      const since = new Date(Date.now() - input.withinDays * 24 * 60 * 60 * 1000);
-      return db
-        .select({
-          id: runArchives.id,
-          status: runArchives.status,
-          rankedItems: runArchives.rankedItems,
-          topN: runArchives.topN,
-          reviewed: runArchives.reviewed,
-          completedAt: runArchives.completedAt,
-          createdAt: runArchives.createdAt,
-          startedAt: runArchives.startedAt,
-          sourceTypes: runArchives.sourceTypes,
-          digestHeadline: runArchives.digestHeadline,
-          digestSummary: runArchives.digestSummary,
-          hook: runArchives.hook,
-          sourceTelemetry: runArchives.sourceTelemetry,
-          slackNotifiedAt: runArchives.slackNotifiedAt,
-          emailSentAt: runArchives.emailSentAt,
-          linkedinPostedAt: runArchives.linkedinPostedAt,
-          twitterPostedAt: runArchives.twitterPostedAt,
-          notificationState: runArchives.notificationState,
-        })
-        .from(runArchives)
-        .where(and(
-          eq(runArchives.status, "completed"),
-          gte(runArchives.completedAt, since),
-          or(
-            isNull(runArchives.emailSentAt),
-            isNull(runArchives.linkedinPostedAt),
-            isNull(runArchives.twitterPostedAt),
-          ),
-        ))
-        .orderBy(desc(runArchives.completedAt));
     },
     async listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]> {
       const rows = await db

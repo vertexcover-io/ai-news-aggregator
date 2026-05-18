@@ -1,6 +1,7 @@
 import type { SlackNotifier } from "@newsletter/shared";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { LinkedInNotifier } from "@pipeline/social/linkedin/index.js";
+import { resolvePublishTarget } from "./publish-target.js";
 
 export interface LinkedInPostDeps {
   readonly archiveRepo: RunArchivesRepo;
@@ -11,7 +12,7 @@ export interface LinkedInPostDeps {
 export interface LinkedInPostJobLike {
   readonly name: string;
   readonly id?: string;
-  readonly data: { readonly runId: string };
+  readonly data: { readonly runId?: string };
 }
 
 export async function handleLinkedInPostJob(
@@ -19,13 +20,11 @@ export async function handleLinkedInPostJob(
   job: LinkedInPostJobLike,
 ): Promise<void> {
   if (job.name !== "linkedin-post") return;
-  const { runId } = job.data;
-  const archive = await deps.archiveRepo.findById(runId);
+  const archive = await resolvePublishTarget(deps, {
+    channel: "linkedin-post",
+    runId: job.data.runId,
+  });
   if (archive === null) return;
-  if (!archive.reviewed) {
-    await deps.slackNotifier?.notifyPublishFailed({ runId, channel: "linkedin-post" });
-    return;
-  }
   if (archive.linkedinPostedAt !== null) return;
-  await deps.linkedinNotifier?.notifyArchiveReady({ runId });
+  await deps.linkedinNotifier?.notifyArchiveReady({ runId: archive.id });
 }

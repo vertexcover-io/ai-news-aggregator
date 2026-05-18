@@ -1,5 +1,4 @@
 import { Worker } from "bullmq";
-import type { Queue } from "bullmq";
 import type IORedis from "ioredis";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { getDb, serializeArchiveSearchText } from "@newsletter/shared";
@@ -43,7 +42,6 @@ import {
   type RunArchivesRepo,
 } from "@pipeline/repositories/run-archives.js";
 import type { UserSettingsRepo } from "@pipeline/repositories/user-settings.js";
-import { reconcilePerArchiveJobs } from "@pipeline/services/per-archive-schedule.js";
 import type {
   HnCollectConfig,
   RedditCollectConfig,
@@ -100,6 +98,38 @@ function pickArchiveDigest(rankResult: RankResult): {
       nonEmptyText(firstRankedItem.title) ?? nonEmptyText(rankResult.digestHeadline),
     digestSummary: nonEmptyText(rankResult.digestSummary),
   };
+}
+
+async function writeFailedArchive(input: {
+  readonly archiveRepo: RunArchivesRepo;
+  readonly runId: string;
+  readonly topN: number;
+  readonly completedAt: Date;
+  readonly startedAt: Date;
+  readonly sourceTypes: readonly SourceType[];
+  readonly logger: ReturnType<typeof createLogger>;
+}): Promise<void> {
+  try {
+    await input.archiveRepo.upsert({
+      id: input.runId,
+      status: "failed",
+      rankedItems: [],
+      topN: input.topN,
+      completedAt: input.completedAt,
+      startedAt: input.startedAt,
+      sourceTypes: [...input.sourceTypes],
+      reviewed: false,
+    });
+  } catch (err) {
+    input.logger.error(
+      {
+        event: "archive.write_failed",
+        runId: input.runId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      "archive.write_failed",
+    );
+  }
 }
 
 export interface RunCollectorsPayload {
@@ -192,7 +222,6 @@ export interface RunProcessDeps {
   userSettingsRepo?: UserSettingsRepo;
   cancelSubscriber: CancelSubscriberFactory;
   twitterClient: TwitterClient;
-  processingQueue?: Pick<Queue, "add" | "remove" | "getJob">;
   slackNotifier?: SlackNotifier;
 }
 
@@ -400,6 +429,15 @@ export async function handleRunProcessJob(
         error: errorMessage,
         completedAt: new Date().toISOString(),
       }));
+      await writeFailedArchive({
+        archiveRepo: deps.archiveRepo,
+        runId,
+        topN,
+        completedAt: new Date(),
+        startedAt: runStartedAt,
+        sourceTypes,
+        logger,
+      });
       logger.error(
         {
           event: "run.failed",
@@ -600,34 +638,8 @@ export async function handleRunProcessJob(
       );
     }
 
-    if (archiveWritten && settings && deps.processingQueue) {
-      try {
-        const archive = await deps.archiveRepo.findById(runId);
-        if (archive !== null) {
-          await reconcilePerArchiveJobs(
-            { queue: deps.processingQueue, now: () => new Date() },
-            runId,
-            settings,
-            archive,
-          );
-        }
-        if (!settings.autoReview) {
-          await deps.slackNotifier?.notifyReviewPending({ runId });
-        }
-        logger.info(
-          { event: "archive.publish_jobs_reconciled", runId },
-          "archive publish jobs reconciled",
-        );
-      } catch (err) {
-        logger.error(
-          {
-            event: "archive.publish_jobs_reconcile_failed",
-            runId,
-            error: err instanceof Error ? err.message : String(err),
-          },
-          "archive.publish_jobs_reconcile_failed",
-        );
-      }
+    if (archiveWritten && settings && !settings.autoReview) {
+      await deps.slackNotifier?.notifyReviewPending({ runId });
     }
 
     logger.info(
@@ -674,6 +686,15 @@ export async function handleRunProcessJob(
       logger.info({ event: "run.cancelled", runId }, "run.cancelled");
       return { rankedCount: 0 };
     }
+    await writeFailedArchive({
+      archiveRepo: deps.archiveRepo,
+      runId,
+      topN,
+      completedAt: new Date(),
+      startedAt: runStartedAt,
+      sourceTypes,
+      logger,
+    });
     throw err;
   } finally {
     await subscriber.close();
@@ -693,7 +714,6 @@ export interface CreateRunProcessWorkerOptions {
   userSettingsRepo?: UserSettingsRepo;
   cancelSubscriber?: CancelSubscriberFactory;
   twitterClient?: TwitterClient;
-  processingQueue?: Pick<Queue, "add" | "remove" | "getJob">;
   slackNotifier?: SlackNotifier;
 }
 
@@ -749,7 +769,6 @@ export function createRunProcessWorker(
     userSettingsRepo,
     cancelSubscriber,
     twitterClient,
-    processingQueue: options.processingQueue,
     slackNotifier: options.slackNotifier,
   };
 

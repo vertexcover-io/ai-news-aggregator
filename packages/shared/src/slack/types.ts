@@ -2,6 +2,7 @@ import type { Logger } from "pino";
 import type { NotificationKey, NotificationState } from "../types/notifications.js";
 import type { RunSourceTelemetry } from "../types/run.js";
 import type { PublishChannel } from "../scheduling/job-ids.js";
+import type { PublishUnavailableReason } from "./builders/publish-unavailable.js";
 
 export interface SlackNotifier {
   notifyNewsletterSent(input: NotifyNewsletterSentInput): Promise<void>;
@@ -15,6 +16,11 @@ export interface SlackNotifier {
   notifyPublishFailed(input: {
     runId: string;
     channel: PublishChannel;
+  }): Promise<void>;
+  notifyPublishUnavailable?(input: {
+    channel: PublishChannel;
+    reason: PublishUnavailableReason;
+    runId?: string;
   }): Promise<void>;
 }
 

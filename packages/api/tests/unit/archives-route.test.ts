@@ -11,7 +11,6 @@ import type {
   RawItemsRepo,
 } from "@api/repositories/raw-items.js";
 import type { RunArchivesRepo, RunArchiveRow } from "@api/repositories/run-archives.js";
-import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
 import type { GenerateRecapFn } from "@api/services/review.js";
 import type { Queue } from "bullmq";
 
@@ -43,8 +42,7 @@ function makeApp(opts: {
   repo?: RawItemsRepo;
   archiveRepo: RunArchivesRepo;
   generateRecapFn?: GenerateRecapFn;
-  processingQueue?: Pick<Queue, "add" | "remove" | "getJob">;
-  settingsRepo?: UserSettingsRepo;
+  processingQueue?: Pick<Queue, "add">;
 }): Hono {
   const app = new Hono();
   const router = createArchivesRouter({
@@ -52,7 +50,6 @@ function makeApp(opts: {
     getArchiveRepo: () => opts.archiveRepo,
     generateRecapFn: opts.generateRecapFn,
     processingQueue: opts.processingQueue,
-    settingsRepo: opts.settingsRepo,
   });
   app.route("/api/archives", router);
   return app;
@@ -483,7 +480,7 @@ describe("POST /api/archives/:runId/promote (REQ-010, REQ-011, EDGE-007)", () =>
   });
 });
 
-describe("PATCH /api/archives/:runId reconciles scheduled publish jobs", () => {
+describe("PATCH /api/archives/:runId", () => {
   const date = new Date("2026-04-10T00:00:00Z");
 
   function makeRow(): RunArchiveRow {
@@ -531,52 +528,16 @@ describe("PATCH /api/archives/:runId reconciles scheduled publish jobs", () => {
     return JSON.stringify({ rankedItems: [{ id: 1, sourceType: "hn" }] });
   }
 
-  function makeProcessingQueue(): Pick<Queue, "add" | "remove" | "getJob"> & {
+  function makeProcessingQueue(): Pick<Queue, "add"> & {
     add: ReturnType<typeof vi.fn>;
-    remove: ReturnType<typeof vi.fn>;
   } {
     const add = vi.fn().mockResolvedValue({ id: "job-1" });
-    const remove = vi.fn().mockResolvedValue(1);
-    return { add, remove, getJob: vi.fn().mockResolvedValue(null) } as unknown as Pick<Queue, "add" | "remove" | "getJob"> & {
+    return { add } as Pick<Queue, "add"> & {
       add: ReturnType<typeof vi.fn>;
-      remove: ReturnType<typeof vi.fn>;
     };
   }
 
-  function makeSettingsRepo(): UserSettingsRepo {
-    return {
-      get: vi.fn(() =>
-        Promise.resolve({
-          id: "settings-1",
-          topN: 10,
-          halfLifeHours: null,
-          hnEnabled: true,
-          hnConfig: null,
-          redditEnabled: false,
-          redditConfig: null,
-          webEnabled: false,
-          webConfig: null,
-          twitterEnabled: false,
-          twitterConfig: null,
-          scheduleTime: "07:00",
-          pipelineTime: "07:00",
-          emailTime: "07:30",
-          linkedinTime: "08:00",
-          twitterTime: "08:30",
-          scheduleTimezone: "UTC",
-          scheduleEnabled: true,
-          emailEnabled: true,
-          linkedinEnabled: true,
-          twitterPostEnabled: true,
-          autoReview: false,
-          updatedAt: date,
-        }),
-      ),
-      upsert: vi.fn(),
-    };
-  }
-
-  it("PATCH enqueues scheduled publish jobs and returns 200", async () => {
+  it("PATCH saves the review without scheduling per-archive publish jobs", async () => {
     const archiveRepo = makeArchiveRepo(makeRow());
     archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(makeUpdatedRow()));
     const processingQueue = makeProcessingQueue();
@@ -585,7 +546,6 @@ describe("PATCH /api/archives/:runId reconciles scheduled publish jobs", () => {
       archiveRepo,
       repo: makeRepo([makeRawForId(1)]),
       processingQueue,
-      settingsRepo: makeSettingsRepo(),
     });
 
     const res = await app.request("/api/archives/run-1", {
@@ -595,10 +555,6 @@ describe("PATCH /api/archives/:runId reconciles scheduled publish jobs", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(processingQueue.add).toHaveBeenCalledWith(
-      "email-send",
-      { runId: "run-1" },
-      expect.objectContaining({ jobId: "email-send:run-1" }),
-    );
+    expect(processingQueue.add).not.toHaveBeenCalled();
   });
 });
