@@ -14,6 +14,9 @@ import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types
 
 const logger = createLogger("collector:hn");
 
+const MS_PER_DAY = 86_400_000;
+const INITIAL_BACKOFF_MS = 1000;
+
 // ── Single-post fetch (add-post flow) ────────────────────────────────────────
 
 const HN_ITEM_API = "https://hacker-news.firebaseio.com/v0/item";
@@ -218,7 +221,7 @@ function buildSearchUrl(feed: string, config: HnCollectConfig): string {
 
   const numericFilters: string[] = [`points>${points}`];
   if (config.sinceDays !== undefined && config.sinceDays > 0) {
-    const cutoffSeconds = Math.floor((Date.now() - config.sinceDays * 86_400_000) / 1000);
+    const cutoffSeconds = Math.floor((Date.now() - config.sinceDays * MS_PER_DAY) / 1000);
     numericFilters.push(`created_at_i>${cutoffSeconds}`);
   }
 
@@ -286,7 +289,7 @@ async function fetchWithRetry<T>(
         throw lastError;
       }
       if (attempt < retries - 1) {
-        const backoffMs = Math.pow(2, attempt) * 1000;
+        const backoffMs = Math.pow(2, attempt) * INITIAL_BACKOFF_MS;
         await delay(backoffMs);
       }
     }

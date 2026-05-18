@@ -4,7 +4,7 @@ import type {
   RunArchiveRow,
   RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
-import { detectAddPostSourceType, type AddPostSourceType } from "@newsletter/pipeline/add-post";
+import { detectAddPostSourceType, type AddPostSourceType } from "@newsletter/shared";
 export type { AddPostSourceType };
 
 export type GenerateRecapFn = (

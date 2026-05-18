@@ -12,6 +12,8 @@ import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types
 
 const logger = createLogger("collector:reddit");
 
+const MS_PER_DAY = 86_400_000;
+
 const DEFAULT_SUBREDDITS = [
   "MachineLearning", "LocalLLaMA", "artificial", "OpenAI",
   "AI_Agents", "aiagents", "generativeAI",
@@ -407,7 +409,7 @@ export async function collectReddit(
 
   let filteredItems = allItems;
   if (config.sinceDays !== undefined && config.sinceDays > 0) {
-    const cutoff = Date.now() - config.sinceDays * 86_400_000;
+    const cutoff = Date.now() - config.sinceDays * MS_PER_DAY;
     const before = filteredItems.length;
     filteredItems = filteredItems.filter((item) => {
       if (!item.publishedAt) return true;
