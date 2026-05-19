@@ -20,6 +20,7 @@ import {
 } from "@api/routes/archives.js";
 import { createDefaultArchivesSearchRouter } from "@api/routes/archives-search.js";
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
+import { createDefaultAdminSocialCredentialsRouter } from "@api/routes/admin-social-credentials.js";
 import { createAdminRouter } from "@api/routes/admin.js";
 import { requireAdmin } from "@api/auth/middleware.js";
 import { buildApp } from "@api/app.js";
@@ -126,6 +127,7 @@ const app = buildApp({
   archivesSearchRouter: createDefaultArchivesSearchRouter(),
   adminArchivesRouter: createDefaultAdminArchivesRouter(),
   adminRunsRouter: createDefaultAdminRunsRouter(),
+  adminSocialCredentialsRouter: createDefaultAdminSocialCredentialsRouter(),
   runsRouter: createDefaultRunsRouter(),
   settingsRouter: createDefaultSettingsRouter(),
   adminRouter: createAdminRouter({
