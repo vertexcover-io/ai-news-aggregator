@@ -16,6 +16,8 @@ export default defineConfig((options) => ({
     "src/slack/index.ts",
     "src/pricing.ts",
     "src/cost.ts",
+    "src/services/index.ts",
+    "src/services/credential-cipher.ts",
   ],
   format: ["esm"],
   dts: true,

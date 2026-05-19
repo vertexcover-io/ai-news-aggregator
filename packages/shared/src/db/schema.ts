@@ -13,6 +13,7 @@ import type {
   SocialTokenMetadata,
 } from "@shared/types/index.js";
 import type { RunCostBreakdown } from "@shared/types/cost-breakdown.js";
+import type { EncryptedBlob } from "@shared/services/credential-cipher.js";
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter";
 
@@ -76,6 +77,31 @@ export const socialTokens = pgTable("social_tokens", {
 
 export type SocialTokenInsert = typeof socialTokens.$inferInsert;
 export type SocialTokenSelect = typeof socialTokens.$inferSelect;
+
+export interface LinkedInEncryptedFields {
+  clientId: EncryptedBlob;
+  clientSecret: EncryptedBlob;
+}
+
+export interface TwitterEncryptedFields {
+  apiKey: EncryptedBlob;
+  apiSecret: EncryptedBlob;
+  accessToken: EncryptedBlob;
+  accessTokenSecret: EncryptedBlob;
+}
+
+export const socialCredentials = pgTable("social_credentials", {
+  platform: text("platform").primaryKey().$type<"linkedin" | "twitter">(),
+  encryptedFields: jsonb("encrypted_fields")
+    .notNull()
+    .$type<LinkedInEncryptedFields | TwitterEncryptedFields>(),
+  metadata: jsonb("metadata").$type<{ apiVersion?: string } | null>(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text("updated_by"),
+});
+
+export type SocialCredentialInsert = typeof socialCredentials.$inferInsert;
+export type SocialCredentialSelect = typeof socialCredentials.$inferSelect;
 
 export type RunArchiveInsert = typeof runArchives.$inferInsert;
 

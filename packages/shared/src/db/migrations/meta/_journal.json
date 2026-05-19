@@ -169,6 +169,13 @@
       "when": 1779166717013,
       "tag": "0023_even_drax",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1779180604402,
+      "tag": "0024_dark_absorbing_man",
+      "breakpoints": true
     }
   ]
 }
