@@ -65,13 +65,19 @@ export function parseRunCostBreakdown(value: unknown): RunCostBreakdown | null {
   const record = asRecord(value);
   if (!record) return null;
   if (record.schemaVersion !== 1) return null;
-  const stages = record.stages;
-  if (!Array.isArray(stages)) return null;
+  const stages = asRecord(record.stages);
+  if (!stages) return null;
   const totalCostUsd = record.totalCostUsd;
   if (totalCostUsd !== null && typeof totalCostUsd !== "number") return null;
+  const unknownModels = Array.isArray(record.unknownModels)
+    ? (record.unknownModels.filter((v): v is string => typeof v === "string"))
+    : [];
+  const generatedAt = typeof record.generatedAt === "string" ? record.generatedAt : "";
   return {
     schemaVersion: 1,
     totalCostUsd,
     stages: stages as RunCostBreakdown["stages"],
+    unknownModels,
+    generatedAt,
   };
 }

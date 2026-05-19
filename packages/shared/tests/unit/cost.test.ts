@@ -171,13 +171,15 @@ describe("parseRunCostBreakdown (EDGE-011)", () => {
     const row: RunCostBreakdown = {
       schemaVersion: 1,
       totalCostUsd: 0.42,
-      stages: [],
+      stages: {},
+      unknownModels: [],
+      generatedAt: "2026-05-19T00:00:00.000Z",
     };
     expect(parseRunCostBreakdown(row)).toEqual(row);
   });
 
   it("returns null for future schemaVersion (EDGE-011)", () => {
-    const row = { schemaVersion: 2, totalCostUsd: 0.42, stages: [] };
+    const row = { schemaVersion: 2, totalCostUsd: 0.42, stages: {} };
     expect(parseRunCostBreakdown(row)).toBeNull();
   });
 

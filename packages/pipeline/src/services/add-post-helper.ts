@@ -23,6 +23,8 @@ import {
   generateRecap as defaultGenerateRecap,
   type GenerateRecapOptions,
 } from "@pipeline/processors/recap.js";
+import { createCostTracker } from "@pipeline/services/cost-tracker.js";
+import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 
 const logger = createLogger("service:add-post-helper");
 
@@ -49,6 +51,8 @@ export interface AddPostDeps {
   fetchFn?: typeof fetch;
   recapOptions?: GenerateRecapOptions;
   signal?: AbortSignal;
+  archiveRepo?: RunArchivesRepo;
+  runId?: string;
 }
 
 async function dispatchFetch(
@@ -130,6 +134,12 @@ export async function hydrateAddedPost(
   }
 
   const recapFn = deps.generateRecap ?? defaultGenerateRecap;
+  const tracker =
+    deps.archiveRepo && deps.runId ? createCostTracker(deps.runId) : null;
+  const recapOptions: GenerateRecapOptions = {
+    ...(deps.recapOptions ?? {}),
+    ...(tracker ? { tracker } : {}),
+  };
   const recap = await recapFn(
     {
       id: saved.id,
@@ -140,10 +150,27 @@ export async function hydrateAddedPost(
       publishedAt: saved.publishedAt,
       content: saved.content,
     },
-    deps.recapOptions ?? {},
+    recapOptions,
   );
 
   await deps.rawItemsRepo.updateRecapData([{ id: saved.id, recap }]);
+
+  if (tracker && deps.archiveRepo && deps.runId && tracker.hasAnyCalls()) {
+    try {
+      const existing = await deps.archiveRepo.getCostBreakdown(deps.runId);
+      const merged = tracker.merge(existing);
+      await deps.archiveRepo.setCostBreakdown(deps.runId, merged);
+    } catch (err) {
+      logger.error(
+        {
+          event: "add-post.cost_write_failed",
+          runId: deps.runId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "add-post.cost_write_failed",
+      );
+    }
+  }
 
   const hydrated: RawItemRow = {
     ...saved,

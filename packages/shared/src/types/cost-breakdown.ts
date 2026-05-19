@@ -1,4 +1,6 @@
-export type CostStage = "rerank" | "digest" | "social" | "other";
+export type CostStage = "web-discovery" | "web-extraction" | "rank" | "recap";
+
+export type StageCostStatus = "ok" | "partial-unknown-model" | "all-unknown-model";
 
 export interface CostComponents {
   inputTokens: number;
@@ -11,19 +13,21 @@ export interface CostComponents {
 
 export interface ModelStageCost extends CostComponents {
   modelId: string;
-  callCount: number;
+  calls: number;
   costUsd: number | null;
 }
 
 export interface StageCost {
-  stage: CostStage;
-  totalCostUsd: number | null;
-  callCount: number;
-  models: ModelStageCost[];
+  calls: number;
+  costUsd: number | null;
+  costStatus: StageCostStatus;
+  byModel: ModelStageCost[];
 }
 
 export interface RunCostBreakdown {
   schemaVersion: 1;
   totalCostUsd: number | null;
-  stages: StageCost[];
+  stages: Partial<Record<CostStage, StageCost>>;
+  unknownModels: string[];
+  generatedAt: string;
 }

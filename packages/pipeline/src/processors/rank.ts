@@ -8,6 +8,7 @@ import type {
   RawItemComment,
 } from "@newsletter/shared";
 import { RANK_SYSTEM_PROMPT_NO_PROFILE } from "@pipeline/processors/rank-prompts.js";
+import type { CostTracker } from "@pipeline/services/cost-tracker.js";
 import { loadBodiesForShortlist as defaultLoadBodies } from "@pipeline/processors/rank-body-loader.js";
 import {
   ageHoursFromPublishedAt,
@@ -43,6 +44,7 @@ export interface RankOptions {
   loadBodies?: typeof defaultLoadBodies;
   now?: Date;
   abortSignal?: AbortSignal;
+  tracker?: CostTracker;
 }
 
 export interface RankResult {
@@ -212,9 +214,12 @@ export async function rankCandidates(
     items: promptItems,
   };
 
+  type GenerateRankedResult = Awaited<ReturnType<typeof generate>> & {
+    object: z.infer<typeof rankedResponseSchema>;
+  };
   const generateRanked = (
     retryTwitterSummary: boolean,
-  ): Promise<{ object: z.infer<typeof rankedResponseSchema> }> =>
+  ): Promise<GenerateRankedResult> =>
     generate({
       model: anthropic(modelId),
       system: systemPrompt,
@@ -236,9 +241,9 @@ export async function rankCandidates(
       temperature: 0,
       maxRetries: 2,
       abortSignal: options.abortSignal,
-    }) as Promise<{ object: z.infer<typeof rankedResponseSchema> }>;
+    }) as Promise<GenerateRankedResult>;
 
-  let result: { object: z.infer<typeof rankedResponseSchema> };
+  let result: GenerateRankedResult;
   try {
     result = await generateRanked(false);
     if (result.object.digest.twitterSummary.length > TWITTER_SUMMARY_MAX_CHARS) {
@@ -274,6 +279,13 @@ export async function rankCandidates(
     );
     throw new Error(`ranking failed: ${message}`, { cause: err });
   }
+
+  options.tracker?.record({
+    stage: "rank",
+    modelId,
+    usage: result.usage,
+    providerMetadata: result.providerMetadata,
+  });
 
   const axisValidated = result.object.ranked.filter((entry) => {
     const rationaleLower = entry.rationale.toLowerCase();

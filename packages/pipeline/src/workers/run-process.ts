@@ -65,6 +65,10 @@ import {
   toEnrichmentTelemetry,
 } from "@pipeline/services/link-enrichment/index.js";
 import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
+import {
+  createCostTracker,
+  type CostTracker,
+} from "@pipeline/services/cost-tracker.js";
 
 const logger = createLogger("worker:run-process");
 
@@ -194,6 +198,7 @@ export type WebCollectFn = (
   deps: {
     rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
     signal?: AbortSignal;
+    tracker?: CostTracker;
   },
   config: WebCollectConfig,
 ) => Promise<CollectorResult>;
@@ -243,6 +248,7 @@ async function runCollecting(
   collectors: RunCollectorsPayload,
   signal: AbortSignal,
   enrichmentCtx: EnrichmentContext,
+  tracker: CostTracker,
 ): Promise<CollectingOutcome> {
   // In-process serializer for state writes: replicates the old
   // `concurrency: 1` invariant from the collection worker. Without this,
@@ -285,7 +291,7 @@ async function runCollecting(
     const config = collectors.web;
     tasks.push({
       sourceKey: "blog",
-      run: () => deps.collectFns.web(collectorDeps, config),
+      run: () => deps.collectFns.web({ ...collectorDeps, tracker }, config),
     });
   }
   if (collectors.twitter) {
@@ -397,6 +403,24 @@ export async function handleRunProcessJob(
   const started = Date.now();
   let runStartedAt: Date = new Date(started);
 
+  const tracker = createCostTracker(runId);
+
+  const persistCost = async (): Promise<void> => {
+    if (!tracker.hasAnyCalls()) return;
+    try {
+      await deps.archiveRepo.setCostBreakdown(runId, tracker.snapshot());
+    } catch (err) {
+      logger.error(
+        {
+          event: "archive.cost_write_failed",
+          runId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "archive.cost_write_failed",
+      );
+    }
+  };
+
   // REQ-05: create AbortController and subscribe to cancellation channel
   const controller = new AbortController();
   const { signal } = controller;
@@ -423,7 +447,7 @@ export async function handleRunProcessJob(
     // Stage 1: collecting
     throwIfAborted(signal);
     await deps.runState.setStage(runId, "collecting");
-    const collecting = await runCollecting(deps, runId, collectors, signal, enrichmentCtx);
+    const collecting = await runCollecting(deps, runId, collectors, signal, enrichmentCtx, tracker);
 
     // All collectors failed → terminal failure, skip dedup/rank
     if (collecting.failureCount > 0 && collecting.successCount === 0) {
@@ -455,6 +479,7 @@ export async function handleRunProcessJob(
         },
         "run.failed",
       );
+      await persistCost();
       return { rankedCount: 0 };
     }
 
@@ -500,6 +525,7 @@ export async function handleRunProcessJob(
         },
         "run.completed",
       );
+      await persistCost();
       return { rankedCount: 0 };
     }
 
@@ -544,6 +570,7 @@ export async function handleRunProcessJob(
         },
         "run.completed",
       );
+      await persistCost();
       return { rankedCount: 0 };
     }
 
@@ -559,6 +586,7 @@ export async function handleRunProcessJob(
         halfLifeHours,
         shortlistBreakdowns: breakdowns,
         abortSignal: signal,
+        tracker,
       });
     } catch (err) {
       // Re-throw CancelledError to be handled by the outer catch
@@ -571,6 +599,7 @@ export async function handleRunProcessJob(
         error: message,
         completedAt: new Date().toISOString(),
       }));
+      await persistCost();
       throw err;
     }
 
@@ -647,8 +676,38 @@ export async function handleRunProcessJob(
       );
     }
 
-    if (archiveWritten && settings && !settings.autoReview) {
-      await deps.slackNotifier?.notifyReviewPending({ runId });
+    if (archiveWritten) {
+      await persistCost();
+    }
+
+    if (archiveWritten && settings && deps.processingQueue) {
+      try {
+        const archive = await deps.archiveRepo.findById(runId);
+        if (archive !== null) {
+          await reconcilePerArchiveJobs(
+            { queue: deps.processingQueue, now: () => new Date() },
+            runId,
+            settings,
+            archive,
+          );
+        }
+        if (!settings.autoReview) {
+          await deps.slackNotifier?.notifyReviewPending({ runId });
+        }
+        logger.info(
+          { event: "archive.publish_jobs_reconciled", runId },
+          "archive publish jobs reconciled",
+        );
+      } catch (err) {
+        logger.error(
+          {
+            event: "archive.publish_jobs_reconcile_failed",
+            runId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "archive.publish_jobs_reconcile_failed",
+        );
+      }
     }
 
     logger.info(
@@ -694,6 +753,7 @@ export async function handleRunProcessJob(
           "archive.write_failed",
         );
       }
+      await persistCost();
       logger.info({ event: "run.cancelled", runId, dryRun }, "run.cancelled");
       return { rankedCount: 0 };
     }

@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import type { LanguageModel } from "ai";
+import type { LanguageModel, LanguageModelUsage, ProviderMetadata } from "ai";
 import { z } from "zod";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
@@ -17,10 +17,18 @@ import {
   type CrawlJob,
   type CrawlResult,
 } from "@pipeline/services/web-crawler.js";
+import type { CostTracker } from "@pipeline/services/cost-tracker.js";
 
 const logger = createLogger("collector:web");
 
 const MAX_ERROR_LENGTH = 200;
+
+export const WEB_COLLECTOR_MODEL_ID = "claude-haiku-4-5-20251001";
+
+export type UsageReporter = (
+  usage: LanguageModelUsage,
+  providerMetadata?: ProviderMetadata,
+) => void;
 
 export const DiscoverySchema = z.object({
   posts: z.array(
@@ -46,6 +54,7 @@ export async function discoverPostUrls(
   listingUrl: string,
   listingMarkdown: string,
   model: LanguageModel,
+  reportUsage?: UsageReporter,
 ): Promise<DiscoveredPost[]> {
   const today = new Date().toISOString().slice(0, 10);
   const result = await generateObject({
@@ -63,6 +72,7 @@ export async function discoverPostUrls(
       `stated on the page. Never invent data.\n\n` +
       `--- BEGIN LISTING MARKDOWN ---\n${listingMarkdown}\n--- END LISTING MARKDOWN ---`,
   });
+  reportUsage?.(result.usage, result.providerMetadata);
   return result.object.posts;
 }
 
@@ -70,6 +80,7 @@ export async function extractPostFields(
   postUrl: string,
   postMarkdown: string,
   model: LanguageModel,
+  reportUsage?: UsageReporter,
 ): Promise<ExtractedFields> {
   const result = await generateObject({
     model,
@@ -84,6 +95,7 @@ export async function extractPostFields(
       `Use empty strings for fields not stated on the page - never invent data.\n\n` +
       `--- BEGIN ARTICLE ---\n${postMarkdown}\n--- END ARTICLE ---`,
   });
+  reportUsage?.(result.usage, result.providerMetadata);
   return result.object;
 }
 
@@ -134,6 +146,7 @@ export interface WebCollectorDeps {
   llmModel?: LanguageModel;
   signal?: AbortSignal;
   runWebCrawl?: typeof runWebCrawl;
+  tracker?: CostTracker;
 }
 
 let cachedDefaultModel: LanguageModel | null = null;
@@ -152,6 +165,27 @@ export async function collectWeb(
   const startTime = Date.now();
   const llmModel = deps.llmModel ?? (await resolveDefaultModel());
   const fetcher = deps.runWebCrawl ?? runWebCrawl;
+  const tracker = deps.tracker;
+  const reportDiscovery: UsageReporter | undefined = tracker
+    ? (usage, providerMetadata) => {
+        tracker.record({
+          stage: "web-discovery",
+          modelId: WEB_COLLECTOR_MODEL_ID,
+          usage,
+          providerMetadata,
+        });
+      }
+    : undefined;
+  const reportExtraction: UsageReporter | undefined = tracker
+    ? (usage, providerMetadata) => {
+        tracker.record({
+          stage: "web-extraction",
+          modelId: WEB_COLLECTOR_MODEL_ID,
+          usage,
+          providerMetadata,
+        });
+      }
+    : undefined;
 
   if (config.sources.length === 0) {
     const durationMs = Date.now() - startTime;
@@ -219,7 +253,12 @@ export async function collectWeb(
         };
       }
       try {
-        const discovered = await discoverPostUrls(source.listingUrl, r.result.markdown, llmModel);
+        const discovered = await discoverPostUrls(
+          source.listingUrl,
+          r.result.markdown,
+          llmModel,
+          reportDiscovery,
+        );
         const validated = validateDiscoveredUrls(discovered, r.result.markdown);
         const sorted = sortPostsByPublishedAtDesc(validated);
         const filtered = applySinceDays(sorted, config.sinceDays);
@@ -321,7 +360,12 @@ export async function collectWeb(
         continue;
       }
       try {
-        const fields = await extractPostFields(post.url, dr.result.markdown, llmModel);
+        const fields = await extractPostFields(
+          post.url,
+          dr.result.markdown,
+          llmModel,
+          reportExtraction,
+        );
         extracted += 1;
         logger.info(
           {
