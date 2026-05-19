@@ -7,6 +7,9 @@ interface SaveBarProps {
   runNowDisabled: boolean;
   onRunNow: () => void;
   lastSavedLabel?: string;
+  // When the SaveBar lives outside the <form> element, set this to the
+  // form's `id` so the submit button still triggers the form's onSubmit.
+  formId?: string;
 }
 
 export function SaveBar({
@@ -14,6 +17,7 @@ export function SaveBar({
   runNowDisabled,
   onRunNow,
   lastSavedLabel,
+  formId,
 }: SaveBarProps): ReactElement {
   return (
     <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-4 border-t bg-white px-4 py-4 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8">
@@ -38,6 +42,7 @@ export function SaveBar({
         </Button>
         <Button
           type="submit"
+          form={formId}
           disabled={saving}
           className="bg-black text-white hover:bg-black/90 min-h-[44px] px-4"
         >
