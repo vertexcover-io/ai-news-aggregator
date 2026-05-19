@@ -184,3 +184,82 @@ describe("resolveTwitterOAuth1Credentials (VS-5b partial env → null)", () => {
     expect(await resolveTwitterOAuth1Credentials({ repo, env })).toBeNull();
   });
 });
+
+// Spec.md ## Edge cases:
+// "Cipher decrypt fails (e.g. SESSION_SECRET rotated): resolver SHALL log a
+//  clear error and return null. The corresponding platform SHALL be skipped
+//  for that run; the pipeline run SHALL NOT fail."
+// "Schema drift (malformed JSON): resolver SHALL log and return null rather
+//  than throw."
+describe("resolveLinkedInCredentials — DB read failure is non-fatal (Edge cases D1/D2)", () => {
+  it("returns null and does NOT throw when repo.getLinkedIn() throws (decrypt failure)", async () => {
+    const repo: SocialCredentialsRepo = {
+      getLinkedIn: vi
+        .fn()
+        .mockRejectedValue(new Error("Unsupported state or unable to authenticate data")),
+      getTwitter: vi.fn().mockResolvedValue(null),
+      upsertLinkedIn: vi.fn(),
+      upsertTwitter: vi.fn(),
+      delete: vi.fn(),
+    };
+    // Env IS set — but per spec, a decrypt failure on a present DB row must
+    // skip the platform, NOT silently fall through to env (which would mask
+    // a legitimate admin-saved row with stale env values).
+    const env: NodeJS.ProcessEnv = {
+      LINKEDIN_CLIENT_ID: "env-id-should-not-shadow",
+      LINKEDIN_CLIENT_SECRET: "env-secret",
+      LINKEDIN_API_VERSION: "202511",
+    };
+    const result = await resolveLinkedInCredentials({ repo, env });
+    expect(result).toBeNull();
+    expect(repo.getLinkedIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null when repo.getLinkedIn() throws even with no env", async () => {
+    const repo: SocialCredentialsRepo = {
+      getLinkedIn: vi.fn().mockRejectedValue(new TypeError("first argument must be of type string or an instance of Buffer")),
+      getTwitter: vi.fn().mockResolvedValue(null),
+      upsertLinkedIn: vi.fn(),
+      upsertTwitter: vi.fn(),
+      delete: vi.fn(),
+    };
+    expect(await resolveLinkedInCredentials({ repo, env: {} })).toBeNull();
+  });
+});
+
+describe("resolveTwitterOAuth1Credentials — DB read failure is non-fatal (Edge cases D1/D2)", () => {
+  it("returns null and does NOT throw when repo.getTwitter() throws (decrypt failure)", async () => {
+    const repo: SocialCredentialsRepo = {
+      getLinkedIn: vi.fn().mockResolvedValue(null),
+      getTwitter: vi
+        .fn()
+        .mockRejectedValue(new Error("Unsupported state or unable to authenticate data")),
+      upsertLinkedIn: vi.fn(),
+      upsertTwitter: vi.fn(),
+      delete: vi.fn(),
+    };
+    const env: NodeJS.ProcessEnv = {
+      TWITTER_API_KEY: "env-k-should-not-shadow",
+      TWITTER_API_SECRET: "env-s",
+      TWITTER_ACCESS_TOKEN: "env-t",
+      TWITTER_ACCESS_TOKEN_SECRET: "env-ts",
+    };
+    const result = await resolveTwitterOAuth1Credentials({ repo, env });
+    expect(result).toBeNull();
+    expect(repo.getTwitter).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null when repo.getTwitter() throws on malformed JSON row", async () => {
+    const repo: SocialCredentialsRepo = {
+      getLinkedIn: vi.fn().mockResolvedValue(null),
+      getTwitter: vi
+        .fn()
+        .mockRejectedValue(new TypeError("first argument must be of type string or an instance of Buffer")),
+      upsertLinkedIn: vi.fn(),
+      upsertTwitter: vi.fn(),
+      delete: vi.fn(),
+    };
+    expect(await resolveTwitterOAuth1Credentials({ repo, env: {} })).toBeNull();
+  });
+});
+
