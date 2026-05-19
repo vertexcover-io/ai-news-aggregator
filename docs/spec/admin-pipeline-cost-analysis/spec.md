@@ -77,9 +77,8 @@ Out: cross-run cost analytics on `/admin/analytics`; non-LLM infrastructure cost
 
 | ID | Type | Requirement | Acceptance Criterion | Priority |
 |----|------|-------------|---------------------|----------|
-| REQ-050 | Event-driven | When an authenticated admin requests `GET /api/runs/:runId`, the system shall include a `costBreakdown: RunCostBreakdown \| null` field in the response. | Integration test: admin cookie set; response body has `costBreakdown` key. | Must |
-| REQ-051 | Event-driven | When the dashboard runs-list endpoint returns run summaries to an admin, each row shall include `costBreakdown: RunCostBreakdown \| null`. | Integration test. | Must |
-| REQ-052 | Unwanted | If a request to `GET /api/runs/:runId` arrives WITHOUT a valid admin session, then the system shall respond with HTTP 401 and shall not include cost data anywhere in the response. | Integration test: missing cookie returns 401; response body has no `costBreakdown` key and no token counts. | Must |
+| REQ-051 | Event-driven | When `GET /api/runs/` returns the dashboard runs list to an authenticated admin, each row shall include `costBreakdown: RunCostBreakdown \| null` populated from `run_archives.cost_breakdown` via `archiveRepo`. | Integration test: admin cookie set; every row in the `runs` array has a `costBreakdown` key. | Must |
+| REQ-052 | Unwanted | If a request to `GET /api/runs/` arrives WITHOUT a valid admin session, then the system shall respond with HTTP 401 and shall not include cost data anywhere in the response. | Integration test: missing cookie returns 401; response body has no `costBreakdown` key and no token counts. | Must |
 | REQ-053 | Ubiquitous | The public `/api/archives` and `/api/archives/:runId` endpoints shall NOT return `costBreakdown` or any token-usage fields. | Integration test: response shape lacks cost fields. | Must |
 
 ### Web UI (`@newsletter/web`)
@@ -124,7 +123,7 @@ Out: cross-run cost analytics on `/admin/analytics`; non-LLM infrastructure cost
 | EDGE-009 | A run produces a stage where every call uses a freshly cached prompt (`cacheReadInputTokens` > 0, `inputTokens` near 0). | Cost is computed with `cacheReadPerMTok` for the cached portion; `costUsd > 0` and renders correctly. | REQ-003 |
 | EDGE-010 | An admin opens the Cost dialog, closes it, opens another run's dialog. | Each open shows the correct run's breakdown; no stale data leaks from the previous open. | REQ-064 |
 | EDGE-011 | `cost_breakdown` JSONB stored from a future schemaVersion (e.g. v2). | Hydration reads schemaVersion; v2 rows are treated as unparseable and the UI shows the pre-feature empty-state. | REQ-011, REQ-065 |
-| EDGE-012 | Anonymous user requests `GET /api/runs/<known-runId>` while a valid admin session exists in another browser. | Server returns 401 to the anonymous request; admin session in the other browser is unaffected. | REQ-052 |
+| EDGE-012 | Anonymous user requests `GET /api/runs/` while a valid admin session exists in another browser. | Server returns 401 to the anonymous request; admin session in the other browser is unaffected. | REQ-052 |
 
 ---
 
@@ -160,8 +159,7 @@ Out: cross-run cost analytics on `/admin/analytics`; non-LLM infrastructure cost
 | REQ-040 | No | No | Yes | No | pipeline e2e with stubbed model |
 | REQ-041 | No | No | Yes | No | pipeline e2e |
 | REQ-042 | No | No | Yes | No | E2E asserts column value |
-| REQ-050 | No | Yes | No | No | `api/tests/integration/runs.test.ts` extend |
-| REQ-051 | No | Yes | No | No | |
+| REQ-051 | No | Yes | No | No | `api/tests/integration/runs.test.ts` extend |
 | REQ-052 | No | Yes | No | No | |
 | REQ-053 | No | Yes | No | No | |
 | REQ-060 | Yes | No | Yes | No | Component + Playwright |
