@@ -13,6 +13,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { CostButton } from "./CostButton";
+import { CostDialog } from "./CostDialog";
 
 interface RunsCardListProps {
   runs: RunSummary[];
@@ -165,6 +167,7 @@ export function RunsCardList({
   const [cancelling, setCancelling] = useState(false);
   const [deleteRunId, setDeleteRunId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [costRun, setCostRun] = useState<RunSummary | null>(null);
 
   if (runs.length === 0) {
     return (
@@ -276,6 +279,14 @@ export function RunsCardList({
         </DialogContent>
       </Dialog>
 
+      <CostDialog
+        open={costRun !== null}
+        onOpenChange={(open) => {
+          if (!open) setCostRun(null);
+        }}
+        run={costRun}
+      />
+
       <ul className="space-y-3">
         {runs.map((run) => {
           const derived = deriveStatus(run);
@@ -321,6 +332,10 @@ export function RunsCardList({
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
+                <CostButton
+                  costBreakdown={run.costBreakdown}
+                  onClick={() => { setCostRun(run); }}
+                />
                 {canViewSources(run) ? (
                   <Button
                     asChild

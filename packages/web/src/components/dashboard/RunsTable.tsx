@@ -21,6 +21,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { CostButton } from "./CostButton";
+import { CostDialog } from "./CostDialog";
 
 interface RunsTableProps {
   runs: RunSummary[];
@@ -222,6 +224,7 @@ export function RunsTable({
   const [cancelling, setCancelling] = useState(false);
   const [deleteRunId, setDeleteRunId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [costRun, setCostRun] = useState<RunSummary | null>(null);
 
   if (runs.length === 0) {
     return (
@@ -324,6 +327,14 @@ export function RunsTable({
         </DialogContent>
       </Dialog>
 
+      <CostDialog
+        open={costRun !== null}
+        onOpenChange={(open) => {
+          if (!open) setCostRun(null);
+        }}
+        run={costRun}
+      />
+
       <div className="rounded-lg border bg-white">
         <Table>
           <TableHeader>
@@ -332,6 +343,7 @@ export function RunsTable({
               <TableHead className="px-6 py-3">Status</TableHead>
               <TableHead className="px-6 py-3">Items</TableHead>
               <TableHead className="px-6 py-3">Sources</TableHead>
+              <TableHead className="px-6 py-3">Cost</TableHead>
               <TableHead className="px-6 py-3 text-right">Action</TableHead>
             </TableRow>
           </TableHeader>
@@ -371,6 +383,12 @@ export function RunsTable({
                     ) : (
                       <span className="text-sm text-muted-foreground">—</span>
                     )}
+                  </TableCell>
+                  <TableCell className="px-6 py-4 align-middle">
+                    <CostButton
+                      costBreakdown={run.costBreakdown}
+                      onClick={() => { setCostRun(run); }}
+                    />
                   </TableCell>
                   <TableCell className="px-6 py-4 align-middle text-right">
                     <RunActionCell
