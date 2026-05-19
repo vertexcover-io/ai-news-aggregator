@@ -284,6 +284,45 @@ describe("listRuns", () => {
     expect(preFeature?.costBreakdown).toBeNull();
   });
 
+  it("returns costBreakdown=null when the JSONB has a legacy/unknown shape (no schemaVersion)", async () => {
+    // Prod has rows written by the reverted PR #162's RunCostAccumulator with
+    // a completely different shape (camelCase stage keys, `totalUsdCost` not
+    // `totalCostUsd`, no schemaVersion). parseRunCostBreakdown must reject
+    // these and return null so the UI shows the pre-feature empty state
+    // instead of crashing on `totalCostUsd.toFixed(...)`.
+    const legacyBreakdown = {
+      stages: {
+        webListing: { model: "claude-haiku-4-5-20251001", usdCost: 0.16, callCount: 12, inputTokens: 83503, outputTokens: 14637 },
+        webExtraction: { model: "claude-haiku-4-5-20251001", usdCost: 0.006, callCount: 1, inputTokens: 5568, outputTokens: 161 },
+        rank: { model: "claude-sonnet-4-5-20250929", usdCost: 0, callCount: 2, inputTokens: 92720, outputTokens: 7499 },
+      },
+      capturedAt: "2026-05-18T13:50:44.065Z",
+      totalUsdCost: 0.163061,
+      totalInputTokens: 181791,
+      totalOutputTokens: 22297,
+    };
+    const archiveRows: RunArchiveRow[] = [
+      {
+        id: "legacy",
+        status: "completed",
+        rankedItems: [],
+        topN: 10,
+        reviewed: true,
+        completedAt: new Date("2026-05-18T13:50:44.065Z"),
+        createdAt: new Date("2026-05-18T13:50:44.065Z"),
+        isDryRun: false,
+        costBreakdown: legacyBreakdown,
+      } as unknown as RunArchiveRow,
+    ];
+    const result = await listRuns(10, {
+      redis: makeRedis(new Map()) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo(archiveRows),
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].runId).toBe("legacy");
+    expect(result[0].costBreakdown).toBeNull();
+  });
+
   it("REQ-051: redis-only running entries carry costBreakdown=null", async () => {
     const redisEntries = new Map<string, RedisEntry>([
       [

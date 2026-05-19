@@ -1,5 +1,6 @@
 import type IORedis from "ioredis";
 import type { RunState, RunSummary } from "@newsletter/shared";
+import { parseRunCostBreakdown } from "@newsletter/shared";
 import type { RunArchivesRepo } from "@api/repositories/run-archives.js";
 
 export interface RunListDeps {
@@ -58,6 +59,10 @@ export async function listRuns(
   const archives = await deps.archiveRepo.list(limit);
   const archiveSummaries: RunSummary[] = archives.map((row) => {
     const startedAt = row.completedAt.toISOString();
+    // Validate the JSONB shape at the boundary. Rows written by the prior
+    // (reverted) PR #162 implementation use an incompatible shape — surface
+    // them as `null` rather than letting the malformed object crash the UI.
+    const costBreakdown = parseRunCostBreakdown(row.costBreakdown);
     return {
       runId: row.id,
       startedAt,
@@ -66,7 +71,7 @@ export async function listRuns(
       itemCount: row.rankedItems.length,
       reviewed: row.reviewed,
       isDryRun: row.isDryRun,
-      costBreakdown: row.costBreakdown,
+      costBreakdown,
     };
   });
 

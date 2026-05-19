@@ -17,6 +17,14 @@ describe("formatCostUsd (REQ-080..REQ-082)", () => {
   it("rounds to 3 decimals", () => {
     expect(formatCostUsd(0.6371234)).toBe("$0.637");
   });
+
+  it("returns '?' for undefined — protects against malformed payloads", () => {
+    expect(formatCostUsd(undefined)).toBe("?");
+  });
+
+  it("returns '?' for NaN — protects against malformed payloads", () => {
+    expect(formatCostUsd(Number.NaN)).toBe("?");
+  });
 });
 
 describe("formatTokens (REQ-083, REQ-084)", () => {
@@ -34,5 +42,9 @@ describe("formatTokens (REQ-083, REQ-084)", () => {
 
   it("formats exactly 1,000,000 as 1.0M", () => {
     expect(formatTokens(1_000_000)).toBe("1.0M");
+  });
+
+  it("returns '—' for undefined — protects against malformed payloads", () => {
+    expect(formatTokens(undefined)).toBe("—");
   });
 });
