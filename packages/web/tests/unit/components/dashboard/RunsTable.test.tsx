@@ -17,6 +17,7 @@ function makeRun(overrides: Partial<RunSummary>): RunSummary {
     itemCount: 10,
     reviewed: false,
     isDryRun: false,
+    costBreakdown: null,
     ...overrides,
   };
 }
@@ -234,6 +235,69 @@ describe("RunsTable cancel button (REQ-11, REQ-12)", () => {
       expect(screen.queryByText("Cancel this run?")).toBeNull();
     });
     expect(onCancel).not.toHaveBeenCalled();
+  });
+});
+
+describe("RunsTable cost button (REQ-060)", () => {
+  it("REQ-060: every row has a data-testid=cost-button regardless of costBreakdown value", () => {
+    render(
+      <MemoryRouter>
+        <RunsTable
+          runs={[
+            makeRun({ runId: "r-a", status: "completed", reviewed: true, costBreakdown: null }),
+            makeRun({
+              runId: "r-b",
+              status: "running",
+              costBreakdown: {
+                schemaVersion: 1,
+                totalCostUsd: 0.123,
+                stages: {},
+                unknownModels: [],
+                generatedAt: "2026-05-19T00:00:00Z",
+              },
+            }),
+            makeRun({ runId: "r-c", status: "failed", costBreakdown: null }),
+          ]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const buttons = screen.getAllByTestId("cost-button");
+    expect(buttons.length).toBe(3);
+  });
+
+  it("clicking cost button opens dialog with run's breakdown", async () => {
+    render(
+      <MemoryRouter>
+        <RunsTable
+          runs={[
+            makeRun({
+              runId: "r-1",
+              status: "completed",
+              reviewed: true,
+              costBreakdown: {
+                schemaVersion: 1,
+                totalCostUsd: 0.444,
+                stages: {},
+                unknownModels: [],
+                generatedAt: "2026-05-19T00:00:00Z",
+              },
+            }),
+          ]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId("cost-button"));
+    await waitFor(() => {
+      expect(screen.getByText(/Total:\s*\$0\.444/)).toBeTruthy();
+    });
   });
 });
 

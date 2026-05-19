@@ -37,6 +37,7 @@ const completed: RunSummary = {
   itemCount: 10,
   reviewed: false,
   isDryRun: false,
+  costBreakdown: null,
 };
 
 const running: RunSummary = {
@@ -47,6 +48,7 @@ const running: RunSummary = {
   itemCount: 0,
   reviewed: false,
   isDryRun: false,
+  costBreakdown: null,
 };
 
 describe("useRunList", () => {

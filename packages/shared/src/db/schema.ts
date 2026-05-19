@@ -4,7 +4,6 @@ import type {
   RawItemEngagement,
   RawItemMetadata,
   RankedItemRef,
-  RunCostBreakdown,
   RunSourceTelemetry,
   RunSubmitHnConfig,
   RunSubmitRedditConfig,
@@ -13,6 +12,7 @@ import type {
   SocialMetadata,
   SocialTokenMetadata,
 } from "@shared/types/index.js";
+import type { RunCostBreakdown } from "@shared/types/cost-breakdown.js";
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter";
 

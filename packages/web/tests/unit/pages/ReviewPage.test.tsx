@@ -111,16 +111,6 @@ describe("ReviewPage", () => {
       };
     }
 
-    it("does not render the pipeline cost card on the review page", async () => {
-      vi.mocked(getAdminArchive).mockResolvedValue(makeCompletedResponse());
-
-      renderAt("run-1");
-
-      await screen.findByText("First");
-      expect(screen.queryByTestId("cost-breakdown-card")).toBeNull();
-      expect(screen.queryByText("Pipeline cost")).toBeNull();
-    });
-
     function renderWithLink(): void {
       const client = new QueryClient({
         defaultOptions: { queries: { retry: false, gcTime: 0 } },

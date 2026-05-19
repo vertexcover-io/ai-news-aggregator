@@ -7,6 +7,7 @@ Drizzle DB schema, shared types, constants, utils, and the DB client.
 - Exports DB client (`getDb`, `AppDb`) and Redis connection (`createRedisConnection`)
 - Exports shared TypeScript types used across api and pipeline packages
 - Exports pino logger factory (`createLogger`)
+- Exports `MODEL_PRICING` + `computeCallCost`/`extractAnthropicUsage` (in `pricing.ts` / `cost.ts`) and the `RunCostBreakdown` / `CostStage` / `StageCost` / `ModelStageCost` types (in `types/cost-breakdown.ts`). The `run_archives.cost_breakdown` JSONB column is owned here; new pricing entries must include the five fields `inputPerMTok`, `outputPerMTok`, `cacheReadPerMTok`, `cacheWrite5mPerMTok`, `cacheWrite1hPerMTok` (no separate reasoning rate — thinking tokens bill at the output rate).
 
 ## Rules
 - This package defines tables — no other package should

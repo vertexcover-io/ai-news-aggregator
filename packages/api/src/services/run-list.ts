@@ -51,6 +51,7 @@ export async function listRuns(
       itemCount: Array.isArray(state.rankedItems) ? state.rankedItems.length : 0,
       reviewed: false,
       isDryRun: false,
+      costBreakdown: null,
     });
   }
 
@@ -65,6 +66,7 @@ export async function listRuns(
       itemCount: row.rankedItems.length,
       reviewed: row.reviewed,
       isDryRun: row.isDryRun,
+      costBreakdown: row.costBreakdown,
     };
   });
 

@@ -20,6 +20,7 @@ function makeRun(overrides: Partial<RunSummary>): RunSummary {
     itemCount: 10,
     reviewed: false,
     isDryRun: false,
+    costBreakdown: null,
     ...overrides,
   };
 }
@@ -53,10 +54,12 @@ describe("RunsTable Sources column", () => {
       .map((el) => el.textContent ?? "");
     const itemsIdx = headers.indexOf("Items");
     const sourcesIdx = headers.indexOf("Sources");
+    const costIdx = headers.indexOf("Cost");
     const actionIdx = headers.indexOf("Action");
     expect(itemsIdx).toBeGreaterThanOrEqual(0);
     expect(sourcesIdx).toBe(itemsIdx + 1);
-    expect(actionIdx).toBe(sourcesIdx + 1);
+    expect(costIdx).toBe(sourcesIdx + 1);
+    expect(actionIdx).toBe(costIdx + 1);
   });
 
   it("REQ-002: ready-to-review and reviewed rows render Sources links", () => {

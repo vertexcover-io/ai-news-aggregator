@@ -31,11 +31,6 @@ function makeArchiveRepo(
 ): RunArchivesRepo {
   return {
     findById: vi.fn(() => Promise.resolve(row)),
-    findCostById: vi.fn(() =>
-      Promise.resolve(
-        row ? { id: row.id, costBreakdown: row.costBreakdown ?? null } : null,
-      ),
-    ),
     list: vi.fn(() => Promise.resolve([])),
     listReviewed: vi.fn(() => Promise.resolve([])),
     updateRankedItems: vi.fn(() => Promise.resolve(row as RunArchiveRow)),
@@ -643,96 +638,5 @@ describe("PATCH /api/archives/:runId", () => {
 
     expect(res.status).toBe(200);
     expect(processingQueue.add).not.toHaveBeenCalled();
-  });
-});
-
-describe("VS-5: cost endpoints", () => {
-  it("GET /api/archives/:runId includes costBreakdown for completed archive", async () => {
-    const completedAt = new Date("2026-05-18T10:00:00Z");
-    const archiveRepo = makeArchiveRepo({
-      id: "11111111-2222-4333-8444-555555555555",
-      status: "completed",
-      rankedItems: [],
-      topN: 5,
-      reviewed: false,
-      completedAt,
-      createdAt: completedAt,
-      startedAt: null,
-      sourceTypes: null,
-      costBreakdown: {
-        stages: {
-          rank: {
-            inputTokens: 1000,
-            outputTokens: 500,
-            callCount: 1,
-            usdCost: 0.0035,
-            model: "claude-haiku-4-5-20251001",
-          },
-        },
-        totalUsdCost: 0.0035,
-        totalInputTokens: 1000,
-        totalOutputTokens: 500,
-        capturedAt: "2026-05-18T10:00:00.000Z",
-      },
-    } as unknown as RunArchiveRow);
-    const app = makeApp({ archiveRepo });
-    const res = await app.request("/api/archives/11111111-2222-4333-8444-555555555555");
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { costBreakdown: { totalUsdCost: number } };
-    expect(body.costBreakdown.totalUsdCost).toBe(0.0035);
-  });
-
-  it("GET /api/admin/archives/:runId/cost returns runId and costBreakdown", async () => {
-    const completedAt = new Date("2026-05-18T10:00:00Z");
-    const archiveRepo = makeArchiveRepo({
-      id: "22222222-3333-4444-8555-666666666666",
-      status: "completed",
-      rankedItems: [],
-      topN: 5,
-      reviewed: false,
-      completedAt,
-      createdAt: completedAt,
-      startedAt: null,
-      sourceTypes: null,
-      costBreakdown: {
-        stages: {},
-        totalUsdCost: 0,
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        capturedAt: "2026-05-18T10:00:00.000Z",
-      },
-    } as unknown as RunArchiveRow);
-    const app = new Hono();
-    const { createAdminArchivesRouter } = await import("@api/routes/archives.js");
-    app.route(
-      "/api/admin/archives",
-      createAdminArchivesRouter({
-        getRawItemsRepo: () => makeRepo(),
-        getArchiveRepo: () => archiveRepo,
-      }),
-    );
-    const res = await app.request("/api/admin/archives/22222222-3333-4444-8555-666666666666/cost");
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      runId: string;
-      costBreakdown: { totalUsdCost: number };
-    };
-    expect(body.runId).toBe("22222222-3333-4444-8555-666666666666");
-    expect(body.costBreakdown.totalUsdCost).toBe(0);
-  });
-
-  it("GET /api/admin/archives/:runId/cost returns 404 when not found", async () => {
-    const archiveRepo = makeArchiveRepo(null);
-    const app = new Hono();
-    const { createAdminArchivesRouter } = await import("@api/routes/archives.js");
-    app.route(
-      "/api/admin/archives",
-      createAdminArchivesRouter({
-        getRawItemsRepo: () => makeRepo(),
-        getArchiveRepo: () => archiveRepo,
-      }),
-    );
-    const res = await app.request("/api/admin/archives/22222222-3333-4444-8555-666666666666/cost");
-    expect(res.status).toBe(404);
   });
 });

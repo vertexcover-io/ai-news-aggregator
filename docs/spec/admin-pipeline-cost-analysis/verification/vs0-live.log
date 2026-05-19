@@ -1,0 +1,35 @@
+=== object ===
+{
+  "answer": "ok"
+}
+=== usage (keys) ===
+[ 'inputTokens', 'outputTokens', 'totalTokens', 'cachedInputTokens' ]
+=== usage (json) ===
+{
+  "inputTokens": 699,
+  "outputTokens": 24,
+  "totalTokens": 723,
+  "cachedInputTokens": 0
+}
+=== providerMetadata (json) ===
+{
+  "anthropic": {
+    "usage": {
+      "input_tokens": 699,
+      "output_tokens": 24,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "not_available"
+    },
+    "cacheCreationInputTokens": 0,
+    "stopSequence": null,
+    "iterations": null,
+    "container": null,
+    "contextManagement": null
+  }
+}

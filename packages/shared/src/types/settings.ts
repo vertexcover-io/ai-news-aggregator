@@ -4,6 +4,7 @@ import type {
   RunSubmitTwitterConfig,
   RunSubmitWebConfig,
 } from "./run.js";
+import type { RunCostBreakdown } from "./cost-breakdown.js";
 
 export interface UserSettings {
   id: string;
@@ -45,4 +46,5 @@ export interface RunSummary {
   itemCount: number;
   reviewed: boolean;
   isDryRun: boolean;
+  costBreakdown: RunCostBreakdown | null;
 }

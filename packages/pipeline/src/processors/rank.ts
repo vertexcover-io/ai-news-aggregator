@@ -7,8 +7,8 @@ import type {
   RankedItemRef,
   RawItemComment,
 } from "@newsletter/shared";
-import type { RunCostAccumulator } from "@pipeline/services/cost-accumulator.js";
 import { RANK_SYSTEM_PROMPT_NO_PROFILE } from "@pipeline/processors/rank-prompts.js";
+import type { CostTracker } from "@pipeline/services/cost-tracker.js";
 import { loadBodiesForShortlist as defaultLoadBodies } from "@pipeline/processors/rank-body-loader.js";
 import {
   ageHoursFromPublishedAt,
@@ -44,7 +44,7 @@ export interface RankOptions {
   loadBodies?: typeof defaultLoadBodies;
   now?: Date;
   abortSignal?: AbortSignal;
-  costAccumulator?: RunCostAccumulator;
+  tracker?: CostTracker;
 }
 
 export interface RankResult {
@@ -214,13 +214,12 @@ export async function rankCandidates(
     items: promptItems,
   };
 
+  type GenerateRankedResult = Awaited<ReturnType<typeof generate>> & {
+    object: z.infer<typeof rankedResponseSchema>;
+  };
   const generateRanked = (
     retryTwitterSummary: boolean,
-  ): Promise<{
-    object: z.infer<typeof rankedResponseSchema>;
-    usage?: { inputTokens?: number | null; outputTokens?: number | null };
-    response?: { modelId?: string };
-  }> =>
+  ): Promise<GenerateRankedResult> =>
     generate({
       model: anthropic(modelId),
       system: systemPrompt,
@@ -242,20 +241,11 @@ export async function rankCandidates(
       temperature: 0,
       maxRetries: 2,
       abortSignal: options.abortSignal,
-    }) as Promise<{
-      object: z.infer<typeof rankedResponseSchema>;
-      usage?: { inputTokens?: number | null; outputTokens?: number | null };
-      response?: { modelId?: string };
-    }>;
+    }) as Promise<GenerateRankedResult>;
 
-  let result: {
-    object: z.infer<typeof rankedResponseSchema>;
-    usage?: { inputTokens?: number | null; outputTokens?: number | null };
-    response?: { modelId?: string };
-  };
+  let result: GenerateRankedResult;
   try {
     result = await generateRanked(false);
-    options.costAccumulator?.record("rank", result, modelId);
     if (result.object.digest.twitterSummary.length > TWITTER_SUMMARY_MAX_CHARS) {
       logger.warn(
         {
@@ -267,7 +257,6 @@ export async function rankCandidates(
         "run.rank.twitter_summary_over_budget",
       );
       result = await generateRanked(true);
-      options.costAccumulator?.record("rank", result, modelId);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -290,6 +279,13 @@ export async function rankCandidates(
     );
     throw new Error(`ranking failed: ${message}`, { cause: err });
   }
+
+  options.tracker?.record({
+    stage: "rank",
+    modelId,
+    usage: result.usage,
+    providerMetadata: result.providerMetadata,
+  });
 
   const axisValidated = result.object.ranked.filter((entry) => {
     const rationaleLower = entry.rationale.toLowerCase();

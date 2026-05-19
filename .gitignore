@@ -75,6 +75,15 @@ docs/spec/**
 !docs/spec/web-enrich-link-collectors/verification/live-run-logs/
 !docs/spec/web-enrich-link-collectors/verification/live-run-logs/*.log
 !docs/spec/web-enrich-link-collectors/verification/live-run-logs/*.txt
+# admin-pipeline-cost-analysis: ship design + library-probe + probes + verification
+!docs/spec/admin-pipeline-cost-analysis/design.md
+!docs/spec/admin-pipeline-cost-analysis/library-probe.md
+!docs/spec/admin-pipeline-cost-analysis/probes/
+!docs/spec/admin-pipeline-cost-analysis/probes/*.md
+!docs/spec/admin-pipeline-cost-analysis/probes/*.mjs
+!docs/spec/admin-pipeline-cost-analysis/probes/*.ts
+!docs/spec/admin-pipeline-cost-analysis/verification/*.md
+!docs/spec/admin-pipeline-cost-analysis/verification/*.log
 .worktrees/
 .harness/
 .worktrees/

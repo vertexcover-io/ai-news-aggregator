@@ -10,4 +10,5 @@ export * from "./send-newsletter.js";
 export * from "./slack/index.js";
 export * from "./scheduling/index.js";
 export * from "./services/archive-search-text.js";
-export * from "./pricing/index.js";
+export * from "./pricing.js";
+export * from "./cost.js";

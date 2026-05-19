@@ -10,6 +10,7 @@ import type {
   SocialMetadata,
   SourceType,
 } from "@newsletter/shared";
+import { parseRunCostBreakdown } from "@newsletter/shared";
 
 export interface RunArchiveUpsertInput {
   id: string;
@@ -27,7 +28,6 @@ export interface RunArchiveUpsertInput {
   sourceTelemetry?: RunSourceTelemetry | null;
   searchText?: string | null;
   isDryRun?: boolean;
-  costBreakdown?: RunCostBreakdown | null;
 }
 
 export interface PipelineRunArchiveRow {
@@ -69,6 +69,8 @@ export interface RunArchivesRepo {
     platform: "linkedin" | "twitter",
     error: string,
   ): Promise<void>;
+  setCostBreakdown(runId: string, breakdown: RunCostBreakdown): Promise<void>;
+  getCostBreakdown(runId: string): Promise<RunCostBreakdown | null>;
 }
 
 export function createRunArchivesRepo(
@@ -189,6 +191,28 @@ export function createRunArchivesRepo(
         .where(eq(runArchives.id, runId));
     },
 
+    async setCostBreakdown(
+      runId: string,
+      breakdown: RunCostBreakdown,
+    ): Promise<void> {
+      await db
+        .update(runArchives)
+        .set({ costBreakdown: breakdown })
+        .where(eq(runArchives.id, runId));
+    },
+
+    async getCostBreakdown(runId: string): Promise<RunCostBreakdown | null> {
+      const UUID_RE =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_RE.test(runId)) return null;
+      const rows = await db
+        .select({ costBreakdown: runArchives.costBreakdown })
+        .from(runArchives)
+        .where(eq(runArchives.id, runId));
+      if (rows.length === 0) return null;
+      return parseRunCostBreakdown(rows[0].costBreakdown);
+    },
+
     async recordSocialFailure(
       runId: string,
       platform: "linkedin" | "twitter",
@@ -223,7 +247,6 @@ export function createRunArchivesRepo(
           sourceTelemetry: input.sourceTelemetry ?? null,
           searchText: input.searchText ?? null,
           isDryRun: input.isDryRun ?? false,
-          costBreakdown: input.costBreakdown ?? null,
         })
         .onConflictDoUpdate({
           target: runArchives.id,
@@ -240,7 +263,6 @@ export function createRunArchivesRepo(
             sourceTelemetry: sql.raw(`excluded.${runArchives.sourceTelemetry.name}`),
             searchText: sql.raw(`excluded.${runArchives.searchText.name}`),
             isDryRun: sql.raw(`excluded.${runArchives.isDryRun.name}`),
-            costBreakdown: sql.raw(`excluded.${runArchives.costBreakdown.name}`),
           },
         });
     },

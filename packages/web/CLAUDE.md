@@ -17,7 +17,7 @@ React + Vite frontend for the admin review dashboard and public archive.
   - `archive-listing/` — `ArchiveRow.tsx`, `FilterChip.tsx`, `MonthHeader.tsx`, `format.ts`, `SearchBar.tsx`, `DateRangeChip.tsx`, `DateRangePopover.tsx`, `ResultMeta.tsx`, `EmptyResults.tsx` (Ledger listing components + keyword/date-range search UI)
   - `RunForm/`, `StatusPanel.tsx`, `ResultList.tsx` — run-page components
   - `review/` — `ReviewList.tsx` (DnD list), `ReviewCard.tsx`, `AddPostPanel.tsx`, `SaveBar.tsx`
-  - `dashboard/` — `RunsTable.tsx` (≥ 640 px tabular layout), `RunsCardList.tsx` (< 640 px stacked card layout), `ScheduleBanner.tsx`, `EmptyState.tsx`, `SourcesDialog.tsx` (per-run raw-items modal opened from each row's "Sources" button; disabled when the run is `failed`/`cancelled` and `itemCount === 0`)
+  - `dashboard/` — `RunsTable.tsx` (≥ 640 px tabular layout), `RunsCardList.tsx` (< 640 px stacked card layout), `ScheduleBanner.tsx`, `EmptyState.tsx`, `SourcesDialog.tsx` (per-run raw-items modal opened from each row's "Sources" button; disabled when the run is `failed`/`cancelled` and `itemCount === 0`), `CostButton.tsx` + `CostDialog.tsx` (per-row LLM cost breakdown; label is `Cost: $X.XXX` when totalCostUsd is numeric, `Cost: ?` + warning chip when null with non-null breakdown, plain `Cost` for pre-feature runs with `costBreakdown === null`; dialog renders Stage/Calls/In tok/Out tok/Cached/Thinking/Model/Cost columns with stage-aggregate + per-model sub-rows), and `cost-format.ts` (`formatCostUsd`, `formatTokens`)
   - `settings/` — settings-specific components
   - `ui/` — shadcn base components (Button, Input, etc.)
 - `src/api/` — typed API client (`client.ts` for the fetch wrapper, `runs.ts`, `settings.ts`, `archives.ts`)

@@ -65,7 +65,10 @@ import {
   toEnrichmentTelemetry,
 } from "@pipeline/services/link-enrichment/index.js";
 import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
-import { RunCostAccumulator } from "@pipeline/services/cost-accumulator.js";
+import {
+  createCostTracker,
+  type CostTracker,
+} from "@pipeline/services/cost-tracker.js";
 import type { RunCostBreakdown } from "@newsletter/shared";
 
 const logger = createLogger("worker:run-process");
@@ -112,7 +115,7 @@ async function writeFailedArchive(input: {
   readonly isDryRun: boolean;
   readonly costBreakdown: RunCostBreakdown | null;
   readonly logger: ReturnType<typeof createLogger>;
-}): Promise<void> {
+}): Promise<boolean> {
   try {
     await input.archiveRepo.upsert({
       id: input.runId,
@@ -124,8 +127,11 @@ async function writeFailedArchive(input: {
       sourceTypes: [...input.sourceTypes],
       reviewed: false,
       isDryRun: input.isDryRun,
-      costBreakdown: input.costBreakdown,
     });
+    if (input.costBreakdown !== null) {
+      await input.archiveRepo.setCostBreakdown(input.runId, input.costBreakdown);
+    }
+    return true;
   } catch (err) {
     input.logger.error(
       {
@@ -135,6 +141,7 @@ async function writeFailedArchive(input: {
       },
       "archive.write_failed",
     );
+    return false;
   }
 }
 
@@ -196,7 +203,7 @@ export type WebCollectFn = (
   deps: {
     rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
     signal?: AbortSignal;
-    costAccumulator?: RunCostAccumulator;
+    tracker?: CostTracker;
   },
   config: WebCollectConfig,
 ) => Promise<CollectorResult>;
@@ -246,7 +253,7 @@ async function runCollecting(
   collectors: RunCollectorsPayload,
   signal: AbortSignal,
   enrichmentCtx: EnrichmentContext,
-  costAccumulator: RunCostAccumulator,
+  tracker: CostTracker,
 ): Promise<CollectingOutcome> {
   // In-process serializer for state writes: replicates the old
   // `concurrency: 1` invariant from the collection worker. Without this,
@@ -289,7 +296,7 @@ async function runCollecting(
     const config = collectors.web;
     tasks.push({
       sourceKey: "blog",
-      run: () => deps.collectFns.web({ ...collectorDeps, costAccumulator }, config),
+      run: () => deps.collectFns.web({ ...collectorDeps, tracker }, config),
     });
   }
   if (collectors.twitter) {
@@ -401,6 +408,28 @@ export async function handleRunProcessJob(
   const started = Date.now();
   let runStartedAt: Date = new Date(started);
 
+  const tracker = createCostTracker(runId);
+
+  const snapshotCost = (): RunCostBreakdown | null =>
+    tracker.hasAnyCalls() ? tracker.snapshot() : null;
+
+  const persistCost = async (): Promise<void> => {
+    const snapshot = snapshotCost();
+    if (snapshot === null) return;
+    try {
+      await deps.archiveRepo.setCostBreakdown(runId, snapshot);
+    } catch (err) {
+      logger.error(
+        {
+          event: "archive.cost_write_failed",
+          runId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "archive.cost_write_failed",
+      );
+    }
+  };
+
   // REQ-05: create AbortController and subscribe to cancellation channel
   const controller = new AbortController();
   const { signal } = controller;
@@ -416,11 +445,6 @@ export async function handleRunProcessJob(
     counters: newCounters(),
   };
 
-  const costAccumulator = new RunCostAccumulator();
-
-  const snapshotCost = (): RunCostBreakdown | null =>
-    costAccumulator.hasAnyData() ? costAccumulator.snapshot() : null;
-
   // REQ-09: always close subscriber in a finally block
   try {
     // EDGE-04: re-check Redis run-state after subscribing — if already cancelling, abort immediately
@@ -432,7 +456,7 @@ export async function handleRunProcessJob(
     // Stage 1: collecting
     throwIfAborted(signal);
     await deps.runState.setStage(runId, "collecting");
-    const collecting = await runCollecting(deps, runId, collectors, signal, enrichmentCtx, costAccumulator);
+    const collecting = await runCollecting(deps, runId, collectors, signal, enrichmentCtx, tracker);
 
     // All collectors failed → terminal failure, skip dedup/rank
     if (collecting.failureCount > 0 && collecting.successCount === 0) {
@@ -464,6 +488,30 @@ export async function handleRunProcessJob(
         },
         "run.failed",
       );
+      // Ensure archive row exists before setCostBreakdown (REQ-040 / EDGE-002):
+      // setCostBreakdown is a plain UPDATE that silently no-ops without a row.
+      try {
+        await deps.archiveRepo.upsert({
+          id: runId,
+          status: "failed",
+          rankedItems: [],
+          topN,
+          completedAt: new Date(),
+          startedAt: runStartedAt,
+          sourceTypes,
+          isDryRun: dryRun,
+        });
+      } catch (archiveErr) {
+        logger.error(
+          {
+            event: "archive.write_failed",
+            runId,
+            error: archiveErr instanceof Error ? archiveErr.message : String(archiveErr),
+          },
+          "archive.write_failed",
+        );
+      }
+      await persistCost();
       return { rankedCount: 0 };
     }
 
@@ -509,6 +557,7 @@ export async function handleRunProcessJob(
         },
         "run.completed",
       );
+      await persistCost();
       return { rankedCount: 0 };
     }
 
@@ -553,6 +602,7 @@ export async function handleRunProcessJob(
         },
         "run.completed",
       );
+      await persistCost();
       return { rankedCount: 0 };
     }
 
@@ -568,7 +618,7 @@ export async function handleRunProcessJob(
         halfLifeHours,
         shortlistBreakdowns: breakdowns,
         abortSignal: signal,
-        costAccumulator,
+        tracker,
       });
     } catch (err) {
       // Re-throw CancelledError to be handled by the outer catch
@@ -581,6 +631,30 @@ export async function handleRunProcessJob(
         error: message,
         completedAt: new Date().toISOString(),
       }));
+      // Ensure archive row exists before setCostBreakdown (REQ-040 / EDGE-002):
+      // setCostBreakdown is a plain UPDATE that silently no-ops without a row.
+      try {
+        await deps.archiveRepo.upsert({
+          id: runId,
+          status: "failed",
+          rankedItems: [],
+          topN,
+          completedAt: new Date(),
+          startedAt: runStartedAt,
+          sourceTypes,
+          isDryRun: dryRun,
+        });
+      } catch (archiveErr) {
+        logger.error(
+          {
+            event: "archive.write_failed",
+            runId,
+            error: archiveErr instanceof Error ? archiveErr.message : String(archiveErr),
+          },
+          "archive.write_failed",
+        );
+      }
+      await persistCost();
       throw err;
     }
 
@@ -644,7 +718,6 @@ export async function handleRunProcessJob(
         sourceTelemetry,
         searchText,
         isDryRun: dryRun,
-        costBreakdown: snapshotCost(),
       });
       archiveWritten = true;
     } catch (err) {
@@ -656,6 +729,10 @@ export async function handleRunProcessJob(
         },
         "archive.write_failed",
       );
+    }
+
+    if (archiveWritten) {
+      await persistCost();
     }
 
     if (archiveWritten && settings && !settings.autoReview) {
@@ -694,7 +771,6 @@ export async function handleRunProcessJob(
           startedAt: runStartedAt,
           sourceTypes,
           isDryRun: dryRun,
-          costBreakdown: snapshotCost(),
         });
       } catch (archiveErr) {
         logger.error(
@@ -706,6 +782,7 @@ export async function handleRunProcessJob(
           "archive.write_failed",
         );
       }
+      await persistCost();
       logger.info({ event: "run.cancelled", runId, dryRun }, "run.cancelled");
       return { rankedCount: 0 };
     }

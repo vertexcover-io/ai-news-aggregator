@@ -274,6 +274,56 @@ describe("route gating (phase 4)", () => {
     expect(await res.json()).toEqual({ error: "invalid_password" });
   });
 
+  it("REQ-052: GET /api/runs without cookie returns 401 with no cost-related strings in body", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/runs");
+    expect(res.status).toBe(401);
+    const text = await res.text();
+    expect(text).not.toMatch(/costBreakdown|inputTokens|outputTokens|totalCostUsd/);
+  });
+
+  it("REQ-053: GET /api/archives does not leak cost fields", async () => {
+    const archiveRepo = makeArchiveRepo({
+      list: [
+        {
+          runId: "run-cost",
+          runDate: "2026-04-15",
+          storyCount: 3,
+          topItems: [],
+          leadSummary: null,
+          digestHeadline: null,
+          digestSummary: null,
+          isDryRun: false,
+        },
+      ],
+    });
+    const app = makeApp(archiveRepo);
+    const res = await app.request("/api/archives");
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).not.toMatch(/costBreakdown|inputTokens|outputTokens|totalCostUsd/);
+  });
+
+  it("REQ-053: GET /api/archives/:runId does not leak cost fields", async () => {
+    const row: RunArchiveRow = {
+      id: "run-2",
+      status: "completed",
+      rankedItems: [],
+      topN: 5,
+      reviewed: true,
+      sourceTypes: ["hn"],
+      startedAt: new Date("2026-04-10T00:00:00Z"),
+      completedAt: new Date("2026-04-10T01:00:00Z"),
+      createdAt: new Date("2026-04-10T00:00:00Z"),
+    } as unknown as RunArchiveRow;
+    const archiveRepo = makeArchiveRepo({ row });
+    const app = makeApp(archiveRepo);
+    const res = await app.request("/api/archives/run-2");
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).not.toMatch(/costBreakdown|inputTokens|outputTokens|totalCostUsd/);
+  });
+
   it("GET /api/public/analytics-config remains reachable without a cookie", async () => {
     const app = makeApp();
     const res = await app.request("/api/public/analytics-config");
