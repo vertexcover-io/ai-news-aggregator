@@ -31,6 +31,7 @@ import { SourcesSection } from "../components/settings/SourcesSection";
 import { ScheduleSection } from "../components/settings/ScheduleSection";
 import { AnalyticsSection } from "../components/settings/AnalyticsSection";
 import { SaveBar } from "../components/settings/SaveBar";
+import { SocialCredentialsPanel } from "../components/SocialCredentialsPanel";
 
 function getDefaults(): SettingsFormValues {
   return {
@@ -237,6 +238,10 @@ export function SettingsPage(): ReactElement {
           />
         </main>
       </form>
+
+      <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6 md:p-8 pt-0">
+        <SocialCredentialsPanel />
+      </div>
     </div>
   );
 }
