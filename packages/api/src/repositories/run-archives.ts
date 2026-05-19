@@ -9,7 +9,6 @@ import {
   type NotificationState,
   type PoolItem,
   type RankedItemRef,
-  type RunCostBreakdown,
   type RunSourceTelemetry,
   type SocialMetadata,
 } from "@newsletter/shared";
@@ -41,7 +40,6 @@ export interface RunArchiveRow {
   twitterPostedAt: Date | null;
   notificationState: NotificationState | null;
   isDryRun: boolean;
-  costBreakdown: RunCostBreakdown | null;
 }
 
 export interface FindPoolItemsOpts {
@@ -74,7 +72,6 @@ export interface SearchReviewedResult {
 
 export interface RunArchivesRepo {
   findById(id: string): Promise<RunArchiveRow | null>;
-  findCostById(id: string): Promise<{ id: string; costBreakdown: RunCostBreakdown | null } | null>;
   list(limit: number): Promise<RunArchiveRow[]>;
   listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]>;
   searchReviewed(input: SearchReviewedInput): Promise<SearchReviewedResult>;
@@ -162,22 +159,6 @@ export function createRunArchivesRepo(
           twitterPostedAt: runArchives.twitterPostedAt,
           notificationState: runArchives.notificationState,
           isDryRun: runArchives.isDryRun,
-          costBreakdown: runArchives.costBreakdown,
-        })
-        .from(runArchives)
-        .where(eq(runArchives.id, id));
-      return rows[0] ?? null;
-    },
-    async findCostById(
-      id: string,
-    ): Promise<{ id: string; costBreakdown: RunCostBreakdown | null } | null> {
-      const UUID_RE =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!UUID_RE.test(id)) return null;
-      const rows = await db
-        .select({
-          id: runArchives.id,
-          costBreakdown: runArchives.costBreakdown,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
@@ -393,7 +374,6 @@ export function createRunArchivesRepo(
           twitterPostedAt: runArchives.twitterPostedAt,
           notificationState: runArchives.notificationState,
           isDryRun: runArchives.isDryRun,
-          costBreakdown: runArchives.costBreakdown,
         })
         .from(runArchives)
         .orderBy(desc(runArchives.completedAt))
@@ -439,7 +419,6 @@ export function createRunArchivesRepo(
           twitterPostedAt: runArchives.twitterPostedAt,
           notificationState: runArchives.notificationState,
           isDryRun: runArchives.isDryRun,
-          costBreakdown: runArchives.costBreakdown,
         });
       return row;
     },

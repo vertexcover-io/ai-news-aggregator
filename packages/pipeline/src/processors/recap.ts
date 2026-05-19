@@ -3,7 +3,6 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RecapContent } from "@newsletter/shared";
-import type { RunCostAccumulator } from "@pipeline/services/cost-accumulator.js";
 
 const logger = createLogger("processor:recap");
 
@@ -47,7 +46,6 @@ export interface RecapInputItem {
 export interface GenerateRecapOptions {
   generateObject?: typeof defaultGenerateObject;
   modelId?: string;
-  costAccumulator?: RunCostAccumulator;
 }
 
 export async function generateRecap(
@@ -83,12 +81,7 @@ export async function generateRecap(
         anthropic: { structuredOutputMode: "outputFormat" },
       },
       temperature: 0,
-    })) as {
-      object: RecapContent;
-      usage?: { inputTokens?: number | null; outputTokens?: number | null };
-      response?: { modelId?: string };
-    };
-    options.costAccumulator?.record("recap", result, modelId);
+    })) as { object: RecapContent };
     return result.object;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

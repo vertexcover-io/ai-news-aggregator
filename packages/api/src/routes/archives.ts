@@ -72,7 +72,6 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
         digestHeadline: string | null;
         digestSummary: string | null;
         hook: string | null;
-        costBreakdown: typeof archive.costBreakdown;
       } = {
         id: runId,
         status: archive.status,
@@ -89,7 +88,6 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
         digestHeadline: archive.digestHeadline,
         digestSummary: archive.digestSummary,
         hook: archive.hook,
-        costBreakdown: archive.costBreakdown,
       };
 
       if (archive.status === "completed" && Array.isArray(archive.rankedItems)) {
@@ -113,13 +111,6 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
 export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
   const logger = deps.logger ?? createLogger("api:archives");
   const archives = new Hono();
-
-  archives.get("/:runId/cost", async (c) => {
-    const runId = c.req.param("runId");
-    const row = await deps.getArchiveRepo().findCostById(runId);
-    if (!row) return c.json({ error: "not found" }, 404);
-    return c.json({ runId: row.id, costBreakdown: row.costBreakdown });
-  });
 
   archives.get("/:runId", async (c) => {
     const runId = c.req.param("runId");

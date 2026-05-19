@@ -3,8 +3,7 @@ import type { LanguageModel } from "ai";
 import { z } from "zod";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
-import type { LlmStage, SourceUnitResult } from "@newsletter/shared/types";
-import type { RunCostAccumulator } from "@pipeline/services/cost-accumulator.js";
+import type { SourceUnitResult } from "@newsletter/shared/types";
 import type {
   BlogSource,
   CollectorFailure,
@@ -43,27 +42,10 @@ export const DetailSchema = z.object({
 export type DiscoveredPost = z.infer<typeof DiscoverySchema>["posts"][number];
 export type ExtractedFields = z.infer<typeof DetailSchema>;
 
-function recordCost(
-  costAccumulator: RunCostAccumulator | undefined,
-  stage: LlmStage,
-  result: {
-    usage?: {
-      inputTokens?: number | null | undefined;
-      outputTokens?: number | null | undefined;
-    };
-    response?: { modelId?: string };
-  },
-  fallbackModelId: string,
-): void {
-  if (!costAccumulator) return;
-  costAccumulator.record(stage, result, fallbackModelId);
-}
-
 export async function discoverPostUrls(
   listingUrl: string,
   listingMarkdown: string,
   model: LanguageModel,
-  options: { costAccumulator?: RunCostAccumulator; modelIdHint?: string } = {},
 ): Promise<DiscoveredPost[]> {
   const today = new Date().toISOString().slice(0, 10);
   const result = await generateObject({
@@ -81,7 +63,6 @@ export async function discoverPostUrls(
       `stated on the page. Never invent data.\n\n` +
       `--- BEGIN LISTING MARKDOWN ---\n${listingMarkdown}\n--- END LISTING MARKDOWN ---`,
   });
-  recordCost(options.costAccumulator, "webListing", result, options.modelIdHint ?? "");
   return result.object.posts;
 }
 
@@ -89,7 +70,6 @@ export async function extractPostFields(
   postUrl: string,
   postMarkdown: string,
   model: LanguageModel,
-  options: { costAccumulator?: RunCostAccumulator; modelIdHint?: string } = {},
 ): Promise<ExtractedFields> {
   const result = await generateObject({
     model,
@@ -104,7 +84,6 @@ export async function extractPostFields(
       `Use empty strings for fields not stated on the page - never invent data.\n\n` +
       `--- BEGIN ARTICLE ---\n${postMarkdown}\n--- END ARTICLE ---`,
   });
-  recordCost(options.costAccumulator, "webExtraction", result, options.modelIdHint ?? "");
   return result.object;
 }
 
@@ -155,17 +134,14 @@ export interface WebCollectorDeps {
   llmModel?: LanguageModel;
   signal?: AbortSignal;
   runWebCrawl?: typeof runWebCrawl;
-  costAccumulator?: RunCostAccumulator;
-  modelIdHint?: string;
 }
 
-const DEFAULT_WEB_MODEL_ID = "claude-haiku-4-5-20251001";
 let cachedDefaultModel: LanguageModel | null = null;
 
 async function resolveDefaultModel(): Promise<LanguageModel> {
   if (cachedDefaultModel) return cachedDefaultModel;
   const { anthropic } = await import("@ai-sdk/anthropic");
-  cachedDefaultModel = anthropic(DEFAULT_WEB_MODEL_ID);
+  cachedDefaultModel = anthropic("claude-haiku-4-5-20251001");
   return cachedDefaultModel;
 }
 
@@ -176,8 +152,6 @@ export async function collectWeb(
   const startTime = Date.now();
   const llmModel = deps.llmModel ?? (await resolveDefaultModel());
   const fetcher = deps.runWebCrawl ?? runWebCrawl;
-  const modelIdHint = deps.modelIdHint ?? DEFAULT_WEB_MODEL_ID;
-  const llmOpts = { costAccumulator: deps.costAccumulator, modelIdHint };
 
   if (config.sources.length === 0) {
     const durationMs = Date.now() - startTime;
@@ -245,7 +219,7 @@ export async function collectWeb(
         };
       }
       try {
-        const discovered = await discoverPostUrls(source.listingUrl, r.result.markdown, llmModel, llmOpts);
+        const discovered = await discoverPostUrls(source.listingUrl, r.result.markdown, llmModel);
         const validated = validateDiscoveredUrls(discovered, r.result.markdown);
         const sorted = sortPostsByPublishedAtDesc(validated);
         const filtered = applySinceDays(sorted, config.sinceDays);
@@ -347,7 +321,7 @@ export async function collectWeb(
         continue;
       }
       try {
-        const fields = await extractPostFields(post.url, dr.result.markdown, llmModel, llmOpts);
+        const fields = await extractPostFields(post.url, dr.result.markdown, llmModel);
         extracted += 1;
         logger.info(
           {
