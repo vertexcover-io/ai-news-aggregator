@@ -14,6 +14,8 @@ export default defineConfig((options) => ({
     "src/utils/index.ts",
     "src/logger.ts",
     "src/slack/index.ts",
+    "src/pricing.ts",
+    "src/cost.ts",
   ],
   format: ["esm"],
   dts: true,
