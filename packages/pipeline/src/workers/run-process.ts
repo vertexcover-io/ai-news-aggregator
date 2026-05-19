@@ -479,6 +479,29 @@ export async function handleRunProcessJob(
         },
         "run.failed",
       );
+      // Ensure archive row exists before setCostBreakdown (REQ-040 / EDGE-002):
+      // setCostBreakdown is a plain UPDATE that silently no-ops without a row.
+      try {
+        await deps.archiveRepo.upsert({
+          id: runId,
+          status: "failed",
+          rankedItems: [],
+          topN,
+          completedAt: new Date(),
+          startedAt: runStartedAt,
+          sourceTypes,
+          isDryRun: dryRun,
+        });
+      } catch (archiveErr) {
+        logger.error(
+          {
+            event: "archive.write_failed",
+            runId,
+            error: archiveErr instanceof Error ? archiveErr.message : String(archiveErr),
+          },
+          "archive.write_failed",
+        );
+      }
       await persistCost();
       return { rankedCount: 0 };
     }
@@ -599,6 +622,29 @@ export async function handleRunProcessJob(
         error: message,
         completedAt: new Date().toISOString(),
       }));
+      // Ensure archive row exists before setCostBreakdown (REQ-040 / EDGE-002):
+      // setCostBreakdown is a plain UPDATE that silently no-ops without a row.
+      try {
+        await deps.archiveRepo.upsert({
+          id: runId,
+          status: "failed",
+          rankedItems: [],
+          topN,
+          completedAt: new Date(),
+          startedAt: runStartedAt,
+          sourceTypes,
+          isDryRun: dryRun,
+        });
+      } catch (archiveErr) {
+        logger.error(
+          {
+            event: "archive.write_failed",
+            runId,
+            error: archiveErr instanceof Error ? archiveErr.message : String(archiveErr),
+          },
+          "archive.write_failed",
+        );
+      }
       await persistCost();
       throw err;
     }

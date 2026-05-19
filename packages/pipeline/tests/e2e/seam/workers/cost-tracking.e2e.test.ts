@@ -80,6 +80,9 @@ function buildWorker(
   options: {
     rankModelId?: string;
     rankFails?: boolean;
+    rankRecordsBeforeFail?: boolean;
+    allCollectorsFailAfterRecord?: boolean;
+    collectFns?: CollectFns;
   } = {},
 ): WorkerHandle {
   const connection = getTestRedis();
@@ -101,6 +104,15 @@ function buildWorker(
           shortlistFn: (candidates) =>
             Promise.resolve({ shortlist: candidates, breakdowns: [] }),
           rankFn: (deduped, opts) => {
+            if (options.rankRecordsBeforeFail) {
+              opts.tracker?.record({
+                stage: "rank",
+                modelId,
+                usage: STUB_USAGE,
+                providerMetadata: STUB_META,
+              });
+              return Promise.reject(new Error("forced rank failure after record"));
+            }
             if (options.rankFails) {
               return Promise.reject(new Error("forced rank failure"));
             }
@@ -124,7 +136,7 @@ function buildWorker(
               twitterSummary: "",
             });
           },
-          collectFns: noopCollectFns,
+          collectFns: options.collectFns ?? noopCollectFns,
           cancelSubscriber: noopCancelSubscriber,
         },
         job as unknown as RunProcessJobLike,
@@ -435,6 +447,123 @@ describe("cost-tracking E2E", () => {
       // Failed before any LLM call → cost_breakdown stays NULL
       const breakdown = await loadCostBreakdown(db, runId);
       expect(breakdown).toBeNull();
+    } finally {
+      await failHandle.worker.close();
+      await failHandle.queueEvents.close();
+      await failHandle.queue.close();
+    }
+  });
+
+  it("REQ-040 EDGE-002 rank-failed run with prior tokens persists cost_breakdown", async () => {
+    // Regression: setCostBreakdown is a plain UPDATE that silently no-ops if no
+    // run_archives row exists. When rank fails after tokens were recorded
+    // (e.g. by stage-1 shortlist, web discovery, etc.), the failure path must
+    // upsert the archive row before persistCost runs.
+    const failHandle = buildWorker(db, "cost-tracking-e2e-rank-fail-with-tokens", {
+      rankRecordsBeforeFail: true,
+    });
+    try {
+      const runId = randomUUID();
+      await db.insert(rawItems).values([
+        {
+          sourceType: "hn",
+          externalId: `hn-${runId}-rt`,
+          title: "RankFailWithTokens",
+          url: `https://example.com/rank-fail-tokens-${runId}`,
+          engagement: { points: 10, commentCount: 0 },
+          metadata: { comments: [] },
+        },
+      ]);
+      const connection = getTestRedis();
+      const runState = createRunStateService(connection);
+      const startedAt = new Date(Date.now() - 60 * 1000).toISOString();
+      await runState.set({
+        id: runId,
+        status: "running",
+        stage: "collecting",
+        topN: 1,
+        startedAt,
+        updatedAt: startedAt,
+        completedAt: null,
+        sources: {},
+        rankedItems: null,
+        warnings: [],
+        error: null,
+      });
+
+      const job = await failHandle.queue.add("run-process", {
+        runId,
+        topN: 1,
+        sourceTypes: ["hn"],
+        collectors: {},
+      });
+      await job.waitUntilFinished(failHandle.queueEvents, 30000).catch(() => undefined);
+
+      const breakdown = await loadCostBreakdown(db, runId);
+      expect(breakdown).not.toBeNull();
+      expect(breakdown?.stages.rank?.byModel[0].calls).toBe(1);
+      expect(breakdown?.stages.rank?.byModel[0].inputTokens).toBe(STUB_USAGE.inputTokens);
+    } finally {
+      await failHandle.worker.close();
+      await failHandle.queueEvents.close();
+      await failHandle.queue.close();
+    }
+  });
+
+  it("REQ-040 EDGE-002 all-collectors-failed with prior tokens persists cost_breakdown", async () => {
+    // Regression: web collector can record tokens during discovery, then all
+    // collectors fail → all-failed branch triggers. Archive row must be
+    // upserted before persistCost so the UPDATE finds a row to update.
+    const recordingWeb = (
+      deps: { tracker?: import("@pipeline/services/cost-tracker.js").CostTracker },
+    ): Promise<CollectorResult> => {
+      deps.tracker?.record({
+        stage: "rank",
+        modelId: "claude-haiku-4-5-20251001",
+        usage: STUB_USAGE,
+        providerMetadata: STUB_META,
+      });
+      return Promise.reject(new Error("web collector failed after recording tokens"));
+    };
+    const failHandle = buildWorker(db, "cost-tracking-e2e-allfail-with-tokens", {
+      collectFns: {
+        hn: noopCollect,
+        reddit: noopCollect,
+        web: recordingWeb as CollectFns["web"],
+      },
+    });
+    try {
+      const runId = randomUUID();
+      const connection = getTestRedis();
+      const runState = createRunStateService(connection);
+      const startedAt = new Date(Date.now() - 60 * 1000).toISOString();
+      await runState.set({
+        id: runId,
+        status: "running",
+        stage: "collecting",
+        topN: 1,
+        startedAt,
+        updatedAt: startedAt,
+        completedAt: null,
+        sources: {},
+        rankedItems: null,
+        warnings: [],
+        error: null,
+      });
+
+      const job = await failHandle.queue.add("run-process", {
+        runId,
+        topN: 1,
+        sourceTypes: ["blog"],
+        collectors: {
+          web: { sources: [{ name: "test", url: "https://example.com" }] },
+        },
+      });
+      await job.waitUntilFinished(failHandle.queueEvents, 30000).catch(() => undefined);
+
+      const breakdown = await loadCostBreakdown(db, runId);
+      expect(breakdown).not.toBeNull();
+      expect(breakdown?.stages.rank?.byModel[0].calls).toBe(1);
     } finally {
       await failHandle.worker.close();
       await failHandle.queueEvents.close();
