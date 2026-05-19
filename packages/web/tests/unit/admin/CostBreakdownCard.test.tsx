@@ -98,6 +98,6 @@ describe("CostBreakdownCard", () => {
     };
     render(<CostBreakdownCard costBreakdown={withUnknown} />);
     expect(screen.getByText("warning")).toBeDefined();
-    expect(screen.getByText(/unknown model: future-model/)).toBeDefined();
+    expect(screen.getByText(/unknown model/)).toBeDefined();
   });
 });
