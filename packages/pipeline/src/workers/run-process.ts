@@ -69,6 +69,7 @@ import {
   createCostTracker,
   type CostTracker,
 } from "@pipeline/services/cost-tracker.js";
+import type { RunCostBreakdown } from "@newsletter/shared";
 
 const logger = createLogger("worker:run-process");
 
@@ -114,7 +115,7 @@ async function writeFailedArchive(input: {
   readonly isDryRun: boolean;
   readonly costBreakdown: RunCostBreakdown | null;
   readonly logger: ReturnType<typeof createLogger>;
-}): Promise<void> {
+}): Promise<boolean> {
   try {
     await input.archiveRepo.upsert({
       id: input.runId,
@@ -126,8 +127,11 @@ async function writeFailedArchive(input: {
       sourceTypes: [...input.sourceTypes],
       reviewed: false,
       isDryRun: input.isDryRun,
-      costBreakdown: input.costBreakdown,
     });
+    if (input.costBreakdown !== null) {
+      await input.archiveRepo.setCostBreakdown(input.runId, input.costBreakdown);
+    }
+    return true;
   } catch (err) {
     input.logger.error(
       {
@@ -137,6 +141,7 @@ async function writeFailedArchive(input: {
       },
       "archive.write_failed",
     );
+    return false;
   }
 }
 
@@ -405,10 +410,14 @@ export async function handleRunProcessJob(
 
   const tracker = createCostTracker(runId);
 
+  const snapshotCost = (): RunCostBreakdown | null =>
+    tracker.hasAnyCalls() ? tracker.snapshot() : null;
+
   const persistCost = async (): Promise<void> => {
-    if (!tracker.hasAnyCalls()) return;
+    const snapshot = snapshotCost();
+    if (snapshot === null) return;
     try {
-      await deps.archiveRepo.setCostBreakdown(runId, tracker.snapshot());
+      await deps.archiveRepo.setCostBreakdown(runId, snapshot);
     } catch (err) {
       logger.error(
         {
@@ -726,34 +735,8 @@ export async function handleRunProcessJob(
       await persistCost();
     }
 
-    if (archiveWritten && settings && deps.processingQueue) {
-      try {
-        const archive = await deps.archiveRepo.findById(runId);
-        if (archive !== null) {
-          await reconcilePerArchiveJobs(
-            { queue: deps.processingQueue, now: () => new Date() },
-            runId,
-            settings,
-            archive,
-          );
-        }
-        if (!settings.autoReview) {
-          await deps.slackNotifier?.notifyReviewPending({ runId });
-        }
-        logger.info(
-          { event: "archive.publish_jobs_reconciled", runId },
-          "archive publish jobs reconciled",
-        );
-      } catch (err) {
-        logger.error(
-          {
-            event: "archive.publish_jobs_reconcile_failed",
-            runId,
-            error: err instanceof Error ? err.message : String(err),
-          },
-          "archive.publish_jobs_reconcile_failed",
-        );
-      }
+    if (archiveWritten && settings && !settings.autoReview) {
+      await deps.slackNotifier?.notifyReviewPending({ runId });
     }
 
     logger.info(
