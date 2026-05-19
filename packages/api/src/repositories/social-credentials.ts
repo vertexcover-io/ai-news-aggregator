@@ -89,10 +89,11 @@ export function createSocialCredentialsRepo(
           encryptedFields,
           metadata,
           updatedAt: now,
+          updatedBy: "admin",
         })
         .onConflictDoUpdate({
           target: socialCredentials.platform,
-          set: { encryptedFields, metadata, updatedAt: now },
+          set: { encryptedFields, metadata, updatedAt: now, updatedBy: "admin" },
         })
         .returning();
       return { updatedAt: row.updatedAt.toISOString() };
@@ -113,10 +114,11 @@ export function createSocialCredentialsRepo(
           encryptedFields,
           metadata: null,
           updatedAt: now,
+          updatedBy: "admin",
         })
         .onConflictDoUpdate({
           target: socialCredentials.platform,
-          set: { encryptedFields, metadata: null, updatedAt: now },
+          set: { encryptedFields, metadata: null, updatedAt: now, updatedBy: "admin" },
         })
         .returning();
       return { updatedAt: row.updatedAt.toISOString() };
