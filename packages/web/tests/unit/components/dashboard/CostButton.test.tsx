@@ -58,4 +58,13 @@ describe("CostButton (REQ-061..REQ-063)", () => {
     fireEvent.click(screen.getByTestId("cost-button"));
     expect(onClick).toHaveBeenCalledTimes(1);
   });
+
+  it("renders 'Cost' (pre-feature empty state) when costBreakdown is undefined — handles older API deploys", () => {
+    render(<CostButton costBreakdown={undefined} onClick={() => undefined} />);
+    const btn = screen.getByTestId("cost-button");
+    expect(btn.textContent).toContain("Cost");
+    expect(btn.textContent).not.toContain("$");
+    expect(btn.textContent).not.toContain("?");
+    expect(screen.queryByTestId("cost-warning")).toBeNull();
+  });
 });

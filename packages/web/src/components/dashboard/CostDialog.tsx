@@ -62,7 +62,10 @@ export function CostDialog({
   run,
 }: CostDialogProps): ReactElement | null {
   if (run === null) return null;
-  const cb = run.costBreakdown;
+  // Coerce undefined to null: API responses from older deploys can omit the
+  // field entirely. The empty-state path handles both pre-feature runs and
+  // missing-field responses identically.
+  const cb = run.costBreakdown ?? null;
   const isValid = cb !== null && (cb.schemaVersion as number) === 1;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

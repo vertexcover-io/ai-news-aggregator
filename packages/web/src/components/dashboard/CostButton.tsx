@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { formatCostUsd } from "./cost-format";
 
 interface CostButtonProps {
-  costBreakdown: RunCostBreakdown | null;
+  costBreakdown: RunCostBreakdown | null | undefined;
   onClick: () => void;
 }
 
@@ -12,14 +12,17 @@ export function CostButton({
   costBreakdown,
   onClick,
 }: CostButtonProps): ReactElement {
+  // Treat undefined as null: API responses from older deploys omit the field
+  // entirely instead of returning `null`. Crashing the whole dashboard for one
+  // missing field is worse than rendering the pre-feature "Cost" label.
+  const cb = costBreakdown ?? null;
   const label =
-    costBreakdown === null
+    cb === null
       ? "Cost"
-      : costBreakdown.totalCostUsd === null
+      : cb.totalCostUsd === null
         ? "Cost: ?"
-        : `Cost: ${formatCostUsd(costBreakdown.totalCostUsd)}`;
-  const showWarning =
-    costBreakdown !== null && costBreakdown.totalCostUsd === null;
+        : `Cost: ${formatCostUsd(cb.totalCostUsd)}`;
+  const showWarning = cb !== null && cb.totalCostUsd === null;
   return (
     <Button
       variant="outline"
