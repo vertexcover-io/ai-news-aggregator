@@ -31,6 +31,7 @@ import { SourcesSection } from "../components/settings/SourcesSection";
 import { ScheduleSection } from "../components/settings/ScheduleSection";
 import { AnalyticsSection } from "../components/settings/AnalyticsSection";
 import { SaveBar } from "../components/settings/SaveBar";
+import { SocialCredentialsPanel } from "../components/SocialCredentialsPanel";
 
 function getDefaults(): SettingsFormValues {
   return {
@@ -188,28 +189,32 @@ export function SettingsPage(): ReactElement {
         </Link>
       </header>
 
-      <form onSubmit={(e) => {
-        // Defensive: ALWAYS preventDefault FIRST so a thrown handleSubmit
-        // can't escape into a native form POST (which causes a full page
-        // reload and the operator sees a fresh form with no error).
-        // Discovered debugging Stage-5 VS-6 — submit event fired,
-        // defaultPrevented stayed false, browser did a native POST.
-        e.preventDefault();
-        onSubmit(e).catch((err: unknown) => {
-          const msg = err instanceof Error ? err.message : String(err);
-           
-          console.error("settings save threw:", err);
-          toast.error(`Save failed: ${msg}`);
-        });
-      }}>
-        <main className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6 md:p-8">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Configure your daily newsletter. These settings run every day automatically.
-            </p>
-          </div>
+      <main className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6 md:p-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Configure your daily newsletter. These settings run every day automatically.
+          </p>
+        </div>
 
+        <form
+          id="settings-form"
+          className="space-y-6"
+          onSubmit={(e) => {
+            // Defensive: ALWAYS preventDefault FIRST so a thrown handleSubmit
+            // can't escape into a native form POST (which causes a full page
+            // reload and the operator sees a fresh form with no error).
+            // Discovered debugging Stage-5 VS-6 — submit event fired,
+            // defaultPrevented stayed false, browser did a native POST.
+            e.preventDefault();
+            onSubmit(e).catch((err: unknown) => {
+              const msg = err instanceof Error ? err.message : String(err);
+
+              console.error("settings save threw:", err);
+              toast.error(`Save failed: ${msg}`);
+            });
+          }}
+        >
           <SourcesSection
             control={form.control}
             register={form.register}
@@ -224,19 +229,22 @@ export function SettingsPage(): ReactElement {
             register={form.register}
             control={form.control}
           />
+        </form>
 
-          <SaveBar
-            saving={saveMutation.isPending}
-            runNowDisabled={saveMutation.isPending}
-            onRunNow={() => {
-              void handleRunNow();
-            }}
-            lastSavedLabel={
-              settingsQuery.data ? "All changes saved" : undefined
-            }
-          />
-        </main>
-      </form>
+        <SocialCredentialsPanel />
+
+        <SaveBar
+          formId="settings-form"
+          saving={saveMutation.isPending}
+          runNowDisabled={saveMutation.isPending}
+          onRunNow={() => {
+            void handleRunNow();
+          }}
+          lastSavedLabel={
+            settingsQuery.data ? "All changes saved" : undefined
+          }
+        />
+      </main>
     </div>
   );
 }

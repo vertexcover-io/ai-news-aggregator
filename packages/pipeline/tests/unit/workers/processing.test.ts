@@ -47,6 +47,21 @@ vi.mock("@pipeline/workers/social-health.js", () => ({
   handleSocialHealthJob: (...args: unknown[]) => mockHandleSocialHealthJob(...args),
 }));
 
+const mockHandleLinkedInPostJob = vi.fn();
+vi.mock("@pipeline/workers/linkedin-post.js", () => ({
+  handleLinkedInPostJob: (...args: unknown[]) => mockHandleLinkedInPostJob(...args),
+}));
+
+const mockHandleTwitterPostJob = vi.fn();
+vi.mock("@pipeline/workers/twitter-post.js", () => ({
+  handleTwitterPostJob: (...args: unknown[]) => mockHandleTwitterPostJob(...args),
+}));
+
+const mockHandleEmailSendJob = vi.fn();
+vi.mock("@pipeline/workers/email-send.js", () => ({
+  handleEmailSendJob: (...args: unknown[]) => mockHandleEmailSendJob(...args),
+}));
+
 const mockCreateLinkedInNotifier = vi.fn(() => ({
   notifyArchiveReady: vi.fn(),
 }));
@@ -69,6 +84,21 @@ vi.mock("@pipeline/social/twitter/api-client.js", () => ({
 }));
 vi.mock("@pipeline/repositories/social-tokens.js", () => ({
   createSocialTokensRepo: vi.fn(() => ({ fake: "social-tokens" })),
+}));
+vi.mock("@pipeline/repositories/social-credentials.js", () => ({
+  createSocialCredentialsRepo: vi.fn(() => ({
+    getLinkedIn: vi.fn().mockResolvedValue(null),
+    getTwitter: vi.fn().mockResolvedValue(null),
+    upsertLinkedIn: vi.fn(),
+    upsertTwitter: vi.fn(),
+    delete: vi.fn(),
+  })),
+}));
+vi.mock("@newsletter/shared/services/credential-cipher", () => ({
+  getCredentialCipher: vi.fn(() => ({
+    encrypt: vi.fn(),
+    decrypt: vi.fn(),
+  })),
 }));
 vi.mock("@pipeline/repositories/run-archives.js", () => ({
   createRunArchivesRepo: vi.fn(() => ({
@@ -176,35 +206,35 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
       delete process.env.TWITTER_ACCESS_TOKEN_SECRET;
     });
 
-    it("constructs linkedinNotifier when LINKEDIN_CLIENT_ID + SECRET set; null otherwise", () => {
-      const depsWithout = buildDefaultNewsletterSendDeps();
+    it("constructs linkedinNotifier when LINKEDIN_CLIENT_ID + SECRET set; null otherwise", async () => {
+      const depsWithout = await buildDefaultNewsletterSendDeps();
       expect(depsWithout.linkedinNotifier).toBeNull();
 
       process.env.LINKEDIN_CLIENT_ID = "li-id";
       process.env.LINKEDIN_CLIENT_SECRET = "li-secret";
-      const depsWith = buildDefaultNewsletterSendDeps();
+      const depsWith = await buildDefaultNewsletterSendDeps();
       expect(depsWith.linkedinNotifier).not.toBeNull();
       expect(mockCreateLinkedInNotifier).toHaveBeenCalled();
     });
 
-    it("constructs twitterNotifier when all OAuth1 credentials are set; null otherwise", () => {
-      const depsWithout = buildDefaultNewsletterSendDeps();
+    it("constructs twitterNotifier when all OAuth1 credentials are set; null otherwise", async () => {
+      const depsWithout = await buildDefaultNewsletterSendDeps();
       expect(depsWithout.twitterNotifier).toBeNull();
 
       process.env.TWITTER_API_KEY = "tw-api-key";
       process.env.TWITTER_API_SECRET = "tw-api-secret";
       process.env.TWITTER_ACCESS_TOKEN = "tw-access-token";
       process.env.TWITTER_ACCESS_TOKEN_SECRET = "tw-access-secret";
-      const depsWith = buildDefaultNewsletterSendDeps();
+      const depsWith = await buildDefaultNewsletterSendDeps();
       expect(depsWith.twitterNotifier).not.toBeNull();
       expect(mockCreateTwitterNotifier).toHaveBeenCalled();
     });
 
-    it("returns twitterNotifier=null and logs missing key names when OAuth1 config is partial", () => {
+    it("returns twitterNotifier=null and logs missing key names when OAuth1 config is partial", async () => {
       process.env.TWITTER_API_KEY = "tw-api-key";
       process.env.TWITTER_ACCESS_TOKEN = "tw-access-token";
 
-      const deps = buildDefaultNewsletterSendDeps();
+      const deps = await buildDefaultNewsletterSendDeps();
 
       expect(deps.twitterNotifier).toBeNull();
       expect(mockCreateTwitterNotifier).not.toHaveBeenCalled();
@@ -217,11 +247,49 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
       );
     });
 
-    it("returns linkedinNotifier=null when only LINKEDIN_CLIENT_ID is set (missing secret)", () => {
+    it("returns linkedinNotifier=null when only LINKEDIN_CLIENT_ID is set (missing secret)", async () => {
       process.env.LINKEDIN_CLIENT_ID = "li-id";
-      const deps = buildDefaultNewsletterSendDeps();
+      const deps = await buildDefaultNewsletterSendDeps();
       expect(deps.linkedinNotifier).toBeNull();
     });
+  });
+
+  it("rebuilds publishDeps per job so saved credentials hot-reload without restart (VER-admin-social-config §4.4)", async () => {
+    // Track credential snapshots seen by the notifier factory across jobs.
+    const linkedinCallArgs: unknown[] = [];
+    mockCreateLinkedInNotifier.mockImplementation((args: unknown) => {
+      linkedinCallArgs.push(args);
+      return { notifyArchiveReady: vi.fn() };
+    });
+
+    // First job: no DB row, env-only config.
+    process.env.LINKEDIN_CLIENT_ID = "li-id-v1";
+    process.env.LINKEDIN_CLIENT_SECRET = "li-secret-v1";
+
+    const worker = createProcessingWorker({
+      runProcessDeps: { fake: "rp-deps" } as never,
+      dailyRunDeps: { fake: "dr-deps" } as never,
+      connection: { fake: "redis" } as never,
+    }) as unknown as { handler: (job: unknown) => Promise<unknown> };
+
+    await worker.handler({ name: "linkedin-post", id: "j-a", data: { runId: "r1" } });
+
+    // Operator rotates the credential between jobs (simulates a UI save that
+    // changes the env-resolved value; the DB path is covered by the resolver's
+    // own tests).
+    process.env.LINKEDIN_CLIENT_ID = "li-id-v2";
+    process.env.LINKEDIN_CLIENT_SECRET = "li-secret-v2";
+
+    await worker.handler({ name: "linkedin-post", id: "j-b", data: { runId: "r2" } });
+
+    expect(mockCreateLinkedInNotifier).toHaveBeenCalledTimes(2);
+    // Same notifier factory args object reused === credentials are cached
+    // (the regression). Two distinct calls with two distinct configs === hot
+    // reload works.
+    const cfg1 = (linkedinCallArgs[0] as { config: { clientId: string } }).config;
+    const cfg2 = (linkedinCallArgs[1] as { config: { clientId: string } }).config;
+    expect(cfg1.clientId).toBe("li-id-v1");
+    expect(cfg2.clientId).toBe("li-id-v2");
   });
 
   it("logs a warn and returns undefined for unknown job names", async () => {

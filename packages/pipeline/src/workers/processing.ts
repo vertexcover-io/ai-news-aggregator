@@ -51,6 +51,15 @@ import {
   type SocialTokensRepo,
 } from "@pipeline/repositories/social-tokens.js";
 import {
+  createSocialCredentialsRepo,
+  type SocialCredentialsRepo,
+} from "@pipeline/repositories/social-credentials.js";
+import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import {
+  resolveLinkedInCredentials,
+  resolveTwitterOAuth1Credentials,
+} from "@pipeline/services/credential-resolver.js";
+import {
   createRunStateService,
   type RunStateService,
 } from "@pipeline/services/run-state.js";
@@ -117,7 +126,14 @@ export function createProcessingWorker(
     options.dailyRunDeps ?? buildDefaultDailyRunDeps(connection);
   const socialHealthDeps =
     options.socialHealthDeps ?? buildDefaultSocialHealthDeps();
-  let resolvedPublishDeps: PublishDeps | undefined = options.publishDeps;
+  // NOTE: publishDeps are intentionally rebuilt per job when not injected by
+  // a test/caller. Notifiers embed credential values at construction time, and
+  // the design (docs/plans/2026-05-19-admin-social-config-design.md §3, §4.4)
+  // promises that operators saving credentials via /admin/settings take effect
+  // on the next pipeline job WITHOUT a worker restart. Caching the resolved
+  // deps for the lifetime of the worker would break that contract.
+  const buildPublishDeps = async (): Promise<PublishDeps> =>
+    options.publishDeps ?? (await buildDefaultPublishDeps());
 
   return new Worker<ProcessingJobData, unknown>(
     "processing",
@@ -142,33 +158,33 @@ export function createProcessingWorker(
           return undefined;
         }
         case "email-send": {
-          resolvedPublishDeps ??= buildDefaultPublishDeps();
+          const publishDeps = await buildPublishDeps();
           const typed: EmailSendJobLike = {
             name: job.name,
             id: job.id,
             data: job.data as { runId?: string },
           };
-          await handleEmailSendJob(resolvedPublishDeps, typed);
+          await handleEmailSendJob(publishDeps, typed);
           return undefined;
         }
         case "linkedin-post": {
-          resolvedPublishDeps ??= buildDefaultPublishDeps();
+          const publishDeps = await buildPublishDeps();
           const typed: LinkedInPostJobLike = {
             name: job.name,
             id: job.id,
             data: job.data as { runId?: string },
           };
-          await handleLinkedInPostJob(resolvedPublishDeps, typed);
+          await handleLinkedInPostJob(publishDeps, typed);
           return undefined;
         }
         case "twitter-post": {
-          resolvedPublishDeps ??= buildDefaultPublishDeps();
+          const publishDeps = await buildPublishDeps();
           const typed: TwitterPostJobLike = {
             name: job.name,
             id: job.id,
             data: job.data as { runId?: string },
           };
-          await handleTwitterPostJob(resolvedPublishDeps, typed);
+          await handleTwitterPostJob(publishDeps, typed);
           return undefined;
         }
         case "social-health": {
@@ -309,11 +325,12 @@ function warnInvalidTwitterConfig(
   );
 }
 
-export function buildDefaultPublishDeps(): PublishDeps {
+export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
   const db = getDb();
   const archiveRepo = createRunArchivesRepo(db);
   const rawItemsRepo = createRawItemsRepo(db);
   const socialTokensRepo = getSharedSocialTokensRepo();
+  const socialCredentialsRepo = getSharedSocialCredentialsRepo();
   const slackNotifier = createSlackNotifier({
     webhookUrl: process.env.SLACK_WEBHOOK_URL,
     archives: archiveRepo,
@@ -330,19 +347,22 @@ export function buildDefaultPublishDeps(): PublishDeps {
 
   const publicArchiveBaseUrl =
     process.env.PUBLIC_BASE_URL ?? process.env.NEWSLETTER_BASE_URL ?? "";
-  const linkedinClientId = process.env.LINKEDIN_CLIENT_ID;
-  const linkedinClientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+
+  const linkedinCreds = await resolveLinkedInCredentials({
+    repo: socialCredentialsRepo,
+    env: process.env,
+  });
   const linkedinNotifier =
-    linkedinClientId && linkedinClientSecret
+    linkedinCreds !== null
       ? createLinkedInNotifier({
           apiClient: createLinkedInApiClient(),
           archives: archiveRepo,
           rawItems: rawItemsRepo,
           tokens: socialTokensRepo,
           config: {
-            clientId: linkedinClientId,
-            clientSecret: linkedinClientSecret,
-            apiVersion: process.env.LINKEDIN_API_VERSION ?? "202511",
+            clientId: linkedinCreds.clientId,
+            clientSecret: linkedinCreds.clientSecret,
+            apiVersion: linkedinCreds.apiVersion,
             publicArchiveBaseUrl,
           },
           logger: createLogger("social.linkedin"),
@@ -350,14 +370,31 @@ export function buildDefaultPublishDeps(): PublishDeps {
       : null;
 
   const twitterLogger = createLogger("social.twitter");
-  const twitterOAuth1 = readTwitterOAuth1Config();
-  if (twitterOAuth1.status === "partial") {
-    warnInvalidTwitterConfig(twitterLogger, twitterOAuth1.missing);
+  const twitterCreds = await resolveTwitterOAuth1Credentials({
+    repo: socialCredentialsRepo,
+    env: process.env,
+  });
+  // Preserve the "partial env config" warning behavior when DB is empty:
+  // the resolver returns null on partial env, but operators expect a hint
+  // about which keys are missing. Only emit the warning when there's no DB row.
+  if (twitterCreds === null) {
+    const dbRow = await socialCredentialsRepo.getTwitter();
+    if (dbRow === null) {
+      const envConfig = readTwitterOAuth1Config();
+      if (envConfig.status === "partial") {
+        warnInvalidTwitterConfig(twitterLogger, envConfig.missing);
+      }
+    }
   }
   const twitterNotifier =
-    twitterOAuth1.status === "configured"
+    twitterCreds !== null
       ? createTwitterNotifier({
-          apiClient: createTwitterApiClient(twitterOAuth1.credentials),
+          apiClient: createTwitterApiClient({
+            appKey: twitterCreds.appKey,
+            appSecret: twitterCreds.appSecret,
+            accessToken: twitterCreds.accessToken,
+            accessSecret: twitterCreds.accessSecret,
+          }),
           archives: archiveRepo,
           rawItems: rawItemsRepo,
           config: {
@@ -408,6 +445,15 @@ let cachedSocialTokensRepo: SocialTokensRepo | undefined;
 function getSharedSocialTokensRepo(): SocialTokensRepo {
   cachedSocialTokensRepo ??= createSocialTokensRepo(getDb());
   return cachedSocialTokensRepo;
+}
+
+let cachedSocialCredentialsRepo: SocialCredentialsRepo | undefined;
+function getSharedSocialCredentialsRepo(): SocialCredentialsRepo {
+  cachedSocialCredentialsRepo ??= createSocialCredentialsRepo(
+    getDb(),
+    getCredentialCipher(),
+  );
+  return cachedSocialCredentialsRepo;
 }
 
 export type {
