@@ -294,6 +294,7 @@ export function RunsCardList({
           return (
             <li
               key={run.runId}
+              data-run-id={run.runId}
               className="rounded-md border border-stone-200 bg-white p-4 min-h-[44px]"
             >
               <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">

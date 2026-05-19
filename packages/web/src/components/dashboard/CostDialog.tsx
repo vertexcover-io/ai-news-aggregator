@@ -1,11 +1,11 @@
 import type { ReactElement } from "react";
-import {
-  COST_TRACKING_LAUNCHED_AT,
-  type CostStage,
-  type ModelStageCost,
-  type RunCostBreakdown,
-  type RunSummary,
-  type StageCost,
+import { COST_TRACKING_LAUNCHED_AT } from "@newsletter/shared/constants";
+import type {
+  CostStage,
+  ModelStageCost,
+  RunCostBreakdown,
+  RunSummary,
+  StageCost,
 } from "@newsletter/shared";
 import { Button } from "@/components/ui/button";
 import {

@@ -352,7 +352,7 @@ export function RunsTable({
               const derived = deriveStatus(run);
               const { date, time } = formatStartedAt(run.startedAt);
               return (
-                <TableRow key={run.runId}>
+                <TableRow key={run.runId} data-run-id={run.runId}>
                   <TableCell className="px-6 py-4 align-middle">
                     <div className="font-medium">{date}</div>
                     <div className="text-xs text-muted-foreground">{time}</div>
