@@ -21,6 +21,7 @@ const summary: RunSummary = {
   itemCount: 12,
   reviewed: false,
   isDryRun: false,
+  costBreakdown: null,
 };
 
 describe("listRuns", () => {

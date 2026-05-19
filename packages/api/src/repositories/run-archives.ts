@@ -9,6 +9,7 @@ import {
   type NotificationState,
   type PoolItem,
   type RankedItemRef,
+  type RunCostBreakdown,
   type RunSourceTelemetry,
   type SocialMetadata,
 } from "@newsletter/shared";
@@ -40,6 +41,7 @@ export interface RunArchiveRow {
   twitterPostedAt: Date | null;
   notificationState: NotificationState | null;
   isDryRun: boolean;
+  costBreakdown: RunCostBreakdown | null;
 }
 
 export interface FindPoolItemsOpts {
@@ -159,6 +161,7 @@ export function createRunArchivesRepo(
           twitterPostedAt: runArchives.twitterPostedAt,
           notificationState: runArchives.notificationState,
           isDryRun: runArchives.isDryRun,
+          costBreakdown: runArchives.costBreakdown,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
@@ -374,6 +377,7 @@ export function createRunArchivesRepo(
           twitterPostedAt: runArchives.twitterPostedAt,
           notificationState: runArchives.notificationState,
           isDryRun: runArchives.isDryRun,
+          costBreakdown: runArchives.costBreakdown,
         })
         .from(runArchives)
         .orderBy(desc(runArchives.completedAt))
@@ -419,6 +423,7 @@ export function createRunArchivesRepo(
           twitterPostedAt: runArchives.twitterPostedAt,
           notificationState: runArchives.notificationState,
           isDryRun: runArchives.isDryRun,
+          costBreakdown: runArchives.costBreakdown,
         });
       return row;
     },

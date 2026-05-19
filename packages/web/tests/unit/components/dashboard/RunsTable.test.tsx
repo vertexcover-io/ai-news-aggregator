@@ -17,6 +17,7 @@ function makeRun(overrides: Partial<RunSummary>): RunSummary {
     itemCount: 10,
     reviewed: false,
     isDryRun: false,
+    costBreakdown: null,
     ...overrides,
   };
 }

@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import type IORedis from "ioredis";
 import { Hono } from "hono";
 import type { Queue, JobsOptions } from "bullmq";
-import type { RunState } from "@newsletter/shared";
+import type { RunCostBreakdown, RunState } from "@newsletter/shared";
 import { listRuns } from "@api/services/run-list.js";
 import { createRunsRouter } from "@api/routes/runs.js";
 import type {
@@ -220,6 +220,88 @@ describe("listRuns", () => {
       archiveRepo: makeArchiveRepo([]),
     });
     expect(result).toHaveLength(3);
+  });
+
+  it("REQ-051: surfaces costBreakdown from archive rows (non-null + null)", async () => {
+    const sampleBreakdown: RunCostBreakdown = {
+      schemaVersion: 1,
+      totalCostUsd: 0.42,
+      stages: {
+        rank: {
+          calls: 1,
+          costUsd: 0.42,
+          costStatus: "ok",
+          byModel: [
+            {
+              modelId: "claude-haiku-4-5-20251001",
+              calls: 1,
+              costUsd: 0.42,
+              inputTokens: 1000,
+              outputTokens: 200,
+              cachedInputTokens: 0,
+              cacheCreation5mTokens: 0,
+              cacheCreation1hTokens: 0,
+              reasoningTokens: 0,
+            },
+          ],
+        },
+      },
+      unknownModels: [],
+      generatedAt: "2026-05-19T00:00:00.000Z",
+    };
+    const archiveRows: RunArchiveRow[] = [
+      {
+        id: "with-cost",
+        status: "completed",
+        rankedItems: [],
+        topN: 10,
+        reviewed: true,
+        completedAt: new Date("2026-04-15T10:00:00.000Z"),
+        createdAt: new Date("2026-04-15T10:00:00.000Z"),
+        isDryRun: false,
+        costBreakdown: sampleBreakdown,
+      } as unknown as RunArchiveRow,
+      {
+        id: "pre-feature",
+        status: "completed",
+        rankedItems: [],
+        topN: 10,
+        reviewed: true,
+        completedAt: new Date("2026-04-14T10:00:00.000Z"),
+        createdAt: new Date("2026-04-14T10:00:00.000Z"),
+        isDryRun: false,
+        costBreakdown: null,
+      } as unknown as RunArchiveRow,
+    ];
+    const result = await listRuns(10, {
+      redis: makeRedis(new Map()) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo(archiveRows),
+    });
+    const withCost = result.find((r) => r.runId === "with-cost");
+    const preFeature = result.find((r) => r.runId === "pre-feature");
+    expect(withCost?.costBreakdown).toEqual(sampleBreakdown);
+    expect(preFeature).toBeDefined();
+    expect(preFeature?.costBreakdown).toBeNull();
+  });
+
+  it("REQ-051: redis-only running entries carry costBreakdown=null", async () => {
+    const redisEntries = new Map<string, RedisEntry>([
+      [
+        "run:live",
+        {
+          value: JSON.stringify(
+            runState({ id: "live", startedAt: "2026-04-16T10:00:00.000Z" }),
+          ),
+        },
+      ],
+    ]);
+    const result = await listRuns(10, {
+      redis: makeRedis(redisEntries) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo([]),
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].runId).toBe("live");
+    expect(result[0].costBreakdown).toBeNull();
   });
 });
 
