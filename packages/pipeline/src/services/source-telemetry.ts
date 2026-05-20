@@ -4,7 +4,7 @@ import type {
   SourceTelemetryEntry,
 } from "@newsletter/shared";
 
-export type CollectorSourceType = "hn" | "reddit" | "blog" | "twitter";
+export type CollectorSourceType = "hn" | "reddit" | "blog" | "twitter" | "web_search";
 
 export interface CollectorOutcome {
   sourceType: CollectorSourceType;
@@ -18,6 +18,7 @@ const FALLBACK_DISPLAY_NAMES: Record<CollectorSourceType, string> = {
   reddit: "Reddit",
   blog: "Web sources",
   twitter: "Twitter",
+  web_search: "Web search",
 };
 
 function deriveStatus(outcome: CollectorOutcome): SourceTelemetryEntry["status"] {

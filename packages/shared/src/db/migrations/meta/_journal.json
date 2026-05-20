@@ -176,6 +176,13 @@
       "when": 1779180604402,
       "tag": "0024_dark_absorbing_man",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1779269475792,
+      "tag": "0025_good_psylocke",
+      "breakpoints": true
     }
   ]
 }

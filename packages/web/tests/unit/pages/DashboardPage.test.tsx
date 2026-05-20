@@ -47,6 +47,8 @@ const settings: UserSettings = {
   webConfig: null,
   twitterEnabled: false,
   twitterConfig: null,
+  webSearchEnabled: false,
+  webSearchConfig: null,
   posthogEnabled: false,
   posthogProjectToken: null,
   posthogHost: null,

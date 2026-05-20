@@ -56,6 +56,10 @@ export interface RawItemMetadata {
   addedInReview?: boolean;
   enrichedLink?: EnrichedLinkContent;
   quotedTweet?: QuotedTweetMetadata;
+  // web-search collector fields
+  provider?: string;
+  query?: string;
+  rawScore?: number;
 }
 
 export interface SourceUnitResult {

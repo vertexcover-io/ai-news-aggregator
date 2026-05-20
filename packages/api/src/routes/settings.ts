@@ -181,6 +181,8 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       webConfig: parsed.data.webConfig,
       twitterEnabled: parsed.data.twitterEnabled,
       twitterConfig: resolvedTwitterConfig,
+      webSearchEnabled: parsed.data.webSearchEnabled,
+      webSearchConfig: parsed.data.webSearchConfig,
       posthogEnabled: parsed.data.posthogEnabled,
       posthogProjectToken: parsed.data.posthogProjectToken,
       posthogHost: parsed.data.posthogHost,
