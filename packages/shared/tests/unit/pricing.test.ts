@@ -2,10 +2,24 @@ import { describe, expect, it } from "vitest";
 import { MODEL_PRICING, type ModelPricing } from "@shared/pricing.js";
 
 describe("MODEL_PRICING (REQ-001)", () => {
-  it("contains exactly the two verified model ids", () => {
+  it("contains the verified model ids", () => {
     expect(Object.keys(MODEL_PRICING).sort()).toEqual(
-      ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"].sort(),
+      [
+        "claude-haiku-4-5-20251001",
+        "claude-sonnet-4-5-20250929",
+        "claude-sonnet-4-6",
+      ].sort(),
     );
+  });
+
+  it("sonnet 4.5 rates match published values", () => {
+    expect(MODEL_PRICING["claude-sonnet-4-5-20250929"]).toEqual({
+      inputPerMTok: 3.0,
+      outputPerMTok: 15.0,
+      cacheReadPerMTok: 0.3,
+      cacheWrite5mPerMTok: 3.75,
+      cacheWrite1hPerMTok: 6.0,
+    });
   });
 
   it("haiku rates match library-probe verified values", () => {

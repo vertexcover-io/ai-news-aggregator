@@ -14,6 +14,13 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     cacheWrite5mPerMTok: 1.25,
     cacheWrite1hPerMTok: 2.0,
   },
+  "claude-sonnet-4-5-20250929": {
+    inputPerMTok: 3.0,
+    outputPerMTok: 15.0,
+    cacheReadPerMTok: 0.3,
+    cacheWrite5mPerMTok: 3.75,
+    cacheWrite1hPerMTok: 6.0,
+  },
   "claude-sonnet-4-6": {
     inputPerMTok: 3.0,
     outputPerMTok: 15.0,
