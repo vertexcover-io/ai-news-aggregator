@@ -112,6 +112,7 @@ jobs:
           RANKING_MODEL: ${{ secrets.RANKING_MODEL }}
           WEB_CRAWLER_CONCURRENCY: ${{ secrets.WEB_CRAWLER_CONCURRENCY }}
           RETTIWT_API_KEY: ${{ secrets.RETTIWT_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           API_PORT: ${{ secrets.API_PORT }}
           PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL }}
           NEWSLETTER_BASE_URL: ${{ secrets.NEWSLETTER_BASE_URL }}
@@ -150,6 +151,7 @@ jobs:
               "JINA_API_KEY",
               "RANKING_MODEL",
               "RETTIWT_API_KEY",
+              "TAVILY_API_KEY",
               "API_PORT",
               "PUBLIC_BASE_URL",
               "NEWSLETTER_BASE_URL",
