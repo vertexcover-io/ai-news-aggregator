@@ -1,7 +1,7 @@
 # improve-summary-our-opinion
 
 **Verdict:** PASS — [verification/proof-report.md](verification/proof-report.md)
-**PR:** _(filled in after push)_
+**PR:** https://github.com/vertexcover-io/ai-news-aggregator/pull/170
 
 ## Summary
 
