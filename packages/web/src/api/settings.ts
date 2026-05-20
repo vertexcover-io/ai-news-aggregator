@@ -1,4 +1,4 @@
-import type { UserSettings } from "@newsletter/shared";
+import type { UserSettings } from "@newsletter/shared/types";
 import { apiFetchAdmin } from "./client";
 import type { SettingsSubmitInput } from "../pages/settingsSchema";
 

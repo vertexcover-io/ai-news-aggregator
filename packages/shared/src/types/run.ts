@@ -71,6 +71,7 @@ export interface RunState {
     reddit?: SourceRunState;
     blog?: SourceRunState;
     twitter?: SourceRunState;
+    web_search?: SourceRunState;
   };
   rankedItems: RankedItemRef[] | null;
   warnings: string[];
@@ -109,6 +110,19 @@ export interface RunSubmitWebConfig {
   sinceDays?: number;
 }
 
+export type WebSearchProviderName = "tavily";
+
+export interface WebSearchQueryConfig {
+  query: string;
+  sinceDays: number;
+  maxItems: number;
+}
+
+export interface RunSubmitWebSearchConfig {
+  provider: WebSearchProviderName;
+  queries: WebSearchQueryConfig[];
+}
+
 export interface RunSubmitTwitterUser {
   handle: string;
   userId: string;
@@ -126,6 +140,7 @@ export interface RunCollectorsPayload {
   reddit?: RunSubmitRedditConfig;
   web?: RunSubmitWebConfig;
   twitter?: RunSubmitTwitterConfig;
+  webSearch?: RunSubmitWebSearchConfig;
 }
 
 export interface RunSubmitPayload {
@@ -134,6 +149,7 @@ export interface RunSubmitPayload {
   reddit?: RunSubmitRedditConfig;
   web?: RunSubmitWebConfig;
   twitter?: RunSubmitTwitterConfig;
+  webSearch?: RunSubmitWebSearchConfig;
 }
 
 export interface AddPostPayload {
@@ -157,7 +173,7 @@ export interface PoolResponse {
 }
 
 export interface SourceTelemetryEntry {
-  sourceType: "hn" | "reddit" | "blog" | "twitter";
+  sourceType: "hn" | "reddit" | "blog" | "twitter" | "web_search";
   identifier: string;
   displayName: string;
   itemsFetched: number;

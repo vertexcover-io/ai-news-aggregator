@@ -56,6 +56,10 @@ export interface RawItemMetadata {
   addedInReview?: boolean;
   enrichedLink?: EnrichedLinkContent;
   quotedTweet?: QuotedTweetMetadata;
+  provider?: string;
+  query?: string;
+  rawScore?: number;
+  providerMetadata?: Record<string, unknown>;
 }
 
 export interface SourceUnitResult {
@@ -129,4 +133,5 @@ export * from "./run.js";
 export * from "./archive.js";
 export * from "./notifications.js";
 export * from "./cost-breakdown.js";
+export * from "./settings.js";
 export type { Candidate } from "./candidate.js";

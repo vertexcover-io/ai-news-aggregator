@@ -105,8 +105,14 @@ interface JobLike {
   data: {
     runId: string;
     topN: number;
-    sourceTypes: ("hn" | "reddit" | "blog" | "twitter")[];
-    collectors: { hn?: unknown; reddit?: unknown; web?: unknown; twitter?: unknown };
+    sourceTypes: ("hn" | "reddit" | "blog" | "twitter" | "web_search")[];
+    collectors: {
+      hn?: unknown;
+      reddit?: unknown;
+      web?: unknown;
+      twitter?: unknown;
+      webSearch?: unknown;
+    };
     halfLifeHours?: number;
   };
 }
@@ -2251,5 +2257,137 @@ describe("run-process dry-run flag (Phase 2)", () => {
     expect(archiveUpsert).toHaveBeenCalledOnce();
     const arg = archiveUpsert.mock.calls[0]?.[0] as { isDryRun: boolean };
     expect(arg.isDryRun).toBe(false);
+  });
+
+  // REQ-008 / REQ-010: web-search collector wiring
+  it("REQ-008: invokes web-search collector when webSearch payload + provider are present", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const webSearch = vi.fn(
+      (): Promise<CollectorResult> =>
+        Promise.resolve({
+          itemsFetched: 0,
+          commentsFetched: 0,
+          itemsStored: 0,
+          durationMs: 1,
+          unitResults: [],
+        }),
+    );
+    const provider = {
+      name: "tavily",
+      search: vi.fn(() => Promise.resolve([])),
+    };
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+      collectFns: {
+        hn: vi.fn(),
+        reddit: vi.fn(),
+        web: vi.fn(),
+        twitter: vi.fn(),
+        webSearch,
+      },
+      webSearchProvider: provider,
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["web_search"],
+        collectors: {
+          webSearch: {
+            provider: "tavily",
+            queries: [{ query: "ai", sinceDays: 1, maxItems: 5 }],
+          },
+        },
+      } as unknown as JobLike["data"],
+    });
+
+    expect(webSearch).toHaveBeenCalledOnce();
+  });
+
+  it("REQ-010: skips web-search task and logs warning when provider is undefined", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const webSearch = vi.fn();
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+      collectFns: {
+        hn: vi.fn(),
+        reddit: vi.fn(),
+        web: vi.fn(),
+        twitter: vi.fn(),
+        webSearch,
+      },
+      // no webSearchProvider
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["web_search"],
+        collectors: {
+          webSearch: {
+            provider: "tavily",
+            queries: [{ query: "ai", sinceDays: 1, maxItems: 5 }],
+          },
+        },
+      } as unknown as JobLike["data"],
+    });
+
+    expect(webSearch).not.toHaveBeenCalled();
+    const skippedLog = mockLoggerWarn.mock.calls.find(
+      (c) =>
+        (c[0] as { event?: string }).event === "collector.web_search.skipped",
+    );
+    expect(skippedLog).toBeDefined();
+    // Critical defect from review pass-1: the source must be transitioned
+    // out of "pending" so the UI doesn't show it as still-collecting forever.
+    const updateCall = runStateMock.service.updateSource.mock.calls.find(
+      (c) => c[1] === "web_search",
+    );
+    expect(updateCall).toBeDefined();
+    expect(updateCall?.[2]).toMatchObject({ status: "failed" });
+  });
+
+  it("does not push web-search task when webSearch payload is absent", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const webSearch = vi.fn();
+    const provider = { name: "tavily", search: vi.fn() };
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+      collectFns: {
+        hn: vi.fn(() =>
+          Promise.resolve({
+            itemsFetched: 0,
+            commentsFetched: 0,
+            itemsStored: 0,
+            durationMs: 1,
+            unitResults: [],
+          }),
+        ),
+        reddit: vi.fn(),
+        web: vi.fn(),
+        twitter: vi.fn(),
+        webSearch,
+      },
+      webSearchProvider: provider,
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["hn"],
+        collectors: { hn: { sinceDays: 1 } as unknown as HnCollectConfig },
+      },
+    });
+
+    expect(webSearch).not.toHaveBeenCalled();
   });
 });

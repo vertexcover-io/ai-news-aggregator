@@ -97,7 +97,8 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       (settings.hnEnabled && settings.hnConfig !== null) ||
       (settings.redditEnabled && settings.redditConfig !== null) ||
       (settings.webEnabled && settings.webConfig !== null) ||
-      (settings.twitterEnabled && settings.twitterConfig !== null);
+      (settings.twitterEnabled && settings.twitterConfig !== null) ||
+      (settings.webSearchEnabled && settings.webSearchConfig !== null);
     if (!anySource) {
       return c.json({ error: "no sources enabled" }, 409);
     }

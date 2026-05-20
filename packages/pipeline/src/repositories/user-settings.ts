@@ -29,6 +29,8 @@ export function createUserSettingsRepo(
         redditConfig: row.redditConfig,
         webEnabled: row.webEnabled,
         webConfig: row.webConfig,
+        webSearchEnabled: row.webSearchEnabled,
+        webSearchConfig: row.webSearchConfig ?? null,
         twitterEnabled: row.twitterEnabled,
         twitterConfig: row.twitterConfig,
         posthogEnabled: row.posthogEnabled,

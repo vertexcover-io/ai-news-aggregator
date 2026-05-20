@@ -33,6 +33,8 @@ function TestWrapper({
       redditConfig: null,
       webEnabled: false,
       webConfig: null,
+      webSearchEnabled: false,
+      webSearchConfig: null,
       twitterEnabled: initialTwitter !== null,
       twitterConfig: initialTwitter,
       posthogEnabled: false,
@@ -59,14 +61,9 @@ function TestWrapper({
 }
 
 function openTwitterEditPanel(): void {
-  const editBtns = screen.getAllByRole("button", { name: /edit/i });
-  // Twitter is the 4th source row; HN/Reddit/Web disabled because null.
-  const enabledBtns = editBtns.filter(
-    (btn) => !(btn as HTMLButtonElement).disabled,
+  fireEvent.click(
+    screen.getByRole("button", { name: /twitter \/ x edit/i }),
   );
-  if (enabledBtns.length === 0) throw new Error("No enabled Edit button found");
-  // The Twitter row is the only enabled one in this wrapper.
-  fireEvent.click(enabledBtns[enabledBtns.length - 1]);
 }
 
 afterEach(() => {
@@ -202,6 +199,8 @@ describe("API error surfacing", () => {
         redditConfig: null,
         webEnabled: false,
         webConfig: null,
+        webSearchEnabled: false,
+        webSearchConfig: null,
         twitterEnabled: true,
         twitterConfig: { listIds: [], users: [{ handle: "doesnotexist" }] },
         posthogEnabled: false,
@@ -249,6 +248,8 @@ describe("API error surfacing", () => {
         redditConfig: null,
         webEnabled: false,
         webConfig: null,
+        webSearchEnabled: false,
+        webSearchConfig: null,
         twitterEnabled: true,
         twitterConfig: { listIds: [], users: [{ handle: "jack" }] },
         posthogEnabled: false,

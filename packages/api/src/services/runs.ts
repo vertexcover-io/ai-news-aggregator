@@ -40,6 +40,8 @@ export async function createRun(
     redditConfig: payload.reddit ?? null,
     webEnabled: payload.web !== undefined,
     webConfig: payload.web ?? null,
+    webSearchEnabled: payload.webSearch !== undefined,
+    webSearchConfig: payload.webSearch ?? null,
     twitterEnabled: payload.twitter !== undefined,
     twitterConfig: payload.twitter ?? null,
     posthogEnabled: false,

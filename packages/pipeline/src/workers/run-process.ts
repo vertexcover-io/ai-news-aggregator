@@ -33,6 +33,8 @@ import { collectHn } from "@pipeline/collectors/hn.js";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
 import { collectTwitter } from "@pipeline/collectors/twitter/index.js";
+import { collectWebSearch } from "@pipeline/collectors/web-search/index.js";
+import type { WebSearchProvider } from "@pipeline/collectors/web-search/providers/types.js";
 import { createRettiwtClient } from "@pipeline/collectors/twitter/clients/rettiwt.js";
 import type { TwitterClient } from "@pipeline/collectors/twitter/types.js";
 import { Rettiwt } from "rettiwt-api";
@@ -48,6 +50,7 @@ import type {
   TwitterCollectConfig,
   WebCollectConfig,
 } from "@pipeline/types.js";
+import type { RunSubmitWebSearchConfig } from "@newsletter/shared/types";
 import type { CollectorResult } from "@newsletter/shared";
 import { CancelledError } from "@pipeline/lib/cancelled-error.js";
 import {
@@ -150,6 +153,7 @@ export interface RunCollectorsPayload {
   reddit?: RedditCollectConfig;
   web?: WebCollectConfig;
   twitter?: TwitterCollectConfig;
+  webSearch?: RunSubmitWebSearchConfig;
 }
 
 export interface RunProcessJobData {
@@ -218,11 +222,22 @@ export type TwitterCollectFn = (
   config: TwitterCollectConfig,
 ) => Promise<CollectorResult>;
 
+export type WebSearchCollectFn = (
+  deps: {
+    rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
+    provider: WebSearchProvider;
+    signal?: AbortSignal;
+    enrichment?: EnrichmentContext;
+  },
+  config: RunSubmitWebSearchConfig,
+) => Promise<CollectorResult>;
+
 export interface CollectFns {
   hn: HnCollectFn;
   reddit: RedditCollectFn;
   web: WebCollectFn;
   twitter: TwitterCollectFn;
+  webSearch: WebSearchCollectFn;
 }
 
 export interface RunProcessDeps {
@@ -237,6 +252,7 @@ export interface RunProcessDeps {
   userSettingsRepo?: UserSettingsRepo;
   cancelSubscriber: CancelSubscriberFactory;
   twitterClient: TwitterClient;
+  webSearchProvider?: WebSearchProvider;
   slackNotifier?: SlackNotifier;
 }
 
@@ -314,6 +330,42 @@ async function runCollecting(
           config,
         ),
     });
+  }
+  if (collectors.webSearch) {
+    const provider = deps.webSearchProvider;
+    if (provider === undefined) {
+      logger.warn(
+        {
+          event: "collector.web_search.skipped",
+          runId,
+          reason: "no provider configured",
+        },
+        "web-search source enabled but no provider configured — skipping",
+      );
+      // startRun() seeded sources.web_search = "pending"; transition it to
+      // failed so the UI doesn't show the source as still-collecting forever.
+      await writeSerial(() =>
+        deps.runState.updateSource(runId, "web_search", {
+          status: "failed",
+          errors: ["TAVILY_API_KEY not configured"],
+        }),
+      );
+    } else {
+      const config = collectors.webSearch;
+      tasks.push({
+        sourceKey: "web_search",
+        run: () =>
+          deps.collectFns.webSearch(
+            {
+              rawItemsRepo: deps.rawItemsRepo,
+              provider,
+              signal,
+              enrichment: enrichmentCtx,
+            },
+            config,
+          ),
+      });
+    }
   }
 
   const errors: string[] = [];
@@ -816,6 +868,7 @@ export interface CreateRunProcessWorkerOptions {
   userSettingsRepo?: UserSettingsRepo;
   cancelSubscriber?: CancelSubscriberFactory;
   twitterClient?: TwitterClient;
+  webSearchProvider?: WebSearchProvider;
   slackNotifier?: SlackNotifier;
 }
 
@@ -841,6 +894,7 @@ export function createRunProcessWorker(
     reddit: options.collectFns?.reddit ?? collectReddit,
     web: options.collectFns?.web ?? collectWeb,
     twitter: options.collectFns?.twitter ?? collectTwitter,
+    webSearch: options.collectFns?.webSearch ?? collectWebSearch,
   };
 
   // Rettiwt accepts an undefined apiKey (guest mode); the collector itself
@@ -871,6 +925,7 @@ export function createRunProcessWorker(
     userSettingsRepo,
     cancelSubscriber,
     twitterClient,
+    webSearchProvider: options.webSearchProvider,
     slackNotifier: options.slackNotifier,
   };
 

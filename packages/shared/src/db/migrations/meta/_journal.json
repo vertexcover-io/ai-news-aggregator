@@ -176,6 +176,13 @@
       "when": 1779180604402,
       "tag": "0024_dark_absorbing_man",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1779257255727,
+      "tag": "0025_futuristic_mariko_yashida",
+      "breakpoints": true
     }
   ]
 }

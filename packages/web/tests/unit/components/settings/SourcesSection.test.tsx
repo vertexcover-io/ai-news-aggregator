@@ -2,22 +2,30 @@ import { describe, expect, it, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import type { ReactElement } from "react";
-import { SourcesSection } from "../../../../src/components/settings/SourcesSection";
+import {
+  SourcesSection,
+  summarizeWebSearch,
+} from "../../../../src/components/settings/SourcesSection";
 import {
   normalizeSettingsForSubmit,
   type SettingsSubmitInput,
   type SettingsFormValues,
 } from "../../../../src/pages/settingsSchema";
+import type { RunSubmitWebSearchConfig } from "@newsletter/shared/types";
 
 interface WrapperProps {
   initialSources?: { name: string; listingUrl: string }[];
   webEnabled?: boolean;
+  webSearchEnabled?: boolean;
+  webSearchConfig?: RunSubmitWebSearchConfig | null;
   onSubmit?: (input: SettingsSubmitInput) => void;
 }
 
 function TestWrapper({
   initialSources = [],
   webEnabled = true,
+  webSearchEnabled = false,
+  webSearchConfig = null,
   onSubmit,
 }: WrapperProps): ReactElement {
   const { control, register, handleSubmit, setValue } = useForm<SettingsFormValues>({
@@ -34,6 +42,8 @@ function TestWrapper({
         maxItems: 10,
         sinceDays: 7,
       },
+      webSearchEnabled,
+      webSearchConfig,
       twitterEnabled: false,
       twitterConfig: null,
       posthogEnabled: false,
@@ -217,5 +227,66 @@ describe("WebEditPanel — per-source Name+URL row inputs", () => {
     openWebEditPanel();
 
     expect(screen.getByDisplayValue("Anthropic")).toBeTruthy();
+  });
+});
+
+describe("summarizeWebSearch", () => {
+  it("returns Disabled for null", () => {
+    expect(summarizeWebSearch(null)).toBe("Disabled");
+  });
+
+  it("returns Disabled when queries is empty", () => {
+    expect(summarizeWebSearch({ provider: "tavily", queries: [] })).toBe(
+      "Disabled",
+    );
+  });
+
+  it("describes the configured queries", () => {
+    expect(
+      summarizeWebSearch({
+        provider: "tavily",
+        queries: [{ query: "agentic AI", sinceDays: 7, maxItems: 10 }],
+      }),
+    ).toBe("1 query · tavily · last 7 days");
+  });
+
+  it("uses the max sinceDays across queries", () => {
+    expect(
+      summarizeWebSearch({
+        provider: "tavily",
+        queries: [
+          { query: "a", sinceDays: 3, maxItems: 5 },
+          { query: "b", sinceDays: 14, maxItems: 5 },
+        ],
+      }),
+    ).toBe("2 queries · tavily · last 14 days");
+  });
+});
+
+describe("Web Search card", () => {
+  function openWebSearchPanel(): void {
+    fireEvent.click(
+      screen.getByRole("button", { name: /web search edit/i }),
+    );
+  }
+
+  it("renders the configured query in an input when enabled", () => {
+    render(
+      <TestWrapper
+        webSearchEnabled
+        webSearchConfig={{
+          provider: "tavily",
+          queries: [{ query: "agentic AI", sinceDays: 7, maxItems: 10 }],
+        }}
+      />,
+    );
+    openWebSearchPanel();
+    expect(screen.getByDisplayValue("agentic AI")).toBeTruthy();
+  });
+
+  it("shows Disabled summary when webSearch is disabled with null config", () => {
+    render(<TestWrapper webSearchEnabled={false} webSearchConfig={null} />);
+    const card = screen.getByTestId("web-search-card");
+    expect(card.textContent).toContain("Disabled");
   });
 });

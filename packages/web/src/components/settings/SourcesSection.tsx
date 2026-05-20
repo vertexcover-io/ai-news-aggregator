@@ -28,7 +28,8 @@ import type {
   RunSubmitHnConfig,
   RunSubmitRedditConfig,
   RunSubmitWebConfig,
-} from "@newsletter/shared";
+  RunSubmitWebSearchConfig,
+} from "@newsletter/shared/types";
 
 const DEFAULT_HN: RunSubmitHnConfig = {
   keywords: ["ai", "llm", "agents"],
@@ -52,6 +53,11 @@ const DEFAULT_WEB: RunSubmitWebConfig = {
   ],
   maxItems: 10,
   sinceDays: 7,
+};
+
+const DEFAULT_WEB_SEARCH: RunSubmitWebSearchConfig = {
+  provider: "tavily",
+  queries: [{ query: "agentic AI", sinceDays: 7, maxItems: 10 }],
 };
 
 interface SourcesSectionProps {
@@ -111,6 +117,18 @@ function summarizeWeb(c: RunSubmitWebConfig | null): string {
   return `${String(c.sources.length)} blog${c.sources.length === 1 ? "" : "s"} configured: ${names}`;
 }
 
+export function summarizeWebSearch(
+  c: RunSubmitWebSearchConfig | null,
+): string {
+  if (!c || c.queries.length === 0) return "Disabled";
+  const n = c.queries.length;
+  const maxSince = c.queries.reduce(
+    (acc, q) => Math.max(acc, q.sinceDays),
+    0,
+  );
+  return `${String(n)} quer${n === 1 ? "y" : "ies"} · ${c.provider} · last ${String(maxSince)} day${maxSince === 1 ? "" : "s"}`;
+}
+
 function summarizeSource(enabled: boolean, configSummary: string): string {
   if (enabled) return configSummary;
   return configSummary === "Disabled" ? "Disabled" : `Disabled · ${configSummary}`;
@@ -122,7 +140,7 @@ export function SourcesSection({
   setValue,
 }: SourcesSectionProps): ReactElement {
   const [expandedSource, setExpandedSource] = useState<
-    "hn" | "reddit" | "web" | "twitter" | null
+    "hn" | "reddit" | "web" | "twitter" | "webSearch" | null
   >(null);
 
   const hn = useWatch({ control, name: "hnConfig" });
@@ -133,8 +151,10 @@ export function SourcesSection({
   const webEnabled = useWatch({ control, name: "webEnabled" });
   const twitter = useWatch({ control, name: "twitterConfig" });
   const twitterEnabled = useWatch({ control, name: "twitterEnabled" });
+  const webSearch = useWatch({ control, name: "webSearchConfig" });
+  const webSearchEnabled = useWatch({ control, name: "webSearchEnabled" });
 
-  function toggleExpand(source: "hn" | "reddit" | "web" | "twitter"): void {
+  function toggleExpand(source: "hn" | "reddit" | "web" | "twitter" | "webSearch"): void {
     setExpandedSource((prev) => (prev === source ? null : source));
   }
 
@@ -299,6 +319,47 @@ export function SourcesSection({
             )}
           />
         </SourceRow>
+        <div data-testid="web-search-card">
+          <SourceRow
+            label="Web Search"
+            summary={summarizeSource(
+              webSearchEnabled,
+              summarizeWebSearch(webSearch),
+            )}
+            editable={webSearch !== null}
+            expanded={expandedSource === "webSearch"}
+            onEdit={() => {
+              if (webSearch === null) {
+                setValue("webSearchConfig", DEFAULT_WEB_SEARCH, {
+                  shouldDirty: true,
+                  shouldTouch: true,
+                });
+              }
+              toggleExpand("webSearch");
+            }}
+            editPanel={<WebSearchEditPanel control={control} />}
+          >
+            <Controller
+              control={control}
+              name="webSearchEnabled"
+              render={({ field }) => (
+                <Switch
+                  aria-label="Web Search"
+                  checked={field.value}
+                  onCheckedChange={(checked) => {
+                    if (checked && webSearch === null) {
+                      setValue("webSearchConfig", DEFAULT_WEB_SEARCH, {
+                        shouldDirty: true,
+                        shouldTouch: true,
+                      });
+                    }
+                    field.onChange(checked);
+                  }}
+                />
+              )}
+            />
+          </SourceRow>
+        </div>
       </CardContent>
     </Card>
   );
@@ -894,6 +955,105 @@ function TwitterEditPanel({
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+function WebSearchEditPanel({
+  control,
+}: {
+  control: Control<SettingsFormValues>;
+}): ReactElement {
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "webSearchConfig.queries",
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="text-xs text-muted-foreground">
+        Provider: <span className="font-mono">tavily</span>
+      </div>
+      <div className="grid grid-cols-[1fr_90px_90px_auto] gap-2 px-1 text-xs text-muted-foreground">
+        <span>Query</span>
+        <span>Since (d)</span>
+        <span>Max</span>
+        <span />
+      </div>
+      <div className="space-y-2">
+        {fields.map((row, idx) => (
+          <div
+            key={row.id}
+            className="grid grid-cols-[1fr_90px_90px_auto] items-center gap-2"
+          >
+            <Controller
+              control={control}
+              name={`webSearchConfig.queries.${String(idx)}.query` as `webSearchConfig.queries.${number}.query`}
+              render={({ field }) => (
+                <Input
+                  placeholder="agentic AI"
+                  aria-label={`Web search query ${String(idx + 1)}`}
+                  value={field.value}
+                  onChange={field.onChange}
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name={`webSearchConfig.queries.${String(idx)}.sinceDays` as `webSearchConfig.queries.${number}.sinceDays`}
+              render={({ field }) => (
+                <Input
+                  type="number"
+                  min={1}
+                  max={30}
+                  aria-label={`Web search since days ${String(idx + 1)}`}
+                  value={field.value}
+                  onChange={(e) => {
+                    field.onChange(Number(e.target.value));
+                  }}
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name={`webSearchConfig.queries.${String(idx)}.maxItems` as `webSearchConfig.queries.${number}.maxItems`}
+              render={({ field }) => (
+                <Input
+                  type="number"
+                  min={1}
+                  max={20}
+                  aria-label={`Web search max items ${String(idx + 1)}`}
+                  value={field.value}
+                  onChange={(e) => {
+                    field.onChange(Number(e.target.value));
+                  }}
+                />
+              )}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                remove(idx);
+              }}
+              aria-label={`Remove query ${String(idx + 1)}`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          append({ query: "", sinceDays: 7, maxItems: 10 });
+        }}
+      >
+        Add query
+      </Button>
     </div>
   );
 }

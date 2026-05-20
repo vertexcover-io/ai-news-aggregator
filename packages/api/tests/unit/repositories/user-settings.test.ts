@@ -13,6 +13,8 @@ interface StoredRow {
   redditConfig: unknown;
   webEnabled: boolean;
   webConfig: unknown;
+  webSearchEnabled: boolean;
+  webSearchConfig: unknown;
   twitterEnabled: boolean;
   twitterConfig: unknown;
   posthogEnabled: boolean;
@@ -58,6 +60,8 @@ function makeFakeDb(): { db: Pick<AppDb, "select" | "insert">; rows: StoredRow[]
                 redditConfig: v.redditConfig ?? null,
                 webEnabled: v.webEnabled ?? false,
                 webConfig: v.webConfig ?? null,
+                webSearchEnabled: v.webSearchEnabled ?? false,
+                webSearchConfig: v.webSearchConfig ?? null,
                 twitterEnabled: v.twitterEnabled ?? false,
                 twitterConfig: v.twitterConfig ?? null,
                 posthogEnabled: v.posthogEnabled ?? false,
@@ -99,6 +103,8 @@ const baseInput = {
   redditConfig: null,
   webEnabled: false,
   webConfig: null,
+  webSearchEnabled: false,
+  webSearchConfig: null as null | { provider: "tavily"; queries: { query: string; sinceDays: number; maxItems: number }[] },
   twitterEnabled: false,
   twitterConfig: null,
   posthogEnabled: false,
@@ -164,6 +170,43 @@ describe("UserSettingsRepo", () => {
     expect(saved.posthogHost).toBe("https://us.i.posthog.com");
     const got = await repo.get();
     expect(got?.posthogProjectToken).toBe("phc_project_token");
+  });
+
+  it("upsert() round-trips webSearchConfig through get()", async () => {
+    const { db } = makeFakeDb();
+    const repo = createUserSettingsRepo(db);
+    const webSearchConfig = {
+      provider: "tavily" as const,
+      queries: [
+        { query: "ai agents", sinceDays: 7, maxItems: 5 },
+        { query: "llm benchmarks", sinceDays: 14, maxItems: 10 },
+      ],
+    };
+    const saved = await repo.upsert({
+      ...baseInput,
+      webSearchEnabled: true,
+      webSearchConfig,
+    });
+    expect(saved.webSearchEnabled).toBe(true);
+    expect(saved.webSearchConfig).toEqual(webSearchConfig);
+    const got = await repo.get();
+    expect(got?.webSearchEnabled).toBe(true);
+    expect(got?.webSearchConfig).toEqual(webSearchConfig);
+  });
+
+  it("upsert() persists webSearchEnabled=false + null config", async () => {
+    const { db } = makeFakeDb();
+    const repo = createUserSettingsRepo(db);
+    const saved = await repo.upsert({
+      ...baseInput,
+      webSearchEnabled: false,
+      webSearchConfig: null,
+    });
+    expect(saved.webSearchEnabled).toBe(false);
+    expect(saved.webSearchConfig).toBeNull();
+    const got = await repo.get();
+    expect(got?.webSearchEnabled).toBe(false);
+    expect(got?.webSearchConfig).toBeNull();
   });
 
   it("upsert() twice keeps exactly one row (singleton)", async () => {

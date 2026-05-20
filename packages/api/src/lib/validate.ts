@@ -71,20 +71,35 @@ const webConfigSchema = z.object({
   sinceDays: z.number().int().min(1).optional(),
 });
 
+export const webSearchConfigInputSchema = z.object({
+  provider: z.literal("tavily"),
+  queries: z
+    .array(
+      z.object({
+        query: z.string().trim().min(1).max(400),
+        sinceDays: z.number().int().min(1).max(30),
+        maxItems: z.number().int().min(1).max(20),
+      }),
+    )
+    .max(25),
+});
+
 export const runSubmitSchema = z
   .object({
     topN: z.number().int().min(1).max(50),
     hn: hnConfigSchema.optional(),
     reddit: redditConfigSchema.optional(),
     web: webConfigSchema.optional(),
+    webSearch: webSearchConfigInputSchema.optional(),
     halfLifeHours: z.number().positive().optional(),
   })
   .refine(
     (payload) =>
       payload.hn !== undefined ||
       payload.reddit !== undefined ||
-      payload.web !== undefined,
-    { message: "at least one of hn, reddit, web is required" },
+      payload.web !== undefined ||
+      payload.webSearch !== undefined,
+    { message: "at least one of hn, reddit, web, webSearch is required" },
   );
 
 export type RunSubmitBody = z.infer<typeof runSubmitSchema>;
@@ -128,6 +143,8 @@ const userSettingsCommonShape = {
   redditConfig: redditConfigSchema.nullable(),
   webEnabled: z.boolean(),
   webConfig: webConfigSchema.nullable(),
+  webSearchEnabled: z.boolean(),
+  webSearchConfig: webSearchConfigInputSchema.nullable(),
   twitterEnabled: z.boolean(),
   posthogEnabled: z.boolean().default(false),
   posthogProjectToken: nullableTrimmedStringSchema.default(null),
@@ -155,6 +172,7 @@ interface SourceEnabledPayload {
   hnEnabled: boolean;
   redditEnabled: boolean;
   webEnabled: boolean;
+  webSearchEnabled: boolean;
   twitterEnabled: boolean;
 }
 
@@ -163,6 +181,7 @@ const sourcesEnabledRefinement = (payload: SourceEnabledPayload): boolean =>
   payload.hnEnabled ||
   payload.redditEnabled ||
   payload.webEnabled ||
+  payload.webSearchEnabled ||
   payload.twitterEnabled;
 
 const sourcesPresentMessage = {
@@ -178,6 +197,8 @@ function addEnabledConfigIssues(
     redditConfig: unknown;
     webEnabled: boolean;
     webConfig: unknown;
+    webSearchEnabled: boolean;
+    webSearchConfig: unknown;
     twitterEnabled: boolean;
     twitterConfig: unknown;
   },
@@ -191,6 +212,11 @@ function addEnabledConfigIssues(
       path: "redditConfig",
     },
     { enabled: payload.webEnabled, config: payload.webConfig, path: "webConfig" },
+    {
+      enabled: payload.webSearchEnabled,
+      config: payload.webSearchConfig,
+      path: "webSearchConfig",
+    },
     {
       enabled: payload.twitterEnabled,
       config: payload.twitterConfig,
@@ -207,6 +233,21 @@ function addEnabledConfigIssues(
         path: [path],
       });
     });
+
+  if (
+    payload.webSearchEnabled &&
+    payload.webSearchConfig !== null &&
+    typeof payload.webSearchConfig === "object" &&
+    "queries" in payload.webSearchConfig &&
+    Array.isArray((payload.webSearchConfig as { queries: unknown }).queries) &&
+    (payload.webSearchConfig as { queries: unknown[] }).queries.length === 0
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: "webSearchConfig must include at least one query when enabled",
+      path: ["webSearchConfig", "queries"],
+    });
+  }
 }
 
 function minutesFromHHMM(hhmm: string): number {
@@ -253,6 +294,8 @@ export const userSettingsUpsertSchema = z
     hnEnabled: z.boolean().optional(),
     redditEnabled: z.boolean().optional(),
     webEnabled: z.boolean().optional(),
+    webSearchEnabled: z.boolean().optional(),
+    webSearchConfig: webSearchConfigInputSchema.nullable().optional(),
     twitterEnabled: z.boolean().optional(),
     twitterConfig: twitterConfigInputSchema.nullable(),
   })
@@ -269,6 +312,9 @@ export const userSettingsUpsertSchema = z
     hnEnabled: payload.hnEnabled ?? payload.hnConfig !== null,
     redditEnabled: payload.redditEnabled ?? payload.redditConfig !== null,
     webEnabled: payload.webEnabled ?? payload.webConfig !== null,
+    webSearchEnabled:
+      payload.webSearchEnabled ?? (payload.webSearchConfig ?? null) !== null,
+    webSearchConfig: payload.webSearchConfig ?? null,
     twitterEnabled: payload.twitterEnabled ?? payload.twitterConfig !== null,
   }))
   .pipe(
@@ -289,6 +335,8 @@ export const userSettingsUpsertSchema = z
       hnEnabled: z.boolean(),
       redditEnabled: z.boolean(),
       webEnabled: z.boolean(),
+      webSearchEnabled: z.boolean(),
+      webSearchConfig: webSearchConfigInputSchema.nullable(),
       twitterEnabled: z.boolean(),
       twitterConfig: twitterConfigInputSchema.nullable(),
     }),

@@ -93,6 +93,8 @@ import { collectHn } from "@pipeline/collectors/hn.js";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
 import { collectTwitter } from "@pipeline/collectors/twitter/index.js";
+import { collectWebSearch } from "@pipeline/collectors/web-search/index.js";
+import { createWebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
 import { createRettiwtClient } from "@pipeline/collectors/twitter/clients/rettiwt.js";
 import { Rettiwt } from "rettiwt-api";
 import { rankCandidates } from "@pipeline/processors/rank.js";
@@ -222,10 +224,16 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     reddit: collectReddit,
     web: collectWeb,
     twitter: collectTwitter,
+    webSearch: collectWebSearch,
   };
   const twitterClient = createRettiwtClient({
     rettiwt: new Rettiwt({ apiKey: process.env.RETTIWT_API_KEY }),
   });
+  const webSearchProvider = process.env.TAVILY_API_KEY
+    ? createWebSearchProvider("tavily", {
+        tavilyApiKey: process.env.TAVILY_API_KEY,
+      })
+    : undefined;
   const slackNotifier = createSlackNotifier({
     webhookUrl: process.env.SLACK_WEBHOOK_URL,
     archives: archiveRepo,
@@ -251,6 +259,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     userSettingsRepo,
     cancelSubscriber: createCancelSubscriber(connection),
     twitterClient,
+    webSearchProvider,
     slackNotifier,
   };
 }

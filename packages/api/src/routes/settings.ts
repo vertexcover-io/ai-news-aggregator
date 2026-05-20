@@ -179,6 +179,8 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       redditConfig: parsed.data.redditConfig,
       webEnabled: parsed.data.webEnabled,
       webConfig: parsed.data.webConfig,
+      webSearchEnabled: parsed.data.webSearchEnabled,
+      webSearchConfig: parsed.data.webSearchConfig,
       twitterEnabled: parsed.data.twitterEnabled,
       twitterConfig: resolvedTwitterConfig,
       posthogEnabled: parsed.data.posthogEnabled,

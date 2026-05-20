@@ -3,7 +3,8 @@ import type {
   RunSubmitHnConfig,
   RunSubmitRedditConfig,
   RunSubmitWebConfig,
-} from "@newsletter/shared";
+  RunSubmitWebSearchConfig,
+} from "@newsletter/shared/types";
 
 const HH_MM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -78,6 +79,8 @@ export interface SettingsSubmitInput {
   redditConfig: RunSubmitRedditConfig | null;
   webEnabled: boolean;
   webConfig: RunSubmitWebConfig | null;
+  webSearchEnabled: boolean;
+  webSearchConfig: RunSubmitWebSearchConfig | null;
   twitterEnabled: boolean;
   twitterConfig: SettingsSubmitTwitterConfig | null;
   posthogEnabled: boolean;
@@ -109,6 +112,19 @@ const webConfigSchema = z.object({
   sinceDays: z.number().int().min(1).optional(),
 });
 
+const webSearchConfigSchema = z.object({
+  provider: z.literal("tavily"),
+  queries: z
+    .array(
+      z.object({
+        query: z.string().trim().min(1).max(400),
+        sinceDays: z.number().int().min(1).max(30),
+        maxItems: z.number().int().min(1).max(20),
+      }),
+    )
+    .max(25),
+});
+
 export const settingsFormSchema = z
   .object({
     topN: z.number().int().min(1).max(50),
@@ -119,6 +135,8 @@ export const settingsFormSchema = z
     redditConfig: redditConfigSchema.nullable(),
     webEnabled: z.boolean(),
     webConfig: webConfigSchema.nullable(),
+    webSearchEnabled: z.boolean(),
+    webSearchConfig: webSearchConfigSchema.nullable(),
     twitterEnabled: z.boolean(),
     twitterConfig: twitterConfigSchema.nullable(),
     posthogEnabled: z.boolean(),
@@ -170,6 +188,7 @@ export const settingsFormSchema = z
       payload.hnEnabled ||
       payload.redditEnabled ||
       payload.webEnabled ||
+      payload.webSearchEnabled ||
       payload.twitterEnabled,
     {
       message:
@@ -239,6 +258,16 @@ export function normalizeSettingsForSubmit(
     redditConfig,
     webEnabled: values.webEnabled,
     webConfig: values.webConfig,
+    webSearchEnabled: values.webSearchEnabled,
+    webSearchConfig: values.webSearchConfig
+      ? {
+          ...values.webSearchConfig,
+          queries: values.webSearchConfig.queries.map((q) => ({
+            ...q,
+            query: q.query.trim(),
+          })),
+        }
+      : values.webSearchConfig,
     twitterEnabled: values.twitterEnabled,
     twitterConfig: normalizeTwitterConfigForSubmit(values.twitterConfig),
     posthogEnabled: values.posthogEnabled,

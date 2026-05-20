@@ -14,6 +14,7 @@ const SOURCE_LABEL: Record<RankedItem["sourceType"], string> = {
   twitter: "X / Twitter",
   github: "GitHub",
   newsletter: "Newsletter",
+  web_search: "Web Search",
 };
 
 function sourceLabel(item: RankedItem): string {

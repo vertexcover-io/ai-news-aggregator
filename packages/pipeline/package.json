@@ -26,6 +26,7 @@
     "@mozilla/readability": "0.6.0",
     "@newsletter/shared": "workspace:*",
     "@react-email/components": "1.0.12",
+    "@tavily/core": "0.7.3",
     "@types/react": "19.2.14",
     "ai": "5.0.169",
     "bullmq": "5.51.0",

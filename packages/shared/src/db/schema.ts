@@ -9,13 +9,14 @@ import type {
   RunSubmitRedditConfig,
   RunSubmitTwitterConfig,
   RunSubmitWebConfig,
+  RunSubmitWebSearchConfig,
   SocialMetadata,
   SocialTokenMetadata,
 } from "@shared/types/index.js";
 import type { RunCostBreakdown } from "@shared/types/cost-breakdown.js";
 import type { EncryptedBlob } from "@shared/services/credential-cipher.js";
 
-export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter";
+export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter" | "web_search";
 
 export const rawItems = pgTable("raw_items", {
   id: serial("id").primaryKey(),
@@ -118,6 +119,8 @@ export const userSettings = pgTable(
     redditConfig: jsonb("reddit_config").$type<RunSubmitRedditConfig | null>(),
     webEnabled: boolean("web_enabled").notNull().default(false),
     webConfig: jsonb("web_config").$type<RunSubmitWebConfig | null>(),
+    webSearchEnabled: boolean("web_search_enabled").notNull().default(false),
+    webSearchConfig: jsonb("web_search_config").$type<RunSubmitWebSearchConfig | null>(),
     twitterEnabled: boolean("twitter_enabled").notNull().default(false),
     twitterConfig: jsonb("twitter_config").$type<RunSubmitTwitterConfig | null>(),
     posthogEnabled: boolean("posthog_enabled").notNull().default(false),

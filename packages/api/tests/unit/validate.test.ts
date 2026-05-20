@@ -264,6 +264,117 @@ describe("userSettingsUpsertSchema twitterConfig (REQ-022)", () => {
   });
 });
 
+describe("userSettingsUpsertSchema webSearchConfig", () => {
+  const baseWebSearch = {
+    provider: "tavily" as const,
+    queries: [
+      { query: "ai agents", sinceDays: 7, maxItems: 5 },
+    ],
+  };
+
+  it("accepts a valid webSearchConfig with one query", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      webSearchEnabled: true,
+      webSearchConfig: baseWebSearch,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects empty query string", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      webSearchEnabled: true,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: [{ query: "", sinceDays: 7, maxItems: 5 }],
+      },
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(
+        r.error.issues.some((i) => i.path.includes("query")),
+      ).toBe(true);
+    }
+  });
+
+  it("rejects sinceDays = 0", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      webSearchEnabled: true,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: [{ query: "x", sinceDays: 0, maxItems: 5 }],
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects sinceDays = 31", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      webSearchEnabled: true,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: [{ query: "x", sinceDays: 31, maxItems: 5 }],
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects maxItems = 21", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      webSearchEnabled: true,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: [{ query: "x", sinceDays: 7, maxItems: 21 }],
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects 26 queries (too many)", () => {
+    const queries = Array.from({ length: 26 }, (_, i) => ({
+      query: `q${i}`,
+      sinceDays: 7,
+      maxItems: 5,
+    }));
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      webSearchEnabled: true,
+      webSearchConfig: { provider: "tavily", queries },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects webSearchEnabled true with empty queries", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      webSearchEnabled: true,
+      webSearchConfig: { provider: "tavily", queries: [] },
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(
+        r.error.issues.some(
+          (i) =>
+            i.path.includes("webSearchConfig") && i.path.includes("queries"),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("accepts webSearchEnabled false with null config", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      webSearchEnabled: false,
+      webSearchConfig: null,
+    });
+    expect(r.success).toBe(true);
+  });
+});
+
 describe("runSubmitSchema (REQ-002)", () => {
   it("accepts a payload with hn only", () => {
     const result = runSubmitSchema.safeParse({

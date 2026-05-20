@@ -14,7 +14,7 @@ import {
   type SettingsFormValues,
   type TwitterFormConfig,
 } from "./settingsSchema";
-import type { RunSubmitTwitterConfig } from "@newsletter/shared";
+import type { RunSubmitTwitterConfig } from "@newsletter/shared/types";
 
 function persistedToFormTwitter(
   c: RunSubmitTwitterConfig | null,
@@ -55,6 +55,8 @@ function getDefaults(): SettingsFormValues {
     },
     webEnabled: false,
     webConfig: null,
+    webSearchEnabled: false,
+    webSearchConfig: null,
     twitterEnabled: false,
     twitterConfig: null,
     posthogEnabled: false,

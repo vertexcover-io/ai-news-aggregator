@@ -182,4 +182,52 @@ describe("createRun — single-job shape", () => {
       sinceDays: 7,
     });
   });
+
+  // REQ-008: webSearch threads through to the job payload
+  it("includes webSearch config + seeds sources.web_search when payload.webSearch is set", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const webSearchPayload: RunSubmitPayload = {
+      topN: 5,
+      webSearch: {
+        provider: "tavily",
+        queries: [{ query: "ai agents", sinceDays: 1, maxItems: 5 }],
+      },
+    };
+    const { runId } = await createRun(
+      webSearchPayload,
+      redis as unknown as IORedis,
+      q.queue,
+    );
+
+    const entry = redis.store.get(`run:${runId}`);
+    if (!entry) throw new Error("expected redis entry to exist");
+    const state = JSON.parse(entry.value) as RunState;
+    expect(state.sources.web_search).toEqual({
+      status: "pending",
+      itemsFetched: 0,
+      errors: [],
+    });
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as {
+      sourceTypes: string[];
+      collectors: { webSearch?: unknown };
+    };
+    expect(payload.sourceTypes).toEqual(["web_search"]);
+    expect(payload.collectors.webSearch).toEqual({
+      provider: "tavily",
+      queries: [{ query: "ai agents", sinceDays: 1, maxItems: 5 }],
+    });
+  });
+
+  it("omits webSearch from payload when settings.webSearchEnabled is false", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    // basePayload has hn+reddit, no webSearch — confirms gating
+    await createRun(basePayload, redis as unknown as IORedis, q.queue);
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as { collectors: Record<string, unknown> };
+    expect(payload.collectors).not.toHaveProperty("webSearch");
+  });
 });
