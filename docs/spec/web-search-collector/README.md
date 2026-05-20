@@ -1,7 +1,7 @@
 # Web-Search Collector
 
 **Verification verdict:** PASS — see [verification/proof-report.md](./verification/proof-report.md)
-**PR:** _(filled in after push)_
+**PR:** [vertexcover-io/ai-news-aggregator#171](https://github.com/vertexcover-io/ai-news-aggregator/pull/171)
 
 ## Summary
 
