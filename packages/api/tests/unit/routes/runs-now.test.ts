@@ -81,6 +81,8 @@ const baseSettings: UserSettings = {
   webConfig: null,
   twitterEnabled: false,
   twitterConfig: null,
+  webSearchEnabled: false,
+  webSearchConfig: null,
   scheduleTime: "09:00",
   scheduleTimezone: "UTC",
   scheduleEnabled: false,
@@ -108,12 +110,38 @@ describe("POST /api/runs/now", () => {
         webConfig: null,
         twitterEnabled: false,
         twitterConfig: null,
+        webSearchEnabled: false,
+        webSearchConfig: null,
         },
     });
     const res = await app.request("/api/runs/now", { method: "POST" });
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string };
     expect(body).toEqual({ error: "no sources enabled" });
+  });
+
+  it("ADV-1: returns 202 when only webSearch is enabled", async () => {
+    const { app, q } = buildApp({
+      settings: {
+        ...baseSettings,
+        hnEnabled: false,
+        hnConfig: null,
+        redditEnabled: false,
+        redditConfig: null,
+        webEnabled: false,
+        webConfig: null,
+        twitterEnabled: false,
+        twitterConfig: null,
+        webSearchEnabled: true,
+        webSearchConfig: {
+          provider: "tavily",
+          queries: [{ query: "AI safety", sinceDays: 7, maxItems: 5 }],
+        },
+      },
+    });
+    const res = await app.request("/api/runs/now", { method: "POST" });
+    expect(res.status).toBe(202);
+    expect(q.calls).toHaveLength(1);
   });
 
   it("REQ-031: happy path returns 202 + runId (UUID)", async () => {

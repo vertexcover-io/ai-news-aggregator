@@ -3,6 +3,7 @@ import type {
   RunSubmitRedditConfig,
   RunSubmitTwitterConfig,
   RunSubmitWebConfig,
+  RunSubmitWebSearchConfig,
 } from "./run.js";
 import type { RunCostBreakdown } from "./cost-breakdown.js";
 
@@ -18,6 +19,8 @@ export interface UserSettings {
   webConfig: RunSubmitWebConfig | null;
   twitterEnabled: boolean;
   twitterConfig: RunSubmitTwitterConfig | null;
+  webSearchEnabled: boolean;
+  webSearchConfig: RunSubmitWebSearchConfig | null;
   posthogEnabled: boolean;
   posthogProjectToken: string | null;
   posthogHost: string | null;

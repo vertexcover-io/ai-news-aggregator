@@ -119,6 +119,17 @@ function isValidIanaTimezone(tz: string): boolean {
   }
 }
 
+const webSearchQueryConfigSchema = z.object({
+  query: z.string().trim().min(1).max(400),
+  sinceDays: z.number().int().min(1).max(30),
+  maxItems: z.number().int().min(1).max(20),
+});
+
+const webSearchConfigSchema = z.object({
+  provider: z.literal("tavily"),
+  queries: z.array(webSearchQueryConfigSchema).max(25),
+});
+
 const userSettingsCommonShape = {
   topN: z.number().int().min(1).max(50),
   halfLifeHours: z.number().positive().nullable(),
@@ -129,6 +140,8 @@ const userSettingsCommonShape = {
   webEnabled: z.boolean(),
   webConfig: webConfigSchema.nullable(),
   twitterEnabled: z.boolean(),
+  webSearchEnabled: z.boolean().optional(),
+  webSearchConfig: webSearchConfigSchema.nullable().optional(),
   posthogEnabled: z.boolean().default(false),
   posthogProjectToken: nullableTrimmedStringSchema.default(null),
   posthogHost: nullableUrlSchema.default(null),
@@ -156,6 +169,7 @@ interface SourceEnabledPayload {
   redditEnabled: boolean;
   webEnabled: boolean;
   twitterEnabled: boolean;
+  webSearchEnabled?: boolean;
 }
 
 const sourcesEnabledRefinement = (payload: SourceEnabledPayload): boolean =>
@@ -163,7 +177,8 @@ const sourcesEnabledRefinement = (payload: SourceEnabledPayload): boolean =>
   payload.hnEnabled ||
   payload.redditEnabled ||
   payload.webEnabled ||
-  payload.twitterEnabled;
+  payload.twitterEnabled ||
+  (payload.webSearchEnabled ?? false);
 
 const sourcesPresentMessage = {
   message:
@@ -180,6 +195,8 @@ function addEnabledConfigIssues(
     webConfig: unknown;
     twitterEnabled: boolean;
     twitterConfig: unknown;
+    webSearchEnabled?: boolean;
+    webSearchConfig?: unknown;
   },
   ctx: z.RefinementCtx,
 ): void {
@@ -196,6 +213,11 @@ function addEnabledConfigIssues(
       config: payload.twitterConfig,
       path: "twitterConfig",
     },
+    {
+      enabled: payload.webSearchEnabled ?? false,
+      config: payload.webSearchConfig ?? null,
+      path: "webSearchConfig",
+    },
   ] as const;
 
   pairs
@@ -207,6 +229,23 @@ function addEnabledConfigIssues(
         path: [path],
       });
     });
+
+  const wsConfig = payload.webSearchConfig;
+  if (
+    (payload.webSearchEnabled ?? false) &&
+    wsConfig !== null &&
+    wsConfig !== undefined &&
+    typeof wsConfig === "object" &&
+    "queries" in wsConfig &&
+    Array.isArray(wsConfig.queries) &&
+    wsConfig.queries.length === 0
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: "webSearchConfig.queries must not be empty when webSearchEnabled is true",
+      path: ["webSearchConfig", "queries"],
+    });
+  }
 }
 
 function minutesFromHHMM(hhmm: string): number {
@@ -270,6 +309,8 @@ export const userSettingsUpsertSchema = z
     redditEnabled: payload.redditEnabled ?? payload.redditConfig !== null,
     webEnabled: payload.webEnabled ?? payload.webConfig !== null,
     twitterEnabled: payload.twitterEnabled ?? payload.twitterConfig !== null,
+    webSearchEnabled: payload.webSearchEnabled ?? (payload.webSearchConfig != null),
+    webSearchConfig: payload.webSearchConfig ?? null,
   }))
   .pipe(
     z.object({
@@ -291,6 +332,8 @@ export const userSettingsUpsertSchema = z
       webEnabled: z.boolean(),
       twitterEnabled: z.boolean(),
       twitterConfig: twitterConfigInputSchema.nullable(),
+      webSearchEnabled: z.boolean(),
+      webSearchConfig: webSearchConfigSchema.nullable(),
     }),
   )
   .superRefine((payload, ctx) => {
@@ -315,6 +358,8 @@ export const userSettingsPersistedSchema = z
     twitterPostEnabled: z.boolean(),
     autoReview: z.boolean(),
     twitterConfig: twitterConfigPersistedSchema.nullable(),
+    webSearchEnabled: z.boolean(),
+    webSearchConfig: webSearchConfigSchema.nullable(),
   })
   .superRefine((payload, ctx) => {
     if (!sourcesEnabledRefinement(payload)) {

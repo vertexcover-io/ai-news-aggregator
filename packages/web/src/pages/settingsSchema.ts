@@ -4,6 +4,7 @@ import type {
   RunSubmitRedditConfig,
   RunSubmitWebConfig,
 } from "@newsletter/shared";
+import type { RunSubmitWebSearchConfig } from "@newsletter/shared/types";
 
 const HH_MM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -80,6 +81,8 @@ export interface SettingsSubmitInput {
   webConfig: RunSubmitWebConfig | null;
   twitterEnabled: boolean;
   twitterConfig: SettingsSubmitTwitterConfig | null;
+  webSearchEnabled: boolean;
+  webSearchConfig: RunSubmitWebSearchConfig | null;
   posthogEnabled: boolean;
   posthogProjectToken: string | null;
   posthogHost: string | null;
@@ -95,6 +98,17 @@ export interface SettingsSubmitInput {
   twitterPostEnabled?: boolean;
   autoReview?: boolean;
 }
+
+const webSearchQuerySchema = z.object({
+  query: z.string().trim().min(1).max(400),
+  sinceDays: z.number().int().min(1).max(30),
+  maxItems: z.number().int().min(1).max(20),
+});
+
+const webSearchConfigSchema = z.object({
+  provider: z.literal("tavily"),
+  queries: z.array(webSearchQuerySchema).max(25),
+});
 
 const webConfigSchema = z.object({
   sources: z
@@ -121,6 +135,8 @@ export const settingsFormSchema = z
     webConfig: webConfigSchema.nullable(),
     twitterEnabled: z.boolean(),
     twitterConfig: twitterConfigSchema.nullable(),
+    webSearchEnabled: z.boolean(),
+    webSearchConfig: webSearchConfigSchema.nullable(),
     posthogEnabled: z.boolean(),
     posthogProjectToken: nullableTrimmedStringSchema,
     posthogHost: nullableUrlSchema,
@@ -170,7 +186,8 @@ export const settingsFormSchema = z
       payload.hnEnabled ||
       payload.redditEnabled ||
       payload.webEnabled ||
-      payload.twitterEnabled,
+      payload.twitterEnabled ||
+      payload.webSearchEnabled,
     {
       message:
         "at least one source must be enabled when scheduleEnabled is true",
@@ -241,6 +258,8 @@ export function normalizeSettingsForSubmit(
     webConfig: values.webConfig,
     twitterEnabled: values.twitterEnabled,
     twitterConfig: normalizeTwitterConfigForSubmit(values.twitterConfig),
+    webSearchEnabled: values.webSearchEnabled,
+    webSearchConfig: values.webSearchConfig,
     posthogEnabled: values.posthogEnabled,
     posthogProjectToken: values.posthogProjectToken,
     posthogHost: values.posthogHost,

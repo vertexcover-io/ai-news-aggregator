@@ -31,6 +31,8 @@ export function createUserSettingsRepo(
         webConfig: row.webConfig,
         twitterEnabled: row.twitterEnabled,
         twitterConfig: row.twitterConfig,
+        webSearchEnabled: row.webSearchEnabled,
+        webSearchConfig: row.webSearchConfig,
         posthogEnabled: row.posthogEnabled,
         posthogProjectToken: row.posthogProjectToken ?? null,
         posthogHost: row.posthogHost ?? null,

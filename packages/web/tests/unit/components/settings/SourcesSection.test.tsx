@@ -2,7 +2,7 @@ import { describe, expect, it, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import type { ReactElement } from "react";
-import { SourcesSection } from "../../../../src/components/settings/SourcesSection";
+import { SourcesSection, summarizeWebSearch } from "../../../../src/components/settings/SourcesSection";
 import {
   normalizeSettingsForSubmit,
   type SettingsSubmitInput,
@@ -217,5 +217,37 @@ describe("WebEditPanel — per-source Name+URL row inputs", () => {
     openWebEditPanel();
 
     expect(screen.getByDisplayValue("Anthropic")).toBeTruthy();
+  });
+});
+
+describe("summarizeWebSearch", () => {
+  it("returns 'Disabled' for null input", () => {
+    expect(summarizeWebSearch(null)).toBe("Disabled");
+  });
+
+  it("returns 'Disabled' for config with empty queries array", () => {
+    expect(summarizeWebSearch({ provider: "tavily", queries: [] })).toBe("Disabled");
+  });
+
+  it("returns singular 'query' for exactly 1 query", () => {
+    expect(
+      summarizeWebSearch({
+        provider: "tavily",
+        queries: [{ query: "agentic AI", sinceDays: 7, maxItems: 5 }],
+      }),
+    ).toBe("1 query · tavily");
+  });
+
+  it("returns plural 'queries' for 3 queries", () => {
+    expect(
+      summarizeWebSearch({
+        provider: "tavily",
+        queries: [
+          { query: "agentic AI", sinceDays: 7, maxItems: 5 },
+          { query: "context engineering", sinceDays: 14, maxItems: 3 },
+          { query: "AI coding tools", sinceDays: 7, maxItems: 10 },
+        ],
+      }),
+    ).toBe("3 queries · tavily");
   });
 });

@@ -33,6 +33,8 @@ import { collectHn } from "@pipeline/collectors/hn.js";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
 import { collectTwitter } from "@pipeline/collectors/twitter/index.js";
+import { collectWebSearch } from "@pipeline/collectors/web-search/index.js";
+import type { WebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
 import { createRettiwtClient } from "@pipeline/collectors/twitter/clients/rettiwt.js";
 import type { TwitterClient } from "@pipeline/collectors/twitter/types.js";
 import { Rettiwt } from "rettiwt-api";
@@ -48,6 +50,7 @@ import type {
   TwitterCollectConfig,
   WebCollectConfig,
 } from "@pipeline/types.js";
+import type { RunSubmitWebSearchConfig } from "@newsletter/shared/types";
 import type { CollectorResult } from "@newsletter/shared";
 import { CancelledError } from "@pipeline/lib/cancelled-error.js";
 import {
@@ -150,6 +153,7 @@ export interface RunCollectorsPayload {
   reddit?: RedditCollectConfig;
   web?: WebCollectConfig;
   twitter?: TwitterCollectConfig;
+  webSearch?: RunSubmitWebSearchConfig;
 }
 
 export interface RunProcessJobData {
@@ -218,11 +222,22 @@ export type TwitterCollectFn = (
   config: TwitterCollectConfig,
 ) => Promise<CollectorResult>;
 
+export type WebSearchCollectFn = (
+  deps: {
+    rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
+    provider: WebSearchProvider;
+    signal?: AbortSignal;
+    enrichment?: EnrichmentContext;
+  },
+  config: RunSubmitWebSearchConfig,
+) => Promise<CollectorResult>;
+
 export interface CollectFns {
   hn: HnCollectFn;
   reddit: RedditCollectFn;
   web: WebCollectFn;
   twitter: TwitterCollectFn;
+  webSearch: WebSearchCollectFn;
 }
 
 export interface RunProcessDeps {
@@ -238,6 +253,8 @@ export interface RunProcessDeps {
   cancelSubscriber: CancelSubscriberFactory;
   twitterClient: TwitterClient;
   slackNotifier?: SlackNotifier;
+  /** Tavily (or future) web-search provider. Resolved once at worker startup from TAVILY_API_KEY env var. */
+  webSearchProvider?: WebSearchProvider;
 }
 
 interface CollectingOutcome {
@@ -314,6 +331,29 @@ async function runCollecting(
           config,
         ),
     });
+  }
+  if (collectors.webSearch && deps.webSearchProvider) {
+    const config = collectors.webSearch;
+    const provider = deps.webSearchProvider;
+    tasks.push({
+      sourceKey: "web_search",
+      run: () =>
+        deps.collectFns.webSearch(
+          {
+            rawItemsRepo: deps.rawItemsRepo,
+            provider,
+            signal,
+            enrichment: enrichmentCtx,
+          },
+          config,
+        ),
+    });
+  } else if (collectors.webSearch && !deps.webSearchProvider) {
+    // graceful degradation — TAVILY_API_KEY not set, skip the task
+    logger.warn(
+      { source: "web_search" },
+      "web_search collector requested but no provider configured (TAVILY_API_KEY missing)",
+    );
   }
 
   const errors: string[] = [];
@@ -817,6 +857,7 @@ export interface CreateRunProcessWorkerOptions {
   cancelSubscriber?: CancelSubscriberFactory;
   twitterClient?: TwitterClient;
   slackNotifier?: SlackNotifier;
+  webSearchProvider?: WebSearchProvider;
 }
 
 export function createRunProcessWorker(
@@ -841,6 +882,7 @@ export function createRunProcessWorker(
     reddit: options.collectFns?.reddit ?? collectReddit,
     web: options.collectFns?.web ?? collectWeb,
     twitter: options.collectFns?.twitter ?? collectTwitter,
+    webSearch: options.collectFns?.webSearch ?? collectWebSearch,
   };
 
   // Rettiwt accepts an undefined apiKey (guest mode); the collector itself
@@ -872,6 +914,7 @@ export function createRunProcessWorker(
     cancelSubscriber,
     twitterClient,
     slackNotifier: options.slackNotifier,
+    webSearchProvider: options.webSearchProvider,
   };
 
   return new Worker<RunProcessJobData, RunProcessResult>(

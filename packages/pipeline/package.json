@@ -21,6 +21,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@tavily/core": "0.7.3",
     "@ai-sdk/anthropic": "2.0.74",
     "@aws-sdk/client-sesv2": "3.1042.0",
     "@mozilla/readability": "0.6.0",

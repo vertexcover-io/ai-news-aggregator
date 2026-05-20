@@ -295,6 +295,66 @@ describe("startRun", () => {
     expect(Object.prototype.hasOwnProperty.call(payload, "dryRun")).toBe(false);
   });
 
+  // PHASE5-C4: webSearch flows from settings to job payload when enabled
+  it("PHASE5-C4: puts webSearch on payload.collectors when webSearchEnabled is true with config", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "phase5-web-search-enabled-111";
+
+    const webSearchSettings = {
+      ...baseSettings,
+      hnEnabled: false,
+      hnConfig: null,
+      redditEnabled: false,
+      redditConfig: null,
+      webSearchEnabled: true,
+      webSearchConfig: {
+        provider: "tavily" as const,
+        queries: [{ query: "AI news", sinceDays: 1, maxItems: 10 }],
+      },
+    };
+
+    await startRun(webSearchSettings, {
+      redis: redis as unknown as IORedis,
+      queue: q.queue,
+      runId: () => fixedId,
+    });
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as RunProcessJobPayload;
+    expect(payload.sourceTypes).toContain("web_search");
+    expect(payload.collectors.webSearch).toEqual(webSearchSettings.webSearchConfig);
+    expect(payload.collectors.hn).toBeUndefined();
+    expect(payload.collectors.reddit).toBeUndefined();
+  });
+
+  // PHASE5-C5: webSearch omitted from payload when webSearchEnabled is false
+  it("PHASE5-C5: omits webSearch from payload when webSearchEnabled is false", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "phase5-web-search-disabled-222";
+
+    const settings = {
+      ...baseSettings,
+      webSearchEnabled: false,
+      webSearchConfig: {
+        provider: "tavily" as const,
+        queries: [{ query: "AI news", sinceDays: 1, maxItems: 10 }],
+      },
+    };
+
+    await startRun(settings, {
+      redis: redis as unknown as IORedis,
+      queue: q.queue,
+      runId: () => fixedId,
+    });
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as RunProcessJobPayload;
+    expect(payload.collectors.webSearch).toBeUndefined();
+    expect(payload.sourceTypes).not.toContain("web_search");
+  });
+
   it("generates a uuid for runId when no generator is injected", async () => {
     const redis = makeRedis();
     const q = makeQueue();

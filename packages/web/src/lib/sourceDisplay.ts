@@ -10,6 +10,7 @@ export const SOURCE_LABELS: Record<SourceType, string> = {
   rss: "RSS",
   github: "GitHub",
   newsletter: "Newsletter",
+  web_search: "Web Search",
 };
 
 export const SOURCE_BADGE_CLASSES: Record<SourceType, string> = {
@@ -20,6 +21,7 @@ export const SOURCE_BADGE_CLASSES: Record<SourceType, string> = {
   rss: "bg-violet-100 text-violet-700",
   github: "bg-gray-100 text-gray-700",
   newsletter: "bg-amber-100 text-amber-700",
+  web_search: "bg-teal-100 text-teal-700",
 };
 
 export const SOURCE_ORDER: readonly SourceType[] = [
@@ -30,4 +32,5 @@ export const SOURCE_ORDER: readonly SourceType[] = [
   "rss",
   "github",
   "newsletter",
+  "web_search",
 ];

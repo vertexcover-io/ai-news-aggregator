@@ -84,6 +84,14 @@ docs/spec/**
 !docs/spec/admin-pipeline-cost-analysis/probes/*.ts
 !docs/spec/admin-pipeline-cost-analysis/verification/*.md
 !docs/spec/admin-pipeline-cost-analysis/verification/*.log
+# web-search-collector: ship full audit trail (design + library-probe + readme + learnings + adversarial findings + screenshots)
+!docs/spec/web-search-collector/README.md
+!docs/spec/web-search-collector/design.md
+!docs/spec/web-search-collector/library-probe.md
+!docs/spec/web-search-collector/learnings.md
+!docs/spec/web-search-collector/verification/adversarial-findings.md
+!docs/spec/web-search-collector/verification/screenshots/
+!docs/spec/web-search-collector/verification/screenshots/*.png
 .worktrees/
 .harness/
 .worktrees/

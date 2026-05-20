@@ -42,6 +42,8 @@ export async function createRun(
     webConfig: payload.web ?? null,
     twitterEnabled: payload.twitter !== undefined,
     twitterConfig: payload.twitter ?? null,
+    webSearchEnabled: false,
+    webSearchConfig: null,
     posthogEnabled: false,
     posthogProjectToken: null,
     posthogHost: null,

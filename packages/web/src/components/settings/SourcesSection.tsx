@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import type {
   SettingsFormValues,
   TwitterFormConfig,
@@ -29,6 +30,7 @@ import type {
   RunSubmitRedditConfig,
   RunSubmitWebConfig,
 } from "@newsletter/shared";
+import type { RunSubmitWebSearchConfig } from "@newsletter/shared/types";
 
 const DEFAULT_HN: RunSubmitHnConfig = {
   keywords: ["ai", "llm", "agents"],
@@ -65,6 +67,11 @@ const DEFAULT_TWITTER: TwitterFormConfig = {
   users: [],
   maxTweetsPerSource: 50,
   sinceHours: 24,
+};
+
+const DEFAULT_WEB_SEARCH: RunSubmitWebSearchConfig = {
+  provider: "tavily",
+  queries: [],
 };
 
 function summarizeTwitter(c: SettingsFormValues["twitterConfig"]): string {
@@ -111,6 +118,11 @@ function summarizeWeb(c: RunSubmitWebConfig | null): string {
   return `${String(c.sources.length)} blog${c.sources.length === 1 ? "" : "s"} configured: ${names}`;
 }
 
+export function summarizeWebSearch(c: RunSubmitWebSearchConfig | null): string {
+  if (!c || c.queries.length === 0) return "Disabled";
+  return `${String(c.queries.length)} ${c.queries.length === 1 ? "query" : "queries"} · ${c.provider}`;
+}
+
 function summarizeSource(enabled: boolean, configSummary: string): string {
   if (enabled) return configSummary;
   return configSummary === "Disabled" ? "Disabled" : `Disabled · ${configSummary}`;
@@ -122,7 +134,7 @@ export function SourcesSection({
   setValue,
 }: SourcesSectionProps): ReactElement {
   const [expandedSource, setExpandedSource] = useState<
-    "hn" | "reddit" | "web" | "twitter" | null
+    "hn" | "reddit" | "web" | "twitter" | "webSearch" | null
   >(null);
 
   const hn = useWatch({ control, name: "hnConfig" });
@@ -133,8 +145,10 @@ export function SourcesSection({
   const webEnabled = useWatch({ control, name: "webEnabled" });
   const twitter = useWatch({ control, name: "twitterConfig" });
   const twitterEnabled = useWatch({ control, name: "twitterEnabled" });
+  const webSearch = useWatch({ control, name: "webSearchConfig" });
+  const webSearchEnabled = useWatch({ control, name: "webSearchEnabled" });
 
-  function toggleExpand(source: "hn" | "reddit" | "web" | "twitter"): void {
+  function toggleExpand(source: "hn" | "reddit" | "web" | "twitter" | "webSearch"): void {
     setExpandedSource((prev) => (prev === source ? null : source));
   }
 
@@ -299,6 +313,46 @@ export function SourcesSection({
             )}
           />
         </SourceRow>
+        <SourceRow
+          label="Web Search"
+          labelExtra={<Badge variant="secondary" className="ml-2 text-xs text-muted-foreground">Tavily</Badge>}
+          summary={summarizeSource(webSearchEnabled, summarizeWebSearch(webSearch))}
+          editable={webSearch !== null}
+          expanded={expandedSource === "webSearch"}
+          testId="web-search-card"
+          onEdit={() => {
+            if (webSearch === null) {
+              setValue("webSearchConfig", { ...DEFAULT_WEB_SEARCH }, {
+                shouldDirty: true,
+                shouldTouch: true,
+              });
+            }
+            toggleExpand("webSearch");
+          }}
+          editPanel={
+            <WebSearchEditPanel control={control} />
+          }
+        >
+          <Controller
+            control={control}
+            name="webSearchEnabled"
+            render={({ field }) => (
+              <Switch
+                aria-label="Web Search"
+                checked={field.value}
+                onCheckedChange={(checked) => {
+                  if (checked && webSearch === null) {
+                    setValue("webSearchConfig", { ...DEFAULT_WEB_SEARCH }, {
+                      shouldDirty: true,
+                      shouldTouch: true,
+                    });
+                  }
+                  field.onChange(checked);
+                }}
+              />
+            )}
+          />
+        </SourceRow>
       </CardContent>
     </Card>
   );
@@ -306,30 +360,37 @@ export function SourcesSection({
 
 interface SourceRowProps {
   label: string;
+  labelExtra?: ReactElement;
   summary: string;
   editable: boolean;
   expanded: boolean;
   onEdit: () => void;
   editPanel: ReactElement;
   children: ReactElement;
+  testId?: string;
 }
 
 function SourceRow({
   label,
+  labelExtra,
   summary,
   editable,
   expanded,
   onEdit,
   editPanel,
   children,
+  testId,
 }: SourceRowProps): ReactElement {
   return (
-    <div className="rounded-md border bg-white">
+    <div className="rounded-md border bg-white" data-testid={testId}>
       <div className="flex items-center justify-between gap-4 px-4 py-3">
         <div className="flex items-center gap-3">
           {children}
           <div>
-            <div className="font-medium">{label}</div>
+            <div className="flex items-center font-medium">
+              {label}
+              {labelExtra}
+            </div>
             <div className="text-xs text-muted-foreground">{summary}</div>
           </div>
         </div>
@@ -735,6 +796,96 @@ function WebEditPanel({
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+function WebSearchEditPanel({
+  control,
+}: {
+  control: Control<SettingsFormValues>;
+}): ReactElement {
+  const {
+    fields,
+    append,
+    remove,
+  } = useFieldArray({ control, name: "webSearchConfig.queries" });
+
+  return (
+    <div className="space-y-2">
+      {fields.length > 0 && (
+        <div className="grid grid-cols-[1fr_80px_80px_auto] gap-2 px-1 text-xs text-muted-foreground">
+          <span>Query</span>
+          <span>Days back</span>
+          <span>Max items</span>
+          <span />
+        </div>
+      )}
+      {fields.map((field, idx) => (
+        <div key={field.id} className="grid grid-cols-[1fr_80px_80px_auto] items-center gap-2">
+          <Controller
+            control={control}
+            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+            name={`webSearchConfig.queries.${idx}.query` as const}
+            render={({ field: f }) => (
+              <Input
+                placeholder="AI safety research"
+                value={f.value}
+                onChange={f.onChange}
+                aria-label={`Query ${String(idx + 1)}`}
+              />
+            )}
+          />
+          <Controller
+            control={control}
+            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+            name={`webSearchConfig.queries.${idx}.sinceDays` as const}
+            render={({ field: f }) => (
+              <Input
+                type="number"
+                min={1}
+                max={30}
+                value={f.value}
+                onChange={(e) => { f.onChange(Number(e.target.value)); }}
+                aria-label={`Days back for query ${String(idx + 1)}`}
+              />
+            )}
+          />
+          <Controller
+            control={control}
+            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+            name={`webSearchConfig.queries.${idx}.maxItems` as const}
+            render={({ field: f }) => (
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={f.value}
+                onChange={(e) => { f.onChange(Number(e.target.value)); }}
+                aria-label={`Max items for query ${String(idx + 1)}`}
+              />
+            )}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => { remove(idx); }}
+            aria-label={`Remove query ${String(idx + 1)}`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="mt-1"
+        onClick={() => { append({ query: "", sinceDays: 7, maxItems: 5 }); }}
+      >
+        Add query
+      </Button>
     </div>
   );
 }
