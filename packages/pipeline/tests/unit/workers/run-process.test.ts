@@ -2252,4 +2252,119 @@ describe("run-process dry-run flag (Phase 2)", () => {
     const arg = archiveUpsert.mock.calls[0]?.[0] as { isDryRun: boolean };
     expect(arg.isDryRun).toBe(false);
   });
+
+  // PHASE5-C1: web_search task pushed when config + provider both present
+  it("PHASE5-C1: pushes a web_search task when collectors.webSearch and webSearchProvider are both set", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const mockWebSearch = vi.fn(() =>
+      Promise.resolve({
+        itemsFetched: 3,
+        commentsFetched: 0,
+        itemsStored: 3,
+        durationMs: 10,
+        unitResults: [],
+      }),
+    );
+    const fakeProvider = { name: "tavily", search: vi.fn() };
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+      collectFns: { webSearch: mockWebSearch },
+      webSearchProvider: fakeProvider,
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["web_search" as unknown as "hn"],
+        collectors: {
+          webSearch: {
+            provider: "tavily",
+            queries: [{ query: "AI news", sinceDays: 1, maxItems: 10 }],
+          },
+        },
+      },
+    });
+
+    expect(mockWebSearch).toHaveBeenCalledOnce();
+    const [deps, config] = mockWebSearch.mock.calls[0] ?? [];
+    expect((deps as { provider: unknown }).provider).toBe(fakeProvider);
+    expect((config as { provider: string }).provider).toBe("tavily");
+  });
+
+  // PHASE5-C2: web_search task NOT pushed when provider is absent — graceful degradation
+  it("PHASE5-C2: skips web_search task and logs warning when webSearchProvider is absent", async () => {
+    mockLoggerWarn.mockClear();
+    const runStateMock = makeMockRunState(makeRunState());
+    const mockWebSearch = vi.fn(() => Promise.resolve({
+      itemsFetched: 0, commentsFetched: 0, itemsStored: 0, durationMs: 0, unitResults: [],
+    }));
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+      collectFns: { webSearch: mockWebSearch },
+      // webSearchProvider intentionally omitted
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["web_search" as unknown as "hn"],
+        collectors: {
+          webSearch: {
+            provider: "tavily",
+            queries: [{ query: "AI news", sinceDays: 1, maxItems: 10 }],
+          },
+        },
+      },
+    });
+
+    // collector was NOT invoked
+    expect(mockWebSearch).not.toHaveBeenCalled();
+    // a warning was logged
+    const warnCall = mockLoggerWarn.mock.calls.find(
+      (c) => (c[0] as { source?: string }).source === "web_search",
+    );
+    expect(warnCall).toBeDefined();
+  });
+
+  // PHASE5-C3: web_search absent → no task pushed, no warning
+  it("PHASE5-C3: does not invoke webSearch collector when collectors.webSearch is absent", async () => {
+    mockLoggerWarn.mockClear();
+    const runStateMock = makeMockRunState(makeRunState());
+    const mockWebSearch = vi.fn(() => Promise.resolve({
+      itemsFetched: 0, commentsFetched: 0, itemsStored: 0, durationMs: 0, unitResults: [],
+    }));
+    const mockHn = vi.fn(() => Promise.resolve({
+      itemsFetched: 1, commentsFetched: 0, itemsStored: 1, durationMs: 1, unitResults: [],
+    }));
+    const fakeProvider = { name: "tavily", search: vi.fn() };
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+      collectFns: { hn: mockHn, webSearch: mockWebSearch },
+      webSearchProvider: fakeProvider,
+    });
+
+    // No webSearch in collectors
+    await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["hn"],
+        collectors: { hn: { sinceDays: 1 } as unknown as HnCollectConfig },
+      },
+    });
+
+    expect(mockWebSearch).not.toHaveBeenCalled();
+    const warnCall = mockLoggerWarn.mock.calls.find(
+      (c) => (c[0] as { source?: string }).source === "web_search",
+    );
+    expect(warnCall).toBeUndefined();
+  });
 });
