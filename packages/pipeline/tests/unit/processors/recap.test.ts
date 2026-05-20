@@ -21,6 +21,7 @@ import {
   RECAP_SYSTEM_PROMPT,
 } from "@pipeline/processors/recap.js";
 import type { RecapInputItem } from "@pipeline/processors/recap.js";
+import { RECAP_VOICE_BLOCK } from "@pipeline/processors/rank-prompts.js";
 
 interface GenerateArgs {
   model: unknown;
@@ -146,3 +147,22 @@ describe("generateRecap", () => {
     );
   });
 });
+
+describe("editorial-stance prompt (VS-3, VS-4)", () => {
+  // VS-3a: RECAP_SYSTEM_PROMPT includes RECAP_VOICE_BLOCK verbatim (REQ-007)
+  it("VS-3a: RECAP_SYSTEM_PROMPT includes RECAP_VOICE_BLOCK verbatim (REQ-007)", () => {
+    expect(RECAP_SYSTEM_PROMPT).toContain(RECAP_VOICE_BLOCK);
+  });
+
+  // VS-3b: positive regression guard — summary's factual ORIENT wording is still present
+  it("VS-3b: summary description still contains 'state what happened' (REQ-002 regression guard)", () => {
+    expect(RECAP_SYSTEM_PROMPT.toLowerCase()).toContain("state what happened");
+  });
+
+  // VS-4: recapContentSchema shape is exactly { title, summary, bullets, bottomLine } — no additions, no removals
+  it("VS-4: recapContentSchema shape is exactly { title, summary, bullets, bottomLine } (REQ-008)", () => {
+    const keys = Object.keys(recapContentSchema.shape).sort();
+    expect(keys).toEqual(["bottomLine", "bullets", "summary", "title"]);
+  });
+});
+
