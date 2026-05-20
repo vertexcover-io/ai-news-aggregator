@@ -35,6 +35,8 @@ describe("settingsFormSchema — VS-6 regression", () => {
     webConfig: null,
     twitterEnabled: false,
     twitterConfig: null,
+    webSearchEnabled: false,
+    webSearchConfig: null,
     posthogEnabled: false,
     posthogProjectToken: null,
     posthogHost: null,

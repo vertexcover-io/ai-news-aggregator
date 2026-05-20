@@ -53,6 +53,8 @@ function SubmitHarness({
       webConfig: null,
       twitterEnabled: false,
       twitterConfig: null,
+      webSearchEnabled: false,
+      webSearchConfig: null,
       posthogEnabled: false,
       posthogProjectToken: null,
       posthogHost: null,
@@ -114,9 +116,7 @@ describe("SourcesSection — Twitter form submit (VS-6 regression)", () => {
     // Twitter row. Look for the "Edit" button or chevron near the Twitter row.
     // From the existing TwitterEditPanel.test.tsx, the panel is rendered when
     // expanded — find the row's edit toggle by its aria-label or text.
-    const editButtons = screen.getAllByRole("button", { name: /edit|configure/i });
-    // The row order is hn, reddit, web, twitter — find the last edit button.
-    const twitterEditBtn = editButtons[editButtons.length - 1];
+    const twitterEditBtn = screen.getByRole("button", { name: /twitter \/ x edit/i });
     fireEvent.click(twitterEditBtn);
 
     // 3. Click "Add list" and type a list ID

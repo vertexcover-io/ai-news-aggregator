@@ -57,6 +57,8 @@ function getDefaults(): SettingsFormValues {
     webConfig: null,
     twitterEnabled: false,
     twitterConfig: null,
+    webSearchEnabled: false,
+    webSearchConfig: null,
     posthogEnabled: false,
     posthogProjectToken: null,
     posthogHost: "https://us.i.posthog.com",
