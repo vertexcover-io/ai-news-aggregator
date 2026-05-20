@@ -545,6 +545,156 @@ describe("archivePatchSchema (REQ-160 – REQ-162, EDGE-110)", () => {
   });
 });
 
+describe("userSettingsUpsertSchema webSearchConfig (REQ-005/REQ-006)", () => {
+  const validWebSearchSettings = {
+    ...validSettings,
+    hnEnabled: false,
+    hnConfig: null,
+    webSearchEnabled: true,
+    webSearchConfig: {
+      provider: "tavily",
+      queries: [{ query: "AI safety", sinceDays: 7, maxItems: 5 }],
+    },
+  };
+
+  it("accepts valid webSearchConfig with provider=tavily and one query", () => {
+    const r = userSettingsUpsertSchema.safeParse(validWebSearchSettings);
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects a query with an empty string", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validWebSearchSettings,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: [{ query: "", sinceDays: 7, maxItems: 5 }],
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects a query string longer than 400 chars", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validWebSearchSettings,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: [{ query: "x".repeat(401), sinceDays: 7, maxItems: 5 }],
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects sinceDays: 0 (below minimum of 1)", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validWebSearchSettings,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: [{ query: "AI safety", sinceDays: 0, maxItems: 5 }],
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects sinceDays: 31 (above maximum of 30)", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validWebSearchSettings,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: [{ query: "AI safety", sinceDays: 31, maxItems: 5 }],
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects maxItems: 0 (below minimum of 1)", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validWebSearchSettings,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: [{ query: "AI safety", sinceDays: 7, maxItems: 0 }],
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects maxItems: 21 (above maximum of 20)", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validWebSearchSettings,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: [{ query: "AI safety", sinceDays: 7, maxItems: 21 }],
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects 26 queries (max is 25)", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validWebSearchSettings,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: Array.from({ length: 26 }, (_, i) => ({
+          query: `query ${i}`,
+          sinceDays: 7,
+          maxItems: 5,
+        })),
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects webSearchEnabled: true with empty queries array", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validWebSearchSettings,
+      webSearchEnabled: true,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: [],
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("auto-derives webSearchEnabled: true when webSearchConfig is provided and webSearchEnabled is omitted", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      hnEnabled: false,
+      hnConfig: null,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: [{ query: "AI safety", sinceDays: 7, maxItems: 5 }],
+      },
+    });
+    expect(r.success).toBe(true);
+    if (!r.success) return;
+    expect(r.data.webSearchEnabled).toBe(true);
+  });
+
+  it("webSearchEnabled: true with valid query satisfies the at-least-one-source refinement (all other sources disabled)", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      topN: 10,
+      halfLifeHours: null,
+      hnEnabled: false,
+      hnConfig: null,
+      redditEnabled: false,
+      redditConfig: null,
+      webEnabled: false,
+      webConfig: null,
+      twitterEnabled: false,
+      twitterConfig: null,
+      webSearchEnabled: true,
+      webSearchConfig: {
+        provider: "tavily",
+        queries: [{ query: "agentic AI", sinceDays: 7, maxItems: 10 }],
+      },
+      scheduleTime: "09:30",
+      scheduleTimezone: "America/New_York",
+      scheduleEnabled: true,
+    });
+    expect(r.success).toBe(true);
+  });
+});
+
 describe("addPostSchema (REQ-024, REQ-144)", () => {
   it("accepts a valid URL payload", () => {
     const r = addPostSchema.safeParse({

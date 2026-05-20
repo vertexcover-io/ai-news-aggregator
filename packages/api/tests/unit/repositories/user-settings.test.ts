@@ -15,6 +15,8 @@ interface StoredRow {
   webConfig: unknown;
   twitterEnabled: boolean;
   twitterConfig: unknown;
+  webSearchEnabled: boolean;
+  webSearchConfig: unknown;
   posthogEnabled: boolean;
   posthogProjectToken: string | null;
   posthogHost: string | null;
@@ -60,6 +62,8 @@ function makeFakeDb(): { db: Pick<AppDb, "select" | "insert">; rows: StoredRow[]
                 webConfig: v.webConfig ?? null,
                 twitterEnabled: v.twitterEnabled ?? false,
                 twitterConfig: v.twitterConfig ?? null,
+                webSearchEnabled: v.webSearchEnabled ?? false,
+                webSearchConfig: v.webSearchConfig ?? null,
                 posthogEnabled: v.posthogEnabled ?? false,
                 posthogProjectToken: v.posthogProjectToken ?? null,
                 posthogHost: v.posthogHost ?? null,
@@ -101,6 +105,8 @@ const baseInput = {
   webConfig: null,
   twitterEnabled: false,
   twitterConfig: null,
+  webSearchEnabled: false,
+  webSearchConfig: null,
   posthogEnabled: false,
   posthogProjectToken: null,
   posthogHost: null,
@@ -179,5 +185,56 @@ describe("UserSettingsRepo", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].topN).toBe(25);
     expect(rows[0].pipelineTime).toBe("07:00");
+  });
+
+  it("REQ-005: upsert with webSearchEnabled=true and queries; get() returns same shape", async () => {
+    const { db } = makeFakeDb();
+    const repo = createUserSettingsRepo(db);
+    const webSearchConfig = {
+      provider: "tavily" as const,
+      queries: [{ query: "agentic AI", sinceDays: 7, maxItems: 10 }],
+    };
+    const saved = await repo.upsert({
+      ...baseInput,
+      webSearchEnabled: true,
+      webSearchConfig,
+    });
+    expect(saved.webSearchEnabled).toBe(true);
+    expect(saved.webSearchConfig).toEqual(webSearchConfig);
+    const got = await repo.get();
+    expect(got?.webSearchEnabled).toBe(true);
+    expect(got?.webSearchConfig).toEqual(webSearchConfig);
+  });
+
+  it("REQ-005: upsert with webSearchEnabled=false and webSearchConfig=null; get() returns null config", async () => {
+    const { db } = makeFakeDb();
+    const repo = createUserSettingsRepo(db);
+    const saved = await repo.upsert({
+      ...baseInput,
+      webSearchEnabled: false,
+      webSearchConfig: null,
+    });
+    expect(saved.webSearchEnabled).toBe(false);
+    expect(saved.webSearchConfig).toBeNull();
+    const got = await repo.get();
+    expect(got?.webSearchEnabled).toBe(false);
+    expect(got?.webSearchConfig).toBeNull();
+  });
+
+  it("REQ-005: second upsert overwrites prior webSearchConfig queries", async () => {
+    const { db } = makeFakeDb();
+    const repo = createUserSettingsRepo(db);
+    const configA = {
+      provider: "tavily" as const,
+      queries: [{ query: "query A", sinceDays: 7, maxItems: 5 }],
+    };
+    const configB = {
+      provider: "tavily" as const,
+      queries: [{ query: "query B", sinceDays: 14, maxItems: 10 }],
+    };
+    await repo.upsert({ ...baseInput, webSearchEnabled: true, webSearchConfig: configA });
+    await repo.upsert({ ...baseInput, webSearchEnabled: true, webSearchConfig: configB });
+    const got = await repo.get();
+    expect(got?.webSearchConfig).toEqual(configB);
   });
 });
