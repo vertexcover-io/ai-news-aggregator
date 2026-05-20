@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LanguageModel, LanguageModelUsage, ProviderMetadata } from "ai";
 
+// Dynamic imports (`await import(...)`) of large pipeline modules occasionally
+// exceed vitest's 5s default when CPU is contended (e.g. full-monorepo test:unit
+// run via turbo). Raise this file's per-test timeout — wiring assertions
+// themselves are fast; only the cold module load is slow.
+vi.setConfig({ testTimeout: 15000 });
+
 const STUB_USAGE: LanguageModelUsage = {
   inputTokens: 1000,
   outputTokens: 200,

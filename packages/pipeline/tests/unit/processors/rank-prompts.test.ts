@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   SOURCE_NEUTRALITY_RULE,
   RANK_SYSTEM_PROMPT_NO_PROFILE,
+  RECAP_VOICE_BLOCK,
 } from "@pipeline/processors/rank-prompts.js";
 
 describe("rank prompts", () => {
@@ -136,6 +137,74 @@ describe("rank prompts", () => {
       expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(
         "If summary and bottomLine could both answer",
       );
+    });
+  });
+
+  describe("editorial-stance recap content (VS-1, VS-2)", () => {
+    // VS-1a: prompt contains editorial-stance directive scoped to bullets+bottomLine
+    it("VS-1a: contains editorial-stance directive near 'before' or 'first' (REQ-001)", () => {
+      expect(/our (editorial )?(take|stance|voice)/i.test(RANK_SYSTEM_PROMPT_NO_PROFILE)).toBe(true);
+      // the directive must appear near "before" or "first" to scope it as a pre-writing step
+      const stanceMatch = RANK_SYSTEM_PROMPT_NO_PROFILE.match(/our (editorial )?(take|stance|voice)/i);
+      expect(stanceMatch).not.toBeNull();
+      if (stanceMatch !== null && stanceMatch.index !== undefined) {
+        const matchIndex: number = stanceMatch.index;
+        const contextWindow = RANK_SYSTEM_PROMPT_NO_PROFILE.slice(
+          Math.max(0, matchIndex - 300),
+          matchIndex + 300,
+        );
+        expect(/before|first/i.test(contextWindow)).toBe(true);
+      }
+    });
+
+    // VS-1b: voice claim appears in bullets and bottomLine descriptions
+    it("VS-1b: voice claim appears in bullets and bottomLine field descriptions (REQ-003, REQ-004)", () => {
+      // Find the bullets field description and check for "our" voice language
+      const bulletsSection = RANK_SYSTEM_PROMPT_NO_PROFILE.slice(
+        RANK_SYSTEM_PROMPT_NO_PROFILE.indexOf("bullets"),
+      );
+      const bottomLineSection = RANK_SYSTEM_PROMPT_NO_PROFILE.slice(
+        RANK_SYSTEM_PROMPT_NO_PROFILE.indexOf("bottomLine"),
+      );
+      expect(/our (editorial )?(voice|stance|take)/i.test(bulletsSection)).toBe(true);
+      expect(/our (editorial )?(voice|stance|take)/i.test(bottomLineSection)).toBe(true);
+    });
+
+    // VS-1c: positive regression guard — summary field description still contains "state what happened"
+    it("VS-1c: summary description still contains 'state what happened' (REQ-002 — positive regression guard)", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE.toLowerCase()).toContain("state what happened");
+    });
+
+    // VS-2a: prompt contains a DO NOT block with at least 3 forbidden patterns
+    it("VS-2a: prompt contains a DO NOT block with at least 3 forbidden patterns (REQ-005)", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("DO NOT");
+      const forbiddenPatterns = [
+        "The author argues",
+        "They say",
+        "According to",
+        "writes",
+        "revolutionary",
+        "inventing facts",
+        "not in the source",
+      ];
+      const matched = forbiddenPatterns.filter((p) =>
+        RANK_SYSTEM_PROMPT_NO_PROFILE.includes(p),
+      );
+      expect(matched.length).toBeGreaterThanOrEqual(3);
+    });
+
+    // VS-2b: prompt contains at least 2 Bad/Good example pairs
+    it("VS-2b: prompt contains at least 2 Bad/Good example pairs (REQ-006)", () => {
+      const badCount = (RANK_SYSTEM_PROMPT_NO_PROFILE.match(/\bBad\b/g) ?? []).length;
+      const goodCountForVoice = (RANK_SYSTEM_PROMPT_NO_PROFILE.match(/\bGood\b/g) ?? []).length;
+      // At least 2 Bad markers and corresponding Good markers from the voice block examples
+      expect(badCount).toBeGreaterThanOrEqual(2);
+      expect(goodCountForVoice).toBeGreaterThanOrEqual(2);
+    });
+
+    // Structural test: RECAP_VOICE_BLOCK is exported and included verbatim
+    it("RANK_SYSTEM_PROMPT_NO_PROFILE includes RECAP_VOICE_BLOCK verbatim (REQ-001..REQ-006)", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain(RECAP_VOICE_BLOCK);
     });
   });
 });
