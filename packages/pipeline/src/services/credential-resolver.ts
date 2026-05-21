@@ -16,6 +16,7 @@ export interface TwitterOAuth1Creds {
 
 export interface TwitterCollectorCookie {
   apiKey: string;
+  source: "db" | "env";
 }
 
 export interface CredentialResolverDeps {
@@ -132,10 +133,10 @@ export async function resolveTwitterCollectorCookie(
   if (dbRead.ok === "decrypt_failed") return null;
   const dbRow = dbRead.ok;
   if (dbRow) {
-    return { apiKey: dbRow.apiKey };
+    return { apiKey: dbRow.apiKey, source: "db" };
   }
   const env = deps.env ?? {};
   const apiKey = env.RETTIWT_API_KEY;
   if (!present(apiKey)) return null;
-  return { apiKey };
+  return { apiKey, source: "env" };
 }

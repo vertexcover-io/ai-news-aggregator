@@ -39,6 +39,21 @@ function makeRettiwtStub(): RettiwtStub {
   };
 }
 
+function makeCsrfMismatchError(): Error & {
+  readonly status: number;
+  readonly details: readonly { readonly code: number; readonly message: string }[];
+} {
+  return Object.assign(new Error("Request failed with status code 403"), {
+    status: 403,
+    details: [
+      {
+        code: 353,
+        message: "This request requires a matching csrf cookie and header.",
+      },
+    ],
+  });
+}
+
 describe("createRettiwtClient", () => {
   describe("fetchListTweets", () => {
     it("denormalizes a list page and returns the next cursor (string form)", async () => {
@@ -147,6 +162,52 @@ describe("createRettiwtClient", () => {
       const result = await client.fetchListTweets("L");
 
       expect(result.nextCursor).toBeNull();
+    });
+
+    it("refreshes csrf auth and retries once when X returns code 353", async () => {
+      const stub = makeRettiwtStub();
+      const refreshCsrfToken = vi.fn(() => Promise.resolve(true));
+      stub.list.tweets
+        .mockRejectedValueOnce(makeCsrfMismatchError())
+        .mockResolvedValueOnce(makeCursored([makeFakeTweet({ id: "after-refresh" })], null));
+      const client = createRettiwtClient({
+        rettiwt: stub,
+        auth: { refreshCsrfToken },
+      });
+
+      const result = await client.fetchListTweets("L", {
+        maxTweets: 10,
+        cursor: "cursor-before",
+      });
+
+      expect(refreshCsrfToken).toHaveBeenCalledOnce();
+      expect(stub.list.tweets).toHaveBeenCalledTimes(2);
+      expect(stub.list.tweets).toHaveBeenNthCalledWith(
+        2,
+        "L",
+        10,
+        "cursor-before",
+      );
+      expect(result.tweets[0].id).toBe("after-refresh");
+    });
+
+    it("does not retry non-csrf 403 errors", async () => {
+      const stub = makeRettiwtStub();
+      const refreshCsrfToken = vi.fn(() => Promise.resolve(true));
+      const forbidden = Object.assign(new Error("Request failed with status code 403"), {
+        status: 403,
+        details: [{ code: 88, message: "Rate limit exceeded." }],
+      });
+      stub.list.tweets.mockRejectedValueOnce(forbidden);
+      const client = createRettiwtClient({
+        rettiwt: stub,
+        auth: { refreshCsrfToken },
+      });
+
+      await expect(client.fetchListTweets("L")).rejects.toBe(forbidden);
+
+      expect(refreshCsrfToken).not.toHaveBeenCalled();
+      expect(stub.list.tweets).toHaveBeenCalledOnce();
     });
   });
 

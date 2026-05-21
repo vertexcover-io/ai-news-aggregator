@@ -291,14 +291,14 @@ describe("resolveTwitterCollectorCookie (VS-2 / VS-6)", () => {
     });
     const env: NodeJS.ProcessEnv = { RETTIWT_API_KEY: "env-cookie-blob" };
     const result = await resolveTwitterCollectorCookie({ repo, env });
-    expect(result).toEqual({ apiKey: "db-cookie-blob" });
+    expect(result).toEqual({ apiKey: "db-cookie-blob", source: "db" });
   });
 
   it("falls back to RETTIWT_API_KEY when DB row absent", async () => {
     const repo = makeRepo({});
     const env: NodeJS.ProcessEnv = { RETTIWT_API_KEY: "env-cookie-blob" };
     const result = await resolveTwitterCollectorCookie({ repo, env });
-    expect(result).toEqual({ apiKey: "env-cookie-blob" });
+    expect(result).toEqual({ apiKey: "env-cookie-blob", source: "env" });
   });
 
   it("returns null when both DB and env are empty", async () => {

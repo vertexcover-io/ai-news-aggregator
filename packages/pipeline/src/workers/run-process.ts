@@ -37,6 +37,7 @@ import { collectTwitter } from "@pipeline/collectors/twitter/index.js";
 import { collectWebSearch } from "@pipeline/collectors/web-search/index.js";
 import type { WebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
 import { createRettiwtClient } from "@pipeline/collectors/twitter/clients/rettiwt.js";
+import { refreshRettiwtCsrfToken } from "@pipeline/collectors/twitter/clients/rettiwt-auth.js";
 import type { TwitterClient } from "@pipeline/collectors/twitter/types.js";
 import { Rettiwt } from "rettiwt-api";
 import { createSocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
@@ -931,12 +932,24 @@ export function createRunProcessWorker(
   const twitterClient: () => Promise<TwitterClient> =
     options.twitterClient ??
     (async () => {
+      const repo = createSocialCredentialsRepo(ensureDb(db), getCredentialCipher());
       const cookie = await resolveTwitterCollectorCookie({
-        repo: createSocialCredentialsRepo(ensureDb(db), getCredentialCipher()),
+        repo,
         env: process.env,
       });
+      const rettiwt = new Rettiwt({ apiKey: cookie?.apiKey });
       return createRettiwtClient({
-        rettiwt: new Rettiwt({ apiKey: cookie?.apiKey }),
+        rettiwt,
+        auth: cookie
+          ? {
+              refreshCsrfToken: () =>
+                refreshRettiwtCsrfToken({
+                  rettiwt,
+                  repo,
+                  credentialSource: cookie.source,
+                }),
+            }
+          : undefined,
       });
     });
 
