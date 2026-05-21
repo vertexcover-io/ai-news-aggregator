@@ -1,0 +1,3 @@
+$ curl -sS http://localhost:3000/api/archives/not-a-uuid -w "\n%{http_code}\n"
+{"error":"not found"}
+404

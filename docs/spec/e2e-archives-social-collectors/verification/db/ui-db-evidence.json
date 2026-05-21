@@ -1,0 +1,41 @@
+[
+  {
+    "id": "330c4d50-7df0-4785-be9b-53080f6326f6",
+    "reviewed": true,
+    "ranked_count": 1,
+    "ranked_items": [
+      {
+        "score": 0,
+        "title": "FV inline edited 330c4d50",
+        "bullets": [
+          "The title starts with the original value."
+        ],
+        "summary": "Functional verification item whose title is edited inline.",
+        "imageUrl": null,
+        "rationale": "",
+        "rawItemId": 95,
+        "bottomLine": "The edited title should render in the public archive."
+      }
+    ]
+  },
+  {
+    "id": "b18a363f-4ad6-49a3-9294-58b3f837e45d",
+    "reviewed": true,
+    "ranked_count": 1,
+    "ranked_items": [
+      {
+        "score": 0,
+        "title": "FV remove kept b18a363f",
+        "bullets": [
+          "Kept item evidence after save.",
+          "Public archive should render this item."
+        ],
+        "summary": "Functional verification item that should remain after save.",
+        "imageUrl": null,
+        "rationale": "",
+        "rawItemId": 94,
+        "bottomLine": "This kept item should survive the review save."
+      }
+    ]
+  }
+]
