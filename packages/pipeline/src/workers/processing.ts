@@ -95,6 +95,7 @@ import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
 import { collectTwitter } from "@pipeline/collectors/twitter/index.js";
 import { createRettiwtClient } from "@pipeline/collectors/twitter/clients/rettiwt.js";
+import { refreshRettiwtCsrfToken } from "@pipeline/collectors/twitter/clients/rettiwt-auth.js";
 import type { TwitterClient } from "@pipeline/collectors/twitter/types.js";
 import { collectWebSearch } from "@pipeline/collectors/web-search/index.js";
 import { createWebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
@@ -245,8 +246,19 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
       repo: credentialsRepo,
       env: process.env,
     });
+    const rettiwt = new Rettiwt({ apiKey: cookie?.apiKey });
     return createRettiwtClient({
-      rettiwt: new Rettiwt({ apiKey: cookie?.apiKey }),
+      rettiwt,
+      auth: cookie
+        ? {
+            refreshCsrfToken: () =>
+              refreshRettiwtCsrfToken({
+                rettiwt,
+                repo: credentialsRepo,
+                credentialSource: cookie.source,
+              }),
+          }
+        : undefined,
     });
   };
   const slackNotifier = createSlackNotifier({

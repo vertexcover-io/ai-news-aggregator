@@ -66,6 +66,11 @@ export interface RettiwtFacade {
 
 interface CreateRettiwtClientDeps {
   rettiwt: RettiwtFacade;
+  auth?: RettiwtAuthRefresher;
+}
+
+export interface RettiwtAuthRefresher {
+  refreshCsrfToken(): Promise<boolean>;
 }
 
 function extractCursor(next: RettiwtCursoredPage["next"]): string | null {
@@ -148,6 +153,62 @@ function makeAbortError(): Error {
   return err;
 }
 
+function hasTwitterErrorCode(err: unknown, code: number): boolean {
+  if (typeof err !== "object" || err === null || !("details" in err)) {
+    return false;
+  }
+  const details = (err as { details: unknown }).details;
+  if (!Array.isArray(details)) return false;
+  return details.some((detail) => {
+    if (typeof detail !== "object" || detail === null || !("code" in detail)) {
+      return false;
+    }
+    return (detail as { code: unknown }).code === code;
+  });
+}
+
+function hasCsrfMismatchMessage(err: unknown): boolean {
+  if (typeof err !== "object" || err === null || !("details" in err)) {
+    return false;
+  }
+  const details = (err as { details: unknown }).details;
+  if (!Array.isArray(details)) return false;
+  return details.some((detail) => {
+    if (typeof detail !== "object" || detail === null || !("message" in detail)) {
+      return false;
+    }
+    const message = (detail as { message: unknown }).message;
+    return (
+      typeof message === "string" &&
+      /matching csrf cookie and header/i.test(message)
+    );
+  });
+}
+
+function isCsrfMismatchError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const status = "status" in err ? (err as { status: unknown }).status : undefined;
+  return status === 403 && (hasTwitterErrorCode(err, 353) || hasCsrfMismatchMessage(err));
+}
+
+async function withCsrfRefreshRetry<T>(
+  operation: () => Promise<T>,
+  auth: RettiwtAuthRefresher | undefined,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (err) {
+    if (!auth || !isCsrfMismatchError(err)) {
+      throw err;
+    }
+    const refreshed = await auth.refreshCsrfToken();
+    if (!refreshed) {
+      throw err;
+    }
+    return operation();
+  }
+}
+
 function toResult(page: RettiwtCursoredPage): TwitterClientFetchResult {
   return {
     tweets: page.list.map(denormalize),
@@ -156,15 +217,19 @@ function toResult(page: RettiwtCursoredPage): TwitterClientFetchResult {
 }
 
 export function createRettiwtClient(deps: CreateRettiwtClientDeps): TwitterClient {
-  const { rettiwt } = deps;
+  const { auth, rettiwt } = deps;
   return {
     async fetchListTweets(
       listId: string,
       opts: TwitterClientFetchOptions = {},
     ): Promise<TwitterClientFetchResult> {
-      const page = await abortRace(
-        rettiwt.list.tweets(listId, opts.maxTweets, opts.cursor),
-        opts.signal,
+      const page = await withCsrfRefreshRetry(
+        () =>
+          abortRace(
+            rettiwt.list.tweets(listId, opts.maxTweets, opts.cursor),
+            opts.signal,
+          ),
+        auth,
       );
       return toResult(page);
     },
@@ -172,9 +237,13 @@ export function createRettiwtClient(deps: CreateRettiwtClientDeps): TwitterClien
       userId: string,
       opts: TwitterClientFetchOptions = {},
     ): Promise<TwitterClientFetchResult> {
-      const page = await abortRace(
-        rettiwt.user.timeline(userId, opts.maxTweets, opts.cursor),
-        opts.signal,
+      const page = await withCsrfRefreshRetry(
+        () =>
+          abortRace(
+            rettiwt.user.timeline(userId, opts.maxTweets, opts.cursor),
+            opts.signal,
+          ),
+        auth,
       );
       return toResult(page);
     },
