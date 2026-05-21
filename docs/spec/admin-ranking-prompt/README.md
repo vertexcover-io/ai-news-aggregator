@@ -2,7 +2,7 @@
 
 **Status:** Verified — PASSED ([verification/proof-report.md](./verification/proof-report.md))
 **Branch:** `feat/admin-ranking-prompt`
-**PR:** _filled in after open_
+**PR:** [#175](https://github.com/vertexcover-io/ai-news-aggregator/pull/175)
 
 ## Summary
 
