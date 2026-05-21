@@ -93,6 +93,14 @@ docs/spec/**
 !docs/spec/web-search-collector/verification/screenshots/
 !docs/spec/web-search-collector/verification/screenshots/*.png
 .worktrees/
+# admin-ranking-prompt: ship design + library-probe + README + adversarial findings + screenshots
+!docs/spec/admin-ranking-prompt/design.md
+!docs/spec/admin-ranking-prompt/library-probe.md
+!docs/spec/admin-ranking-prompt/README.md
+!docs/spec/admin-ranking-prompt/verification/adversarial-findings.md
+!docs/spec/admin-ranking-prompt/verification/screenshots/
+!docs/spec/admin-ranking-prompt/verification/screenshots/*.png
+
 .harness/
 .worktrees/
 
