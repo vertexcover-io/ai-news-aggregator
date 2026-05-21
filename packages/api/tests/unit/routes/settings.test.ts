@@ -109,6 +109,7 @@ const validBody = {
   linkedinEnabled: true,
   twitterPostEnabled: true,
   autoReview: false,
+  rankingPrompt: "Default ranking prompt for tests",
 };
 
 describe("GET /api/settings", () => {
@@ -148,6 +149,7 @@ describe("GET /api/settings", () => {
       linkedinEnabled: true,
       twitterPostEnabled: true,
       autoReview: false,
+      rankingPrompt: "Default ranking prompt",
       updatedAt: new Date().toISOString(),
     };
     const { repo } = makeRepo(existing);
@@ -453,6 +455,7 @@ describe("PUT /api/settings", () => {
       linkedinEnabled: true,
       twitterPostEnabled: true,
       autoReview: false,
+      rankingPrompt: "Default ranking prompt",
       updatedAt: new Date().toISOString(),
     };
     const { repo, store } = makeRepo(existing);

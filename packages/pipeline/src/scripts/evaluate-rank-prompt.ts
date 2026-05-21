@@ -1,6 +1,7 @@
 import { config } from "dotenv";
 import { resolve } from "node:path";
 import type { Candidate } from "@newsletter/shared";
+import { DEFAULT_RANKING_PROMPT } from "@newsletter/shared/constants";
 import { rankCandidates } from "@pipeline/processors/rank.js";
 
 config({ path: resolve(import.meta.dirname, "../../../../.env") });
@@ -220,6 +221,7 @@ async function main(): Promise<number> {
 
   const result = await rankCandidates([...EVAL_CANDIDATES], {
     topN: TOP_N,
+    systemPrompt: DEFAULT_RANKING_PROMPT,
     now: NOW,
     loadBodies: loadInlineBodies,
   });

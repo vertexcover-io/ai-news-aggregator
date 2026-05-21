@@ -205,6 +205,7 @@ describe("API error surfacing", () => {
         scheduleTime: "07:00",
         scheduleTimezone: "UTC",
         scheduleEnabled: false,
+        rankingPrompt: "test prompt",
       });
     } catch (e) {
       caught = e;
@@ -254,6 +255,7 @@ describe("API error surfacing", () => {
         scheduleTime: "07:00",
         scheduleTimezone: "UTC",
         scheduleEnabled: false,
+        rankingPrompt: "test prompt",
       });
     } catch (e) {
       caught = e;

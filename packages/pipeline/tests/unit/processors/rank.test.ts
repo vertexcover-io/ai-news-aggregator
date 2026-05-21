@@ -25,6 +25,9 @@ vi.mock("@newsletter/shared", async () => {
 
 import { rankCandidates, rankedResponseSchema } from "@pipeline/processors/rank.js";
 
+const TEST_SYSTEM_PROMPT =
+  "TEST-PROMPT: rank items for developer relevance using Developer-relevance, Builder-impact, Agentic-systems-relevance, Evidence-quality, Signal-vs-hype.";
+
 interface GenerateArgs {
   model: unknown;
   system: string;
@@ -140,6 +143,7 @@ describe("rankCandidates", () => {
 
     const result = await rankCandidates([], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
     });
@@ -172,6 +176,7 @@ describe("rankCandidates", () => {
 
     await rankCandidates([candidate], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
       now,
@@ -194,7 +199,7 @@ describe("rankCandidates", () => {
     expect(call.prompt).toContain("first comment");
   });
 
-  it("uses a general developer-and-engineering-team ranking prompt (REQ-070)", async () => {
+  it("PHASE3-C1: forwards options.systemPrompt verbatim as the generateObject `system` arg (REQ-006, REQ-007)", async () => {
     const generateObject = makeGenerate({
       ranked: [
         makeRankedEntry({
@@ -204,30 +209,17 @@ describe("rankCandidates", () => {
         }),
       ],
     });
+    const customPrompt = "CUSTOM-RANKING-PROMPT-XYZ for the rerank stage.";
 
     await rankCandidates([makeCandidate(1)], {
       topN: 5,
+      systemPrompt: customPrompt,
       generateObject,
       loadBodies: stubLoadBodies,
     });
 
     const call = generateObject.mock.calls[0]?.[0] as GenerateArgs;
-    expect(call.system).toContain("software developer");
-    expect(call.system).toContain("tech lead");
-    expect(call.system).toContain("engineering manager");
-    expect(call.system).toContain("share with their teams");
-    expect(call.system).toContain("Direct developer-tool");
-    expect(call.system).toContain("requestedTopN");
-    expect(call.system).toContain("coding agents");
-    expect(call.system).toContain("agentic AI tooling");
-    expect(call.system).toContain("Developer-relevance");
-    expect(call.system).toContain("Builder-impact");
-    expect(call.system).toContain("Agentic-systems-relevance");
-    expect(call.system).toContain("Evidence-quality");
-    expect(call.system).toContain("Signal-vs-hype");
-    expect(call.system).not.toContain("Vertexcover");
-    expect(call.system).not.toContain("Harness engineering");
-    expect(call.system).not.toContain("feel the pulse of the field");
+    expect(call.system).toBe(customPrompt);
   });
 
   it("calls generateObject with temperature 0 (REQ-064)", async () => {
@@ -237,6 +229,7 @@ describe("rankCandidates", () => {
 
     await rankCandidates([makeCandidate(1)], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
     });
@@ -263,6 +256,7 @@ describe("rankCandidates", () => {
       [makeCandidate(1), makeCandidate(2), makeCandidate(3)],
       {
         topN: 5,
+        systemPrompt: TEST_SYSTEM_PROMPT,
         generateObject,
         loadBodies: stubLoadBodies,
       },
@@ -293,6 +287,7 @@ describe("rankCandidates", () => {
 
     const result = await rankCandidates([makeCandidate(1), makeCandidate(2)], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
     });
@@ -311,6 +306,7 @@ describe("rankCandidates", () => {
     await expect(
       rankCandidates([makeCandidate(1), makeCandidate(2)], {
         topN: 5,
+        systemPrompt: TEST_SYSTEM_PROMPT,
         generateObject,
         loadBodies: stubLoadBodies,
       }),
@@ -334,6 +330,7 @@ describe("rankCandidates", () => {
 
     const result = await rankCandidates([makeCandidate(1)], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
     });
@@ -361,6 +358,7 @@ describe("rankCandidates", () => {
     await expect(
       rankCandidates([makeCandidate(1), makeCandidate(2)], {
         topN: 5,
+        systemPrompt: TEST_SYSTEM_PROMPT,
         generateObject,
         loadBodies: stubLoadBodies,
       }),
@@ -378,6 +376,7 @@ describe("rankCandidates", () => {
 
     const result = await rankCandidates([candidate], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       halfLifeHours: 48,
       generateObject,
       loadBodies: stubLoadBodies,
@@ -404,6 +403,7 @@ describe("rankCandidates", () => {
 
     await rankCandidates([makeCandidate(1)], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
     });
@@ -420,6 +420,7 @@ describe("rankCandidates", () => {
 
     const result = await rankCandidates([candidate], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       halfLifeHours: 48,
       generateObject,
       loadBodies: stubLoadBodies,
@@ -436,6 +437,7 @@ describe("rankCandidates", () => {
     await expect(
       rankCandidates([makeCandidate(1)], {
         topN: 5,
+        systemPrompt: TEST_SYSTEM_PROMPT,
         generateObject,
         loadBodies: stubLoadBodies,
       }),
@@ -452,6 +454,7 @@ describe("rankCandidates", () => {
 
     await rankCandidates([candidate], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       bodyTokenBudget: 100,
       generateObject,
       loadBodies: stubLoadBodies,
@@ -471,6 +474,7 @@ describe("rankCandidates", () => {
 
     await rankCandidates([candidate], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
     });
@@ -491,6 +495,7 @@ describe("rankCandidates", () => {
 
     await rankCandidates([candidate], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       commentsPerItem: 3,
       generateObject,
       loadBodies: stubLoadBodies,
@@ -521,6 +526,7 @@ describe("rankCandidates", () => {
 
     const result = await rankCandidates(candidates, {
       topN: 2,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
       now: new Date("2026-04-07T00:00:00Z"),
@@ -540,6 +546,7 @@ describe("rankCandidates", () => {
 
     await rankCandidates([makeCandidate(1), makeCandidate(2)], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       runId: "run-xyz",
       generateObject,
       loadBodies: stubLoadBodies,
@@ -577,6 +584,7 @@ describe("rankCandidates", () => {
 
     const result = await rankCandidates([makeCandidate(1)], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
     });
@@ -608,6 +616,7 @@ describe("rankCandidates", () => {
 
     const result = await rankCandidates([makeCandidate(1)], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
     });
@@ -627,6 +636,7 @@ describe("rankCandidates", () => {
 
     const result = await rankCandidates([makeCandidate(1)], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
     });
@@ -648,6 +658,7 @@ describe("rankCandidates", () => {
 
     const result = await rankCandidates([makeCandidate(1)], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
     });
@@ -694,6 +705,7 @@ describe("rankCandidates", () => {
 
     const result = await rankCandidates([makeCandidate(1)], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
     });
@@ -706,6 +718,7 @@ describe("rankCandidates", () => {
     const generateObject = makeGenerate({ ranked: [] });
     const result = await rankCandidates([], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
     });
@@ -742,6 +755,7 @@ describe("rankCandidates", () => {
 
     await rankCandidates([makeCandidate(1)], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
       abortSignal: controller.signal,
@@ -764,6 +778,7 @@ describe("rankCandidates", () => {
 
     await rankCandidates([makeCandidate(1)], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
       runId: "run-abc",
@@ -801,6 +816,7 @@ describe("rankCandidates", () => {
 
     await rankCandidates([makeCandidate(1)], {
       topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
       generateObject,
       loadBodies: stubLoadBodies,
     });
@@ -841,6 +857,7 @@ describe("rankCandidates", () => {
       [makeCandidate(1), makeCandidate(2), makeCandidate(3)],
       {
         topN: 5,
+        systemPrompt: TEST_SYSTEM_PROMPT,
         generateObject,
         loadBodies: stubLoadBodies,
       },

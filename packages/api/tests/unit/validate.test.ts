@@ -20,6 +20,7 @@ const validSettings = {
   scheduleTime: "09:30",
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
+  rankingPrompt: "Default ranking prompt for tests",
 };
 
 describe("userSettingsUpsertSchema (REQ-012/REQ-013/EDGE-004)", () => {
@@ -75,6 +76,7 @@ describe("userSettingsUpsertSchema (REQ-012/REQ-013/EDGE-004)", () => {
       scheduleTime: "09:30",
       scheduleTimezone: "America/New_York",
       scheduleEnabled: true,
+      rankingPrompt: "Default ranking prompt for tests",
     });
     expect(r.success).toBe(true);
     if (!r.success) return;
@@ -690,8 +692,79 @@ describe("userSettingsUpsertSchema webSearchConfig (REQ-005/REQ-006)", () => {
       scheduleTime: "09:30",
       scheduleTimezone: "America/New_York",
       scheduleEnabled: true,
+      rankingPrompt: "Default ranking prompt for tests",
     });
     expect(r.success).toBe(true);
+  });
+});
+
+describe("userSettingsUpsertSchema rankingPrompt (PHASE2-C1)", () => {
+  it("accepts a multi-line prompt with backticks and $ characters", () => {
+    const prompt =
+      "Line one with backticks `code` and $variable\nLine two\nLine three";
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      rankingPrompt: prompt,
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.rankingPrompt).toBe(prompt);
+    }
+  });
+
+  it("EDGE-002: rejects empty string", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      rankingPrompt: "",
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const issue = r.error.issues.find((i) => i.path.includes("rankingPrompt"));
+      expect(issue).toBeDefined();
+    }
+  });
+
+  it("EDGE-003: rejects whitespace-only string", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      rankingPrompt: "   \n\t  ",
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const issue = r.error.issues.find((i) => i.path.includes("rankingPrompt"));
+      expect(issue).toBeDefined();
+    }
+  });
+
+  it("EDGE-004: rejects > 20000 chars", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      rankingPrompt: "x".repeat(20001),
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const issue = r.error.issues.find((i) => i.path.includes("rankingPrompt"));
+      expect(issue).toBeDefined();
+    }
+  });
+
+  it("accepts exactly 20000 chars", () => {
+    const r = userSettingsUpsertSchema.safeParse({
+      ...validSettings,
+      rankingPrompt: "x".repeat(20000),
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("EDGE-005: rejects when rankingPrompt is missing", () => {
+    const { rankingPrompt: _omit, ...withoutPrompt } = validSettings;
+    void _omit;
+    const r = userSettingsUpsertSchema.safeParse(withoutPrompt);
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const issue = r.error.issues.find((i) => i.path.includes("rankingPrompt"));
+      expect(issue).toBeDefined();
+    }
   });
 });
 

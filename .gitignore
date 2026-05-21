@@ -100,6 +100,14 @@ docs/spec/**
 !docs/spec/split-slack-notifications/verification/adversarial-findings.md
 !docs/spec/split-slack-notifications/verification/verification-stubs.md
 .worktrees/
+# admin-ranking-prompt: ship design + library-probe + README + adversarial findings + screenshots
+!docs/spec/admin-ranking-prompt/design.md
+!docs/spec/admin-ranking-prompt/library-probe.md
+!docs/spec/admin-ranking-prompt/README.md
+!docs/spec/admin-ranking-prompt/verification/adversarial-findings.md
+!docs/spec/admin-ranking-prompt/verification/screenshots/
+!docs/spec/admin-ranking-prompt/verification/screenshots/*.png
+
 .harness/
 .worktrees/
 

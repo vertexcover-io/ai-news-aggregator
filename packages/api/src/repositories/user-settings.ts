@@ -44,6 +44,7 @@ function toDomain(
     linkedinEnabled: row.linkedinEnabled,
     twitterPostEnabled: row.twitterPostEnabled,
     autoReview: row.autoReview,
+    rankingPrompt: row.rankingPrompt,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -94,6 +95,7 @@ export function createUserSettingsRepo(
           linkedinEnabled: input.linkedinEnabled,
           twitterPostEnabled: input.twitterPostEnabled,
           autoReview: input.autoReview,
+          rankingPrompt: input.rankingPrompt,
           updatedAt: now,
         })
         .onConflictDoUpdate({
@@ -124,6 +126,7 @@ export function createUserSettingsRepo(
             linkedinEnabled: input.linkedinEnabled,
             twitterPostEnabled: input.twitterPostEnabled,
             autoReview: input.autoReview,
+            rankingPrompt: input.rankingPrompt,
             updatedAt: now,
           },
         })

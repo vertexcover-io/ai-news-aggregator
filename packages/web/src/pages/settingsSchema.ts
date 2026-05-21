@@ -97,6 +97,7 @@ export interface SettingsSubmitInput {
   linkedinEnabled?: boolean;
   twitterPostEnabled?: boolean;
   autoReview?: boolean;
+  rankingPrompt: string;
 }
 
 const webSearchQuerySchema = z.object({
@@ -161,6 +162,10 @@ export const settingsFormSchema = z
     linkedinEnabled: z.boolean(),
     twitterPostEnabled: z.boolean(),
     autoReview: z.boolean(),
+    rankingPrompt: z
+      .string()
+      .max(20000, "Too long (max 20000 chars)")
+      .refine((v) => v.trim().length > 0, "Ranking prompt is required"),
   })
   .superRefine((payload, ctx) => {
     const [pipelineHour, pipelineMinute] = payload.pipelineTime.split(":").map(Number);
@@ -273,5 +278,6 @@ export function normalizeSettingsForSubmit(
     linkedinEnabled: values.linkedinEnabled,
     twitterPostEnabled: values.twitterPostEnabled,
     autoReview: values.autoReview,
+    rankingPrompt: values.rankingPrompt,
   };
 }

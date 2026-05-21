@@ -7,7 +7,6 @@ import type {
   RankedItemRef,
   RawItemComment,
 } from "@newsletter/shared";
-import { RANK_SYSTEM_PROMPT_NO_PROFILE } from "@pipeline/processors/rank-prompts.js";
 import type { CostTracker } from "@pipeline/services/cost-tracker.js";
 import { loadBodiesForShortlist as defaultLoadBodies } from "@pipeline/processors/rank-body-loader.js";
 import {
@@ -33,6 +32,7 @@ function countWords(text: string): number {
 
 export interface RankOptions {
   topN: number;
+  systemPrompt: string;
   halfLifeHours?: number;
   shortlistBreakdowns?: ShortlistBreakdown[];
   bodyTokenBudget?: number;
@@ -205,7 +205,7 @@ export async function rankCandidates(
     ),
   );
 
-  const systemPrompt = RANK_SYSTEM_PROMPT_NO_PROFILE;
+  const systemPrompt = options.systemPrompt;
   const axes = AXES;
 
   const promptPayload = {

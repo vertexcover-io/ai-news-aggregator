@@ -47,6 +47,7 @@ export function createUserSettingsRepo(
         linkedinEnabled: row.linkedinEnabled,
         twitterPostEnabled: row.twitterPostEnabled,
         autoReview: row.autoReview,
+        rankingPrompt: row.rankingPrompt,
         updatedAt:
           row.updatedAt instanceof Date
             ? row.updatedAt.toISOString()

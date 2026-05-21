@@ -1,6 +1,7 @@
 import type IORedis from "ioredis";
 import { Queue } from "bullmq";
 import { createRedisConnection, startRun } from "@newsletter/shared";
+import { DEFAULT_RANKING_PROMPT } from "@newsletter/shared/constants";
 import type {
   RunProcessJobPayload,
   RunSubmitPayload,
@@ -58,6 +59,7 @@ export async function createRun(
     linkedinEnabled: true,
     twitterPostEnabled: true,
     autoReview: false,
+    rankingPrompt: DEFAULT_RANKING_PROMPT,
     updatedAt: new Date().toISOString(),
   };
 
