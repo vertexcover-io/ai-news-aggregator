@@ -396,6 +396,7 @@ export async function handleNewsletterSendJob(
 
   if (deps.slackNotifier) {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy worker, see split-slack-notifications spec
       await deps.slackNotifier.notifyNewsletterSent({
         runId,
         delivery: {

@@ -3,6 +3,10 @@ export type NotificationKey =
   | "reviewWarning"
   | "emailFailure"
   | "linkedinFailure"
-  | "twitterFailure";
+  | "twitterFailure"
+  | "sourceDistribution"
+  | "emailDelivery"
+  | "linkedinPosted"
+  | "twitterPosted";
 
 export type NotificationState = Partial<Record<NotificationKey, string>>;

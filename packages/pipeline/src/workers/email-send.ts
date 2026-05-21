@@ -324,8 +324,8 @@ export async function handleEmailSendJob(
           const rawMessage = err instanceof Error ? err.message : String(err);
           const reason = classifyDeliveryFailure(rawMessage);
           failureReasonCounts.set(
-            rawMessage,
-            (failureReasonCounts.get(rawMessage) ?? 0) + 1,
+            reason,
+            (failureReasonCounts.get(reason) ?? 0) + 1,
           );
           logger.error(
             {
@@ -362,7 +362,7 @@ export async function handleEmailSendJob(
 
   if (deps.slackNotifier) {
     try {
-      await deps.slackNotifier.notifyNewsletterSent({
+      await deps.slackNotifier.notifyEmailDelivery({
         runId,
         delivery: {
           attempted: toSend.length,

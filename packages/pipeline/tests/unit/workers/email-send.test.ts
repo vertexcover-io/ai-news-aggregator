@@ -107,6 +107,10 @@ function makeDeps(
       notifyReviewWarning: vi.fn(() => Promise.resolve()),
       notifyPublishFailed: vi.fn(() => Promise.resolve()),
       notifyPublishUnavailable: vi.fn(() => Promise.resolve()),
+      notifySourceDistribution: vi.fn(() => Promise.resolve()),
+      notifyEmailDelivery: vi.fn(() => Promise.resolve()),
+      notifyLinkedinPosted: vi.fn(() => Promise.resolve()),
+      notifyTwitterPosted: vi.fn(() => Promise.resolve()),
     },
     sendPacer: { acquire: vi.fn(() => Promise.resolve()) },
     ...overrides,
@@ -190,5 +194,61 @@ describe("handleEmailSendJob", () => {
     expect(deps.archiveRepo.findById).toHaveBeenCalledWith(archive.id);
     expect(deps.archiveRepo.findLatestTerminal).not.toHaveBeenCalled();
     expect(deps.emailProvider.send).toHaveBeenCalledOnce();
+  });
+
+  // VS-4 / REQ-004: notifyEmailDelivery called with correct counts
+  it("VS-4: calls notifyEmailDelivery with correct delivery counts after send", async () => {
+    const archive = makeArchive();
+    const notifyEmailDelivery = vi.fn(() => Promise.resolve());
+    const deps = makeDeps(archive, {
+      slackNotifier: {
+        notifyNewsletterSent: vi.fn(() => Promise.resolve()),
+        notifyReviewPending: vi.fn(() => Promise.resolve()),
+        notifyReviewWarning: vi.fn(() => Promise.resolve()),
+        notifyPublishFailed: vi.fn(() => Promise.resolve()),
+        notifyPublishUnavailable: vi.fn(() => Promise.resolve()),
+        notifySourceDistribution: vi.fn(() => Promise.resolve()),
+        notifyEmailDelivery,
+        notifyLinkedinPosted: vi.fn(() => Promise.resolve()),
+        notifyTwitterPosted: vi.fn(() => Promise.resolve()),
+      },
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(notifyEmailDelivery).toHaveBeenCalledOnce();
+    expect(notifyEmailDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: archive.id,
+        delivery: expect.objectContaining({
+          attempted: 1,
+          sent: 1,
+          failed: 0,
+        }),
+      }),
+    );
+  });
+
+  // VS-5 / REQ-005: notifyNewsletterSent NOT called from email-send
+  it("VS-5: does not call notifyNewsletterSent from email-send worker", async () => {
+    const archive = makeArchive();
+    const notifyNewsletterSent = vi.fn(() => Promise.resolve());
+    const deps = makeDeps(archive, {
+      slackNotifier: {
+        notifyNewsletterSent,
+        notifyReviewPending: vi.fn(() => Promise.resolve()),
+        notifyReviewWarning: vi.fn(() => Promise.resolve()),
+        notifyPublishFailed: vi.fn(() => Promise.resolve()),
+        notifyPublishUnavailable: vi.fn(() => Promise.resolve()),
+        notifySourceDistribution: vi.fn(() => Promise.resolve()),
+        notifyEmailDelivery: vi.fn(() => Promise.resolve()),
+        notifyLinkedinPosted: vi.fn(() => Promise.resolve()),
+        notifyTwitterPosted: vi.fn(() => Promise.resolve()),
+      },
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(notifyNewsletterSent).not.toHaveBeenCalled();
   });
 });

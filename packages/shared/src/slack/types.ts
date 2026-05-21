@@ -5,6 +5,10 @@ import type { PublishChannel } from "../scheduling/job-ids.js";
 import type { PublishUnavailableReason } from "./builders/publish-unavailable.js";
 
 export interface SlackNotifier {
+  /**
+   * @deprecated Use notifySourceDistribution, notifyEmailDelivery,
+   * notifyLinkedinPosted, and notifyTwitterPosted instead.
+   */
   notifyNewsletterSent(input: NotifyNewsletterSentInput): Promise<void>;
   notifyReviewPending(input: { runId: string }): Promise<void>;
   notifyReviewWarning(input: {
@@ -22,6 +26,10 @@ export interface SlackNotifier {
     reason: PublishUnavailableReason;
     runId?: string;
   }): Promise<void>;
+  notifySourceDistribution(input: SourceDistributionInput): Promise<void>;
+  notifyEmailDelivery(input: EmailDeliveryInput): Promise<void>;
+  notifyLinkedinPosted(input: LinkedinPostedInput): Promise<void>;
+  notifyTwitterPosted(input: TwitterPostedInput): Promise<void>;
 }
 
 export interface DeliveryFailureReason {
@@ -46,6 +54,25 @@ export interface SocialPostReport {
 export interface SocialResultsForSlack {
   linkedin?: SocialPostReport;
   twitter?: SocialPostReport;
+}
+
+export interface SourceDistributionInput {
+  runId: string;
+}
+
+export interface EmailDeliveryInput {
+  runId: string;
+  delivery: DeliveryCounts;
+}
+
+export interface LinkedinPostedInput {
+  runId: string;
+  permalink: string;
+}
+
+export interface TwitterPostedInput {
+  runId: string;
+  permalink: string;
 }
 
 export interface NotifyNewsletterSentInput {
