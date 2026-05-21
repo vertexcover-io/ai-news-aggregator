@@ -65,6 +65,7 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
     try {
       const archive = await deps.getArchiveRepo().findById(runId);
       if (!archive) return c.json({ error: "not found" }, 404);
+      if (!archive.reviewed) return c.json({ error: "not found" }, 404);
       if (archive.isDryRun) return c.json({ error: "not found" }, 404);
 
       const state: RunState & {
