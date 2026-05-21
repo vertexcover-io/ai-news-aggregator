@@ -4,8 +4,11 @@ import type { AppDb } from "@newsletter/shared/db";
 import type {
   LinkedInEncryptedFields,
   TwitterEncryptedFields,
+  TwitterCollectorEncryptedFields,
 } from "@newsletter/shared/db";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
+
+export type SocialCredentialPlatform = "linkedin" | "twitter" | "twitter_collector";
 
 export interface LinkedInUpsertInput {
   readonly clientId: string;
@@ -20,6 +23,10 @@ export interface TwitterUpsertInput {
   readonly accessTokenSecret: string;
 }
 
+export interface TwitterCollectorUpsertInput {
+  readonly apiKey: string;
+}
+
 export interface LinkedInStatus {
   readonly configured: boolean;
   readonly apiVersion: string | null;
@@ -31,16 +38,25 @@ export interface TwitterStatus {
   readonly updatedAt: string | null;
 }
 
+export interface TwitterCollectorStatus {
+  readonly configured: boolean;
+  readonly updatedAt: string | null;
+}
+
 export interface SocialCredentialsStatus {
   readonly linkedin: LinkedInStatus;
   readonly twitter: TwitterStatus;
+  readonly twitterCollector: TwitterCollectorStatus;
 }
 
 export interface SocialCredentialsRepo {
   getStatus(): Promise<SocialCredentialsStatus>;
   upsertLinkedIn(input: LinkedInUpsertInput): Promise<{ updatedAt: string }>;
   upsertTwitter(input: TwitterUpsertInput): Promise<{ updatedAt: string }>;
-  delete(platform: "linkedin" | "twitter"): Promise<boolean>;
+  upsertTwitterCollector(
+    input: TwitterCollectorUpsertInput,
+  ): Promise<{ updatedAt: string }>;
+  delete(platform: SocialCredentialPlatform): Promise<boolean>;
 }
 
 type DbSlice = Pick<AppDb, "select" | "insert" | "delete">;
@@ -58,6 +74,10 @@ export function createSocialCredentialsRepo(
         updatedAt: null,
       };
       let twitter: TwitterStatus = { configured: false, updatedAt: null };
+      let twitterCollector: TwitterCollectorStatus = {
+        configured: false,
+        updatedAt: null,
+      };
       for (const row of rows) {
         if (row.platform === "linkedin") {
           linkedin = {
@@ -65,14 +85,19 @@ export function createSocialCredentialsRepo(
             apiVersion: row.metadata?.apiVersion ?? null,
             updatedAt: row.updatedAt.toISOString(),
           };
-        } else {
+        } else if (row.platform === "twitter") {
           twitter = {
+            configured: true,
+            updatedAt: row.updatedAt.toISOString(),
+          };
+        } else {
+          twitterCollector = {
             configured: true,
             updatedAt: row.updatedAt.toISOString(),
           };
         }
       }
-      return { linkedin, twitter };
+      return { linkedin, twitter, twitterCollector };
     },
 
     async upsertLinkedIn(input: LinkedInUpsertInput): Promise<{ updatedAt: string }> {
@@ -124,7 +149,31 @@ export function createSocialCredentialsRepo(
       return { updatedAt: row.updatedAt.toISOString() };
     },
 
-    async delete(platform: "linkedin" | "twitter"): Promise<boolean> {
+    async upsertTwitterCollector(
+      input: TwitterCollectorUpsertInput,
+    ): Promise<{ updatedAt: string }> {
+      const encryptedFields: TwitterCollectorEncryptedFields = {
+        apiKey: cipher.encrypt(input.apiKey),
+      };
+      const now = new Date();
+      const [row] = await db
+        .insert(socialCredentials)
+        .values({
+          platform: "twitter_collector",
+          encryptedFields,
+          metadata: null,
+          updatedAt: now,
+          updatedBy: "admin",
+        })
+        .onConflictDoUpdate({
+          target: socialCredentials.platform,
+          set: { encryptedFields, metadata: null, updatedAt: now, updatedBy: "admin" },
+        })
+        .returning();
+      return { updatedAt: row.updatedAt.toISOString() };
+    },
+
+    async delete(platform: SocialCredentialPlatform): Promise<boolean> {
       const result = await db
         .delete(socialCredentials)
         .where(eq(socialCredentials.platform, platform))

@@ -7,7 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { apiFetchAdmin } from "./client";
 
-export type Platform = "linkedin" | "twitter";
+export type Platform = "linkedin" | "twitter" | "twitter-collector";
 
 export interface LinkedInStatus {
   configured: boolean;
@@ -20,9 +20,15 @@ export interface TwitterStatus {
   updatedAt: string | null;
 }
 
+export interface TwitterCollectorStatus {
+  configured: boolean;
+  updatedAt: string | null;
+}
+
 export interface SocialCredentialsStatus {
   linkedin: LinkedInStatus;
   twitter: TwitterStatus;
+  twitterCollector: TwitterCollectorStatus;
 }
 
 export interface LinkedInUpsertInput {
@@ -36,6 +42,10 @@ export interface TwitterUpsertInput {
   apiSecret: string;
   accessToken: string;
   accessTokenSecret: string;
+}
+
+export interface TwitterCollectorUpsertInput {
+  apiKey: string;
 }
 
 export interface UpsertResult {
@@ -106,6 +116,22 @@ export async function putTwitterCredentials(
   return (await res.json()) as UpsertResult;
 }
 
+export async function putTwitterCollectorCookie(
+  input: TwitterCollectorUpsertInput,
+): Promise<UpsertResult> {
+  const res = await apiFetchAdmin(
+    "/api/admin/social-credentials/twitter-collector",
+    {
+      method: "PUT",
+      body: JSON.stringify(input),
+    },
+  );
+  if (!res.ok) {
+    await readError(res, "Failed to save Twitter collector cookies");
+  }
+  return (await res.json()) as UpsertResult;
+}
+
 export async function deleteSocialCredentials(
   platform: Platform,
 ): Promise<{ ok: boolean; removed: boolean }> {
@@ -149,6 +175,20 @@ export function useSaveTwitterCredentials(): UseMutationResult<
   const qc = useQueryClient();
   return useMutation<UpsertResult, Error, TwitterUpsertInput>({
     mutationFn: putTwitterCredentials,
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: STATUS_QUERY_KEY });
+    },
+  });
+}
+
+export function useSaveTwitterCollectorCookie(): UseMutationResult<
+  UpsertResult,
+  Error,
+  TwitterCollectorUpsertInput
+> {
+  const qc = useQueryClient();
+  return useMutation<UpsertResult, Error, TwitterCollectorUpsertInput>({
+    mutationFn: putTwitterCollectorCookie,
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: STATUS_QUERY_KEY });
     },

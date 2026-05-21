@@ -1546,7 +1546,7 @@ describe("run-process worker", () => {
       loadFn: vi.fn(() => Promise.resolve([])),
       rankFn: vi.fn(),
       collectFns: { hn: vi.fn(), reddit: vi.fn(), web: vi.fn(), twitter },
-      twitterClient: stubClient,
+      twitterClient: () => Promise.resolve(stubClient),
     });
 
     await worker.handler({
@@ -1723,7 +1723,7 @@ describe("run-process cancellation (REQ-05 through REQ-09)", () => {
       loadFn: vi.fn(() => Promise.resolve([])),
       rankFn: vi.fn(),
       collectFns: { hn: vi.fn(), reddit: vi.fn(), web: vi.fn(), twitter },
-      twitterClient: stubClient,
+      twitterClient: () => Promise.resolve(stubClient),
       archiveRepo,
       cancelSubscriber: factory,
     });

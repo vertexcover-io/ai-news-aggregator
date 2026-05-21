@@ -14,6 +14,10 @@ export interface TwitterOAuth1Creds {
   accessSecret: string;
 }
 
+export interface TwitterCollectorCookie {
+  apiKey: string;
+}
+
 export interface CredentialResolverDeps {
   repo: SocialCredentialsRepo;
   env?: NodeJS.ProcessEnv;
@@ -40,7 +44,7 @@ type DbRead<T> = { ok: T | null } | { ok: "decrypt_failed" };
 
 async function safeGetDbRow<T>(
   fetch: () => Promise<T | null>,
-  platform: "linkedin" | "twitter",
+  platform: "linkedin" | "twitter" | "twitter_collector",
 ): Promise<DbRead<T>> {
   try {
     return { ok: await fetch() };
@@ -116,4 +120,22 @@ export async function resolveTwitterOAuth1Credentials(
     accessToken,
     accessSecret: accessTokenSecret,
   };
+}
+
+export async function resolveTwitterCollectorCookie(
+  deps: CredentialResolverDeps,
+): Promise<TwitterCollectorCookie | null> {
+  const dbRead = await safeGetDbRow(
+    () => deps.repo.getTwitterCollector(),
+    "twitter_collector",
+  );
+  if (dbRead.ok === "decrypt_failed") return null;
+  const dbRow = dbRead.ok;
+  if (dbRow) {
+    return { apiKey: dbRow.apiKey };
+  }
+  const env = deps.env ?? {};
+  const apiKey = env.RETTIWT_API_KEY;
+  if (!present(apiKey)) return null;
+  return { apiKey };
 }

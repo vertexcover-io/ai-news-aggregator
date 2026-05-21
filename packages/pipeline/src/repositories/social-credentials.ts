@@ -4,8 +4,11 @@ import type { AppDb } from "@newsletter/shared/db";
 import type {
   LinkedInEncryptedFields,
   TwitterEncryptedFields,
+  TwitterCollectorEncryptedFields,
 } from "@newsletter/shared/db";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
+
+export type SocialCredentialPlatform = "linkedin" | "twitter" | "twitter_collector";
 
 export interface LinkedInCredentialRecord {
   clientId: string;
@@ -22,6 +25,11 @@ export interface TwitterCredentialRecord {
   updatedAt: Date;
 }
 
+export interface TwitterCollectorCredentialRecord {
+  apiKey: string;
+  updatedAt: Date;
+}
+
 export interface UpsertLinkedInInput {
   clientId: string;
   clientSecret: string;
@@ -35,12 +43,18 @@ export interface UpsertTwitterInput {
   accessTokenSecret: string;
 }
 
+export interface UpsertTwitterCollectorInput {
+  apiKey: string;
+}
+
 export interface SocialCredentialsRepo {
   getLinkedIn(): Promise<LinkedInCredentialRecord | null>;
   getTwitter(): Promise<TwitterCredentialRecord | null>;
+  getTwitterCollector(): Promise<TwitterCollectorCredentialRecord | null>;
   upsertLinkedIn(input: UpsertLinkedInInput): Promise<void>;
   upsertTwitter(input: UpsertTwitterInput): Promise<void>;
-  delete(platform: "linkedin" | "twitter"): Promise<boolean>;
+  upsertTwitterCollector(input: UpsertTwitterCollectorInput): Promise<void>;
+  delete(platform: SocialCredentialPlatform): Promise<boolean>;
 }
 
 type DbSlice = Pick<AppDb, "select" | "insert" | "delete">;
@@ -128,7 +142,41 @@ export function createSocialCredentialsRepo(
         });
     },
 
-    async delete(platform: "linkedin" | "twitter"): Promise<boolean> {
+    async getTwitterCollector(): Promise<TwitterCollectorCredentialRecord | null> {
+      const rows = await db
+        .select()
+        .from(socialCredentials)
+        .where(eq(socialCredentials.platform, "twitter_collector"))
+        .limit(1);
+      if (rows.length === 0) return null;
+      const row = rows[0];
+      const fields = row.encryptedFields as TwitterCollectorEncryptedFields;
+      return {
+        apiKey: cipher.decrypt(fields.apiKey),
+        updatedAt: row.updatedAt,
+      };
+    },
+
+    async upsertTwitterCollector(input: UpsertTwitterCollectorInput): Promise<void> {
+      const encryptedFields: TwitterCollectorEncryptedFields = {
+        apiKey: cipher.encrypt(input.apiKey),
+      };
+      const now = new Date();
+      await db
+        .insert(socialCredentials)
+        .values({
+          platform: "twitter_collector",
+          encryptedFields,
+          metadata: null,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: socialCredentials.platform,
+          set: { encryptedFields, metadata: null, updatedAt: now },
+        });
+    },
+
+    async delete(platform: SocialCredentialPlatform): Promise<boolean> {
       const deleted = await db
         .delete(socialCredentials)
         .where(eq(socialCredentials.platform, platform))

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   resolveLinkedInCredentials,
+  resolveTwitterCollectorCookie,
   resolveTwitterOAuth1Credentials,
 } from "@pipeline/services/credential-resolver.js";
 import type { SocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
@@ -8,12 +9,23 @@ import type { SocialCredentialsRepo } from "@pipeline/repositories/social-creden
 function makeRepo(opts: {
   linkedin?: Awaited<ReturnType<SocialCredentialsRepo["getLinkedIn"]>>;
   twitter?: Awaited<ReturnType<SocialCredentialsRepo["getTwitter"]>>;
+  twitterCollector?: Awaited<
+    ReturnType<SocialCredentialsRepo["getTwitterCollector"]>
+  >;
+  twitterCollectorThrows?: Error;
 }): SocialCredentialsRepo {
   return {
     getLinkedIn: vi.fn().mockResolvedValue(opts.linkedin ?? null),
     getTwitter: vi.fn().mockResolvedValue(opts.twitter ?? null),
+    getTwitterCollector: vi.fn(() => {
+      if (opts.twitterCollectorThrows) {
+        return Promise.reject(opts.twitterCollectorThrows);
+      }
+      return Promise.resolve(opts.twitterCollector ?? null);
+    }),
     upsertLinkedIn: vi.fn(),
     upsertTwitter: vi.fn(),
+    upsertTwitterCollector: vi.fn(),
     delete: vi.fn(),
   };
 }
@@ -198,8 +210,10 @@ describe("resolveLinkedInCredentials — DB read failure is non-fatal (Edge case
         .fn()
         .mockRejectedValue(new Error("Unsupported state or unable to authenticate data")),
       getTwitter: vi.fn().mockResolvedValue(null),
+      getTwitterCollector: vi.fn().mockResolvedValue(null),
       upsertLinkedIn: vi.fn(),
       upsertTwitter: vi.fn(),
+      upsertTwitterCollector: vi.fn(),
       delete: vi.fn(),
     };
     // Env IS set — but per spec, a decrypt failure on a present DB row must
@@ -219,8 +233,10 @@ describe("resolveLinkedInCredentials — DB read failure is non-fatal (Edge case
     const repo: SocialCredentialsRepo = {
       getLinkedIn: vi.fn().mockRejectedValue(new TypeError("first argument must be of type string or an instance of Buffer")),
       getTwitter: vi.fn().mockResolvedValue(null),
+      getTwitterCollector: vi.fn().mockResolvedValue(null),
       upsertLinkedIn: vi.fn(),
       upsertTwitter: vi.fn(),
+      upsertTwitterCollector: vi.fn(),
       delete: vi.fn(),
     };
     expect(await resolveLinkedInCredentials({ repo, env: {} })).toBeNull();
@@ -234,8 +250,10 @@ describe("resolveTwitterOAuth1Credentials — DB read failure is non-fatal (Edge
       getTwitter: vi
         .fn()
         .mockRejectedValue(new Error("Unsupported state or unable to authenticate data")),
+      getTwitterCollector: vi.fn().mockResolvedValue(null),
       upsertLinkedIn: vi.fn(),
       upsertTwitter: vi.fn(),
+      upsertTwitterCollector: vi.fn(),
       delete: vi.fn(),
     };
     const env: NodeJS.ProcessEnv = {
@@ -255,11 +273,56 @@ describe("resolveTwitterOAuth1Credentials — DB read failure is non-fatal (Edge
       getTwitter: vi
         .fn()
         .mockRejectedValue(new TypeError("first argument must be of type string or an instance of Buffer")),
+      getTwitterCollector: vi.fn().mockResolvedValue(null),
       upsertLinkedIn: vi.fn(),
       upsertTwitter: vi.fn(),
+      upsertTwitterCollector: vi.fn(),
       delete: vi.fn(),
     };
     expect(await resolveTwitterOAuth1Credentials({ repo, env: {} })).toBeNull();
   });
 });
 
+
+describe("resolveTwitterCollectorCookie (VS-2 / VS-6)", () => {
+  it("returns DB value when present, even if RETTIWT_API_KEY is set", async () => {
+    const repo = makeRepo({
+      twitterCollector: { apiKey: "db-cookie-blob", updatedAt: new Date() },
+    });
+    const env: NodeJS.ProcessEnv = { RETTIWT_API_KEY: "env-cookie-blob" };
+    const result = await resolveTwitterCollectorCookie({ repo, env });
+    expect(result).toEqual({ apiKey: "db-cookie-blob" });
+  });
+
+  it("falls back to RETTIWT_API_KEY when DB row absent", async () => {
+    const repo = makeRepo({});
+    const env: NodeJS.ProcessEnv = { RETTIWT_API_KEY: "env-cookie-blob" };
+    const result = await resolveTwitterCollectorCookie({ repo, env });
+    expect(result).toEqual({ apiKey: "env-cookie-blob" });
+  });
+
+  it("returns null when both DB and env are empty", async () => {
+    const repo = makeRepo({});
+    expect(await resolveTwitterCollectorCookie({ repo, env: {} })).toBeNull();
+  });
+
+  it("returns null on DB read failure and does NOT fall through to env (VS-6)", async () => {
+    const repo = makeRepo({
+      twitterCollectorThrows: new Error(
+        "Unsupported state or unable to authenticate data",
+      ),
+    });
+    const env: NodeJS.ProcessEnv = {
+      RETTIWT_API_KEY: "env-cookie-should-not-shadow",
+    };
+    const result = await resolveTwitterCollectorCookie({ repo, env });
+    expect(result).toBeNull();
+    expect(repo.getTwitterCollector).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats empty-string env as not configured", async () => {
+    const repo = makeRepo({});
+    const env: NodeJS.ProcessEnv = { RETTIWT_API_KEY: "" };
+    expect(await resolveTwitterCollectorCookie({ repo, env })).toBeNull();
+  });
+});
