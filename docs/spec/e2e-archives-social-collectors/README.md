@@ -23,4 +23,4 @@ This change closes the remaining E2E audit gaps for archive HTTP routes, review-
 
 ## PR
 
-Pending.
+https://github.com/vertexcover-io/ai-news-aggregator/pull/176
