@@ -91,11 +91,19 @@ export interface TwitterEncryptedFields {
   accessTokenSecret: EncryptedBlob;
 }
 
+export interface TwitterCollectorEncryptedFields {
+  apiKey: EncryptedBlob;
+}
+
+export type SocialCredentialPlatform = "linkedin" | "twitter" | "twitter_collector";
+
 export const socialCredentials = pgTable("social_credentials", {
-  platform: text("platform").primaryKey().$type<"linkedin" | "twitter">(),
+  platform: text("platform").primaryKey().$type<SocialCredentialPlatform>(),
   encryptedFields: jsonb("encrypted_fields")
     .notNull()
-    .$type<LinkedInEncryptedFields | TwitterEncryptedFields>(),
+    .$type<
+      LinkedInEncryptedFields | TwitterEncryptedFields | TwitterCollectorEncryptedFields
+    >(),
   metadata: jsonb("metadata").$type<{ apiVersion?: string } | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: text("updated_by"),

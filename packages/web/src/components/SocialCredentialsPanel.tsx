@@ -15,10 +15,12 @@ import { Separator } from "@/components/ui/separator";
 import {
   useDeleteSocialCredentials,
   useSaveLinkedInCredentials,
+  useSaveTwitterCollectorCookie,
   useSaveTwitterCredentials,
   useSocialCredentialsStatus,
   SocialCredentialsApiError,
   type LinkedInStatus,
+  type TwitterCollectorStatus,
   type TwitterStatus,
 } from "../api/socialCredentials";
 
@@ -33,6 +35,10 @@ interface TwitterFormValues {
   apiSecret: string;
   accessToken: string;
   accessTokenSecret: string;
+}
+
+interface TwitterCollectorFormValues {
+  apiKey: string;
 }
 
 function formatUpdatedAt(iso: string | null): string {
@@ -421,6 +427,147 @@ function TwitterSection({ status }: TwitterSectionProps): ReactElement {
   );
 }
 
+interface TwitterCollectorSectionProps {
+  status: TwitterCollectorStatus;
+}
+
+function TwitterCollectorSection({
+  status,
+}: TwitterCollectorSectionProps): ReactElement {
+  const form = useForm<TwitterCollectorFormValues>({
+    defaultValues: { apiKey: "" },
+  });
+  const save = useSaveTwitterCollectorCookie();
+  const remove = useDeleteSocialCredentials();
+  const [confirming, setConfirming] = useState(false);
+
+  const onSubmit = form.handleSubmit((values) => {
+    const trimmed = values.apiKey.trim();
+    if (!trimmed) {
+      toast.error("Base64 cookie blob is required");
+      return;
+    }
+    save.mutate(
+      { apiKey: trimmed },
+      {
+        onSuccess: () => {
+          toast.success("Twitter collector cookies saved");
+          form.reset({ apiKey: "" });
+        },
+        onError: (err: unknown) => {
+          const message =
+            err instanceof SocialCredentialsApiError
+              ? err.message
+              : err instanceof Error
+                ? err.message
+                : "Failed to save Twitter collector cookies";
+          toast.error(message);
+        },
+      },
+    );
+  });
+
+  function handleClear(): void {
+    remove.mutate("twitter-collector", {
+      onSuccess: () => {
+        toast.success("Twitter collector cookies cleared");
+        setConfirming(false);
+      },
+      onError: (err: unknown) => {
+        const message = err instanceof Error ? err.message : "Failed to clear";
+        toast.error(message);
+        setConfirming(false);
+      },
+    });
+  }
+
+  return (
+    <section
+      data-testid="twitter-collector-card"
+      className="space-y-3"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-base font-semibold">Twitter collector cookies</h3>
+        <StatusPill
+          configured={status.configured}
+          updatedAt={status.updatedAt}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        The base64-encoded Twitter/X session cookie blob used by the read-only
+        collector (rettiwt-api). Generate it from a browser session; rotate it
+        when X invalidates cookies. Falls back to <code>RETTIWT_API_KEY</code>{" "}
+        env var when this field is empty.
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void onSubmit(e);
+        }}
+        className="space-y-3"
+      >
+        <div className="grid gap-1.5">
+          <Label htmlFor="twitter-collector-apiKey">Base64 cookie blob</Label>
+          <Input
+            id="twitter-collector-apiKey"
+            type="password"
+            autoComplete="off"
+            placeholder="Not stored locally — paste to update"
+            data-testid="twitter-collector-apiKey-input"
+            {...form.register("apiKey")}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="submit"
+            data-testid="twitter-collector-save"
+            disabled={save.isPending}
+          >
+            {save.isPending ? "Saving…" : "Save cookies"}
+          </Button>
+          {status.configured && !confirming ? (
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="twitter-collector-clear"
+              onClick={() => {
+                setConfirming(true);
+              }}
+            >
+              Clear cookies
+            </Button>
+          ) : null}
+          {status.configured && confirming ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                Are you sure?
+              </span>
+              <Button
+                type="button"
+                variant="destructive"
+                data-testid="twitter-collector-clear-confirm"
+                disabled={remove.isPending}
+                onClick={handleClear}
+              >
+                {remove.isPending ? "Clearing…" : "Yes, clear"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setConfirming(false);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </form>
+    </section>
+  );
+}
+
 export function SocialCredentialsPanel(): ReactElement {
   const statusQuery = useSocialCredentialsStatus();
 
@@ -446,6 +593,10 @@ export function SocialCredentialsPanel(): ReactElement {
             <LinkedInSection status={statusQuery.data.linkedin} />
             <Separator />
             <TwitterSection status={statusQuery.data.twitter} />
+            <Separator />
+            <TwitterCollectorSection
+              status={statusQuery.data.twitterCollector}
+            />
           </>
         ) : null}
       </CardContent>

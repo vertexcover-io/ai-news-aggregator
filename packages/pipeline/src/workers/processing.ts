@@ -57,6 +57,7 @@ import {
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import {
   resolveLinkedInCredentials,
+  resolveTwitterCollectorCookie,
   resolveTwitterOAuth1Credentials,
 } from "@pipeline/services/credential-resolver.js";
 import {
@@ -94,6 +95,7 @@ import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
 import { collectTwitter } from "@pipeline/collectors/twitter/index.js";
 import { createRettiwtClient } from "@pipeline/collectors/twitter/clients/rettiwt.js";
+import type { TwitterClient } from "@pipeline/collectors/twitter/types.js";
 import { collectWebSearch } from "@pipeline/collectors/web-search/index.js";
 import { createWebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
 import { Rettiwt } from "rettiwt-api";
@@ -231,9 +233,22 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     twitter: collectTwitter,
     webSearch: collectWebSearch,
   };
-  const twitterClient = createRettiwtClient({
-    rettiwt: new Rettiwt({ apiKey: process.env.RETTIWT_API_KEY }),
-  });
+  // Per-job factory: resolves cookies from `social_credentials.twitter_collector`
+  // first (admin-managed), falling back to RETTIWT_API_KEY env var. This is the
+  // freshness contract: admin saves at /admin/settings take effect on the next
+  // job without a worker restart. Rettiwt accepts an undefined apiKey (guest
+  // mode); the collector itself classifies the first auth failure as `auth`,
+  // which the Slack notice surfaces.
+  const credentialsRepo = getSharedSocialCredentialsRepo();
+  const twitterClient = async (): Promise<TwitterClient> => {
+    const cookie = await resolveTwitterCollectorCookie({
+      repo: credentialsRepo,
+      env: process.env,
+    });
+    return createRettiwtClient({
+      rettiwt: new Rettiwt({ apiKey: cookie?.apiKey }),
+    });
+  };
   const slackNotifier = createSlackNotifier({
     webhookUrl: process.env.SLACK_WEBHOOK_URL,
     archives: archiveRepo,

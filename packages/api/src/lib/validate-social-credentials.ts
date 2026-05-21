@@ -13,5 +13,10 @@ export const twitterUpsertSchema = z.object({
   accessTokenSecret: z.string().trim().min(1),
 });
 
+export const twitterCollectorUpsertSchema = z.object({
+  apiKey: z.string().trim().min(1),
+});
+
 export type LinkedInUpsertBody = z.infer<typeof linkedinUpsertSchema>;
 export type TwitterUpsertBody = z.infer<typeof twitterUpsertSchema>;
+export type TwitterCollectorUpsertBody = z.infer<typeof twitterCollectorUpsertSchema>;

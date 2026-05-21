@@ -445,3 +445,117 @@ describe("publish scheduling Slack messages", () => {
     );
   });
 });
+
+describe("buildReviewPendingMessage — collector auth failures (REQ-008 / VS-5)", () => {
+  it("labels a Twitter auth failure with the actionable admin-settings hint", () => {
+    const telemetry: RunSourceTelemetry = {
+      sources: [
+        {
+          sourceType: "hn",
+          identifier: "hn",
+          displayName: "Hacker News",
+          itemsFetched: 12,
+          status: "completed",
+          errors: [],
+          retries: 0,
+          durationMs: 1500,
+        },
+        {
+          sourceType: "twitter",
+          identifier: "list:123",
+          displayName: "Twitter list",
+          itemsFetched: 0,
+          status: "failed",
+          errors: ["missing or invalid cookies"],
+          retries: 0,
+          durationMs: 12,
+        },
+      ],
+      totalItemsFetched: 12,
+      totalErrors: 1,
+    };
+
+    const { blocks } = buildReviewPendingMessage({
+      runId: "run-1",
+      digestHeadline: "Today's digest",
+      publicArchiveBaseUrl: "https://news.example.com",
+      sourceTelemetry: telemetry,
+    });
+
+    const failureSection = sectionTexts(blocks).find((t) =>
+      t.includes("Collector auth failures"),
+    );
+    expect(failureSection).toBeDefined();
+    expect(failureSection).toContain(
+      "twitter: skipped (missing cookies — set them at /admin/settings)",
+    );
+  });
+
+  it("does not add an auth-failures section when all sources succeeded", () => {
+    const { blocks } = buildReviewPendingMessage({
+      runId: "run-2",
+      digestHeadline: "Clean run",
+      sourceTelemetry: baseTelemetry,
+    });
+    const failureSection = sectionTexts(blocks).find((t) =>
+      t.includes("Collector auth failures"),
+    );
+    expect(failureSection).toBeUndefined();
+  });
+
+  it("ignores non-auth failures (e.g. rate-limit) in the auth-failures section", () => {
+    const telemetry: RunSourceTelemetry = {
+      sources: [
+        {
+          sourceType: "reddit",
+          identifier: "r/ml",
+          displayName: "r/ml",
+          itemsFetched: 0,
+          status: "failed",
+          errors: ["rate limit exceeded"],
+          retries: 0,
+          durationMs: 50,
+        },
+      ],
+      totalItemsFetched: 0,
+      totalErrors: 1,
+    };
+    const { blocks } = buildReviewPendingMessage({
+      runId: "run-3",
+      digestHeadline: null,
+      sourceTelemetry: telemetry,
+    });
+    const failureSection = sectionTexts(blocks).find((t) =>
+      t.includes("Collector auth failures"),
+    );
+    expect(failureSection).toBeUndefined();
+  });
+
+  it("renders any auth-class failure across collectors (e.g. reddit 401)", () => {
+    const telemetry: RunSourceTelemetry = {
+      sources: [
+        {
+          sourceType: "reddit",
+          identifier: "r/ml",
+          displayName: "r/ml",
+          itemsFetched: 0,
+          status: "failed",
+          errors: ["HTTP 401 unauthorized"],
+          retries: 0,
+          durationMs: 50,
+        },
+      ],
+      totalItemsFetched: 0,
+      totalErrors: 1,
+    };
+    const { blocks } = buildReviewPendingMessage({
+      runId: "run-4",
+      digestHeadline: null,
+      sourceTelemetry: telemetry,
+    });
+    const failureSection = sectionTexts(blocks).find((t) =>
+      t.includes("Collector auth failures"),
+    );
+    expect(failureSection).toContain("reddit: skipped (HTTP 401 unauthorized)");
+  });
+});

@@ -39,6 +39,9 @@ import type { WebSearchProvider } from "@pipeline/collectors/web-search/provider
 import { createRettiwtClient } from "@pipeline/collectors/twitter/clients/rettiwt.js";
 import type { TwitterClient } from "@pipeline/collectors/twitter/types.js";
 import { Rettiwt } from "rettiwt-api";
+import { createSocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
+import { resolveTwitterCollectorCookie } from "@pipeline/services/credential-resolver.js";
+import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import {
   createRunArchivesRepo,
@@ -252,7 +255,13 @@ export interface RunProcessDeps {
   archiveRepo: RunArchivesRepo;
   userSettingsRepo?: UserSettingsRepo;
   cancelSubscriber: CancelSubscriberFactory;
-  twitterClient: TwitterClient;
+  /**
+   * Per-job factory for the Twitter (X) collector client. Invoked once per run
+   * AFTER the job is picked up — this is the contract that lets operators save
+   * cookies via /admin/settings and have them take effect on the NEXT job without
+   * a worker restart. Do NOT cache the resolved client at construction time.
+   */
+  twitterClient: () => Promise<TwitterClient>;
   slackNotifier?: SlackNotifier;
   /** Tavily (or future) web-search provider. Resolved once at worker startup from TAVILY_API_KEY env var. */
   webSearchProvider?: WebSearchProvider;
@@ -319,18 +328,27 @@ async function runCollecting(
   }
   if (collectors.twitter) {
     const config = collectors.twitter;
+    // Resolve the Twitter client lazily, per job, so admin saves at
+    // /admin/settings take effect on the next run without a worker restart.
+    // The factory may construct an unauthenticated client (guest mode) when
+    // no cookies are configured; the collector itself returns an `auth`
+    // failure on its first authenticated call, which is then surfaced in the
+    // run-pending Slack notice without crashing the run.
+    const resolveClient = deps.twitterClient;
     tasks.push({
       sourceKey: "twitter",
-      run: () =>
-        deps.collectFns.twitter(
+      run: async () => {
+        const client = await resolveClient();
+        return deps.collectFns.twitter(
           {
-            client: deps.twitterClient,
+            client,
             rawItemsRepo: deps.rawItemsRepo,
             signal,
             enrichment: enrichmentCtx,
           },
           config,
-        ),
+        );
+      },
     });
   }
   if (collectors.webSearch && deps.webSearchProvider) {
@@ -876,7 +894,7 @@ export interface CreateRunProcessWorkerOptions {
   archiveRepo?: RunArchivesRepo;
   userSettingsRepo?: UserSettingsRepo;
   cancelSubscriber?: CancelSubscriberFactory;
-  twitterClient?: TwitterClient;
+  twitterClient?: () => Promise<TwitterClient>;
   slackNotifier?: SlackNotifier;
   webSearchProvider?: WebSearchProvider;
 }
@@ -906,13 +924,20 @@ export function createRunProcessWorker(
     webSearch: options.collectFns?.webSearch ?? collectWebSearch,
   };
 
-  // Rettiwt accepts an undefined apiKey (guest mode); the collector itself
-  // checks RETTIWT_API_KEY at call time and short-circuits when missing,
-  // so no real requests are made on an unauthenticated client.
-  const twitterClient =
+  // Per-job factory: resolves cookies from `social_credentials.twitter_collector`
+  // first (admin-managed), falling back to RETTIWT_API_KEY env var. Construction
+  // happens at job time so admin saves take effect on the next run without a
+  // worker restart. Rettiwt accepts an undefined apiKey (guest mode).
+  const twitterClient: () => Promise<TwitterClient> =
     options.twitterClient ??
-    createRettiwtClient({
-      rettiwt: new Rettiwt({ apiKey: process.env.RETTIWT_API_KEY }),
+    (async () => {
+      const cookie = await resolveTwitterCollectorCookie({
+        repo: createSocialCredentialsRepo(ensureDb(db), getCredentialCipher()),
+        env: process.env,
+      });
+      return createRettiwtClient({
+        rettiwt: new Rettiwt({ apiKey: cookie?.apiKey }),
+      });
     });
 
   const archiveRepo =

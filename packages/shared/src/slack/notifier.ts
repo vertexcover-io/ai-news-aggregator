@@ -227,6 +227,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
             runId: input.runId,
             digestHeadline: archive?.digestHeadline ?? null,
             publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
+            sourceTelemetry: archive?.sourceTelemetry ?? null,
           }).blocks as unknown[],
       });
     },
