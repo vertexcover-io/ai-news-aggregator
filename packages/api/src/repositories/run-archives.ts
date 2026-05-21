@@ -187,7 +187,7 @@ export function createRunArchivesRepo(
       await db
         .update(runArchives)
         .set({
-          notificationState: sql`coalesce(${runArchives.notificationState}, '{}'::jsonb) || jsonb_build_object(${key}, ${at.toISOString()})`,
+          notificationState: sql`coalesce(${runArchives.notificationState}, '{}'::jsonb) || jsonb_build_object(${key}::text, ${at.toISOString()}::text)`,
         })
         .where(eq(runArchives.id, runId));
     },

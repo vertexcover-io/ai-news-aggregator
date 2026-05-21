@@ -92,6 +92,13 @@ docs/spec/**
 !docs/spec/web-search-collector/verification/adversarial-findings.md
 !docs/spec/web-search-collector/verification/screenshots/
 !docs/spec/web-search-collector/verification/screenshots/*.png
+
+!docs/spec/split-slack-notifications/README.md
+!docs/spec/split-slack-notifications/design.md
+!docs/spec/split-slack-notifications/library-probe.md
+!docs/spec/split-slack-notifications/learnings.md
+!docs/spec/split-slack-notifications/verification/adversarial-findings.md
+!docs/spec/split-slack-notifications/verification/verification-stubs.md
 .worktrees/
 .harness/
 .worktrees/

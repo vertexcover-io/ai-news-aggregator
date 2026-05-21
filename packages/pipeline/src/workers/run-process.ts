@@ -775,6 +775,21 @@ export async function handleRunProcessJob(
       await persistCost();
     }
 
+    if (archiveWritten) {
+      try {
+        await deps.slackNotifier?.notifySourceDistribution({ runId });
+      } catch (err) {
+        logger.warn(
+          {
+            event: "slack.source_distribution.unexpected_throw",
+            runId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "slack.source_distribution.unexpected_throw",
+        );
+      }
+    }
+
     if (archiveWritten && settings && !settings.autoReview) {
       await deps.slackNotifier?.notifyReviewPending({ runId });
     }

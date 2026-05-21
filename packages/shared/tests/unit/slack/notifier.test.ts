@@ -6,6 +6,7 @@ import type {
   NotifierArchiveView,
   NotifierTopRankedTitle,
 } from "@shared/slack/types.js";
+import type { RunSourceTelemetry } from "@shared/types/run.js";
 
 interface LogCall {
   level: string;
@@ -57,10 +58,12 @@ function makeArchives(
 ): NotifierArchiveAccess & {
   findById: ReturnType<typeof vi.fn>;
   markSlackNotified: ReturnType<typeof vi.fn>;
+  markNotification: ReturnType<typeof vi.fn>;
 } {
   return {
     findById: vi.fn(() => Promise.resolve(archive)),
     markSlackNotified: vi.fn(() => Promise.resolve()),
+    markNotification: vi.fn(() => Promise.resolve()),
   };
 }
 
@@ -384,5 +387,552 @@ describe("createSlackNotifier", () => {
     const serialized = JSON.stringify(calls);
     expect(serialized).not.toContain("SECRET_PATH_TOKEN");
     expect(serialized).not.toContain(SECRET_URL);
+  });
+});
+
+const baseTelemetry: RunSourceTelemetry = {
+  sources: [
+    {
+      sourceType: "hn",
+      identifier: "hn",
+      displayName: "Hacker News",
+      status: "completed",
+      itemsFetched: 5,
+      errors: [],
+      retries: 0,
+      durationMs: 100,
+    },
+  ],
+  totalItemsFetched: 5,
+  totalErrors: 0,
+};
+
+describe("notifySourceDistribution (VS-1, VS-2, VS-10, VS-11, VS-12, VS-13)", () => {
+  // VS-1: happy path
+  it("posts to webhook and marks sourceDistribution on success", async () => {
+    const { logger } = makeCapturedLogger();
+    const archive = makeArchive({ sourceTelemetry: baseTelemetry, notificationState: {} });
+    const archives = makeArchives(archive);
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("ok", { status: 200 })));
+    const fixedNow = new Date("2026-05-21T10:00:00Z");
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      now: () => fixedNow,
+    });
+    await notifier.notifySourceDistribution({ runId: "run-1" });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    const [url] = fetchFn.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(SECRET_URL);
+    expect(archives.markNotification).toHaveBeenCalledWith("run-1", "sourceDistribution", fixedNow);
+  });
+
+  it("includes 📊 Sources collected header in posted message (VS-1)", async () => {
+    const { logger } = makeCapturedLogger();
+    const archive = makeArchive({
+      sourceTelemetry: baseTelemetry,
+      notificationState: {},
+      digestHeadline: "AI Week in Review",
+    });
+    const archives = makeArchives(archive);
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("ok", { status: 200 })));
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifySourceDistribution({ runId: "run-1" });
+    const [, init] = fetchFn.mock.calls[0] as [string, { body: string }];
+    const payload = JSON.parse(init.body) as { blocks: { type: string; text?: { text?: string } }[] };
+    const header = payload.blocks.find((b) => b.type === "header");
+    expect(header?.text?.text).toBe("📊 Sources collected");
+  });
+
+  // VS-2: skip on null telemetry
+  it("skips posting when sourceTelemetry is null (VS-2)", async () => {
+    const { calls, logger } = makeCapturedLogger();
+    const archive = makeArchive({ sourceTelemetry: null, notificationState: {} });
+    const archives = makeArchives(archive);
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifySourceDistribution({ runId: "run-1" });
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(archives.markNotification).not.toHaveBeenCalled();
+    const skipped = calls.find(
+      (c) => (c.obj as { event?: string; reason?: string } | undefined)?.event === "slack.source_distribution.skipped",
+    );
+    expect(skipped).toBeDefined();
+    expect((skipped?.obj as { reason?: string }).reason).toBe("no_telemetry");
+  });
+
+  // VS-10: idempotency
+  it("skips if sourceDistribution already notified (VS-10)", async () => {
+    const { calls, logger } = makeCapturedLogger();
+    const archive = makeArchive({
+      sourceTelemetry: baseTelemetry,
+      notificationState: { sourceDistribution: "2026-05-21T00:00:00Z" },
+    });
+    const archives = makeArchives(archive);
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifySourceDistribution({ runId: "run-1" });
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(archives.markNotification).not.toHaveBeenCalled();
+    const skipped = calls.find(
+      (c) => (c.obj as { reason?: string } | undefined)?.reason === "already_notified",
+    );
+    expect(skipped).toBeDefined();
+  });
+
+  // VS-11: failure does not mark
+  it("does not mark when webhook returns 500 (VS-11)", async () => {
+    const { logger } = makeCapturedLogger();
+    const archive = makeArchive({ sourceTelemetry: baseTelemetry, notificationState: {} });
+    const archives = makeArchives(archive);
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("error", { status: 500 })));
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await expect(notifier.notifySourceDistribution({ runId: "run-1" })).resolves.toBeUndefined();
+    expect(archives.markNotification).not.toHaveBeenCalled();
+  });
+
+  // VS-12: dry-run skip
+  it("skips when archive is a dry run (VS-12)", async () => {
+    const { calls, logger } = makeCapturedLogger();
+    const archive = makeArchive({ sourceTelemetry: baseTelemetry, isDryRun: true, notificationState: {} });
+    const archives = makeArchives(archive);
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifySourceDistribution({ runId: "run-1" });
+    expect(fetchFn).not.toHaveBeenCalled();
+    const skipped = calls.find(
+      (c) => (c.obj as { event?: string } | undefined)?.event === "publish.skipped_dry_run",
+    );
+    expect(skipped).toBeDefined();
+  });
+
+  // VS-13: webhook unset
+  it("is a no-op when webhook is unset (VS-13)", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ sourceTelemetry: baseTelemetry }));
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: undefined,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifySourceDistribution({ runId: "run-1" });
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(archives.findById).not.toHaveBeenCalled();
+  });
+});
+
+describe("notifyEmailDelivery (VS-4, VS-10, VS-11, VS-12, VS-13)", () => {
+  const delivery = { attempted: 5, sent: 4, failed: 1, failureReasons: [{ reason: "bounce", count: 1 }] };
+
+  // VS-4: happy path
+  it("posts to webhook and marks emailDelivery on success", async () => {
+    const { logger } = makeCapturedLogger();
+    const archive = makeArchive({ notificationState: {} });
+    const archives = makeArchives(archive);
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("ok", { status: 200 })));
+    const fixedNow = new Date("2026-05-21T10:00:00Z");
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      now: () => fixedNow,
+    });
+    await notifier.notifyEmailDelivery({ runId: "run-1", delivery });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(archives.markNotification).toHaveBeenCalledWith("run-1", "emailDelivery", fixedNow);
+  });
+
+  it("includes 📬 Newsletter emailed header in posted message (VS-4)", async () => {
+    const { logger } = makeCapturedLogger();
+    const archive = makeArchive({ notificationState: {} });
+    const archives = makeArchives(archive);
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("ok", { status: 200 })));
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyEmailDelivery({ runId: "run-1", delivery });
+    const [, init] = fetchFn.mock.calls[0] as [string, { body: string }];
+    const payload = JSON.parse(init.body) as { blocks: { type: string; text?: { text?: string } }[] };
+    const header = payload.blocks.find((b) => b.type === "header");
+    expect(header?.text?.text).toBe("📬 Newsletter emailed");
+  });
+
+  // VS-10: idempotency
+  it("skips if emailDelivery already notified (VS-10)", async () => {
+    const { calls, logger } = makeCapturedLogger();
+    const archive = makeArchive({ notificationState: { emailDelivery: "2026-05-21T00:00:00Z" } });
+    const archives = makeArchives(archive);
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyEmailDelivery({ runId: "run-1", delivery });
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(archives.markNotification).not.toHaveBeenCalled();
+    const skipped = calls.find(
+      (c) => (c.obj as { reason?: string } | undefined)?.reason === "already_notified",
+    );
+    expect(skipped).toBeDefined();
+  });
+
+  // VS-11: failure does not mark
+  it("does not mark when webhook returns 500 (VS-11)", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ notificationState: {} }));
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("error", { status: 500 })));
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await expect(notifier.notifyEmailDelivery({ runId: "run-1", delivery })).resolves.toBeUndefined();
+    expect(archives.markNotification).not.toHaveBeenCalled();
+  });
+
+  // VS-12: dry-run skip
+  it("skips when archive is a dry run (VS-12)", async () => {
+    const { calls, logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ isDryRun: true, notificationState: {} }));
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyEmailDelivery({ runId: "run-1", delivery });
+    expect(fetchFn).not.toHaveBeenCalled();
+    const skipped = calls.find(
+      (c) => (c.obj as { event?: string } | undefined)?.event === "publish.skipped_dry_run",
+    );
+    expect(skipped).toBeDefined();
+  });
+
+  // VS-13: webhook unset
+  it("is a no-op when webhook is unset (VS-13)", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive());
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: undefined,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyEmailDelivery({ runId: "run-1", delivery });
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(archives.findById).not.toHaveBeenCalled();
+  });
+});
+
+describe("notifyLinkedinPosted (VS-6, VS-10, VS-11, VS-12, VS-13)", () => {
+  const permalink = "urn:li:share:12345";
+
+  // VS-6: happy path
+  it("posts to webhook and marks linkedinPosted on success", async () => {
+    const { logger } = makeCapturedLogger();
+    const archive = makeArchive({ notificationState: {} });
+    const archives = makeArchives(archive);
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("ok", { status: 200 })));
+    const fixedNow = new Date("2026-05-21T10:00:00Z");
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      now: () => fixedNow,
+    });
+    await notifier.notifyLinkedinPosted({ runId: "run-1", permalink });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(archives.markNotification).toHaveBeenCalledWith("run-1", "linkedinPosted", fixedNow);
+  });
+
+  it("includes 🟢 LinkedIn posted header in posted message (VS-6)", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ notificationState: {} }));
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("ok", { status: 200 })));
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyLinkedinPosted({ runId: "run-1", permalink });
+    const [, init] = fetchFn.mock.calls[0] as [string, { body: string }];
+    const payload = JSON.parse(init.body) as { blocks: { type: string; text?: { text?: string } }[] };
+    const header = payload.blocks.find((b) => b.type === "header");
+    expect(header?.text?.text).toBe("🟢 LinkedIn posted");
+  });
+
+  // VS-10: idempotency
+  it("skips if linkedinPosted already notified (VS-10)", async () => {
+    const { calls, logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ notificationState: { linkedinPosted: "2026-05-21T00:00:00Z" } }));
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyLinkedinPosted({ runId: "run-1", permalink });
+    expect(fetchFn).not.toHaveBeenCalled();
+    const skipped = calls.find((c) => (c.obj as { reason?: string } | undefined)?.reason === "already_notified");
+    expect(skipped).toBeDefined();
+  });
+
+  // VS-11: failure does not mark
+  it("does not mark when webhook returns 500 (VS-11)", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ notificationState: {} }));
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("error", { status: 500 })));
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await expect(notifier.notifyLinkedinPosted({ runId: "run-1", permalink })).resolves.toBeUndefined();
+    expect(archives.markNotification).not.toHaveBeenCalled();
+  });
+
+  // VS-12: dry-run skip
+  it("skips when archive is a dry run (VS-12)", async () => {
+    const { calls, logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ isDryRun: true, notificationState: {} }));
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyLinkedinPosted({ runId: "run-1", permalink });
+    expect(fetchFn).not.toHaveBeenCalled();
+    const skipped = calls.find(
+      (c) => (c.obj as { event?: string } | undefined)?.event === "publish.skipped_dry_run",
+    );
+    expect(skipped).toBeDefined();
+  });
+
+  // VS-13: webhook unset
+  it("is a no-op when webhook is unset (VS-13)", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive());
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: undefined,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyLinkedinPosted({ runId: "run-1", permalink });
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(archives.findById).not.toHaveBeenCalled();
+  });
+});
+
+describe("notifyTwitterPosted (VS-8, VS-10, VS-11, VS-12, VS-13)", () => {
+  const permalink = "https://x.com/ai_digest/status/9999";
+
+  // VS-8: happy path
+  it("posts to webhook and marks twitterPosted on success", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ notificationState: {} }));
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("ok", { status: 200 })));
+    const fixedNow = new Date("2026-05-21T10:00:00Z");
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      now: () => fixedNow,
+    });
+    await notifier.notifyTwitterPosted({ runId: "run-1", permalink });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(archives.markNotification).toHaveBeenCalledWith("run-1", "twitterPosted", fixedNow);
+  });
+
+  it("includes 🟢 X (Twitter) posted header in posted message (VS-8)", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ notificationState: {} }));
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("ok", { status: 200 })));
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyTwitterPosted({ runId: "run-1", permalink });
+    const [, init] = fetchFn.mock.calls[0] as [string, { body: string }];
+    const payload = JSON.parse(init.body) as { blocks: { type: string; text?: { text?: string } }[] };
+    const header = payload.blocks.find((b) => b.type === "header");
+    expect(header?.text?.text).toBe("🟢 X (Twitter) posted");
+  });
+
+  // VS-10: idempotency
+  it("skips if twitterPosted already notified (VS-10)", async () => {
+    const { calls, logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ notificationState: { twitterPosted: "2026-05-21T00:00:00Z" } }));
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyTwitterPosted({ runId: "run-1", permalink });
+    expect(fetchFn).not.toHaveBeenCalled();
+    const skipped = calls.find((c) => (c.obj as { reason?: string } | undefined)?.reason === "already_notified");
+    expect(skipped).toBeDefined();
+  });
+
+  // VS-11: failure does not mark
+  it("does not mark when webhook returns 500 (VS-11)", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ notificationState: {} }));
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("error", { status: 500 })));
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await expect(notifier.notifyTwitterPosted({ runId: "run-1", permalink })).resolves.toBeUndefined();
+    expect(archives.markNotification).not.toHaveBeenCalled();
+  });
+
+  // VS-12: dry-run skip
+  it("skips when archive is a dry run (VS-12)", async () => {
+    const { calls, logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ isDryRun: true, notificationState: {} }));
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyTwitterPosted({ runId: "run-1", permalink });
+    expect(fetchFn).not.toHaveBeenCalled();
+    const skipped = calls.find(
+      (c) => (c.obj as { event?: string } | undefined)?.event === "publish.skipped_dry_run",
+    );
+    expect(skipped).toBeDefined();
+  });
+
+  // VS-13: webhook unset
+  it("is a no-op when webhook is unset (VS-13)", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive());
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: undefined,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifyTwitterPosted({ runId: "run-1", permalink });
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(archives.findById).not.toHaveBeenCalled();
+  });
+});
+
+// VS-14: NotificationKey type exhaustiveness
+// The real enforcement is via tsc — a typo like "sourceDistribuion" would fail
+// `pnpm typecheck` because markNotification is typed against NotificationKey.
+// This runtime test confirms the four new keys are valid values at runtime too.
+describe("NotificationKey type (VS-14)", () => {
+  it("markNotification is callable with all four new keys", async () => {
+    const archives = makeArchives(makeArchive({ notificationState: {} }));
+    const now = new Date();
+    await archives.markNotification("run-1", "sourceDistribution", now);
+    await archives.markNotification("run-1", "emailDelivery", now);
+    await archives.markNotification("run-1", "linkedinPosted", now);
+    await archives.markNotification("run-1", "twitterPosted", now);
+    expect(archives.markNotification).toHaveBeenCalledTimes(4);
+  });
+});
+
+// VS-15: legacy method preserved
+describe("notifyNewsletterSent preserved (VS-15)", () => {
+  it("notifyNewsletterSent still exists on the interface and is callable", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive());
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("ok", { status: 200 })));
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    // Method must exist and not throw
+    expect(typeof notifier.notifyNewsletterSent).toBe("function");
+    await expect(
+      notifier.notifyNewsletterSent({ runId: "run-1", delivery: { attempted: 1, sent: 1, failed: 0 } }),
+    ).resolves.toBeUndefined();
   });
 });

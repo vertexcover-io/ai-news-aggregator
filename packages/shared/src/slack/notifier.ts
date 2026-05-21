@@ -3,10 +3,18 @@ import { buildPublishFailedMessage } from "./builders/publish-failed.js";
 import { buildPublishUnavailableMessage } from "./builders/publish-unavailable.js";
 import { buildReviewPendingMessage } from "./builders/review-pending.js";
 import { buildReviewWarningMessage } from "./builders/review-warning.js";
+import { buildSourceDistributionMessage } from "./builders/source-distribution.js";
+import { buildEmailDeliveryMessage } from "./builders/email-delivery.js";
+import { buildLinkedinPostedMessage } from "./builders/linkedin-posted.js";
+import { buildTwitterPostedMessage } from "./builders/twitter-posted.js";
 import type {
   NotifyNewsletterSentInput,
   SlackNotifier,
   SlackNotifierDeps,
+  SourceDistributionInput,
+  EmailDeliveryInput,
+  LinkedinPostedInput,
+  TwitterPostedInput,
 } from "./types.js";
 import type { NotificationKey } from "../types/notifications.js";
 import { postToWebhook } from "./webhook-client.js";
@@ -35,6 +43,10 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
       notifyReviewWarning: (): Promise<void> => Promise.resolve(),
       notifyPublishFailed: (): Promise<void> => Promise.resolve(),
       notifyPublishUnavailable: (): Promise<void> => Promise.resolve(),
+      notifySourceDistribution: (): Promise<void> => Promise.resolve(),
+      notifyEmailDelivery: (): Promise<void> => Promise.resolve(),
+      notifyLinkedinPosted: (): Promise<void> => Promise.resolve(),
+      notifyTwitterPosted: (): Promise<void> => Promise.resolve(),
     };
   }
 
@@ -302,6 +314,107 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
         key: keyByChannel[input.channel],
         event: "slack.publish_unavailable",
         blocks: () => blocks,
+      });
+    },
+
+    async notifySourceDistribution(input: SourceDistributionInput): Promise<void> {
+      try {
+        const archive = await deps.archives.findById(input.runId);
+        if (archive === null) {
+          logger.warn(
+            { event: "slack.source_distribution.archive_missing", runId: input.runId },
+            "archive not found for slack notification",
+          );
+          return;
+        }
+        if (archive.isDryRun) {
+          logger.info(
+            { event: "publish.skipped_dry_run", runId: input.runId, channel: "slack" },
+            "slack notification skipped (dry-run archive)",
+          );
+          return;
+        }
+        if (archive.notificationState?.sourceDistribution !== undefined) {
+          logger.info(
+            { event: "slack.source_distribution.skipped", reason: "already_notified", runId: input.runId },
+            "slack notification skipped (already notified)",
+          );
+          return;
+        }
+        if (archive.sourceTelemetry === null) {
+          logger.info(
+            { event: "slack.source_distribution.skipped", reason: "no_telemetry", runId: input.runId },
+            "slack source distribution skipped (no telemetry)",
+          );
+          return;
+        }
+        const blocks = buildSourceDistributionMessage({
+          runId: input.runId,
+          headline: archive.digestHeadline,
+          sourceTelemetry: archive.sourceTelemetry,
+          publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
+        }).blocks;
+        const result = await postToWebhook({ url: webhookUrl, blocks, fetchFn: deps.fetchFn });
+        if (!result.ok) {
+          logger.warn(
+            { event: "slack.source_distribution.failed", runId: input.runId, status: result.status, responseBody: result.error },
+            "slack notification failed",
+          );
+          return;
+        }
+        const now = (deps.now ?? ((): Date => new Date()))();
+        await deps.archives.markNotification(input.runId, "sourceDistribution", now);
+        logger.info({ event: "slack.source_distribution.sent", runId: input.runId }, "slack notification sent");
+      } catch (err) {
+        logger.warn(
+          { event: "slack.source_distribution.failed", runId: input.runId, error: err instanceof Error ? err.message : String(err) },
+          "slack notification threw unexpectedly",
+        );
+      }
+    },
+
+    notifyEmailDelivery(input: EmailDeliveryInput): Promise<void> {
+      return notifyWithMarker({
+        runId: input.runId,
+        key: "emailDelivery",
+        event: "slack.email_delivery",
+        blocks: (archive) =>
+          buildEmailDeliveryMessage({
+            runId: input.runId,
+            headline: archive?.digestHeadline ?? null,
+            delivery: input.delivery,
+            publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
+          }).blocks,
+      });
+    },
+
+    notifyLinkedinPosted(input: LinkedinPostedInput): Promise<void> {
+      return notifyWithMarker({
+        runId: input.runId,
+        key: "linkedinPosted",
+        event: "slack.linkedin_posted",
+        blocks: (archive) =>
+          buildLinkedinPostedMessage({
+            runId: input.runId,
+            headline: archive?.digestHeadline ?? null,
+            permalink: input.permalink,
+            publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
+          }).blocks,
+      });
+    },
+
+    notifyTwitterPosted(input: TwitterPostedInput): Promise<void> {
+      return notifyWithMarker({
+        runId: input.runId,
+        key: "twitterPosted",
+        event: "slack.twitter_posted",
+        blocks: (archive) =>
+          buildTwitterPostedMessage({
+            runId: input.runId,
+            headline: archive?.digestHeadline ?? null,
+            permalink: input.permalink,
+            publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
+          }).blocks,
       });
     },
   };

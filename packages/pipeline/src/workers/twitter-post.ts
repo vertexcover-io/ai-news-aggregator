@@ -1,7 +1,10 @@
+import { createLogger } from "@newsletter/shared/logger";
 import type { SlackNotifier } from "@newsletter/shared";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { TwitterNotifier } from "@pipeline/social/twitter/index.js";
 import { resolvePublishTarget } from "./publish-target.js";
+
+const logger = createLogger("worker:twitter-post");
 
 export interface TwitterPostDeps {
   readonly archiveRepo: RunArchivesRepo;
@@ -26,5 +29,19 @@ export async function handleTwitterPostJob(
   });
   if (archive === null) return;
   if (archive.twitterPostedAt !== null) return;
-  await deps.twitterNotifier?.notifyArchiveReady({ runId: archive.id });
+  const result = await deps.twitterNotifier?.notifyArchiveReady({ runId: archive.id });
+  if (result?.status === "posted" && result.permalink !== null) {
+    try {
+      await deps.slackNotifier?.notifyTwitterPosted({ runId: archive.id, permalink: result.permalink });
+    } catch (err) {
+      logger.warn(
+        {
+          event: "slack.twitter_posted.unexpected_throw",
+          runId: archive.id,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "slack.twitter_posted.unexpected_throw",
+      );
+    }
+  }
 }
