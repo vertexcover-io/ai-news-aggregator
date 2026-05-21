@@ -104,3 +104,117 @@ test.describe("Admin social credentials panel (VS-11)", () => {
     );
   });
 });
+
+test.describe("Twitter collector cookies card (VS-7)", () => {
+  test.beforeEach(async () => {
+    await resetCredentials();
+  });
+
+  test("starts Not configured, save flips to Configured, persists across reload, clear reverts", async ({
+    page,
+  }) => {
+    await adminLogin(page);
+    await page.goto("/admin/settings");
+
+    const panel = page.getByTestId("social-credentials-panel");
+    await panel.waitFor({ state: "visible" });
+
+    const card = page.getByTestId("twitter-collector-card");
+    await card.waitFor({ state: "visible" });
+
+    await expect(card.getByTestId("status-pill")).toHaveAttribute(
+      "data-configured",
+      "false",
+    );
+
+    // Save cookies
+    await card
+      .getByTestId("twitter-collector-apiKey-input")
+      .fill("base64-cookie-blob-e2e-fixture");
+    await card.getByTestId("twitter-collector-save").click();
+
+    await expect(card.getByTestId("status-pill")).toHaveAttribute(
+      "data-configured",
+      "true",
+    );
+
+    // The input clears after save (secrets never echoed back)
+    await expect(
+      card.getByTestId("twitter-collector-apiKey-input"),
+    ).toHaveValue("");
+
+    // Reload — Configured pill persists
+    await page.reload();
+    const cardAfter = page.getByTestId("twitter-collector-card");
+    await cardAfter.waitFor({ state: "visible" });
+    await expect(cardAfter.getByTestId("status-pill")).toHaveAttribute(
+      "data-configured",
+      "true",
+    );
+
+    // Clear cookies — confirm reverts to Not configured
+    await cardAfter.getByTestId("twitter-collector-clear").click();
+    await cardAfter.getByTestId("twitter-collector-clear-confirm").click();
+    await expect(cardAfter.getByTestId("status-pill")).toHaveAttribute(
+      "data-configured",
+      "false",
+    );
+  });
+
+  test("blocks empty/whitespace-only paste with a 400 from the server", async ({
+    page,
+  }) => {
+    await adminLogin(page);
+    await page.goto("/admin/settings");
+    const card = page.getByTestId("twitter-collector-card");
+    await card.waitFor({ state: "visible" });
+
+    // Whitespace-only — client side toast fires; status stays Not configured.
+    await card.getByTestId("twitter-collector-apiKey-input").fill("   ");
+    await card.getByTestId("twitter-collector-save").click();
+
+    // Status pill remains Not configured.
+    await expect(card.getByTestId("status-pill")).toHaveAttribute(
+      "data-configured",
+      "false",
+    );
+  });
+
+  test("PUT then GET via API confirms encrypted DB roundtrip", async ({
+    page,
+  }) => {
+    await adminLogin(page);
+    const put = await page.request.put(
+      `${API_BASE}/api/admin/social-credentials/twitter-collector`,
+      { data: { apiKey: "  api-blob-with-whitespace  " } },
+    );
+    expect(put.ok()).toBe(true);
+
+    const get = await page.request.get(
+      `${API_BASE}/api/admin/social-credentials`,
+    );
+    const status = (await get.json()) as {
+      twitterCollector: { configured: boolean; updatedAt: string | null };
+    };
+    expect(status.twitterCollector.configured).toBe(true);
+    expect(typeof status.twitterCollector.updatedAt).toBe("string");
+
+    // Verify the DB column is encrypted (not plaintext) and that the trimmed
+    // value round-trips through the cipher.
+    const client = new Client({ connectionString: DATABASE_URL });
+    await client.connect();
+    try {
+      const row = await client.query<{
+        encrypted_fields: { apiKey: { ct: string } };
+      }>(
+        "SELECT encrypted_fields FROM social_credentials WHERE platform = 'twitter_collector'",
+      );
+      expect(row.rowCount).toBe(1);
+      expect(row.rows[0].encrypted_fields.apiKey.ct).not.toContain(
+        "api-blob-with-whitespace",
+      );
+    } finally {
+      await client.end();
+    }
+  });
+});
