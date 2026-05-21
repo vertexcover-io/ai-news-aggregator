@@ -197,6 +197,7 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       linkedinEnabled: parsed.data.linkedinEnabled,
       twitterPostEnabled: parsed.data.twitterPostEnabled,
       autoReview: parsed.data.autoReview,
+      rankingPrompt: parsed.data.rankingPrompt,
     };
 
     const saved = await deps.getSettingsRepo().upsert(upsertInput);

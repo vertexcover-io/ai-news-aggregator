@@ -41,6 +41,7 @@ const sample: UserSettings = {
   linkedinEnabled: true,
   twitterPostEnabled: true,
   autoReview: false,
+  rankingPrompt: "test-prompt",
   updatedAt: "2026-04-14T00:00:00Z",
 };
 
@@ -100,6 +101,7 @@ describe("settings api", () => {
       linkedinEnabled: sample.linkedinEnabled,
       twitterPostEnabled: sample.twitterPostEnabled,
       autoReview: sample.autoReview,
+      rankingPrompt: sample.rankingPrompt,
     };
     const out = await putSettings(input);
     expect(out).toEqual(sample);
@@ -140,6 +142,7 @@ describe("settings api", () => {
         linkedinEnabled: true,
         twitterPostEnabled: true,
         autoReview: false,
+        rankingPrompt: "test prompt",
       }),
     ).rejects.toThrow("bad input");
   });

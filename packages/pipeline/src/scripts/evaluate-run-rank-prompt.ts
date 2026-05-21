@@ -3,6 +3,7 @@ import postgres from "postgres";
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { Candidate, RawItemComment } from "@newsletter/shared";
+import { DEFAULT_RANKING_PROMPT } from "@newsletter/shared/constants";
 import { rankCandidates } from "@pipeline/processors/rank.js";
 
 config({ path: resolve(import.meta.dirname, "../../../../.env") });
@@ -211,6 +212,7 @@ async function main(): Promise<number> {
   const candidates = await loadRunCandidates(runId);
   const result = await rankCandidates([...candidates], {
     topN: TOP_N,
+    systemPrompt: DEFAULT_RANKING_PROMPT,
     now: NOW,
     loadBodies: loadInlineBodies,
     bodyTokenBudget: BODY_TOKEN_BUDGET,

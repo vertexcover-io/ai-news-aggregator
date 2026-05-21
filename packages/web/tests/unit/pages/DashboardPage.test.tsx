@@ -63,6 +63,7 @@ const settings: UserSettings = {
   linkedinEnabled: false,
   twitterPostEnabled: false,
   autoReview: false,
+  rankingPrompt: "test-prompt",
   updatedAt: "2026-04-14T00:00:00Z",
 };
 

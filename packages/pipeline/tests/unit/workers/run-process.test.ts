@@ -2367,4 +2367,100 @@ describe("run-process dry-run flag (Phase 2)", () => {
     );
     expect(warnCall).toBeUndefined();
   });
+
+  // PHASE3-C2 / REQ-007 / EDGE-006: settings (and therefore the ranking prompt)
+  // must be re-read on every job invocation. Two consecutive runs against a
+  // userSettingsRepo that returns DIFFERENT prompts must result in two
+  // distinct systemPrompt values forwarded to rankFn — proving the worker
+  // performs no per-process memoisation of settings.
+  it("PHASE3-C2: re-reads userSettingsRepo on every job (no per-worker memoisation of ranking prompt)", async () => {
+    const runStateMockA = makeMockRunState(makeRunState());
+    const runStateMockB = makeMockRunState(
+      makeRunState({ id: "run-2" }),
+    );
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+
+    const recordedPrompts: string[] = [];
+    const rankFn = vi.fn(
+      (_cands: Candidate[], opts: RankOptions): Promise<RankResult> => {
+        recordedPrompts.push(opts.systemPrompt);
+        return Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+          candidateCount: 1,
+          rankedCount: 1,
+        });
+      },
+    );
+
+    const baseSettings = {
+      id: "settings-1",
+      topN: 3,
+      halfLifeHours: null,
+      hnEnabled: true,
+      hnConfig: null,
+      redditEnabled: false,
+      redditConfig: null,
+      webEnabled: false,
+      webConfig: null,
+      twitterEnabled: false,
+      twitterConfig: null,
+      scheduleTime: "07:00",
+      pipelineTime: "07:00",
+      emailTime: "07:30",
+      linkedinTime: "08:00",
+      twitterTime: "08:30",
+      scheduleTimezone: "UTC",
+      scheduleEnabled: true,
+      emailEnabled: true,
+      linkedinEnabled: true,
+      twitterPostEnabled: true,
+      autoReview: false,
+      updatedAt: new Date("2026-04-07T10:00:00.000Z"),
+    };
+
+    const settingsGet = vi
+      .fn()
+      .mockResolvedValueOnce({ ...baseSettings, rankingPrompt: "PROMPT-A" })
+      .mockResolvedValueOnce({ ...baseSettings, rankingPrompt: "PROMPT-B" });
+
+    // Two worker instances backed by the SAME settingsGet mock. Two
+    // consecutive invocations of the worker handler against a settingsGet
+    // that returns DIFFERENT prompts must forward DIFFERENT systemPrompt
+    // values to rankFn. If the worker ever cached settings at module or
+    // process scope (e.g. resolved once at startup), both invocations would
+    // observe PROMPT-A and this test would fail. Because the worker code
+    // calls `deps.userSettingsRepo.get()` INSIDE `handleRunProcessJob`,
+    // both invocations independently pull from the mock — proving the
+    // freshness contract from the design doc holds.
+    const workerA = createRunProcessWorker({
+      runState: runStateMockA.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+      archiveRepo: { upsert: vi.fn(() => Promise.resolve()) },
+      userSettingsRepo: { get: settingsGet, upsert: vi.fn() },
+    });
+
+    await workerA.handler(baseJob);
+
+    const workerB = createRunProcessWorker({
+      runState: runStateMockB.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+      archiveRepo: { upsert: vi.fn(() => Promise.resolve()) },
+      userSettingsRepo: { get: settingsGet, upsert: vi.fn() },
+    });
+    await workerB.handler({
+      ...baseJob,
+      data: { ...baseJob.data, runId: "run-2" },
+    });
+
+    expect(settingsGet).toHaveBeenCalledTimes(2);
+    expect(recordedPrompts).toEqual(["PROMPT-A", "PROMPT-B"]);
+  });
 });

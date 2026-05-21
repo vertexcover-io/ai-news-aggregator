@@ -36,6 +36,7 @@ export interface UserSettings {
   linkedinEnabled: boolean;
   twitterPostEnabled: boolean;
   autoReview: boolean;
+  rankingPrompt: string;
   updatedAt: string;
 }
 

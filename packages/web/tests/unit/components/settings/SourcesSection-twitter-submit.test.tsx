@@ -69,6 +69,7 @@ function SubmitHarness({
       linkedinEnabled: true,
       twitterPostEnabled: true,
       autoReview: false,
+      rankingPrompt: "test prompt",
     },
   });
 

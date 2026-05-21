@@ -148,6 +148,7 @@ describe("source-neutrality golden-set (EDGE-010, REQ-054)", () => {
 
     const result = await rankCandidates([makeBlog(), makeHn()], {
       topN: 5,
+      systemPrompt: `Test ranking prompt. Source neutrality rule: ${SOURCE_NEUTRALITY_RULE}`,
       halfLifeHours: 48,
       now: SHARED_PUBLISHED, // age 0 so recency multiplier is 1
       generateObject,

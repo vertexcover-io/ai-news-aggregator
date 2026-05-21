@@ -126,6 +126,7 @@ export const userSettings = pgTable(
     posthogEnabled: boolean("posthog_enabled").notNull().default(false),
     posthogProjectToken: text("posthog_project_token"),
     posthogHost: text("posthog_host"),
+    rankingPrompt: text("ranking_prompt").notNull(),
     pipelineTime: text("pipeline_time").notNull(),
     emailTime: text("email_time").notNull(),
     linkedinTime: text("linkedin_time").notNull(),

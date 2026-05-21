@@ -161,6 +161,10 @@ const userSettingsCommonShape = {
   linkedinEnabled: z.boolean().optional(),
   twitterPostEnabled: z.boolean().optional(),
   autoReview: z.boolean().optional(),
+  rankingPrompt: z
+    .string()
+    .max(20000, "Ranking prompt too long (max 20000 chars)")
+    .refine((v) => v.trim().length > 0, "Ranking prompt is required"),
 } as const;
 
 interface SourceEnabledPayload {

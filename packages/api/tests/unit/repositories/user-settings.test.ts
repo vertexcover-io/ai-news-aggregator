@@ -30,6 +30,7 @@ interface StoredRow {
   linkedinEnabled: boolean;
   twitterPostEnabled: boolean;
   autoReview: boolean;
+  rankingPrompt: string;
   updatedAt: Date;
 }
 
@@ -77,6 +78,7 @@ function makeFakeDb(): { db: Pick<AppDb, "select" | "insert">; rows: StoredRow[]
                 linkedinEnabled: v.linkedinEnabled ?? true,
                 twitterPostEnabled: v.twitterPostEnabled ?? true,
                 autoReview: v.autoReview ?? false,
+                rankingPrompt: v.rankingPrompt ?? "",
                 updatedAt: v.updatedAt ?? new Date(),
               };
               rows.push(row);
@@ -121,6 +123,7 @@ const baseInput = {
   linkedinEnabled: true,
   twitterPostEnabled: true,
   autoReview: false,
+  rankingPrompt: "Default ranking prompt",
 };
 
 describe("UserSettingsRepo", () => {
@@ -219,6 +222,26 @@ describe("UserSettingsRepo", () => {
     const got = await repo.get();
     expect(got?.webSearchEnabled).toBe(false);
     expect(got?.webSearchConfig).toBeNull();
+  });
+
+  it("PHASE2-C2: upsert() round-trips a multi-line rankingPrompt with special chars", async () => {
+    const { db } = makeFakeDb();
+    const repo = createUserSettingsRepo(db);
+    const prompt =
+      "Line one with `backticks` and $variable expansion\nLine two: 'single' \"double\" quotes\nLine three: end";
+    const saved = await repo.upsert({ ...baseInput, rankingPrompt: prompt });
+    expect(saved.rankingPrompt).toBe(prompt);
+    const got = await repo.get();
+    expect(got?.rankingPrompt).toBe(prompt);
+  });
+
+  it("PHASE2-C2: upsert() twice updates rankingPrompt", async () => {
+    const { db } = makeFakeDb();
+    const repo = createUserSettingsRepo(db);
+    await repo.upsert({ ...baseInput, rankingPrompt: "First prompt" });
+    await repo.upsert({ ...baseInput, rankingPrompt: "Second prompt\nwith newline" });
+    const got = await repo.get();
+    expect(got?.rankingPrompt).toBe("Second prompt\nwith newline");
   });
 
   it("REQ-005: second upsert overwrites prior webSearchConfig queries", async () => {

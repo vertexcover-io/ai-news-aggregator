@@ -1,6 +1,6 @@
 import { useEffect, type ReactElement } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -30,6 +30,7 @@ function persistedToFormTwitter(
 import { SourcesSection } from "../components/settings/SourcesSection";
 import { ScheduleSection } from "../components/settings/ScheduleSection";
 import { AnalyticsSection } from "../components/settings/AnalyticsSection";
+import { RankingPromptSection } from "../components/settings/RankingPromptSection";
 import { SaveBar } from "../components/settings/SaveBar";
 import { SocialCredentialsPanel } from "../components/SocialCredentialsPanel";
 
@@ -73,6 +74,7 @@ function getDefaults(): SettingsFormValues {
     linkedinEnabled: true,
     twitterPostEnabled: true,
     autoReview: false,
+    rankingPrompt: "",
   };
 }
 
@@ -199,39 +201,42 @@ export function SettingsPage(): ReactElement {
           </p>
         </div>
 
-        <form
-          id="settings-form"
-          className="space-y-6"
-          onSubmit={(e) => {
-            // Defensive: ALWAYS preventDefault FIRST so a thrown handleSubmit
-            // can't escape into a native form POST (which causes a full page
-            // reload and the operator sees a fresh form with no error).
-            // Discovered debugging Stage-5 VS-6 — submit event fired,
-            // defaultPrevented stayed false, browser did a native POST.
-            e.preventDefault();
-            onSubmit(e).catch((err: unknown) => {
-              const msg = err instanceof Error ? err.message : String(err);
+        <FormProvider {...form}>
+          <form
+            id="settings-form"
+            className="space-y-6"
+            onSubmit={(e) => {
+              // Defensive: ALWAYS preventDefault FIRST so a thrown handleSubmit
+              // can't escape into a native form POST (which causes a full page
+              // reload and the operator sees a fresh form with no error).
+              // Discovered debugging Stage-5 VS-6 — submit event fired,
+              // defaultPrevented stayed false, browser did a native POST.
+              e.preventDefault();
+              onSubmit(e).catch((err: unknown) => {
+                const msg = err instanceof Error ? err.message : String(err);
 
-              console.error("settings save threw:", err);
-              toast.error(`Save failed: ${msg}`);
-            });
-          }}
-        >
-          <SourcesSection
-            control={form.control}
-            register={form.register}
-            setValue={form.setValue}
-          />
-          <ScheduleSection
-            register={form.register}
-            control={form.control}
-            errors={form.formState.errors}
-          />
-          <AnalyticsSection
-            register={form.register}
-            control={form.control}
-          />
-        </form>
+                console.error("settings save threw:", err);
+                toast.error(`Save failed: ${msg}`);
+              });
+            }}
+          >
+            <SourcesSection
+              control={form.control}
+              register={form.register}
+              setValue={form.setValue}
+            />
+            <ScheduleSection
+              register={form.register}
+              control={form.control}
+              errors={form.formState.errors}
+            />
+            <AnalyticsSection
+              register={form.register}
+              control={form.control}
+            />
+            <RankingPromptSection />
+          </form>
+        </FormProvider>
 
         <SocialCredentialsPanel />
 

@@ -2,6 +2,7 @@ import { Worker } from "bullmq";
 import type IORedis from "ioredis";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { getDb, serializeArchiveSearchText } from "@newsletter/shared";
+import { DEFAULT_RANKING_PROMPT } from "@newsletter/shared/constants";
 import type { SlackNotifier } from "@newsletter/shared";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
@@ -650,6 +651,11 @@ export async function handleRunProcessJob(
     throwIfAborted(signal);
     await deps.runState.setStage(runId, "ranking");
 
+    // Load settings INSIDE the job (not at worker startup) so admin edits to
+    // the ranking prompt take effect on the next pipeline job without a
+    // worker restart. See .claude/rules/learnings/cache-vs-spec-promise-review.md.
+    const settings = deps.userSettingsRepo ? await deps.userSettingsRepo.get() : null;
+
     let rankResult: RankResult;
     try {
       rankResult = await deps.rankFn(shortlist, {
@@ -659,6 +665,7 @@ export async function handleRunProcessJob(
         shortlistBreakdowns: breakdowns,
         abortSignal: signal,
         tracker,
+        systemPrompt: settings?.rankingPrompt ?? DEFAULT_RANKING_PROMPT,
       });
     } catch (err) {
       // Re-throw CancelledError to be handled by the outer catch
@@ -724,7 +731,6 @@ export async function handleRunProcessJob(
       completedAt: new Date().toISOString(),
     }));
 
-    const settings = deps.userSettingsRepo ? await deps.userSettingsRepo.get() : null;
     const autoReviewed = settings?.autoReview === true;
     const sourceTelemetry = buildSourceTelemetry(collecting.outcomes);
     sourceTelemetry.enrichment = toEnrichmentTelemetry(enrichmentCtx.counters);
