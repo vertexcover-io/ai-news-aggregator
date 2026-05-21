@@ -1,0 +1,3 @@
+$ curl -sS http://localhost:3000/api/archives/00000000-0000-4000-8000-000000000000 -w "\n%{http_code}\n"
+{"error":"not found"}
+404

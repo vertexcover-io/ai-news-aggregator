@@ -1,0 +1,17 @@
+2. [POST] https://us.i.posthog.com/i/v0/e/?ip=0&_=1779360500237&ver=1.374.0&compression=gzip-js&beacon=1 => [FAILED] net::ERR_ABORTED
+3. [POST] https://us.i.posthog.com/i/v0/e/?ip=0&_=1779360500237&ver=1.374.0&compression=gzip-js&beacon=1 => [FAILED] net::ERR_ABORTED
+137. [GET] http://localhost:5173/api/admin/me => [200] OK
+138. [GET] http://localhost:5173/api/public/analytics-config => [200] OK
+139. [GET] http://localhost:5173/api/public/analytics-config => [200] OK
+140. [GET] http://localhost:5173/api/admin/archives/71c44bd4-38a2-49ae-afb8-eff96baef2c4 => [200] OK
+145. [POST] https://us.i.posthog.com/i/v0/e/?ip=0&_=1779360500363&ver=1.374.0&compression=gzip-js => [200] 
+146. [POST] https://us.i.posthog.com/flags/?v=2&ip=0&_=1779360500365&ver=1.374.0&compression=base64 => [200] 
+147. [GET] http://localhost:5173/api/admin/archives/71c44bd4-38a2-49ae-afb8-eff96baef2c4/pool?sort=engagement&offset=0&limit=20 => [200] OK
+148. [GET] http://localhost:5173/api/admin/archives/71c44bd4-38a2-49ae-afb8-eff96baef2c4 => [200] OK
+149. [POST] https://us.i.posthog.com/e/?ip=0&_=1779360503364&ver=1.374.0&compression=gzip-js => [200] 
+150. [POST] https://us.i.posthog.com/i/v0/e/?ip=0&_=1779360508366&ver=1.374.0&compression=gzip-js => [200] 
+151. [POST] https://us.i.posthog.com/i/v0/e/?ip=0&_=1779360518362&ver=1.374.0&compression=gzip-js => [200] 
+152. [POST] https://us.i.posthog.com/i/v0/e/?ip=0&_=1779360522375&ver=1.374.0&compression=gzip-js => [200] 
+153. [POST] https://us.i.posthog.com/i/v0/e/?ip=0&_=1779360526911&ver=1.374.0&compression=gzip-js => [200] 
+
+Note: 138 static requests not shown, run with "static" option to see them.

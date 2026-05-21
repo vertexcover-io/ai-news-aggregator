@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useReview } from "../hooks/useReview";
@@ -36,6 +36,7 @@ export function ReviewPage(): ReactElement {
     resolvePromotePending,
     failPromotePending,
     discard,
+    reset,
     hasUrl,
     updateItemField,
   } = useReview(runId);
@@ -46,6 +47,7 @@ export function ReviewPage(): ReactElement {
   const [failedPromotes, setFailedPromotes] = useState<
     Map<string, { rawItemId: number; title: string }>
   >(() => new Map());
+  const allowSaveNavigation = useRef(false);
 
   async function handlePromote(
     rawItemId: number,
@@ -87,6 +89,7 @@ export function ReviewPage(): ReactElement {
   }
 
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
+    if (allowSaveNavigation.current) return false;
     if (!isDirty) return false;
     return currentLocation.pathname !== nextLocation.pathname;
   });
@@ -200,6 +203,8 @@ export function ReviewPage(): ReactElement {
           imageUrl: it.imageUrl,
         })),
       });
+      allowSaveNavigation.current = true;
+      reset(state.current);
       void navigate(`/archive/${runId}`);
     } catch (e) {
       const message =
