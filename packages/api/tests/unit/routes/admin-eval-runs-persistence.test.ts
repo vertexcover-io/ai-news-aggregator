@@ -4,6 +4,10 @@ import type {
   Fixture,
   UserSettings,
 } from "@newsletter/shared";
+import type {
+  EvalRun,
+  EvalRunSummary,
+} from "@newsletter/shared/types/eval-ranking";
 import {
   createAdminEvalRouter,
   type AdminEvalRouterDeps,
@@ -420,5 +424,199 @@ describe("admin-eval /run persistence (Phase 3)", () => {
     expect(body).toContain("event: done");
     expect(evalRunsRepo.updateFinish).toHaveBeenCalledTimes(1);
     expect(evalRunsRepo.updateFailed).not.toHaveBeenCalled();
+  });
+});
+
+describe("admin-eval GET /runs and /runs/:id (Phase 4)", () => {
+  function makeSummary(overrides: Partial<EvalRunSummary> = {}): EvalRunSummary {
+    return {
+      id: "00000000-0000-0000-0000-000000000001",
+      mode: "scored",
+      fixtureId: "fix-A",
+      date: null,
+      windowSize: null,
+      draftPromptHash: "h".repeat(16),
+      savedPromptHash: null,
+      status: "done",
+      startedAt: "2026-05-10T00:00:00.000Z",
+      finishedAt: "2026-05-10T00:00:05.000Z",
+      scoreBreakdown: null,
+      costBreakdown: null,
+      errorMessage: null,
+      ...overrides,
+    };
+  }
+  function makeRun(overrides: Partial<EvalRun> = {}): EvalRun {
+    return {
+      ...makeSummary(),
+      draftPromptSnapshot: "draft body",
+      savedPromptSnapshot: null,
+      ...overrides,
+    };
+  }
+
+  it("GET /runs with no filters returns all rows, defaults page=1 perPage=20", async () => {
+    const summaries = [makeSummary({ id: "00000000-0000-0000-0000-000000000001" })];
+    const evalRunsRepo = makeEvalRunsRepo({
+      list: vi.fn(() => Promise.resolve({ runs: summaries, total: 1 })),
+    });
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo(),
+      getEvalRunsRepo: () => evalRunsRepo,
+    });
+    const res = await app.request("/api/admin/eval/runs");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      runs: EvalRunSummary[];
+      total: number;
+      page: number;
+      perPage: number;
+    };
+    expect(body.total).toBe(1);
+    expect(body.page).toBe(1);
+    expect(body.perPage).toBe(20);
+    expect(body.runs).toHaveLength(1);
+    const listArg = vi.mocked(evalRunsRepo.list).mock.calls[0][0];
+    expect(listArg).toEqual({
+      page: 1,
+      perPage: 20,
+      mode: undefined,
+      status: undefined,
+      fixtureId: undefined,
+    });
+  });
+
+  it("GET /runs?page=2&perPage=5 forwards pagination", async () => {
+    const evalRunsRepo = makeEvalRunsRepo({
+      list: vi.fn(() => Promise.resolve({ runs: [], total: 12 })),
+    });
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo(),
+      getEvalRunsRepo: () => evalRunsRepo,
+    });
+    const res = await app.request("/api/admin/eval/runs?page=2&perPage=5");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { page: number; perPage: number };
+    expect(body.page).toBe(2);
+    expect(body.perPage).toBe(5);
+    const listArg = vi.mocked(evalRunsRepo.list).mock.calls[0][0];
+    expect(listArg.page).toBe(2);
+    expect(listArg.perPage).toBe(5);
+  });
+
+  it("GET /runs?mode=scored forwards the mode filter", async () => {
+    const evalRunsRepo = makeEvalRunsRepo({
+      list: vi.fn(() => Promise.resolve({ runs: [], total: 0 })),
+    });
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo(),
+      getEvalRunsRepo: () => evalRunsRepo,
+    });
+    const res = await app.request("/api/admin/eval/runs?mode=scored");
+    expect(res.status).toBe(200);
+    const listArg = vi.mocked(evalRunsRepo.list).mock.calls[0][0];
+    expect(listArg.mode).toBe("scored");
+  });
+
+  it("GET /runs?status=done&mode=scored AND-composes filters", async () => {
+    const evalRunsRepo = makeEvalRunsRepo({
+      list: vi.fn(() => Promise.resolve({ runs: [], total: 0 })),
+    });
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo(),
+      getEvalRunsRepo: () => evalRunsRepo,
+    });
+    const res = await app.request(
+      "/api/admin/eval/runs?status=done&mode=scored",
+    );
+    expect(res.status).toBe(200);
+    const listArg = vi.mocked(evalRunsRepo.list).mock.calls[0][0];
+    expect(listArg.mode).toBe("scored");
+    expect(listArg.status).toBe("done");
+  });
+
+  it("GET /runs?perPage=200 clamps to 100", async () => {
+    const evalRunsRepo = makeEvalRunsRepo({
+      list: vi.fn(() => Promise.resolve({ runs: [], total: 0 })),
+    });
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo(),
+      getEvalRunsRepo: () => evalRunsRepo,
+    });
+    const res = await app.request("/api/admin/eval/runs?perPage=200");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { perPage: number };
+    expect(body.perPage).toBe(100);
+    expect(vi.mocked(evalRunsRepo.list).mock.calls[0][0].perPage).toBe(100);
+  });
+
+  it("GET /runs?page=0 clamps to 1", async () => {
+    const evalRunsRepo = makeEvalRunsRepo({
+      list: vi.fn(() => Promise.resolve({ runs: [], total: 0 })),
+    });
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo(),
+      getEvalRunsRepo: () => evalRunsRepo,
+    });
+    const res = await app.request("/api/admin/eval/runs?page=0");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { page: number };
+    expect(body.page).toBe(1);
+    expect(vi.mocked(evalRunsRepo.list).mock.calls[0][0].page).toBe(1);
+  });
+
+  it("GET /runs?page=abc returns 400", async () => {
+    const evalRunsRepo = makeEvalRunsRepo();
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo(),
+      getEvalRunsRepo: () => evalRunsRepo,
+    });
+    const res = await app.request("/api/admin/eval/runs?page=abc");
+    expect(res.status).toBe(400);
+    expect(evalRunsRepo.list).not.toHaveBeenCalled();
+  });
+
+  it("GET /runs/:id returns the full run on valid uuid", async () => {
+    const id = "a1b2c3d4-1234-4abc-8def-0123456789ab";
+    const run = makeRun({ id, draftPromptSnapshot: "the-draft" });
+    const evalRunsRepo = makeEvalRunsRepo({
+      getById: vi.fn(() => Promise.resolve(run)),
+    });
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo(),
+      getEvalRunsRepo: () => evalRunsRepo,
+    });
+    const res = await app.request(`/api/admin/eval/runs/${id}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { run: EvalRun };
+    expect(body.run.id).toBe(id);
+    expect(body.run.draftPromptSnapshot).toBe("the-draft");
+    expect(vi.mocked(evalRunsRepo.getById).mock.calls[0][0]).toBe(id);
+  });
+
+  it("GET /runs/:id returns 404 when run not found", async () => {
+    const id = "b2c3d4e5-2345-4bcd-9ef0-1234567890ab";
+    const evalRunsRepo = makeEvalRunsRepo({
+      getById: vi.fn(() => Promise.resolve(null)),
+    });
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo(),
+      getEvalRunsRepo: () => evalRunsRepo,
+    });
+    const res = await app.request(`/api/admin/eval/runs/${id}`);
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("not found");
+  });
+
+  it("GET /runs/:id returns 400 for non-uuid id", async () => {
+    const evalRunsRepo = makeEvalRunsRepo();
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo(),
+      getEvalRunsRepo: () => evalRunsRepo,
+    });
+    const res = await app.request("/api/admin/eval/runs/not-a-uuid");
+    expect(res.status).toBe(400);
+    expect(evalRunsRepo.getById).not.toHaveBeenCalled();
   });
 });

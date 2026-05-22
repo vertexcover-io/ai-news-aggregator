@@ -47,6 +47,28 @@ import { hashPrompt } from "@newsletter/shared/utils/prompt-hash";
 
 const PROMPT_SNAPSHOT_MAX_LEN = 65536;
 
+const listRunsQuerySchema = z.object({
+  page: z.coerce
+    .number()
+    .int()
+    .default(1)
+    .transform((n) => (n < 1 ? 1 : n)),
+  perPage: z.coerce
+    .number()
+    .int()
+    .default(20)
+    .transform((n) => {
+      if (n < 1) return 1;
+      if (n > 100) return 100;
+      return n;
+    }),
+  mode: z.enum(["scored", "ab"]).optional(),
+  status: z.enum(["running", "done", "failed"]).optional(),
+  fixtureId: z.string().min(1).optional(),
+});
+
+const runIdParamSchema = z.uuid();
+
 const manualFixtureRequestSchema = z.object({
   urls: z.array(z.url()).min(1).max(50),
   name: z.string().max(80).optional(),
@@ -151,6 +173,52 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
       logger.warn({ err, fixtureId: id }, "admin-eval.fixture.read_failed");
       return c.json({ error: "fixture_not_found" }, 404);
     }
+  });
+
+  app.get("/runs", async (c) => {
+    const evalRunsRepo = deps.getEvalRunsRepo?.();
+    if (evalRunsRepo === undefined) {
+      return c.json({ error: "eval_runs_repo_unavailable" }, 500);
+    }
+    const parsed = listRunsQuerySchema.safeParse(
+      Object.fromEntries(new URL(c.req.url).searchParams),
+    );
+    if (!parsed.success) {
+      return c.json(
+        { error: "invalid_query", issues: parsed.error.issues },
+        400,
+      );
+    }
+    const { page, perPage, mode, status, fixtureId } = parsed.data;
+    const result = await evalRunsRepo.list({
+      page,
+      perPage,
+      mode,
+      status,
+      fixtureId,
+    });
+    return c.json({
+      runs: result.runs,
+      total: result.total,
+      page,
+      perPage,
+    });
+  });
+
+  app.get("/runs/:id", async (c) => {
+    const evalRunsRepo = deps.getEvalRunsRepo?.();
+    if (evalRunsRepo === undefined) {
+      return c.json({ error: "eval_runs_repo_unavailable" }, 500);
+    }
+    const parsed = runIdParamSchema.safeParse(c.req.param("id"));
+    if (!parsed.success) {
+      return c.json({ error: "invalid_id" }, 400);
+    }
+    const run = await evalRunsRepo.getById(parsed.data);
+    if (run === null) {
+      return c.json({ error: "not found" }, 404);
+    }
+    return c.json({ run });
   });
 
   app.post("/fixtures", async (c) => {
