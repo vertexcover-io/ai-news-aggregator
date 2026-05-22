@@ -38,6 +38,10 @@ docs/spec/**
 !docs/spec/share-archive-on-social/verification/*.log
 !docs/spec/**/verification/*.png
 !docs/spec/**/verification/*.jpg
+!docs/spec/**/verification/screenshots/
+!docs/spec/**/verification/screenshots/*.png
+!docs/spec/**/verification/screenshots/*.jpg
+!docs/spec/**/verification/playwright-mcp-addendum.md
 # slack-notify-on-reviewed: ship design + library-probe + probes + live-run proof
 !docs/spec/slack-notify-on-reviewed/design.md
 !docs/spec/slack-notify-on-reviewed/library-probe.md
