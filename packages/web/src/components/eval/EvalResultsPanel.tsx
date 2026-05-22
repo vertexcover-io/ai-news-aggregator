@@ -1,6 +1,8 @@
 import type { ReactElement } from "react";
 import type {
+  ActualRankingItem,
   EvalScore,
+  ExpectedRankingItem,
   PerFixtureCost,
 } from "@newsletter/shared/types/eval-ranking";
 
@@ -10,6 +12,8 @@ export interface EvalProgressRow {
   score?: EvalScore;
   cost?: PerFixtureCost;
   error?: string;
+  actualRanking?: ActualRankingItem[];
+  expectedRanking?: ExpectedRankingItem[];
 }
 
 export interface EvalResultsPanelProps {

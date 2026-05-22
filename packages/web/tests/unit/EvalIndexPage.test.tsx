@@ -53,7 +53,7 @@ vi.mock("../../src/api/eval", async () => {
 
 import { EvalIndexPage } from "../../src/pages/EvalIndexPage";
 import { useSettings } from "../../src/hooks/useSettings";
-import { saveDraftPrompt, runEval } from "../../src/api/eval";
+import { saveDraftPrompt, runEval, type EvalSseEvent } from "../../src/api/eval";
 
 const useSettingsMock = vi.mocked(useSettings);
 const saveDraftPromptMock = vi.mocked(saveDraftPrompt);
@@ -92,6 +92,15 @@ function renderPage(initial = "/admin/eval"): void {
     );
   }
   render(<Wrapper />);
+}
+
+async function* streamEvents(
+  events: readonly EvalSseEvent[],
+): AsyncGenerator<EvalSseEvent> {
+  for (const event of events) {
+    await Promise.resolve();
+    yield event;
+  }
 }
 
 beforeEach(() => {
@@ -195,6 +204,138 @@ describe("EvalIndexPage", () => {
     expect(body.windowSize).toBe(5);
     expect(body.fixtureId).toBeUndefined();
     expect(body.forceWindow).toBeUndefined();
+  });
+
+  it("REQ-001 REQ-002: completed scored rows open the per-fixture report", async () => {
+    runEvalMock.mockReturnValueOnce({
+      progress: streamEvents([
+        {
+          event: "progress",
+          data: {
+            fixtureId: "fx-1",
+            status: "done",
+            score: {
+              fixtureId: "fx-1",
+              ndcgAt10: 0.9,
+              precisionAt10: 0.8,
+              mustIncludeRecall: 1,
+              rankOneIsMustInclude: true,
+              perItemDiff: [],
+              ranAt: "2026-05-22T00:00:00.000Z",
+              promptHash: "hash",
+              model: "model",
+            },
+            cost: {
+              promptHash: "hash",
+              tokensIn: 10,
+              tokensOut: 5,
+              usd: 0.001,
+              cacheHit: false,
+            },
+            actualRanking: [
+              {
+                rawItemId: 1,
+                url: "https://example.com/a",
+                title: "Actual story",
+                score: 0.95,
+                rationale: "strong fit",
+                summary: "Summary",
+                bullets: [],
+                bottomLine: "Bottom line",
+              },
+            ],
+            expectedRanking: [
+              {
+                rawItemId: 1,
+                url: "https://example.com/a",
+                title: "Expected story",
+                tier: "must",
+                rank: 1,
+              },
+            ],
+          },
+        },
+        { event: "done", data: { totalCost: { usd: 0.001 } } },
+      ]),
+      abort: () => undefined,
+    });
+    renderPage();
+    await screen.findByTestId("prompt-editor-textarea");
+    const select = await screen.findByTestId<HTMLSelectElement>(
+      "fixture-select",
+    );
+    fireEvent.change(select, { target: { value: "fx-1" } });
+    fireEvent.click(screen.getByTestId("run-mode-a"));
+
+    const reportButton = await screen.findByRole("button", {
+      name: /report for fx-1/i,
+    });
+    fireEvent.click(reportButton);
+
+    expect(await screen.findByTestId("drawer-report-table")).toBeTruthy();
+    expect(screen.getByText("Actual story")).toBeTruthy();
+    expect(screen.getByText("Expected story")).toBeTruthy();
+  });
+
+  it("REQ-003 EDGE-002: rows without report payload do not show report actions", async () => {
+    window.sessionStorage.setItem(
+      "eval-run-state",
+      JSON.stringify({
+        version: 1,
+        mode: "scored",
+        scoredScope: "single",
+        fixtureId: "fx-1",
+        windowSize: 20,
+        rows: [
+          {
+            fixtureId: "fx-1",
+            status: "done",
+            score: {
+              ndcgAt10: 0.85,
+              precisionAt10: 0.7,
+              mustIncludeRecall: 1,
+              rankOneIsMustInclude: true,
+            },
+            cost: { usd: 0.012, tokensIn: 100, tokensOut: 50 },
+          },
+          {
+            fixtureId: "fx-2",
+            status: "error",
+            error: "boom",
+          },
+        ],
+        totalUsd: 0.012,
+        runError: null,
+        persistedAt: Date.now(),
+      }),
+    );
+    renderPage();
+    await screen.findByTestId("prompt-editor-textarea");
+
+    expect(screen.queryByRole("button", { name: /report for/i })).toBeNull();
+  });
+
+  it("REQ-005 REQ-006: selecting a fixture from Top-N switches back to single-fixture mode", async () => {
+    renderPage();
+    await screen.findByTestId("prompt-editor-textarea");
+    fireEvent.click(screen.getByTestId("scope-topn"));
+    const select = await screen.findByTestId<HTMLSelectElement>(
+      "fixture-select",
+    );
+    expect(select.disabled).toBe(false);
+
+    fireEvent.change(select, { target: { value: "fx-1" } });
+    expect(screen.getByTestId<HTMLInputElement>("scope-single").checked).toBe(
+      true,
+    );
+
+    fireEvent.click(screen.getByTestId("run-mode-a"));
+    await waitFor(() => {
+      expect(runEvalMock).toHaveBeenCalled();
+    });
+    const body = runEvalMock.mock.calls[0][0];
+    expect(body.fixtureId).toBe("fx-1");
+    expect(body.windowSize).toBeUndefined();
   });
 
   it("Top-N with windowSize beyond cap opens cost modal; confirm sends forceWindow", async () => {

@@ -583,17 +583,22 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
               if (result.score !== null) {
                 ndcgScores.push(result.score.ndcgAt10);
               }
+              const actualRanking = buildActualRanking(
+                result.rankedItems,
+                t.fixture,
+              );
+              const expectedRanking =
+                t.groundTruth !== null
+                  ? buildExpectedRanking(t.groundTruth, t.fixture)
+                  : undefined;
               perFixtureRecords.push({
                 fixtureId: t.fixture.fixtureId,
                 status: "done",
                 score: result.score,
                 cost: result.cost,
                 error: null,
-                actualRanking: buildActualRanking(result.rankedItems, t.fixture),
-                expectedRanking:
-                  t.groundTruth !== null
-                    ? buildExpectedRanking(t.groundTruth, t.fixture)
-                    : undefined,
+                actualRanking,
+                expectedRanking,
               });
               perFixtureCosts.push({
                 fixtureId: t.fixture.fixtureId,
@@ -606,6 +611,8 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
                   status: "done",
                   score: result.score,
                   cost: result.cost,
+                  actualRanking,
+                  expectedRanking,
                 }),
               });
             } catch (err) {

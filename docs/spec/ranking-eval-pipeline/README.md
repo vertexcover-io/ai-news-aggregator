@@ -11,8 +11,11 @@ fixtures, (b) grade them in-app, (c) replay rerank with any candidate
 prompt against the saved pool, and (d) score the output with nDCG@10 +
 P@10 + must-include recall — both as a CLI workflow and a live
 `/admin/eval` UI that supports two modes: **Mode A** (scored, single
-fixture against ground truth) and **Mode B** (calendar, side-by-side
-saved-vs-draft rankings for a recent date with no labels required).
+fixture against ground truth, plus Top-N recent batch runs with row-level
+Report buttons in Per-fixture results) and **Mode B** (calendar,
+side-by-side saved-vs-draft rankings for a recent date with no labels
+required). Selecting an explicit fixture while viewing Top-N recent
+switches Mode A back to the single-fixture run path.
 
 ## Contents
 

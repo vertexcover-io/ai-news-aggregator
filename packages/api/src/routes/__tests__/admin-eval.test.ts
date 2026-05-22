@@ -155,6 +155,25 @@ function makeRouter(overrides: Partial<Parameters<typeof createAdminEvalRouter>[
   return { app, upsert };
 }
 
+function parseSseData(text: string, eventName: string): unknown[] {
+  return text
+    .split("\n\n")
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.includes(`event: ${eventName}`))
+    .map((chunk) => {
+      const dataLine = chunk
+        .split("\n")
+        .find((line) => line.startsWith("data: "));
+      if (dataLine === undefined) return null;
+      const parsed: unknown = JSON.parse(dataLine.slice("data: ".length));
+      return parsed;
+    });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
 describe("admin-eval auth", () => {
   it("returns 401 without cookie on every route", async () => {
     const { app } = makeRouter();
@@ -354,6 +373,39 @@ describe("POST /run SSE", () => {
     expect(text).toContain('"status":"done"');
     expect(text).toContain("event: done");
     expect(text).toContain("sourcingReport");
+  });
+
+  it("REQ-004: successful scored progress event includes report payload", async () => {
+    const { app } = makeRouter();
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { ...authedHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "scored",
+        fixtureId: "manual-a-1",
+        draftPrompt: "draft",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    const progressPayloads = parseSseData(text, "progress");
+    const completedPayload = progressPayloads.find(
+      (payload) => isRecord(payload) && payload.status === "done",
+    );
+    expect(completedPayload).toBeDefined();
+    expect(completedPayload).toMatchObject({
+      fixtureId: "manual-a-1",
+      actualRanking: [
+        {
+          rawItemId: -1,
+          url: "https://x.com",
+          title: "x",
+          score: 0.9,
+          rationale: "ok",
+        },
+      ],
+      expectedRanking: [],
+    });
   });
 
   it("Mode B emits aggregate with saved + draft rankings", async () => {

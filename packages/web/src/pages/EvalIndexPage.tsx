@@ -18,7 +18,9 @@ import {
   type EvalRunStream,
 } from "../api/eval";
 import type {
+  ActualRankingItem,
   EvalScore,
+  ExpectedRankingItem,
   PerFixtureCost,
   SourcingReportRow,
 } from "@newsletter/shared/types/eval-ranking";
@@ -31,6 +33,13 @@ import {
 } from "../components/eval/ABResultsPanel";
 import { SourcingReportPanel } from "../components/eval/SourcingReportPanel";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ReportTab, type ReportScoreSheet } from "../components/eval/ReportTab";
 
 type Mode = "scored" | "ab";
 type ScoredScope = "single" | "topN";
@@ -41,6 +50,8 @@ interface ScoredProgressPayload {
   score?: EvalScore;
   cost?: PerFixtureCost;
   error?: string;
+  actualRanking?: ActualRankingItem[];
+  expectedRanking?: ExpectedRankingItem[];
 }
 
 interface AbDonePayload {
@@ -123,6 +134,26 @@ function fmtUsd(n: number): string {
   return `$${n.toFixed(4)}`;
 }
 
+function hasReportPayload(
+  row: EvalProgressRow,
+): row is EvalProgressRow & { actualRanking: ActualRankingItem[] } {
+  return (
+    row.status === "done" &&
+    Array.isArray(row.actualRanking)
+  );
+}
+
+function scoreSheetFromScore(score: EvalScore | undefined): ReportScoreSheet | null {
+  if (score === undefined) return null;
+  return {
+    ndcgAt10: score.ndcgAt10,
+    ndcgAt5: null,
+    precisionAt10: score.precisionAt10,
+    mustIncludeRecall: score.mustIncludeRecall,
+    rankOneIsMustInclude: score.rankOneIsMustInclude,
+  };
+}
+
 function countLines(s: string): number {
   if (s.length === 0) return 0;
   let n = 1;
@@ -165,6 +196,7 @@ export function EvalIndexPage(): ReactElement {
   const [abDraft, setAbDraft] = useState<AbItem[]>([]);
   const [sourcing, setSourcing] = useState<SourcingReportRow[]>([]);
   const [showCostConfirm, setShowCostConfirm] = useState(false);
+  const [reportRow, setReportRow] = useState<EvalProgressRow | null>(null);
   const streamRef = useRef<EvalRunStream | null>(null);
 
   const dirty = draft !== savedPrompt;
@@ -287,6 +319,12 @@ export function EvalIndexPage(): ReactElement {
               score: payload.score,
               cost: payload.cost,
               error: payload.error,
+              ...(payload.actualRanking === undefined
+                ? {}
+                : { actualRanking: payload.actualRanking }),
+              ...(payload.expectedRanking === undefined
+                ? {}
+                : { expectedRanking: payload.expectedRanking }),
             };
             if (idx >= 0) next[idx] = row;
             else next.push(row);
@@ -340,7 +378,8 @@ export function EvalIndexPage(): ReactElement {
   const showHero = mode === "scored" && rows.length > 0;
 
   return (
-    <div className="min-h-screen bg-white">
+    <>
+      <div className="min-h-screen bg-white">
       <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 sm:px-6 md:px-8 py-4">
         <Link
           to="/admin"
@@ -515,13 +554,16 @@ export function EvalIndexPage(): ReactElement {
                       <th className="px-5 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">
                         Cost
                       </th>
+                      <th className="px-5 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+                        Report
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={7}
+                          colSpan={8}
                           className="px-5 py-6 text-center font-mono text-xs text-neutral-500"
                         >
                           No runs yet.
@@ -610,6 +652,24 @@ export function EvalIndexPage(): ReactElement {
                               {r.error ? (
                                 <div className="text-rose-700">{r.error}</div>
                               ) : null}
+                            </td>
+                            <td className="px-5 py-3 text-right">
+                              {hasReportPayload(r) ? (
+                                <button
+                                  type="button"
+                                  aria-label={`Report for ${r.fixtureId}`}
+                                  onClick={() => {
+                                    setReportRow(r);
+                                  }}
+                                  className="inline-flex items-center rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-neutral-700 hover:bg-neutral-50"
+                                >
+                                  Report
+                                </button>
+                              ) : (
+                                <span className="font-mono text-xs text-neutral-300">
+                                  —
+                                </span>
+                              )}
                             </td>
                           </tr>
                         );
@@ -724,9 +784,16 @@ export function EvalIndexPage(): ReactElement {
                           data-testid="fixture-select"
                           className="block w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-500 focus:outline-none"
                           value={fixtureId}
-                          disabled={scoredScope !== "single"}
                           onChange={(e) => {
-                            setFixtureId(e.target.value);
+                            const nextFixtureId = e.target.value;
+                            setFixtureId(nextFixtureId);
+                            if (
+                              nextFixtureId.length > 0 &&
+                              scoredScope === "topN"
+                            ) {
+                              setScoredScope("single");
+                              setForceWindow(false);
+                            }
                           }}
                         >
                           <option value="">— pick a fixture —</option>
@@ -923,7 +990,30 @@ export function EvalIndexPage(): ReactElement {
             saveMutation.mutate(draft);
           }}
         />
-      </main>
-    </div>
+        </main>
+      </div>
+      <Dialog
+        open={reportRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setReportRow(null);
+        }}
+      >
+        <DialogContent className="flex h-[80vh] max-w-5xl flex-col">
+          <DialogTitle>
+            Report{reportRow === null ? "" : ` · ${reportRow.fixtureId}`}
+          </DialogTitle>
+          <DialogDescription>
+            Per-fixture actual ranking compared with graded expected order.
+          </DialogDescription>
+          {reportRow !== null && hasReportPayload(reportRow) ? (
+            <ReportTab
+              actualRanking={reportRow.actualRanking}
+              expectedRanking={reportRow.expectedRanking}
+              scoreSheet={scoreSheetFromScore(reportRow.score)}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
