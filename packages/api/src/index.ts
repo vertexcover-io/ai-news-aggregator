@@ -14,6 +14,7 @@ import { serve } from "@hono/node-server";
 import { createLogger, getDb } from "@newsletter/shared";
 import { createDefaultRunsRouter } from "@api/routes/runs.js";
 import { createDefaultAdminRunsRouter } from "@api/routes/admin-runs.js";
+import { createDefaultAdminEvalRouter } from "@api/routes/admin-eval.js";
 import {
   createDefaultPublicArchivesRouter,
   createDefaultAdminArchivesRouter,
@@ -127,6 +128,7 @@ const app = buildApp({
   archivesSearchRouter: createDefaultArchivesSearchRouter(),
   adminArchivesRouter: createDefaultAdminArchivesRouter(),
   adminRunsRouter: createDefaultAdminRunsRouter(),
+  adminEvalRouter: createDefaultAdminEvalRouter(),
   adminSocialCredentialsRouter: createDefaultAdminSocialCredentialsRouter(),
   runsRouter: createDefaultRunsRouter(),
   settingsRouter: createDefaultSettingsRouter(),

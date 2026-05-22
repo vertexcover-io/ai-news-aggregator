@@ -102,6 +102,7 @@ function makeApp(
     archivesSearchRouter: new Hono(),
     adminArchivesRouter: createAdminArchivesRouter(deps),
     adminRunsRouter: new Hono(),
+    adminEvalRouter: new Hono(),
     adminSocialCredentialsRouter: new Hono(),
     runsRouter: makeStubRunsRouter(),
     settingsRouter: makeStubSettingsRouter(),

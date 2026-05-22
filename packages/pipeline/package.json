@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./dist/index.js",
-    "./add-post": "./dist/add-post-entry.js"
+    "./add-post": "./dist/add-post-entry.js",
+    "./eval": "./dist/eval-entry.js"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
