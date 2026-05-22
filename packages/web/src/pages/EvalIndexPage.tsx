@@ -328,8 +328,15 @@ export function EvalIndexPage(): ReactElement {
                     </label>
                   </fieldset>
                   <label className="block text-sm">
-                    <span className="font-mono text-xs uppercase tracking-widest text-neutral-500">
-                      Fixture
+                    <span className="flex items-center justify-between font-mono text-xs uppercase tracking-widest text-neutral-500">
+                      <span>Fixture</span>
+                      <Link
+                        to="/admin/eval/fixtures/new"
+                        data-testid="new-fixture-link"
+                        className="text-neutral-700 underline-offset-2 hover:underline normal-case tracking-normal"
+                      >
+                        + New fixture
+                      </Link>
                     </span>
                     <select
                       data-testid="fixture-select"

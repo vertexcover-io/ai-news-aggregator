@@ -119,6 +119,15 @@ describe("EvalIndexPage", () => {
     });
   });
 
+  it("renders '+ New fixture' link pointing at the builder route", async () => {
+    renderPage();
+    const link = await screen.findByTestId<HTMLAnchorElement>(
+      "new-fixture-link",
+    );
+    expect(link.getAttribute("href")).toBe("/admin/eval/fixtures/new");
+    expect(link.textContent).toContain("New fixture");
+  });
+
   it("renders Mode B panel via URL state", async () => {
     renderPage("/admin/eval?mode=ab");
     await screen.findByTestId("prompt-editor-textarea");
