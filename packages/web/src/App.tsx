@@ -8,6 +8,7 @@ import { ArchiveListingPage } from "./pages/ArchiveListingPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { ConfirmPage } from "./pages/ConfirmPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
+import { EvalManualFixturePage } from "./pages/EvalManualFixturePage";
 import { UnsubscribePage } from "./pages/UnsubscribePage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { TermsPage } from "./pages/TermsPage";
@@ -40,6 +41,7 @@ export const routes: RouteObject[] = [
           { path: "sources/:runId", element: <SourcesPreviewPage /> },
           { path: "settings", element: <SettingsPage /> },
           { path: "analytics", element: <AnalyticsPage /> },
+          { path: "eval/fixtures/new", element: <EvalManualFixturePage /> },
         ],
       },
     ],
