@@ -1,6 +1,10 @@
-import { type ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { EvalRun } from "@newsletter/shared/types/eval-ranking";
+import type {
+  ActualRankingItem,
+  EvalRun,
+  ExpectedRankingItem,
+} from "@newsletter/shared/types/eval-ranking";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +12,105 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { getEvalRun, EvalApiError } from "../../api/eval";
+import { EmptyReport, ReportTab, type ReportScoreSheet } from "./ReportTab";
+
+type DrawerTab = "breakdown" | "report";
+
+interface PerFixtureEntry {
+  fixtureId?: unknown;
+  status?: unknown;
+  score?: unknown;
+  cost?: unknown;
+  error?: unknown;
+  actualRanking?: unknown;
+  expectedRanking?: unknown;
+}
+
+function pickArray<T>(value: unknown, guard: (v: unknown) => v is T): T[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: T[] = [];
+  for (const v of value) {
+    if (!guard(v)) return null;
+    out.push(v);
+  }
+  return out;
+}
+
+function isActualRankingItem(v: unknown): v is ActualRankingItem {
+  if (v === null || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.rawItemId === "number" &&
+    typeof o.url === "string" &&
+    typeof o.title === "string" &&
+    typeof o.score === "number" &&
+    typeof o.rationale === "string" &&
+    typeof o.summary === "string" &&
+    Array.isArray(o.bullets) &&
+    typeof o.bottomLine === "string"
+  );
+}
+
+function isExpectedRankingItem(v: unknown): v is ExpectedRankingItem {
+  if (v === null || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  const tierOk =
+    o.tier === "must" || o.tier === "nice" || o.tier === "drop";
+  return (
+    typeof o.rawItemId === "number" &&
+    typeof o.url === "string" &&
+    typeof o.title === "string" &&
+    tierOk &&
+    typeof o.rank === "number"
+  );
+}
+
+interface DrawerReportData {
+  actual: ActualRankingItem[];
+  expected: ExpectedRankingItem[] | undefined;
+  scoreSheet: ReportScoreSheet | null;
+}
+
+function extractReportData(run: EvalRun): DrawerReportData | null {
+  if (run.mode !== "scored") return null;
+  const sb = run.scoreBreakdown;
+  if (sb === null || typeof sb !== "object") return null;
+  const perFixture = (sb as { perFixture?: unknown }).perFixture;
+  if (!Array.isArray(perFixture) || perFixture.length === 0) return null;
+  const first = perFixture[0] as PerFixtureEntry;
+  const actual = pickArray(first.actualRanking, isActualRankingItem);
+  if (actual === null) return null;
+  const expected = pickArray(first.expectedRanking, isExpectedRankingItem);
+  const score =
+    first.score !== null && typeof first.score === "object"
+      ? (first.score as Record<string, unknown>)
+      : null;
+  const scoreSheet: ReportScoreSheet | null =
+    score === null
+      ? null
+      : {
+          ndcgAt10:
+            typeof score.ndcgAt10 === "number" ? score.ndcgAt10 : null,
+          ndcgAt5: typeof score.ndcgAt5 === "number" ? score.ndcgAt5 : null,
+          precisionAt10:
+            typeof score.precisionAt10 === "number"
+              ? score.precisionAt10
+              : null,
+          mustIncludeRecall:
+            typeof score.mustIncludeRecall === "number"
+              ? score.mustIncludeRecall
+              : null,
+          rankOneIsMustInclude:
+            typeof score.rankOneIsMustInclude === "boolean"
+              ? score.rankOneIsMustInclude
+              : null,
+        };
+  return {
+    actual,
+    expected: expected ?? undefined,
+    scoreSheet,
+  };
+}
 
 export interface RunDetailDrawerProps {
   runId: string | null;
@@ -334,6 +437,45 @@ export function RunDetailDrawer({
   });
 
   const run = query.data ?? null;
+  const reportData = run !== null ? extractReportData(run) : null;
+  // Mode A done runs that carry the new fields default to the Report tab; all
+  // other shapes (Mode B, legacy Mode A, running, failed) default to Breakdown.
+  const reportAvailable = run?.mode === "scored" && reportData !== null;
+  // We can't lazily-init the default off `reportAvailable` because the run
+  // fetch is still pending on first render. Track which (runId, available)
+  // combination we've already defaulted for; flip to "report" the first time
+  // data arrives showing it's available. Once the operator clicks a tab the
+  // explicit value wins.
+  const [tabState, setTabState] = useState<{
+    runId: string | null;
+    seenAvailable: boolean;
+    tab: DrawerTab;
+  }>({ runId: null, seenAvailable: false, tab: "breakdown" });
+
+  let activeTab: DrawerTab = tabState.tab;
+  const sameRun = tabState.runId === runId;
+  if (!sameRun) {
+    // New run opened — reset to the default for the current data shape.
+    activeTab = reportAvailable ? "report" : "breakdown";
+    setTabState({
+      runId,
+      seenAvailable: reportAvailable,
+      tab: activeTab,
+    });
+  } else if (!tabState.seenAvailable && reportAvailable) {
+    // Same run, but data has just arrived and report data is now available.
+    activeTab = "report";
+    setTabState({ runId, seenAvailable: true, tab: "report" });
+  }
+
+  const setActiveTab = (next: DrawerTab): void => {
+    setTabState({
+      runId,
+      seenAvailable: tabState.seenAvailable || reportAvailable,
+      tab: next,
+    });
+  };
+  const showReportTab = run?.mode === "scored";
 
   return (
     <Dialog
@@ -405,7 +547,7 @@ export function RunDetailDrawer({
                 />
               </div>
 
-              <div className="overflow-auto">
+              <div className="flex flex-col overflow-hidden">
                 {run.status === "failed" && run.errorMessage !== null ? (
                   <div
                     data-testid="drawer-error-banner"
@@ -420,59 +562,136 @@ export function RunDetailDrawer({
                   </div>
                 ) : null}
 
-                <header className="flex items-baseline justify-between border-b border-neutral-200 px-4 py-3">
-                  <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-700">
-                    Score breakdown
-                  </span>
-                  <span className="font-mono text-[11px] text-neutral-400">
-                    {run.fixtureId !== null
-                      ? `fixture · ${run.fixtureId}`
-                      : run.date !== null
-                        ? `date · ${run.date}`
-                        : "—"}
-                  </span>
-                </header>
-                {run.status === "running" ? (
-                  <div
-                    data-testid="drawer-running-placeholder-score"
-                    className="px-4 py-6 font-mono text-[11px] text-neutral-400"
+                <div
+                  role="tablist"
+                  aria-label="Run detail views"
+                  className="flex border-b border-neutral-200 bg-neutral-50/50"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === "breakdown"}
+                    aria-controls="drawer-tab-panel-breakdown"
+                    data-testid="drawer-tab-breakdown"
+                    onClick={() => {
+                      setActiveTab("breakdown");
+                    }}
+                    className={`border-b-2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider ${
+                      activeTab === "breakdown"
+                        ? "border-[#8c3a1e] text-neutral-900"
+                        : "border-transparent text-neutral-500 hover:text-neutral-800"
+                    }`}
                   >
-                    Run still in progress…
-                  </div>
-                ) : (
-                  <BreakdownTable
-                    rows={buildScoreRows(run)}
-                    testId="drawer-score-breakdown"
-                  />
-                )}
+                    Breakdown
+                  </button>
+                  {showReportTab ? (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={activeTab === "report"}
+                      aria-controls="drawer-tab-panel-report"
+                      data-testid="drawer-tab-report"
+                      onClick={() => {
+                        setActiveTab("report");
+                      }}
+                      className={`border-b-2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider ${
+                        activeTab === "report"
+                          ? "border-[#8c3a1e] text-neutral-900"
+                          : "border-transparent text-neutral-500 hover:text-neutral-800"
+                      }`}
+                    >
+                      Report
+                    </button>
+                  ) : null}
+                </div>
 
-                <header className="flex items-baseline justify-between border-b border-neutral-200 px-4 py-3">
-                  <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-700">
-                    Cost breakdown
-                  </span>
-                  <span className="font-mono text-[11px] text-neutral-400">
-                    {(() => {
-                      const cb = run.costBreakdown;
-                      if (cb !== null && typeof cb === "object") {
-                        const model = (cb as { model?: unknown }).model;
-                        if (typeof model === "string") return model;
-                      }
-                      return "—";
-                    })()}
-                  </span>
-                </header>
-                {run.status === "running" ? (
+                {activeTab === "breakdown" ? (
                   <div
-                    data-testid="drawer-running-placeholder-cost"
-                    className="px-4 py-6 font-mono text-[11px] text-neutral-400"
+                    id="drawer-tab-panel-breakdown"
+                    role="tabpanel"
+                    data-testid="drawer-tab-panel-breakdown"
+                    className="overflow-auto"
                   >
-                    Run still in progress…
+                    <header className="flex items-baseline justify-between border-b border-neutral-200 px-4 py-3">
+                      <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-700">
+                        Score breakdown
+                      </span>
+                      <span className="font-mono text-[11px] text-neutral-400">
+                        {run.fixtureId !== null
+                          ? `fixture · ${run.fixtureId}`
+                          : run.date !== null
+                            ? `date · ${run.date}`
+                            : "—"}
+                      </span>
+                    </header>
+                    {run.status === "running" ? (
+                      <div
+                        data-testid="drawer-running-placeholder-score"
+                        className="px-4 py-6 font-mono text-[11px] text-neutral-400"
+                      >
+                        Run still in progress…
+                      </div>
+                    ) : (
+                      <BreakdownTable
+                        rows={buildScoreRows(run)}
+                        testId="drawer-score-breakdown"
+                      />
+                    )}
+
+                    <header className="flex items-baseline justify-between border-b border-neutral-200 px-4 py-3">
+                      <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-700">
+                        Cost breakdown
+                      </span>
+                      <span className="font-mono text-[11px] text-neutral-400">
+                        {(() => {
+                          const cb = run.costBreakdown;
+                          if (cb !== null && typeof cb === "object") {
+                            const model = (cb as { model?: unknown }).model;
+                            if (typeof model === "string") return model;
+                          }
+                          return "—";
+                        })()}
+                      </span>
+                    </header>
+                    {run.status === "running" ? (
+                      <div
+                        data-testid="drawer-running-placeholder-cost"
+                        className="px-4 py-6 font-mono text-[11px] text-neutral-400"
+                      >
+                        Run still in progress…
+                      </div>
+                    ) : (
+                      <BreakdownTable
+                        rows={buildCostRows(run)}
+                        testId="drawer-cost-breakdown"
+                      />
+                    )}
                   </div>
                 ) : (
-                  <BreakdownTable
-                    rows={buildCostRows(run)}
-                    testId="drawer-cost-breakdown"
-                  />
+                  <div
+                    id="drawer-tab-panel-report"
+                    role="tabpanel"
+                    data-testid="drawer-tab-panel-report"
+                    className="flex min-h-0 flex-1 flex-col"
+                  >
+                    {reportData !== null ? (
+                      <ReportTab
+                        actualRanking={reportData.actual}
+                        expectedRanking={reportData.expected}
+                        scoreSheet={reportData.scoreSheet}
+                      />
+                    ) : (
+                      <EmptyReport
+                        reason={
+                          run.status === "running"
+                            ? "running"
+                            : run.status === "failed"
+                              ? "failed"
+                              : "legacy"
+                        }
+                      />
+                    )}
+                  </div>
                 )}
               </div>
             </div>
