@@ -2,9 +2,11 @@ import { describe, it, expect, vi } from "vitest";
 import { Hono } from "hono";
 import type { UserSettings } from "@newsletter/shared";
 import type {
+  CalendarRunDetail,
   Fixture,
   GroundTruth,
 } from "@newsletter/shared/types/eval-ranking";
+import { EvalRunRequestSchema } from "@newsletter/shared/types/eval-ranking-schemas";
 import { createAdminEvalRouter } from "../admin-eval.js";
 import { requireAdmin } from "../../auth/middleware.js";
 import { issueToken, COOKIE_NAME } from "../../auth/session.js";
@@ -13,6 +15,7 @@ import type {
   RunEvalOutput,
 } from "@newsletter/pipeline/eval";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
+import type { EvalRunsRepo } from "@api/repositories/eval-runs.js";
 
 const SESSION_SECRET = "test-session-secret-32-chars-1234";
 
@@ -354,6 +357,47 @@ describe("POST /save-prompt", () => {
 });
 
 describe("POST /run SSE", () => {
+  it("REQ-003 EDGE-002: rejects legacy Top-N scored request fields", async () => {
+    const schemaResult = EvalRunRequestSchema.safeParse({
+      mode: "scored",
+      windowSize: 2,
+      draftPrompt: "draft",
+    });
+    expect(schemaResult.success).toBe(false);
+
+    const runEval = vi.fn();
+    const { app } = makeRouter({ runEval });
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { ...authedHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "scored",
+        windowSize: 2,
+        draftPrompt: "draft",
+      }),
+    });
+    expect(res.status).toBe(422);
+    expect(runEval).not.toHaveBeenCalled();
+  });
+
+  it("REQ-002: scored mode requires fixtureId", async () => {
+    const runEval = vi.fn();
+    const { app } = makeRouter({ runEval });
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { ...authedHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "scored",
+        draftPrompt: "draft",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("event: error");
+    expect(text).toContain("fixtureId required for scored mode");
+    expect(runEval).not.toHaveBeenCalled();
+  });
+
   it("streams progress + done events", async () => {
     const { app } = makeRouter();
     const res = await app.request("/api/admin/eval/run", {
@@ -408,190 +452,196 @@ describe("POST /run SSE", () => {
     });
   });
 
-  it("Mode B emits aggregate with saved + draft rankings", async () => {
-    const findRawItemsByDate = vi.fn(() =>
-      Promise.resolve([
+  it("REQ-008 REQ-009 REQ-010 REQ-011: Mode B runs draft ranking for selected runs and persists reports", async () => {
+    const detail: CalendarRunDetail = {
+      runId: "run-1",
+      completedAt: "2026-05-22T10:00:00.000Z",
+      createdAt: "2026-05-22T09:55:00.000Z",
+      startedAt: "2026-05-22T09:50:00.000Z",
+      itemCount: 2,
+      topN: 10,
+      digestHeadline: null,
+      digestSummary: null,
+      sourceTypes: ["hn", "reddit"],
+      previousRanking: [
+        {
+          rank: 1,
+          rawItemId: 101,
+          title: "Previous top",
+          url: "https://example.com/a",
+          sourceType: "hn",
+          score: 0.99,
+          rationale: "old",
+          summary: "",
+          bullets: [],
+          bottomLine: "",
+        },
+      ],
+      sourcePool: [
         {
           rawItemId: 101,
-          title: "Story A",
+          title: "Previous top",
           url: "https://example.com/a",
           sourceType: "hn",
           publishedAt: null,
           content: null,
+          enrichedLink: null,
+          enrichmentStatus: "ok",
+          comments: [],
+          engagement: { points: 0, commentCount: 0 },
         },
         {
           rawItemId: 102,
-          title: "Story B",
+          title: "Draft winner",
           url: "https://example.com/b",
           sourceType: "reddit",
           publishedAt: null,
           content: null,
+          enrichedLink: null,
+          enrichmentStatus: "ok",
+          comments: [],
+          engagement: { points: 0, commentCount: 0 },
         },
-      ]),
-    );
-    const runModeB = vi.fn(() =>
-      Promise.resolve({
-        saved: [{ rawItemId: 101, score: 0.9, rationale: "ok" }],
-        draft: [{ rawItemId: 102, score: 0.8, rationale: "ok" }],
-        cost: {
-          saved: {
-            tokensIn: 100,
-            tokensOut: 50,
-            usd: 0.01,
-            cacheHit: false,
-            promptHash: "h1",
-          },
-          draft: {
+      ],
+    };
+    const getCalendarRunDetail = vi.fn(() => Promise.resolve(detail));
+    const updateFinish = vi
+      .fn<EvalRunsRepo["updateFinish"]>()
+      .mockResolvedValue({ rowsAffected: 1 });
+    const evalRunsRepo: EvalRunsRepo = {
+      insert: vi.fn(() =>
+        Promise.resolve({ id: "11111111-1111-4111-8111-111111111111" }),
+      ),
+      updateFinish,
+      updateFailed: vi.fn(() => Promise.resolve({ rowsAffected: 1 })),
+      getById: vi.fn(() => Promise.resolve(null)),
+      list: vi.fn(() => Promise.resolve({ runs: [], total: 0 })),
+    };
+    const runEval = vi.fn(
+      (): Promise<RunEvalOutput> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 102, score: 0.8, rationale: "new" }],
+          score: null,
+          cost: {
             tokensIn: 110,
             tokensOut: 55,
             usd: 0.012,
             cacheHit: false,
             promptHash: "h2",
           },
-          totalUsd: 0.022,
-        },
-      }),
-    );
-    const { app } = makeRouter({ findRawItemsByDate, runModeB });
-    const res = await app.request("/api/admin/eval/run", {
-      method: "POST",
-      headers: { ...authedHeaders(), "content-type": "application/json" },
-      body: JSON.stringify({
-        mode: "ab",
-        date: "2026-05-22",
-        draftPrompt: "DRAFT",
-      }),
-    });
-    expect(res.status).toBe(200);
-    const text = await res.text();
-    expect(findRawItemsByDate).toHaveBeenCalledWith("2026-05-22");
-    expect(runModeB).toHaveBeenCalledOnce();
-    expect(text).toContain('"branch":"saved"');
-    expect(text).toContain('"branch":"draft"');
-    expect(text).toContain("event: aggregate");
-    expect(text).toContain('"rawItemId":101');
-    expect(text).toContain('"rawItemId":102');
-    expect(text).toContain("event: done");
-  });
-
-  it("Mode B errors when pool empty", async () => {
-    const findRawItemsByDate = vi.fn(() => Promise.resolve([]));
-    const runModeB = vi.fn();
-    const { app } = makeRouter({ findRawItemsByDate, runModeB });
-    const res = await app.request("/api/admin/eval/run", {
-      method: "POST",
-      headers: { ...authedHeaders(), "content-type": "application/json" },
-      body: JSON.stringify({
-        mode: "ab",
-        date: "2026-05-22",
-        draftPrompt: "DRAFT",
-      }),
-    });
-    expect(res.status).toBe(200);
-    const text = await res.text();
-    expect(text).toContain("event: error");
-    expect(text).toContain("no raw_items for 2026-05-22");
-    expect(runModeB).not.toHaveBeenCalled();
-  });
-
-  it("Mode A windowSize iterates over top-N graded fixtures", async () => {
-    const listFixtures = vi.fn(() =>
-      Promise.resolve([
-        makeFixture("f-1"),
-        makeFixture("f-2"),
-        makeFixture("f-3"),
-      ]),
-    );
-    const gradedAtMap: Record<string, string> = {
-      "f-1": "2026-05-01T00:00:00Z",
-      "f-2": "2026-05-02T00:00:00Z",
-      "f-3": "2026-05-03T00:00:00Z",
-    };
-    const readGroundTruth = vi.fn((id: string): Promise<GroundTruth | null> =>
-      Promise.resolve({
-        fixtureId: id,
-        gradedBy: ["aman"],
-        gradedAt: gradedAtMap[id],
-        labels: [],
-      }),
-    );
-    const runEval = vi.fn(
-      (): Promise<RunEvalOutput> =>
-        Promise.resolve({
-          rankedItems: [{ rawItemId: -1, score: 0.9, rationale: "ok" }],
-          score: {
-            fixtureId: "x",
-            ndcgAt10: 0.8,
-            precisionAt10: 0.5,
-            mustIncludeRecall: 1,
-            rankOneIsMustInclude: true,
-            perItemDiff: [],
-            ranAt: "now",
-            promptHash: "h",
-            model: "m",
-          },
-          cost: {
-            tokensIn: 100,
-            tokensOut: 50,
-            usd: 0.01,
-            cacheHit: false,
-            promptHash: "abc",
-          },
         }),
     );
-    const { app } = makeRouter({ listFixtures, readGroundTruth, runEval });
+    const { app } = makeRouter({
+      getCalendarRunDetail,
+      getEvalRunsRepo: () => evalRunsRepo,
+      runEval,
+    });
     const res = await app.request("/api/admin/eval/run", {
       method: "POST",
       headers: { ...authedHeaders(), "content-type": "application/json" },
       body: JSON.stringify({
-        mode: "scored",
-        windowSize: 2,
-        draftPrompt: "draft",
+        mode: "ab",
+        date: "2026-05-22",
+        runIds: ["run-1"],
+        draftPrompt: "DRAFT",
       }),
     });
     expect(res.status).toBe(200);
     const text = await res.text();
-    expect(runEval).toHaveBeenCalledTimes(2);
-    // Most recent first: f-3, f-2
-    expect(text).toContain('"fixtureId":"f-3"');
-    expect(text).toContain('"fixtureId":"f-2"');
-    expect(text).not.toContain('"fixtureId":"f-1"');
-    expect(text).toContain("event: aggregate");
-    expect(text).toContain("meanNdcgAt10");
+    expect(getCalendarRunDetail).toHaveBeenCalledWith("run-1");
+    expect(runEval).toHaveBeenCalledOnce();
+    expect(runEval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        groundTruth: null,
+        prompt: "DRAFT",
+      }),
+    );
+    expect(text).toContain('"runId":"run-1"');
+    expect(text).toContain('"previousRanking"');
+    expect(text).toContain('"draftRanking"');
+    expect(text).toContain('"savedPromptSnapshot":"OLD PROMPT"');
+    expect(text).toContain('"draftPromptSnapshot":"DRAFT"');
     expect(text).toContain("event: done");
+    expect(updateFinish).toHaveBeenCalledOnce();
+    const finishPayload = updateFinish.mock.calls[0]?.[1];
+    expect(finishPayload).toMatchObject({
+      scoreBreakdown: {
+        calendarRuns: [
+          {
+            runId: "run-1",
+            status: "done",
+            previousRanking: detail.previousRanking,
+          },
+        ],
+      },
+      costBreakdown: {
+        totalUsd: 0.012,
+        perRun: [
+          {
+            runId: "run-1",
+            cost: {
+              usd: 0.012,
+            },
+          },
+        ],
+      },
+    });
   });
 
-  it("Mode A windowSize > 60 without forceWindow emits error", async () => {
-    const { app } = makeRouter();
+  it("EDGE-005: Mode B rejects an empty run selection", async () => {
+    const runEval = vi.fn();
+    const { app } = makeRouter({ runEval });
     const res = await app.request("/api/admin/eval/run", {
       method: "POST",
       headers: { ...authedHeaders(), "content-type": "application/json" },
       body: JSON.stringify({
-        mode: "scored",
-        windowSize: 65,
-        draftPrompt: "draft",
+        mode: "ab",
+        date: "2026-05-22",
+        runIds: [],
+        draftPrompt: "DRAFT",
       }),
     });
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toContain("event: error");
-    expect(text).toContain("forceWindow");
+    expect(text).toContain("runIds required");
+    expect(runEval).not.toHaveBeenCalled();
   });
 
-  it("Mode A windowSize > 60 with forceWindow runs (capped to available)", async () => {
-    const listFixtures = vi.fn(() => Promise.resolve([makeFixture("f-1")]));
-    const readGroundTruth = vi.fn((id: string): Promise<GroundTruth | null> =>
-      Promise.resolve({
-        fixtureId: id,
-        gradedBy: ["aman"],
-        gradedAt: "2026-05-01T00:00:00Z",
-        labels: [],
-      }),
+  it("EDGE-006: Mode B emits a failed row without blocking other selected runs", async () => {
+    const okDetail: CalendarRunDetail = {
+      runId: "ok",
+      completedAt: "2026-05-22T10:00:00.000Z",
+      createdAt: "2026-05-22T09:55:00.000Z",
+      startedAt: "2026-05-22T09:50:00.000Z",
+      itemCount: 1,
+      topN: 10,
+      digestHeadline: null,
+      digestSummary: null,
+      sourceTypes: ["hn"],
+      previousRanking: [],
+      sourcePool: [
+        {
+          rawItemId: 201,
+          title: "Ok",
+          url: "https://example.com/ok",
+          sourceType: "hn",
+          publishedAt: null,
+          content: null,
+          enrichedLink: null,
+          enrichmentStatus: "ok",
+          comments: [],
+          engagement: { points: 0, commentCount: 0 },
+        },
+      ],
+    };
+    const getCalendarRunDetail = vi.fn((runId: string) =>
+      runId === "missing" ? Promise.resolve(null) : Promise.resolve(okDetail),
     );
     const runEval = vi.fn(
       (): Promise<RunEvalOutput> =>
         Promise.resolve({
-          rankedItems: [],
+          rankedItems: [{ rawItemId: 201, score: 0.7, rationale: "ok" }],
           score: null,
           cost: {
             tokensIn: 10,
@@ -602,74 +652,67 @@ describe("POST /run SSE", () => {
           },
         }),
     );
-    const { app } = makeRouter({ listFixtures, readGroundTruth, runEval });
+    const { app } = makeRouter({ getCalendarRunDetail, runEval });
     const res = await app.request("/api/admin/eval/run", {
       method: "POST",
       headers: { ...authedHeaders(), "content-type": "application/json" },
       body: JSON.stringify({
-        mode: "scored",
-        windowSize: 65,
-        forceWindow: true,
-        draftPrompt: "draft",
+        mode: "ab",
+        date: "2026-05-22",
+        runIds: ["missing", "ok"],
+        draftPrompt: "DRAFT",
       }),
     });
-    expect(res.status).toBe(200);
     const text = await res.text();
-    expect(runEval).toHaveBeenCalledTimes(1);
-    expect(text).toContain("event: done");
-  });
-
-  it("Mode A windowSize: one fixture failure does not abort the stream", async () => {
-    const listFixtures = vi.fn(() =>
-      Promise.resolve([makeFixture("f-1"), makeFixture("f-2")]),
-    );
-    const readGroundTruth = vi.fn((id: string): Promise<GroundTruth | null> =>
-      Promise.resolve({
-        fixtureId: id,
-        gradedBy: ["aman"],
-        gradedAt: id === "f-1" ? "2026-05-01T00:00:00Z" : "2026-05-02T00:00:00Z",
-        labels: [],
-      }),
-    );
-    let call = 0;
-    const runEval = vi.fn((): Promise<RunEvalOutput> => {
-      call += 1;
-      if (call === 1) return Promise.reject(new Error("boom"));
-      return Promise.resolve({
-        rankedItems: [],
-        score: null,
-        cost: {
-          tokensIn: 10,
-          tokensOut: 5,
-          usd: 0.001,
-          cacheHit: false,
-          promptHash: "x",
-        },
-      });
-    });
-    const { app } = makeRouter({ listFixtures, readGroundTruth, runEval });
-    const res = await app.request("/api/admin/eval/run", {
-      method: "POST",
-      headers: { ...authedHeaders(), "content-type": "application/json" },
-      body: JSON.stringify({
-        mode: "scored",
-        windowSize: 2,
-        draftPrompt: "draft",
-      }),
-    });
-    expect(res.status).toBe(200);
-    const text = await res.text();
-    expect(runEval).toHaveBeenCalledTimes(2);
+    expect(runEval).toHaveBeenCalledOnce();
+    expect(text).toContain('"runId":"missing"');
     expect(text).toContain('"status":"error"');
-    expect(text).toContain('"error":"boom"');
+    expect(text).toContain('"runId":"ok"');
     expect(text).toContain('"status":"done"');
     expect(text).toContain("event: done");
   });
 
-  it("Mode B errors when date missing or malformed", async () => {
-    const { app } = makeRouter({
-      findRawItemsByDate: vi.fn(() => Promise.resolve([])),
+  it("REQ-004 REQ-005: lists completed calendar runs for a date", async () => {
+    const listCalendarRunsByDate = vi.fn(() =>
+      Promise.resolve([
+        {
+          runId: "run-1",
+          completedAt: "2026-05-22T10:00:00.000Z",
+          createdAt: "2026-05-22T09:55:00.000Z",
+          startedAt: "2026-05-22T09:50:00.000Z",
+          itemCount: 3,
+          topN: 10,
+          digestHeadline: "AI infra shifts",
+          digestSummary: null,
+          sourceTypes: ["hn", "reddit"],
+        },
+      ]),
+    );
+    const { app } = makeRouter({ listCalendarRunsByDate });
+    const res = await app.request(
+      "/api/admin/eval/calendar-runs?date=2026-05-22",
+      { headers: authedHeaders() },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      date: string;
+      runs: { runId: string; itemCount: number; digestHeadline: string }[];
+    };
+    expect(listCalendarRunsByDate).toHaveBeenCalledWith("2026-05-22");
+    expect(body).toMatchObject({
+      date: "2026-05-22",
+      runs: [
+        {
+          runId: "run-1",
+          itemCount: 3,
+          digestHeadline: "AI infra shifts",
+        },
+      ],
     });
+  });
+
+  it("Mode B errors when date missing or malformed", async () => {
+    const { app } = makeRouter();
     const res = await app.request("/api/admin/eval/run", {
       method: "POST",
       headers: { ...authedHeaders(), "content-type": "application/json" },

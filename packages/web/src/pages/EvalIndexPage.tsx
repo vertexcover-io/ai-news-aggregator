@@ -5,13 +5,14 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Newspaper } from "lucide-react";
 import { useSettings } from "../hooks/useSettings";
 import { useEvalFixtures } from "../hooks/useEvalFixtures";
 import {
+  listCalendarRuns,
   runEval,
   saveDraftPrompt,
   EvalApiError,
@@ -19,6 +20,9 @@ import {
 } from "../api/eval";
 import type {
   ActualRankingItem,
+  CalendarRankingItem,
+  CalendarRunReportEntry,
+  CalendarRunSummary,
   EvalScore,
   ExpectedRankingItem,
   PerFixtureCost,
@@ -27,10 +31,6 @@ import type {
 import { PromptDiffModal } from "../components/eval/PromptDiffModal";
 import { type EvalProgressRow } from "../components/eval/EvalResultsPanel";
 import { EvalAggregateHero } from "../components/eval/EvalAggregateHero";
-import {
-  ABResultsPanel,
-  type AbItem,
-} from "../components/eval/ABResultsPanel";
 import { SourcingReportPanel } from "../components/eval/SourcingReportPanel";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,7 +42,6 @@ import {
 import { ReportTab, type ReportScoreSheet } from "../components/eval/ReportTab";
 
 type Mode = "scored" | "ab";
-type ScoredScope = "single" | "topN";
 
 interface ScoredProgressPayload {
   fixtureId: string;
@@ -54,10 +53,9 @@ interface ScoredProgressPayload {
   expectedRanking?: ExpectedRankingItem[];
 }
 
-interface AbDonePayload {
-  saved?: AbItem[];
-  draft?: AbItem[];
-}
+type CalendarProgressRow =
+  | { runId: string; status: "running" }
+  | CalendarRunReportEntry;
 
 function formatTodayIso(): string {
   const d = new Date();
@@ -74,9 +72,7 @@ const RUN_STATE_TTL_MS = 60 * 60 * 1000;
 interface PersistedRunState {
   version: number;
   mode: "scored";
-  scoredScope: ScoredScope;
   fixtureId: string;
-  windowSize: number;
   rows: EvalProgressRow[];
   totalUsd: number | null;
   runError: string | null;
@@ -134,6 +130,25 @@ function fmtUsd(n: number): string {
   return `$${n.toFixed(4)}`;
 }
 
+function shortId(id: string): string {
+  return id.slice(0, 8);
+}
+
+function formatTimestamp(iso: string | null): string {
+  if (iso === null) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
 function hasReportPayload(
   row: EvalProgressRow,
 ): row is EvalProgressRow & { actualRanking: ActualRankingItem[] } {
@@ -154,11 +169,162 @@ function scoreSheetFromScore(score: EvalScore | undefined): ReportScoreSheet | n
   };
 }
 
+function isCalendarReportRow(
+  row: CalendarProgressRow,
+): row is CalendarRunReportEntry {
+  return row.status === "done" || row.status === "error";
+}
+
+function isCalendarDoneRow(
+  row: CalendarProgressRow,
+): row is Extract<CalendarRunReportEntry, { status: "done" }> {
+  return row.status === "done";
+}
+
+function upsertCalendarRow(
+  rows: readonly CalendarProgressRow[],
+  nextRow: CalendarProgressRow,
+): CalendarProgressRow[] {
+  const idx = rows.findIndex((row) => row.runId === nextRow.runId);
+  if (idx === -1) return [...rows, nextRow];
+  return rows.map((row, rowIdx) => (rowIdx === idx ? nextRow : row));
+}
+
+function calendarRunLabel(run: CalendarRunSummary): string {
+  return run.digestHeadline ?? `Run ${shortId(run.runId)}`;
+}
+
 function countLines(s: string): number {
   if (s.length === 0) return 0;
   let n = 1;
   for (let i = 0; i < s.length; i += 1) if (s.charCodeAt(i) === 10) n += 1;
   return n;
+}
+
+interface CalendarRankingTableProps {
+  title: string;
+  items: readonly CalendarRankingItem[];
+}
+
+function CalendarRankingTable({
+  title,
+  items,
+}: CalendarRankingTableProps): ReactElement {
+  return (
+    <section className="min-w-0 overflow-hidden rounded-md border border-neutral-200">
+      <header className="border-b border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-neutral-700">
+        {title}
+      </header>
+      <div className="max-h-[320px] overflow-auto">
+        {items.map((item) => (
+          <div
+            key={`${title}-${String(item.rawItemId)}`}
+            className="border-b border-neutral-100 px-3 py-2 last:border-none"
+          >
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-[11px] tabular-nums text-neutral-500">
+                #{String(item.rank)}
+              </span>
+              <span className="truncate text-sm font-medium text-neutral-900">
+                {item.title}
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-2 pl-6 font-mono text-[10px] text-neutral-500">
+              <span>{item.sourceType}</span>
+              <span>score {item.score.toFixed(2)}</span>
+              {hostOf(item.url) !== "" ? <span>{hostOf(item.url)}</span> : null}
+            </div>
+            {item.rationale.length > 0 ? (
+              <p className="mt-1 line-clamp-2 pl-6 text-xs text-neutral-600">
+                {item.rationale}
+              </p>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+interface PromptSnapshotPaneProps {
+  label: string;
+  hash: string | null;
+  snapshot: string | null;
+}
+
+function PromptSnapshotPane({
+  label,
+  hash,
+  snapshot,
+}: PromptSnapshotPaneProps): ReactElement {
+  return (
+    <section className="min-w-0 overflow-hidden rounded-md border border-neutral-200">
+      <header className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-neutral-700">
+        <span>{label}</span>
+        <span className="text-neutral-400">{hash === null ? "—" : shortId(hash)}</span>
+      </header>
+      <pre className="max-h-[220px] overflow-auto whitespace-pre-wrap bg-white px-3 py-2 font-mono text-[12px] leading-relaxed text-neutral-800">
+        {snapshot ?? "No saved prompt snapshot."}
+      </pre>
+    </section>
+  );
+}
+
+interface CalendarReportDialogProps {
+  row: Extract<CalendarRunReportEntry, { status: "done" }> | null;
+  onClose: () => void;
+}
+
+function CalendarReportDialog({
+  row,
+  onClose,
+}: CalendarReportDialogProps): ReactElement {
+  return (
+    <Dialog
+      open={row !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent
+        data-testid="calendar-report-dialog"
+        className="flex h-[82vh] max-w-6xl flex-col overflow-hidden"
+      >
+        <DialogTitle>
+          Calendar report{row === null ? "" : ` · ${shortId(row.runId)}`}
+        </DialogTitle>
+        <DialogDescription>
+          Previous ranked items compared with the draft-prompt ranking.
+        </DialogDescription>
+        {row !== null ? (
+          <div className="grid min-h-0 flex-1 grid-rows-[1fr_auto] gap-4">
+            <div className="grid min-h-0 grid-cols-2 gap-4">
+              <CalendarRankingTable
+                title="Previous ranking"
+                items={row.previousRanking}
+              />
+              <CalendarRankingTable
+                title="Draft ranking"
+                items={row.draftRanking}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <PromptSnapshotPane
+                label="Saved prompt"
+                hash={row.promptDiff.savedPromptHash}
+                snapshot={row.promptDiff.savedPromptSnapshot}
+              />
+              <PromptSnapshotPane
+                label="Draft prompt"
+                hash={row.promptDiff.draftPromptHash}
+                snapshot={row.promptDiff.draftPromptSnapshot}
+              />
+            </div>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function EvalIndexPage(): ReactElement {
@@ -181,27 +347,31 @@ export function EvalIndexPage(): ReactElement {
   const initialMode: Mode = searchParams.get("mode") === "ab" ? "ab" : "scored";
   const initialFixtureId = searchParams.get("fixtureId") ?? "";
   const [mode, setMode] = useState<Mode>(initialMode);
-  const [scoredScope, setScoredScope] = useState<ScoredScope>("single");
   const [fixtureId, setFixtureId] = useState(initialFixtureId);
-  const [windowSize, setWindowSize] = useState(20);
-  const [forceWindow, setForceWindow] = useState(false);
   const [bypassCache, setBypassCache] = useState(false);
   const [calendarDate, setCalendarDate] = useState(formatTodayIso());
+  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
 
   const [running, setRunning] = useState(false);
   const [rows, setRows] = useState<EvalProgressRow[]>([]);
   const [totalUsd, setTotalUsd] = useState<number | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
-  const [abSaved, setAbSaved] = useState<AbItem[]>([]);
-  const [abDraft, setAbDraft] = useState<AbItem[]>([]);
+  const [calendarRows, setCalendarRows] = useState<CalendarProgressRow[]>([]);
   const [sourcing, setSourcing] = useState<SourcingReportRow[]>([]);
-  const [showCostConfirm, setShowCostConfirm] = useState(false);
   const [reportRow, setReportRow] = useState<EvalProgressRow | null>(null);
+  const [calendarReportRow, setCalendarReportRow] =
+    useState<Extract<CalendarRunReportEntry, { status: "done" }> | null>(null);
   const streamRef = useRef<EvalRunStream | null>(null);
 
   const dirty = draft !== savedPrompt;
 
   const [showDiff, setShowDiff] = useState(false);
+
+  const calendarRunsQuery = useQuery({
+    queryKey: ["eval", "calendar-runs", calendarDate],
+    queryFn: () => listCalendarRuns(calendarDate),
+    enabled: mode === "ab" && /^\d{4}-\d{2}-\d{2}$/.test(calendarDate),
+  });
 
   const saveMutation = useMutation({
     mutationFn: (prompt: string) => saveDraftPrompt(prompt),
@@ -231,11 +401,9 @@ export function EvalIndexPage(): ReactElement {
     const persisted = safeSessionGet();
     if (persisted === null) return;
     setMode("scored");
-    setScoredScope(persisted.scoredScope);
     if (initialFixtureId.length === 0 && persisted.fixtureId.length > 0) {
       setFixtureId(persisted.fixtureId);
     }
-    setWindowSize(persisted.windowSize);
     setRows(persisted.rows);
     setTotalUsd(persisted.totalUsd);
     setRunError(persisted.runError);
@@ -248,35 +416,41 @@ export function EvalIndexPage(): ReactElement {
     safeSessionSet({
       version: RUN_STATE_VERSION,
       mode: "scored",
-      scoredScope,
       fixtureId,
-      windowSize,
       rows,
       totalUsd,
       runError,
       persistedAt: Date.now(),
     });
-  }, [mode, scoredScope, fixtureId, windowSize, rows, totalUsd, runError]);
+  }, [mode, fixtureId, rows, totalUsd, runError]);
+
+  useEffect(() => {
+    setSelectedRunIds([]);
+    setCalendarRows([]);
+    setTotalUsd(null);
+    setRunError(null);
+  }, [calendarDate]);
 
   function resetResults(): void {
     setRows([]);
     setTotalUsd(null);
     setRunError(null);
-    setAbSaved([]);
-    setAbDraft([]);
+    setCalendarRows([]);
     setSourcing([]);
     safeSessionClear();
   }
 
-  const COST_PER_FIXTURE_USD_ESTIMATE = 0.01;
-
-  function estimatedUsd(): number {
-    return windowSize * COST_PER_FIXTURE_USD_ESTIMATE;
+  function toggleCalendarRun(runId: string): void {
+    setSelectedRunIds((prev) =>
+      prev.includes(runId)
+        ? prev.filter((id) => id !== runId)
+        : [...prev, runId],
+    );
   }
 
-  async function handleRun(forceWindowOverride = false): Promise<void> {
+  async function handleRun(): Promise<void> {
     if (running) return;
-    if (mode === "scored" && scoredScope === "single" && !fixtureId) {
+    if (mode === "scored" && !fixtureId) {
       toast.error("Pick a fixture first");
       return;
     }
@@ -284,29 +458,29 @@ export function EvalIndexPage(): ReactElement {
       toast.error("Edit the prompt before running Mode B");
       return;
     }
-    const isTopN = mode === "scored" && scoredScope === "topN";
-    const effectiveForce = forceWindow || forceWindowOverride;
-    if (isTopN && windowSize > 60 && !effectiveForce) {
-      setShowCostConfirm(true);
+    if (mode === "ab" && selectedRunIds.length === 0) {
+      toast.error("Select at least one run");
       return;
     }
-    setShowCostConfirm(false);
     resetResults();
     setRunning(true);
     const stream = runEval({
       mode,
-      fixtureId:
-        mode === "scored" && scoredScope === "single" ? fixtureId : undefined,
+      fixtureId: mode === "scored" ? fixtureId : undefined,
       date: mode === "ab" ? calendarDate : undefined,
+      runIds: mode === "ab" ? selectedRunIds : undefined,
       draftPrompt: draft,
-      windowSize: isTopN ? windowSize : undefined,
-      forceWindow: isTopN && effectiveForce ? true : undefined,
       bypassCache: mode === "scored" ? bypassCache : undefined,
     });
     streamRef.current = stream;
     try {
       for await (const ev of stream.progress) {
         if (ev.event === "progress") {
+          if (mode === "ab") {
+            const payload = ev.data as CalendarProgressRow;
+            setCalendarRows((prev) => upsertCalendarRow(prev, payload));
+            continue;
+          }
           const payload = ev.data as ScoredProgressPayload;
           setRows((prev) => {
             const idx = prev.findIndex(
@@ -333,17 +507,14 @@ export function EvalIndexPage(): ReactElement {
         } else if (ev.event === "aggregate" || ev.event === "done") {
           const payload = ev.data as {
             totalCost?: { usd?: number };
-            saved?: AbItem[];
-            draft?: AbItem[];
+            calendarRuns?: CalendarRunReportEntry[];
             sourcingReport?: SourcingReportRow[];
           };
           if (typeof payload.totalCost?.usd === "number") {
             setTotalUsd(payload.totalCost.usd);
           }
-          if (payload.saved || payload.draft) {
-            const abPayload = payload as AbDonePayload;
-            if (abPayload.saved) setAbSaved(abPayload.saved);
-            if (abPayload.draft) setAbDraft(abPayload.draft);
+          if (payload.calendarRuns && payload.calendarRuns.length > 0) {
+            setCalendarRows(payload.calendarRuns);
           }
           if (payload.sourcingReport) setSourcing(payload.sourcingReport);
         } else if (ev.event === "error") {
@@ -374,6 +545,7 @@ export function EvalIndexPage(): ReactElement {
     () => fixturesQuery.data?.fixtures ?? [],
     [fixturesQuery.data],
   );
+  const calendarRuns = calendarRunsQuery.data?.runs ?? [];
 
   const showHero = mode === "scored" && rows.length > 0;
 
@@ -684,7 +856,106 @@ export function EvalIndexPage(): ReactElement {
                 ) : null}
               </section>
             ) : (
-              <ABResultsPanel saved={abSaved} draft={abDraft} />
+              <section className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+                <header className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50/60 px-5 py-3">
+                  <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-700">
+                    Calendar results
+                  </span>
+                  <span className="font-mono text-[11px] text-neutral-500">
+                    {calendarRows.length === 0
+                      ? "no runs yet"
+                      : `${String(calendarRows.length)} run${calendarRows.length === 1 ? "" : "s"}`}
+                  </span>
+                </header>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-neutral-200 text-left">
+                      <th className="px-5 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+                        Run
+                      </th>
+                      <th className="px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+                        Status
+                      </th>
+                      <th className="px-5 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+                        Cost
+                      </th>
+                      <th className="px-5 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+                        Report
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {calendarRows.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="px-5 py-6 text-center font-mono text-xs text-neutral-500"
+                        >
+                          No calendar eval runs yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      calendarRows.map((row) => (
+                        <tr
+                          key={row.runId}
+                          data-testid="calendar-result-row"
+                          className="border-b border-neutral-100 last:border-none"
+                        >
+                          <td className="px-5 py-3 font-mono text-xs font-medium text-neutral-900">
+                            {shortId(row.runId)}
+                          </td>
+                          <td className="px-3 py-3">
+                            {row.status === "done" ? (
+                              <span className="inline-flex items-center gap-1 rounded-sm bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-700">
+                                done
+                              </span>
+                            ) : row.status === "running" ? (
+                              <span className="inline-flex items-center gap-1 rounded-sm bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-amber-700">
+                                running
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-sm bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-rose-700">
+                                error
+                              </span>
+                            )}
+                            {isCalendarReportRow(row) && row.status === "error" ? (
+                              <div className="mt-1 text-xs text-rose-700">
+                                {row.error}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="px-5 py-3 text-right font-mono text-xs tabular-nums">
+                            {isCalendarDoneRow(row) ? fmtUsd(row.cost.usd) : "—"}
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            {isCalendarDoneRow(row) ? (
+                              <button
+                                type="button"
+                                aria-label={`Report for calendar run ${shortId(row.runId)}`}
+                                onClick={() => {
+                                  setCalendarReportRow(row);
+                                }}
+                                className="inline-flex items-center rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-neutral-700 hover:bg-neutral-50"
+                              >
+                                Report
+                              </button>
+                            ) : (
+                              <span className="font-mono text-xs text-neutral-300">
+                                —
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+                {totalUsd !== null ? (
+                  <footer className="border-t border-neutral-200 bg-neutral-50/60 px-5 py-2 text-right font-mono text-[11px] text-neutral-500">
+                    total cost: {fmtUsd(totalUsd)}
+                  </footer>
+                ) : null}
+              </section>
             )}
 
             {mode === "scored" ? (
@@ -728,41 +999,6 @@ export function EvalIndexPage(): ReactElement {
 
                   {mode === "scored" ? (
                     <div className="flex flex-col gap-4">
-                      <fieldset data-testid="scope-toggle">
-                        <legend className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                          Scope
-                        </legend>
-                        <div className="flex gap-4 text-sm">
-                          <label className="inline-flex items-center gap-1.5">
-                            <input
-                              type="radio"
-                              name="scored-scope"
-                              data-testid="scope-single"
-                              value="single"
-                              checked={scoredScope === "single"}
-                              onChange={() => {
-                                setScoredScope("single");
-                                setForceWindow(false);
-                              }}
-                            />
-                            <span>Single fixture</span>
-                          </label>
-                          <label className="inline-flex items-center gap-1.5">
-                            <input
-                              type="radio"
-                              name="scored-scope"
-                              data-testid="scope-topn"
-                              value="topN"
-                              checked={scoredScope === "topN"}
-                              onChange={() => {
-                                setScoredScope("topN");
-                              }}
-                            />
-                            <span>Top-N recent</span>
-                          </label>
-                        </div>
-                      </fieldset>
-
                       <div>
                         <div className="mb-1.5 flex items-center justify-between">
                           <label
@@ -785,15 +1021,7 @@ export function EvalIndexPage(): ReactElement {
                           className="block w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-500 focus:outline-none"
                           value={fixtureId}
                           onChange={(e) => {
-                            const nextFixtureId = e.target.value;
-                            setFixtureId(nextFixtureId);
-                            if (
-                              nextFixtureId.length > 0 &&
-                              scoredScope === "topN"
-                            ) {
-                              setScoredScope("single");
-                              setForceWindow(false);
-                            }
+                            setFixtureId(e.target.value);
                           }}
                         >
                           <option value="">— pick a fixture —</option>
@@ -807,39 +1035,6 @@ export function EvalIndexPage(): ReactElement {
                             </option>
                           ))}
                         </select>
-                      </div>
-
-                      <div>
-                        <div className="mb-1.5 flex items-center justify-between">
-                          <label
-                            htmlFor="window-slider"
-                            className="font-mono text-[10px] uppercase tracking-widest text-neutral-500"
-                          >
-                            Window size
-                          </label>
-                          <span className="font-mono text-[13px] font-medium tabular-nums text-neutral-900">
-                            {String(windowSize)}
-                          </span>
-                        </div>
-                        <input
-                          id="window-slider"
-                          data-testid="window-slider"
-                          type="range"
-                          min={1}
-                          max={60}
-                          value={windowSize}
-                          disabled={scoredScope !== "topN"}
-                          onChange={(e) => {
-                            setWindowSize(Number(e.target.value));
-                          }}
-                          className="block w-full"
-                          style={{ accentColor: "#8c3a1e" }}
-                        />
-                        {scoredScope === "single" ? (
-                          <p className="mt-1 font-mono text-[11px] text-neutral-500">
-                            Disabled · scope is Single fixture
-                          </p>
-                        ) : null}
                       </div>
 
                       <label className="flex items-center gap-2 text-sm text-neutral-700">
@@ -858,10 +1053,7 @@ export function EvalIndexPage(): ReactElement {
                         <Button
                           type="button"
                           data-testid="run-mode-a"
-                          disabled={
-                            running ||
-                            (scoredScope === "single" && !fixtureId)
-                          }
+                          disabled={running || !fixtureId}
                           onClick={() => {
                             void handleRun();
                           }}
@@ -913,18 +1105,77 @@ export function EvalIndexPage(): ReactElement {
                           Draft matches saved — edit the prompt to see a diff.
                         </p>
                       ) : null}
+                      <section className="rounded-md border border-neutral-200">
+                        <header className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50 px-3 py-2">
+                          <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+                            Runs on date
+                          </span>
+                          <span className="font-mono text-[11px] text-neutral-500">
+                            {calendarRunsQuery.isLoading
+                              ? "loading"
+                              : `${String(calendarRuns.length)} run${calendarRuns.length === 1 ? "" : "s"}`}
+                          </span>
+                        </header>
+                        <div className="max-h-[260px] overflow-auto">
+                          {calendarRunsQuery.isError ? (
+                            <div className="px-3 py-4 text-xs text-rose-700">
+                              Failed to load runs.
+                            </div>
+                          ) : calendarRuns.length === 0 ? (
+                            <div className="px-3 py-4 font-mono text-xs text-neutral-500">
+                              No completed runs for this date.
+                            </div>
+                          ) : (
+                            calendarRuns.map((run) => (
+                              <label
+                                key={run.runId}
+                                className="flex cursor-pointer gap-3 border-b border-neutral-100 px-3 py-2 last:border-none hover:bg-neutral-50"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedRunIds.includes(run.runId)}
+                                  onChange={() => {
+                                    toggleCalendarRun(run.runId);
+                                  }}
+                                  aria-label={`Select calendar run ${shortId(run.runId)}`}
+                                  className="mt-1 h-4 w-4"
+                                />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-medium text-neutral-900">
+                                    {calendarRunLabel(run)}
+                                  </span>
+                                  <span className="block font-mono text-[11px] text-neutral-500">
+                                    {shortId(run.runId)} ·{" "}
+                                    {String(run.itemCount)} items · top{" "}
+                                    {String(run.topN)}
+                                  </span>
+                                  <span className="block truncate text-[11px] text-neutral-500">
+                                    {formatTimestamp(run.completedAt)} ·{" "}
+                                    {run.sourceTypes.join(", ") || "sources n/a"}
+                                  </span>
+                                </span>
+                              </label>
+                            ))
+                          )}
+                        </div>
+                      </section>
                       <Button
                         type="button"
                         data-testid="run-mode-b"
-                        disabled={running || !dirty}
+                        disabled={running || !dirty || selectedRunIds.length === 0}
                         onClick={() => {
                           void handleRun();
                         }}
                         className="w-full justify-center"
                         style={{
                           background:
-                            running || !dirty ? undefined : "#8c3a1e",
-                          color: running || !dirty ? undefined : "#fff",
+                            running || !dirty || selectedRunIds.length === 0
+                              ? undefined
+                              : "#8c3a1e",
+                          color:
+                            running || !dirty || selectedRunIds.length === 0
+                              ? undefined
+                              : "#fff",
                         }}
                       >
                         {running ? "Running…" : "Run calendar eval"}
@@ -936,47 +1187,6 @@ export function EvalIndexPage(): ReactElement {
             </div>
           </aside>
         </div>
-
-        {showCostConfirm ? (
-          <div
-            data-testid="cost-confirm-modal"
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          >
-            <div className="w-full max-w-md rounded-lg border border-neutral-200 bg-white p-4">
-              <h2 className="text-lg font-semibold">Confirm large run</h2>
-              <p className="mt-2 text-sm text-neutral-600">
-                You are about to run {String(windowSize)} fixtures. Estimated
-                cost:{" "}
-                <span data-testid="cost-confirm-amount">
-                  ${estimatedUsd().toFixed(2)}
-                </span>
-                .
-              </p>
-              <div className="mt-4 flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    setShowCostConfirm(false);
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  data-testid="cost-confirm-proceed"
-                  onClick={() => {
-                    setForceWindow(true);
-                    setShowCostConfirm(false);
-                    void handleRun(true);
-                  }}
-                >
-                  Run anyway
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : null}
 
         <PromptDiffModal
           open={showDiff}
@@ -1014,6 +1224,12 @@ export function EvalIndexPage(): ReactElement {
           ) : null}
         </DialogContent>
       </Dialog>
+      <CalendarReportDialog
+        row={calendarReportRow}
+        onClose={() => {
+          setCalendarReportRow(null);
+        }}
+      />
     </>
   );
 }

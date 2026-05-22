@@ -86,10 +86,9 @@ export interface EvalRunRequest {
   mode: "scored" | "ab";
   fixtureId?: string;
   date?: string;
+  runIds?: string[];
   draftPrompt: string;
   savedPrompt?: string;
-  windowSize?: number;
-  forceWindow?: boolean;
   bypassCache?: boolean;
 }
 
@@ -158,6 +157,63 @@ export interface ExpectedRankingItem {
   tier: Tier;
   rank: number;
 }
+
+/** Completed newsletter run row shown in calendar-mode run pickers. */
+export interface CalendarRunSummary {
+  runId: string;
+  completedAt: string;
+  createdAt: string;
+  startedAt: string | null;
+  itemCount: number;
+  topN: number;
+  digestHeadline: string | null;
+  digestSummary: string | null;
+  sourceTypes: string[];
+}
+
+/** Ranked row used by calendar previous-vs-draft reports. */
+export interface CalendarRankingItem {
+  rank: number;
+  rawItemId: number;
+  title: string;
+  url: string;
+  sourceType: string;
+  score: number;
+  rationale: string;
+  summary: string;
+  bullets: string[];
+  bottomLine: string;
+}
+
+/** Detail payload for a completed newsletter run and its importable source pool. */
+export interface CalendarRunDetail extends CalendarRunSummary {
+  previousRanking: CalendarRankingItem[];
+  sourcePool: FixtureItem[];
+}
+
+/** Prompt snapshots/hashes needed for calendar report prompt-diff rendering. */
+export interface CalendarPromptDiff {
+  savedPromptHash: string | null;
+  draftPromptHash: string;
+  savedPromptSnapshot: string | null;
+  draftPromptSnapshot: string;
+}
+
+/** Persisted per-run result from calendar eval Mode B. */
+export type CalendarRunReportEntry =
+  | {
+      runId: string;
+      status: "done";
+      previousRanking: CalendarRankingItem[];
+      draftRanking: CalendarRankingItem[];
+      promptDiff: CalendarPromptDiff;
+      cost: PerFixtureCost;
+    }
+  | {
+      runId: string;
+      status: "error";
+      error: string;
+    };
 
 /** Per-fixture result row inside `EvalResult.perFixture[]`. */
 export interface PerFixtureResult {

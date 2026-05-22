@@ -75,12 +75,11 @@ export const EvalRunRequestSchema = z.object({
   mode: z.enum(["scored", "ab"]),
   fixtureId: z.string().optional(),
   date: z.string().optional(),
+  runIds: z.array(z.string().min(1)).optional(),
   draftPrompt: z.string(),
   savedPrompt: z.string().optional(),
-  windowSize: z.number().int().optional(),
-  forceWindow: z.boolean().optional(),
   bypassCache: z.boolean().optional(),
-});
+}).strict();
 
 export const PerItemDiffRowSchema = z.object({
   rawItemId: z.number().int(),
@@ -112,6 +111,59 @@ export const PerFixtureCostSchema = z.object({
   usd: z.number(),
   cacheHit: z.boolean(),
 });
+
+export const CalendarRunSummarySchema = z.object({
+  runId: z.string(),
+  completedAt: z.string(),
+  createdAt: z.string(),
+  startedAt: z.string().nullable(),
+  itemCount: z.number().int(),
+  topN: z.number().int(),
+  digestHeadline: z.string().nullable(),
+  digestSummary: z.string().nullable(),
+  sourceTypes: z.array(z.string()),
+});
+
+export const CalendarRankingItemSchema = z.object({
+  rank: z.number().int(),
+  rawItemId: z.number().int(),
+  title: z.string(),
+  url: z.string(),
+  sourceType: z.string(),
+  score: z.number(),
+  rationale: z.string(),
+  summary: z.string(),
+  bullets: z.array(z.string()),
+  bottomLine: z.string(),
+});
+
+export const CalendarRunDetailSchema = CalendarRunSummarySchema.extend({
+  previousRanking: z.array(CalendarRankingItemSchema),
+  sourcePool: z.array(FixtureItemSchema),
+});
+
+export const CalendarPromptDiffSchema = z.object({
+  savedPromptHash: z.string().nullable(),
+  draftPromptHash: z.string(),
+  savedPromptSnapshot: z.string().nullable(),
+  draftPromptSnapshot: z.string(),
+});
+
+export const CalendarRunReportEntrySchema = z.discriminatedUnion("status", [
+  z.object({
+    runId: z.string(),
+    status: z.literal("done"),
+    previousRanking: z.array(CalendarRankingItemSchema),
+    draftRanking: z.array(CalendarRankingItemSchema),
+    promptDiff: CalendarPromptDiffSchema,
+    cost: PerFixtureCostSchema,
+  }),
+  z.object({
+    runId: z.string(),
+    status: z.literal("error"),
+    error: z.string(),
+  }),
+]);
 
 export const PerFixtureResultSchema = z.object({
   fixtureId: z.string(),

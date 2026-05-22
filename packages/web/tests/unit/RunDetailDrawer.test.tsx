@@ -307,7 +307,87 @@ describe("RunDetailDrawer — Report tab", () => {
     ).toContain("No report available");
   });
 
-  it("Mode B run hides the Report tab entirely", async () => {
+  it("REQ-009 REQ-010: Mode B calendar run exposes per-run report and prompt diff", async () => {
+    getEvalRunMock.mockResolvedValue(
+      makeRun({
+        mode: "ab",
+        fixtureId: null,
+        date: "2026-05-21",
+        savedPromptHash: "savedhash",
+        savedPromptSnapshot: "SAVED PROMPT",
+        draftPromptHash: "drafthash",
+        draftPromptSnapshot: "DRAFT PROMPT",
+        scoreBreakdown: {
+          calendarRuns: [
+            {
+              runId: "11111111-1111-4111-8111-111111111111",
+              status: "done",
+              previousRanking: [
+                {
+                  rank: 1,
+                  rawItemId: 1,
+                  title: "Previous story",
+                  url: "https://example.com/previous",
+                  sourceType: "hn",
+                  score: 0.91,
+                  rationale: "previous rationale",
+                  summary: "previous summary",
+                  bullets: [],
+                  bottomLine: "previous bottom",
+                },
+              ],
+              draftRanking: [
+                {
+                  rank: 1,
+                  rawItemId: 2,
+                  title: "Draft story",
+                  url: "https://example.com/draft",
+                  sourceType: "github",
+                  score: 0.95,
+                  rationale: "draft rationale",
+                  summary: "draft summary",
+                  bullets: [],
+                  bottomLine: "draft bottom",
+                },
+              ],
+              promptDiff: {
+                savedPromptHash: "savedhash",
+                draftPromptHash: "drafthash",
+                savedPromptSnapshot: "SAVED PROMPT",
+                draftPromptSnapshot: "DRAFT PROMPT",
+              },
+              cost: {
+                usd: 0.01,
+                tokensIn: 100,
+                tokensOut: 50,
+                cacheHit: false,
+                promptHash: "drafthash",
+              },
+            },
+          ],
+        },
+        costBreakdown: {
+          totalUsd: 0.01,
+          perRun: [
+            {
+              runId: "11111111-1111-4111-8111-111111111111",
+              cost: { usd: 0.01, tokensIn: 100, tokensOut: 50, cacheHit: false },
+            },
+          ],
+        },
+      }),
+    );
+    renderDrawer();
+    await screen.findByTestId("drawer-tab-breakdown");
+    fireEvent.click(await screen.findByTestId("drawer-tab-report"));
+    const panel = await screen.findByTestId("drawer-tab-panel-report");
+    expect(panel.textContent).toContain("Previous story");
+    expect(panel.textContent).toContain("Draft story");
+    expect(panel.textContent).toContain("SAVED PROMPT");
+    expect(panel.textContent).toContain("DRAFT PROMPT");
+  });
+
+  it("legacy Mode B run without calendarRuns hides the Report tab", async () => {
     getEvalRunMock.mockResolvedValue(
       makeRun({
         mode: "ab",

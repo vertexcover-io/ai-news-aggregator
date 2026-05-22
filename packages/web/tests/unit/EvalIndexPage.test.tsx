@@ -12,6 +12,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -41,6 +42,33 @@ vi.mock("../../src/api/eval", async () => {
         },
       ],
     }),
+    listCalendarRuns: vi.fn().mockResolvedValue({
+      date: "2026-05-22",
+      runs: [
+        {
+          runId: "11111111-1111-4111-8111-111111111111",
+          completedAt: "2026-05-22T08:30:00.000Z",
+          createdAt: "2026-05-22T08:00:00.000Z",
+          startedAt: "2026-05-22T08:01:00.000Z",
+          itemCount: 2,
+          topN: 2,
+          digestHeadline: "Morning digest",
+          digestSummary: "Two strong candidates",
+          sourceTypes: ["hn", "github"],
+        },
+        {
+          runId: "22222222-2222-4222-8222-222222222222",
+          completedAt: "2026-05-22T12:30:00.000Z",
+          createdAt: "2026-05-22T12:00:00.000Z",
+          startedAt: "2026-05-22T12:01:00.000Z",
+          itemCount: 1,
+          topN: 1,
+          digestHeadline: null,
+          digestSummary: null,
+          sourceTypes: ["reddit"],
+        },
+      ],
+    }),
     saveDraftPrompt: vi.fn().mockResolvedValue({ ok: true }),
     runEval: vi.fn().mockReturnValue({
       progress: (async function* () {
@@ -53,9 +81,15 @@ vi.mock("../../src/api/eval", async () => {
 
 import { EvalIndexPage } from "../../src/pages/EvalIndexPage";
 import { useSettings } from "../../src/hooks/useSettings";
-import { saveDraftPrompt, runEval, type EvalSseEvent } from "../../src/api/eval";
+import {
+  listCalendarRuns,
+  saveDraftPrompt,
+  runEval,
+  type EvalSseEvent,
+} from "../../src/api/eval";
 
 const useSettingsMock = vi.mocked(useSettings);
+const listCalendarRunsMock = vi.mocked(listCalendarRuns);
 const saveDraftPromptMock = vi.mocked(saveDraftPrompt);
 const runEvalMock = vi.mocked(runEval);
 
@@ -110,6 +144,7 @@ beforeEach(() => {
     >,
   );
   saveDraftPromptMock.mockClear();
+  listCalendarRunsMock.mockClear();
   runEvalMock.mockClear();
   window.sessionStorage.clear();
 });
@@ -187,23 +222,16 @@ describe("EvalIndexPage", () => {
     });
     const body = runEvalMock.mock.calls[0][0];
     expect(body.fixtureId).toBe("fx-1");
-    expect(body.windowSize).toBeUndefined();
+    expect("windowSize" in body).toBe(false);
   });
 
-  it("Top-N mode sends windowSize without fixtureId", async () => {
+  it("REQ-001: removes Top-N controls from scored mode", async () => {
     renderPage();
     await screen.findByTestId("prompt-editor-textarea");
-    fireEvent.click(screen.getByTestId("scope-topn"));
-    const slider = screen.getByTestId<HTMLInputElement>("window-slider");
-    fireEvent.change(slider, { target: { value: "5" } });
-    fireEvent.click(screen.getByTestId("run-mode-a"));
-    await waitFor(() => {
-      expect(runEvalMock).toHaveBeenCalled();
-    });
-    const body = runEvalMock.mock.calls[0][0];
-    expect(body.windowSize).toBe(5);
-    expect(body.fixtureId).toBeUndefined();
-    expect(body.forceWindow).toBeUndefined();
+
+    expect(screen.queryByTestId("scope-topn")).toBeNull();
+    expect(screen.queryByTestId("window-slider")).toBeNull();
+    expect(screen.queryByText(/Top-N recent/i)).toBeNull();
   });
 
   it("REQ-001 REQ-002: completed scored rows open the per-fixture report", async () => {
@@ -315,61 +343,6 @@ describe("EvalIndexPage", () => {
     expect(screen.queryByRole("button", { name: /report for/i })).toBeNull();
   });
 
-  it("REQ-005 REQ-006: selecting a fixture from Top-N switches back to single-fixture mode", async () => {
-    renderPage();
-    await screen.findByTestId("prompt-editor-textarea");
-    fireEvent.click(screen.getByTestId("scope-topn"));
-    const select = await screen.findByTestId<HTMLSelectElement>(
-      "fixture-select",
-    );
-    expect(select.disabled).toBe(false);
-
-    fireEvent.change(select, { target: { value: "fx-1" } });
-    expect(screen.getByTestId<HTMLInputElement>("scope-single").checked).toBe(
-      true,
-    );
-
-    fireEvent.click(screen.getByTestId("run-mode-a"));
-    await waitFor(() => {
-      expect(runEvalMock).toHaveBeenCalled();
-    });
-    const body = runEvalMock.mock.calls[0][0];
-    expect(body.fixtureId).toBe("fx-1");
-    expect(body.windowSize).toBeUndefined();
-  });
-
-  it("Top-N with windowSize beyond cap opens cost modal; confirm sends forceWindow", async () => {
-    renderPage();
-    await screen.findByTestId("prompt-editor-textarea");
-    fireEvent.click(screen.getByTestId("scope-topn"));
-    const slider = screen.getByTestId<HTMLInputElement>("window-slider");
-    // jsdom clamps `input[type=range]` to its `max` when the value is
-    // assigned. Stub the descriptor so the value passes through unchanged so
-    // we can drive windowSize past the cap and exercise the cost-confirm
-    // modal.
-    Object.defineProperty(slider, "value", {
-      configurable: true,
-      get(): string {
-        return "65";
-      },
-      set() {
-        /* swallow */
-      },
-    });
-    fireEvent.change(slider);
-    fireEvent.click(screen.getByTestId("run-mode-a"));
-    await screen.findByTestId("cost-confirm-modal");
-    expect(runEvalMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId("cost-confirm-proceed"));
-    await waitFor(() => {
-      expect(runEvalMock).toHaveBeenCalled();
-    });
-    const body = runEvalMock.mock.calls[0][0];
-    expect(body.windowSize).toBe(65);
-    expect(body.forceWindow).toBe(true);
-    expect(body.fixtureId).toBeUndefined();
-  });
-
   it("Cancel in diff modal does not save", async () => {
     renderPage();
     const ta = await screen.findByTestId<HTMLTextAreaElement>(
@@ -396,6 +369,133 @@ describe("EvalIndexPage", () => {
       expect(select.querySelectorAll("option").length).toBeGreaterThan(1);
     });
     expect(select.value).toBe("fx-1");
+  });
+
+  it("REQ-004 REQ-006 REQ-008: calendar mode loads runs by date and submits selected run IDs", async () => {
+    renderPage("/admin/eval?mode=ab");
+    const ta = await screen.findByTestId<HTMLTextAreaElement>(
+      "prompt-editor-textarea",
+    );
+    fireEvent.change(ta, { target: { value: "DRAFT PROMPT" } });
+    const dateInput = screen.getByTestId<HTMLInputElement>("ab-date");
+    fireEvent.change(dateInput, { target: { value: "2026-05-22" } });
+
+    await screen.findByText("Morning digest");
+    await waitFor(() => {
+      expect(listCalendarRunsMock).toHaveBeenCalledWith("2026-05-22");
+    });
+
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /select calendar run 11111111/i,
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /select calendar run 22222222/i,
+      }),
+    );
+    fireEvent.click(screen.getByTestId("run-mode-b"));
+
+    await waitFor(() => {
+      expect(runEvalMock).toHaveBeenCalled();
+    });
+    const body = runEvalMock.mock.calls[0][0];
+    expect(body).toMatchObject({
+      mode: "ab",
+      date: "2026-05-22",
+      runIds: [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+      ],
+      draftPrompt: "DRAFT PROMPT",
+    });
+    expect("windowSize" in body).toBe(false);
+    expect("forceWindow" in body).toBe(false);
+  });
+
+  it("REQ-009 REQ-010: calendar results open a previous-vs-draft report with prompt diff", async () => {
+    runEvalMock.mockReturnValueOnce({
+      progress: streamEvents([
+        {
+          event: "progress",
+          data: {
+            runId: "11111111-1111-4111-8111-111111111111",
+            status: "done",
+            previousRanking: [
+              {
+                rank: 1,
+                rawItemId: 1,
+                title: "Previous story",
+                url: "https://example.com/previous",
+                sourceType: "hn",
+                score: 0.91,
+                rationale: "previous rationale",
+                summary: "previous summary",
+                bullets: [],
+                bottomLine: "previous bottom",
+              },
+            ],
+            draftRanking: [
+              {
+                rank: 1,
+                rawItemId: 2,
+                title: "Draft story",
+                url: "https://example.com/draft",
+                sourceType: "github",
+                score: 0.95,
+                rationale: "draft rationale",
+                summary: "draft summary",
+                bullets: [],
+                bottomLine: "draft bottom",
+              },
+            ],
+            promptDiff: {
+              savedPromptHash: "savedhash",
+              draftPromptHash: "drafthash",
+              savedPromptSnapshot: "SAVED PROMPT",
+              draftPromptSnapshot: "DRAFT PROMPT",
+            },
+            cost: {
+              promptHash: "drafthash",
+              tokensIn: 10,
+              tokensOut: 5,
+              usd: 0.001,
+              cacheHit: false,
+            },
+          },
+        },
+        {
+          event: "aggregate",
+          data: { calendarRuns: [], totalCost: { usd: 0.001 } },
+        },
+        { event: "done", data: { totalCost: { usd: 0.001 } } },
+      ]),
+      abort: () => undefined,
+    });
+    renderPage("/admin/eval?mode=ab");
+    const ta = await screen.findByTestId<HTMLTextAreaElement>(
+      "prompt-editor-textarea",
+    );
+    fireEvent.change(ta, { target: { value: "DRAFT PROMPT" } });
+    await screen.findByText("Morning digest");
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /select calendar run 11111111/i,
+      }),
+    );
+    fireEvent.click(screen.getByTestId("run-mode-b"));
+
+    const reportButton = await screen.findByRole("button", {
+      name: /report for calendar run 11111111/i,
+    });
+    fireEvent.click(reportButton);
+
+    const dialog = await screen.findByTestId("calendar-report-dialog");
+    expect(within(dialog).getByText("Previous story")).toBeTruthy();
+    expect(within(dialog).getByText("Draft story")).toBeTruthy();
+    expect(within(dialog).getByText("SAVED PROMPT")).toBeTruthy();
+    expect(within(dialog).getByText("DRAFT PROMPT")).toBeTruthy();
   });
 
   it("hydrates Mode A rows from sessionStorage on mount (REQ-2)", async () => {

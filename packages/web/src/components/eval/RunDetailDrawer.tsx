@@ -2,6 +2,8 @@ import { type ReactElement, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
   ActualRankingItem,
+  CalendarRankingItem,
+  CalendarRunReportEntry,
   EvalRun,
   ExpectedRankingItem,
 } from "@newsletter/shared/types/eval-ranking";
@@ -65,6 +67,36 @@ function isExpectedRankingItem(v: unknown): v is ExpectedRankingItem {
   );
 }
 
+function isCalendarRankingItem(v: unknown): v is CalendarRankingItem {
+  if (v === null || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.rank === "number" &&
+    typeof o.rawItemId === "number" &&
+    typeof o.title === "string" &&
+    typeof o.url === "string" &&
+    typeof o.sourceType === "string" &&
+    typeof o.score === "number" &&
+    typeof o.rationale === "string" &&
+    typeof o.summary === "string" &&
+    Array.isArray(o.bullets) &&
+    typeof o.bottomLine === "string"
+  );
+}
+
+function isCalendarRunReportEntry(v: unknown): v is CalendarRunReportEntry {
+  if (v === null || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  if (typeof o.runId !== "string") return false;
+  if (o.status === "error") return typeof o.error === "string";
+  if (o.status !== "done") return false;
+  const previous = pickArray(o.previousRanking, isCalendarRankingItem);
+  const draft = pickArray(o.draftRanking, isCalendarRankingItem);
+  const promptDiff = pickObject(o.promptDiff);
+  const cost = pickObject(o.cost);
+  return previous !== null && draft !== null && promptDiff !== null && cost !== null;
+}
+
 interface DrawerReportData {
   actual: ActualRankingItem[];
   expected: ExpectedRankingItem[] | undefined;
@@ -110,6 +142,26 @@ function extractReportData(run: EvalRun): DrawerReportData | null {
     expected: expected ?? undefined,
     scoreSheet,
   };
+}
+
+function extractCalendarReports(run: EvalRun): CalendarRunReportEntry[] {
+  if (run.mode !== "ab") return [];
+  const sb = pickObject(run.scoreBreakdown);
+  if (sb === null) return [];
+  const calendarRuns = pickArray(sb.calendarRuns, isCalendarRunReportEntry);
+  return calendarRuns ?? [];
+}
+
+function shortRunId(runId: string): string {
+  return runId.slice(0, 8);
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
 }
 
 export interface RunDetailDrawerProps {
@@ -338,6 +390,18 @@ function buildScoreRows(run: EvalRun): readonly BreakdownRow[] {
     ];
   }
 
+  if (Array.isArray(sb.calendarRuns)) {
+    const calendarRuns = sb.calendarRuns.filter(isCalendarRunReportEntry);
+    const done = calendarRuns.filter((entry) => entry.status === "done").length;
+    const errors = calendarRuns.length - done;
+    return [
+      { label: "Calendar runs", value: String(calendarRuns.length) },
+      { label: "Completed", value: String(done) },
+      { label: "Errors", value: String(errors) },
+      { label: "Mode", value: "Calendar comparison", total: true },
+    ];
+  }
+
   const saved = Array.isArray(sb.saved) ? sb.saved.length : 0;
   const draft = Array.isArray(sb.draft) ? sb.draft.length : 0;
   return [
@@ -393,6 +457,16 @@ function buildCostRows(run: EvalRun): readonly BreakdownRow[] {
       });
     }
   } else {
+    const perRun = Array.isArray(cb.perRun)
+      ? (cb.perRun as { cost?: unknown; runId?: unknown }[])
+      : [];
+    if (perRun.length > 0) {
+      rows.push({
+        label: "Per-run entries",
+        value: String(perRun.length),
+        muted: true,
+      });
+    }
     const saved = pickObject(cb.saved);
     const draft = pickObject(cb.draft);
     if (saved !== null) {
@@ -422,6 +496,133 @@ function buildCostRows(run: EvalRun): readonly BreakdownRow[] {
   return rows;
 }
 
+interface CalendarRankingListProps {
+  title: string;
+  items: readonly CalendarRankingItem[];
+}
+
+function CalendarRankingList({
+  title,
+  items,
+}: CalendarRankingListProps): ReactElement {
+  return (
+    <section className="min-w-0 overflow-hidden rounded border border-neutral-200">
+      <header className="border-b border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-neutral-700">
+        {title}
+      </header>
+      <div className="max-h-[260px] overflow-auto">
+        {items.map((item) => (
+          <div
+            key={`${title}-${String(item.rawItemId)}`}
+            className="border-b border-neutral-100 px-3 py-2 last:border-none"
+          >
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-[11px] tabular-nums text-neutral-500">
+                #{String(item.rank)}
+              </span>
+              <span className="truncate text-[13px] font-medium text-neutral-900">
+                {item.title}
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-2 pl-6 font-mono text-[10px] text-neutral-500">
+              <span>{item.sourceType}</span>
+              <span>score {item.score.toFixed(2)}</span>
+              {hostOf(item.url) !== "" ? <span>{hostOf(item.url)}</span> : null}
+            </div>
+            {item.rationale.length > 0 ? (
+              <p className="mt-1 line-clamp-2 pl-6 text-[12px] text-neutral-600">
+                {item.rationale}
+              </p>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+interface CalendarPromptPaneProps {
+  label: string;
+  hash: string | null;
+  snapshot: string | null;
+}
+
+function CalendarPromptPane({
+  label,
+  hash,
+  snapshot,
+}: CalendarPromptPaneProps): ReactElement {
+  return (
+    <section className="min-w-0 overflow-hidden rounded border border-neutral-200">
+      <header className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-neutral-700">
+        <span>{label}</span>
+        <span className="text-neutral-400">
+          {hash === null ? "—" : shortHash(hash)}
+        </span>
+      </header>
+      <pre className="max-h-[180px] overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[12px] leading-relaxed text-neutral-800">
+        {snapshot ?? "No saved prompt snapshot."}
+      </pre>
+    </section>
+  );
+}
+
+function CalendarReportPanel({
+  reports,
+}: {
+  reports: readonly CalendarRunReportEntry[];
+}): ReactElement {
+  const doneReports = reports.filter((entry) => entry.status === "done");
+  if (doneReports.length === 0) {
+    return <EmptyReport reason="failed" />;
+  }
+  return (
+    <div className="min-h-0 overflow-auto p-4" data-testid="calendar-run-report">
+      <div className="flex flex-col gap-4">
+        {doneReports.map((entry) => (
+          <section
+            key={entry.runId}
+            className="rounded border border-neutral-200 bg-white"
+          >
+            <header className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
+              <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-700">
+                Run {shortRunId(entry.runId)}
+              </span>
+              <span className="font-mono text-[11px] text-neutral-500">
+                cost ${entry.cost.usd.toFixed(4)}
+              </span>
+            </header>
+            <div className="grid gap-3 p-3">
+              <div className="grid grid-cols-2 gap-3">
+                <CalendarRankingList
+                  title="Previous ranking"
+                  items={entry.previousRanking}
+                />
+                <CalendarRankingList
+                  title="Draft ranking"
+                  items={entry.draftRanking}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <CalendarPromptPane
+                  label="Saved prompt"
+                  hash={entry.promptDiff.savedPromptHash}
+                  snapshot={entry.promptDiff.savedPromptSnapshot}
+                />
+                <CalendarPromptPane
+                  label="Draft prompt"
+                  hash={entry.promptDiff.draftPromptHash}
+                  snapshot={entry.promptDiff.draftPromptSnapshot}
+                />
+              </div>
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function RunDetailDrawer({
   runId,
   onClose,
@@ -438,9 +639,12 @@ export function RunDetailDrawer({
 
   const run = query.data ?? null;
   const reportData = run !== null ? extractReportData(run) : null;
-  // Mode A done runs that carry the new fields default to the Report tab; all
-  // other shapes (Mode B, legacy Mode A, running, failed) default to Breakdown.
-  const reportAvailable = run?.mode === "scored" && reportData !== null;
+  const calendarReports = run !== null ? extractCalendarReports(run) : [];
+  const calendarReportAvailable = calendarReports.length > 0;
+  // Done runs that carry report fields default to Report; legacy shapes,
+  // running runs, and failed runs default to Breakdown.
+  const reportAvailable =
+    (run?.mode === "scored" && reportData !== null) || calendarReportAvailable;
   // We can't lazily-init the default off `reportAvailable` because the run
   // fetch is still pending on first render. Track which (runId, available)
   // combination we've already defaulted for; flip to "report" the first time
@@ -475,7 +679,7 @@ export function RunDetailDrawer({
       tab: next,
     });
   };
-  const showReportTab = run?.mode === "scored";
+  const showReportTab = run?.mode === "scored" || calendarReportAvailable;
 
   return (
     <Dialog
@@ -680,6 +884,8 @@ export function RunDetailDrawer({
                         expectedRanking={reportData.expected}
                         scoreSheet={reportData.scoreSheet}
                       />
+                    ) : calendarReportAvailable ? (
+                      <CalendarReportPanel reports={calendarReports} />
                     ) : (
                       <EmptyReport
                         reason={

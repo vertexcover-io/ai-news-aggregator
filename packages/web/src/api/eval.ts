@@ -1,4 +1,6 @@
 import type {
+  CalendarRunDetail,
+  CalendarRunSummary,
   EvalRun,
   EvalRunRequest,
   EvalRunStatus,
@@ -145,6 +147,33 @@ export async function listEvalFixtures(): Promise<{
     throw new EvalApiError(message, res.status, body);
   }
   return (await res.json()) as { fixtures: FixtureSummary[] };
+}
+
+export async function listCalendarRuns(date: string): Promise<{
+  date: string;
+  runs: CalendarRunSummary[];
+}> {
+  const qs = new URLSearchParams({ date });
+  const res = await apiFetchAdmin(`/api/admin/eval/calendar-runs?${qs.toString()}`);
+  if (!res.ok) {
+    const { message, body } = await readErrorBody(res);
+    throw new EvalApiError(message, res.status, body);
+  }
+  return (await res.json()) as { date: string; runs: CalendarRunSummary[] };
+}
+
+export async function getCalendarRunDetail(
+  runId: string,
+): Promise<CalendarRunDetail> {
+  const res = await apiFetchAdmin(
+    `/api/admin/eval/calendar-runs/${encodeURIComponent(runId)}`,
+  );
+  if (!res.ok) {
+    const { message, body } = await readErrorBody(res);
+    throw new EvalApiError(message, res.status, body);
+  }
+  const payload = (await res.json()) as { run: CalendarRunDetail };
+  return payload.run;
 }
 
 export interface ListEvalRunsParams {

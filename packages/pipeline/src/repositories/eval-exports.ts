@@ -1,6 +1,12 @@
 import { and, asc, between, desc, eq, gte, sql } from "drizzle-orm";
 import { rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
+import type {
+  CalendarRankingItem,
+  CalendarRunDetail,
+  CalendarRunSummary,
+  FixtureItem,
+} from "@newsletter/shared/types/eval-ranking";
 import type { RawItemRow } from "./raw-items.js";
 
 /**
@@ -41,6 +47,62 @@ export interface EvalExportsRepo {
    * a single day's collected items without requiring a saved fixture file.
    */
   findRawItemsByDate(dateISO: string): Promise<RawItemRow[]>;
+
+  /**
+   * Returns completed newsletter archives for a UTC calendar day
+   * (`YYYY-MM-DD`), ordered by completion time descending. This powers
+   * calendar eval run selection and fixture-import browsing.
+   */
+  listCompletedRunsByDate(dateISO: string): Promise<CalendarRunSummary[]>;
+
+  /**
+   * Returns a completed archive's previous ranking plus the reconstructed
+   * source pool from raw_items collected during the run window.
+   */
+  getCompletedRunDetail(runId: string): Promise<CalendarRunDetail | null>;
+}
+
+function toIso(value: Date | null): string | null {
+  return value === null ? null : value.toISOString();
+}
+
+function buildFixtureItem(row: RawItemRow): FixtureItem {
+  const enrichedLink = row.metadata.enrichedLink ?? null;
+  const enrichmentStatus = enrichedLink?.status ?? "skipped";
+  return {
+    rawItemId: row.id,
+    title: row.title,
+    url: row.url,
+    sourceType: row.sourceType,
+    publishedAt: row.publishedAt?.toISOString() ?? null,
+    content: row.content,
+    enrichedLink,
+    enrichmentStatus,
+    comments: row.metadata.comments,
+    engagement: row.engagement,
+  };
+}
+
+function buildPreviousRanking(
+  archive: EvalExportArchiveRow,
+  sourcePool: readonly FixtureItem[],
+): CalendarRankingItem[] {
+  const sourceById = new Map(sourcePool.map((item) => [item.rawItemId, item]));
+  return archive.rankedItems.map((item, index) => {
+    const source = sourceById.get(item.rawItemId);
+    return {
+      rank: index + 1,
+      rawItemId: item.rawItemId,
+      title: item.title ?? source?.title ?? `#${String(item.rawItemId)}`,
+      url: source?.url ?? "",
+      sourceType: source?.sourceType ?? "",
+      score: item.score,
+      rationale: item.rationale,
+      summary: item.summary ?? "",
+      bullets: item.bullets ?? [],
+      bottomLine: item.bottomLine ?? "",
+    };
+  });
 }
 
 export function createEvalExportsRepo(
@@ -122,6 +184,86 @@ export function createEvalExportsRepo(
         .from(rawItems)
         .where(between(rawItems.collectedAt, from, to));
       return rows;
+    },
+
+    async listCompletedRunsByDate(dateISO) {
+      const rows = await db
+        .select({
+          id: runArchives.id,
+          rankedItems: runArchives.rankedItems,
+          topN: runArchives.topN,
+          completedAt: runArchives.completedAt,
+          createdAt: runArchives.createdAt,
+          startedAt: runArchives.startedAt,
+          digestHeadline: runArchives.digestHeadline,
+          digestSummary: runArchives.digestSummary,
+          sourceTypes: runArchives.sourceTypes,
+        })
+        .from(runArchives)
+        .where(
+          and(
+            eq(runArchives.status, "completed"),
+            sql`date_trunc('day', ${runArchives.completedAt}) = ${dateISO}::date`,
+          ),
+        )
+        .orderBy(desc(runArchives.completedAt));
+      return rows.map((row) => ({
+        runId: row.id,
+        completedAt: row.completedAt.toISOString(),
+        createdAt: row.createdAt.toISOString(),
+        startedAt: toIso(row.startedAt),
+        itemCount: row.rankedItems.length,
+        topN: row.topN,
+        digestHeadline: row.digestHeadline,
+        digestSummary: row.digestSummary,
+        sourceTypes: row.sourceTypes ?? [],
+      }));
+    },
+
+    async getCompletedRunDetail(runId) {
+      const rows = await db
+        .select({
+          id: runArchives.id,
+          rankedItems: runArchives.rankedItems,
+          topN: runArchives.topN,
+          completedAt: runArchives.completedAt,
+          createdAt: runArchives.createdAt,
+          startedAt: runArchives.startedAt,
+          digestHeadline: runArchives.digestHeadline,
+          digestSummary: runArchives.digestSummary,
+          sourceTypes: runArchives.sourceTypes,
+        })
+        .from(runArchives)
+        .where(
+          and(eq(runArchives.status, "completed"), eq(runArchives.id, runId)),
+        );
+      if (rows.length === 0) return null;
+      const row = rows[0];
+      const archive: EvalExportArchiveRow = {
+        id: row.id,
+        rankedItems: row.rankedItems,
+        createdAt: row.createdAt,
+        completedAt: row.completedAt,
+        startedAt: row.startedAt,
+      };
+      const rawRows = await this.findRawItemsInWindow({
+        from: row.startedAt ?? row.createdAt,
+        to: row.completedAt,
+      });
+      const sourcePool = rawRows.map(buildFixtureItem);
+      return {
+        runId: row.id,
+        completedAt: row.completedAt.toISOString(),
+        createdAt: row.createdAt.toISOString(),
+        startedAt: toIso(row.startedAt),
+        itemCount: sourcePool.length,
+        topN: row.topN,
+        digestHeadline: row.digestHeadline,
+        digestSummary: row.digestSummary,
+        sourceTypes: row.sourceTypes ?? [],
+        previousRanking: buildPreviousRanking(archive, sourcePool),
+        sourcePool,
+      };
     },
   };
 }

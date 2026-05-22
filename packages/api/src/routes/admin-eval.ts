@@ -10,31 +10,31 @@ import { EvalRunRequestSchema } from "@newsletter/shared/types/eval-ranking-sche
 import {
   FIXTURES_DIR,
   GROUNDTRUTH_DIR,
-  WINDOW_MAX,
 } from "@newsletter/shared/constants/eval-ranking";
 import type {
   ActualRankingItem,
+  CalendarRankingItem,
+  CalendarRunDetail,
+  CalendarRunReportEntry,
+  CalendarRunSummary,
   ExpectedRankingItem,
   Fixture,
+  FixtureItem,
   GradingStatus,
   GroundTruth,
   Tier,
 } from "@newsletter/shared/types/eval-ranking";
 import {
-  buildCalendarFixture,
   createEvalExportsRepo,
   createManualFixture as defaultCreateManualFixture,
   listFixtures as defaultListFixtures,
   readFixture as defaultReadFixture,
   readGroundTruth as defaultReadGroundTruth,
   runEval as defaultRunEval,
-  runModeB as defaultRunModeB,
   sourcingReport,
   writeGroundTruth as defaultWriteGroundTruth,
   EvalCache,
-  type CalendarPoolItem,
   type CreateManualFixtureResult,
-  type ModeBResult,
   type RunEvalArgs,
   type RunEvalOutput,
 } from "@newsletter/pipeline/eval";
@@ -115,6 +115,58 @@ export function buildExpectedRanking(
   }));
 }
 
+function buildCalendarRanking(
+  rankedItems: readonly {
+    rawItemId: number;
+    score: number;
+    rationale: string;
+    title?: string;
+    summary?: string;
+    bullets?: string[];
+    bottomLine?: string;
+  }[],
+  sourcePool: readonly FixtureItem[],
+): CalendarRankingItem[] {
+  const sourceById = new Map(sourcePool.map((item) => [item.rawItemId, item]));
+  return rankedItems.map((item, index) => {
+    const source = sourceById.get(item.rawItemId);
+    return {
+      rank: index + 1,
+      rawItemId: item.rawItemId,
+      title: item.title ?? source?.title ?? `#${String(item.rawItemId)}`,
+      url: source?.url ?? "",
+      sourceType: source?.sourceType ?? "",
+      score: item.score,
+      rationale: item.rationale,
+      summary: item.summary ?? "",
+      bullets: item.bullets ?? [],
+      bottomLine: item.bottomLine ?? "",
+    };
+  });
+}
+
+function buildCalendarRunFixture(
+  detail: CalendarRunDetail,
+  date: string,
+  model: string,
+): Fixture {
+  return {
+    fixtureId: `calendar-${detail.runId}`,
+    source: "calendar",
+    date,
+    runId: detail.runId,
+    model,
+    exportedAt: new Date().toISOString(),
+    pool: detail.sourcePool,
+    dedupClusters: [],
+    originalRankerOutput: detail.previousRanking.map((item) => ({
+      rawItemId: item.rawItemId,
+      score: item.score,
+      rationale: item.rationale,
+    })),
+  };
+}
+
 const listRunsQuerySchema = z.object({
   page: z.coerce
     .number()
@@ -146,6 +198,10 @@ const savePromptSchema = z.object({
   prompt: z.string().min(1).max(20000),
 });
 
+const calendarRunsQuerySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
 const DEFAULT_RANKING_MODEL = "claude-haiku-4-5-20251001";
 
 export interface FixtureSummary {
@@ -159,7 +215,6 @@ export interface FixtureSummary {
 }
 
 export type RunEvalFn = typeof defaultRunEval;
-export type RunModeBFn = typeof defaultRunModeB;
 export type ListFixturesFn = typeof defaultListFixtures;
 export type ReadFixtureFn = typeof defaultReadFixture;
 export type ReadGroundTruthFn = typeof defaultReadGroundTruth;
@@ -168,9 +223,12 @@ export type CreateManualFixtureFn = (
   urls: string[],
   opts?: { name?: string; model?: string },
 ) => Promise<CreateManualFixtureResult>;
-export type FindRawItemsByDateFn = (dateISO: string) => Promise<
-  CalendarPoolItem[]
->;
+export type ListCalendarRunsByDateFn = (
+  dateISO: string,
+) => Promise<CalendarRunSummary[]>;
+export type GetCalendarRunDetailFn = (
+  runId: string,
+) => Promise<CalendarRunDetail | null>;
 
 export interface AdminEvalRouterDeps {
   getSettingsRepo: () => UserSettingsRepo;
@@ -181,8 +239,8 @@ export interface AdminEvalRouterDeps {
   writeGroundTruth?: WriteGroundTruthFn;
   createManualFixture?: CreateManualFixtureFn;
   runEval?: RunEvalFn;
-  runModeB?: RunModeBFn;
-  findRawItemsByDate?: FindRawItemsByDateFn;
+  listCalendarRunsByDate?: ListCalendarRunsByDateFn;
+  getCalendarRunDetail?: GetCalendarRunDetailFn;
   fixturesDir?: string;
   groundtruthDir?: string;
   repoGroundtruthDir?: string;
@@ -202,8 +260,8 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
     ((urls: string[], opts?: { name?: string; model?: string }) =>
       defaultCreateManualFixture(urls, opts));
   const runEvalFn = deps.runEval ?? defaultRunEval;
-  const runModeBFn = deps.runModeB ?? defaultRunModeB;
-  const findRawItemsByDateFn = deps.findRawItemsByDate;
+  const listCalendarRunsByDateFn = deps.listCalendarRunsByDate;
+  const getCalendarRunDetailFn = deps.getCalendarRunDetail;
   const fixturesDir = deps.fixturesDir ?? FIXTURES_DIR;
   const groundtruthDir = deps.groundtruthDir ?? GROUNDTRUTH_DIR;
   const repoGroundtruthDir = deps.repoGroundtruthDir ?? GROUNDTRUTH_DIR;
@@ -241,6 +299,35 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
       logger.warn({ err, fixtureId: id }, "admin-eval.fixture.read_failed");
       return c.json({ error: "fixture_not_found" }, 404);
     }
+  });
+
+  app.get("/calendar-runs", async (c) => {
+    if (listCalendarRunsByDateFn === undefined) {
+      return c.json({ error: "calendar_runs_repo_unavailable" }, 500);
+    }
+    const parsed = calendarRunsQuerySchema.safeParse(
+      Object.fromEntries(new URL(c.req.url).searchParams),
+    );
+    if (!parsed.success) {
+      return c.json(
+        { error: "invalid_query", issues: parsed.error.issues },
+        400,
+      );
+    }
+    const runs = await listCalendarRunsByDateFn(parsed.data.date);
+    return c.json({ date: parsed.data.date, runs });
+  });
+
+  app.get("/calendar-runs/:runId", async (c) => {
+    if (getCalendarRunDetailFn === undefined) {
+      return c.json({ error: "calendar_runs_repo_unavailable" }, 500);
+    }
+    const runId = c.req.param("runId");
+    const detail = await getCalendarRunDetailFn(runId);
+    if (detail === null) {
+      return c.json({ error: "run_not_found" }, 404);
+    }
+    return c.json({ run: detail });
   });
 
   app.get("/runs", async (c) => {
@@ -421,7 +508,6 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
 
     const draftPromptHash = hashPrompt(req.draftPrompt);
     const draftPromptSnapshot = truncateSnapshot(req.draftPrompt);
-    let savedPromptForRun: string | null = null;
     let savedPromptHash: string | null = null;
     let savedPromptSnapshot: string | null = null;
     if (req.mode === "ab") {
@@ -429,7 +515,6 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
       const settings = await settingsRepo.get();
       const sp = req.savedPrompt ?? settings?.rankingPrompt ?? "";
       if (sp.length > 0) {
-        savedPromptForRun = sp;
         savedPromptHash = hashPrompt(sp);
         savedPromptSnapshot = truncateSnapshot(sp);
       }
@@ -443,10 +528,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
           mode: req.mode,
           fixtureId: req.mode === "scored" ? (req.fixtureId ?? null) : null,
           date: req.mode === "ab" ? (req.date ?? null) : null,
-          windowSize:
-            req.mode === "scored" && req.fixtureId === undefined
-              ? (req.windowSize ?? null)
-              : null,
+          windowSize: null,
           draftPromptHash,
           draftPromptSnapshot,
           savedPromptHash,
@@ -491,63 +573,27 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
             groundTruth: GroundTruth | null;
           }
           const targets: Target[] = [];
-          if (req.fixtureId) {
-            let fixture: Fixture;
-            try {
-              fixture = await readFixtureFn(req.fixtureId, fixturesDir);
-            } catch {
-              await stream.writeSSE({
-                event: "error",
-                data: JSON.stringify({ message: "fixture_not_found" }),
-              });
-              return;
-            }
-            const gt = await readGroundTruthFn(req.fixtureId, groundtruthDir);
-            targets.push({ fixture, groundTruth: gt });
-          } else if (req.windowSize !== undefined) {
-            if (req.windowSize < 1) {
-              await stream.writeSSE({
-                event: "error",
-                data: JSON.stringify({ message: "windowSize must be >= 1" }),
-              });
-              return;
-            }
-            if (req.windowSize > WINDOW_MAX && req.forceWindow !== true) {
-              await stream.writeSSE({
-                event: "error",
-                data: JSON.stringify({
-                  message: `windowSize ${String(req.windowSize)} exceeds ${String(WINDOW_MAX)} — use forceWindow:true to confirm`,
-                }),
-              });
-              return;
-            }
-            const all = await listFixturesFn(fixturesDir);
-            const gradedPairs: { fixture: Fixture; gradedAt: string; gt: GroundTruth }[] = [];
-            for (const f of all) {
-              const gt = await readGroundTruthFn(f.fixtureId, groundtruthDir);
-              if (gt === null) continue;
-              gradedPairs.push({ fixture: f, gradedAt: gt.gradedAt, gt });
-            }
-            gradedPairs.sort((a, b) => (a.gradedAt < b.gradedAt ? 1 : -1));
-            for (const g of gradedPairs.slice(0, req.windowSize)) {
-              targets.push({ fixture: g.fixture, groundTruth: g.gt });
-            }
-            if (targets.length === 0) {
-              await stream.writeSSE({
-                event: "error",
-                data: JSON.stringify({ message: "no graded fixtures available" }),
-              });
-              return;
-            }
-          } else {
+          if (!req.fixtureId) {
             await stream.writeSSE({
               event: "error",
               data: JSON.stringify({
-                message: "fixtureId or windowSize required for scored mode",
+                message: "fixtureId required for scored mode",
               }),
             });
             return;
           }
+          let fixture: Fixture;
+          try {
+            fixture = await readFixtureFn(req.fixtureId, fixturesDir);
+          } catch {
+            await stream.writeSSE({
+              event: "error",
+              data: JSON.stringify({ message: "fixture_not_found" }),
+            });
+            return;
+          }
+          const gt = await readGroundTruthFn(req.fixtureId, groundtruthDir);
+          targets.push({ fixture, groundTruth: gt });
 
           const ndcgScores: number[] = [];
           const gradedForReport: { fixture: Fixture; groundTruth: GroundTruth }[] = [];
@@ -669,7 +715,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
           });
           return;
         }
-        // mode === "ab" — Mode B Calendar comparison.
+        // mode === "ab" — Mode B calendar run comparison.
         if (!req.date || !/^\d{4}-\d{2}-\d{2}$/.test(req.date)) {
           await stream.writeSSE({
             event: "error",
@@ -677,98 +723,97 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
           });
           return;
         }
-        if (findRawItemsByDateFn === undefined) {
+        if (req.runIds === undefined || req.runIds.length === 0) {
+          await stream.writeSSE({
+            event: "error",
+            data: JSON.stringify({ message: "runIds required" }),
+          });
+          return;
+        }
+        if (getCalendarRunDetailFn === undefined) {
           await stream.writeSSE({
             event: "error",
             data: JSON.stringify({
-              message: "calendar pool loader not configured",
+              message: "calendar run loader not configured",
             }),
           });
           return;
         }
-        if (savedPromptForRun === null) {
+        const calendarRuns: CalendarRunReportEntry[] = [];
+        const perRunCosts: {
+          runId: string;
+          cost: RunEvalOutput["cost"];
+        }[] = [];
+        for (const selectedRunId of req.runIds) {
           await stream.writeSSE({
-            event: "error",
-            data: JSON.stringify({ message: "savedPrompt unavailable" }),
+            event: "progress",
+            data: JSON.stringify({ runId: selectedRunId, status: "running" }),
           });
-          return;
-        }
-        const savedPrompt = savedPromptForRun;
-        const pool = await findRawItemsByDateFn(req.date);
-        if (pool.length === 0) {
-          await stream.writeSSE({
-            event: "error",
-            data: JSON.stringify({
-              message: `no raw_items for ${req.date}`,
-            }),
-          });
-          return;
-        }
-        const fixture = buildCalendarFixture(req.date, pool, model);
-        await stream.writeSSE({
-          event: "progress",
-          data: JSON.stringify({ branch: "saved", status: "running" }),
-        });
-        await stream.writeSSE({
-          event: "progress",
-          data: JSON.stringify({ branch: "draft", status: "running" }),
-        });
-        let abResult: ModeBResult;
-        try {
-          abResult = await runModeBFn({
-            fixture,
-            savedPrompt,
-            draftPrompt: req.draftPrompt,
-            model,
-            cache,
-          });
-        } catch (err) {
-          await stream.writeSSE({
-            event: "error",
-            data: JSON.stringify({
-              message: err instanceof Error ? err.message : String(err),
-            }),
-          });
-          return;
-        }
-        totalUsd += abResult.cost.totalUsd;
-        const titleById = new Map<number, { title: string; url: string; source: string }>();
-        for (const p of pool) {
-          titleById.set(p.rawItemId, {
-            title: p.title,
-            url: p.url,
-            source: p.sourceType,
-          });
-        }
-        const toAbItems = (
-          refs: { rawItemId: number }[],
-        ): { rank: number; rawItemId: number; title: string; url: string; source: string }[] =>
-          refs.slice(0, 10).map((r, idx) => {
-            const meta = titleById.get(r.rawItemId);
-            return {
-              rank: idx + 1,
-              rawItemId: r.rawItemId,
-              title: meta?.title ?? `#${String(r.rawItemId)}`,
-              url: meta?.url ?? "",
-              source: meta?.source ?? "",
+          try {
+            const detail = await getCalendarRunDetailFn(selectedRunId);
+            if (detail === null) {
+              throw new Error("run not found");
+            }
+            if (detail.sourcePool.length === 0) {
+              throw new Error("run source pool empty");
+            }
+            const fixture = buildCalendarRunFixture(detail, req.date, model);
+            const result = await runEvalFn({
+              fixture,
+              groundTruth: null,
+              prompt: req.draftPrompt,
+              model,
+              cache,
+            });
+            totalUsd += result.cost.usd;
+            const entry: CalendarRunReportEntry = {
+              runId: selectedRunId,
+              status: "done",
+              previousRanking: detail.previousRanking,
+              draftRanking: buildCalendarRanking(
+                result.rankedItems,
+                detail.sourcePool,
+              ),
+              promptDiff: {
+                savedPromptHash,
+                draftPromptHash,
+                savedPromptSnapshot,
+                draftPromptSnapshot,
+              },
+              cost: result.cost,
             };
-          });
-        const savedItems = toAbItems(abResult.saved);
-        const draftItems = toAbItems(abResult.draft);
+            calendarRuns.push(entry);
+            perRunCosts.push({ runId: selectedRunId, cost: result.cost });
+            await stream.writeSSE({
+              event: "progress",
+              data: JSON.stringify(entry),
+            });
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            const entry: CalendarRunReportEntry = {
+              runId: selectedRunId,
+              status: "error",
+              error: errMsg,
+            };
+            calendarRuns.push(entry);
+            await stream.writeSSE({
+              event: "progress",
+              data: JSON.stringify(entry),
+            });
+          }
+        }
         await stream.writeSSE({
           event: "aggregate",
           data: JSON.stringify({
-            saved: savedItems,
-            draft: draftItems,
+            calendarRuns,
             totalCost: { usd: totalUsd },
           }),
         });
         await persistFinish(
-          { saved: savedItems, draft: draftItems },
+          { calendarRuns },
           {
             totalUsd,
-            saved: abResult.cost.saved,
-            draft: abResult.cost.draft,
+            perRun: perRunCosts,
           },
         );
         await stream.writeSSE({
@@ -794,17 +839,13 @@ export function createDefaultAdminEvalRouter(): Hono {
   return createAdminEvalRouter({
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
     getEvalRunsRepo: () => createEvalRunsRepo(defaultGetDb()),
-    findRawItemsByDate: async (dateISO) => {
+    listCalendarRunsByDate: async (dateISO) => {
       const repo = createEvalExportsRepo(defaultGetDb());
-      const rows = await repo.findRawItemsByDate(dateISO);
-      return rows.map((r) => ({
-        rawItemId: r.id,
-        title: r.title,
-        url: r.url,
-        sourceType: r.sourceType,
-        publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
-        content: r.content,
-      }));
+      return repo.listCompletedRunsByDate(dateISO);
+    },
+    getCalendarRunDetail: async (runId) => {
+      const repo = createEvalExportsRepo(defaultGetDb());
+      return repo.getCompletedRunDetail(runId);
     },
   });
 }

@@ -1,11 +1,28 @@
 import { useMemo, useState, type ReactElement } from "react";
 import { useForm, useWatch } from "react-hook-form";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { createManualFixture, EvalApiError } from "../api/eval";
+import {
+  createManualFixture,
+  EvalApiError,
+  getCalendarRunDetail,
+  listCalendarRuns,
+} from "../api/eval";
 import { ManualFixturePipelinePanel } from "../components/eval/ManualFixturePipelinePanel";
 import { ManualFixtureSourceMixPanel } from "../components/eval/ManualFixtureSourceMixPanel";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import type {
+  CalendarRankingItem,
+  CalendarRunDetail,
+  CalendarRunSummary,
+} from "@newsletter/shared/types/eval-ranking";
 
 interface FormValues {
   urls: string;
@@ -36,12 +53,53 @@ function parseLines(input: string): ParsedLine[] {
   });
 }
 
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
+}
+
+function shortRunId(runId: string): string {
+  return runId.slice(0, 8);
+}
+
+function runLabel(run: CalendarRunSummary): string {
+  return run.digestHeadline ?? `Run ${shortRunId(run.runId)}`;
+}
+
+function appendUniqueUrls(existing: string, urls: readonly string[]): string {
+  const current = existing
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const seen = new Set(current);
+  const next = [...current];
+  for (const url of urls) {
+    if (seen.has(url)) continue;
+    seen.add(url);
+    next.push(url);
+  }
+  return next.join("\n");
+}
+
 export function EvalManualFixturePage(): ReactElement {
   const navigate = useNavigate();
-  const { register, handleSubmit, control } = useForm<FormValues>({
-    defaultValues: { urls: "", name: "" },
-  });
+  const { register, handleSubmit, control, getValues, setValue } =
+    useForm<FormValues>({
+      defaultValues: { urls: "", name: "" },
+    });
   const [submitting, setSubmitting] = useState(false);
+  const [importDate, setImportDate] = useState("");
+  const [detailRunId, setDetailRunId] = useState<string | null>(null);
+  const [runDetail, setRunDetail] = useState<CalendarRunDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  const runsQuery = useQuery({
+    queryKey: ["eval", "calendar-runs", importDate],
+    queryFn: () => listCalendarRuns(importDate),
+    enabled: /^\d{4}-\d{2}-\d{2}$/.test(importDate),
+  });
 
   const urlsValue = useWatch({ control, name: "urls" });
   const parsed = useMemo(() => parseLines(urlsValue), [urlsValue]);
@@ -58,6 +116,38 @@ export function EvalManualFixturePage(): ReactElement {
   );
   const hasInvalidLine = invalidLines.length > 0;
   const canSubmit = !submitting && validUrls.length >= 1 && !hasInvalidLine;
+  const calendarRuns = runsQuery.data?.runs ?? [];
+  const runDetailSourceUrls = useMemo(() => {
+    const urlsByRawItemId = new Map<number, string>();
+    for (const source of runDetail?.sourcePool ?? []) {
+      urlsByRawItemId.set(source.rawItemId, source.url);
+    }
+    return urlsByRawItemId;
+  }, [runDetail]);
+
+  function importUrls(urls: readonly string[]): void {
+    const next = appendUniqueUrls(getValues("urls"), urls);
+    setValue("urls", next, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    });
+  }
+
+  async function openRunDetail(runId: string): Promise<void> {
+    setDetailRunId(runId);
+    setRunDetail(null);
+    setDetailError(null);
+    setDetailLoading(true);
+    try {
+      setRunDetail(await getCalendarRunDetail(runId));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load run";
+      setDetailError(message);
+    } finally {
+      setDetailLoading(false);
+    }
+  }
 
   const onSubmit = handleSubmit(async (values) => {
     if (!canSubmit) return;
@@ -124,6 +214,66 @@ export function EvalManualFixturePage(): ReactElement {
           className="max-w-[1100px] mx-auto grid grid-cols-1 md:grid-cols-[1fr_360px] gap-6 items-start"
         >
           <section className="flex flex-col gap-5">
+            <section className="bg-white border border-stone-200 rounded-lg overflow-hidden">
+              <header className="px-5 py-3 border-b border-stone-200 bg-stone-50">
+                <label
+                  htmlFor="fixture-import-date"
+                  className="font-mono text-[11px] uppercase tracking-[0.1em] text-stone-900"
+                >
+                  Import from date
+                </label>
+              </header>
+              <div className="p-5">
+                <input
+                  id="fixture-import-date"
+                  type="date"
+                  value={importDate}
+                  onChange={(event) => {
+                    setImportDate(event.target.value);
+                  }}
+                  className="block w-full rounded-md border border-stone-300 px-3 py-2 text-sm font-mono focus:border-stone-900 focus:outline-none focus:ring-1 focus:ring-stone-900"
+                />
+                <div className="mt-4 rounded-md border border-stone-200">
+                  {runsQuery.isLoading ? (
+                    <div className="px-3 py-4 font-mono text-xs text-stone-500">
+                      Loading runs…
+                    </div>
+                  ) : runsQuery.isError ? (
+                    <div className="px-3 py-4 text-xs text-rose-700">
+                      Failed to load runs.
+                    </div>
+                  ) : calendarRuns.length === 0 ? (
+                    <div className="px-3 py-4 font-mono text-xs text-stone-500">
+                      No completed runs for this date.
+                    </div>
+                  ) : (
+                    calendarRuns.map((run) => (
+                      <button
+                        key={run.runId}
+                        type="button"
+                        onClick={() => {
+                          void openRunDetail(run.runId);
+                        }}
+                        className="block w-full border-b border-stone-100 px-3 py-3 text-left last:border-none hover:bg-stone-50"
+                      >
+                        <span className="block text-sm font-medium text-stone-900">
+                          {runLabel(run)}
+                        </span>
+                        <span className="block font-mono text-[11px] text-stone-500">
+                          {shortRunId(run.runId)} · {String(run.itemCount)} items ·{" "}
+                          top {String(run.topN)}
+                        </span>
+                        <span className="block text-[11px] text-stone-500">
+                          {formatDateTime(run.completedAt)} ·{" "}
+                          {run.sourceTypes.join(", ") || "sources n/a"}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            </section>
+
             <div className="bg-white border border-stone-200 rounded-lg p-5">
               <label
                 htmlFor="fixture-name"
@@ -262,6 +412,111 @@ export function EvalManualFixturePage(): ReactElement {
           </aside>
         </form>
       </main>
+      <Dialog
+        open={detailRunId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailRunId(null);
+            setRunDetail(null);
+            setDetailError(null);
+          }
+        }}
+      >
+        <DialogContent
+          data-testid="calendar-source-dialog"
+          className="flex h-[80vh] max-w-5xl flex-col overflow-hidden"
+        >
+          <DialogTitle>
+            Import run sources
+            {detailRunId === null ? "" : ` · ${shortRunId(detailRunId)}`}
+          </DialogTitle>
+          <DialogDescription>
+            Ranked items from the selected run and their source URLs.
+          </DialogDescription>
+          {detailLoading ? (
+            <div className="flex flex-1 items-center justify-center font-mono text-xs uppercase tracking-wider text-stone-500">
+              Loading…
+            </div>
+          ) : detailError !== null || runDetail === null ? (
+            <div className="flex flex-1 items-center justify-center text-sm text-rose-700">
+              Failed to load run.
+            </div>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex justify-end border-b border-stone-200 pb-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    importUrls(runDetail.sourcePool.map((item) => item.url));
+                  }}
+                  className="rounded bg-stone-900 px-3 py-2 text-sm font-medium text-white"
+                >
+                  Import all sources
+                </button>
+              </div>
+              <div className="min-h-0 overflow-auto">
+                {runDetail.previousRanking.map((item) => (
+                  <CalendarImportRow
+                    key={item.rawItemId}
+                    item={item}
+                    sourceUrl={runDetailSourceUrls.get(item.rawItemId) ?? null}
+                    onImport={() => {
+                      const sourceUrl = runDetailSourceUrls.get(item.rawItemId);
+                      if (sourceUrl === undefined) return;
+                      importUrls([sourceUrl]);
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+interface CalendarImportRowProps {
+  item: CalendarRankingItem;
+  sourceUrl: string | null;
+  onImport: () => void;
+}
+
+function CalendarImportRow({
+  item,
+  sourceUrl,
+  onImport,
+}: CalendarImportRowProps): ReactElement {
+  return (
+    <div className="grid grid-cols-[1fr_auto] gap-4 border-b border-stone-100 py-3 last:border-none">
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono text-[11px] tabular-nums text-stone-500">
+            #{String(item.rank)}
+          </span>
+          <span className="truncate text-sm font-medium text-stone-900">
+            {item.title}
+          </span>
+          <span className="rounded border border-stone-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-stone-600">
+            {item.sourceType}
+          </span>
+        </div>
+        <div className="mt-1 break-all pl-7 font-mono text-[11px] text-stone-500">
+          {item.url}
+        </div>
+        {item.rationale.length > 0 ? (
+          <p className="mt-1 pl-7 text-xs text-stone-600">{item.rationale}</p>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        onClick={onImport}
+        disabled={sourceUrl === null}
+        aria-label={`Import source ${String(item.rank)}`}
+        className="self-start rounded border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        Import
+      </button>
     </div>
   );
 }
