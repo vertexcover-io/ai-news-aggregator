@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import type { RankedItemRef } from "@newsletter/shared";
 import { EVAL_K } from "@newsletter/shared/constants/eval-ranking";
+import { hashPrompt } from "@newsletter/shared/utils/prompt-hash";
 import type {
   EvalScore,
   Fixture,
@@ -43,10 +43,6 @@ export interface RunEvalOutput {
 
 export interface RunEvalDeps {
   rankCandidates?: typeof rankCandidatesDefault;
-}
-
-function hashPrompt(prompt: string): string {
-  return createHash("sha256").update(prompt).digest("hex").slice(0, 16);
 }
 
 function computeScore(

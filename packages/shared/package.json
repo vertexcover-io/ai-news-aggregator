@@ -11,6 +11,7 @@
     "./constants": "./dist/constants/index.js",
     "./scheduling": "./dist/scheduling/index.js",
     "./utils": "./dist/utils/index.js",
+    "./utils/prompt-hash": "./dist/utils/prompt-hash.js",
     "./logger": "./dist/logger.js",
     "./services": "./dist/services/index.js",
     "./services/credential-cipher": "./dist/services/credential-cipher.js",
