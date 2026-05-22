@@ -85,7 +85,6 @@ export function useEvalRuns(): UseEvalRunsResult {
         mode: filter.mode,
         status: filter.status,
         fixtureId: filter.fixtureId,
-        q: effectiveQ,
       },
     ],
     queryFn: () =>
@@ -98,6 +97,24 @@ export function useEvalRuns(): UseEvalRunsResult {
       }),
     placeholderData: keepPreviousData,
   });
+
+  // Client-side filter of the current page by `q` against runs id / fixtureId /
+  // prompt hash. The backend list endpoint doesn't accept a search param (it
+  // filters only by mode/status/fixtureId), and adding one would require
+  // database FTS. For now we narrow the current page only — good enough for
+  // the realistic "find this prompt hash in my last few runs" workflow.
+  const filteredData = useMemo<ListEvalRunsResponse | undefined>(() => {
+    if (query.data === undefined) return undefined;
+    if (effectiveQ.length === 0) return query.data;
+    const needle = effectiveQ.toLowerCase();
+    const runs = query.data.runs.filter((r) => {
+      if (r.id.toLowerCase().includes(needle)) return true;
+      if (r.draftPromptHash.toLowerCase().includes(needle)) return true;
+      if (r.fixtureId?.toLowerCase().includes(needle) === true) return true;
+      return false;
+    });
+    return { ...query.data, runs };
+  }, [query.data, effectiveQ]);
 
   const setFilter = (next: RunsFilterValue): void => {
     const params = new URLSearchParams(searchParams);
@@ -126,7 +143,7 @@ export function useEvalRuns(): UseEvalRunsResult {
     page,
     perPage,
     setPage,
-    data: query.data,
+    data: filteredData,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     isError: query.isError,

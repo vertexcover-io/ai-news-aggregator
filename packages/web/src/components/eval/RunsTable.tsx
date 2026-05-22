@@ -114,7 +114,6 @@ export function RunsTable({
             <th className="w-24 px-3 py-2.5 text-right">nDCG@10</th>
             <th className="w-24 px-3 py-2.5 text-right">Cost</th>
             <th className="w-32 px-3 py-2.5">Status</th>
-            <th className="w-10 px-3 py-2.5" />
           </tr>
         </thead>
         <tbody data-testid="runs-table-body">
@@ -188,15 +187,6 @@ export function RunsTable({
                 </td>
                 <td className="px-3 py-2">
                   <StatusCell status={run.status} />
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <button
-                    type="button"
-                    aria-label="row actions"
-                    className="rounded px-2 py-1 font-mono text-xs text-neutral-400 hover:bg-neutral-100"
-                  >
-                    ···
-                  </button>
                 </td>
               </tr>
             );

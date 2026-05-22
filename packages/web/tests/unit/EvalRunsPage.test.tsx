@@ -148,32 +148,53 @@ describe("EvalRunsPage", () => {
     expect(screen.getByText(/No eval runs yet/i)).toBeTruthy();
   });
 
-  it("does not refetch on 1-char search; refetches at 2 chars", async () => {
+  it("client-side filters the rendered rows by ?q= against id, prompt hash, and fixture id", async () => {
+    const rows = [
+      makeRun("aaa-111", { draftPromptHash: "deadbeef00000000", fixtureId: "fx-alpha" }),
+      makeRun("bbb-222", { draftPromptHash: "cafef00d00000000", fixtureId: "fx-beta" }),
+      makeRun("ccc-333", { draftPromptHash: "deadbeef00000000", fixtureId: "fx-gamma" }),
+    ];
     listEvalRunsMock.mockResolvedValue({
-      runs: [],
-      total: 0,
+      runs: rows,
+      total: 3,
       page: 1,
       perPage: 20,
     });
     renderPage();
-    await screen.findByTestId("runs-empty-state");
-    const initialCalls = listEvalRunsMock.mock.calls.length;
+    await screen.findByTestId("runs-table-section");
+    await waitFor(() => {
+      expect(screen.queryAllByTestId(/^runs-row-(?!checkbox)/).length).toBe(3);
+    });
+
     const input = screen.getByTestId<HTMLInputElement>("runs-search-input");
     fireEvent.change(input, { target: { value: "a" } });
-    // wait past the debounce window
+    // 1 char: below SEARCH_MIN_CHARS, still 3 rows.
     await new Promise((r) => {
       setTimeout(r, 300);
     });
-    expect(listEvalRunsMock.mock.calls.length).toBe(initialCalls);
-    fireEvent.change(input, { target: { value: "ab" } });
+    expect(screen.queryAllByTestId(/^runs-row-(?!checkbox)/).length).toBe(3);
+
+    // 2+ chars hitting the fixture id → 1 row.
+    fireEvent.change(input, { target: { value: "alpha" } });
+    await waitFor(() => {
+      expect(screen.queryAllByTestId(/^runs-row-(?!checkbox)/).length).toBe(1);
+    });
+    expect(screen.getByTestId("runs-row-aaa-111")).toBeTruthy();
+
+    // hash match: deadbeef appears in two rows.
+    fireEvent.change(input, { target: { value: "deadbeef" } });
+    await waitFor(() => {
+      expect(screen.queryAllByTestId(/^runs-row-(?!checkbox)/).length).toBe(2);
+    });
+
+    // 1-char input does NOT trigger an extra API call.
+    const callsBefore = listEvalRunsMock.mock.calls.length;
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.change(input, { target: { value: "x" } });
     await new Promise((r) => {
       setTimeout(r, 300);
     });
-    // We don't pass `q` to the API in P2 (search is a client-side debounce only
-    // hook signal), but the URL should update so the query key changes the next
-    // time a server search lands.
-    const probe = screen.getByTestId("location-probe");
-    expect(probe.getAttribute("data-search")).toContain("q=ab");
+    expect(listEvalRunsMock.mock.calls.length).toBe(callsBefore);
   });
 
   it("selecting Mode A in the segment writes ?mode=scored and refetches", async () => {
