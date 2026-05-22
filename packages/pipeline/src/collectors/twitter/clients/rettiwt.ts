@@ -86,7 +86,7 @@ function pickPhotoUrls(media: RettiwtRawMedia[] | undefined): string[] {
     .filter((u): u is string => typeof u === "string");
 }
 
-function denormalize(t: RettiwtRawTweet): NormalizedTweet {
+export function denormalize(t: RettiwtRawTweet): NormalizedTweet {
   const inner = t.retweetedTweet ?? t;
   const handle = inner.tweetBy?.userName ?? "i";
   const photoUrls = pickPhotoUrls(inner.media);
@@ -124,7 +124,7 @@ function denormalize(t: RettiwtRawTweet): NormalizedTweet {
   };
 }
 
-function abortRace<T>(p: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+export function abortRace<T>(p: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   if (!signal) return p;
   if (signal.aborted) {
     return Promise.reject(makeAbortError());
@@ -185,7 +185,7 @@ function hasCsrfMismatchMessage(err: unknown): boolean {
   });
 }
 
-function isCsrfMismatchError(err: unknown): boolean {
+export function isCsrfMismatchError(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
   const status = "status" in err ? (err as { status: unknown }).status : undefined;
   return status === 403 && (hasTwitterErrorCode(err, 353) || hasCsrfMismatchMessage(err));

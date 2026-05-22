@@ -1,0 +1,12 @@
+=== TEST 1: VS-0-1 happy path ===
+OK sourceType= twitter externalId= 20 author= jack
+title= just setting up my twttr
+url= https://x.com/jack/status/20
+engagement= { points: 309674, commentCount: 150422 }
+=== TEST 2: VS-0-2 invalid id ===
+OK threw: Tweet not found, deleted, or protected: 1
+=== TEST 3: VS-0-4 missing cookie ===
+OK threw: Twitter cookies not configured — set them at /admin/settings
+=== TEST 4: VS-0-5 URL detection (already covered by unit tests; reaffirm parser) ===
+OK all parse cases
+=== ALL TESTS PASSED ===

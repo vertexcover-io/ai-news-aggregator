@@ -11,6 +11,12 @@ import type {
 import { tweetToRawItem } from "@pipeline/collectors/twitter/map.js";
 import type { TwitterCollectConfig } from "@pipeline/types.js";
 import { enrichRawItems } from "@pipeline/services/link-enrichment/index.js";
+import {
+  abortRace,
+  denormalize,
+  isCsrfMismatchError,
+  type RettiwtRawTweet,
+} from "@pipeline/collectors/twitter/clients/rettiwt.js";
 
 const logger = createLogger("collector:twitter");
 
@@ -399,4 +405,176 @@ export async function collectTwitter(
     durationMs,
     unitResults,
   };
+}
+
+// -----------------------------------------------------------------------------
+// Single-tweet fetch path (Add Post feature)
+//
+// Exposed via the add-post helper. The helper wires the default cookie
+// resolver, Rettiwt factory, and CSRF refresher so this file stays free of
+// repository / DB / SDK imports (per package-boundary rules).
+// -----------------------------------------------------------------------------
+
+const TWEET_URL_RE =
+  /^https?:\/\/(?:[a-z0-9-]+\.)?(?:x|twitter)\.com\/(?:[^/]+)\/status\/(\d+)(?:[/?#].*)?$/i;
+
+export function parseTweetIdFromUrl(url: string): string | null {
+  const m = TWEET_URL_RE.exec(url);
+  return m ? m[1] : null;
+}
+
+export interface TwitterCookie {
+  apiKey: string;
+  source: "db" | "env";
+}
+
+export interface SingleTweetClient {
+  fetchTweetById(
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<RettiwtRawTweet | null | undefined>;
+}
+
+export interface RettiwtTweetFacade {
+  tweet: {
+    details(id: string): Promise<RettiwtRawTweet | null | undefined>;
+  };
+}
+
+export interface FetchTwitterPostDeps {
+  fetchFn?: typeof fetch;
+  signal?: AbortSignal;
+  client?: SingleTweetClient;
+  resolveCookie?: () => Promise<TwitterCookie | null>;
+  rettiwtFactory?: (apiKey: string) => RettiwtTweetFacade;
+  refreshCsrf?: (apiKey: string, source: "db" | "env") => Promise<string | null>;
+}
+
+const COOKIES_MISSING_MSG =
+  "Twitter cookies not configured — set them at /admin/settings";
+const AUTH_FAILED_MSG =
+  "Twitter auth failed — rotate cookies at /admin/settings";
+
+function tweetNotFoundMsg(id: string): string {
+  return `Tweet not found, deleted, or protected: ${id}`;
+}
+
+async function callDetailsWithRetry(
+  details: (id: string) => Promise<RettiwtRawTweet | null | undefined>,
+  buildDetails: (apiKey: string) => (
+    id: string,
+  ) => Promise<RettiwtRawTweet | null | undefined>,
+  cookie: TwitterCookie,
+  id: string,
+  signal: AbortSignal | undefined,
+  refreshCsrf: FetchTwitterPostDeps["refreshCsrf"],
+): Promise<RettiwtRawTweet | null | undefined> {
+  try {
+    return await abortRace(details(id), signal);
+  } catch (err) {
+    if (!isCsrfMismatchError(err) || !refreshCsrf) throw err;
+    const rotated = await refreshCsrf(cookie.apiKey, cookie.source);
+    if (!rotated) throw err;
+    const retried = buildDetails(rotated);
+    return abortRace(retried(id), signal);
+  }
+}
+
+function isAuthClass(err: unknown): boolean {
+  if (typeof err === "object" && err !== null) {
+    const status = (err as { status?: unknown }).status;
+    if (status === 401 || status === 403) return true;
+    if (err instanceof Error) {
+      const msg = err.message;
+      if (/not authorized/i.test(msg)) return true;
+      if (/invalid authentication/i.test(msg)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Fetch a single tweet by its public URL. Used by the Add Post feature.
+ *
+ * @throws Error("not a twitter status URL: <url>") if the URL does not match a
+ *   Twitter/X /status/<id> pattern.
+ * @throws Error("Twitter cookies not configured — set them at /admin/settings")
+ *   if no client seam is provided and `resolveCookie()` returns null.
+ * @throws Error("Twitter auth failed — rotate cookies at /admin/settings") if
+ *   the underlying SDK throws an auth-class error (synchronously at
+ *   construction OR after the CSRF refresh + retry attempt).
+ * @throws Error("Tweet not found, deleted, or protected: <id>") if the
+ *   underlying SDK returns null/undefined for the tweet ID.
+ */
+export async function fetchTwitterPost(
+  url: string,
+  deps: FetchTwitterPostDeps = {},
+): Promise<RawItemInsert> {
+  const id = parseTweetIdFromUrl(url);
+  if (id === null) {
+    throw new Error(`not a twitter status URL: ${url}`);
+  }
+
+  if (deps.signal?.aborted) {
+    const err = new Error("Aborted");
+    err.name = "AbortError";
+    throw err;
+  }
+
+  let raw: RettiwtRawTweet | null | undefined;
+
+  if (deps.client) {
+    raw = await deps.client.fetchTweetById(id, deps.signal);
+  } else {
+    if (!deps.resolveCookie) {
+      throw new Error(
+        "fetchTwitterPost requires either deps.client or deps.resolveCookie",
+      );
+    }
+    const cookie = await deps.resolveCookie();
+    if (!cookie) {
+      throw new Error(COOKIES_MISSING_MSG);
+    }
+    if (!deps.rettiwtFactory) {
+      throw new Error(
+        "fetchTwitterPost requires deps.rettiwtFactory when deps.client is not provided",
+      );
+    }
+
+    const rettiwtFactory = deps.rettiwtFactory;
+    const buildDetails = (
+      apiKey: string,
+    ): ((id: string) => Promise<RettiwtRawTweet | null | undefined>) => {
+      let facade: RettiwtTweetFacade;
+      try {
+        facade = rettiwtFactory(apiKey);
+      } catch {
+        throw new Error(AUTH_FAILED_MSG);
+      }
+      return (tweetId) => facade.tweet.details(tweetId);
+    };
+
+    const initialDetails = buildDetails(cookie.apiKey);
+    try {
+      raw = await callDetailsWithRetry(
+        initialDetails,
+        buildDetails,
+        cookie,
+        id,
+        deps.signal,
+        deps.refreshCsrf,
+      );
+    } catch (err) {
+      if (isAuthClass(err)) {
+        throw new Error(AUTH_FAILED_MSG, { cause: err });
+      }
+      throw err;
+    }
+  }
+
+  if (raw == null) {
+    throw new Error(tweetNotFoundMsg(id));
+  }
+
+  return tweetToRawItem(denormalize(raw));
 }

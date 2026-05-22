@@ -21,3 +21,9 @@ export {
   type RecapInputItem,
   type GenerateRecapOptions,
 } from "@pipeline/processors/recap.js";
+
+export {
+  parseTweetIdFromUrl,
+  fetchTwitterPost,
+  type FetchTwitterPostDeps,
+} from "@pipeline/collectors/twitter/index.js";
