@@ -251,51 +251,70 @@ describe("admin-eval /run persistence (Phase 3)", () => {
     expect(failedPayload.errorMessage).toBe("groundtruth-disk-corrupt");
   });
 
-  it("Mode B success: row has mode=ab, date set, fixtureId null, saved+draft breakdown", async () => {
+  it("Mode B success: row has mode=ab, date set, fixtureId null, calendar run breakdown", async () => {
     const evalRunsRepo = makeEvalRunsRepo();
+    const calendarDetail = {
+      runId: "run-calendar-1",
+      completedAt: "2026-05-10T10:30:00.000Z",
+      createdAt: "2026-05-10T10:00:00.000Z",
+      startedAt: "2026-05-10T10:05:00.000Z",
+      itemCount: 1,
+      topN: 10,
+      digestHeadline: "Calendar run",
+      digestSummary: "One archived item",
+      sourceTypes: ["hn"],
+      previousRanking: [
+        {
+          rank: 1,
+          rawItemId: 1,
+          title: "x",
+          url: "https://x/1",
+          sourceType: "hn",
+          score: 1,
+          rationale: "saved",
+          summary: "",
+          bullets: [],
+          bottomLine: "",
+        },
+      ],
+      sourcePool: [
+        {
+          rawItemId: 1,
+          title: "x",
+          url: "https://x/1",
+          sourceType: "hn",
+          publishedAt: null,
+          content: null,
+          enrichedLink: null,
+          enrichmentStatus: "ok",
+          comments: [],
+          engagement: null,
+        },
+      ],
+    };
+    const getCalendarRunDetail = vi.fn(() => Promise.resolve(calendarDetail));
+    const runEval = vi.fn(() =>
+      Promise.resolve({
+        rankedItems: [{ rawItemId: 1, score: 1, rationale: "draft" }],
+        score: null,
+        cost: {
+          tokensIn: 20,
+          tokensOut: 10,
+          usd: 0.002,
+          cacheHit: false,
+          promptHash: "d",
+        },
+      }),
+    );
     const app = makeApp({
       getSettingsRepo: () => makeSettingsRepo("the-saved-prompt"),
       getEvalRunsRepo: () => evalRunsRepo,
-      findRawItemsByDate: vi.fn(() =>
-        Promise.resolve([
-          {
-            rawItemId: 1,
-            title: "x",
-            url: "https://x/1",
-            sourceType: "hn",
-            publishedAt: null,
-            content: null,
-          },
-        ]),
-      ),
-      runModeB: vi.fn(() =>
-        Promise.resolve({
-          saved: [{ rawItemId: 1, score: 1, rationale: "" }],
-          draft: [{ rawItemId: 1, score: 1, rationale: "" }],
-          cost: {
-            saved: {
-              tokensIn: 10,
-              tokensOut: 5,
-              usd: 0.001,
-              cacheHit: false,
-              promptHash: "s",
-            },
-            draft: {
-              tokensIn: 20,
-              tokensOut: 10,
-              usd: 0.002,
-              cacheHit: false,
-              promptHash: "d",
-            },
-            totalUsd: 0.003,
-          },
-        }),
-      ),
+      getCalendarRunDetail,
       listFixtures: vi.fn(() => Promise.resolve([])),
       readFixture: vi.fn(),
       readGroundTruth: vi.fn(),
       writeGroundTruth: vi.fn(),
-      runEval: vi.fn(),
+      runEval,
     });
     const res = await app.request("/api/admin/eval/run", {
       method: "POST",
@@ -303,6 +322,7 @@ describe("admin-eval /run persistence (Phase 3)", () => {
       body: JSON.stringify({
         mode: "ab",
         date: "2026-05-10",
+        runIds: ["run-calendar-1"],
         draftPrompt: "draft-B",
       }),
     });
@@ -319,25 +339,31 @@ describe("admin-eval /run persistence (Phase 3)", () => {
     });
     expect(insertArg.savedPromptSnapshot).toBe("the-saved-prompt");
     expect(insertArg.savedPromptHash).toHaveLength(16);
+    expect(getCalendarRunDetail).toHaveBeenCalledWith("run-calendar-1");
+    expect(runEval).toHaveBeenCalledOnce();
 
     expect(evalRunsRepo.updateFinish).toHaveBeenCalledTimes(1);
     const [, finishPayload] = vi.mocked(evalRunsRepo.updateFinish).mock.calls[0];
     interface ScoreBreakdownB {
-      saved: unknown[];
-      draft: unknown[];
+      calendarRuns: unknown[];
     }
     interface CostBreakdownB {
       totalUsd: number;
-      saved: { usd: number };
-      draft: { usd: number };
+      perRun: { runId: string; cost: { usd: number } }[];
     }
     const score = finishPayload.scoreBreakdown as ScoreBreakdownB;
     const cost = finishPayload.costBreakdown as CostBreakdownB;
-    expect(score.saved).toHaveLength(1);
-    expect(score.draft).toHaveLength(1);
-    expect(cost.totalUsd).toBeCloseTo(0.003);
-    expect(cost.saved.usd).toBeCloseTo(0.001);
-    expect(cost.draft.usd).toBeCloseTo(0.002);
+    expect(score.calendarRuns).toHaveLength(1);
+    expect(score.calendarRuns[0]).toMatchObject({
+      runId: "run-calendar-1",
+      status: "done",
+      previousRanking: calendarDetail.previousRanking,
+    });
+    expect(cost.totalUsd).toBeCloseTo(0.002);
+    expect(cost.perRun[0]).toMatchObject({
+      runId: "run-calendar-1",
+      cost: { usd: 0.002 },
+    });
   });
 
   it("EDGE-1.4: insert throws — stream still completes with done", async () => {
