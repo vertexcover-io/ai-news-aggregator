@@ -21,6 +21,7 @@ export function AdminLayout(): ReactElement {
           <Link to="/admin" className="font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-neutral-900 min-h-[44px] inline-flex items-center">Dashboard</Link>
           <Link to="/admin/settings" className="font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-neutral-900 min-h-[44px] inline-flex items-center">Settings</Link>
           <Link to="/admin/analytics" className="font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-neutral-900 min-h-[44px] inline-flex items-center">Analytics</Link>
+          <Link to="/admin/eval" className="font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-neutral-900 min-h-[44px] inline-flex items-center">Eval</Link>
         </nav>
         <Button
           type="button"

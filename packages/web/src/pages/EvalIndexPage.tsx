@@ -1,0 +1,425 @@
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Link, useSearchParams } from "react-router-dom";
+import { ArrowLeft, Newspaper } from "lucide-react";
+import { useSettings } from "../hooks/useSettings";
+import { useEvalFixtures } from "../hooks/useEvalFixtures";
+import {
+  runEval,
+  saveDraftPrompt,
+  EvalApiError,
+  type EvalRunStream,
+} from "../api/eval";
+import type {
+  EvalScore,
+  PerFixtureCost,
+} from "@newsletter/shared/types/eval-ranking";
+import { PromptEditor } from "../components/eval/PromptEditor";
+import { PromptDiffModal } from "../components/eval/PromptDiffModal";
+import {
+  EvalResultsPanel,
+  type EvalProgressRow,
+} from "../components/eval/EvalResultsPanel";
+import {
+  ABResultsPanel,
+  type AbItem,
+} from "../components/eval/ABResultsPanel";
+import { Button } from "@/components/ui/button";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+
+type Mode = "scored" | "ab";
+
+interface ScoredProgressPayload {
+  fixtureId: string;
+  status: "running" | "done" | "error";
+  score?: EvalScore;
+  cost?: PerFixtureCost;
+  error?: string;
+}
+
+interface AbDonePayload {
+  saved?: AbItem[];
+  draft?: AbItem[];
+}
+
+function formatTodayIso(): string {
+  const d = new Date();
+  const yyyy = String(d.getFullYear());
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export function EvalIndexPage(): ReactElement {
+  const settingsQuery = useSettings();
+  const fixturesQuery = useEvalFixtures();
+  const queryClient = useQueryClient();
+
+  const savedPrompt = settingsQuery.data?.rankingPrompt ?? "";
+  const [draft, setDraft] = useState("");
+  const seededRef = useRef(false);
+
+  useEffect(() => {
+    if (!seededRef.current && settingsQuery.data) {
+      setDraft(settingsQuery.data.rankingPrompt);
+      seededRef.current = true;
+    }
+  }, [settingsQuery.data]);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialMode: Mode = searchParams.get("mode") === "ab" ? "ab" : "scored";
+  const [mode, setMode] = useState<Mode>(initialMode);
+  const [fixtureId, setFixtureId] = useState("");
+  const [windowSize, setWindowSize] = useState(20);
+  const [bypassCache, setBypassCache] = useState(false);
+  const [calendarDate, setCalendarDate] = useState(formatTodayIso());
+
+  const [running, setRunning] = useState(false);
+  const [rows, setRows] = useState<EvalProgressRow[]>([]);
+  const [totalUsd, setTotalUsd] = useState<number | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [abSaved, setAbSaved] = useState<AbItem[]>([]);
+  const [abDraft, setAbDraft] = useState<AbItem[]>([]);
+  const streamRef = useRef<EvalRunStream | null>(null);
+
+  const dirty = draft !== savedPrompt;
+
+  const [showDiff, setShowDiff] = useState(false);
+
+  const saveMutation = useMutation({
+    mutationFn: (prompt: string) => saveDraftPrompt(prompt),
+    onSuccess: async () => {
+      toast.success("Ranking prompt saved");
+      setShowDiff(false);
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof EvalApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Save failed";
+      toast.error(msg);
+    },
+  });
+
+  useEffect(() => {
+    return () => {
+      streamRef.current?.abort();
+    };
+  }, []);
+
+  function resetResults(): void {
+    setRows([]);
+    setTotalUsd(null);
+    setRunError(null);
+    setAbSaved([]);
+    setAbDraft([]);
+  }
+
+  async function handleRun(): Promise<void> {
+    if (running) return;
+    if (mode === "scored" && !fixtureId) {
+      toast.error("Pick a fixture first");
+      return;
+    }
+    if (mode === "ab" && !dirty) {
+      toast.error("Edit the prompt before running Mode B");
+      return;
+    }
+    resetResults();
+    setRunning(true);
+    const stream = runEval({
+      mode,
+      fixtureId: mode === "scored" ? fixtureId : undefined,
+      date: mode === "ab" ? calendarDate : undefined,
+      draftPrompt: draft,
+      windowSize: mode === "scored" ? windowSize : undefined,
+      bypassCache: mode === "scored" ? bypassCache : undefined,
+    });
+    streamRef.current = stream;
+    try {
+      for await (const ev of stream.progress) {
+        if (ev.event === "progress") {
+          const payload = ev.data as ScoredProgressPayload;
+          setRows((prev) => {
+            const idx = prev.findIndex(
+              (r) => r.fixtureId === payload.fixtureId,
+            );
+            const next = [...prev];
+            const row: EvalProgressRow = {
+              fixtureId: payload.fixtureId,
+              status: payload.status,
+              score: payload.score,
+              cost: payload.cost,
+              error: payload.error,
+            };
+            if (idx >= 0) next[idx] = row;
+            else next.push(row);
+            return next;
+          });
+        } else if (ev.event === "aggregate" || ev.event === "done") {
+          const payload = ev.data as {
+            totalCost?: { usd?: number };
+            saved?: AbItem[];
+            draft?: AbItem[];
+          };
+          if (typeof payload.totalCost?.usd === "number") {
+            setTotalUsd(payload.totalCost.usd);
+          }
+          if (payload.saved || payload.draft) {
+            const abPayload = payload as AbDonePayload;
+            if (abPayload.saved) setAbSaved(abPayload.saved);
+            if (abPayload.draft) setAbDraft(abPayload.draft);
+          }
+        } else if (ev.event === "error") {
+          const payload = ev.data as { message?: string };
+          setRunError(payload.message ?? "run failed");
+        }
+      }
+    } finally {
+      setRunning(false);
+      streamRef.current = null;
+    }
+  }
+
+  function handleStop(): void {
+    streamRef.current?.abort();
+    setRunning(false);
+  }
+
+  const fixtures = useMemo(
+    () => fixturesQuery.data?.fixtures ?? [],
+    [fixturesQuery.data],
+  );
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="flex items-center justify-between border-b bg-white px-4 sm:px-6 md:px-8 py-4">
+        <Link
+          to="/admin"
+          className="inline-flex items-center gap-2 font-semibold min-h-[44px]"
+        >
+          <Newspaper className="size-5" />
+          Newsletter
+        </Link>
+        <Link
+          to="/admin"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground min-h-[44px]"
+        >
+          <ArrowLeft className="size-4" />
+          Back to dashboard
+        </Link>
+      </header>
+
+      <main className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 md:p-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Eval — prompt iteration
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Edit the ranking prompt, run it against a graded fixture (Mode A)
+            or a recent date (Mode B), then save when satisfied.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="lg:sticky lg:top-4 lg:self-start" data-testid="prompt-column">
+            <PromptEditor
+              value={draft}
+              savedValue={savedPrompt}
+              onChange={setDraft}
+              onReset={() => {
+                setDraft(savedPrompt);
+              }}
+              onSave={() => {
+                setShowDiff(true);
+              }}
+            />
+          </div>
+
+          <div className="space-y-4" data-testid="run-column">
+            <Tabs
+              value={mode}
+              onValueChange={(v) => {
+                const next = v === "ab" ? "ab" : "scored";
+                setMode(next);
+                const params = new URLSearchParams(searchParams);
+                if (next === "scored") params.delete("mode");
+                else params.set("mode", next);
+                setSearchParams(params, { replace: true });
+              }}
+            >
+              <TabsList>
+                <TabsTrigger value="scored">Mode A: Scored</TabsTrigger>
+                <TabsTrigger value="ab">Mode B: Calendar</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="scored" className="space-y-3">
+                <div className="space-y-3 rounded border border-neutral-200 bg-white p-3">
+                  <label className="block text-sm">
+                    <span className="font-mono text-xs uppercase tracking-widest text-neutral-500">
+                      Fixture
+                    </span>
+                    <select
+                      data-testid="fixture-select"
+                      className="mt-1 block w-full rounded border border-neutral-300 bg-white px-2 py-1 text-sm"
+                      value={fixtureId}
+                      onChange={(e) => {
+                        setFixtureId(e.target.value);
+                      }}
+                    >
+                      <option value="">— pick a fixture —</option>
+                      {fixtures.map((f) => (
+                        <option
+                          key={f.fixtureId}
+                          value={f.fixtureId}
+                          disabled={f.gradingStatus !== "graded"}
+                        >
+                          {f.fixtureId} ({f.gradingStatus})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-sm">
+                    <span className="font-mono text-xs uppercase tracking-widest text-neutral-500">
+                      Window size: {String(windowSize)}
+                    </span>
+                    <input
+                      data-testid="window-slider"
+                      type="range"
+                      min={1}
+                      max={60}
+                      value={windowSize}
+                      onChange={(e) => {
+                        setWindowSize(Number(e.target.value));
+                      }}
+                      className="mt-1 block w-full"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={bypassCache}
+                      onChange={(e) => {
+                        setBypassCache(e.target.checked);
+                      }}
+                    />
+                    <span>Bypass cache</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      data-testid="run-mode-a"
+                      disabled={running || !fixtureId}
+                      onClick={() => {
+                        void handleRun();
+                      }}
+                    >
+                      {running ? "Running…" : "Run"}
+                    </Button>
+                    {running ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={handleStop}
+                      >
+                        Stop
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+                {runError ? (
+                  <div
+                    data-testid="run-error"
+                    className="rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"
+                  >
+                    {runError}
+                  </div>
+                ) : null}
+                <EvalResultsPanel
+                  rows={rows}
+                  totalUsd={totalUsd}
+                  running={running}
+                />
+              </TabsContent>
+
+              <TabsContent value="ab" className="space-y-3">
+                <div className="space-y-3 rounded border border-neutral-200 bg-white p-3">
+                  <label className="block text-sm">
+                    <span className="font-mono text-xs uppercase tracking-widest text-neutral-500">
+                      Date
+                    </span>
+                    <input
+                      type="date"
+                      data-testid="ab-date"
+                      value={calendarDate}
+                      max={formatTodayIso()}
+                      onChange={(e) => {
+                        setCalendarDate(e.target.value);
+                      }}
+                      className="mt-1 block w-full rounded border border-neutral-300 bg-white px-2 py-1 text-sm"
+                    />
+                  </label>
+                  {!dirty ? (
+                    <p
+                      data-testid="ab-hint"
+                      className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800"
+                    >
+                      Draft matches saved — edit the prompt to see a diff.
+                    </p>
+                  ) : null}
+                  <Button
+                    type="button"
+                    data-testid="run-mode-b"
+                    disabled={running || !dirty}
+                    onClick={() => {
+                      void handleRun();
+                    }}
+                  >
+                    {running ? "Running…" : "Run"}
+                  </Button>
+                </div>
+                {runError ? (
+                  <div
+                    data-testid="run-error"
+                    className="rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"
+                  >
+                    {runError}
+                  </div>
+                ) : null}
+                <ABResultsPanel saved={abSaved} draft={abDraft} />
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+
+        <PromptDiffModal
+          open={showDiff}
+          current={savedPrompt}
+          draft={draft}
+          saving={saveMutation.isPending}
+          onCancel={() => {
+            setShowDiff(false);
+          }}
+          onConfirm={() => {
+            saveMutation.mutate(draft);
+          }}
+        />
+      </main>
+    </div>
+  );
+}
