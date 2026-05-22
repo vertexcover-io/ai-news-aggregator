@@ -128,6 +128,9 @@ describe("collectReddit RSS", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    // Pin to a fixed instant so fixture dates stay inside sinceDays: 7 windows
+    // regardless of when the suite is run. May-14 fixtures sit 2 days back.
+    vi.setSystemTime(new Date("2026-05-16T00:00:00Z"));
     warnSpy.mockClear();
     const mod = await import("@pipeline/collectors/reddit.js");
     collectReddit = mod.collectReddit as CollectRedditFn;
