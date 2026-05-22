@@ -1,4 +1,7 @@
-// Phase 7 — manual fixture creation. Phase 6 will append grading API.
+import type {
+  Fixture,
+  GroundTruth,
+} from "@newsletter/shared/types/eval-ranking";
 import { apiFetchAdmin } from "./client";
 
 export class EvalApiError extends Error {
@@ -26,6 +29,59 @@ async function readErrorBody(
     (body as { error?: string } | undefined)?.error ??
     `request failed (${String(res.status)})`;
   return { message, body };
+}
+
+export interface EvalFixtureResponse {
+  fixture: Fixture;
+  groundTruth: GroundTruth | null;
+}
+
+export async function getEvalFixture(id: string): Promise<EvalFixtureResponse> {
+  const res = await apiFetchAdmin(
+    `/api/admin/eval/fixtures/${encodeURIComponent(id)}`,
+  );
+  if (!res.ok) {
+    const { message, body } = await readErrorBody(res);
+    throw new EvalApiError(message, res.status, body);
+  }
+  return (await res.json()) as EvalFixtureResponse;
+}
+
+export async function saveGroundTruth(
+  fixtureId: string,
+  gt: GroundTruth,
+): Promise<GroundTruth> {
+  const res = await apiFetchAdmin(
+    `/api/admin/eval/groundtruth/${encodeURIComponent(fixtureId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify(gt),
+    },
+  );
+  if (!res.ok) {
+    const { message, body } = await readErrorBody(res);
+    throw new EvalApiError(message, res.status, body);
+  }
+  const payload = (await res.json()) as { groundTruth: GroundTruth };
+  return payload.groundTruth;
+}
+
+export async function saveGroundTruthToRepo(
+  fixtureId: string,
+  gt: GroundTruth,
+): Promise<{ ok: true }> {
+  const res = await apiFetchAdmin(
+    `/api/admin/eval/groundtruth/${encodeURIComponent(fixtureId)}/save-to-repo`,
+    {
+      method: "POST",
+      body: JSON.stringify(gt),
+    },
+  );
+  if (!res.ok) {
+    const { message, body } = await readErrorBody(res);
+    throw new EvalApiError(message, res.status, body);
+  }
+  return (await res.json()) as { ok: true };
 }
 
 export interface CreateManualFixtureResponse {

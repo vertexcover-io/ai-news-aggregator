@@ -9,6 +9,7 @@ import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { ConfirmPage } from "./pages/ConfirmPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { EvalManualFixturePage } from "./pages/EvalManualFixturePage";
+import { EvalGradePage } from "./pages/EvalGradePage";
 import { UnsubscribePage } from "./pages/UnsubscribePage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { TermsPage } from "./pages/TermsPage";
@@ -42,6 +43,7 @@ export const routes: RouteObject[] = [
           { path: "settings", element: <SettingsPage /> },
           { path: "analytics", element: <AnalyticsPage /> },
           { path: "eval/fixtures/new", element: <EvalManualFixturePage /> },
+          { path: "eval/grade/:fixtureId", element: <EvalGradePage /> },
         ],
       },
     ],
