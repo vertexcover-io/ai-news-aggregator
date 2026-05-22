@@ -332,13 +332,22 @@ export function EvalIndexPage(): ReactElement {
           <Newspaper className="size-5" />
           Newsletter
         </Link>
-        <Link
-          to="/admin"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground min-h-[44px]"
-        >
-          <ArrowLeft className="size-4" />
-          Back to dashboard
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            to="/admin/eval/runs"
+            data-testid="past-runs-link"
+            className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground min-h-[44px]"
+          >
+            Past runs
+          </Link>
+          <Link
+            to="/admin"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground min-h-[44px]"
+          >
+            <ArrowLeft className="size-4" />
+            Back to dashboard
+          </Link>
+        </div>
       </header>
 
       <main className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 md:p-8">
