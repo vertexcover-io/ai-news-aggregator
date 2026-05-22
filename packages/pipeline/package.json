@@ -18,6 +18,7 @@
     "test:watch": "vitest --project unit",
     "eval:rank": "tsx src/scripts/evaluate-rank-prompt.ts",
     "eval:rank-run": "tsx src/scripts/evaluate-run-rank-prompt.ts",
+    "eval:export-fixtures": "tsx src/scripts/eval-export-fixtures.ts",
     "lint": "eslint ."
   },
   "dependencies": {
