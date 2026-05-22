@@ -77,9 +77,24 @@ describe("createManualFixture — collector resolution", () => {
     expect(result.fixture.pool[0].sourceType).toBe("reddit");
   });
 
-  it("falls back to web_search synthetic + enrichment when collector throws", async () => {
-    const dispatchFetch = vi.fn(() =>
-      Promise.reject(new Error("hn collector down")),
+  it("when native (hn) collector throws, retries via web fetcher and skips enrichment", async () => {
+    const dispatchFetch = vi.fn(
+      (url: string, sourceType: AddPostSourceType): Promise<RawItemInsert> => {
+        if (sourceType === "hn") {
+          return Promise.reject(new Error("hn collector down"));
+        }
+        // web-fallback succeeds with real body content
+        return Promise.resolve({
+          sourceType: "blog",
+          externalId: url,
+          title: "Recovered title",
+          url,
+          content: "real article body from web fetcher",
+          publishedAt: null,
+          engagement: { points: 0, commentCount: 0 },
+          metadata: { comments: [] },
+        });
+      },
     );
     const enrichRawItems = vi.fn((items: RawItemInsert[]) =>
       Promise.resolve(items),
@@ -91,7 +106,34 @@ describe("createManualFixture — collector resolution", () => {
       { writeFixture, enrichRawItems, dispatchFetch },
     );
 
-    expect(dispatchFetch).toHaveBeenCalledOnce();
+    // First call: hn dispatch (rejects). Second call: web fallback (resolves).
+    expect(dispatchFetch).toHaveBeenCalledTimes(2);
+    expect(dispatchFetch.mock.calls[0][1]).toBe("hn");
+    expect(dispatchFetch.mock.calls[1][1]).toBe("web");
+    // Enrichment is no longer needed because the web fetcher populated content.
+    expect(enrichRawItems).not.toHaveBeenCalled();
+    expect(result.fixture.pool[0].sourceType).toBe("blog");
+    expect(result.fixture.pool[0].content).toBe(
+      "real article body from web fetcher",
+    );
+  });
+
+  it("when both native AND web fallback throw, lands on synthetic web_search + enrichment", async () => {
+    const dispatchFetch = vi.fn(() =>
+      Promise.reject(new Error("everything is down")),
+    );
+    const enrichRawItems = vi.fn((items: RawItemInsert[]) =>
+      Promise.resolve(items),
+    );
+
+    const result = await createManualFixture(
+      ["https://news.ycombinator.com/item?id=99999"],
+      {},
+      { writeFixture, enrichRawItems, dispatchFetch },
+    );
+
+    // Two attempts: hn dispatch + web fallback, both reject.
+    expect(dispatchFetch).toHaveBeenCalledTimes(2);
     expect(enrichRawItems).toHaveBeenCalledOnce();
     expect(result.fixture.pool[0].sourceType).toBe("web_search");
   });
@@ -162,16 +204,19 @@ describe("createManualFixture — collector resolution", () => {
 
     expect(result.fixture.pool).toHaveLength(3);
     const bySourceType = result.fixture.pool.map((p) => p.sourceType);
-    // HN URL fell back -> web_search; reddit -> reddit; blog -> web_search
+    // HN native throws -> web fallback succeeds -> sourceType is `web_search`
+    // (from the mock's web-branch); reddit -> reddit; blog -> web_search.
     expect(bySourceType.filter((s) => s === "web_search")).toHaveLength(2);
     expect(bySourceType.filter((s) => s === "reddit")).toHaveLength(1);
-    // enrichment runs only on the one failing HN URL (blog already came back
-    // from dispatch with web_search content)
-    expect(enrichRawItems).toHaveBeenCalledOnce();
-    const enrichedItems = enrichRawItems.mock.calls[0][0];
-    expect(enrichedItems).toHaveLength(1);
-    expect(enrichedItems[0].url).toBe(
-      "https://news.ycombinator.com/item?id=42",
+    // No enrichment needed — all three items came back from dispatch with
+    // content already populated.
+    expect(enrichRawItems).not.toHaveBeenCalled();
+    // HN URL was dispatched twice: once as "hn" (rejected), once as "web".
+    const hnDispatchCalls = dispatchFetch.mock.calls.filter(
+      (c) => c[0] === "https://news.ycombinator.com/item?id=42",
     );
+    expect(hnDispatchCalls).toHaveLength(2);
+    expect(hnDispatchCalls[0][1]).toBe("hn");
+    expect(hnDispatchCalls[1][1]).toBe("web");
   });
 });

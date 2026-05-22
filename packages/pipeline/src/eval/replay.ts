@@ -3,6 +3,7 @@ import type {
   Fixture,
   FixtureItem,
 } from "@newsletter/shared/types/eval-ranking";
+import { pickCandidateContent } from "@pipeline/services/candidate-loader.js";
 
 function toCandidate(item: FixtureItem): Candidate {
   return {
@@ -13,7 +14,9 @@ function toCandidate(item: FixtureItem): Candidate {
     author: null,
     publishedAt: item.publishedAt ? new Date(item.publishedAt) : null,
     engagement: item.engagement ?? { points: 0, commentCount: 0 },
-    content: item.content,
+    // Surface the markdown produced by link-enrichment at fixture-build time
+    // so the ranker doesn't fire a live fetch for content we already have.
+    content: pickCandidateContent(item.content, null, item.enrichedLink),
     comments: item.comments,
   };
 }

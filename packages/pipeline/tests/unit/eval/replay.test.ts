@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { EnrichedLinkContent } from "@newsletter/shared";
 import type {
   Fixture,
   FixtureItem,
@@ -81,5 +82,49 @@ describe("fixtureToCandidates", () => {
     const c = fixtureToCandidates(fixture)[0];
     expect(c.publishedAt).toBeInstanceOf(Date);
     expect(c.publishedAt?.toISOString()).toBe("2026-05-22T00:00:00.000Z");
+  });
+
+  it("uses enrichedLink.markdown as candidate.content when item.content is null", () => {
+    const enrichedLink: EnrichedLinkContent = {
+      url: "https://example.com/1",
+      fetchedAt: "2026-05-22T00:00:00.000Z",
+      status: "ok",
+      markdown: "## Enriched body — used at rank time so no live fetch fires",
+    };
+    const fixture = makeFixture({
+      pool: [makeItem(1, { content: null, enrichedLink })],
+    });
+    const c = fixtureToCandidates(fixture)[0];
+    expect(c.content).toBe(
+      "## Enriched body — used at rank time so no live fetch fires",
+    );
+  });
+
+  it("prefers item.content over enrichedLink.markdown when both present", () => {
+    const enrichedLink: EnrichedLinkContent = {
+      url: "https://example.com/1",
+      fetchedAt: "2026-05-22T00:00:00.000Z",
+      status: "ok",
+      markdown: "FROM ENRICHED",
+    };
+    const fixture = makeFixture({
+      pool: [makeItem(1, { content: "FROM CONTENT", enrichedLink })],
+    });
+    const c = fixtureToCandidates(fixture)[0];
+    expect(c.content).toBe("FROM CONTENT");
+  });
+
+  it("falls through to null when enrichment failed and content is null", () => {
+    const enrichedLink: EnrichedLinkContent = {
+      url: "https://example.com/1",
+      fetchedAt: "2026-05-22T00:00:00.000Z",
+      status: "failed",
+      failureReason: "timeout",
+    };
+    const fixture = makeFixture({
+      pool: [makeItem(1, { content: null, enrichedLink })],
+    });
+    const c = fixtureToCandidates(fixture)[0];
+    expect(c.content).toBeNull();
   });
 });

@@ -162,6 +162,7 @@ export async function createManualFixture(
       try {
         const insert = await dispatchFn(url, sourceType, dispatchDeps);
         resolved[i] = { insert, needsEnrichment: false };
+        continue;
       } catch (err) {
         logger.warn(
           {
@@ -172,8 +173,32 @@ export async function createManualFixture(
           },
           "eval.manual-fixture.collector_fallback",
         );
-        resolved[i] = { insert: syntheticInsert(url), needsEnrichment: true };
       }
+
+      // Native collector threw. For hn/reddit URLs the link-enrichment
+      // classifier would mark the URL "same-platform" and skip it, leaving
+      // the rank-body-loader to fetch live at rank time (often 429/404).
+      // Reuse the existing web fetcher to extract body content directly,
+      // bypassing the enrichment classifier. If even that fails we drop
+      // back to a synthetic placeholder so the fixture build still completes.
+      if (sourceType !== "web") {
+        try {
+          const insert = await dispatchFn(url, "web", dispatchDeps);
+          resolved[i] = { insert, needsEnrichment: false };
+          continue;
+        } catch (webErr) {
+          logger.warn(
+            {
+              event: "eval.manual-fixture.web_fallback_failed",
+              url,
+              error: webErr instanceof Error ? webErr.message : String(webErr),
+            },
+            "eval.manual-fixture.web_fallback_failed",
+          );
+        }
+      }
+
+      resolved[i] = { insert: syntheticInsert(url), needsEnrichment: true };
     }
   }
   await Promise.all(
