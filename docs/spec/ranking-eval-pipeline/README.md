@@ -1,6 +1,6 @@
 # Ranking eval pipeline — reviewer index
 
-**Final verification verdict:** TBD
+**Final verification verdict:** PASSED — see [verification/proof-report.md](./verification/proof-report.md) (functional verification + quality gate, 2026-05-22).
 
 <!-- PR_URL: TBD -->
 

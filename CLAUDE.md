@@ -140,3 +140,7 @@ This workflow ONLY applies when the `@claude` comment is on a PR review comment 
 - `docs/superpowers/specs/2026-03-31-ai-newsletter-aggregator-design.md` — Full product design (pipeline, review dashboard, email, admin, archive)
 - `docs/superpowers/specs/2026-03-31-user-story.md` — MVP user story and daily flow
 - `docs/research/mvp-sources.md` — The 34 sources to collect from
+
+## Ranking eval pipeline
+
+An offline ranking eval system lives under `evals/ranking/` (fixtures, ground-truth, gitignored response cache) and `packages/pipeline/src/eval/` (replay + scoring core, shared with the API). CLI: `pnpm --filter @newsletter/pipeline eval:ranking` (Mode A scored) and `eval:export-fixtures`. Admin UI: `/admin/eval` (Mode A/B with diff-confirm prompt save), `/admin/eval/grade/:fixtureId` (keyboard grading). See `docs/spec/ranking-eval-pipeline/`.

@@ -26,6 +26,10 @@ docs/spec/**
 !docs/spec/**/google-group-setup.md
 !docs/spec/**/verification/
 !docs/spec/**/verification/proof-report.md
+!docs/spec/**/verification/adversarial-findings.md
+!docs/spec/**/verification/verification-stubs.md
+!docs/spec/**/learnings.md
+!docs/spec/**/README.md
 # VER-68: ship full audit trail (probes + library-probe + verification logs)
 !docs/spec/share-archive-on-social/library-probe.md
 !docs/spec/share-archive-on-social/probes/
