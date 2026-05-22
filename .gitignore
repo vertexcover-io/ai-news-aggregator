@@ -113,3 +113,6 @@ docs/spec/**
 
 # Playwright per-run output (traces, screenshots) — regenerates every run
 packages/web/test-results/
+
+# ranking-eval-pipeline: LLM response cache is per-developer, never committed
+evals/ranking/cache/
