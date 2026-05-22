@@ -5,36 +5,25 @@ import type {
   RawItemsRepo,
   RawItemRow,
 } from "@pipeline/repositories/raw-items.js";
-import {
-  fetchHnPost as defaultFetchHnPost,
-  parseHnItemIdFromUrl,
-  type FetchHnPostDeps,
-} from "@pipeline/collectors/hn.js";
-import {
-  fetchRedditPost as defaultFetchRedditPost,
-  parseRedditPostUrl,
-  type FetchRedditPostDeps,
-} from "@pipeline/collectors/reddit.js";
-import {
-  fetchWebPost as defaultFetchWebPost,
-  type FetchWebPostDeps,
-} from "@pipeline/collectors/web.js";
+import type { FetchHnPostDeps } from "@pipeline/collectors/hn.js";
+import type { FetchRedditPostDeps } from "@pipeline/collectors/reddit.js";
+import type { FetchWebPostDeps } from "@pipeline/collectors/web.js";
 import {
   generateRecap as defaultGenerateRecap,
   type GenerateRecapOptions,
 } from "@pipeline/processors/recap.js";
 import { createCostTracker } from "@pipeline/services/cost-tracker.js";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
+import {
+  detectAddPostSourceType,
+  dispatchFetch,
+  type AddPostSourceType,
+} from "@pipeline/services/add-post/dispatch.js";
 
 const logger = createLogger("service:add-post-helper");
 
-export type AddPostSourceType = "hn" | "reddit" | "web";
-
-export function detectAddPostSourceType(url: string): AddPostSourceType {
-  if (parseHnItemIdFromUrl(url) !== null) return "hn";
-  if (parseRedditPostUrl(url) !== null) return "reddit";
-  return "web";
-}
+export { detectAddPostSourceType };
+export type { AddPostSourceType };
 
 export interface AddPostDeps {
   rawItemsRepo: RawItemsRepo;
@@ -53,32 +42,6 @@ export interface AddPostDeps {
   signal?: AbortSignal;
   archiveRepo?: RunArchivesRepo;
   runId?: string;
-}
-
-async function dispatchFetch(
-  url: string,
-  sourceType: AddPostSourceType,
-  deps: AddPostDeps,
-): Promise<RawItemInsert> {
-  const forwarded = { signal: deps.signal, fetchFn: deps.fetchFn };
-  switch (sourceType) {
-    case "hn": {
-      const fn = deps.fetchHnPost ?? defaultFetchHnPost;
-      return fn(url, forwarded);
-    }
-    case "reddit": {
-      const fn = deps.fetchRedditPost ?? defaultFetchRedditPost;
-      return fn(url, forwarded);
-    }
-    case "web": {
-      const fn = deps.fetchWebPost ?? defaultFetchWebPost;
-      return fn(url, forwarded);
-    }
-    default: {
-      const _exhaustive: never = sourceType;
-      throw new Error(`unsupported sourceType: ${String(_exhaustive)}`);
-    }
-  }
 }
 
 function toRankedItem(row: RawItemRow, score: number): RankedItem {
@@ -109,7 +72,13 @@ export async function hydrateAddedPost(
     "add-post.hydrate.start",
   );
 
-  const raw = await dispatchFetch(url, sourceType, deps);
+  const raw = await dispatchFetch(url, sourceType, {
+    fetchHnPost: deps.fetchHnPost,
+    fetchRedditPost: deps.fetchRedditPost,
+    fetchWebPost: deps.fetchWebPost,
+    fetchFn: deps.fetchFn,
+    signal: deps.signal,
+  });
 
   const existingComments = raw.metadata?.comments ?? [];
   const withFlag: RawItemInsert = {

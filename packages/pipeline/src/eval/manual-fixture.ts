@@ -11,6 +11,12 @@ import {
   type EnrichmentContext,
 } from "@pipeline/services/link-enrichment/types.js";
 import { writeFixture as defaultWriteFixture } from "@pipeline/eval/fixture-io.js";
+import {
+  detectAddPostSourceType,
+  dispatchFetch as defaultDispatchFetch,
+  type AddPostSourceType,
+  type DispatchFetchDeps,
+} from "@pipeline/services/add-post/dispatch.js";
 
 export interface CreateManualFixtureOptions {
   name?: string;
@@ -25,6 +31,13 @@ export interface CreateManualFixtureDeps {
   ) => Promise<RawItemInsert[]>;
   writeFixture?: (fixture: Fixture, dir?: string) => Promise<string>;
   now?: () => Date;
+  dispatchFetch?: (
+    url: string,
+    sourceType: AddPostSourceType,
+    deps?: DispatchFetchDeps,
+  ) => Promise<RawItemInsert>;
+  signal?: AbortSignal;
+  fetchFn?: typeof fetch;
 }
 
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
@@ -90,8 +103,8 @@ function toFixtureItem(
     content: item.content ?? null,
     enrichedLink: enriched,
     enrichmentStatus,
-    comments: [],
-    engagement: { points: 0, commentCount: 0 },
+    comments: item.metadata?.comments ?? [],
+    engagement: item.engagement ?? { points: 0, commentCount: 0 },
   };
 }
 
@@ -114,6 +127,7 @@ export async function createManualFixture(
   const logger = opts.logger ?? createLogger("eval:manual-fixture");
   const enrichFn = deps.enrichRawItems ?? defaultEnrichRawItems;
   const writeFn = deps.writeFixture ?? defaultWriteFixture;
+  const dispatchFn = deps.dispatchFetch ?? defaultDispatchFetch;
   const now = (deps.now ?? (() => new Date()))();
 
   const deduped = dedupUrls(urls);
@@ -121,7 +135,34 @@ export async function createManualFixture(
     throw new Error("createManualFixture: no urls provided");
   }
 
-  const inserts = deduped.map(syntheticInsert);
+  const dispatchDeps: DispatchFetchDeps = {
+    signal: deps.signal,
+    fetchFn: deps.fetchFn,
+  };
+
+  const resolved: { insert: RawItemInsert; needsEnrichment: boolean }[] =
+    await Promise.all(
+      deduped.map(async (url) => {
+        const sourceType = detectAddPostSourceType(url);
+        try {
+          const insert = await dispatchFn(url, sourceType, dispatchDeps);
+          return { insert, needsEnrichment: false };
+        } catch (err) {
+          logger.warn(
+            {
+              event: "eval.manual-fixture.collector_fallback",
+              url,
+              sourceType,
+              error: err instanceof Error ? err.message : String(err),
+            },
+            "eval.manual-fixture.collector_fallback",
+          );
+          return { insert: syntheticInsert(url), needsEnrichment: true };
+        }
+      }),
+    );
+
+  const inserts = resolved.map((r) => r.insert);
   const counters = newCounters();
   const ctx: EnrichmentContext = {
     logger,
@@ -129,7 +170,12 @@ export async function createManualFixture(
     counters,
   };
 
-  await enrichFn(inserts, ctx);
+  const toEnrich = resolved
+    .filter((r) => r.needsEnrichment)
+    .map((r) => r.insert);
+  if (toEnrich.length > 0) {
+    await enrichFn(toEnrich, ctx);
+  }
 
   const items: FixtureItem[] = inserts.map((insert, i) =>
     toFixtureItem(insert, -(i + 1)),

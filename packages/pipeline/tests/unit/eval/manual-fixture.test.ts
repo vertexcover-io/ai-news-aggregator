@@ -14,7 +14,12 @@ describe("createManualFixture", () => {
     const result = await createManualFixture(
       ["https://a.com/1", "https://a.com/1", "https://a.com/2"],
       {},
-      { writeFixture, enrichRawItems, now: () => new Date(1700000000000) },
+      {
+        writeFixture,
+        enrichRawItems,
+        dispatchFetch: () => Promise.reject(new Error("force fallback")),
+        now: () => new Date(1700000000000),
+      },
     );
     expect(result.fixture.pool).toHaveLength(2);
     expect(enrichRawItems).toHaveBeenCalledOnce();
@@ -27,7 +32,11 @@ describe("createManualFixture", () => {
     const result = await createManualFixture(
       ["https://a.com/1", "https://a.com/2", "https://a.com/3"],
       {},
-      { writeFixture, enrichRawItems },
+      {
+        writeFixture,
+        enrichRawItems,
+        dispatchFetch: () => Promise.reject(new Error("force fallback")),
+      },
     );
     for (const item of result.fixture.pool) {
       expect(item.rawItemId).toBeLessThan(0);
@@ -56,7 +65,11 @@ describe("createManualFixture", () => {
     const result = await createManualFixture(
       ["https://a.com/1"],
       {},
-      { writeFixture, enrichRawItems },
+      {
+        writeFixture,
+        enrichRawItems,
+        dispatchFetch: () => Promise.reject(new Error("force fallback")),
+      },
     );
     expect(result.fixture.pool[0].enrichmentStatus).toBe("failed");
   });
