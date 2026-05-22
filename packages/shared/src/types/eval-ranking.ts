@@ -167,3 +167,40 @@ export interface EvalResult {
   aggregate?: EvalAggregate;
   totalCost: { usd: number; totalTokensIn: number; totalTokensOut: number };
 }
+
+/** Input payload for inserting a fresh `eval_runs` row at run start. */
+export interface EvalRunInsertInput {
+  mode: "scored" | "ab";
+  fixtureId: string | null;
+  date: string | null;
+  windowSize: number | null;
+  draftPromptHash: string;
+  draftPromptSnapshot: string;
+  savedPromptHash: string | null;
+  savedPromptSnapshot: string | null;
+}
+
+/** Lifecycle status of an eval run. */
+export type EvalRunStatus = "running" | "done" | "failed";
+
+/** Full `eval_runs` row as returned by the API (timestamps serialised as ISO strings). */
+export interface EvalRun {
+  id: string;
+  mode: "scored" | "ab";
+  fixtureId: string | null;
+  date: string | null;
+  windowSize: number | null;
+  draftPromptHash: string;
+  draftPromptSnapshot: string;
+  savedPromptHash: string | null;
+  savedPromptSnapshot: string | null;
+  status: EvalRunStatus;
+  startedAt: string;
+  finishedAt: string | null;
+  scoreBreakdown: unknown;
+  costBreakdown: unknown;
+  errorMessage: string | null;
+}
+
+/** Compact `eval_runs` shape used by list endpoints (omits the big snapshot fields). */
+export type EvalRunSummary = Omit<EvalRun, "draftPromptSnapshot" | "savedPromptSnapshot">;
