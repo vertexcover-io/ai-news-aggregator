@@ -116,3 +116,7 @@ packages/web/test-results/
 
 # ranking-eval-pipeline: LLM response cache is per-developer, never committed
 evals/ranking/cache/
+# ranking-eval-pipeline: ship reviewer index + design + library-probe
+!docs/spec/ranking-eval-pipeline/README.md
+!docs/spec/ranking-eval-pipeline/design.md
+!docs/spec/ranking-eval-pipeline/library-probe.md

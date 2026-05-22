@@ -20,6 +20,7 @@ import {
 import type {
   EvalScore,
   PerFixtureCost,
+  SourcingReportRow,
 } from "@newsletter/shared/types/eval-ranking";
 import { PromptEditor } from "../components/eval/PromptEditor";
 import { PromptDiffModal } from "../components/eval/PromptDiffModal";
@@ -31,6 +32,7 @@ import {
   ABResultsPanel,
   type AbItem,
 } from "../components/eval/ABResultsPanel";
+import { SourcingReportPanel } from "../components/eval/SourcingReportPanel";
 import { Button } from "@/components/ui/button";
 import {
   Tabs,
@@ -92,6 +94,8 @@ export function EvalIndexPage(): ReactElement {
   const [runError, setRunError] = useState<string | null>(null);
   const [abSaved, setAbSaved] = useState<AbItem[]>([]);
   const [abDraft, setAbDraft] = useState<AbItem[]>([]);
+  const [sourcing, setSourcing] = useState<SourcingReportRow[]>([]);
+  const [showCostConfirm, setShowCostConfirm] = useState(false);
   const streamRef = useRef<EvalRunStream | null>(null);
 
   const dirty = draft !== savedPrompt;
@@ -128,6 +132,13 @@ export function EvalIndexPage(): ReactElement {
     setRunError(null);
     setAbSaved([]);
     setAbDraft([]);
+    setSourcing([]);
+  }
+
+  const COST_PER_FIXTURE_USD_ESTIMATE = 0.01;
+
+  function estimatedUsd(): number {
+    return windowSize * COST_PER_FIXTURE_USD_ESTIMATE;
   }
 
   async function handleRun(): Promise<void> {
@@ -140,6 +151,11 @@ export function EvalIndexPage(): ReactElement {
       toast.error("Edit the prompt before running Mode B");
       return;
     }
+    if (mode === "scored" && windowSize > 60 && !showCostConfirm) {
+      setShowCostConfirm(true);
+      return;
+    }
+    setShowCostConfirm(false);
     resetResults();
     setRunning(true);
     const stream = runEval({
@@ -176,6 +192,7 @@ export function EvalIndexPage(): ReactElement {
             totalCost?: { usd?: number };
             saved?: AbItem[];
             draft?: AbItem[];
+            sourcingReport?: SourcingReportRow[];
           };
           if (typeof payload.totalCost?.usd === "number") {
             setTotalUsd(payload.totalCost.usd);
@@ -185,6 +202,7 @@ export function EvalIndexPage(): ReactElement {
             if (abPayload.saved) setAbSaved(abPayload.saved);
             if (abPayload.draft) setAbDraft(abPayload.draft);
           }
+          if (payload.sourcingReport) setSourcing(payload.sourcingReport);
         } else if (ev.event === "error") {
           const payload = ev.data as { message?: string };
           setRunError(payload.message ?? "run failed");
@@ -355,6 +373,7 @@ export function EvalIndexPage(): ReactElement {
                   totalUsd={totalUsd}
                   running={running}
                 />
+                <SourcingReportPanel rows={sourcing} />
               </TabsContent>
 
               <TabsContent value="ab" className="space-y-3">
@@ -406,6 +425,41 @@ export function EvalIndexPage(): ReactElement {
             </Tabs>
           </div>
         </div>
+
+        {showCostConfirm ? (
+          <div
+            data-testid="cost-confirm-modal"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          >
+            <div className="w-full max-w-md rounded border border-neutral-200 bg-white p-4">
+              <h2 className="text-lg font-semibold">Confirm large run</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                You are about to run {String(windowSize)} fixtures. Estimated
+                cost: <span data-testid="cost-confirm-amount">${estimatedUsd().toFixed(2)}</span>.
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setShowCostConfirm(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  data-testid="cost-confirm-proceed"
+                  onClick={() => {
+                    void handleRun();
+                  }}
+                >
+                  Run anyway
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <PromptDiffModal
           open={showDiff}

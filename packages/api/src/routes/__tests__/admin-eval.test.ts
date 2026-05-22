@@ -353,5 +353,110 @@ describe("POST /run SSE", () => {
     expect(text).toContain('"status":"running"');
     expect(text).toContain('"status":"done"');
     expect(text).toContain("event: done");
+    expect(text).toContain("sourcingReport");
+  });
+
+  it("Mode B emits aggregate with saved + draft rankings", async () => {
+    const findRawItemsByDate = vi.fn(() =>
+      Promise.resolve([
+        {
+          rawItemId: 101,
+          title: "Story A",
+          url: "https://example.com/a",
+          sourceType: "hn",
+          publishedAt: null,
+          content: null,
+        },
+        {
+          rawItemId: 102,
+          title: "Story B",
+          url: "https://example.com/b",
+          sourceType: "reddit",
+          publishedAt: null,
+          content: null,
+        },
+      ]),
+    );
+    const runModeB = vi.fn(() =>
+      Promise.resolve({
+        saved: [{ rawItemId: 101, score: 0.9, rationale: "ok" }],
+        draft: [{ rawItemId: 102, score: 0.8, rationale: "ok" }],
+        cost: {
+          saved: {
+            tokensIn: 100,
+            tokensOut: 50,
+            usd: 0.01,
+            cacheHit: false,
+            promptHash: "h1",
+          },
+          draft: {
+            tokensIn: 110,
+            tokensOut: 55,
+            usd: 0.012,
+            cacheHit: false,
+            promptHash: "h2",
+          },
+          totalUsd: 0.022,
+        },
+      }),
+    );
+    const { app } = makeRouter({ findRawItemsByDate, runModeB });
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { ...authedHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "ab",
+        date: "2026-05-22",
+        draftPrompt: "DRAFT",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(findRawItemsByDate).toHaveBeenCalledWith("2026-05-22");
+    expect(runModeB).toHaveBeenCalledOnce();
+    expect(text).toContain('"branch":"saved"');
+    expect(text).toContain('"branch":"draft"');
+    expect(text).toContain("event: aggregate");
+    expect(text).toContain('"rawItemId":101');
+    expect(text).toContain('"rawItemId":102');
+    expect(text).toContain("event: done");
+  });
+
+  it("Mode B errors when pool empty", async () => {
+    const findRawItemsByDate = vi.fn(() => Promise.resolve([]));
+    const runModeB = vi.fn();
+    const { app } = makeRouter({ findRawItemsByDate, runModeB });
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { ...authedHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "ab",
+        date: "2026-05-22",
+        draftPrompt: "DRAFT",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("event: error");
+    expect(text).toContain("no raw_items for 2026-05-22");
+    expect(runModeB).not.toHaveBeenCalled();
+  });
+
+  it("Mode B errors when date missing or malformed", async () => {
+    const { app } = makeRouter({
+      findRawItemsByDate: vi.fn(() => Promise.resolve([])),
+    });
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { ...authedHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "ab",
+        date: "bad-date",
+        draftPrompt: "DRAFT",
+      }),
+    });
+    const text = await res.text();
+    expect(text).toContain("event: error");
+    expect(text).toContain("date required");
   });
 });

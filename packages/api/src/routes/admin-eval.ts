@@ -14,14 +14,20 @@ import type {
   GroundTruth,
 } from "@newsletter/shared/types/eval-ranking";
 import {
+  buildCalendarFixture,
+  createEvalExportsRepo,
   createManualFixture as defaultCreateManualFixture,
   listFixtures as defaultListFixtures,
   readFixture as defaultReadFixture,
   readGroundTruth as defaultReadGroundTruth,
-  writeGroundTruth as defaultWriteGroundTruth,
   runEval as defaultRunEval,
+  runModeB as defaultRunModeB,
+  sourcingReport,
+  writeGroundTruth as defaultWriteGroundTruth,
   EvalCache,
+  type CalendarPoolItem,
   type CreateManualFixtureResult,
+  type ModeBResult,
   type RunEvalArgs,
   type RunEvalOutput,
 } from "@newsletter/pipeline/eval";
@@ -52,6 +58,7 @@ export interface FixtureSummary {
 }
 
 export type RunEvalFn = typeof defaultRunEval;
+export type RunModeBFn = typeof defaultRunModeB;
 export type ListFixturesFn = typeof defaultListFixtures;
 export type ReadFixtureFn = typeof defaultReadFixture;
 export type ReadGroundTruthFn = typeof defaultReadGroundTruth;
@@ -60,6 +67,9 @@ export type CreateManualFixtureFn = (
   urls: string[],
   opts?: { name?: string; model?: string },
 ) => Promise<CreateManualFixtureResult>;
+export type FindRawItemsByDateFn = (dateISO: string) => Promise<
+  CalendarPoolItem[]
+>;
 
 export interface AdminEvalRouterDeps {
   getSettingsRepo: () => UserSettingsRepo;
@@ -69,6 +79,8 @@ export interface AdminEvalRouterDeps {
   writeGroundTruth?: WriteGroundTruthFn;
   createManualFixture?: CreateManualFixtureFn;
   runEval?: RunEvalFn;
+  runModeB?: RunModeBFn;
+  findRawItemsByDate?: FindRawItemsByDateFn;
   fixturesDir?: string;
   groundtruthDir?: string;
   repoGroundtruthDir?: string;
@@ -88,6 +100,8 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
     ((urls: string[], opts?: { name?: string; model?: string }) =>
       defaultCreateManualFixture(urls, opts));
   const runEvalFn = deps.runEval ?? defaultRunEval;
+  const runModeBFn = deps.runModeB ?? defaultRunModeB;
+  const findRawItemsByDateFn = deps.findRawItemsByDate;
   const fixturesDir = deps.fixturesDir ?? FIXTURES_DIR;
   const groundtruthDir = deps.groundtruthDir ?? GROUNDTRUTH_DIR;
   const repoGroundtruthDir = deps.repoGroundtruthDir ?? GROUNDTRUTH_DIR;
@@ -315,24 +329,114 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
               }),
             });
           }
-        } else {
-          // mode === "ab" — Mode B Calendar comparison.
-          // Building the calendar fixture from raw_items requires a DB read
-          // that is out of scope for this phase (the route delegates to a
-          // future loader). For now: emit an explicit error so the UI can
-          // surface a friendly message.
+          const report = gt !== null ? sourcingReport([{ fixture, groundTruth: gt }]) : [];
+          await stream.writeSSE({
+            event: "aggregate",
+            data: JSON.stringify({
+              totalCost: { usd: totalUsd },
+              sourcingReport: report,
+            }),
+          });
+          await stream.writeSSE({
+            event: "done",
+            data: JSON.stringify({ totalCost: { usd: totalUsd } }),
+          });
+          return;
+        }
+        // mode === "ab" — Mode B Calendar comparison.
+        if (!req.date || !/^\d{4}-\d{2}-\d{2}$/.test(req.date)) {
+          await stream.writeSSE({
+            event: "error",
+            data: JSON.stringify({ message: "date required (YYYY-MM-DD)" }),
+          });
+          return;
+        }
+        if (findRawItemsByDateFn === undefined) {
           await stream.writeSSE({
             event: "error",
             data: JSON.stringify({
-              message:
-                "ab mode requires calendar-pool loading (not wired in phase-5)",
+              message: "calendar pool loader not configured",
             }),
           });
           return;
         }
+        const repo = deps.getSettingsRepo();
+        const settings = await repo.get();
+        const savedPrompt =
+          req.savedPrompt ?? settings?.rankingPrompt ?? "";
+        if (savedPrompt.length === 0) {
+          await stream.writeSSE({
+            event: "error",
+            data: JSON.stringify({ message: "savedPrompt unavailable" }),
+          });
+          return;
+        }
+        const pool = await findRawItemsByDateFn(req.date);
+        if (pool.length === 0) {
+          await stream.writeSSE({
+            event: "error",
+            data: JSON.stringify({
+              message: `no raw_items for ${req.date}`,
+            }),
+          });
+          return;
+        }
+        const fixture = buildCalendarFixture(req.date, pool, model);
+        await stream.writeSSE({
+          event: "progress",
+          data: JSON.stringify({ branch: "saved", status: "running" }),
+        });
+        await stream.writeSSE({
+          event: "progress",
+          data: JSON.stringify({ branch: "draft", status: "running" }),
+        });
+        let abResult: ModeBResult;
+        try {
+          abResult = await runModeBFn({
+            fixture,
+            savedPrompt,
+            draftPrompt: req.draftPrompt,
+            model,
+            cache,
+          });
+        } catch (err) {
+          await stream.writeSSE({
+            event: "error",
+            data: JSON.stringify({
+              message: err instanceof Error ? err.message : String(err),
+            }),
+          });
+          return;
+        }
+        totalUsd += abResult.cost.totalUsd;
+        const titleById = new Map<number, { title: string; url: string; source: string }>();
+        for (const p of pool) {
+          titleById.set(p.rawItemId, {
+            title: p.title,
+            url: p.url,
+            source: p.sourceType,
+          });
+        }
+        const toAbItems = (
+          refs: { rawItemId: number }[],
+        ): { rank: number; rawItemId: number; title: string; url: string; source: string }[] =>
+          refs.slice(0, 10).map((r, idx) => {
+            const meta = titleById.get(r.rawItemId);
+            return {
+              rank: idx + 1,
+              rawItemId: r.rawItemId,
+              title: meta?.title ?? `#${String(r.rawItemId)}`,
+              url: meta?.url ?? "",
+              source: meta?.source ?? "",
+            };
+          });
         await stream.writeSSE({
           event: "aggregate",
-          data: JSON.stringify({ totalCost: { usd: totalUsd } }),
+          data: JSON.stringify({
+            saved: toAbItems(abResult.saved),
+            draft: toAbItems(abResult.draft),
+            totalCost: { usd: totalUsd },
+          }),
         });
         await stream.writeSSE({
           event: "done",
@@ -356,5 +460,17 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
 export function createDefaultAdminEvalRouter(): Hono {
   return createAdminEvalRouter({
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    findRawItemsByDate: async (dateISO) => {
+      const repo = createEvalExportsRepo(defaultGetDb());
+      const rows = await repo.findRawItemsByDate(dateISO);
+      return rows.map((r) => ({
+        rawItemId: r.id,
+        title: r.title,
+        url: r.url,
+        sourceType: r.sourceType,
+        publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
+        content: r.content,
+      }));
+    },
   });
 }

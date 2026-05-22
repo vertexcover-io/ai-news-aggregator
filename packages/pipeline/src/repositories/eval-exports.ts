@@ -1,4 +1,4 @@
-import { and, asc, between, eq, gte } from "drizzle-orm";
+import { and, asc, between, desc, eq, gte, sql } from "drizzle-orm";
 import { rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { RawItemRow } from "./raw-items.js";
@@ -33,6 +33,14 @@ export interface EvalExportsRepo {
    * fallback) for `from` and `completedAt` for `to`.
    */
   findRawItemsInWindow(opts: { from: Date; to: Date }): Promise<RawItemRow[]>;
+
+  /**
+   * Returns every `raw_items` row whose `collected_at` falls on the given
+   * UTC calendar day (`YYYY-MM-DD`), ordered by `collected_at desc`. Used
+   * by Mode B (`/admin/eval` Calendar) to build an in-memory fixture from
+   * a single day's collected items without requiring a saved fixture file.
+   */
+  findRawItemsByDate(dateISO: string): Promise<RawItemRow[]>;
 }
 
 export function createEvalExportsRepo(
@@ -68,6 +76,30 @@ export function createEvalExportsRepo(
           ),
         )
         .orderBy(asc(runArchives.createdAt));
+      return rows;
+    },
+
+    async findRawItemsByDate(dateISO) {
+      const rows = await db
+        .select({
+          id: rawItems.id,
+          sourceType: rawItems.sourceType,
+          externalId: rawItems.externalId,
+          title: rawItems.title,
+          url: rawItems.url,
+          sourceUrl: rawItems.sourceUrl,
+          author: rawItems.author,
+          content: rawItems.content,
+          imageUrl: rawItems.imageUrl,
+          publishedAt: rawItems.publishedAt,
+          engagement: rawItems.engagement,
+          metadata: rawItems.metadata,
+        })
+        .from(rawItems)
+        .where(
+          sql`date_trunc('day', ${rawItems.collectedAt}) = ${dateISO}::date`,
+        )
+        .orderBy(desc(rawItems.collectedAt));
       return rows;
     },
 

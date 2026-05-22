@@ -7,7 +7,9 @@ import type {
   EvalScore,
   Fixture,
   GroundTruth,
+  SourcingReportRow,
 } from "@newsletter/shared/types/eval-ranking";
+import { sourcingReport } from "@pipeline/eval/scoring.js";
 
 import { EvalCache } from "@pipeline/eval/cache.js";
 import {
@@ -47,6 +49,7 @@ export interface AggregateResult {
   totalCost: number;
   succeeded: number;
   failed: number;
+  sourcingReport: SourcingReportRow[];
 }
 
 export interface EvalCliResult {
@@ -199,9 +202,11 @@ export async function runEvalCli(
   const history = await readScoreHistory();
 
   const perFixture: PerFixtureResult[] = [];
+  const graded: { fixture: Fixture; groundTruth: GroundTruth }[] = [];
   for (const fixture of fixtures) {
     try {
       const gt: GroundTruth | null = await readGroundTruth(fixture.fixtureId);
+      if (gt !== null) graded.push({ fixture, groundTruth: gt });
       if (gt === null) {
         perFixture.push({
           fixtureId: fixture.fixtureId,
@@ -264,11 +269,13 @@ export async function runEvalCli(
     (sum, p) => sum + (p.cost?.usd ?? 0),
     0,
   );
+  const report = sourcingReport(graded);
   const aggregate: AggregateResult = {
     meanNdcgAt10: meanNdcg,
     totalCost,
     succeeded: succeeded.length,
     failed,
+    sourcingReport: report,
   };
   const exitCode: 0 | 1 = succeeded.length > 0 ? 0 : 1;
 
@@ -295,6 +302,14 @@ export async function runEvalCli(
     writeLine(
       `aggregate: mean nDCG@10 ${meanNdcg.toFixed(3)}, total cost $${totalCost.toFixed(4)}, ${succeeded.length}/${perFixture.length} succeeded`,
     );
+    if (report.length > 0) {
+      writeLine("sourcing report (source / must / nice / drop):");
+      for (const row of report) {
+        writeLine(
+          `  ${row.sourceType.padEnd(16)} ${String(row.mustIncludeCount).padStart(4)} ${String(row.niceCount).padStart(4)} ${String(row.dropCount).padStart(4)}`,
+        );
+      }
+    }
   }
 
   return { exitCode, perFixture, aggregate };

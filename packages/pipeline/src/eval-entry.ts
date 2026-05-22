@@ -35,3 +35,11 @@ export {
   type ModeBResult,
   type ModeBDeps,
 } from "@pipeline/eval/mode-b.js";
+
+export {
+  createEvalExportsRepo,
+  type EvalExportsRepo,
+  type EvalExportArchiveRow,
+} from "@pipeline/repositories/eval-exports.js";
+
+export { sourcingReport, type FixtureWithGroundTruth } from "@pipeline/eval/scoring.js";
