@@ -2,7 +2,8 @@
 
 **Final verification verdict:** PASSED — see [verification/proof-report.md](./verification/proof-report.md) (functional verification + quality gate, 2026-05-22).
 
-<!-- PR_URL: TBD -->
+<!-- PR_URL: https://github.com/vertexcover-io/ai-news-aggregator/pull/179 -->
+**PR:** https://github.com/vertexcover-io/ai-news-aggregator/pull/179
 
 A purely-internal evaluation harness for the stage-2 reranker prompt. The
 pipeline lets the operator (a) export historical run pools as graded
