@@ -108,6 +108,15 @@ docs/spec/**
 !docs/spec/admin-ranking-prompt/verification/screenshots/
 !docs/spec/admin-ranking-prompt/verification/screenshots/*.png
 
+# add-post-collector-resolver: ship full audit trail
+!docs/spec/add-post-collector-resolver/README.md
+!docs/spec/add-post-collector-resolver/design.md
+!docs/spec/add-post-collector-resolver/library-probe.md
+!docs/spec/add-post-collector-resolver/learnings.md
+!docs/spec/add-post-collector-resolver/verification/adversarial-findings.md
+!docs/spec/add-post-collector-resolver/verification/verification-stubs.md
+!docs/spec/add-post-collector-resolver/verification/live-probe.log
+
 .harness/
 .worktrees/
 
