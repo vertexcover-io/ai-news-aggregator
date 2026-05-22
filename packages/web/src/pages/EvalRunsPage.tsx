@@ -5,6 +5,8 @@ import { useEvalRuns } from "../hooks/useEvalRuns";
 import { RunsFilterBar } from "../components/eval/RunsFilterBar";
 import { RunsTable } from "../components/eval/RunsTable";
 import { RunsPagination } from "../components/eval/RunsPagination";
+import { RunDetailDrawer } from "../components/eval/RunDetailDrawer";
+import { ComparePromptsDialog } from "../components/eval/ComparePromptsDialog";
 
 export function EvalRunsPage(): ReactElement {
   const {
@@ -23,6 +25,10 @@ export function EvalRunsPage(): ReactElement {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () => new Set<string>(),
   );
+  const [drawerRunId, setDrawerRunId] = useState<string | null>(null);
+  const [compareRunIds, setCompareRunIds] = useState<
+    [string, string] | null
+  >(null);
 
   const total = data?.total ?? 0;
   const runs = data?.runs ?? [];
@@ -129,8 +135,15 @@ export function EvalRunsPage(): ReactElement {
             <button
               type="button"
               data-testid="runs-compare-cta"
-              disabled
-              className="rounded-md bg-[#8c3a1e] px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!armed}
+              onClick={() => {
+                if (!armed) return;
+                const ids = Array.from(selectedIds);
+                if (ids.length === 2) {
+                  setCompareRunIds([ids[0], ids[1]]);
+                }
+              }}
+              className="rounded-md bg-[#8c3a1e] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#7a3219] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Compare prompts →
             </button>
@@ -197,11 +210,11 @@ export function EvalRunsPage(): ReactElement {
               runs={runs}
               selectedIds={selectedIds}
               onToggleSelect={toggleSelect}
-              onRowClick={() => {
-                // TODO(P3): open RunDetailDrawer
+              onRowClick={(id) => {
+                setDrawerRunId(id);
               }}
-              onHashClick={() => {
-                // TODO(P3): open RunDetailDrawer at snapshot tab
+              onHashClick={(id) => {
+                setDrawerRunId(id);
               }}
             />
             <RunsPagination
@@ -214,6 +227,19 @@ export function EvalRunsPage(): ReactElement {
           </>
         )}
       </main>
+
+      <RunDetailDrawer
+        runId={drawerRunId}
+        onClose={() => {
+          setDrawerRunId(null);
+        }}
+      />
+      <ComparePromptsDialog
+        runIds={compareRunIds}
+        onClose={() => {
+          setCompareRunIds(null);
+        }}
+      />
     </div>
   );
 }

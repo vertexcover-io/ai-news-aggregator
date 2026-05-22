@@ -29,13 +29,15 @@ vi.mock("../../src/api/eval", async () => {
   return {
     ...actual,
     listEvalRuns: vi.fn(),
+    getEvalRun: vi.fn(),
   };
 });
 
 import { EvalRunsPage } from "../../src/pages/EvalRunsPage";
-import { listEvalRuns, EvalApiError } from "../../src/api/eval";
+import { listEvalRuns, getEvalRun, EvalApiError } from "../../src/api/eval";
 
 const listEvalRunsMock = vi.mocked(listEvalRuns);
+const getEvalRunMock = vi.mocked(getEvalRun);
 
 function makeRun(
   id: string,
@@ -91,6 +93,24 @@ function renderPage(initial = "/admin/eval/runs"): void {
 
 beforeEach(() => {
   listEvalRunsMock.mockReset();
+  getEvalRunMock.mockReset();
+  getEvalRunMock.mockResolvedValue({
+    id: "aaa",
+    mode: "scored",
+    fixtureId: "fx-1",
+    date: null,
+    windowSize: null,
+    draftPromptHash: "b8e7f203abcd",
+    draftPromptSnapshot: "snapshot text",
+    savedPromptHash: null,
+    savedPromptSnapshot: null,
+    status: "done",
+    startedAt: "2026-05-21T19:14:08.000Z",
+    finishedAt: "2026-05-21T19:14:30.000Z",
+    scoreBreakdown: { ndcgAt10: 0.847 },
+    costBreakdown: { usd: 0.041 },
+    errorMessage: null,
+  });
   vi.useRealTimers();
 });
 
@@ -205,7 +225,7 @@ describe("EvalRunsPage", () => {
     expect(screen.getByTestId("runs-error-retry")).toBeTruthy();
   });
 
-  it("checking two rows updates compare bar selected-count but CTA stays disabled", async () => {
+  it("checking two rows arms the compare CTA", async () => {
     listEvalRunsMock.mockResolvedValue({
       runs: [makeRun("aaa"), makeRun("bbb"), makeRun("ccc")],
       total: 3,
@@ -220,6 +240,19 @@ describe("EvalRunsPage", () => {
     expect(bar.getAttribute("data-armed")).toBe("true");
     expect(bar.textContent).toContain("2 of 3");
     const cta = screen.getByTestId<HTMLButtonElement>("runs-compare-cta");
-    expect(cta.disabled).toBe(true);
+    expect(cta.disabled).toBe(false);
+  });
+
+  it("clicking a run id opens the run detail drawer", async () => {
+    listEvalRunsMock.mockResolvedValue({
+      runs: [makeRun("aaa")],
+      total: 1,
+      page: 1,
+      perPage: 20,
+    });
+    renderPage();
+    await screen.findByTestId("runs-table-section");
+    fireEvent.click(screen.getByText("r/aaa"));
+    await screen.findByTestId("run-detail-drawer");
   });
 });
