@@ -1,5 +1,8 @@
 import type {
+  EvalRun,
   EvalRunRequest,
+  EvalRunStatus,
+  EvalRunSummary,
   Fixture,
   FixtureSource,
   GradingStatus,
@@ -142,6 +145,54 @@ export async function listEvalFixtures(): Promise<{
     throw new EvalApiError(message, res.status, body);
   }
   return (await res.json()) as { fixtures: FixtureSummary[] };
+}
+
+export interface ListEvalRunsParams {
+  page?: number;
+  perPage?: number;
+  mode?: "scored" | "ab";
+  status?: EvalRunStatus;
+  fixtureId?: string;
+}
+
+export interface ListEvalRunsResponse {
+  runs: EvalRunSummary[];
+  total: number;
+  page: number;
+  perPage: number;
+}
+
+export async function listEvalRuns(
+  params: ListEvalRunsParams = {},
+): Promise<ListEvalRunsResponse> {
+  const qs = new URLSearchParams();
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.perPage !== undefined) qs.set("perPage", String(params.perPage));
+  if (params.mode !== undefined) qs.set("mode", params.mode);
+  if (params.status !== undefined) qs.set("status", params.status);
+  if (params.fixtureId !== undefined) qs.set("fixtureId", params.fixtureId);
+  const query = qs.toString();
+  const path = query.length > 0
+    ? `/api/admin/eval/runs?${query}`
+    : "/api/admin/eval/runs";
+  const res = await apiFetchAdmin(path);
+  if (!res.ok) {
+    const { message, body } = await readErrorBody(res);
+    throw new EvalApiError(message, res.status, body);
+  }
+  return (await res.json()) as ListEvalRunsResponse;
+}
+
+export async function getEvalRun(id: string): Promise<EvalRun> {
+  const res = await apiFetchAdmin(
+    `/api/admin/eval/runs/${encodeURIComponent(id)}`,
+  );
+  if (!res.ok) {
+    const { message, body } = await readErrorBody(res);
+    throw new EvalApiError(message, res.status, body);
+  }
+  const payload = (await res.json()) as { run: EvalRun };
+  return payload.run;
 }
 
 export async function saveDraftPrompt(
