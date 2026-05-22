@@ -39,6 +39,13 @@ import {
   createUserSettingsRepo,
   type UserSettingsRepo,
 } from "@api/repositories/user-settings.js";
+import {
+  createEvalRunsRepo,
+  type EvalRunsRepo,
+} from "@api/repositories/eval-runs.js";
+import { hashPrompt } from "@newsletter/shared/utils/prompt-hash";
+
+const PROMPT_SNAPSHOT_MAX_LEN = 65536;
 
 const manualFixtureRequestSchema = z.object({
   urls: z.array(z.url()).min(1).max(50),
@@ -77,6 +84,7 @@ export type FindRawItemsByDateFn = (dateISO: string) => Promise<
 
 export interface AdminEvalRouterDeps {
   getSettingsRepo: () => UserSettingsRepo;
+  getEvalRunsRepo?: () => EvalRunsRepo;
   listFixtures?: ListFixturesFn;
   readFixture?: ReadFixtureFn;
   readGroundTruth?: ReadGroundTruthFn;
@@ -275,6 +283,72 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
     const cache = new EvalCache(cacheDir, { bypassCache: req.bypassCache });
     const model = DEFAULT_RANKING_MODEL;
 
+    const draftPromptHash = hashPrompt(req.draftPrompt);
+    const draftPromptSnapshot = req.draftPrompt.slice(
+      0,
+      PROMPT_SNAPSHOT_MAX_LEN,
+    );
+    let savedPromptForRun: string | null = null;
+    let savedPromptHash: string | null = null;
+    let savedPromptSnapshot: string | null = null;
+    if (req.mode === "ab") {
+      const settingsRepo = deps.getSettingsRepo();
+      const settings = await settingsRepo.get();
+      const sp = req.savedPrompt ?? settings?.rankingPrompt ?? "";
+      if (sp.length > 0) {
+        savedPromptForRun = sp;
+        savedPromptHash = hashPrompt(sp);
+        savedPromptSnapshot = sp.slice(0, PROMPT_SNAPSHOT_MAX_LEN);
+      }
+    }
+
+    const evalRunsRepo = deps.getEvalRunsRepo?.();
+    let runId: string | null = null;
+    if (evalRunsRepo !== undefined) {
+      try {
+        const inserted = await evalRunsRepo.insert({
+          mode: req.mode,
+          fixtureId: req.mode === "scored" ? (req.fixtureId ?? null) : null,
+          date: req.mode === "ab" ? (req.date ?? null) : null,
+          windowSize:
+            req.mode === "scored" && req.fixtureId === undefined
+              ? (req.windowSize ?? null)
+              : null,
+          draftPromptHash,
+          draftPromptSnapshot,
+          savedPromptHash,
+          savedPromptSnapshot,
+        });
+        runId = inserted.id;
+      } catch (err) {
+        logger.error({ err }, "admin-eval.run.insert_failed");
+      }
+    }
+
+    const persistFinish = async (
+      scoreBreakdown: unknown,
+      costBreakdown: unknown,
+    ): Promise<void> => {
+      if (runId === null || evalRunsRepo === undefined) return;
+      try {
+        await evalRunsRepo.updateFinish(runId, {
+          scoreBreakdown,
+          costBreakdown,
+        });
+      } catch (err) {
+        logger.error({ err, runId }, "admin-eval.run.update_finish_failed");
+      }
+    };
+
+    const persistFailed = async (errorMessage: string): Promise<void> => {
+      if (runId === null || evalRunsRepo === undefined) return;
+      try {
+        await evalRunsRepo.updateFailed(runId, { errorMessage });
+      } catch (err) {
+        logger.error({ err, runId }, "admin-eval.run.update_failed_failed");
+      }
+    };
+
     return streamSSE(c, async (stream) => {
       let totalUsd = 0;
       try {
@@ -344,6 +418,15 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
 
           const ndcgScores: number[] = [];
           const gradedForReport: { fixture: Fixture; groundTruth: GroundTruth }[] = [];
+          interface PerFixtureRecord {
+            fixtureId: string;
+            status: "done" | "error";
+            score: RunEvalOutput["score"] | null;
+            cost: RunEvalOutput["cost"] | null;
+            error: string | null;
+          }
+          const perFixtureRecords: PerFixtureRecord[] = [];
+          const perFixtureCosts: { fixtureId: string; cost: RunEvalOutput["cost"] }[] = [];
           for (const t of targets) {
             await stream.writeSSE({
               event: "progress",
@@ -365,6 +448,17 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
               if (result.score !== null) {
                 ndcgScores.push(result.score.ndcgAt10);
               }
+              perFixtureRecords.push({
+                fixtureId: t.fixture.fixtureId,
+                status: "done",
+                score: result.score,
+                cost: result.cost,
+                error: null,
+              });
+              perFixtureCosts.push({
+                fixtureId: t.fixture.fixtureId,
+                cost: result.cost,
+              });
               await stream.writeSSE({
                 event: "progress",
                 data: JSON.stringify({
@@ -375,12 +469,20 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
                 }),
               });
             } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              perFixtureRecords.push({
+                fixtureId: t.fixture.fixtureId,
+                status: "error",
+                score: null,
+                cost: null,
+                error: errMsg,
+              });
               await stream.writeSSE({
                 event: "progress",
                 data: JSON.stringify({
                   fixtureId: t.fixture.fixtureId,
                   status: "error",
-                  error: err instanceof Error ? err.message : String(err),
+                  error: errMsg,
                 }),
               });
             }
@@ -404,6 +506,16 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
               sourcingReport: report,
             }),
           });
+          await persistFinish(
+            {
+              perFixture: perFixtureRecords,
+              aggregate: { meanNdcgAt10 },
+            },
+            {
+              totalUsd,
+              perFixture: perFixtureCosts,
+            },
+          );
           await stream.writeSSE({
             event: "done",
             data: JSON.stringify({ totalCost: { usd: totalUsd } }),
@@ -427,17 +539,14 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
           });
           return;
         }
-        const repo = deps.getSettingsRepo();
-        const settings = await repo.get();
-        const savedPrompt =
-          req.savedPrompt ?? settings?.rankingPrompt ?? "";
-        if (savedPrompt.length === 0) {
+        if (savedPromptForRun === null) {
           await stream.writeSSE({
             event: "error",
             data: JSON.stringify({ message: "savedPrompt unavailable" }),
           });
           return;
         }
+        const savedPrompt = savedPromptForRun;
         const pool = await findRawItemsByDateFn(req.date);
         if (pool.length === 0) {
           await stream.writeSSE({
@@ -497,25 +606,35 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
               source: meta?.source ?? "",
             };
           });
+        const savedItems = toAbItems(abResult.saved);
+        const draftItems = toAbItems(abResult.draft);
         await stream.writeSSE({
           event: "aggregate",
           data: JSON.stringify({
-            saved: toAbItems(abResult.saved),
-            draft: toAbItems(abResult.draft),
+            saved: savedItems,
+            draft: draftItems,
             totalCost: { usd: totalUsd },
           }),
         });
+        await persistFinish(
+          { saved: savedItems, draft: draftItems },
+          {
+            totalUsd,
+            saved: abResult.cost.saved,
+            draft: abResult.cost.draft,
+          },
+        );
         await stream.writeSSE({
           event: "done",
           data: JSON.stringify({ totalCost: { usd: totalUsd } }),
         });
       } catch (err) {
         logger.error({ err }, "admin-eval.run.failed");
+        const errMsg = err instanceof Error ? err.message : String(err);
+        await persistFailed(errMsg);
         await stream.writeSSE({
           event: "error",
-          data: JSON.stringify({
-            message: err instanceof Error ? err.message : String(err),
-          }),
+          data: JSON.stringify({ message: errMsg }),
         });
       }
     });
@@ -527,6 +646,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
 export function createDefaultAdminEvalRouter(): Hono {
   return createAdminEvalRouter({
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getEvalRunsRepo: () => createEvalRunsRepo(defaultGetDb()),
     findRawItemsByDate: async (dateISO) => {
       const repo = createEvalExportsRepo(defaultGetDb());
       const rows = await repo.findRawItemsByDate(dateISO);
