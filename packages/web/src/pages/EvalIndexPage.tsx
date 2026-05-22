@@ -65,6 +65,64 @@ function formatTodayIso(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+const RUN_STATE_KEY = "eval-run-state";
+const RUN_STATE_VERSION = 1;
+const RUN_STATE_TTL_MS = 60 * 60 * 1000;
+
+interface PersistedRunState {
+  version: number;
+  mode: "scored";
+  scoredScope: ScoredScope;
+  fixtureId: string;
+  windowSize: number;
+  rows: EvalProgressRow[];
+  totalUsd: number | null;
+  runError: string | null;
+  persistedAt: number;
+}
+
+function safeSessionGet(): PersistedRunState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(RUN_STATE_KEY);
+    if (raw === null) return null;
+    const parsed = JSON.parse(raw) as Partial<PersistedRunState>;
+    if (
+      parsed.version !== RUN_STATE_VERSION ||
+      parsed.mode !== "scored" ||
+      typeof parsed.persistedAt !== "number"
+    ) {
+      window.sessionStorage.removeItem(RUN_STATE_KEY);
+      return null;
+    }
+    if (Date.now() - parsed.persistedAt > RUN_STATE_TTL_MS) {
+      window.sessionStorage.removeItem(RUN_STATE_KEY);
+      return null;
+    }
+    return parsed as PersistedRunState;
+  } catch {
+    return null;
+  }
+}
+
+function safeSessionSet(state: PersistedRunState): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(RUN_STATE_KEY, JSON.stringify(state));
+  } catch {
+    // quota / disabled — silently swallow, runs continue uninterrupted.
+  }
+}
+
+function safeSessionClear(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(RUN_STATE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export function EvalIndexPage(): ReactElement {
   const settingsQuery = useSettings();
   const fixturesQuery = useEvalFixtures();
@@ -83,9 +141,10 @@ export function EvalIndexPage(): ReactElement {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const initialMode: Mode = searchParams.get("mode") === "ab" ? "ab" : "scored";
+  const initialFixtureId = searchParams.get("fixtureId") ?? "";
   const [mode, setMode] = useState<Mode>(initialMode);
   const [scoredScope, setScoredScope] = useState<ScoredScope>("single");
-  const [fixtureId, setFixtureId] = useState("");
+  const [fixtureId, setFixtureId] = useState(initialFixtureId);
   const [windowSize, setWindowSize] = useState(20);
   const [forceWindow, setForceWindow] = useState(false);
   const [bypassCache, setBypassCache] = useState(false);
@@ -129,6 +188,37 @@ export function EvalIndexPage(): ReactElement {
     };
   }, []);
 
+  useEffect(() => {
+    const persisted = safeSessionGet();
+    if (persisted === null) return;
+    setMode("scored");
+    setScoredScope(persisted.scoredScope);
+    if (initialFixtureId.length === 0 && persisted.fixtureId.length > 0) {
+      setFixtureId(persisted.fixtureId);
+    }
+    setWindowSize(persisted.windowSize);
+    setRows(persisted.rows);
+    setTotalUsd(persisted.totalUsd);
+    setRunError(persisted.runError);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (mode !== "scored") return;
+    if (rows.length === 0 && totalUsd === null && runError === null) return;
+    safeSessionSet({
+      version: RUN_STATE_VERSION,
+      mode: "scored",
+      scoredScope,
+      fixtureId,
+      windowSize,
+      rows,
+      totalUsd,
+      runError,
+      persistedAt: Date.now(),
+    });
+  }, [mode, scoredScope, fixtureId, windowSize, rows, totalUsd, runError]);
+
   function resetResults(): void {
     setRows([]);
     setTotalUsd(null);
@@ -136,6 +226,7 @@ export function EvalIndexPage(): ReactElement {
     setAbSaved([]);
     setAbDraft([]);
     setSourcing([]);
+    safeSessionClear();
   }
 
   const COST_PER_FIXTURE_USD_ESTIMATE = 0.01;

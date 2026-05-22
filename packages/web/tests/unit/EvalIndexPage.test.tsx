@@ -102,10 +102,12 @@ beforeEach(() => {
   );
   saveDraftPromptMock.mockClear();
   runEvalMock.mockClear();
+  window.sessionStorage.clear();
 });
 
 afterEach(() => {
   cleanup();
+  window.sessionStorage.clear();
 });
 
 describe("EvalIndexPage", () => {
@@ -242,5 +244,88 @@ describe("EvalIndexPage", () => {
       expect(screen.queryByTestId("prompt-diff-body")).toBeNull();
     });
     expect(saveDraftPromptMock).not.toHaveBeenCalled();
+  });
+
+  it("pre-selects fixture from ?fixtureId= URL param (REQ-1)", async () => {
+    renderPage("/admin/eval?fixtureId=fx-1");
+    const select = await screen.findByTestId<HTMLSelectElement>(
+      "fixture-select",
+    );
+    await waitFor(() => {
+      expect(select.querySelectorAll("option").length).toBeGreaterThan(1);
+    });
+    expect(select.value).toBe("fx-1");
+  });
+
+  it("hydrates Mode A rows from sessionStorage on mount (REQ-2)", async () => {
+    window.sessionStorage.setItem(
+      "eval-run-state",
+      JSON.stringify({
+        version: 1,
+        mode: "scored",
+        scoredScope: "single",
+        fixtureId: "fx-1",
+        windowSize: 20,
+        rows: [
+          {
+            fixtureId: "fx-1",
+            status: "done",
+            score: {
+              ndcgAt10: 0.85,
+              precisionAt10: 0.7,
+              mustIncludeRecall: 1,
+              rankOneIsMustInclude: true,
+            },
+            cost: { usd: 0.012, tokensIn: 100, tokensOut: 50 },
+            error: undefined,
+          },
+        ],
+        totalUsd: 0.012,
+        runError: null,
+        persistedAt: Date.now(),
+      }),
+    );
+    renderPage();
+    await screen.findByTestId("prompt-editor-textarea");
+    // EvalResultsPanel renders the per-fixture row when hydrated.
+    await waitFor(() => {
+      expect(screen.queryAllByText(/fx-1/).length).toBeGreaterThan(0);
+    });
+  });
+
+  it("discards persisted run state older than 1 hour (EDGE-2.2)", async () => {
+    window.sessionStorage.setItem(
+      "eval-run-state",
+      JSON.stringify({
+        version: 1,
+        mode: "scored",
+        scoredScope: "single",
+        fixtureId: "fx-1",
+        windowSize: 20,
+        rows: [
+          {
+            fixtureId: "fx-1",
+            status: "done",
+            score: {
+              ndcgAt10: 0.85,
+              precisionAt10: 0.7,
+              mustIncludeRecall: 1,
+              rankOneIsMustInclude: true,
+            },
+            cost: { usd: 0.012, tokensIn: 100, tokensOut: 50 },
+            error: undefined,
+          },
+        ],
+        totalUsd: 0.012,
+        runError: null,
+        persistedAt: Date.now() - 2 * 60 * 60 * 1000,
+      }),
+    );
+    renderPage();
+    await screen.findByTestId("prompt-editor-textarea");
+    // Stale record should be cleared; sessionStorage key gone.
+    await waitFor(() => {
+      expect(window.sessionStorage.getItem("eval-run-state")).toBeNull();
+    });
   });
 });

@@ -5,7 +5,7 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type {
   Fixture,
   FixtureItem,
@@ -80,6 +80,7 @@ function triggerDownload(filename: string, json: string): void {
 
 export function EvalGradePage(): ReactElement {
   const { fixtureId = "" } = useParams<{ fixtureId: string }>();
+  const navigate = useNavigate();
   const [grader, setGrader] = useState<string>(() => {
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem(GRADER_KEY) ?? "";
@@ -235,6 +236,9 @@ export function EvalGradePage(): ReactElement {
     try {
       const gt = buildGroundTruth();
       await saveGroundTruthToRepo(fixtureId, gt);
+      void navigate(
+        `/admin/eval?fixtureId=${encodeURIComponent(fixtureId)}`,
+      );
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save");
     } finally {
