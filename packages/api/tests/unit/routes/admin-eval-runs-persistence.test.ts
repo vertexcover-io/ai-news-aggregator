@@ -425,6 +425,59 @@ describe("admin-eval /run persistence (Phase 3)", () => {
     expect(evalRunsRepo.updateFinish).toHaveBeenCalledTimes(1);
     expect(evalRunsRepo.updateFailed).not.toHaveBeenCalled();
   });
+
+  it("EDGE-1.3: prompts longer than 65,536 chars are truncated with '…' suffix; hash is computed BEFORE truncation", async () => {
+    // Build a prompt that exceeds the snapshot cap. Use a deterministic
+    // pattern so we can assert that the hash matches the *full* prompt's
+    // hash, not the truncated version's.
+    const bigPrompt = "x".repeat(70_000);
+    const { hashPrompt } = await import("@newsletter/shared/utils/prompt-hash");
+    const expectedHash = hashPrompt(bigPrompt);
+
+    const fixture = makeFixture("fix-edge-13");
+    const evalRunsRepo = makeEvalRunsRepo();
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo(),
+      getEvalRunsRepo: () => evalRunsRepo,
+      listFixtures: vi.fn(() => Promise.resolve([fixture])),
+      readFixture: vi.fn(() => Promise.resolve(fixture)),
+      readGroundTruth: vi.fn(() => Promise.resolve(null)),
+      writeGroundTruth: vi.fn(() => Promise.resolve()),
+      runEval: vi.fn(() =>
+        Promise.resolve({
+          rankedItems: [],
+          score: null,
+          cost: { tokensIn: 0, tokensOut: 0, usd: 0, cacheHit: false, promptHash: "abc" },
+        }),
+      ),
+      runModeB: vi.fn(),
+    });
+
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "scored",
+        fixtureId: "fix-edge-13",
+        draftPrompt: bigPrompt,
+      }),
+    });
+    expect(res.status).toBe(200);
+    await readBody(res); // drain
+
+    expect(evalRunsRepo.insert).toHaveBeenCalledTimes(1);
+    const insertArg = vi.mocked(evalRunsRepo.insert).mock.calls[0][0];
+
+    // Hash matches the FULL prompt (computed before truncation).
+    expect(insertArg.draftPromptHash).toBe(expectedHash);
+
+    // Snapshot is exactly 65,536 chars (the cap, including the suffix).
+    expect(insertArg.draftPromptSnapshot.length).toBe(65_536);
+    // Ends with the truncation marker.
+    expect(insertArg.draftPromptSnapshot.endsWith("…")).toBe(true);
+    // The prefix is the start of the original prompt.
+    expect(insertArg.draftPromptSnapshot.startsWith("xxxxxxxxxx")).toBe(true);
+  });
 });
 
 describe("admin-eval GET /runs and /runs/:id (Phase 4)", () => {

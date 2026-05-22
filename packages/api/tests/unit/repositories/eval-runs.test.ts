@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { EvalRunInsertInput } from "@newsletter/shared/types/eval-ranking";
-import { createEvalRunsRepo } from "@pipeline/repositories/eval-runs.js";
+import { createEvalRunsRepo } from "@api/repositories/eval-runs.js";
 
 interface StoredRow {
   id: string;

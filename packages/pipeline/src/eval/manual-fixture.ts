@@ -140,27 +140,48 @@ export async function createManualFixture(
     fetchFn: deps.fetchFn,
   };
 
-  const resolved: { insert: RawItemInsert; needsEnrichment: boolean }[] =
-    await Promise.all(
-      deduped.map(async (url) => {
-        const sourceType = detectAddPostSourceType(url);
-        try {
-          const insert = await dispatchFn(url, sourceType, dispatchDeps);
-          return { insert, needsEnrichment: false };
-        } catch (err) {
-          logger.warn(
-            {
-              event: "eval.manual-fixture.collector_fallback",
-              url,
-              sourceType,
-              error: err instanceof Error ? err.message : String(err),
-            },
-            "eval.manual-fixture.collector_fallback",
-          );
-          return { insert: syntheticInsert(url), needsEnrichment: true };
-        }
-      }),
-    );
+  // Cap concurrency so 50 pasted URLs don't fan out 50 parallel
+  // HN/Reddit requests — those platforms will rate-limit and we'd be
+  // rude. 5 in flight is plenty for the typical fixture size.
+  const COLLECTOR_CONCURRENCY = 5;
+  interface ResolvedItem {
+    insert: RawItemInsert;
+    needsEnrichment: boolean;
+  }
+  const resolved: ResolvedItem[] = Array.from(
+    { length: deduped.length },
+    () => ({ insert: syntheticInsert(""), needsEnrichment: false }),
+  );
+  let cursor = 0;
+  async function worker(): Promise<void> {
+    for (;;) {
+      const i = cursor++;
+      if (i >= deduped.length) return;
+      const url = deduped[i];
+      const sourceType = detectAddPostSourceType(url);
+      try {
+        const insert = await dispatchFn(url, sourceType, dispatchDeps);
+        resolved[i] = { insert, needsEnrichment: false };
+      } catch (err) {
+        logger.warn(
+          {
+            event: "eval.manual-fixture.collector_fallback",
+            url,
+            sourceType,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "eval.manual-fixture.collector_fallback",
+        );
+        resolved[i] = { insert: syntheticInsert(url), needsEnrichment: true };
+      }
+    }
+  }
+  await Promise.all(
+    Array.from(
+      { length: Math.min(COLLECTOR_CONCURRENCY, deduped.length) },
+      () => worker(),
+    ),
+  );
 
   const inserts = resolved.map((r) => r.insert);
   const counters = newCounters();

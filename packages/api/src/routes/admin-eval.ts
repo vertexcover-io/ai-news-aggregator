@@ -46,6 +46,13 @@ import {
 import { hashPrompt } from "@newsletter/shared/utils/prompt-hash";
 
 const PROMPT_SNAPSHOT_MAX_LEN = 65536;
+const TRUNCATION_SUFFIX = "…";
+
+function truncateSnapshot(prompt: string): string {
+  if (prompt.length <= PROMPT_SNAPSHOT_MAX_LEN) return prompt;
+  return prompt.slice(0, PROMPT_SNAPSHOT_MAX_LEN - TRUNCATION_SUFFIX.length) +
+    TRUNCATION_SUFFIX;
+}
 
 const listRunsQuerySchema = z.object({
   page: z.coerce
@@ -352,10 +359,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
     const model = DEFAULT_RANKING_MODEL;
 
     const draftPromptHash = hashPrompt(req.draftPrompt);
-    const draftPromptSnapshot = req.draftPrompt.slice(
-      0,
-      PROMPT_SNAPSHOT_MAX_LEN,
-    );
+    const draftPromptSnapshot = truncateSnapshot(req.draftPrompt);
     let savedPromptForRun: string | null = null;
     let savedPromptHash: string | null = null;
     let savedPromptSnapshot: string | null = null;
@@ -366,7 +370,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
       if (sp.length > 0) {
         savedPromptForRun = sp;
         savedPromptHash = hashPrompt(sp);
-        savedPromptSnapshot = sp.slice(0, PROMPT_SNAPSHOT_MAX_LEN);
+        savedPromptSnapshot = truncateSnapshot(sp);
       }
     }
 
