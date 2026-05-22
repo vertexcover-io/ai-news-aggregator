@@ -7,7 +7,11 @@ import {
 } from "@newsletter/shared";
 import { GroundTruthSchema } from "@newsletter/shared/types/eval-ranking-schemas";
 import { EvalRunRequestSchema } from "@newsletter/shared/types/eval-ranking-schemas";
-import { FIXTURES_DIR, GROUNDTRUTH_DIR } from "@newsletter/shared/constants/eval-ranking";
+import {
+  FIXTURES_DIR,
+  GROUNDTRUTH_DIR,
+  WINDOW_MAX,
+} from "@newsletter/shared/constants/eval-ranking";
 import type {
   Fixture,
   GradingStatus,
@@ -275,64 +279,127 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
       let totalUsd = 0;
       try {
         if (req.mode === "scored") {
-          if (!req.fixtureId) {
+          interface Target {
+            fixture: Fixture;
+            groundTruth: GroundTruth | null;
+          }
+          const targets: Target[] = [];
+          if (req.fixtureId) {
+            let fixture: Fixture;
+            try {
+              fixture = await readFixtureFn(req.fixtureId, fixturesDir);
+            } catch {
+              await stream.writeSSE({
+                event: "error",
+                data: JSON.stringify({ message: "fixture_not_found" }),
+              });
+              return;
+            }
+            const gt = await readGroundTruthFn(req.fixtureId, groundtruthDir);
+            targets.push({ fixture, groundTruth: gt });
+          } else if (req.windowSize !== undefined) {
+            if (req.windowSize < 1) {
+              await stream.writeSSE({
+                event: "error",
+                data: JSON.stringify({ message: "windowSize must be >= 1" }),
+              });
+              return;
+            }
+            if (req.windowSize > WINDOW_MAX && req.forceWindow !== true) {
+              await stream.writeSSE({
+                event: "error",
+                data: JSON.stringify({
+                  message: `windowSize ${String(req.windowSize)} exceeds ${String(WINDOW_MAX)} — use forceWindow:true to confirm`,
+                }),
+              });
+              return;
+            }
+            const all = await listFixturesFn(fixturesDir);
+            const gradedPairs: { fixture: Fixture; gradedAt: string; gt: GroundTruth }[] = [];
+            for (const f of all) {
+              const gt = await readGroundTruthFn(f.fixtureId, groundtruthDir);
+              if (gt === null) continue;
+              gradedPairs.push({ fixture: f, gradedAt: gt.gradedAt, gt });
+            }
+            gradedPairs.sort((a, b) => (a.gradedAt < b.gradedAt ? 1 : -1));
+            for (const g of gradedPairs.slice(0, req.windowSize)) {
+              targets.push({ fixture: g.fixture, groundTruth: g.gt });
+            }
+            if (targets.length === 0) {
+              await stream.writeSSE({
+                event: "error",
+                data: JSON.stringify({ message: "no graded fixtures available" }),
+              });
+              return;
+            }
+          } else {
             await stream.writeSSE({
               event: "error",
-              data: JSON.stringify({ message: "fixtureId required for scored mode" }),
+              data: JSON.stringify({
+                message: "fixtureId or windowSize required for scored mode",
+              }),
             });
             return;
           }
-          let fixture: Fixture;
-          try {
-            fixture = await readFixtureFn(req.fixtureId, fixturesDir);
-          } catch {
-            await stream.writeSSE({
-              event: "error",
-              data: JSON.stringify({ message: "fixture_not_found" }),
-            });
-            return;
-          }
-          const gt = await readGroundTruthFn(req.fixtureId, groundtruthDir);
-          await stream.writeSSE({
-            event: "progress",
-            data: JSON.stringify({
-              fixtureId: req.fixtureId,
-              status: "running",
-            }),
-          });
-          try {
-            const args: RunEvalArgs = {
-              fixture,
-              groundTruth: gt,
-              prompt: req.draftPrompt,
-              model,
-              cache,
-            };
-            const result: RunEvalOutput = await runEvalFn(args);
-            totalUsd += result.cost.usd;
+
+          const ndcgScores: number[] = [];
+          const gradedForReport: { fixture: Fixture; groundTruth: GroundTruth }[] = [];
+          for (const t of targets) {
             await stream.writeSSE({
               event: "progress",
               data: JSON.stringify({
-                fixtureId: req.fixtureId,
-                status: "done",
-                score: result.score,
-                cost: result.cost,
+                fixtureId: t.fixture.fixtureId,
+                status: "running",
               }),
             });
-          } catch (err) {
-            await stream.writeSSE({
-              event: "progress",
-              data: JSON.stringify({
-                fixtureId: req.fixtureId,
-                status: "error",
-                error: err instanceof Error ? err.message : String(err),
-              }),
-            });
+            try {
+              const args: RunEvalArgs = {
+                fixture: t.fixture,
+                groundTruth: t.groundTruth,
+                prompt: req.draftPrompt,
+                model,
+                cache,
+              };
+              const result: RunEvalOutput = await runEvalFn(args);
+              totalUsd += result.cost.usd;
+              if (result.score !== null) {
+                ndcgScores.push(result.score.ndcgAt10);
+              }
+              await stream.writeSSE({
+                event: "progress",
+                data: JSON.stringify({
+                  fixtureId: t.fixture.fixtureId,
+                  status: "done",
+                  score: result.score,
+                  cost: result.cost,
+                }),
+              });
+            } catch (err) {
+              await stream.writeSSE({
+                event: "progress",
+                data: JSON.stringify({
+                  fixtureId: t.fixture.fixtureId,
+                  status: "error",
+                  error: err instanceof Error ? err.message : String(err),
+                }),
+              });
+            }
+            if (t.groundTruth !== null) {
+              gradedForReport.push({
+                fixture: t.fixture,
+                groundTruth: t.groundTruth,
+              });
+            }
           }
-          const report = gt !== null ? sourcingReport([{ fixture, groundTruth: gt }]) : [];
+          const report = sourcingReport(gradedForReport);
+          const meanNdcgAt10 =
+            ndcgScores.length === 0
+              ? 0
+              : ndcgScores.reduce((a, b) => a + b, 0) / ndcgScores.length;
           await stream.writeSSE({
             event: "aggregate",
             data: JSON.stringify({
+              meanNdcgAt10,
               totalCost: { usd: totalUsd },
               sourcingReport: report,
             }),

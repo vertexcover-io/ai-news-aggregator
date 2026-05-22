@@ -89,6 +89,7 @@ export interface EvalRunRequest {
   draftPrompt: string;
   savedPrompt?: string;
   windowSize?: number;
+  forceWindow?: boolean;
   bypassCache?: boolean;
 }
 

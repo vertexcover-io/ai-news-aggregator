@@ -442,6 +442,178 @@ describe("POST /run SSE", () => {
     expect(runModeB).not.toHaveBeenCalled();
   });
 
+  it("Mode A windowSize iterates over top-N graded fixtures", async () => {
+    const listFixtures = vi.fn(() =>
+      Promise.resolve([
+        makeFixture("f-1"),
+        makeFixture("f-2"),
+        makeFixture("f-3"),
+      ]),
+    );
+    const gradedAtMap: Record<string, string> = {
+      "f-1": "2026-05-01T00:00:00Z",
+      "f-2": "2026-05-02T00:00:00Z",
+      "f-3": "2026-05-03T00:00:00Z",
+    };
+    const readGroundTruth = vi.fn((id: string): Promise<GroundTruth | null> =>
+      Promise.resolve({
+        fixtureId: id,
+        gradedBy: ["aman"],
+        gradedAt: gradedAtMap[id],
+        labels: [],
+      }),
+    );
+    const runEval = vi.fn(
+      (): Promise<RunEvalOutput> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: -1, score: 0.9, rationale: "ok" }],
+          score: {
+            fixtureId: "x",
+            ndcgAt10: 0.8,
+            precisionAt10: 0.5,
+            mustIncludeRecall: 1,
+            rankOneIsMustInclude: true,
+            perItemDiff: [],
+            ranAt: "now",
+            promptHash: "h",
+            model: "m",
+          },
+          cost: {
+            tokensIn: 100,
+            tokensOut: 50,
+            usd: 0.01,
+            cacheHit: false,
+            promptHash: "abc",
+          },
+        }),
+    );
+    const { app } = makeRouter({ listFixtures, readGroundTruth, runEval });
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { ...authedHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "scored",
+        windowSize: 2,
+        draftPrompt: "draft",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(runEval).toHaveBeenCalledTimes(2);
+    // Most recent first: f-3, f-2
+    expect(text).toContain('"fixtureId":"f-3"');
+    expect(text).toContain('"fixtureId":"f-2"');
+    expect(text).not.toContain('"fixtureId":"f-1"');
+    expect(text).toContain("event: aggregate");
+    expect(text).toContain("meanNdcgAt10");
+    expect(text).toContain("event: done");
+  });
+
+  it("Mode A windowSize > 60 without forceWindow emits error", async () => {
+    const { app } = makeRouter();
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { ...authedHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "scored",
+        windowSize: 65,
+        draftPrompt: "draft",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("event: error");
+    expect(text).toContain("forceWindow");
+  });
+
+  it("Mode A windowSize > 60 with forceWindow runs (capped to available)", async () => {
+    const listFixtures = vi.fn(() => Promise.resolve([makeFixture("f-1")]));
+    const readGroundTruth = vi.fn((id: string): Promise<GroundTruth | null> =>
+      Promise.resolve({
+        fixtureId: id,
+        gradedBy: ["aman"],
+        gradedAt: "2026-05-01T00:00:00Z",
+        labels: [],
+      }),
+    );
+    const runEval = vi.fn(
+      (): Promise<RunEvalOutput> =>
+        Promise.resolve({
+          rankedItems: [],
+          score: null,
+          cost: {
+            tokensIn: 10,
+            tokensOut: 5,
+            usd: 0.001,
+            cacheHit: false,
+            promptHash: "x",
+          },
+        }),
+    );
+    const { app } = makeRouter({ listFixtures, readGroundTruth, runEval });
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { ...authedHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "scored",
+        windowSize: 65,
+        forceWindow: true,
+        draftPrompt: "draft",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(runEval).toHaveBeenCalledTimes(1);
+    expect(text).toContain("event: done");
+  });
+
+  it("Mode A windowSize: one fixture failure does not abort the stream", async () => {
+    const listFixtures = vi.fn(() =>
+      Promise.resolve([makeFixture("f-1"), makeFixture("f-2")]),
+    );
+    const readGroundTruth = vi.fn((id: string): Promise<GroundTruth | null> =>
+      Promise.resolve({
+        fixtureId: id,
+        gradedBy: ["aman"],
+        gradedAt: id === "f-1" ? "2026-05-01T00:00:00Z" : "2026-05-02T00:00:00Z",
+        labels: [],
+      }),
+    );
+    let call = 0;
+    const runEval = vi.fn((): Promise<RunEvalOutput> => {
+      call += 1;
+      if (call === 1) return Promise.reject(new Error("boom"));
+      return Promise.resolve({
+        rankedItems: [],
+        score: null,
+        cost: {
+          tokensIn: 10,
+          tokensOut: 5,
+          usd: 0.001,
+          cacheHit: false,
+          promptHash: "x",
+        },
+      });
+    });
+    const { app } = makeRouter({ listFixtures, readGroundTruth, runEval });
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { ...authedHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "scored",
+        windowSize: 2,
+        draftPrompt: "draft",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(runEval).toHaveBeenCalledTimes(2);
+    expect(text).toContain('"status":"error"');
+    expect(text).toContain('"error":"boom"');
+    expect(text).toContain('"status":"done"');
+    expect(text).toContain("event: done");
+  });
+
   it("Mode B errors when date missing or malformed", async () => {
     const { app } = makeRouter({
       findRawItemsByDate: vi.fn(() => Promise.resolve([])),

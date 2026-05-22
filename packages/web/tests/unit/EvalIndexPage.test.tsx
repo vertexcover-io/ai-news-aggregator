@@ -53,10 +53,11 @@ vi.mock("../../src/api/eval", async () => {
 
 import { EvalIndexPage } from "../../src/pages/EvalIndexPage";
 import { useSettings } from "../../src/hooks/useSettings";
-import { saveDraftPrompt } from "../../src/api/eval";
+import { saveDraftPrompt, runEval } from "../../src/api/eval";
 
 const useSettingsMock = vi.mocked(useSettings);
 const saveDraftPromptMock = vi.mocked(saveDraftPrompt);
+const runEvalMock = vi.mocked(runEval);
 
 interface SettingsLike {
   rankingPrompt: string;
@@ -100,6 +101,7 @@ beforeEach(() => {
     >,
   );
   saveDraftPromptMock.mockClear();
+  runEvalMock.mockClear();
 });
 
 afterEach(() => {
@@ -146,6 +148,74 @@ describe("EvalIndexPage", () => {
     await waitFor(() => {
       expect(saveDraftPromptMock).toHaveBeenCalledWith("DRAFT PROMPT");
     });
+  });
+
+  it("Single-fixture mode sends fixtureId without windowSize", async () => {
+    renderPage();
+    await screen.findByTestId("prompt-editor-textarea");
+    // wait for fixtures to load
+    const select = await screen.findByTestId<HTMLSelectElement>(
+      "fixture-select",
+    );
+    await waitFor(() => {
+      expect(select.querySelectorAll("option").length).toBeGreaterThan(1);
+    });
+    fireEvent.change(select, { target: { value: "fx-1" } });
+    fireEvent.click(screen.getByTestId("run-mode-a"));
+    await waitFor(() => {
+      expect(runEvalMock).toHaveBeenCalled();
+    });
+    const body = runEvalMock.mock.calls[0][0];
+    expect(body.fixtureId).toBe("fx-1");
+    expect(body.windowSize).toBeUndefined();
+  });
+
+  it("Top-N mode sends windowSize without fixtureId", async () => {
+    renderPage();
+    await screen.findByTestId("prompt-editor-textarea");
+    fireEvent.click(screen.getByTestId("scope-topn"));
+    const slider = screen.getByTestId<HTMLInputElement>("window-slider");
+    fireEvent.change(slider, { target: { value: "5" } });
+    fireEvent.click(screen.getByTestId("run-mode-a"));
+    await waitFor(() => {
+      expect(runEvalMock).toHaveBeenCalled();
+    });
+    const body = runEvalMock.mock.calls[0][0];
+    expect(body.windowSize).toBe(5);
+    expect(body.fixtureId).toBeUndefined();
+    expect(body.forceWindow).toBeUndefined();
+  });
+
+  it("Top-N with windowSize beyond cap opens cost modal; confirm sends forceWindow", async () => {
+    renderPage();
+    await screen.findByTestId("prompt-editor-textarea");
+    fireEvent.click(screen.getByTestId("scope-topn"));
+    const slider = screen.getByTestId<HTMLInputElement>("window-slider");
+    // jsdom clamps `input[type=range]` to its `max` when the value is
+    // assigned. Stub the descriptor so the value passes through unchanged so
+    // we can drive windowSize past the cap and exercise the cost-confirm
+    // modal.
+    Object.defineProperty(slider, "value", {
+      configurable: true,
+      get(): string {
+        return "65";
+      },
+      set() {
+        /* swallow */
+      },
+    });
+    fireEvent.change(slider);
+    fireEvent.click(screen.getByTestId("run-mode-a"));
+    await screen.findByTestId("cost-confirm-modal");
+    expect(runEvalMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("cost-confirm-proceed"));
+    await waitFor(() => {
+      expect(runEvalMock).toHaveBeenCalled();
+    });
+    const body = runEvalMock.mock.calls[0][0];
+    expect(body.windowSize).toBe(65);
+    expect(body.forceWindow).toBe(true);
+    expect(body.fixtureId).toBeUndefined();
   });
 
   it("Cancel in diff modal does not save", async () => {

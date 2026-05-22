@@ -78,6 +78,7 @@ export const EvalRunRequestSchema = z.object({
   draftPrompt: z.string(),
   savedPrompt: z.string().optional(),
   windowSize: z.number().int().optional(),
+  forceWindow: z.boolean().optional(),
   bypassCache: z.boolean().optional(),
 });
 

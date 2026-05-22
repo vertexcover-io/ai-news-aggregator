@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/tabs";
 
 type Mode = "scored" | "ab";
+type ScoredScope = "single" | "topN";
 
 interface ScoredProgressPayload {
   fixtureId: string;
@@ -83,8 +84,10 @@ export function EvalIndexPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialMode: Mode = searchParams.get("mode") === "ab" ? "ab" : "scored";
   const [mode, setMode] = useState<Mode>(initialMode);
+  const [scoredScope, setScoredScope] = useState<ScoredScope>("single");
   const [fixtureId, setFixtureId] = useState("");
   const [windowSize, setWindowSize] = useState(20);
+  const [forceWindow, setForceWindow] = useState(false);
   const [bypassCache, setBypassCache] = useState(false);
   const [calendarDate, setCalendarDate] = useState(formatTodayIso());
 
@@ -141,9 +144,9 @@ export function EvalIndexPage(): ReactElement {
     return windowSize * COST_PER_FIXTURE_USD_ESTIMATE;
   }
 
-  async function handleRun(): Promise<void> {
+  async function handleRun(forceWindowOverride = false): Promise<void> {
     if (running) return;
-    if (mode === "scored" && !fixtureId) {
+    if (mode === "scored" && scoredScope === "single" && !fixtureId) {
       toast.error("Pick a fixture first");
       return;
     }
@@ -151,7 +154,9 @@ export function EvalIndexPage(): ReactElement {
       toast.error("Edit the prompt before running Mode B");
       return;
     }
-    if (mode === "scored" && windowSize > 60 && !showCostConfirm) {
+    const isTopN = mode === "scored" && scoredScope === "topN";
+    const effectiveForce = forceWindow || forceWindowOverride;
+    if (isTopN && windowSize > 60 && !effectiveForce) {
       setShowCostConfirm(true);
       return;
     }
@@ -160,10 +165,12 @@ export function EvalIndexPage(): ReactElement {
     setRunning(true);
     const stream = runEval({
       mode,
-      fixtureId: mode === "scored" ? fixtureId : undefined,
+      fixtureId:
+        mode === "scored" && scoredScope === "single" ? fixtureId : undefined,
       date: mode === "ab" ? calendarDate : undefined,
       draftPrompt: draft,
-      windowSize: mode === "scored" ? windowSize : undefined,
+      windowSize: isTopN ? windowSize : undefined,
+      forceWindow: isTopN && effectiveForce ? true : undefined,
       bypassCache: mode === "scored" ? bypassCache : undefined,
     });
     streamRef.current = stream;
@@ -288,6 +295,38 @@ export function EvalIndexPage(): ReactElement {
 
               <TabsContent value="scored" className="space-y-3">
                 <div className="space-y-3 rounded border border-neutral-200 bg-white p-3">
+                  <fieldset
+                    data-testid="scope-toggle"
+                    className="flex gap-4 text-sm"
+                  >
+                    <label className="inline-flex items-center gap-1">
+                      <input
+                        type="radio"
+                        name="scored-scope"
+                        data-testid="scope-single"
+                        value="single"
+                        checked={scoredScope === "single"}
+                        onChange={() => {
+                          setScoredScope("single");
+                          setForceWindow(false);
+                        }}
+                      />
+                      <span>Single fixture</span>
+                    </label>
+                    <label className="inline-flex items-center gap-1">
+                      <input
+                        type="radio"
+                        name="scored-scope"
+                        data-testid="scope-topn"
+                        value="topN"
+                        checked={scoredScope === "topN"}
+                        onChange={() => {
+                          setScoredScope("topN");
+                        }}
+                      />
+                      <span>Top-N most recent</span>
+                    </label>
+                  </fieldset>
                   <label className="block text-sm">
                     <span className="font-mono text-xs uppercase tracking-widest text-neutral-500">
                       Fixture
@@ -296,6 +335,7 @@ export function EvalIndexPage(): ReactElement {
                       data-testid="fixture-select"
                       className="mt-1 block w-full rounded border border-neutral-300 bg-white px-2 py-1 text-sm"
                       value={fixtureId}
+                      disabled={scoredScope !== "single"}
                       onChange={(e) => {
                         setFixtureId(e.target.value);
                       }}
@@ -322,6 +362,7 @@ export function EvalIndexPage(): ReactElement {
                       min={1}
                       max={60}
                       value={windowSize}
+                      disabled={scoredScope !== "topN"}
                       onChange={(e) => {
                         setWindowSize(Number(e.target.value));
                       }}
@@ -342,7 +383,10 @@ export function EvalIndexPage(): ReactElement {
                     <Button
                       type="button"
                       data-testid="run-mode-a"
-                      disabled={running || !fixtureId}
+                      disabled={
+                        running ||
+                        (scoredScope === "single" && !fixtureId)
+                      }
                       onClick={() => {
                         void handleRun();
                       }}
@@ -451,7 +495,9 @@ export function EvalIndexPage(): ReactElement {
                   type="button"
                   data-testid="cost-confirm-proceed"
                   onClick={() => {
-                    void handleRun();
+                    setForceWindow(true);
+                    setShowCostConfirm(false);
+                    void handleRun(true);
                   }}
                 >
                   Run anyway
