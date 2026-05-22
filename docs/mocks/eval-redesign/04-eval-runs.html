@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1440" />
+<title>Eval — Runs · Mock</title>
+<link rel="stylesheet" href="_theme.css" />
+<style>
+  /* Filter bar */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    background: var(--c-bg);
+    border: 1px solid var(--c-line);
+    border-radius: var(--r-lg);
+    padding: var(--sp-3) var(--sp-4);
+    margin-bottom: var(--sp-5);
+  }
+  .filter-bar__left { display: flex; align-items: center; gap: var(--sp-3); flex: 1; }
+  .filter-bar__right { display: flex; align-items: center; gap: var(--sp-3); }
+  .filter-bar__search {
+    width: 280px;
+    height: 32px;
+    padding: 0 var(--sp-3);
+    border: 1px solid var(--c-line-strong);
+    border-radius: var(--r-md);
+    background: var(--c-bg);
+    font-family: var(--f-mono);
+    font-size: 12px;
+  }
+  .filter-bar__count {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--c-mute);
+  }
+
+  /* Multi-segment filter chips */
+  .seg {
+    display: inline-flex;
+    border: 1px solid var(--c-line-strong);
+    border-radius: var(--r-md);
+    overflow: hidden;
+    background: var(--c-bg);
+  }
+  .seg__opt {
+    padding: var(--sp-2) var(--sp-3);
+    font-family: var(--f-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--c-mute);
+    border-right: 1px solid var(--c-line);
+    transition: all 120ms ease;
+  }
+  .seg__opt:last-child { border-right: 0; }
+  .seg__opt.is-active {
+    background: var(--c-ink);
+    color: #fff;
+  }
+
+  /* Compare bar — shown when 0, 1 selected; replaced by an action bar when 2 selected */
+  .compare-bar {
+    background: var(--c-bg);
+    border: 1px solid var(--c-line);
+    border-radius: var(--r-lg);
+    padding: var(--sp-3) var(--sp-4);
+    margin-bottom: var(--sp-5);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-4);
+  }
+  .compare-bar.is-armed {
+    background: var(--c-rust-soft);
+    border-color: var(--c-rust-line);
+  }
+  .compare-bar__hint {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--c-mute);
+  }
+  .compare-bar.is-armed .compare-bar__hint {
+    color: var(--c-rust);
+  }
+  .compare-bar__hint strong {
+    color: var(--c-ink);
+    font-weight: 600;
+  }
+
+  /* Runs table */
+  .runs-tbl td:first-child { width: 32px; padding-right: 0; }
+  .runs-tbl td.id { font-family: var(--f-mono); color: var(--c-ink); font-weight: 500; font-size: 12px; }
+  .runs-tbl td.timestamp { font-family: var(--f-mono); color: var(--c-mute); font-size: 12px; white-space: nowrap; }
+  .runs-tbl td.fxid { font-family: var(--f-mono); font-size: 12px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .runs-tbl td.hash {
+    font-family: var(--f-mono);
+    font-size: 12px;
+    color: var(--c-ink);
+  }
+  .runs-tbl td.hash a {
+    border-bottom: 1px dotted var(--c-line-strong);
+    color: var(--c-rust);
+  }
+  .runs-tbl td.hash a:hover { border-bottom-color: var(--c-rust); }
+  .runs-tbl td.score {
+    font-family: var(--f-mono);
+    font-size: 13px;
+    color: var(--c-ink);
+    font-weight: 500;
+    tabular-nums: tabular-nums;
+  }
+  .runs-tbl td.cost {
+    font-family: var(--f-mono);
+    font-size: 12px;
+    color: var(--c-mute);
+    tabular-nums: tabular-nums;
+  }
+
+  .runs-tbl input[type="checkbox"] {
+    width: 16px; height: 16px;
+    accent-color: var(--c-rust);
+  }
+
+  /* Status chip variants */
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-family: var(--f-mono);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .status--done    { color: var(--c-ok); }
+  .status--failed  { color: var(--c-err); }
+  .status--cancelled { color: var(--c-mute); }
+  .status--running { color: var(--c-info); }
+
+  /* Pagination */
+  .pager {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--sp-4) var(--sp-5);
+    background: var(--c-bg);
+    border: 1px solid var(--c-line);
+    border-top: 0;
+    border-radius: 0 0 var(--r-lg) var(--r-lg);
+  }
+  .pager__info { font-family: var(--f-mono); font-size: 11px; color: var(--c-mute); }
+  .pager__nav { display: flex; align-items: center; gap: var(--sp-2); }
+  .pager__btn {
+    height: 28px;
+    min-width: 28px;
+    padding: 0 var(--sp-2);
+    border: 1px solid var(--c-line-strong);
+    border-radius: var(--r-sm);
+    background: var(--c-bg);
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--c-mute);
+  }
+  .pager__btn:hover { background: var(--c-bg-sunk); color: var(--c-ink); }
+  .pager__btn.is-current {
+    background: var(--c-ink);
+    color: #fff;
+    border-color: var(--c-ink);
+  }
+  .pager__btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Sparkline placeholder */
+  .spark {
+    display: inline-block;
+    height: 16px;
+    width: 60px;
+    vertical-align: middle;
+    margin-right: var(--sp-2);
+  }
+
+</style>
+</head>
+<body>
+
+<aside class="notes">
+  <div class="notes__title">DESIGN NOTES · 04 / EVAL RUNS</div>
+  <div class="notes__body">
+    <p><strong>What's new:</strong> A brand-new persisted history view. Every Mode A / Mode B run lands in <code>eval_runs</code> (id, fixture_id, prompt_hash, prompt_snapshot, started_at, finished_at, status, score_breakdown, cost_breakdown, mode, window_size) — this page lists them. <em>Compare two prompts</em> is the killer affordance: tick two checkboxes, hit the rust CTA in the bar, get a side-by-side prompt diff + score delta (in 05-states sheet).</p>
+    <p><strong>Design choices:</strong> (1) Dense monospace table — admin users scan IDs/hashes/times more than they read prose. (2) Status uses the dot + word pattern (no chip) to fit more rows per screen. (3) Filter bar segments mode, status, fixture — three single-axis filters, not a kitchen-sink popover. (4) Each prompt hash is clickable to open the snapshot drawer (state #2 in 05-states). (5) Compare bar swaps copy + becomes rust when armed (2 selected) — strong visual signal.</p>
+    <p><strong>Reflow &lt; 768 px:</strong> Table collapses to cards. Compare bar floats at bottom of viewport when 2 are selected.</p>
+  </div>
+</aside>
+
+<div class="app">
+
+  <header class="masthead">
+    <div class="masthead__brand">
+      <span class="masthead__title">Newsletter</span>
+      <span class="masthead__sub">Admin</span>
+    </div>
+    <nav class="masthead__nav">
+      <a href="#">Dashboard</a>
+      <a href="01-eval-index.html" class="is-active">Eval</a>
+      <a href="#">Settings</a>
+    </nav>
+    <div class="masthead__user">
+      <span class="masthead__user-name">aman</span>
+      <button class="btn btn--ghost btn--sm">Sign out</button>
+    </div>
+  </header>
+
+  <div class="page-head">
+    <div>
+      <div class="page-head__eyebrow">Eval · Run history</div>
+      <h1 class="page-head__title">Past runs</h1>
+      <p class="page-head__lede">Every scored eval lands here. Persisted across server restarts. Pick two runs to diff their prompts side by side.</p>
+    </div>
+    <div class="page-head__actions">
+      <a href="01-eval-index.html" class="btn btn--default">← Back to eval</a>
+      <a href="01-eval-index.html" class="btn btn--primary">+ New run</a>
+    </div>
+  </div>
+
+  <main class="shell">
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+      <div class="filter-bar__left">
+        <input class="filter-bar__search" placeholder="search · prompt hash, fixture id, run id" />
+        <div class="seg">
+          <button class="seg__opt is-active">All modes</button>
+          <button class="seg__opt">Mode A</button>
+          <button class="seg__opt">Mode B</button>
+        </div>
+        <div class="seg">
+          <button class="seg__opt is-active">All status</button>
+          <button class="seg__opt">Done</button>
+          <button class="seg__opt">Failed</button>
+          <button class="seg__opt">Running</button>
+        </div>
+      </div>
+      <div class="filter-bar__right">
+        <span class="filter-bar__count">147 runs · 9.3 d span</span>
+      </div>
+    </div>
+
+    <!-- Compare bar — ARMED state (2 selected) -->
+    <div class="compare-bar is-armed">
+      <div class="compare-bar__hint">
+        <strong>2 of 12</strong> runs selected — compare prompts side by side
+      </div>
+      <div style="display:flex;gap:var(--sp-2);">
+        <button class="btn btn--ghost btn--sm">Clear selection</button>
+        <button class="btn btn--primary btn--sm">Compare prompts →</button>
+      </div>
+    </div>
+
+    <!-- The table -->
+    <section class="panel" style="border-radius: var(--r-lg) var(--r-lg) 0 0;">
+      <table class="dt runs-tbl">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Run</th>
+            <th>Started</th>
+            <th>Mode</th>
+            <th>Fixture / scope</th>
+            <th>Prompt</th>
+            <th class="dt__num">nDCG@10</th>
+            <th class="dt__num">Cost</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <!-- selected -->
+          <tr class="is-selected">
+            <td><input type="checkbox" checked /></td>
+            <td class="id">r/4f8a21</td>
+            <td class="timestamp">2026-05-21 19:14:08</td>
+            <td><span class="chip chip--info">Mode A</span></td>
+            <td class="fxid">manual-curated-may-21</td>
+            <td class="hash"><a href="#">b8e7f203</a></td>
+            <td class="score">
+              <span class="spark"><svg viewBox="0 0 60 16" xmlns="http://www.w3.org/2000/svg"><polyline fill="none" stroke="#8c3a1e" stroke-width="1.5" points="0,12 10,9 20,11 30,7 40,5 50,4 60,3"/></svg></span>
+              0.847
+            </td>
+            <td class="cost">$0.041</td>
+            <td><span class="status status--done"><span class="dot dot--ok"></span> Done</span></td>
+            <td><button class="btn btn--ghost btn--sm">···</button></td>
+          </tr>
+
+          <!-- selected -->
+          <tr class="is-selected">
+            <td><input type="checkbox" checked /></td>
+            <td class="id">r/3c2b91</td>
+            <td class="timestamp">2026-05-21 18:42:11</td>
+            <td><span class="chip chip--info">Mode A</span></td>
+            <td class="fxid">manual-curated-may-21</td>
+            <td class="hash"><a href="#">a4f1c9d2</a></td>
+            <td class="score">
+              <span class="spark"><svg viewBox="0 0 60 16" xmlns="http://www.w3.org/2000/svg"><polyline fill="none" stroke="#8c3a1e" stroke-width="1.5" points="0,11 10,12 20,10 30,9 40,8 50,6 60,5"/></svg></span>
+              0.785
+            </td>
+            <td class="cost">$0.039</td>
+            <td><span class="status status--done"><span class="dot dot--ok"></span> Done</span></td>
+            <td><button class="btn btn--ghost btn--sm">···</button></td>
+          </tr>
+
+          <tr>
+            <td><input type="checkbox" /></td>
+            <td class="id">r/2a98e0</td>
+            <td class="timestamp">2026-05-21 18:18:00</td>
+            <td><span class="chip">Mode B</span></td>
+            <td class="fxid">date · 2026-05-20</td>
+            <td class="hash"><a href="#">a4f1c9d2</a></td>
+            <td class="score">—</td>
+            <td class="cost">$0.072</td>
+            <td><span class="status status--done"><span class="dot dot--ok"></span> Done</span></td>
+            <td><button class="btn btn--ghost btn--sm">···</button></td>
+          </tr>
+
+          <tr>
+            <td><input type="checkbox" /></td>
+            <td class="id">r/9f7d4c</td>
+            <td class="timestamp">2026-05-21 17:51:33</td>
+            <td><span class="chip chip--info">Mode A</span></td>
+            <td class="fxid">topn-may-19</td>
+            <td class="hash"><a href="#">82c031a7</a></td>
+            <td class="score">0.812</td>
+            <td class="cost">$0.213</td>
+            <td><span class="status status--done"><span class="dot dot--ok"></span> Done</span></td>
+            <td><button class="btn btn--ghost btn--sm">···</button></td>
+          </tr>
+
+          <tr>
+            <td><input type="checkbox" /></td>
+            <td class="id">r/7e2a8b</td>
+            <td class="timestamp">2026-05-21 17:42:09</td>
+            <td><span class="chip chip--info">Mode A</span></td>
+            <td class="fxid">topn-may-19</td>
+            <td class="hash"><a href="#">82c031a7</a></td>
+            <td class="score">—</td>
+            <td class="cost">$0.034</td>
+            <td><span class="status status--failed"><span class="dot dot--err"></span> Failed · rerank</span></td>
+            <td><button class="btn btn--ghost btn--sm">···</button></td>
+          </tr>
+
+          <tr>
+            <td><input type="checkbox" /></td>
+            <td class="id">r/1b4e09</td>
+            <td class="timestamp">2026-05-21 14:08:42</td>
+            <td><span class="chip chip--info">Mode A</span></td>
+            <td class="fxid">manual-curated-may-21</td>
+            <td class="hash"><a href="#">a4f1c9d2</a></td>
+            <td class="score">0.785</td>
+            <td class="cost">$0.039</td>
+            <td><span class="status status--done"><span class="dot dot--ok"></span> Done</span></td>
+            <td><button class="btn btn--ghost btn--sm">···</button></td>
+          </tr>
+
+          <tr>
+            <td><input type="checkbox" /></td>
+            <td class="id">r/6c3d2a</td>
+            <td class="timestamp">2026-05-21 12:31:18</td>
+            <td><span class="chip chip--info">Mode A</span></td>
+            <td class="fxid">manual-mcp-demo-1779</td>
+            <td class="hash"><a href="#">a4f1c9d2</a></td>
+            <td class="score">0.781</td>
+            <td class="cost">$0.014</td>
+            <td><span class="status status--done"><span class="dot dot--ok"></span> Done</span></td>
+            <td><button class="btn btn--ghost btn--sm">···</button></td>
+          </tr>
+
+          <tr>
+            <td><input type="checkbox" /></td>
+            <td class="id">r/8a5f12</td>
+            <td class="timestamp">2026-05-21 11:14:55</td>
+            <td><span class="chip chip--info">Mode A</span></td>
+            <td class="fxid">topn-may-19</td>
+            <td class="hash"><a href="#">3d92b4e1</a></td>
+            <td class="score">—</td>
+            <td class="cost">$0.018</td>
+            <td><span class="status status--cancelled"><span class="dot" style="background:var(--c-mute);"></span> Cancelled · user</span></td>
+            <td><button class="btn btn--ghost btn--sm">···</button></td>
+          </tr>
+
+          <tr>
+            <td><input type="checkbox" /></td>
+            <td class="id">r/5b9e44</td>
+            <td class="timestamp">2026-05-21 11:08:01</td>
+            <td><span class="chip chip--info">Mode A</span></td>
+            <td class="fxid">topn-may-19</td>
+            <td class="hash"><a href="#">3d92b4e1</a></td>
+            <td class="score">0.803</td>
+            <td class="cost">$0.198</td>
+            <td><span class="status status--done"><span class="dot dot--ok"></span> Done</span></td>
+            <td><button class="btn btn--ghost btn--sm">···</button></td>
+          </tr>
+
+          <tr>
+            <td><input type="checkbox" /></td>
+            <td class="id">r/4d7a36</td>
+            <td class="timestamp">2026-05-21 10:42:18</td>
+            <td><span class="chip">Mode B</span></td>
+            <td class="fxid">date · 2026-05-19</td>
+            <td class="hash"><a href="#">3d92b4e1</a></td>
+            <td class="score">—</td>
+            <td class="cost">$0.068</td>
+            <td><span class="status status--done"><span class="dot dot--ok"></span> Done</span></td>
+            <td><button class="btn btn--ghost btn--sm">···</button></td>
+          </tr>
+
+          <tr>
+            <td><input type="checkbox" /></td>
+            <td class="id">r/2e8c70</td>
+            <td class="timestamp">2026-05-21 10:38:44</td>
+            <td><span class="chip chip--info">Mode A</span></td>
+            <td class="fxid">manual-mcp-demo-1779</td>
+            <td class="hash"><a href="#">3d92b4e1</a></td>
+            <td class="score">—</td>
+            <td class="cost">$0.011</td>
+            <td><span class="status status--running"><span class="dot dot--running"></span> Running · 2 / 5</span></td>
+            <td><button class="btn btn--ghost btn--sm">···</button></td>
+          </tr>
+
+          <tr>
+            <td><input type="checkbox" /></td>
+            <td class="id">r/0a3f51</td>
+            <td class="timestamp">2026-05-20 22:14:09</td>
+            <td><span class="chip chip--info">Mode A</span></td>
+            <td class="fxid">manual-curated-may-21</td>
+            <td class="hash"><a href="#">7e1c9028</a></td>
+            <td class="score">0.751</td>
+            <td class="cost">$0.038</td>
+            <td><span class="status status--done"><span class="dot dot--ok"></span> Done</span></td>
+            <td><button class="btn btn--ghost btn--sm">···</button></td>
+          </tr>
+
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Pagination -->
+    <nav class="pager">
+      <span class="pager__info">Showing 1–12 of 147</span>
+      <div class="pager__nav">
+        <button class="pager__btn" disabled>←</button>
+        <button class="pager__btn is-current">1</button>
+        <button class="pager__btn">2</button>
+        <button class="pager__btn">3</button>
+        <button class="pager__btn">4</button>
+        <span style="font-family:var(--f-mono);font-size:11px;color:var(--c-mute);padding:0 4px;">…</span>
+        <button class="pager__btn">13</button>
+        <button class="pager__btn">→</button>
+      </div>
+    </nav>
+
+  </main>
+</div>
+
+</body>
+</html>

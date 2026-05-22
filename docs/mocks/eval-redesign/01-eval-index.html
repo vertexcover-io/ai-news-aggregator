@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1440" />
+<title>Eval — Prompt Iteration · Mock</title>
+<link rel="stylesheet" href="_theme.css" />
+<style>
+  /* Page-specific layout */
+  .iter-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: var(--sp-6);
+    align-items: start;
+  }
+
+  /* Prompt editor — now full-bleed dominant */
+  .editor {
+    border: 1px solid var(--c-line);
+    border-radius: var(--r-lg);
+    background: var(--c-bg);
+    overflow: hidden;
+  }
+  .editor__head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--sp-3) var(--sp-5);
+    border-bottom: 1px solid var(--c-line);
+    background: var(--c-bg-sunk);
+  }
+  .editor__head-left { display: flex; align-items: center; gap: var(--sp-4); }
+  .editor__head-right { display: flex; align-items: center; gap: var(--sp-3); }
+  .editor__title {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--c-ink);
+  }
+  .editor__meta {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--c-mute);
+  }
+  .editor__dirty {
+    display: inline-flex; align-items: center; gap: var(--sp-1);
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--c-warn);
+  }
+  .editor__dirty::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--c-warn);
+  }
+  .editor__textarea {
+    width: 100%;
+    height: 520px;
+    padding: var(--sp-5) var(--sp-6);
+    border: 0;
+    background: var(--c-bg);
+    font-family: var(--f-mono);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--c-ink);
+    resize: vertical;
+  }
+  .editor__foot {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--sp-3) var(--sp-5);
+    border-top: 1px solid var(--c-line);
+    background: var(--c-bg-sunk);
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--c-mute);
+  }
+  .editor__foot-actions { display: flex; gap: var(--sp-2); }
+
+  /* Right control panel */
+  .controls { display: flex; flex-direction: column; gap: var(--sp-4); }
+
+  /* Mode tab */
+  .modes {
+    display: flex;
+    border: 1px solid var(--c-line);
+    border-radius: var(--r-md);
+    background: var(--c-bg-sunk);
+    padding: 3px;
+  }
+  .modes__tab {
+    flex: 1;
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r-sm);
+    font-family: var(--f-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: center;
+    color: var(--c-mute);
+    transition: all 120ms ease;
+  }
+  .modes__tab.is-active {
+    background: var(--c-bg);
+    color: var(--c-ink);
+    box-shadow: var(--shadow-1);
+  }
+
+  /* Scope radio */
+  .scope {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    background: var(--c-bg-sunk);
+    border: 1px solid var(--c-line);
+    border-radius: var(--r-md);
+    padding: 3px;
+  }
+  .scope__opt {
+    padding: var(--sp-2) var(--sp-3);
+    text-align: center;
+    border-radius: var(--r-sm);
+    font-size: 12px;
+    color: var(--c-mute);
+    transition: all 120ms ease;
+  }
+  .scope__opt.is-active {
+    background: var(--c-bg);
+    color: var(--c-ink);
+    font-weight: 500;
+    box-shadow: var(--shadow-1);
+  }
+
+  /* Fixture picker with inline action */
+  .picker-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--sp-2);
+  }
+  .picker-row__action {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--c-rust);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .picker-row__action:hover { text-decoration: underline; }
+
+  /* Slider */
+  .slider-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--sp-2);
+  }
+  .slider-row__value {
+    font-family: var(--f-mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--c-ink);
+    tabular-nums: tabular-nums;
+  }
+  input[type="range"] {
+    width: 100%;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--c-line-strong);
+    border-radius: 2px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--c-rust);
+    cursor: pointer;
+    box-shadow: 0 0 0 4px rgba(140, 58, 30, 0.1);
+  }
+
+  /* Checkbox row */
+  .check {
+    display: flex; align-items: center; gap: var(--sp-2);
+    font-size: 13px;
+    color: var(--c-ink-soft);
+  }
+  .check input { width: 16px; height: 16px; }
+
+  /* Aggregate hero — what the user looks at after a run */
+  .agg {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    border: 1px solid var(--c-line);
+    border-radius: var(--r-lg);
+    background: var(--c-bg);
+    overflow: hidden;
+  }
+  .agg__cell {
+    padding: var(--sp-5) var(--sp-5);
+    border-right: 1px solid var(--c-line);
+  }
+  .agg__cell:last-child { border-right: 0; }
+  .agg__label {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--c-mute);
+    margin-bottom: var(--sp-2);
+  }
+  .agg__value {
+    font-family: var(--f-mono);
+    font-size: 28px;
+    font-weight: 500;
+    color: var(--c-ink);
+    line-height: 1;
+    tabular-nums: tabular-nums;
+  }
+  .agg__delta {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    margin-top: var(--sp-2);
+    color: var(--c-ok);
+  }
+  .agg__delta--neg { color: var(--c-err); }
+
+  /* Results table — bigger row height, no zebra */
+  .results-tbl td.fxid { font-family: var(--f-mono); color: var(--c-ink); font-weight: 500; }
+  .results-tbl td .bar {
+    display: inline-block; width: 60px; height: 4px; border-radius: 2px;
+    background: var(--c-line); position: relative; overflow: hidden;
+    vertical-align: middle; margin-right: var(--sp-2);
+  }
+  .results-tbl td .bar::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+    background: var(--c-rust);
+  }
+
+  /* Sourcing report — bar chart style */
+  .srep__bar {
+    display: inline-block;
+    height: 8px;
+    background: linear-gradient(to right,
+      var(--c-must) 0%, var(--c-must) var(--must),
+      var(--c-nice) var(--must), var(--c-nice) calc(var(--must) + var(--nice)),
+      var(--c-drop) calc(var(--must) + var(--nice)), var(--c-drop) 100%
+    );
+    border-radius: 2px;
+    width: 120px;
+  }
+
+  /* Status bar across top of results panel */
+  .results-status {
+    padding: var(--sp-3) var(--sp-5);
+    background: var(--c-rust-soft);
+    border-bottom: 1px solid var(--c-rust-line);
+    color: var(--c-rust);
+    font-family: var(--f-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+  }
+</style>
+</head>
+<body>
+
+<!-- DESIGN NOTES -->
+<aside class="notes">
+  <div class="notes__title">DESIGN NOTES · 01 / EVAL INDEX</div>
+  <div class="notes__body">
+    <p><strong>What changed:</strong> Prompt editor is now full-width and visually dominant; Mode A controls move to a compact right rail. The "+ New fixture" link is promoted to a clear inline action in the picker row instead of being buried in a label corner. A new <em>aggregate hero</em> sits above the per-fixture results table — four monospace tiles (mean nDCG@10, mean P@10, total cost, run time) — so the headline number is unmissable. Sourcing report uses a stacked horizontal bar per source instead of a plain count table.</p>
+    <p><strong>Why:</strong> The current layout makes the prompt textarea feel cramped on anything below 1280px and forces the user's eye to scan across columns when iterating. Iteration is a textarea-first activity — the editor deserves the prominent slot. Right-rail controls are sticky and don't fight for vertical space with results.</p>
+    <p><strong>Reflow &lt; 768 px:</strong> Editor and controls stack; aggregate hero becomes 2x2; per-fixture table becomes a card list with the metrics tiled inside each card.</p>
+  </div>
+</aside>
+
+<div class="app">
+
+  <!-- Top masthead -->
+  <header class="masthead">
+    <div class="masthead__brand">
+      <span class="masthead__title">Newsletter</span>
+      <span class="masthead__sub">Admin</span>
+    </div>
+    <nav class="masthead__nav">
+      <a href="#">Dashboard</a>
+      <a href="#" class="is-active">Eval</a>
+      <a href="#">Settings</a>
+    </nav>
+    <div class="masthead__user">
+      <span class="masthead__user-name">aman</span>
+      <button class="btn btn--ghost btn--sm">Sign out</button>
+    </div>
+  </header>
+
+  <!-- Page header -->
+  <div class="page-head">
+    <div>
+      <div class="page-head__eyebrow">Eval · Prompt iteration</div>
+      <h1 class="page-head__title">Tune the ranker</h1>
+      <p class="page-head__lede">Edit the ranking prompt, score it against a graded fixture, then save when satisfied. Saved prompt powers the next daily run.</p>
+    </div>
+    <div class="page-head__actions">
+      <a href="04-eval-runs.html" class="btn btn--default">
+        <span class="mono" style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;">Past runs</span>
+        <span class="muted mono" style="font-size:11px;">147</span>
+      </a>
+      <a href="03-eval-fixture-new.html" class="btn btn--default">+ New fixture</a>
+    </div>
+  </div>
+
+  <main class="shell">
+
+    <!-- The two-pane workspace -->
+    <div class="iter-grid">
+
+      <!-- LEFT: editor + results -->
+      <div style="display: flex; flex-direction: column; gap: var(--sp-6);">
+
+        <!-- Editor -->
+        <section class="editor">
+          <header class="editor__head">
+            <div class="editor__head-left">
+              <span class="editor__title">Ranking prompt · draft</span>
+              <span class="editor__dirty">unsaved · 12 changes</span>
+            </div>
+            <div class="editor__head-right">
+              <button class="btn btn--ghost btn--sm">Reset to saved</button>
+              <button class="btn btn--default btn--sm">View diff</button>
+              <button class="btn btn--primary btn--sm">Save as current</button>
+            </div>
+          </header>
+          <textarea class="editor__textarea" spellcheck="false">You are ranking AI news items for a daily curated digest. For each item return a score 0–10 across three axes:
+
+  • Novelty       — Does this break new ground, or rehash known material?
+  • Signal/hype   — Is the claim measurable, or marketing fluff?
+  • Actionability — Can a working engineer use this today?
+
+Prefer items with concrete benchmarks, code, or first-party releases.
+Demote: opinion pieces, "X company will revolutionize Y", launch
+posts without measurable claims, listicles, and Twitter-thread recaps
+of conference talks.
+
+Output a final 0–10 score = (novelty * 0.35) + (signal * 0.40) +
+(actionability * 0.25), and produce a 4–7 word neutral newswire
+title that replaces the source title in the digest.</textarea>
+          <footer class="editor__foot">
+            <span>721 chars · 24 lines · prompt hash <span class="mono" style="color:var(--c-ink);">a4f1c9d2</span></span>
+            <div class="editor__foot-actions">
+              <span>last saved <span class="mono">2026-05-21 18:42</span> by aman</span>
+            </div>
+          </footer>
+        </section>
+
+        <!-- Aggregate hero — visible after a run -->
+        <section>
+          <div class="results-status">
+            <span class="dot dot--ok"></span>
+            Mode A · single fixture · completed in 18.4 s · 3 fixtures
+          </div>
+          <div class="agg" style="border-top:0;border-top-left-radius:0;border-top-right-radius:0;">
+            <div class="agg__cell">
+              <div class="agg__label">nDCG@10 · mean</div>
+              <div class="agg__value">0.847</div>
+              <div class="agg__delta">+0.062 vs saved</div>
+            </div>
+            <div class="agg__cell">
+              <div class="agg__label">Precision@10 · mean</div>
+              <div class="agg__value">0.733</div>
+              <div class="agg__delta">+0.033 vs saved</div>
+            </div>
+            <div class="agg__cell">
+              <div class="agg__label">Total cost</div>
+              <div class="agg__value">$0.041</div>
+              <div class="agg__delta agg__delta--neg">+$0.004 vs saved</div>
+            </div>
+            <div class="agg__cell">
+              <div class="agg__label">Wall time</div>
+              <div class="agg__value">18.4<span style="font-size:14px;color:var(--c-mute);"> s</span></div>
+              <div class="agg__delta">−2.1 s vs saved</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Per-fixture results table -->
+        <section class="panel">
+          <header class="panel__head">
+            <span class="panel__title">Per-fixture results</span>
+            <span class="panel__sub">3 fixtures · sorted by nDCG@10</span>
+          </header>
+          <table class="dt results-tbl">
+            <thead>
+              <tr>
+                <th>Fixture</th>
+                <th>Status</th>
+                <th class="dt__num">nDCG@10</th>
+                <th class="dt__num">P@10</th>
+                <th class="dt__num">Recall</th>
+                <th>R1 = must</th>
+                <th class="dt__num">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="fxid">manual-curated-may-21</td>
+                <td><span class="chip chip--ok">done</span></td>
+                <td class="dt__num"><span class="bar" style="--p:91%"><span style="width:91%;display:block;position:absolute;inset:0;background:var(--c-rust);"></span></span> 0.912</td>
+                <td class="dt__num">0.800</td>
+                <td class="dt__num">1.000</td>
+                <td><span class="chip chip--must">yes</span></td>
+                <td class="dt__num">$0.014</td>
+              </tr>
+              <tr>
+                <td class="fxid">topn-may-19</td>
+                <td><span class="chip chip--ok">done</span></td>
+                <td class="dt__num"><span class="bar" style="--p:84%"><span style="width:84%;display:block;position:absolute;inset:0;background:var(--c-rust);"></span></span> 0.847</td>
+                <td class="dt__num">0.700</td>
+                <td class="dt__num">0.875</td>
+                <td><span class="chip chip--must">yes</span></td>
+                <td class="dt__num">$0.013 <span class="muted">cached</span></td>
+              </tr>
+              <tr>
+                <td class="fxid">manual-mcp-demo-1779</td>
+                <td><span class="chip chip--ok">done</span></td>
+                <td class="dt__num"><span class="bar" style="--p:78%"><span style="width:78%;display:block;position:absolute;inset:0;background:var(--c-rust);"></span></span> 0.781</td>
+                <td class="dt__num">0.700</td>
+                <td class="dt__num">0.667</td>
+                <td><span class="chip chip--drop">no</span></td>
+                <td class="dt__num">$0.014</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- Sourcing report -->
+        <section class="panel">
+          <header class="panel__head">
+            <span class="panel__title">Sourcing report</span>
+            <span class="panel__sub">where labels land per source</span>
+          </header>
+          <div class="panel__body--flush">
+            <table class="dt">
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th>Distribution</th>
+                  <th class="dt__num">Must</th>
+                  <th class="dt__num">Nice</th>
+                  <th class="dt__num">Drop</th>
+                  <th class="dt__num">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="dt__mono">hn</td>
+                  <td>
+                    <span style="display:flex;height:8px;width:140px;border-radius:2px;overflow:hidden;">
+                      <span style="width:34%;background:var(--c-must);"></span>
+                      <span style="width:31%;background:var(--c-nice);"></span>
+                      <span style="width:35%;background:var(--c-drop);"></span>
+                    </span>
+                  </td>
+                  <td class="dt__num">4</td>
+                  <td class="dt__num">4</td>
+                  <td class="dt__num">4</td>
+                  <td class="dt__num"><strong>12</strong></td>
+                </tr>
+                <tr>
+                  <td class="dt__mono">reddit</td>
+                  <td>
+                    <span style="display:flex;height:8px;width:140px;border-radius:2px;overflow:hidden;">
+                      <span style="width:22%;background:var(--c-must);"></span>
+                      <span style="width:33%;background:var(--c-nice);"></span>
+                      <span style="width:45%;background:var(--c-drop);"></span>
+                    </span>
+                  </td>
+                  <td class="dt__num">2</td>
+                  <td class="dt__num">3</td>
+                  <td class="dt__num">4</td>
+                  <td class="dt__num"><strong>9</strong></td>
+                </tr>
+                <tr>
+                  <td class="dt__mono">twitter</td>
+                  <td>
+                    <span style="display:flex;height:8px;width:140px;border-radius:2px;overflow:hidden;">
+                      <span style="width:14%;background:var(--c-must);"></span>
+                      <span style="width:43%;background:var(--c-nice);"></span>
+                      <span style="width:43%;background:var(--c-drop);"></span>
+                    </span>
+                  </td>
+                  <td class="dt__num">1</td>
+                  <td class="dt__num">3</td>
+                  <td class="dt__num">3</td>
+                  <td class="dt__num"><strong>7</strong></td>
+                </tr>
+                <tr>
+                  <td class="dt__mono">web-search</td>
+                  <td>
+                    <span style="display:flex;height:8px;width:140px;border-radius:2px;overflow:hidden;">
+                      <span style="width:50%;background:var(--c-must);"></span>
+                      <span style="width:25%;background:var(--c-nice);"></span>
+                      <span style="width:25%;background:var(--c-drop);"></span>
+                    </span>
+                  </td>
+                  <td class="dt__num">2</td>
+                  <td class="dt__num">1</td>
+                  <td class="dt__num">1</td>
+                  <td class="dt__num"><strong>4</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- RIGHT: control rail -->
+      <aside class="controls">
+
+        <!-- Mode tabs -->
+        <div class="panel">
+          <div class="panel__body">
+            <div class="modes" style="margin-bottom: var(--sp-4);">
+              <button class="modes__tab is-active">Mode A · Scored</button>
+              <button class="modes__tab">Mode B · Calendar</button>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:var(--sp-4);">
+
+              <div class="field">
+                <label class="field__label">Scope</label>
+                <div class="scope">
+                  <button class="scope__opt is-active">Single fixture</button>
+                  <button class="scope__opt">Top-N recent</button>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="picker-row">
+                  <label class="field__label">Fixture</label>
+                  <a href="03-eval-fixture-new.html" class="picker-row__action">+ New</a>
+                </div>
+                <select class="select">
+                  <option>manual-curated-may-21 · 17 items · graded</option>
+                  <option>topn-may-19 · 20 items · graded</option>
+                  <option>manual-mcp-demo-1779465600 · 5 items · graded</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <div class="slider-row">
+                  <label class="field__label">Window size</label>
+                  <span class="slider-row__value">20</span>
+                </div>
+                <input type="range" min="1" max="60" value="20" disabled style="opacity:0.4;" />
+                <span class="field__hint">Disabled · scope is Single fixture</span>
+              </div>
+
+              <label class="check">
+                <input type="checkbox" />
+                Bypass response cache
+              </label>
+
+              <button class="btn btn--primary btn--lg" style="width:100%;justify-content:center;">Run scored eval</button>
+
+              <div class="hairline" style="padding-top:var(--sp-3);">
+                <div class="eyebrow" style="margin-bottom:var(--sp-2);">Last run</div>
+                <div style="display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:11px;color:var(--c-mute);">
+                  <span>2026-05-21 19:14</span>
+                  <span>nDCG 0.847</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Saved prompt comparison sidecar -->
+        <div class="panel" style="background: var(--c-bg-sunk); border-style: dashed;">
+          <div class="panel__body" style="padding: var(--sp-4) var(--sp-5);">
+            <div class="eyebrow" style="margin-bottom: var(--sp-2);">Currently saved · a4f1c9d2 → b8e7f203</div>
+            <div style="display:flex;align-items:center;gap:var(--sp-3);">
+              <span class="mono" style="font-size:18px;color:var(--c-ink);">0.785</span>
+              <span class="muted" style="font-size:12px;">→</span>
+              <span class="mono" style="font-size:18px;color:var(--c-ok);font-weight:500;">0.847</span>
+              <span class="chip chip--ok" style="margin-left:auto;">+7.9%</span>
+            </div>
+            <div class="muted" style="font-size:12px;margin-top:var(--sp-2);">
+              Draft beats saved on this fixture. Hit <em>Save as current</em> to promote.
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

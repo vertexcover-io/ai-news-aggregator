@@ -14,6 +14,9 @@ runtime.env
 docs/*
 !docs/plans/
 !docs/spec/
+!docs/mocks/
+!docs/mocks/**
+
 docs/spec/**
 !docs/spec/**/
 !docs/spec/**/spec.md

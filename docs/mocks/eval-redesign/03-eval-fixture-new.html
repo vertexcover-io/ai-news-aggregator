@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1440" />
+<title>Eval — New Fixture · Mock</title>
+<link rel="stylesheet" href="_theme.css" />
+<style>
+  .new-grid {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: var(--sp-6);
+    align-items: start;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* Textarea composer */
+  .composer {
+    background: var(--c-bg);
+    border: 1px solid var(--c-line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+  }
+  .composer__head {
+    padding: var(--sp-3) var(--sp-5);
+    border-bottom: 1px solid var(--c-line);
+    background: var(--c-bg-sunk);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .composer__title {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--c-ink);
+  }
+  .composer__textarea {
+    width: 100%;
+    min-height: 200px;
+    padding: var(--sp-4) var(--sp-5);
+    border: 0;
+    background: var(--c-bg);
+    font-family: var(--f-mono);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--c-ink);
+    resize: vertical;
+  }
+
+  /* Right rail — what happens next */
+  .rail-list { display: flex; flex-direction: column; gap: 0; }
+  .rail-item {
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    gap: var(--sp-3);
+    padding: var(--sp-3) 0;
+    border-bottom: 1px solid var(--c-line);
+    font-size: 13px;
+  }
+  .rail-item:last-child { border-bottom: 0; }
+  .rail-item__num {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--c-mute-soft);
+    padding-top: 2px;
+  }
+  .rail-item__title {
+    font-weight: 500;
+    color: var(--c-ink);
+    margin-bottom: 2px;
+  }
+  .rail-item__body {
+    color: var(--c-mute);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  /* Source distribution preview */
+  .source-bar {
+    display: flex; height: 10px; border-radius: 3px; overflow: hidden;
+    margin-top: var(--sp-3);
+  }
+  .source-bar span { display: block; }
+  .source-bar .hn     { background: #c2410c; }
+  .source-bar .reddit { background: #ea580c; }
+  .source-bar .twitter{ background: #0369a1; }
+  .source-bar .web    { background: #78716c; }
+
+  .source-legend {
+    margin-top: var(--sp-2);
+    display: flex; flex-wrap: wrap; gap: var(--sp-3);
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--c-mute);
+  }
+  .source-legend__item { display: flex; align-items: center; gap: 4px; }
+  .source-legend__dot {
+    width: 8px; height: 8px; border-radius: 2px;
+  }
+</style>
+</head>
+<body>
+
+<aside class="notes">
+  <div class="notes__title">DESIGN NOTES · 03 / NEW FIXTURE</div>
+  <div class="notes__body">
+    <p><strong>What changed:</strong> Textarea is the primary input — no parsed-line list, no per-line collector chip preview. Invalid lines surface as a compact list directly under the textarea. <em>Cancel + Build fixture</em> action bar moves from the top-right page header down to below the textarea + invalid panel, so the user's eye flows top→bottom: name → paste → fix errors → submit.</p>
+    <p><strong>New submit behavior:</strong> On a successful build, the fixture file is saved locally (existing) AND the user is redirected to <code>/admin/eval?fixtureId=&lt;new-id&gt;</code>, where the new fixture is auto-selected as the Mode A target. This shortens the "I just made a fixture, now I want to score my prompt against it" loop to one click.</p>
+    <p><strong>Why move the actions:</strong> Top-right CTAs work for review pages (where the action applies to the page-wide object) but on a build-step form the action belongs at the bottom of the form it submits — that's where the user's pointer already is after they've finished pasting. The accompanying mono caption ("On submit · you'll land on /admin/eval…") removes ambiguity about what happens next.</p>
+    <p><strong>Reflow &lt; 768 px:</strong> Right rail moves below the form. Action bar stays at the bottom of the left column. Textarea is full-width throughout.</p>
+  </div>
+</aside>
+
+<div class="app">
+
+  <header class="masthead">
+    <div class="masthead__brand">
+      <span class="masthead__title">Newsletter</span>
+      <span class="masthead__sub">Admin · New fixture</span>
+    </div>
+    <nav class="masthead__nav">
+      <a href="01-eval-index.html">← Back to eval</a>
+    </nav>
+    <div class="masthead__user">
+      <span class="masthead__user-name">aman</span>
+    </div>
+  </header>
+
+  <div class="page-head">
+    <div>
+      <div class="page-head__eyebrow">Eval · Build fixture</div>
+      <h1 class="page-head__title">New manual fixture</h1>
+      <p class="page-head__lede">Paste URLs — one per line. On submit, each URL is routed through its native collector (HN, Reddit, Twitter, GitHub) when matched; anything else falls back to web fetch + Readability.</p>
+    </div>
+    <div class="page-head__actions">
+      <span class="mono muted" style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;">submit below</span>
+    </div>
+  </div>
+
+  <main class="shell">
+    <div class="new-grid">
+
+      <!-- LEFT: form -->
+      <section style="display: flex; flex-direction: column; gap: var(--sp-5);">
+
+        <!-- Name -->
+        <div class="panel">
+          <div class="panel__body">
+            <div class="field" style="margin-bottom:var(--sp-4);">
+              <label class="field__label">Fixture name <span class="muted" style="text-transform:none;letter-spacing:0;">optional</span></label>
+              <input class="input" type="text" placeholder="auto-generated from timestamp" value="rust-eval-baseline" />
+              <span class="field__hint">Saved as <span class="mono">rust-eval-baseline-1779504000.json</span>. Used as the fixture identifier in grading + eval runs.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Textarea composer -->
+        <section class="composer">
+          <header class="composer__head">
+            <span class="composer__title">URLs · one per line</span>
+            <span style="font-family:var(--f-mono);font-size:11px;color:var(--c-mute);">
+              <strong style="color:var(--c-ok);">4 valid</strong> · <strong style="color:var(--c-err);">1 invalid</strong> · http(s) absolute
+            </span>
+          </header>
+          <textarea class="composer__textarea" spellcheck="false" style="min-height:320px;">https://news.ycombinator.com/item?id=41523109
+https://www.reddit.com/r/LocalLLaMA/comments/1g8h2k/mistral_nemo_12b_beats_llama/
+https://x.com/levelsio/status/1872493847203847284
+https://anthropic.com/research/mech-interp-sonnet-2026
+i forgot a protocol www.example.com/post</textarea>
+        </section>
+
+        <!-- Invalid lines, compact -->
+        <section class="panel" style="border-color:var(--c-err-line);background:var(--c-err-soft);">
+          <div style="padding: var(--sp-3) var(--sp-5); display:flex; flex-direction:column; gap:var(--sp-1);">
+            <div style="display:flex;align-items:center;gap:var(--sp-2);font-family:var(--f-mono);font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:var(--c-err);margin-bottom:var(--sp-1);">
+              <span>⚠</span><span>1 invalid line</span>
+            </div>
+            <div style="font-family:var(--f-mono);font-size:12px;color:var(--c-err);display:flex;gap:var(--sp-3);">
+              <span style="color:var(--c-mute);">Line 05</span>
+              <span>i forgot a protocol www.example.com/post — missing <code>https://</code></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Submit action bar — below the input + invalid panel -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);padding-top:var(--sp-2);">
+          <span style="font-family:var(--f-mono);font-size:11px;color:var(--c-mute);">
+            On submit: fixture saved · you'll land on <span class="mono" style="color:var(--c-ink);">/admin/eval</span> with this fixture selected
+          </span>
+          <div style="display:flex;align-items:center;gap:var(--sp-3);">
+            <button class="btn btn--ghost">Cancel</button>
+            <button class="btn btn--primary btn--lg">Build fixture · 4 URLs</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT: what happens next -->
+      <aside style="display:flex;flex-direction:column;gap:var(--sp-4);">
+
+        <div class="panel">
+          <header class="panel__head">
+            <span class="panel__title">Pipeline</span>
+            <span class="panel__sub">on submit</span>
+          </header>
+          <div style="padding: var(--sp-4) var(--sp-5);">
+            <div class="rail-list">
+              <div class="rail-item">
+                <span class="rail-item__num">01</span>
+                <div>
+                  <div class="rail-item__title">Resolve collectors</div>
+                  <div class="rail-item__body">URL classifier matches each URL to its native collector — HN, Reddit, Twitter, GitHub. Anything that doesn't match a known source falls back to web fetch + Readability.</div>
+                </div>
+              </div>
+              <div class="rail-item">
+                <span class="rail-item__num">02</span>
+                <div>
+                  <div class="rail-item__title">Fetch in parallel</div>
+                  <div class="rail-item__body">HN / Reddit / Twitter / GitHub native collectors run; everything else goes through fetch + Readability for OG image, title, description.</div>
+                </div>
+              </div>
+              <div class="rail-item">
+                <span class="rail-item__num">03</span>
+                <div>
+                  <div class="rail-item__title">Dedup & cluster</div>
+                  <div class="rail-item__body">URL normalization + title-similarity merge cross-source duplicates.</div>
+                </div>
+              </div>
+              <div class="rail-item">
+                <span class="rail-item__num">04</span>
+                <div>
+                  <div class="rail-item__title">Land on /admin/eval</div>
+                  <div class="rail-item__body">You'll be redirected to <span class="mono">/admin/eval</span> with this new fixture pre-selected in the Mode A picker — ready to run an eval. Grade it later from the picker dropdown.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <header class="panel__head">
+            <span class="panel__title">Source mix</span>
+            <span class="panel__sub">of 4 valid</span>
+          </header>
+          <div style="padding: var(--sp-4) var(--sp-5);">
+            <div class="source-bar">
+              <span class="hn" style="width:25%;"></span>
+              <span class="reddit" style="width:25%;"></span>
+              <span class="twitter" style="width:25%;"></span>
+              <span class="web" style="width:25%;"></span>
+            </div>
+            <div class="source-legend">
+              <span class="source-legend__item"><span class="source-legend__dot" style="background:#c2410c"></span>HN · 1</span>
+              <span class="source-legend__item"><span class="source-legend__dot" style="background:#ea580c"></span>Reddit · 1</span>
+              <span class="source-legend__item"><span class="source-legend__dot" style="background:#0369a1"></span>Twitter · 1</span>
+              <span class="source-legend__item"><span class="source-legend__dot" style="background:#78716c"></span>Web · 1</span>
+            </div>
+            <p style="margin-top:var(--sp-3);font-size:12px;color:var(--c-mute);line-height:1.5;">
+              Aim for diversity. A fixture dominated by one source teaches the ranker to over-fit on that source's style.
+            </p>
+          </div>
+        </div>
+
+      </aside>
+    </div>
+  </main>
+</div>
+
+</body>
+</html>
