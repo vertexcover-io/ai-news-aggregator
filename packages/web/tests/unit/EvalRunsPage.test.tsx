@@ -54,8 +54,11 @@ function makeRun(
     status: "done" as EvalRunStatus,
     startedAt: "2026-05-21T19:14:08.000Z",
     finishedAt: "2026-05-21T19:14:30.000Z",
-    scoreBreakdown: { ndcgAt10: 0.847 },
-    costBreakdown: { usd: 0.041 },
+    // Real jsonb shape returned by the API list endpoint (Stage B SPEC REQ-3):
+    //   scoreBreakdown = { aggregate: { meanNdcgAt10 }, perFixture: [...] }
+    //   costBreakdown  = { totalUsd, perFixture: [...] }
+    scoreBreakdown: { aggregate: { meanNdcgAt10: 0.847 }, perFixture: [] },
+    costBreakdown: { totalUsd: 0.041, perFixture: [] },
     errorMessage: null,
     ...overrides,
   };
@@ -107,8 +110,11 @@ beforeEach(() => {
     status: "done",
     startedAt: "2026-05-21T19:14:08.000Z",
     finishedAt: "2026-05-21T19:14:30.000Z",
-    scoreBreakdown: { ndcgAt10: 0.847 },
-    costBreakdown: { usd: 0.041 },
+    // Real jsonb shape returned by the API list endpoint (Stage B SPEC REQ-3):
+    //   scoreBreakdown = { aggregate: { meanNdcgAt10 }, perFixture: [...] }
+    //   costBreakdown  = { totalUsd, perFixture: [...] }
+    scoreBreakdown: { aggregate: { meanNdcgAt10: 0.847 }, perFixture: [] },
+    costBreakdown: { totalUsd: 0.041, perFixture: [] },
     errorMessage: null,
   });
   vi.useRealTimers();
@@ -134,6 +140,26 @@ describe("EvalRunsPage", () => {
     await waitFor(() => {
       expect(screen.queryAllByTestId(/^runs-row-run-/).length).toBe(12);
     });
+  });
+
+  it("renders the nDCG and cost cells from the real jsonb shape (regression: keys are nested)", async () => {
+    // Regression: the formatters used to read `breakdown.ndcgAt10` and
+    // `breakdown.usd` at the top level, but the API persists Mode A scores
+    // as `{ aggregate: { meanNdcgAt10 } }` and cost as `{ totalUsd }`. Both
+    // formatters then fell through to "—" on every real row.
+    listEvalRunsMock.mockResolvedValue({
+      runs: [makeRun("aaa-111")],
+      total: 1,
+      page: 1,
+      perPage: 20,
+    });
+    renderPage();
+    await screen.findByTestId("runs-row-aaa-111");
+    const row = screen.getByTestId("runs-row-aaa-111");
+    // Fixture above sets meanNdcgAt10 = 0.847 and totalUsd = 0.041
+    expect(row.textContent).toContain("0.847");
+    expect(row.textContent).toContain("$0.041");
+    expect(row.textContent).not.toContain("nDCG@10—");
   });
 
   it("renders empty CTA card when total === 0", async () => {

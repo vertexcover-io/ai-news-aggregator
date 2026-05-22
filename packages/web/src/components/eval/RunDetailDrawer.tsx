@@ -150,88 +150,173 @@ function formatTokens(n: unknown): string {
   return "—";
 }
 
+/**
+ * Score breakdown shape we read (from packages/api/src/routes/admin-eval.ts):
+ *   Mode A: { aggregate: { meanNdcgAt10 }, perFixture: [{ fixtureId, status, score: { ndcgAt10, ndcgAt5, precisionAt10, mustIncludeRecall, rankOneIsMustInclude } | null, cost, error }, ...] }
+ *   Mode B: { saved: RankedItemRef[], draft: RankedItemRef[] }
+ *
+ * Cost breakdown shape:
+ *   Mode A: { totalUsd, perFixture: [{ fixtureId, cost: { usd, tokensIn, tokensOut, cacheHit, promptHash } }, ...] }
+ *   Mode B: { totalUsd, saved: RunEvalCost, draft: RunEvalCost }
+ */
+
+interface FixtureEntry {
+  fixtureId?: unknown;
+  status?: unknown;
+  score?: unknown;
+  cost?: unknown;
+  error?: unknown;
+}
+
+function pickObject(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 function buildScoreRows(run: EvalRun): readonly BreakdownRow[] {
-  const sb = run.scoreBreakdown;
-  if (sb !== null && typeof sb === "object") {
-    const obj = sb as Record<string, unknown>;
-    if (run.mode === "scored") {
+  const sb = pickObject(run.scoreBreakdown);
+  if (sb === null) return [];
+
+  if (run.mode === "scored") {
+    const aggregate = pickObject(sb.aggregate);
+    const perFixture = Array.isArray(sb.perFixture)
+      ? (sb.perFixture as FixtureEntry[])
+      : [];
+    // Single-fixture runs are the common case: render its per-fixture score
+    // directly. Multi-fixture runs (Top-N) show the aggregate plus a count.
+    if (perFixture.length === 1) {
+      const fx = perFixture[0];
+      const score = pickObject(fx.score);
+      if (score === null) {
+        const errMsg = typeof fx.error === "string" ? fx.error : "no score";
+        return [
+          {
+            label: "Fixture",
+            value: typeof fx.fixtureId === "string" ? fx.fixtureId : "—",
+          },
+          { label: "Status", value: errMsg, total: true },
+        ];
+      }
       return [
-        { label: "nDCG@10", value: formatNum(obj.ndcgAt10) },
-        { label: "nDCG@5", value: formatNum(obj.ndcgAt5) },
-        { label: "Precision@10", value: formatNum(obj.precisionAt10) },
-        { label: "Must-include recall", value: formatNum(obj.mustIncludeRecall) },
+        { label: "nDCG@10", value: formatNum(score.ndcgAt10) },
+        { label: "nDCG@5", value: formatNum(score.ndcgAt5) },
+        { label: "Precision@10", value: formatNum(score.precisionAt10) },
+        {
+          label: "Must-include recall",
+          value: formatNum(score.mustIncludeRecall),
+        },
         {
           label: "Rank-1 = must",
           value:
-            typeof obj.rankOneIsMustInclude === "boolean"
-              ? obj.rankOneIsMustInclude
+            typeof score.rankOneIsMustInclude === "boolean"
+              ? score.rankOneIsMustInclude
                 ? "yes"
                 : "no"
               : "—",
         },
         {
           label: "Headline · nDCG@10",
-          value: formatNum(obj.ndcgAt10),
+          value: formatNum(score.ndcgAt10),
           total: true,
         },
       ];
     }
-    const saved = Array.isArray(obj.saved) ? obj.saved.length : 0;
-    const draft = Array.isArray(obj.draft) ? obj.draft.length : 0;
     return [
-      { label: "Saved ranking", value: `${String(saved)} items` },
-      { label: "Draft ranking", value: `${String(draft)} items` },
-      { label: "Mode", value: "A/B comparison", total: true },
+      {
+        label: "Fixtures scored",
+        value: `${String(perFixture.filter((f) => pickObject(f.score) !== null).length)} / ${String(perFixture.length)}`,
+      },
+      {
+        label: "nDCG@10 · mean",
+        value: aggregate === null ? "—" : formatNum(aggregate.meanNdcgAt10),
+        total: true,
+      },
     ];
   }
-  return [];
+
+  const saved = Array.isArray(sb.saved) ? sb.saved.length : 0;
+  const draft = Array.isArray(sb.draft) ? sb.draft.length : 0;
+  return [
+    { label: "Saved ranking", value: `${String(saved)} items` },
+    { label: "Draft ranking", value: `${String(draft)} items` },
+    { label: "Mode", value: "A/B comparison", total: true },
+  ];
 }
 
 function buildCostRows(run: EvalRun): readonly BreakdownRow[] {
-  const cb = run.costBreakdown;
-  if (cb !== null && typeof cb === "object") {
-    const obj = cb as Record<string, unknown>;
-    const rows: BreakdownRow[] = [];
-    if (obj.tokensIn !== undefined) {
+  const cb = pickObject(run.costBreakdown);
+  if (cb === null) return [];
+
+  const rows: BreakdownRow[] = [];
+
+  // Mode A: aggregate token detail from the single per-fixture entry when
+  // there's exactly one; otherwise just show totalUsd.
+  // Mode B: pull from saved + draft.
+  if (run.mode === "scored") {
+    const perFixture = Array.isArray(cb.perFixture)
+      ? (cb.perFixture as { cost?: unknown; fixtureId?: unknown }[])
+      : [];
+    if (perFixture.length === 1) {
+      const cost = pickObject(perFixture[0].cost);
+      if (cost !== null) {
+        if (cost.tokensIn !== undefined) {
+          rows.push({
+            label: "Rerank · input",
+            value: formatTokens(cost.tokensIn),
+            muted: true,
+          });
+        }
+        if (cost.tokensOut !== undefined) {
+          rows.push({
+            label: "Rerank · output",
+            value: formatTokens(cost.tokensOut),
+            muted: true,
+          });
+        }
+        if (cost.cacheHit !== undefined) {
+          rows.push({
+            label: "cache hit",
+            value: cost.cacheHit === true ? "yes" : "no",
+            sub: true,
+          });
+        }
+      }
+    } else if (perFixture.length > 1) {
       rows.push({
-        label: "Rerank · input",
-        value: formatTokens(obj.tokensIn),
+        label: "Per-fixture entries",
+        value: String(perFixture.length),
         muted: true,
       });
     }
-    if (obj.cacheWrite5m !== undefined) {
+  } else {
+    const saved = pickObject(cb.saved);
+    const draft = pickObject(cb.draft);
+    if (saved !== null) {
       rows.push({
-        label: "cache write (5m)",
-        value: formatTokens(obj.cacheWrite5m),
-        sub: true,
-      });
-    }
-    if (obj.cacheRead !== undefined) {
-      rows.push({
-        label: "cache read",
-        value: formatTokens(obj.cacheRead),
-        sub: true,
-      });
-    }
-    if (obj.tokensOut !== undefined) {
-      rows.push({
-        label: "Rerank · output",
-        value: formatTokens(obj.tokensOut),
+        label: "Saved · tokens",
+        value: `${formatTokens(saved.tokensIn)} → ${formatTokens(saved.tokensOut)}`,
         muted: true,
       });
     }
-    const usd = obj.usd;
-    rows.push({
-      label: "Total cost",
-      value:
-        typeof usd === "number" && Number.isFinite(usd)
-          ? `$${usd.toFixed(3)}`
-          : "—",
-      total: true,
-    });
-    return rows;
+    if (draft !== null) {
+      rows.push({
+        label: "Draft · tokens",
+        value: `${formatTokens(draft.tokensIn)} → ${formatTokens(draft.tokensOut)}`,
+        muted: true,
+      });
+    }
   }
-  return [];
+
+  rows.push({
+    label: "Total cost",
+    value:
+      typeof cb.totalUsd === "number" && Number.isFinite(cb.totalUsd)
+        ? `$${cb.totalUsd.toFixed(4)}`
+        : "—",
+    total: true,
+  });
+  return rows;
 }
 
 export function RunDetailDrawer({

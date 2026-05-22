@@ -26,28 +26,37 @@ function formatTimestamp(iso: string): string {
   return `${String(d.getFullYear())}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function formatScore(breakdown: unknown): string {
-  if (
-    breakdown !== null &&
-    typeof breakdown === "object" &&
-    "ndcgAt10" in breakdown
-  ) {
-    const v = (breakdown as { ndcgAt10?: unknown }).ndcgAt10;
-    if (typeof v === "number" && Number.isFinite(v)) return v.toFixed(3);
+/**
+ * Read a value from a nested unknown via a dot path. Returns undefined on any
+ * type mismatch along the way. Kept narrow on purpose — these jsonb columns
+ * are typed `unknown` at the API boundary and we only ever pluck a couple of
+ * leaf numbers out of them.
+ */
+function pickNumber(value: unknown, path: readonly string[]): number | null {
+  let cur: unknown = value;
+  for (const key of path) {
+    if (cur === null || typeof cur !== "object") return null;
+    cur = (cur as Record<string, unknown>)[key];
   }
-  return "—";
+  if (typeof cur === "number" && Number.isFinite(cur)) return cur;
+  return null;
+}
+
+// Score breakdown shape (Mode A): { aggregate: { meanNdcgAt10 }, perFixture: [...] }
+// Score breakdown shape (Mode B): { saved, draft } — no nDCG axis.
+// Cost breakdown shape: { totalUsd, perFixture?: [...] | saved?, draft? }
+// Sources of truth: packages/api/src/routes/admin-eval.ts (persist* helpers),
+// docs/spec/eval-runs-persistence-collectors/spec.md REQ-3.
+function formatScore(breakdown: unknown): string {
+  const v = pickNumber(breakdown, ["aggregate", "meanNdcgAt10"]);
+  if (v === null) return "—";
+  return v.toFixed(3);
 }
 
 function formatCost(breakdown: unknown): string {
-  if (
-    breakdown !== null &&
-    typeof breakdown === "object" &&
-    "usd" in breakdown
-  ) {
-    const v = (breakdown as { usd?: unknown }).usd;
-    if (typeof v === "number" && Number.isFinite(v)) return `$${v.toFixed(3)}`;
-  }
-  return "—";
+  const v = pickNumber(breakdown, ["totalUsd"]);
+  if (v === null) return "—";
+  return `$${v.toFixed(3)}`;
 }
 
 interface StatusProps {

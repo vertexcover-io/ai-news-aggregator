@@ -35,14 +35,36 @@ function makeRun(overrides: Partial<EvalRun> = {}): EvalRun {
     status: "done",
     startedAt: "2026-05-21T19:14:08.000Z",
     finishedAt: "2026-05-21T19:14:26.000Z",
+    // Real jsonb shape returned by the API (see Stage B SPEC REQ-3):
+    //   scoreBreakdown = { aggregate: { meanNdcgAt10 }, perFixture: [...] }
+    //   costBreakdown  = { totalUsd, perFixture: [{ fixtureId, cost: {...} }] }
     scoreBreakdown: {
-      ndcgAt10: 0.912,
-      ndcgAt5: 0.943,
-      precisionAt10: 0.8,
-      mustIncludeRecall: 1.0,
-      rankOneIsMustInclude: true,
+      aggregate: { meanNdcgAt10: 0.912 },
+      perFixture: [
+        {
+          fixtureId: "manual-curated-may-21",
+          status: "done",
+          error: null,
+          score: {
+            ndcgAt10: 0.912,
+            ndcgAt5: 0.943,
+            precisionAt10: 0.8,
+            mustIncludeRecall: 1.0,
+            rankOneIsMustInclude: true,
+          },
+          cost: { usd: 0.014, tokensIn: 14283, tokensOut: 2847, cacheHit: false, promptHash: "b8e7f203abcd" },
+        },
+      ],
     },
-    costBreakdown: { tokensIn: 14283, tokensOut: 2847, usd: 0.014 },
+    costBreakdown: {
+      totalUsd: 0.014,
+      perFixture: [
+        {
+          fixtureId: "manual-curated-may-21",
+          cost: { usd: 0.014, tokensIn: 14283, tokensOut: 2847, cacheHit: false, promptHash: "b8e7f203abcd" },
+        },
+      ],
+    },
     errorMessage: null,
     ...overrides,
   };
