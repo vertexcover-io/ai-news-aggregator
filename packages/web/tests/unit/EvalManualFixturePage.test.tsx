@@ -35,8 +35,8 @@ function renderPage(): void {
           element={<EvalFixtureWrapper />}
         />
         <Route
-          path="/admin/eval"
-          element={<div data-testid="eval-index-landed">eval index</div>}
+          path="/admin/eval/grade/:fixtureId"
+          element={<div data-testid="grade-page-landed">grade page</div>}
         />
       </Routes>
       <Toaster />
@@ -116,7 +116,7 @@ describe("EvalManualFixturePage", () => {
       );
     });
     await waitFor(() => {
-      expect(screen.getByTestId("eval-index-landed")).toBeTruthy();
+      expect(screen.getByTestId("grade-page-landed")).toBeTruthy();
     });
   });
 

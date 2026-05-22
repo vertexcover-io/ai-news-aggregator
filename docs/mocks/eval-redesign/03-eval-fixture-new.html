@@ -108,8 +108,8 @@
   <div class="notes__title">DESIGN NOTES · 03 / NEW FIXTURE</div>
   <div class="notes__body">
     <p><strong>What changed:</strong> Textarea is the primary input — no parsed-line list, no per-line collector chip preview. Invalid lines surface as a compact list directly under the textarea. <em>Cancel + Build fixture</em> action bar moves from the top-right page header down to below the textarea + invalid panel, so the user's eye flows top→bottom: name → paste → fix errors → submit.</p>
-    <p><strong>New submit behavior:</strong> On a successful build, the fixture file is saved locally (existing) AND the user is redirected to <code>/admin/eval?fixtureId=&lt;new-id&gt;</code>, where the new fixture is auto-selected as the Mode A target. This shortens the "I just made a fixture, now I want to score my prompt against it" loop to one click.</p>
-    <p><strong>Why move the actions:</strong> Top-right CTAs work for review pages (where the action applies to the page-wide object) but on a build-step form the action belongs at the bottom of the form it submits — that's where the user's pointer already is after they've finished pasting. The accompanying mono caption ("On submit · you'll land on /admin/eval…") removes ambiguity about what happens next.</p>
+    <p><strong>New submit behavior (grade-first):</strong> On a successful build, the fixture file is saved locally (existing) AND the user is redirected to <code>/admin/eval/grade/&lt;new-id&gt;</code> to label each cluster. When Save-to-repo on the grade page completes, the user lands on <code>/admin/eval?fixtureId=&lt;new-id&gt;</code> with the fixture pre-selected and ready for scored evals. Build → grade → eval is the two-hop loop; skipping grading would leave the fixture without ground truth and produce <code>score: null</code>.</p>
+    <p><strong>Why move the actions:</strong> Top-right CTAs work for review pages (where the action applies to the page-wide object) but on a build-step form the action belongs at the bottom of the form it submits — that's where the user's pointer already is after they've finished pasting. The accompanying mono caption ("Next stop: /admin/eval/grade/…") removes ambiguity about what happens next.</p>
     <p><strong>Reflow &lt; 768 px:</strong> Right rail moves below the form. Action bar stays at the bottom of the left column. Textarea is full-width throughout.</p>
   </div>
 </aside>
@@ -188,7 +188,7 @@ i forgot a protocol www.example.com/post</textarea>
         <!-- Submit action bar — below the input + invalid panel -->
         <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);padding-top:var(--sp-2);">
           <span style="font-family:var(--f-mono);font-size:11px;color:var(--c-mute);">
-            On submit: fixture saved · you'll land on <span class="mono" style="color:var(--c-ink);">/admin/eval</span> with this fixture selected
+            On submit: fixture saved · next stop <span class="mono" style="color:var(--c-ink);">/admin/eval/grade/&lt;id&gt;</span> — finish grading to score the prompt
           </span>
           <div style="display:flex;align-items:center;gap:var(--sp-3);">
             <button class="btn btn--ghost">Cancel</button>
@@ -231,8 +231,8 @@ i forgot a protocol www.example.com/post</textarea>
               <div class="rail-item">
                 <span class="rail-item__num">04</span>
                 <div>
-                  <div class="rail-item__title">Land on /admin/eval</div>
-                  <div class="rail-item__body">You'll be redirected to <span class="mono">/admin/eval</span> with this new fixture pre-selected in the Mode A picker — ready to run an eval. Grade it later from the picker dropdown.</div>
+                  <div class="rail-item__title">Open grading view</div>
+                  <div class="rail-item__body">You'll be redirected to <span class="mono">/admin/eval/grade/&lt;id&gt;</span> to label each cluster as must / nice / drop. Save-to-repo then lands you on <span class="mono">/admin/eval</span> with this fixture pre-selected — ready to run a scored eval.</div>
                 </div>
               </div>
             </div>

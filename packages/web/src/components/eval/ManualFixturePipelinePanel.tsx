@@ -19,12 +19,14 @@ const STEPS: Step[] = [
     body: "URL normalization + title-similarity merge cross-source duplicates.",
   },
   {
-    title: "Land on /admin/eval",
+    title: "Open grading view",
     body: (
       <>
         You&apos;ll be redirected to{" "}
-        <span className="font-mono">/admin/eval</span> with this new fixture
-        pre-selected in the Mode A picker — ready to run an eval.
+        <span className="font-mono">/admin/eval/grade/&lt;id&gt;</span> to label
+        each cluster as must / nice / drop. Save-to-repo then lands you on{" "}
+        <span className="font-mono">/admin/eval</span> with the fixture
+        pre-selected — ready to run a scored eval.
       </>
     ),
   },

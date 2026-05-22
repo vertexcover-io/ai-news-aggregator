@@ -66,7 +66,7 @@ export function EvalManualFixturePage(): ReactElement {
       const result = await createManualFixture(validUrls, values.name);
       toast.success(`Fixture created with ${String(result.itemCount)} item(s)`);
       void navigate(
-        `/admin/eval?fixtureId=${encodeURIComponent(result.fixtureId)}`,
+        `/admin/eval/grade/${encodeURIComponent(result.fixtureId)}`,
       );
     } catch (err) {
       if (err instanceof EvalApiError) {
@@ -220,9 +220,11 @@ export function EvalManualFixturePage(): ReactElement {
 
             <div className="flex items-center justify-between gap-4 pt-2">
               <span className="font-mono text-[11px] text-stone-500">
-                On submit: fixture saved · you&apos;ll land on{" "}
-                <span className="font-mono text-stone-900">/admin/eval</span>{" "}
-                with this fixture selected
+                On submit: fixture saved · next stop{" "}
+                <span className="font-mono text-stone-900">
+                  /admin/eval/grade/&lt;id&gt;
+                </span>{" "}
+                — finish grading to score the prompt
               </span>
               <div className="flex items-center gap-3">
                 <button
