@@ -2,7 +2,7 @@
 
 **Title:** Add Post — Twitter/X Collector Resolver
 **Verdict:** ✅ PASSED (see [`verification/proof-report.md`](./verification/proof-report.md))
-**PR:** _(filled in after open)_
+**PR:** [#178](https://github.com/vertexcover-io/ai-news-aggregator/pull/178)
 
 ## Summary
 
