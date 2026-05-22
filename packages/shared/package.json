@@ -13,7 +13,10 @@
     "./utils": "./dist/utils/index.js",
     "./logger": "./dist/logger.js",
     "./services": "./dist/services/index.js",
-    "./services/credential-cipher": "./dist/services/credential-cipher.js"
+    "./services/credential-cipher": "./dist/services/credential-cipher.js",
+    "./types/eval-ranking": "./dist/types/eval-ranking.js",
+    "./types/eval-ranking-schemas": "./dist/types/eval-ranking-schemas.js",
+    "./constants/eval-ranking": "./dist/constants/eval-ranking.js"
   },
   "scripts": {
     "build": "tsup",
@@ -29,7 +32,8 @@
     "drizzle-orm": "0.42.0",
     "ioredis": "5.6.1",
     "pino": "9.6.0",
-    "postgres": "3.4.7"
+    "postgres": "3.4.7",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@types/node": "22.15.3",
