@@ -293,6 +293,48 @@ describe("EvalIndexPage", () => {
     });
   });
 
+  it("aggregate hero is absent with empty rows and visible after hydration (REQ-5)", async () => {
+    // empty rows on initial mount → no hero
+    renderPage();
+    await screen.findByTestId("prompt-editor-textarea");
+    expect(screen.queryByTestId("eval-aggregate-hero")).toBeNull();
+    cleanup();
+
+    // seed sessionStorage with completed rows → hero renders
+    window.sessionStorage.setItem(
+      "eval-run-state",
+      JSON.stringify({
+        version: 1,
+        mode: "scored",
+        scoredScope: "single",
+        fixtureId: "fx-1",
+        windowSize: 20,
+        rows: [
+          {
+            fixtureId: "fx-1",
+            status: "done",
+            score: {
+              ndcgAt10: 0.85,
+              precisionAt10: 0.7,
+              mustIncludeRecall: 1,
+              rankOneIsMustInclude: true,
+            },
+            cost: { usd: 0.012, tokensIn: 100, tokensOut: 50 },
+            error: undefined,
+          },
+        ],
+        totalUsd: 0.012,
+        runError: null,
+        persistedAt: Date.now(),
+      }),
+    );
+    renderPage();
+    await screen.findByTestId("prompt-editor-textarea");
+    await waitFor(() => {
+      expect(screen.getByTestId("eval-aggregate-hero")).toBeTruthy();
+    });
+  });
+
   it("discards persisted run state older than 1 hour (EDGE-2.2)", async () => {
     window.sessionStorage.setItem(
       "eval-run-state",
