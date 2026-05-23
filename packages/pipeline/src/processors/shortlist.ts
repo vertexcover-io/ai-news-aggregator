@@ -86,9 +86,14 @@ export async function shortlistCandidates(
     object: z.infer<typeof shortlistResponseSchema>;
   };
 
+  const interpolatedSystemPrompt = options.systemPrompt.replace(
+    /\{\{N\}\}/g,
+    String(options.shortlistSize),
+  );
+
   const result = (await generate({
     model: anthropic(modelId),
-    system: options.systemPrompt,
+    system: interpolatedSystemPrompt,
     prompt: JSON.stringify(promptPayload, null, 2),
     schema: shortlistResponseSchema,
     providerOptions: {

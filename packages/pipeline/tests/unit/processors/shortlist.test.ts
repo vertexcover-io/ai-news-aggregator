@@ -289,7 +289,7 @@ describe("shortlistCandidates (LLM-based)", () => {
     );
   });
 
-  it("passes systemPrompt verbatim and includes shortlistSize in payload (REQ-001, REQ-008)", async () => {
+  it("passes systemPrompt and includes shortlistSize in payload (REQ-001, REQ-008)", async () => {
     const candidates = [
       makeCandidate(1, { title: "First post" }),
       makeCandidate(2, { title: "Second post" }),
@@ -310,6 +310,26 @@ describe("shortlistCandidates (LLM-based)", () => {
     expect(call.prompt).toContain("First post");
     expect(call.prompt).toContain("Second post");
     expect(call.prompt).toContain('"id": "1"');
+  });
+
+  it("interpolates {{N}} placeholders in the system prompt with shortlistSize (REQ-008)", async () => {
+    const candidates = [makeCandidate(1)];
+    const generate = makeGenerate({ ids: ["1"] });
+    const promptWithPlaceholders =
+      "Pick the {{N}} most newsworthy items. Return up to {{N}} ids.";
+
+    await shortlistCandidates(candidates, {
+      shortlistSize: 42,
+      systemPrompt: promptWithPlaceholders,
+      runId: "run-1",
+      generate,
+    });
+
+    const call = generate.mock.calls[0]?.[0] as GenerateArgs;
+    expect(call.system).toBe(
+      "Pick the 42 most newsworthy items. Return up to 42 ids.",
+    );
+    expect(call.system).not.toContain("{{N}}");
   });
 
   it("returns empty result without invoking generate when candidates is empty", async () => {
