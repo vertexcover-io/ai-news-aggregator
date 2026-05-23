@@ -20,7 +20,6 @@ import {
 } from "../api/eval";
 import type {
   ActualRankingItem,
-  CalendarRankingItem,
   CalendarRunReportEntry,
   CalendarRunSummary,
   EvalScore,
@@ -40,6 +39,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ReportTab, type ReportScoreSheet } from "../components/eval/ReportTab";
+import { CalendarReportComparison } from "../components/eval/CalendarReportComparison";
 import {
   configuredTimezone,
   formatDateTimeForTimezone,
@@ -138,14 +138,6 @@ function formatTimestamp(
   return formatDateTimeForTimezone(iso, timezone);
 }
 
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-
 function hasReportPayload(
   row: EvalProgressRow,
 ): row is EvalProgressRow & { actualRanking: ActualRankingItem[] } {
@@ -198,75 +190,6 @@ function countLines(s: string): number {
   return n;
 }
 
-interface CalendarRankingTableProps {
-  title: string;
-  items: readonly CalendarRankingItem[];
-}
-
-function CalendarRankingTable({
-  title,
-  items,
-}: CalendarRankingTableProps): ReactElement {
-  return (
-    <section className="min-w-0 overflow-hidden rounded-md border border-neutral-200">
-      <header className="border-b border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-neutral-700">
-        {title}
-      </header>
-      <div className="max-h-[320px] overflow-auto">
-        {items.map((item) => (
-          <div
-            key={`${title}-${String(item.rawItemId)}`}
-            className="border-b border-neutral-100 px-3 py-2 last:border-none"
-          >
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-[11px] tabular-nums text-neutral-500">
-                #{String(item.rank)}
-              </span>
-              <span className="truncate text-sm font-medium text-neutral-900">
-                {item.title}
-              </span>
-            </div>
-            <div className="mt-1 flex flex-wrap gap-2 pl-6 font-mono text-[10px] text-neutral-500">
-              <span>{item.sourceType}</span>
-              <span>score {item.score.toFixed(2)}</span>
-              {hostOf(item.url) !== "" ? <span>{hostOf(item.url)}</span> : null}
-            </div>
-            {item.rationale.length > 0 ? (
-              <p className="mt-1 line-clamp-2 pl-6 text-xs text-neutral-600">
-                {item.rationale}
-              </p>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-interface PromptSnapshotPaneProps {
-  label: string;
-  hash: string | null;
-  snapshot: string | null;
-}
-
-function PromptSnapshotPane({
-  label,
-  hash,
-  snapshot,
-}: PromptSnapshotPaneProps): ReactElement {
-  return (
-    <section className="min-w-0 overflow-hidden rounded-md border border-neutral-200">
-      <header className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-neutral-700">
-        <span>{label}</span>
-        <span className="text-neutral-400">{hash === null ? "—" : shortId(hash)}</span>
-      </header>
-      <pre className="max-h-[220px] overflow-auto whitespace-pre-wrap bg-white px-3 py-2 font-mono text-[12px] leading-relaxed text-neutral-800">
-        {snapshot ?? "No saved prompt snapshot."}
-      </pre>
-    </section>
-  );
-}
-
 interface CalendarReportDialogProps {
   row: Extract<CalendarRunReportEntry, { status: "done" }> | null;
   onClose: () => void;
@@ -285,38 +208,20 @@ function CalendarReportDialog({
     >
       <DialogContent
         data-testid="calendar-report-dialog"
-        className="flex h-[82vh] max-w-6xl flex-col overflow-hidden"
+        className="flex h-[90vh] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+        style={{ width: "min(1320px, calc(100vw - 2rem))" }}
       >
-        <DialogTitle>
-          Calendar report{row === null ? "" : ` · ${shortId(row.runId)}`}
-        </DialogTitle>
-        <DialogDescription>
-          Previous ranked items compared with the draft-prompt ranking.
-        </DialogDescription>
+        <header className="border-b border-neutral-200 px-6 py-5">
+          <DialogTitle className="text-2xl leading-tight">
+            Calendar report{row === null ? "" : ` · ${shortId(row.runId)}`}
+          </DialogTitle>
+          <DialogDescription className="mt-2 text-base">
+            Previous ranked items compared with the draft-prompt ranking.
+          </DialogDescription>
+        </header>
         {row !== null ? (
-          <div className="grid min-h-0 flex-1 grid-rows-[1fr_auto] gap-4">
-            <div className="grid min-h-0 grid-cols-2 gap-4">
-              <CalendarRankingTable
-                title="Previous ranking"
-                items={row.previousRanking}
-              />
-              <CalendarRankingTable
-                title="Draft ranking"
-                items={row.draftRanking}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <PromptSnapshotPane
-                label="Saved prompt"
-                hash={row.promptDiff.savedPromptHash}
-                snapshot={row.promptDiff.savedPromptSnapshot}
-              />
-              <PromptSnapshotPane
-                label="Draft prompt"
-                hash={row.promptDiff.draftPromptHash}
-                snapshot={row.promptDiff.draftPromptSnapshot}
-              />
-            </div>
+          <div className="min-h-0 flex-1 overflow-hidden px-6 py-5">
+            <CalendarReportComparison report={row} density="dialog" />
           </div>
         ) : null}
       </DialogContent>

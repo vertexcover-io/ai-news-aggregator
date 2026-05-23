@@ -519,10 +519,20 @@ describe("EvalIndexPage", () => {
     fireEvent.click(reportButton);
 
     const dialog = await screen.findByTestId("calendar-report-dialog");
+    expect(within(dialog).getByTestId("calendar-report-layout")).toBeTruthy();
+    expect(
+      within(dialog).getByTestId("calendar-report-previous-ranking"),
+    ).toBeTruthy();
+    expect(within(dialog).getByTestId("calendar-report-draft-ranking")).toBeTruthy();
+    expect(within(dialog).getByTestId("calendar-report-saved-prompt")).toBeTruthy();
+    expect(within(dialog).getByTestId("calendar-report-draft-prompt")).toBeTruthy();
     expect(within(dialog).getByText("Previous story")).toBeTruthy();
     expect(within(dialog).getByText("Draft story")).toBeTruthy();
     expect(within(dialog).getByText("SAVED PROMPT")).toBeTruthy();
     expect(within(dialog).getByText("DRAFT PROMPT")).toBeTruthy();
+    expect(
+      within(dialog).getByTestId("calendar-report-title-previous-1").className,
+    ).not.toContain("truncate");
   });
 
   it("hydrates Mode A rows from sessionStorage on mount (REQ-2)", async () => {

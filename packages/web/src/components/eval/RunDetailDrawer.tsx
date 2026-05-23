@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { getEvalRun, EvalApiError } from "../../api/eval";
 import { EmptyReport, ReportTab, type ReportScoreSheet } from "./ReportTab";
+import { CalendarReportComparison } from "./CalendarReportComparison";
 
 type DrawerTab = "breakdown" | "report";
 
@@ -154,14 +155,6 @@ function extractCalendarReports(run: EvalRun): CalendarRunReportEntry[] {
 
 function shortRunId(runId: string): string {
   return runId.slice(0, 8);
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
 }
 
 export interface RunDetailDrawerProps {
@@ -496,77 +489,6 @@ function buildCostRows(run: EvalRun): readonly BreakdownRow[] {
   return rows;
 }
 
-interface CalendarRankingListProps {
-  title: string;
-  items: readonly CalendarRankingItem[];
-}
-
-function CalendarRankingList({
-  title,
-  items,
-}: CalendarRankingListProps): ReactElement {
-  return (
-    <section className="min-w-0 overflow-hidden rounded border border-neutral-200">
-      <header className="border-b border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-neutral-700">
-        {title}
-      </header>
-      <div className="max-h-[260px] overflow-auto">
-        {items.map((item) => (
-          <div
-            key={`${title}-${String(item.rawItemId)}`}
-            className="border-b border-neutral-100 px-3 py-2 last:border-none"
-          >
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-[11px] tabular-nums text-neutral-500">
-                #{String(item.rank)}
-              </span>
-              <span className="truncate text-[13px] font-medium text-neutral-900">
-                {item.title}
-              </span>
-            </div>
-            <div className="mt-1 flex flex-wrap gap-2 pl-6 font-mono text-[10px] text-neutral-500">
-              <span>{item.sourceType}</span>
-              <span>score {item.score.toFixed(2)}</span>
-              {hostOf(item.url) !== "" ? <span>{hostOf(item.url)}</span> : null}
-            </div>
-            {item.rationale.length > 0 ? (
-              <p className="mt-1 line-clamp-2 pl-6 text-[12px] text-neutral-600">
-                {item.rationale}
-              </p>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-interface CalendarPromptPaneProps {
-  label: string;
-  hash: string | null;
-  snapshot: string | null;
-}
-
-function CalendarPromptPane({
-  label,
-  hash,
-  snapshot,
-}: CalendarPromptPaneProps): ReactElement {
-  return (
-    <section className="min-w-0 overflow-hidden rounded border border-neutral-200">
-      <header className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-neutral-700">
-        <span>{label}</span>
-        <span className="text-neutral-400">
-          {hash === null ? "—" : shortHash(hash)}
-        </span>
-      </header>
-      <pre className="max-h-[180px] overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[12px] leading-relaxed text-neutral-800">
-        {snapshot ?? "No saved prompt snapshot."}
-      </pre>
-    </section>
-  );
-}
-
 function CalendarReportPanel({
   reports,
 }: {
@@ -592,29 +514,8 @@ function CalendarReportPanel({
                 cost ${entry.cost.usd.toFixed(4)}
               </span>
             </header>
-            <div className="grid gap-3 p-3">
-              <div className="grid grid-cols-2 gap-3">
-                <CalendarRankingList
-                  title="Previous ranking"
-                  items={entry.previousRanking}
-                />
-                <CalendarRankingList
-                  title="Draft ranking"
-                  items={entry.draftRanking}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <CalendarPromptPane
-                  label="Saved prompt"
-                  hash={entry.promptDiff.savedPromptHash}
-                  snapshot={entry.promptDiff.savedPromptSnapshot}
-                />
-                <CalendarPromptPane
-                  label="Draft prompt"
-                  hash={entry.promptDiff.draftPromptHash}
-                  snapshot={entry.promptDiff.draftPromptSnapshot}
-                />
-              </div>
+            <div className="p-3">
+              <CalendarReportComparison report={entry} density="panel" />
             </div>
           </section>
         ))}
