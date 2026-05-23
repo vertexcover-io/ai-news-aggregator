@@ -286,6 +286,9 @@ importers:
       ioredis:
         specifier: 5.6.1
         version: 5.6.1
+      node-html-parser:
+        specifier: 7.1.0
+        version: 7.1.0
       pino:
         specifier: 9.6.0
         version: 9.6.0
