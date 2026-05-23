@@ -52,6 +52,8 @@ describe("settingsFormSchema — VS-6 regression", () => {
     twitterPostEnabled: true,
     autoReview: false,
     rankingPrompt: "test ranking prompt",
+    shortlistPrompt: "test shortlist prompt",
+    shortlistSize: 30,
   };
 
   it("VS-6: parses Twitter form state with one list + one handle (no userId)", () => {

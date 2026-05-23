@@ -1,7 +1,10 @@
 import type IORedis from "ioredis";
 import { Queue } from "bullmq";
 import { createRedisConnection, startRun } from "@newsletter/shared";
-import { DEFAULT_RANKING_PROMPT } from "@newsletter/shared/constants";
+import {
+  DEFAULT_RANKING_PROMPT,
+  DEFAULT_SHORTLIST_PROMPT,
+} from "@newsletter/shared/constants";
 import type {
   RunProcessJobPayload,
   RunSubmitPayload,
@@ -60,6 +63,8 @@ export async function createRun(
     twitterPostEnabled: true,
     autoReview: false,
     rankingPrompt: DEFAULT_RANKING_PROMPT,
+    shortlistPrompt: DEFAULT_SHORTLIST_PROMPT,
+    shortlistSize: 30,
     updatedAt: new Date().toISOString(),
   };
 

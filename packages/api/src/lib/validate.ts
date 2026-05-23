@@ -165,6 +165,11 @@ const userSettingsCommonShape = {
     .string()
     .max(20000, "Ranking prompt too long (max 20000 chars)")
     .refine((v) => v.trim().length > 0, "Ranking prompt is required"),
+  shortlistPrompt: z
+    .string()
+    .max(20000, "Shortlist prompt too long (max 20000 chars)")
+    .refine((v) => v.trim().length > 0, "Shortlist prompt is required"),
+  shortlistSize: z.number().int().min(5).max(100),
 } as const;
 
 interface SourceEnabledPayload {

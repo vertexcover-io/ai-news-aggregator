@@ -110,6 +110,8 @@ const validBody = {
   twitterPostEnabled: true,
   autoReview: false,
   rankingPrompt: "Default ranking prompt for tests",
+  shortlistPrompt: "Default shortlist prompt for tests",
+  shortlistSize: 30,
 };
 
 describe("GET /api/settings", () => {
@@ -150,6 +152,8 @@ describe("GET /api/settings", () => {
       twitterPostEnabled: true,
       autoReview: false,
       rankingPrompt: "Default ranking prompt",
+      shortlistPrompt: "Default shortlist prompt",
+      shortlistSize: 30,
       updatedAt: new Date().toISOString(),
     };
     const { repo } = makeRepo(existing);
@@ -456,6 +460,8 @@ describe("PUT /api/settings", () => {
       twitterPostEnabled: true,
       autoReview: false,
       rankingPrompt: "Default ranking prompt",
+      shortlistPrompt: "Default shortlist prompt",
+      shortlistSize: 30,
       updatedAt: new Date().toISOString(),
     };
     const { repo, store } = makeRepo(existing);

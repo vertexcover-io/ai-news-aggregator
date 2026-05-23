@@ -21,6 +21,8 @@ const validSettings = {
   scheduleTimezone: "America/New_York",
   scheduleEnabled: true,
   rankingPrompt: "Default ranking prompt for tests",
+  shortlistPrompt: "Default shortlist prompt for tests",
+  shortlistSize: 30,
 };
 
 describe("userSettingsUpsertSchema (REQ-012/REQ-013/EDGE-004)", () => {
@@ -77,6 +79,8 @@ describe("userSettingsUpsertSchema (REQ-012/REQ-013/EDGE-004)", () => {
       scheduleTimezone: "America/New_York",
       scheduleEnabled: true,
       rankingPrompt: "Default ranking prompt for tests",
+      shortlistPrompt: "Default shortlist prompt for tests",
+      shortlistSize: 30,
     });
     expect(r.success).toBe(true);
     if (!r.success) return;
@@ -693,6 +697,8 @@ describe("userSettingsUpsertSchema webSearchConfig (REQ-005/REQ-006)", () => {
       scheduleTimezone: "America/New_York",
       scheduleEnabled: true,
       rankingPrompt: "Default ranking prompt for tests",
+      shortlistPrompt: "Default shortlist prompt for tests",
+      shortlistSize: 30,
     });
     expect(r.success).toBe(true);
   });

@@ -120,12 +120,7 @@ function makeShortlistFn(
 function passthroughShortlist(cands: Candidate[]): ShortlistResult {
   return {
     shortlist: cands,
-    breakdowns: cands.map((c) => ({
-      id: c.id,
-      relevance: 0,
-      recency: 1,
-      combined: 1,
-    })),
+    breakdowns: [],
   };
 }
 
@@ -362,8 +357,7 @@ describe("run-process worker", () => {
     const opts = rankOpts as RankOptions;
     expect(opts.topN).toBe(3);
     expect(opts.runId).toBe("run-1");
-    expect(opts.shortlistBreakdowns).toBeDefined();
-    expect(opts.shortlistBreakdowns?.length).toBe(2);
+    expect(opts.shortlistBreakdowns).toEqual([]);
 
     const last = runStateMock.updates.at(-1);
     expect(last?.status).toBe("completed");
@@ -1497,8 +1491,9 @@ describe("run-process worker", () => {
     expect(result).toEqual({ rankedCount: 1 });
   });
 
-  // REQ-100: halfLifeHours from payload flows through to shortlist and rank options
-  it("REQ-100: halfLifeHours payload propagates to shortlistFn and rankFn options", async () => {
+  // REQ-100: halfLifeHours from payload flows through to rank options.
+  // (Shortlist is now LLM-based and no longer consumes halfLifeHours.)
+  it("REQ-100: halfLifeHours payload propagates to rankFn options", async () => {
     const runStateMock = makeMockRunState(makeRunState());
     const candidates = [makeCandidate(1)];
     const loadFn = vi.fn(
@@ -1525,10 +1520,80 @@ describe("run-process worker", () => {
       data: { ...baseJob.data, halfLifeHours: 48 },
     });
 
-    const [, sOpts] = shortlistFn.mock.calls[0] ?? [];
-    expect(sOpts?.halfLifeHours).toBe(48);
     const [, rOpts] = rankFn.mock.calls[0] ?? [];
     expect(rOpts?.halfLifeHours).toBe(48);
+  });
+
+  // REQ-040: settings.shortlistPrompt and shortlistSize wire through to shortlistFn
+  it("REQ-040: settings.shortlistPrompt and shortlistSize flow to shortlistFn", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1), makeCandidate(2)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const shortlistFn = vi.fn(makeShortlistFn(passthroughShortlist));
+    const rankFn = vi.fn(
+      (): Promise<RankResult> =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+          candidateCount: 1,
+          rankedCount: 1,
+        }),
+    );
+
+    const settingsGet = vi.fn(() =>
+      Promise.resolve({
+        id: "settings-1",
+        topN: 3,
+        halfLifeHours: null,
+        hnEnabled: true,
+        hnConfig: null,
+        redditEnabled: false,
+        redditConfig: null,
+        webEnabled: false,
+        webConfig: null,
+        twitterEnabled: false,
+        twitterConfig: null,
+        webSearchEnabled: false,
+        webSearchConfig: null,
+        posthogEnabled: false,
+        posthogProjectToken: null,
+        posthogHost: null,
+        scheduleTime: "07:00",
+        pipelineTime: "07:00",
+        emailTime: "07:30",
+        linkedinTime: "08:00",
+        twitterTime: "08:30",
+        scheduleTimezone: "UTC",
+        scheduleEnabled: true,
+        emailEnabled: true,
+        linkedinEnabled: true,
+        twitterPostEnabled: true,
+        autoReview: true,
+        rankingPrompt: "RANK-PROMPT",
+        shortlistPrompt: "SHORTLIST_PROMPT_SENTINEL",
+        shortlistSize: 17,
+        updatedAt: "2026-04-07T10:00:00.000Z",
+      }),
+    );
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      shortlistFn,
+      rankFn,
+      archiveRepo: { upsert: vi.fn(() => Promise.resolve()) },
+      userSettingsRepo: { get: settingsGet, upsert: vi.fn() },
+    });
+
+    await worker.handler(baseJob);
+
+    expect(shortlistFn).toHaveBeenCalledOnce();
+    const [, sOpts] = shortlistFn.mock.calls[0] ?? [];
+    expect(sOpts?.systemPrompt).toBe("SHORTLIST_PROMPT_SENTINEL");
+    expect(sOpts?.shortlistSize).toBe(17);
+    expect(sOpts?.runId).toBe("run-1");
+    expect(sOpts?.tracker).toBeDefined();
   });
 
   // REQ-032: collectTwitter is invoked exactly once when payload.twitter is present

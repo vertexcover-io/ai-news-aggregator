@@ -48,6 +48,8 @@ export function createUserSettingsRepo(
         twitterPostEnabled: row.twitterPostEnabled,
         autoReview: row.autoReview,
         rankingPrompt: row.rankingPrompt,
+        shortlistPrompt: row.shortlistPrompt,
+        shortlistSize: row.shortlistSize,
         updatedAt:
           row.updatedAt instanceof Date
             ? row.updatedAt.toISOString()

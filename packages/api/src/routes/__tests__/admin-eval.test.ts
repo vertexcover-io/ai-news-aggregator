@@ -81,6 +81,8 @@ function makeSettings(): UserSettings {
     twitterPostEnabled: false,
     autoReview: false,
     rankingPrompt: "OLD PROMPT",
+    shortlistPrompt: "OLD SHORTLIST PROMPT",
+    shortlistSize: 30,
     updatedAt: new Date().toISOString(),
   };
 }

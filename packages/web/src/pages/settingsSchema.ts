@@ -98,6 +98,8 @@ export interface SettingsSubmitInput {
   twitterPostEnabled?: boolean;
   autoReview?: boolean;
   rankingPrompt: string;
+  shortlistPrompt: string;
+  shortlistSize: number;
 }
 
 const webSearchQuerySchema = z.object({
@@ -166,6 +168,15 @@ export const settingsFormSchema = z
       .string()
       .max(20000, "Too long (max 20000 chars)")
       .refine((v) => v.trim().length > 0, "Ranking prompt is required"),
+    shortlistPrompt: z
+      .string()
+      .max(20000, "Too long (max 20000 chars)")
+      .refine((v) => v.trim().length > 0, "Shortlist prompt is required"),
+    shortlistSize: z
+      .number()
+      .int("Shortlist size must be an integer")
+      .min(5, "Shortlist size must be at least 5")
+      .max(100, "Shortlist size must be at most 100"),
   })
   .superRefine((payload, ctx) => {
     const [pipelineHour, pipelineMinute] = payload.pipelineTime.split(":").map(Number);
@@ -279,5 +290,7 @@ export function normalizeSettingsForSubmit(
     twitterPostEnabled: values.twitterPostEnabled,
     autoReview: values.autoReview,
     rankingPrompt: values.rankingPrompt,
+    shortlistPrompt: values.shortlistPrompt,
+    shortlistSize: values.shortlistSize,
   };
 }

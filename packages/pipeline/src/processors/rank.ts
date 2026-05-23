@@ -14,7 +14,15 @@ import {
   recencyDecay,
   DEFAULT_HALF_LIFE_HOURS,
 } from "@pipeline/services/recency.js";
-import type { ShortlistBreakdown } from "@pipeline/processors/shortlist.js";
+/**
+ * Stage-1 shortlister no longer produces breakdowns; this is kept as a
+ * local placeholder so `RankOptions.shortlistBreakdowns` can still be
+ * supplied (always empty) without changing the rank.ts call shape.
+ */
+interface ShortlistBreakdown {
+  id: number;
+  combined: number;
+}
 
 const logger = createLogger("processor:rank");
 

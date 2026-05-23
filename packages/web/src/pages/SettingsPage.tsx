@@ -31,6 +31,9 @@ import { SourcesSection } from "../components/settings/SourcesSection";
 import { ScheduleSection } from "../components/settings/ScheduleSection";
 import { AnalyticsSection } from "../components/settings/AnalyticsSection";
 import { RankingPromptSection } from "../components/settings/RankingPromptSection";
+import { ShortlistPromptSection } from "../components/settings/ShortlistPromptSection";
+import { ShortlistSizeField } from "../components/settings/ShortlistSizeField";
+import { DEFAULT_SHORTLIST_PROMPT } from "@newsletter/shared/constants";
 import { SaveBar } from "../components/settings/SaveBar";
 import { SocialCredentialsPanel } from "../components/SocialCredentialsPanel";
 
@@ -75,6 +78,8 @@ function getDefaults(): SettingsFormValues {
     twitterPostEnabled: true,
     autoReview: false,
     rankingPrompt: "",
+    shortlistPrompt: DEFAULT_SHORTLIST_PROMPT,
+    shortlistSize: 30,
   };
 }
 
@@ -234,6 +239,8 @@ export function SettingsPage(): ReactElement {
               register={form.register}
               control={form.control}
             />
+            <ShortlistSizeField />
+            <ShortlistPromptSection />
             <RankingPromptSection />
           </form>
         </FormProvider>

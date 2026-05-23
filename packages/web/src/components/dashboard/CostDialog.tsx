@@ -35,6 +35,7 @@ interface CostDialogProps {
 const STAGE_ORDER: CostStage[] = [
   "web-discovery",
   "web-extraction",
+  "shortlist",
   "rank",
   "recap",
 ];
@@ -42,6 +43,7 @@ const STAGE_ORDER: CostStage[] = [
 const STAGE_LABELS: Record<CostStage, string> = {
   "web-discovery": "Web discovery",
   "web-extraction": "Web extraction",
+  shortlist: "Shortlist",
   rank: "Rank",
   recap: "Recap",
 };
