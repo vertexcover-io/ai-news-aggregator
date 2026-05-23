@@ -35,11 +35,19 @@ describe("Masthead", () => {
     expect(link.getAttribute("rel")).toContain("noopener");
   });
 
-  it("renders the three top-right nav items", () => {
+  it("renders the four top-right nav items including Sources", () => {
     renderMasthead();
     expect(screen.getByRole("link", { name: /must read/i })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /^sources$/i })).toBeTruthy();
     expect(screen.getByRole("link", { name: /built/i })).toBeTruthy();
     expect(screen.getByRole("link", { name: /subscribe/i })).toBeTruthy();
+  });
+
+  it("Subscribe link points to #subscribe on the current page (no leading path)", () => {
+    renderMasthead("/built");
+    const subscribe = screen.getByRole("link", { name: /subscribe/i });
+    // hash-only Link from /built should resolve to /built#subscribe
+    expect(subscribe.getAttribute("href")).toBe("/built#subscribe");
   });
 
   it("MUST READ and BUILT links collapse on mobile (have hidden sm:inline classes)", () => {

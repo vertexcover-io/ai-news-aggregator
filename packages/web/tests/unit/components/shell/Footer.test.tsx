@@ -59,14 +59,15 @@ describe("Footer", () => {
     }
   });
 
-  it("renders the MUST READ / BUILT / RSS links", () => {
+  it("renders the MUST READ / SOURCES / BUILT links", () => {
     renderFooter();
     const mustRead = screen.getByRole("link", { name: /^must read$/i });
+    const sources = screen.getByRole("link", { name: /^sources$/i });
     const built = screen.getByRole("link", { name: /^built$/i });
-    const rss = screen.getByRole("link", { name: /^rss$/i });
     expect(mustRead.getAttribute("href")).toBe("/must-read");
+    expect(sources.getAttribute("href")).toBe("/sources");
     expect(built.getAttribute("href")).toBe("/built");
-    expect(rss.getAttribute("href")).toBe("/rss");
+    expect(screen.queryByRole("link", { name: /^rss$/i })).toBeNull();
   });
 
   it("renders an inline subscribe field in the footer", () => {

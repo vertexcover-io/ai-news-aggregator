@@ -1,6 +1,5 @@
 import { useEffect, type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { NavLink } from "react-router-dom";
 import { SOURCE_TYPE_SECTION_LABELS } from "@newsletter/shared/constants";
 import type {
   ConfiguredRow,
@@ -9,60 +8,7 @@ import type {
 } from "@newsletter/shared/types";
 import { fetchSourcesSummary } from "../api/sources";
 import { setMeta } from "../lib/meta";
-
-function Masthead(): ReactElement {
-  return (
-    <header className="flex items-start justify-between gap-6 pt-6 pb-4">
-      <div className="flex flex-col gap-1">
-        <a
-          href="/"
-          className="font-mono text-[15px] font-medium uppercase tracking-[0.18em] text-[#14110d]"
-        >
-          AGENTLOOP
-        </a>
-        <span className="font-mono text-[11px] font-light tracking-[0.08em] text-[#6b6557]">
-          A Vertexcover Labs publication
-        </span>
-      </div>
-      <a
-        href="/#subscribe"
-        className="whitespace-nowrap pt-0.5 font-mono text-[12px] font-medium uppercase tracking-[0.16em] text-[#14110d] hover:text-[#8c3a1e]"
-      >
-        Subscribe →
-      </a>
-    </header>
-  );
-}
-
-function Nav(): ReactElement {
-  const linkClass = ({ isActive }: { isActive: boolean }): string =>
-    [
-      "py-0.5 font-mono text-[11.5px] uppercase tracking-[0.18em]",
-      isActive
-        ? "border-b border-[#8c3a1e] text-[#8c3a1e]"
-        : "text-[#6b6557] hover:text-[#14110d]",
-    ].join(" ");
-  const sep = <span className="select-none px-3 text-[#e7e2d6]">·</span>;
-  return (
-    <>
-      <hr className="border-t border-[#e7e2d6]" />
-      <nav aria-label="Primary" className="flex flex-wrap py-3">
-        <NavLink to="/" end className={linkClass}>
-          Today
-        </NavLink>
-        {sep}
-        <NavLink to="/" className={linkClass}>
-          Archive
-        </NavLink>
-        {sep}
-        <NavLink to="/sources" className={linkClass}>
-          Sources
-        </NavLink>
-      </nav>
-      <hr className="border-t border-[#e7e2d6]" />
-    </>
-  );
-}
+import { InlineSubscribeCard } from "../components/shell/InlineSubscribeCard";
 
 function totalRows(sections: ConfiguredSection[]): number {
   return sections.reduce((acc, s) => acc + s.rows.length, 0);
@@ -195,11 +141,10 @@ function HowWePick(): ReactElement {
 
 function Shell({ children }: { children: ReactElement }): ReactElement {
   return (
-    <div className="mx-auto max-w-[820px] px-4 sm:px-8">
-      <Masthead />
-      <Nav />
+    <main className="max-w-[760px] mx-auto">
       {children}
-    </div>
+      <InlineSubscribeCard />
+    </main>
   );
 }
 

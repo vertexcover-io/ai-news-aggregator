@@ -142,16 +142,17 @@ describe("HomePage", () => {
     expect(todayLinks?.length ?? 0).toBe(0);
   });
 
-  it("[data-section='elsewhere'] is present with must-read and built columns; no tools column", () => {
+  it("[data-section='elsewhere'] is present with must-read, sources, and built columns; no tools column", () => {
     renderHome({ todaysIssue: null, featuredCanon: null, recentIssues: [] });
     const elsewhere = document.querySelector('[data-section="elsewhere"]');
     expect(elsewhere).not.toBeNull();
     expect(elsewhere?.querySelector('[data-column="must-read"]')).not.toBeNull();
+    expect(elsewhere?.querySelector('[data-column="sources"]')).not.toBeNull();
     expect(elsewhere?.querySelector('[data-column="built"]')).not.toBeNull();
     expect(elsewhere?.querySelector('[data-column="tools"]')).toBeNull();
   });
 
-  it("REQ-009: no DirectoryNav rendered on /", () => {
+  it("no legacy DirectoryNav row is rendered (Masthead is the only top nav site-wide)", () => {
     renderHome({ todaysIssue: null, featuredCanon: null, recentIssues: [] });
     expect(document.querySelector('nav[aria-label="Directory"]')).toBeNull();
     expect(document.querySelector('[data-nav="directory"]')).toBeNull();

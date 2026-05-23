@@ -7,7 +7,7 @@ export function ElsewhereStrip(): ReactElement {
       <div className="font-mono uppercase text-[12px] tracking-[0.2em] text-[#6b6557] mb-8">
         ELSEWHERE
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
         <div
           data-column="must-read"
           className="px-0 md:pl-0 md:pr-8 md:py-1 py-7 first:pt-0"
@@ -23,6 +23,23 @@ export function ElsewhereStrip(): ReactElement {
             className="font-mono uppercase text-[11.5px] tracking-[0.18em] text-[#8c3a1e] hover:text-[#14110d]"
           >
             Browse the canon →
+          </Link>
+        </div>
+        <div
+          data-column="sources"
+          className="px-0 md:px-8 md:py-1 py-7 border-t md:border-t-0 md:border-l border-[#e7e2d6]"
+        >
+          <h4 className="m-0 mb-3.5 font-serif font-medium text-[23px] leading-[1.15] tracking-[-0.012em] text-[#14110d]">
+            Sources
+          </h4>
+          <p className="m-0 mb-4.5 font-serif italic font-normal text-[15.5px] leading-[1.55] text-[#6b6557]">
+            The places we read every morning to produce the daily digest. With live counts.
+          </p>
+          <Link
+            to="/sources"
+            className="font-mono uppercase text-[11.5px] tracking-[0.18em] text-[#8c3a1e] hover:text-[#14110d]"
+          >
+            See the list →
           </Link>
         </div>
         <div
