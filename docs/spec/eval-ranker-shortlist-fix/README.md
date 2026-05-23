@@ -38,4 +38,5 @@ gitignored per the project's `docs/spec/**` allowlist; their content is folded i
 **Library-probe verdict:** NOT_APPLICABLE — uses only Drizzle, PostgreSQL, and the
 in-repo `dedupCandidates` processor (all already in stack); no alternatives needed.
 
-**PR:** _to be filled in after creation._
+**PR:** Part of [#179](https://github.com/vertexcover-io/ai-news-aggregator/pull/179)
+(feat/ranking-eval-pipeline) — commits `a37e392` (fix) + `c753a9f` (artifacts).
