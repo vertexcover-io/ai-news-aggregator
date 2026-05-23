@@ -37,6 +37,8 @@ export interface UserSettings {
   twitterPostEnabled: boolean;
   autoReview: boolean;
   rankingPrompt: string;
+  shortlistPrompt: string;
+  shortlistSize: number;
   updatedAt: string;
 }
 

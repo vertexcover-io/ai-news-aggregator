@@ -70,6 +70,8 @@ function SubmitHarness({
       twitterPostEnabled: true,
       autoReview: false,
       rankingPrompt: "test prompt",
+      shortlistPrompt: "test shortlist prompt",
+      shortlistSize: 30,
     },
   });
 

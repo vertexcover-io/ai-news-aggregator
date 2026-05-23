@@ -45,6 +45,8 @@ function toDomain(
     twitterPostEnabled: row.twitterPostEnabled,
     autoReview: row.autoReview,
     rankingPrompt: row.rankingPrompt,
+    shortlistPrompt: row.shortlistPrompt,
+    shortlistSize: row.shortlistSize,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -96,6 +98,8 @@ export function createUserSettingsRepo(
           twitterPostEnabled: input.twitterPostEnabled,
           autoReview: input.autoReview,
           rankingPrompt: input.rankingPrompt,
+          shortlistPrompt: input.shortlistPrompt,
+          shortlistSize: input.shortlistSize,
           updatedAt: now,
         })
         .onConflictDoUpdate({
@@ -127,6 +131,8 @@ export function createUserSettingsRepo(
             twitterPostEnabled: input.twitterPostEnabled,
             autoReview: input.autoReview,
             rankingPrompt: input.rankingPrompt,
+            shortlistPrompt: input.shortlistPrompt,
+            shortlistSize: input.shortlistSize,
             updatedAt: now,
           },
         })

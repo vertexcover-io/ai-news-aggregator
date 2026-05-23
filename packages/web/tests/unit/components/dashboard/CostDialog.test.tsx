@@ -192,6 +192,44 @@ describe("CostDialog (REQ-064..REQ-068, EDGE-005/010/011)", () => {
     expect(screen.queryByText(/Total:\s*\$0\.111/)).toBeNull();
   });
 
+  it("REQ-053: renders a 'Shortlist' row when stages.shortlist is present", () => {
+    const stage = makeStage({
+      calls: 1,
+      costUsd: 0.012,
+      byModel: [
+        makeModel({ modelId: "claude-haiku-4-5-20251001", calls: 1, costUsd: 0.012 }),
+      ],
+    });
+    render(
+      <CostDialog
+        open
+        onOpenChange={() => undefined}
+        run={makeRun({
+          costBreakdown: makeBreakdown({ stages: { shortlist: stage } }),
+        })}
+      />,
+    );
+    const row = document.querySelector('tr[data-stage="shortlist"]');
+    expect(row).toBeTruthy();
+    expect(row?.textContent).toContain("Shortlist");
+    expect(screen.getAllByText("Shortlist").length).toBeGreaterThan(0);
+  });
+
+  it("REQ-070: archive without stages.shortlist still renders (no error, no Shortlist data row)", () => {
+    render(
+      <CostDialog
+        open
+        onOpenChange={() => undefined}
+        run={makeRun({
+          costBreakdown: makeBreakdown({ stages: { rank: makeStage() } }),
+        })}
+      />,
+    );
+    const shortlistRow = document.querySelector('tr[data-stage="shortlist"]');
+    expect(shortlistRow).toBeTruthy();
+    expect(shortlistRow?.textContent).toContain("—");
+  });
+
   it("renders nothing when run is null", () => {
     const { container } = render(
       <CostDialog open onOpenChange={() => undefined} run={null} />,

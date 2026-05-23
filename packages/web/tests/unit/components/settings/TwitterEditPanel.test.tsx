@@ -206,6 +206,8 @@ describe("API error surfacing", () => {
         scheduleTimezone: "UTC",
         scheduleEnabled: false,
         rankingPrompt: "test prompt",
+        shortlistPrompt: "test shortlist prompt",
+        shortlistSize: 30,
       });
     } catch (e) {
       caught = e;
@@ -256,6 +258,8 @@ describe("API error surfacing", () => {
         scheduleTimezone: "UTC",
         scheduleEnabled: false,
         rankingPrompt: "test prompt",
+        shortlistPrompt: "test shortlist prompt",
+        shortlistSize: 30,
       });
     } catch (e) {
       caught = e;

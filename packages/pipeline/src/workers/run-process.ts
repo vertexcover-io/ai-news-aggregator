@@ -2,7 +2,10 @@ import { Worker } from "bullmq";
 import type IORedis from "ioredis";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { getDb, serializeArchiveSearchText } from "@newsletter/shared";
-import { DEFAULT_RANKING_PROMPT } from "@newsletter/shared/constants";
+import {
+  DEFAULT_RANKING_PROMPT,
+  DEFAULT_SHORTLIST_PROMPT,
+} from "@newsletter/shared/constants";
 import type { SlackNotifier } from "@newsletter/shared";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
@@ -643,10 +646,21 @@ export async function handleRunProcessJob(
     // Stage 3: shortlisting
     throwIfAborted(signal);
     await deps.runState.setStage(runId, "shortlisting");
-    const { shortlist, breakdowns } = await deps.shortlistFn(deduped, {
-      halfLifeHours,
+
+    // Load settings INSIDE the job (not at worker startup) so admin edits to
+    // the shortlist / ranking prompts take effect on the next pipeline job
+    // without a worker restart.
+    // See .claude/rules/learnings/cache-vs-spec-promise-review.md.
+    const settings = deps.userSettingsRepo
+      ? await deps.userSettingsRepo.get()
+      : null;
+
+    const { shortlist } = await deps.shortlistFn(deduped, {
+      shortlistSize: settings?.shortlistSize ?? 30,
+      systemPrompt: settings?.shortlistPrompt ?? DEFAULT_SHORTLIST_PROMPT,
       runId,
-      signal,
+      tracker,
+      abortSignal: signal,
     });
 
     if (shortlist.length === 0) {
@@ -678,18 +692,13 @@ export async function handleRunProcessJob(
     throwIfAborted(signal);
     await deps.runState.setStage(runId, "ranking");
 
-    // Load settings INSIDE the job (not at worker startup) so admin edits to
-    // the ranking prompt take effect on the next pipeline job without a
-    // worker restart. See .claude/rules/learnings/cache-vs-spec-promise-review.md.
-    const settings = deps.userSettingsRepo ? await deps.userSettingsRepo.get() : null;
-
     let rankResult: RankResult;
     try {
       rankResult = await deps.rankFn(shortlist, {
         topN,
         runId,
         halfLifeHours,
-        shortlistBreakdowns: breakdowns,
+        shortlistBreakdowns: [],
         abortSignal: signal,
         tracker,
         systemPrompt: settings?.rankingPrompt ?? DEFAULT_RANKING_PROMPT,

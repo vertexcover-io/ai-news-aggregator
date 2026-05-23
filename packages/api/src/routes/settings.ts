@@ -198,6 +198,8 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       twitterPostEnabled: parsed.data.twitterPostEnabled,
       autoReview: parsed.data.autoReview,
       rankingPrompt: parsed.data.rankingPrompt,
+      shortlistPrompt: parsed.data.shortlistPrompt,
+      shortlistSize: parsed.data.shortlistSize,
     };
 
     const saved = await deps.getSettingsRepo().upsert(upsertInput);

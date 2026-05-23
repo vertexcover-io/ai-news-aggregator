@@ -204,6 +204,13 @@
       "when": 1779520801895,
       "tag": "0028_calm_rocket_racer",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1779531656011,
+      "tag": "0029_dapper_power_man",
+      "breakpoints": true
     }
   ]
 }

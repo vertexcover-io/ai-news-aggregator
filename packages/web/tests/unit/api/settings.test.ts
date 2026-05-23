@@ -42,6 +42,8 @@ const sample: UserSettings = {
   twitterPostEnabled: true,
   autoReview: false,
   rankingPrompt: "test-prompt",
+  shortlistPrompt: "test-shortlist-prompt",
+  shortlistSize: 30,
   updatedAt: "2026-04-14T00:00:00Z",
 };
 
@@ -102,6 +104,8 @@ describe("settings api", () => {
       twitterPostEnabled: sample.twitterPostEnabled,
       autoReview: sample.autoReview,
       rankingPrompt: sample.rankingPrompt,
+      shortlistPrompt: sample.shortlistPrompt,
+      shortlistSize: sample.shortlistSize,
     };
     const out = await putSettings(input);
     expect(out).toEqual(sample);
@@ -143,6 +147,8 @@ describe("settings api", () => {
         twitterPostEnabled: true,
         autoReview: false,
         rankingPrompt: "test prompt",
+        shortlistPrompt: "test shortlist prompt",
+        shortlistSize: 30,
       }),
     ).rejects.toThrow("bad input");
   });

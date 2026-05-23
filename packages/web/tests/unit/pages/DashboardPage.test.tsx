@@ -64,6 +64,8 @@ const settings: UserSettings = {
   twitterPostEnabled: false,
   autoReview: false,
   rankingPrompt: "test-prompt",
+  shortlistPrompt: "test-shortlist-prompt",
+  shortlistSize: 30,
   updatedAt: "2026-04-14T00:00:00Z",
 };
 
