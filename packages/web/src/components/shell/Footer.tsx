@@ -103,7 +103,16 @@ export function Footer(): ReactElement {
           <strong className="text-[#14110d] font-semibold tracking-[0.16em]">
             AGENTLOOP
           </strong>
-          <br />A Vertexcover Labs publication
+          <br />A{" "}
+          <a
+            href="https://blog.vertexcover.io"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
+          >
+            Vertexcover Labs
+          </a>{" "}
+          publication
         </div>
         <div>
           <FooterSubscribeField />
@@ -123,7 +132,15 @@ export function Footer(): ReactElement {
         </div>
       </div>
       <div className="py-5 text-center font-mono uppercase text-[10px] tracking-[0.22em] text-[#6b6557]">
-        © {new Date().getFullYear()} Vertexcover Labs
+        © {new Date().getFullYear()}{" "}
+        <a
+          href="https://blog.vertexcover.io"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
+        >
+          Vertexcover Labs
+        </a>
       </div>
     </footer>
   );

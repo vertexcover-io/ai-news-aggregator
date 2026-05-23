@@ -51,14 +51,25 @@ export function Masthead(): ReactElement {
       data-nav="top-right"
       className="flex items-end justify-between gap-4 pb-9"
     >
-      <Link to="/" className="block leading-none" aria-label="AGENTLOOP — home">
-        <div className="font-mono text-[22px] sm:text-[30px] font-semibold tracking-[0.12em] text-[#14110d] uppercase">
-          AGENTLOOP
-        </div>
+      <div className="block leading-none">
+        <Link to="/" aria-label="AGENTLOOP — home">
+          <div className="font-mono text-[22px] sm:text-[30px] font-semibold tracking-[0.12em] text-[#14110d] uppercase">
+            AGENTLOOP
+          </div>
+        </Link>
         <div className="mt-2 font-mono text-[10.5px] tracking-[0.22em] uppercase text-[#6b6557]">
-          A Vertexcover Labs publication
+          A{" "}
+          <a
+            href="https://blog.vertexcover.io"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
+          >
+            Vertexcover Labs
+          </a>{" "}
+          publication
         </div>
-      </Link>
+      </div>
 
       <nav
         aria-label="Primary"

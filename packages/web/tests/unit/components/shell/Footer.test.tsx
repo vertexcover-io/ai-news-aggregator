@@ -47,11 +47,16 @@ describe("Footer", () => {
     expect(screen.getAllByText("AGENTLOOP").length).toBeGreaterThan(0);
   });
 
-  it("renders the publication sub-line in the footer", () => {
+  it("renders the publication sub-line with a Vertexcover Labs link in the footer", () => {
     renderFooter();
-    expect(
-      screen.getAllByText(/A Vertexcover Labs publication/i).length,
-    ).toBeGreaterThan(0);
+    const vlLinks = screen
+      .getAllByRole("link", { name: /vertexcover labs/i })
+      .filter((el) => el.getAttribute("href") === "https://blog.vertexcover.io");
+    expect(vlLinks.length).toBeGreaterThanOrEqual(2);
+    for (const link of vlLinks) {
+      expect(link.getAttribute("target")).toBe("_blank");
+      expect(link.getAttribute("rel")).toContain("noopener");
+    }
   });
 
   it("renders the MUST READ / BUILT / RSS links", () => {

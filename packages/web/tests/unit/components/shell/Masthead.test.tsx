@@ -27,9 +27,12 @@ describe("Masthead", () => {
     expect(screen.getByText("AGENTLOOP")).toBeTruthy();
   });
 
-  it("renders the publication sub-line", () => {
+  it("renders the publication sub-line with a Vertexcover Labs link", () => {
     renderMasthead();
-    expect(screen.getByText(/A Vertexcover Labs publication/i)).toBeTruthy();
+    const link = screen.getByRole("link", { name: /vertexcover labs/i });
+    expect(link.getAttribute("href")).toBe("https://blog.vertexcover.io");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
   });
 
   it("renders the three top-right nav items", () => {
