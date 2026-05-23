@@ -33,4 +33,4 @@ Replaces the stage-1 recency-decay shortlist with an LLM-based shortlister using
 
 ## PR
 
-(filled in by orchestrate at commit-pr stage)
+https://github.com/vertexcover-io/ai-news-aggregator/pull/182
