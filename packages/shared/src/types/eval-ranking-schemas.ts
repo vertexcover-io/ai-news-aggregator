@@ -157,6 +157,7 @@ export const CalendarRunReportEntrySchema = z.discriminatedUnion("status", [
     draftRanking: z.array(CalendarRankingItemSchema),
     promptDiff: CalendarPromptDiffSchema,
     cost: PerFixtureCostSchema,
+    poolSize: z.number().int().optional(),
   }),
   z.object({
     runId: z.string(),
@@ -170,6 +171,7 @@ export const PerFixtureResultSchema = z.object({
   scored: EvalScoreSchema.optional(),
   ab: AbRankingSchema.optional(),
   cost: PerFixtureCostSchema,
+  poolSize: z.number().int().optional(),
 });
 
 export const SourcingReportRowSchema = z.object({

@@ -366,6 +366,182 @@ describe("admin-eval /run persistence (Phase 3)", () => {
     });
   });
 
+  it("REQ-009: Mode B done entry carries poolSize === sourcePool.length", async () => {
+    const evalRunsRepo = makeEvalRunsRepo();
+    const makePoolItem = (rawItemId: number) => ({
+      rawItemId,
+      title: `t${rawItemId}`,
+      url: `https://x/${rawItemId}`,
+      sourceType: "hn",
+      publishedAt: null,
+      content: null,
+      enrichedLink: null,
+      enrichmentStatus: "ok" as const,
+      comments: [],
+      engagement: null,
+    });
+    const calendarDetail = {
+      runId: "run-pool",
+      completedAt: "2026-05-10T10:30:00.000Z",
+      createdAt: "2026-05-10T10:00:00.000Z",
+      startedAt: "2026-05-10T10:05:00.000Z",
+      itemCount: 3,
+      topN: 10,
+      digestHeadline: "Calendar run",
+      digestSummary: "Three items",
+      sourceTypes: ["hn"],
+      previousRanking: [],
+      sourcePool: [makePoolItem(1), makePoolItem(2), makePoolItem(3)],
+    };
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo("the-saved-prompt"),
+      getEvalRunsRepo: () => evalRunsRepo,
+      getCalendarRunDetail: vi.fn(() => Promise.resolve(calendarDetail)),
+      listFixtures: vi.fn(() => Promise.resolve([])),
+      readFixture: vi.fn(),
+      readGroundTruth: vi.fn(),
+      writeGroundTruth: vi.fn(),
+      runEval: vi.fn(() =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 1, rationale: "draft" }],
+          score: null,
+          cost: {
+            tokensIn: 20,
+            tokensOut: 10,
+            usd: 0.002,
+            cacheHit: false,
+            promptHash: "d",
+          },
+        }),
+      ),
+    });
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "ab",
+        date: "2026-05-10",
+        runIds: ["run-pool"],
+        draftPrompt: "draft-B",
+      }),
+    });
+    expect(res.status).toBe(200);
+    await readBody(res);
+
+    const [, finishPayload] = vi.mocked(evalRunsRepo.updateFinish).mock.calls[0];
+    interface ScoreBreakdownB {
+      calendarRuns: { runId: string; status: string; poolSize?: number }[];
+    }
+    const score = finishPayload.scoreBreakdown as ScoreBreakdownB;
+    expect(score.calendarRuns[0].status).toBe("done");
+    expect(score.calendarRuns[0].poolSize).toBe(3);
+    expect(score.calendarRuns[0].poolSize).toBe(calendarDetail.sourcePool.length);
+  });
+
+  it("REQ-008: Mode A per-fixture record carries poolSize === fixture.pool.length", async () => {
+    const fixture = makeFixture("fix-pool");
+    fixture.pool = [fixture.pool[0], { ...fixture.pool[0], rawItemId: 2 }];
+    const evalRunsRepo = makeEvalRunsRepo();
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo(),
+      getEvalRunsRepo: () => evalRunsRepo,
+      listFixtures: vi.fn(() => Promise.resolve([fixture])),
+      readFixture: vi.fn(() => Promise.resolve(fixture)),
+      readGroundTruth: vi.fn(() => Promise.resolve(null)),
+      writeGroundTruth: vi.fn(() => Promise.resolve()),
+      runEval: vi.fn(() =>
+        Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 1, rationale: "" }],
+          score: null,
+          cost: {
+            tokensIn: 100,
+            tokensOut: 50,
+            usd: 0.0042,
+            cacheHit: false,
+            promptHash: "abc",
+          },
+        }),
+      ),
+      runModeB: vi.fn(),
+    });
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "scored",
+        fixtureId: "fix-pool",
+        draftPrompt: "draft-A",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await readBody(res);
+    expect(body).toContain("event: done");
+
+    const [, finishPayload] = vi.mocked(evalRunsRepo.updateFinish).mock.calls[0];
+    interface ScoreBreakdownA {
+      perFixture: { fixtureId: string; status: string; poolSize?: number }[];
+    }
+    const score = finishPayload.scoreBreakdown as ScoreBreakdownA;
+    expect(score.perFixture[0].status).toBe("done");
+    expect(score.perFixture[0].poolSize).toBe(2);
+    expect(score.perFixture[0].poolSize).toBe(fixture.pool.length);
+  });
+
+  it("EDGE-003: Mode B empty source pool → error entry with no poolSize, no crash", async () => {
+    const evalRunsRepo = makeEvalRunsRepo();
+    const emptyDetail = {
+      runId: "run-empty",
+      completedAt: "2026-05-10T10:30:00.000Z",
+      createdAt: "2026-05-10T10:00:00.000Z",
+      startedAt: "2026-05-10T10:05:00.000Z",
+      itemCount: 0,
+      topN: 10,
+      digestHeadline: "Empty",
+      digestSummary: "",
+      sourceTypes: [],
+      previousRanking: [],
+      sourcePool: [],
+    };
+    const runEval = vi.fn();
+    const app = makeApp({
+      getSettingsRepo: () => makeSettingsRepo("the-saved-prompt"),
+      getEvalRunsRepo: () => evalRunsRepo,
+      getCalendarRunDetail: vi.fn(() => Promise.resolve(emptyDetail)),
+      listFixtures: vi.fn(() => Promise.resolve([])),
+      readFixture: vi.fn(),
+      readGroundTruth: vi.fn(),
+      writeGroundTruth: vi.fn(),
+      runEval,
+    });
+    const res = await app.request("/api/admin/eval/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "ab",
+        date: "2026-05-10",
+        runIds: ["run-empty"],
+        draftPrompt: "draft-B",
+      }),
+    });
+    expect(res.status).toBe(200);
+    await readBody(res);
+
+    expect(runEval).not.toHaveBeenCalled();
+    const [, finishPayload] = vi.mocked(evalRunsRepo.updateFinish).mock.calls[0];
+    interface ScoreBreakdownB {
+      calendarRuns: {
+        runId: string;
+        status: string;
+        error?: string;
+        poolSize?: number;
+      }[];
+    }
+    const score = finishPayload.scoreBreakdown as ScoreBreakdownB;
+    expect(score.calendarRuns[0].status).toBe("error");
+    expect(score.calendarRuns[0].error).toBe("run source pool empty");
+    expect(score.calendarRuns[0].poolSize).toBeUndefined();
+  });
+
   it("EDGE-1.4: insert throws — stream still completes with done", async () => {
     const fixture = makeFixture("fix-A");
     const evalRunsRepo = makeEvalRunsRepo({
