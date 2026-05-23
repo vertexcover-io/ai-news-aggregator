@@ -8,6 +8,7 @@ import type {
 import type { FetchHnPostDeps } from "@pipeline/collectors/hn.js";
 import type { FetchRedditPostDeps } from "@pipeline/collectors/reddit.js";
 import type { FetchWebPostDeps } from "@pipeline/collectors/web.js";
+import type { FetchTwitterPostDeps } from "@pipeline/collectors/twitter/index.js";
 import {
   generateRecap as defaultGenerateRecap,
   type GenerateRecapOptions,
@@ -35,6 +36,10 @@ export interface AddPostDeps {
   fetchWebPost?: (
     url: string,
     deps?: FetchWebPostDeps,
+  ) => Promise<RawItemInsert>;
+  fetchTwitterPost?: (
+    url: string,
+    deps?: FetchTwitterPostDeps,
   ) => Promise<RawItemInsert>;
   generateRecap?: typeof defaultGenerateRecap;
   fetchFn?: typeof fetch;
@@ -76,6 +81,7 @@ export async function hydrateAddedPost(
     fetchHnPost: deps.fetchHnPost,
     fetchRedditPost: deps.fetchRedditPost,
     fetchWebPost: deps.fetchWebPost,
+    fetchTwitterPost: deps.fetchTwitterPost,
     fetchFn: deps.fetchFn,
     signal: deps.signal,
   });

@@ -80,6 +80,11 @@ function atomFeed(entries: string): string {
 </feed>`;
 }
 
+// Use a date 1 day before "now" so sinceDays:7 always includes it without
+// drifting out of the window as the suite ages. Per-test fixtures may still
+// pass an explicit `published` ISO string when they need a specific value.
+const RECENT_PUBLISHED_ISO = new Date(Date.now() - 86_400_000).toISOString();
+
 function postEntry(options: {
   readonly id: string;
   readonly title: string;
@@ -91,7 +96,7 @@ function postEntry(options: {
   readonly thumbnailUrl?: string;
 }): string {
   const author = options.author ?? "ml_researcher";
-  const published = options.published ?? "2026-05-14T12:00:00+00:00";
+  const published = options.published ?? RECENT_PUBLISHED_ISO;
   const sourceUrl =
     options.sourceUrl ??
     `https://www.reddit.com/r/MachineLearning/comments/${options.id}/slug/`;
@@ -169,7 +174,7 @@ describe("collectReddit RSS", () => {
         id: "post001",
         title: "New open-source LLM beats GPT-4 on benchmarks",
         author: "ml_researcher",
-        published: "2026-05-14T12:00:00+00:00",
+        published: RECENT_PUBLISHED_ISO,
         externalUrl: "https://example.com/new-llm",
         thumbnailUrl: thumbnail,
       }),
@@ -198,7 +203,7 @@ describe("collectReddit RSS", () => {
       metadata: { comments: [] },
       imageUrl: "https://external-preview.redd.it/hero.jpg?width=640&crop=smart",
     });
-    expect(rows[0].publishedAt).toEqual(new Date("2026-05-14T12:00:00+00:00"));
+    expect(rows[0].publishedAt).toEqual(new Date(RECENT_PUBLISHED_ISO));
   });
 
   it("uses the embedded self-post body and falls back to the source URL for self posts", async () => {

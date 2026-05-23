@@ -118,6 +118,39 @@ describe("detectAddPostSourceType", () => {
     expect(detectAddPostSourceType("https://example.com/blog/post")).toBe("web");
   });
 
+  // VS-0-5: Twitter/X URL detection
+  it('VS-0-5: returns "twitter" for x.com /status/ URL', () => {
+    expect(detectAddPostSourceType("https://x.com/jack/status/20")).toBe("twitter");
+  });
+  it('VS-0-5: returns "twitter" for twitter.com /status/ URL', () => {
+    expect(detectAddPostSourceType("https://twitter.com/jack/status/20")).toBe(
+      "twitter",
+    );
+  });
+  it('VS-0-5: returns "twitter" for mobile.twitter.com /status/ URL', () => {
+    expect(
+      detectAddPostSourceType("https://mobile.twitter.com/jack/status/20"),
+    ).toBe("twitter");
+  });
+  it('VS-0-5: returns "twitter" with trailing /photo/N', () => {
+    expect(
+      detectAddPostSourceType("https://x.com/jack/status/20/photo/1"),
+    ).toBe("twitter");
+  });
+  it('VS-0-5: returns "twitter" with query string', () => {
+    expect(
+      detectAddPostSourceType("https://x.com/jack/status/20?ref_src=abc"),
+    ).toBe("twitter");
+  });
+  it('VS-0-5: returns "web" for x.com profile URL (no /status/)', () => {
+    expect(detectAddPostSourceType("https://x.com/jack")).toBe("web");
+  });
+  it('VS-0-5: returns "web" for nitter URL (not supported)', () => {
+    expect(
+      detectAddPostSourceType("https://nitter.net/jack/status/20"),
+    ).toBe("web");
+  });
+
   // REQ-009: Function is synchronous (not a Promise)
   it("REQ-009: returns a string synchronously (not a Promise)", () => {
     const result = detectAddPostSourceType("https://example.com/blog");
@@ -217,6 +250,23 @@ describe("hydrateAddedPost", () => {
       deps,
     );
     expect(fetchRedditPost).toHaveBeenCalledOnce();
+  });
+
+  it("REQ-004: dispatches to fetchTwitterPost for twitter source type", async () => {
+    const raw = makeInsert({ sourceType: "twitter", externalId: "20" });
+    const saved = { id: 13, ...raw, imageUrl: null };
+    const fetchTwitterPost = vi.fn().mockResolvedValue(raw);
+    const deps: AddPostDeps = {
+      rawItemsRepo: makeRepo(saved),
+      fetchHnPost: vi.fn(),
+      fetchRedditPost: vi.fn(),
+      fetchWebPost: vi.fn(),
+      fetchTwitterPost,
+      generateRecap: vi.fn().mockResolvedValue(validRecap()),
+    };
+
+    await hydrateAddedPost("https://x.com/jack/status/20", "twitter", deps);
+    expect(fetchTwitterPost).toHaveBeenCalledOnce();
   });
 
   it("dispatches to fetchWebPost for web source type", async () => {
