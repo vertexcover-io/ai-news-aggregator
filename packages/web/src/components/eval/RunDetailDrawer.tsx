@@ -27,6 +27,7 @@ interface PerFixtureEntry {
   error?: unknown;
   actualRanking?: unknown;
   expectedRanking?: unknown;
+  poolSize?: unknown;
 }
 
 function pickArray<T>(value: unknown, guard: (v: unknown) => v is T): T[] | null {
@@ -91,6 +92,8 @@ function isCalendarRunReportEntry(v: unknown): v is CalendarRunReportEntry {
   if (typeof o.runId !== "string") return false;
   if (o.status === "error") return typeof o.error === "string";
   if (o.status !== "done") return false;
+  // poolSize is optional; reject only if present and not a number.
+  if (o.poolSize !== undefined && typeof o.poolSize !== "number") return false;
   const previous = pickArray(o.previousRanking, isCalendarRankingItem);
   const draft = pickArray(o.draftRanking, isCalendarRankingItem);
   const promptDiff = pickObject(o.promptDiff);
@@ -102,6 +105,8 @@ interface DrawerReportData {
   actual: ActualRankingItem[];
   expected: ExpectedRankingItem[] | undefined;
   scoreSheet: ReportScoreSheet | null;
+  poolSize: number | undefined;
+  costUsd: number;
 }
 
 function extractReportData(run: EvalRun): DrawerReportData | null {
@@ -138,10 +143,22 @@ function extractReportData(run: EvalRun): DrawerReportData | null {
               ? score.rankOneIsMustInclude
               : null,
         };
+  const poolSize =
+    typeof first.poolSize === "number" ? first.poolSize : undefined;
+  const cost =
+    first.cost !== null && typeof first.cost === "object"
+      ? (first.cost as Record<string, unknown>)
+      : null;
+  const costUsd =
+    cost !== null && typeof cost.usd === "number" && Number.isFinite(cost.usd)
+      ? cost.usd
+      : 0;
   return {
     actual,
     expected: expected ?? undefined,
     scoreSheet,
+    poolSize,
+    costUsd,
   };
 }
 
@@ -155,6 +172,27 @@ function extractCalendarReports(run: EvalRun): CalendarRunReportEntry[] {
 
 function shortRunId(runId: string): string {
   return runId.slice(0, 8);
+}
+
+interface ReportTabHint {
+  sent: number;
+  ranked: number;
+}
+
+function deriveTabHint(
+  reportData: DrawerReportData | null,
+  calendarReports: readonly CalendarRunReportEntry[],
+): ReportTabHint | null {
+  if (reportData !== null) {
+    return reportData.poolSize === undefined
+      ? null
+      : { sent: reportData.poolSize, ranked: reportData.actual.length };
+  }
+  const firstDone = calendarReports.find((entry) => entry.status === "done");
+  if (firstDone?.status !== "done") return null;
+  return firstDone.poolSize === undefined
+    ? null
+    : { sent: firstDone.poolSize, ranked: firstDone.draftRanking.length };
 }
 
 export interface RunDetailDrawerProps {
@@ -581,6 +619,7 @@ export function RunDetailDrawer({
     });
   };
   const showReportTab = run?.mode === "scored" || calendarReportAvailable;
+  const tabHint = deriveTabHint(reportData, calendarReports);
 
   return (
     <Dialog
@@ -695,6 +734,14 @@ export function RunDetailDrawer({
                     }`}
                   >
                     Report
+                    {tabHint !== null ? (
+                      <span
+                        data-testid="drawer-tab-report-hint"
+                        className="ml-2 inline-flex items-center rounded-sm border border-neutral-200 bg-white px-1.5 py-0.5 font-mono text-[10px] tracking-normal text-neutral-600 tabular-nums"
+                      >
+                        {String(tabHint.sent)} → {String(tabHint.ranked)}
+                      </span>
+                    ) : null}
                   </button>
                 ) : null}
               </div>
@@ -783,6 +830,8 @@ export function RunDetailDrawer({
                       actualRanking={reportData.actual}
                       expectedRanking={reportData.expected}
                       scoreSheet={reportData.scoreSheet}
+                      poolSize={reportData.poolSize}
+                      costUsd={reportData.costUsd}
                     />
                   ) : calendarReportAvailable ? (
                     <CalendarReportPanel reports={calendarReports} />

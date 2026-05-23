@@ -260,7 +260,7 @@ function expected(
   };
 }
 
-function makeRunWithReport(): EvalRun {
+function makeRunWithReport(poolSize?: number): EvalRun {
   // Scenario chosen to exercise all four delta cases:
   //   rawItemId 101 — expected rank 1 (must), actual rank 1  → "—" unchanged
   //   rawItemId 102 — expected rank 2 (must), actual rank 4  → ↓2
@@ -306,6 +306,7 @@ function makeRunWithReport(): EvalRun {
           },
           actualRanking,
           expectedRanking,
+          ...(poolSize === undefined ? {} : { poolSize }),
         },
       ],
     },
@@ -506,6 +507,104 @@ describe("RunDetailDrawer — Report tab", () => {
     renderDrawer();
     await screen.findByTestId("drawer-tab-prompt-cost");
     expect(screen.queryByTestId("drawer-tab-report")).toBeNull();
+  });
+
+  it("REQ-010: Mode A Report tab label shows a 'sent → ranked' hint chip when poolSize is known", async () => {
+    // poolSize 32, actualRanking has 5 items → "32 → 5"
+    getEvalRunMock.mockResolvedValue(makeRunWithReport(32));
+    renderDrawer();
+    const hint = await screen.findByTestId("drawer-tab-report-hint");
+    expect(hint.textContent).toContain("32");
+    expect(hint.textContent).toContain("5");
+    expect(hint.textContent).toContain("→");
+  });
+
+  it("EDGE-001: Mode A Report tab hint is hidden when poolSize is unknown", async () => {
+    getEvalRunMock.mockResolvedValue(makeRunWithReport());
+    renderDrawer();
+    await screen.findByTestId("drawer-tab-report");
+    expect(screen.queryByTestId("drawer-tab-report-hint")).toBeNull();
+  });
+
+  it("REQ-007 EDGE-006: Mode A Report panel renders the funnel with the fixture pool size as sent", async () => {
+    getEvalRunMock.mockResolvedValue(makeRunWithReport(32));
+    renderDrawer();
+    await screen.findByTestId("drawer-tab-panel-report");
+    const sent = await screen.findByTestId("report-tab-funnel-sent");
+    expect(sent.textContent).toContain("32");
+    const ranked = screen.getByTestId("report-tab-funnel-ranked");
+    expect(ranked.textContent).toContain("5");
+  });
+
+  it("REQ-010: Mode B Report tab label shows a 'sent → ranked' hint chip when poolSize is known", async () => {
+    getEvalRunMock.mockResolvedValue(
+      makeRun({
+        mode: "ab",
+        fixtureId: null,
+        date: "2026-05-21",
+        savedPromptHash: "savedhash",
+        savedPromptSnapshot: "SAVED PROMPT",
+        draftPromptHash: "drafthash",
+        draftPromptSnapshot: "DRAFT PROMPT",
+        scoreBreakdown: {
+          calendarRuns: [
+            {
+              runId: "11111111-1111-4111-8111-111111111111",
+              status: "done",
+              poolSize: 47,
+              previousRanking: [
+                {
+                  rank: 1,
+                  rawItemId: 1,
+                  title: "Previous story",
+                  url: "https://example.com/previous",
+                  sourceType: "hn",
+                  score: 0.91,
+                  rationale: "",
+                  summary: "",
+                  bullets: [],
+                  bottomLine: "",
+                },
+              ],
+              draftRanking: [
+                {
+                  rank: 1,
+                  rawItemId: 2,
+                  title: "Draft story",
+                  url: "https://example.com/draft",
+                  sourceType: "github",
+                  score: 0.95,
+                  rationale: "",
+                  summary: "",
+                  bullets: [],
+                  bottomLine: "",
+                },
+              ],
+              promptDiff: {
+                savedPromptHash: "savedhash",
+                draftPromptHash: "drafthash",
+                savedPromptSnapshot: "SAVED PROMPT",
+                draftPromptSnapshot: "DRAFT PROMPT",
+              },
+              cost: {
+                usd: 0.0422,
+                tokensIn: 100,
+                tokensOut: 50,
+                cacheHit: false,
+                promptHash: "drafthash",
+              },
+            },
+          ],
+        },
+        costBreakdown: { totalUsd: 0.0422 },
+      }),
+    );
+    renderDrawer();
+    const hint = await screen.findByTestId("drawer-tab-report-hint");
+    // poolSize 47 → 1 draft item
+    expect(hint.textContent).toContain("47");
+    expect(hint.textContent).toContain("1");
+    expect(hint.textContent).toContain("→");
   });
 
   it("preserves the score/cost breakdown test IDs in the Prompt & Cost panel after the tab refactor", async () => {

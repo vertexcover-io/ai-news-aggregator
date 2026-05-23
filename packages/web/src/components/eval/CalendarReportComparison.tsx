@@ -34,6 +34,79 @@ function rankingCountLabel(count: number): string {
   return count === 1 ? "1 item" : `${String(count)} items`;
 }
 
+interface RankingFunnelProps {
+  sent: number | undefined;
+  ranked: number;
+  costUsd: number;
+  testIdPrefix: string;
+}
+
+export function RankingFunnel({
+  sent,
+  ranked,
+  costUsd,
+  testIdPrefix,
+}: RankingFunnelProps): ReactElement {
+  const notSurfaced = sent !== undefined && sent > ranked ? sent - ranked : 0;
+  return (
+    <div data-testid={`${testIdPrefix}-funnel`}>
+      <div className="flex items-stretch overflow-hidden rounded-lg border border-neutral-200 bg-white">
+        {sent !== undefined ? (
+          <div
+            data-testid={`${testIdPrefix}-funnel-sent`}
+            className="relative flex-1 border-r border-neutral-200 px-4 py-4"
+          >
+            <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-neutral-500">
+              Sent for ranking
+            </p>
+            <p className="mt-2 font-serif text-3xl font-medium leading-none text-neutral-950">
+              {String(sent)}{" "}
+              <span className="text-xs font-normal text-neutral-500">items</span>
+            </p>
+            <span className="absolute -right-[11px] top-1/2 z-10 grid size-[22px] -translate-y-1/2 place-items-center rounded-full border border-neutral-200 bg-white font-mono text-[11px] text-neutral-400">
+              →
+            </span>
+          </div>
+        ) : null}
+        <div
+          data-testid={`${testIdPrefix}-funnel-ranked`}
+          className="relative flex-1 border-r border-neutral-200 px-4 py-4"
+        >
+          <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-neutral-500">
+            Ranked (top-N)
+          </p>
+          <p className="mt-2 font-serif text-3xl font-medium leading-none text-neutral-950">
+            {String(ranked)}{" "}
+            <span className="text-xs font-normal text-neutral-500">items</span>
+          </p>
+          <span className="absolute -right-[11px] top-1/2 z-10 grid size-[22px] -translate-y-1/2 place-items-center rounded-full border border-neutral-200 bg-white font-mono text-[11px] text-neutral-400">
+            ·
+          </span>
+        </div>
+        <div
+          data-testid={`${testIdPrefix}-funnel-cost`}
+          className="flex-1 px-4 py-4"
+        >
+          <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-neutral-500">
+            Cost
+          </p>
+          <p className="mt-2 font-serif text-3xl font-medium leading-none text-[#8c3a1e]">
+            ${costUsd.toFixed(4)}
+          </p>
+        </div>
+      </div>
+      {notSurfaced > 0 ? (
+        <p
+          data-testid={`${testIdPrefix}-funnel-note`}
+          className="mt-2 px-0.5 font-serif text-xs italic text-neutral-500"
+        >
+          {String(notSurfaced)} items considered but not surfaced.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 interface RankingColumnProps {
   title: string;
   side: ReportSide;
@@ -63,8 +136,9 @@ function RankingColumn({
         </div>
       </header>
       <div
+        data-testid={`calendar-report-${side}-scroll`}
         className={cn(
-          "overflow-auto",
+          "scrollbar-none overflow-auto",
           density === "dialog" ? "max-h-[48vh]" : "max-h-[360px]",
         )}
       >
@@ -146,8 +220,9 @@ function PromptPane({
         </code>
       </header>
       <pre
+        data-testid={`calendar-report-${side}-prompt-scroll`}
         className={cn(
-          "overflow-auto whitespace-pre-wrap bg-white px-4 py-3 font-mono text-[13px] leading-7 text-neutral-800",
+          "scrollbar-none overflow-auto whitespace-pre-wrap bg-white px-4 py-3 font-mono text-[13px] leading-7 text-neutral-800",
           density === "dialog" ? "max-h-[260px]" : "max-h-[220px]",
         )}
       >
@@ -169,34 +244,17 @@ export function CalendarReportComparison({
         density === "dialog" ? "space-y-5 px-1 pb-1" : "space-y-4",
       )}
     >
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3">
-          <p className="font-mono text-[11px] uppercase tracking-wider text-neutral-500">
-            Previous
-          </p>
-          <p className="mt-1 text-lg font-semibold text-neutral-950">
-            {rankingCountLabel(report.previousRanking.length)}
-          </p>
-        </div>
-        <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3">
-          <p className="font-mono text-[11px] uppercase tracking-wider text-neutral-500">
-            Draft
-          </p>
-          <p className="mt-1 text-lg font-semibold text-neutral-950">
-            {rankingCountLabel(report.draftRanking.length)}
-          </p>
-        </div>
-        <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3">
-          <p className="font-mono text-[11px] uppercase tracking-wider text-neutral-500">
-            Cost
-          </p>
-          <p className="mt-1 text-lg font-semibold text-neutral-950">
-            ${report.cost.usd.toFixed(4)}
-          </p>
-        </div>
-      </div>
+      <RankingFunnel
+        sent={report.poolSize}
+        ranked={report.draftRanking.length}
+        costUsd={report.cost.usd}
+        testIdPrefix="calendar-report"
+      />
 
-      <div className="grid min-h-0 gap-4 lg:grid-cols-2">
+      <div
+        data-testid="calendar-report-columns"
+        className="grid min-h-0 gap-4 lg:grid-cols-2"
+      >
         <RankingColumn
           title="Previous ranking"
           side="previous"

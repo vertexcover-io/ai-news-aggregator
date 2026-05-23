@@ -146,6 +146,13 @@
   }
 }
 
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 mark.archive-search-mark {
   background-color: #FBE9C8;
   color: #000;
