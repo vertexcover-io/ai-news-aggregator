@@ -39,7 +39,17 @@ export function createRawItemsRepo(
     async upsertItems(items: RawItemInsert[]): Promise<void> {
       if (items.length === 0) return;
       const now = new Date();
-      await db.insert(rawItems).values(items).onConflictDoUpdate({
+      // Postgres rejects an INSERT ... ON CONFLICT batch where two input rows
+      // resolve to the same conflict target (21000: "cannot affect row a
+      // second time"). Collapse in-batch duplicates by (sourceType,
+      // externalId); last write wins, matching ON CONFLICT DO UPDATE
+      // semantics if the duplicates had been issued as separate statements.
+      const deduped = Array.from(
+        new Map(
+          items.map((i) => [`${i.sourceType}::${i.externalId}`, i]),
+        ).values(),
+      );
+      await db.insert(rawItems).values(deduped).onConflictDoUpdate({
         target: [rawItems.sourceType, rawItems.externalId],
         set: {
           engagement: sql.raw(`excluded.${rawItems.engagement.name}`),
