@@ -1,3 +1,4 @@
+import { desc } from "drizzle-orm";
 import { boolean, index, integer, jsonb, pgTable, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type {
   NotificationState,
@@ -156,6 +157,24 @@ export const userSettings = pgTable(
 
 export type UserSettingsInsert = typeof userSettings.$inferInsert;
 export type UserSettingsSelect = typeof userSettings.$inferSelect;
+
+export const mustReadEntries = pgTable(
+  "must_read_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    url: text("url").notNull().unique(),
+    title: text("title").notNull(),
+    author: text("author"),
+    year: integer("year"),
+    annotation: text("annotation").notNull(),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("must_read_entries_added_at_idx").on(desc(t.addedAt))],
+);
+
+export type MustReadEntry = typeof mustReadEntries.$inferSelect;
+export type MustReadEntryInsert = typeof mustReadEntries.$inferInsert;
 
 export type SubscriberStatus = "pending" | "confirmed" | "unsubscribed" | "bounced" | "complained";
 

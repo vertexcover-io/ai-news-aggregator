@@ -19,7 +19,11 @@ const mockCaptureBrowserEvent = vi.mocked(captureBrowserEvent);
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-  window.localStorage.clear();
+  try {
+    window.localStorage.clear();
+  } catch {
+    // jsdom in this project lacks localStorage.clear in some configs — safe to ignore in cleanup.
+  }
 });
 
 function renderInline(props: { variant?: "hero" | "interlude" } = {}): ReturnType<typeof render> {

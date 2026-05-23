@@ -4,3 +4,4 @@ export const runKey = (runId: string): string => `run:${runId}`;
 export const runCancelChannel = (runId: string): string => `run:cancel:${runId}`;
 export * from "./ranking-prompt";
 export * from "./shortlist-prompt";
+export * from "./sources.js";

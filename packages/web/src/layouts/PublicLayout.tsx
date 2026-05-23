@@ -1,29 +1,8 @@
 import { useEffect, type ReactElement } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-
-function Footer(): ReactElement {
-  return (
-    <footer className="px-4 sm:px-6 py-8 text-center font-mono text-[11px] uppercase tracking-[0.18em] text-[#8a8472]">
-      <span className="inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
-        <span className="font-medium text-[#14110d] whitespace-nowrap">
-          The Daily Read
-        </span>
-        <span className="text-[#8a8472]">·</span>
-        <span className="whitespace-nowrap">
-          Made by{" "}
-          <a
-            href="https://vertexcover.io"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="border-b border-[#e7e2d6] pb-px text-[#6b6557] transition-colors hover:border-[#8c3a1e] hover:text-[#8c3a1e]"
-          >
-            Vertexcover Labs
-          </a>
-        </span>
-      </span>
-    </footer>
-  );
-}
+import { Masthead } from "../components/shell/Masthead";
+import { Footer } from "../components/shell/Footer";
+import { DirectoryNav } from "../components/shell/DirectoryNav";
 
 export function PublicLayout(): ReactElement {
   const { pathname, hash } = useLocation();
@@ -51,10 +30,22 @@ export function PublicLayout(): ReactElement {
     return undefined;
   }, [pathname, hash]);
 
+  const showDirectoryNav = pathname !== "/";
+
   return (
-    <div className="min-h-screen bg-[#fbfaf7] text-[#14110d]">
-      <Outlet />
-      <Footer />
+    <div className="min-h-screen bg-[#fafaf7] text-[#14110d]">
+      <div className="max-w-[960px] mx-auto px-4 sm:px-6 md:px-8 pt-7 pb-18">
+        <Masthead />
+        {showDirectoryNav ? (
+          <>
+            <hr className="border-0 border-t border-[#e7e2d6] m-0" />
+            <DirectoryNav />
+            <hr className="border-0 border-t border-[#e7e2d6] m-0" />
+          </>
+        ) : null}
+        <Outlet />
+        <Footer />
+      </div>
     </div>
   );
 }

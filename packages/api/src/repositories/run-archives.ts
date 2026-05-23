@@ -14,7 +14,10 @@ import {
   type RunSourceTelemetry,
   type SocialMetadata,
 } from "@newsletter/shared";
+import { deriveRawItemIdentifierSql } from "./raw-items.js";
 import type { RawItemRow, RawItemsRepo } from "./raw-items.js";
+
+const DERIVED_IDENTIFIER_SQL = deriveRawItemIdentifierSql();
 
 export interface UpdateRankedItemsContext {
   rawItemsById: Map<number, RawItemRow>;
@@ -59,6 +62,7 @@ export interface FindPoolItemsOpts {
 export interface ListReviewedDeps {
   rawItemsRepo: RawItemsRepo;
   timezone?: string;
+  limit?: number;
 }
 
 export interface SearchReviewedInput {
@@ -86,6 +90,11 @@ export interface RunArchivesRepo {
    * digest they missed — even if it was published before today.
    */
   findMostRecentReviewed(): Promise<{ id: string } | null>;
+  /**
+   * Returns the latest reviewed, non-dry-run archive completed at or after
+   * `since`, or null when none exist in that window.
+   */
+  findLatestReviewedSince(since: Date): Promise<RunArchiveRow | null>;
   updateRankedItems(
     id: string,
     items: RankedItemRef[],
@@ -110,6 +119,35 @@ export interface RunArchivesRepo {
     error: string,
   ): Promise<void>;
   delete(id: string): Promise<{ deleted: boolean; removedEmailSends: number }>;
+  getReviewedDigestCountsByDerivedSource(opts: {
+    from: Date;
+    to: Date;
+  }): Promise<Map<string, number>>;
+  getRecentSourceTelemetry(opts: {
+    from: Date;
+    to: Date;
+  }): Promise<Map<string, RecentSourceTelemetryEntry>>;
+  getSourceFailuresInRange(opts: {
+    from: Date;
+    to: Date;
+  }): Promise<RangeFailureEntry[]>;
+  countCompletedRunsInRange(opts: { from: Date; to: Date }): Promise<number>;
+}
+
+export interface RecentSourceTelemetryEntry {
+  displayName: string;
+  status: "completed" | "failed" | "partial";
+  itemsFetched: number;
+  completedAt: Date;
+}
+
+export interface RangeFailureEntry {
+  sourceType: SourceType;
+  identifier: string;
+  displayName: string;
+  runsAffected: number;
+  lastErrorMessage: string;
+  lastFailedAt: Date;
 }
 
 export function createRunArchivesRepo(
@@ -260,8 +298,44 @@ export function createRunArchivesRepo(
       if (rows.length === 0) return null;
       return { id: rows[0].id };
     },
-    async listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]> {
+    async findLatestReviewedSince(since: Date): Promise<RunArchiveRow | null> {
       const rows = await db
+        .select({
+          id: runArchives.id,
+          status: runArchives.status,
+          rankedItems: runArchives.rankedItems,
+          topN: runArchives.topN,
+          reviewed: runArchives.reviewed,
+          completedAt: runArchives.completedAt,
+          createdAt: runArchives.createdAt,
+          startedAt: runArchives.startedAt,
+          sourceTypes: runArchives.sourceTypes,
+          digestHeadline: runArchives.digestHeadline,
+          digestSummary: runArchives.digestSummary,
+          hook: runArchives.hook,
+          sourceTelemetry: runArchives.sourceTelemetry,
+          slackNotifiedAt: runArchives.slackNotifiedAt,
+          emailSentAt: runArchives.emailSentAt,
+          linkedinPostedAt: runArchives.linkedinPostedAt,
+          twitterPostedAt: runArchives.twitterPostedAt,
+          notificationState: runArchives.notificationState,
+          isDryRun: runArchives.isDryRun,
+          costBreakdown: runArchives.costBreakdown,
+        })
+        .from(runArchives)
+        .where(
+          and(
+            eq(runArchives.reviewed, true),
+            eq(runArchives.isDryRun, false),
+            gte(runArchives.completedAt, since),
+          ),
+        )
+        .orderBy(desc(runArchives.completedAt))
+        .limit(1);
+      return rows[0] ?? null;
+    },
+    async listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]> {
+      const baseQuery = db
         .select({
           runId: runArchives.id,
           completedAt: runArchives.completedAt,
@@ -273,6 +347,9 @@ export function createRunArchivesRepo(
         .from(runArchives)
         .where(and(eq(runArchives.reviewed, true), eq(runArchives.isDryRun, false)))
         .orderBy(desc(runArchives.completedAt));
+
+      const rows =
+        deps.limit !== undefined ? await baseQuery.limit(deps.limit) : await baseQuery;
 
       return hydrateListItems(rows, deps.rawItemsRepo, deps.timezone);
     },
@@ -497,6 +574,157 @@ export function createRunArchivesRepo(
         };
       });
     },
+    async getReviewedDigestCountsByDerivedSource(opts: {
+      from: Date;
+      to: Date;
+    }): Promise<Map<string, number>> {
+      const rows = await db.execute<{
+        source_type: SourceType;
+        identifier: string;
+        n: string | number;
+      }>(sql`
+        WITH ranked_refs AS (
+          SELECT (item->>'rawItemId')::int AS raw_item_id
+          FROM run_archives,
+               jsonb_array_elements(ranked_items) AS item
+          WHERE reviewed = true
+            AND status = 'completed'
+            AND completed_at >= ${opts.from.toISOString()}::timestamptz
+            AND completed_at <  ${opts.to.toISOString()}::timestamptz
+        )
+        SELECT
+          ri.source_type,
+          ${DERIVED_IDENTIFIER_SQL} AS identifier,
+          COUNT(DISTINCT ri.id) AS n
+        FROM raw_items ri
+        JOIN ranked_refs rr ON rr.raw_item_id = ri.id
+        GROUP BY ri.source_type, identifier
+      `);
+      const map = new Map<string, number>();
+      for (const r of rows) {
+        const count =
+          typeof r.n === "number" ? r.n : Number.parseInt(r.n, 10);
+        map.set(`${r.source_type} ${r.identifier}`, count);
+      }
+      return map;
+    },
+    async getRecentSourceTelemetry(opts: {
+      from: Date;
+      to: Date;
+    }): Promise<Map<string, RecentSourceTelemetryEntry>> {
+      const rows = await db
+        .select({
+          sourceTelemetry: runArchives.sourceTelemetry,
+          completedAt: runArchives.completedAt,
+        })
+        .from(runArchives)
+        .where(
+          and(
+            gte(runArchives.completedAt, opts.from),
+            sql`${runArchives.completedAt} < ${opts.to.toISOString()}::timestamptz`,
+            eq(runArchives.status, "completed"),
+            sql`${runArchives.sourceTelemetry} IS NOT NULL`,
+          ),
+        )
+        .orderBy(desc(runArchives.completedAt));
+
+      const map = new Map<string, RecentSourceTelemetryEntry>();
+      for (const row of rows) {
+        const telemetry = row.sourceTelemetry;
+        if (!telemetry) continue;
+        for (const entry of telemetry.sources) {
+          const key = `${entry.sourceType} ${entry.identifier}`;
+          if (map.has(key)) continue;
+          map.set(key, {
+            displayName: entry.displayName,
+            status: entry.status,
+            itemsFetched: entry.itemsFetched,
+            completedAt: row.completedAt,
+          });
+        }
+      }
+      return map;
+    },
+    async getSourceFailuresInRange(opts: {
+      from: Date;
+      to: Date;
+    }): Promise<RangeFailureEntry[]> {
+      const rows = await db.execute<{
+        source_type: SourceType;
+        identifier: string;
+        display_name: string;
+        runs_affected: string | number;
+        last_error: string;
+        last_failed_at: Date | string;
+      }>(sql`
+        WITH expanded AS (
+          SELECT
+            ra.completed_at,
+            (entry->>'sourceType')::text AS source_type,
+            (entry->>'identifier')::text AS identifier,
+            COALESCE((entry->>'displayName')::text, (entry->>'identifier')::text) AS display_name,
+            (entry->>'status')::text AS status,
+            entry->'errors' AS errors
+          FROM run_archives ra,
+               jsonb_array_elements(ra.source_telemetry->'sources') AS entry
+          WHERE ra.status = 'completed'
+            AND ra.completed_at >= ${opts.from.toISOString()}::timestamptz
+            AND ra.completed_at <  ${opts.to.toISOString()}::timestamptz
+            AND ra.source_telemetry IS NOT NULL
+        ),
+        filtered AS (
+          SELECT
+            source_type,
+            identifier,
+            display_name,
+            completed_at,
+            COALESCE(
+              (SELECT errors->>(jsonb_array_length(errors) - 1) WHERE jsonb_array_length(errors) > 0),
+              status
+            ) AS error_message
+          FROM expanded
+          WHERE status IN ('failed', 'partial')
+        )
+        SELECT
+          source_type,
+          identifier,
+          MAX(display_name) AS display_name,
+          COUNT(DISTINCT completed_at) AS runs_affected,
+          (ARRAY_AGG(error_message ORDER BY completed_at DESC))[1] AS last_error,
+          MAX(completed_at) AS last_failed_at
+        FROM filtered
+        GROUP BY source_type, identifier
+        ORDER BY runs_affected DESC, last_failed_at DESC
+      `);
+      return rows.map((r) => ({
+        sourceType: r.source_type,
+        identifier: r.identifier,
+        displayName: r.display_name,
+        runsAffected:
+          typeof r.runs_affected === "number"
+            ? r.runs_affected
+            : Number.parseInt(r.runs_affected, 10),
+        lastErrorMessage: r.last_error,
+        lastFailedAt:
+          r.last_failed_at instanceof Date
+            ? r.last_failed_at
+            : new Date(r.last_failed_at),
+      }));
+    },
+    async countCompletedRunsInRange(opts: {
+      from: Date;
+      to: Date;
+    }): Promise<number> {
+      const rows = await db.execute<{ n: string | number }>(sql`
+        SELECT COUNT(*) AS n
+        FROM run_archives
+        WHERE status = 'completed'
+          AND completed_at >= ${opts.from.toISOString()}::timestamptz
+          AND completed_at <  ${opts.to.toISOString()}::timestamptz
+      `);
+      const r = rows[0];
+      return typeof r.n === "number" ? r.n : Number.parseInt(r.n, 10);
+    },
   };
 }
 
@@ -507,6 +735,22 @@ interface ArchiveListSourceRow {
   digestHeadline: string | null;
   digestSummary: string | null;
   isDryRun: boolean;
+}
+
+export async function hydrateAsArchiveListItem(
+  row: RunArchiveRow,
+  rawItemsRepo: RawItemsRepo,
+): Promise<ArchiveListItem> {
+  const source: ArchiveListSourceRow = {
+    runId: row.id,
+    completedAt: row.completedAt,
+    rankedItems: row.rankedItems,
+    digestHeadline: row.digestHeadline,
+    digestSummary: row.digestSummary,
+    isDryRun: row.isDryRun,
+  };
+  const [item] = await hydrateListItems([source], rawItemsRepo);
+  return item;
 }
 
 async function hydrateListItems(

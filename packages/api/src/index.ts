@@ -20,8 +20,12 @@ import {
   createDefaultAdminArchivesRouter,
 } from "@api/routes/archives.js";
 import { createDefaultArchivesSearchRouter } from "@api/routes/archives-search.js";
+import { createDefaultPublicHomeRouter } from "@api/routes/home.js";
+import { createDefaultPublicMustReadRouter } from "@api/routes/must-read.js";
+import { createDefaultPublicSourcesRouter } from "@api/routes/sources.js";
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
 import { createDefaultAdminSocialCredentialsRouter } from "@api/routes/admin-social-credentials.js";
+import { createDefaultAdminMustReadRouter } from "@api/routes/admin-must-read.js";
 import { createAdminRouter } from "@api/routes/admin.js";
 import { requireAdmin } from "@api/auth/middleware.js";
 import { buildApp } from "@api/app.js";
@@ -125,11 +129,15 @@ const webhooksRouter = createWebhooksRouter({
 const app = buildApp({
   sessionSecret,
   publicArchivesRouter: createDefaultPublicArchivesRouter(),
+  publicHomeRouter: createDefaultPublicHomeRouter(),
+  publicMustReadRouter: createDefaultPublicMustReadRouter(),
   archivesSearchRouter: createDefaultArchivesSearchRouter(),
+  publicSourcesRouter: createDefaultPublicSourcesRouter(),
   adminArchivesRouter: createDefaultAdminArchivesRouter(),
   adminRunsRouter: createDefaultAdminRunsRouter(),
   adminEvalRouter: createDefaultAdminEvalRouter(),
   adminSocialCredentialsRouter: createDefaultAdminSocialCredentialsRouter(),
+  adminMustReadRouter: createDefaultAdminMustReadRouter(),
   runsRouter: createDefaultRunsRouter(),
   settingsRouter: createDefaultSettingsRouter(),
   adminRouter: createAdminRouter({
