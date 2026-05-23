@@ -279,13 +279,8 @@
   <div class="panel" id="panel-rep" role="tabpanel">
     <div class="report-wrap">
 
-      <!-- FUNNEL: collected → sent → ranked, + cost -->
+      <!-- FUNNEL: sent → ranked → cost (3 cells; pool == sent in the eval) -->
       <div class="funnel" id="funnel-b">
-        <div class="fstep">
-          <div class="k">Candidate pool</div>
-          <div class="v">47 <small>deduped</small></div>
-          <div class="arrow">→</div>
-        </div>
         <div class="fstep">
           <div class="k">Sent for ranking</div>
           <div class="v">47 <small>items</small></div>
@@ -392,15 +387,12 @@ Favor coding agents, evals, runtime controls…</pre></div>
     document.getElementById('prompts-b').style.display = b ? '' : 'none';
     document.getElementById('strip-a').style.display = b ? 'none' : '';
     document.getElementById('cols-a').style.display = b ? 'none' : '';
-    // Mode A funnel reads "fixture pool → sent → ranked"
-    const k0 = document.querySelector('#funnel-b .fstep:first-child .k');
+    // Funnel: "Sent for ranking" (cell 0) → "Ranked" (cell 1) → "Cost" (cell 2)
     const v0 = document.querySelector('#funnel-b .fstep:first-child .v');
-    if (b) { k0.textContent = 'Candidate pool'; v0.innerHTML = '47 <small>deduped</small>';
-             document.querySelectorAll('#funnel-b .fstep')[1].querySelector('.v').innerHTML = '47 <small>items</small>';
+    if (b) { v0.innerHTML = '47 <small>items</small>';
              document.getElementById('note-b').textContent = 'The full deduped candidate pool is sent to the LLM ranker; it returns the top 10. 37 items were considered but not surfaced.';
              document.getElementById('rep-count').textContent = '47 → 10'; }
-    else  { k0.textContent = 'Fixture pool'; v0.innerHTML = '32 <small>items</small>';
-             document.querySelectorAll('#funnel-b .fstep')[1].querySelector('.v').innerHTML = '32 <small>items</small>';
+    else  { v0.innerHTML = '32 <small>items</small>';
              document.getElementById('note-b').textContent = 'All 32 fixture items were sent to the ranker; it returned the top 10, scored against the graded ground truth.';
              document.getElementById('rep-count').textContent = '32 → 10'; }
   }
