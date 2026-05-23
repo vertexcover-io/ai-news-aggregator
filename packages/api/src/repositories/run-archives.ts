@@ -59,6 +59,7 @@ export interface FindPoolItemsOpts {
 export interface ListReviewedDeps {
   rawItemsRepo: RawItemsRepo;
   timezone?: string;
+  limit?: number;
 }
 
 export interface SearchReviewedInput {
@@ -86,6 +87,11 @@ export interface RunArchivesRepo {
    * digest they missed — even if it was published before today.
    */
   findMostRecentReviewed(): Promise<{ id: string } | null>;
+  /**
+   * Returns the latest reviewed, non-dry-run archive completed at or after
+   * `since`, or null when none exist in that window.
+   */
+  findLatestReviewedSince(since: Date): Promise<RunArchiveRow | null>;
   updateRankedItems(
     id: string,
     items: RankedItemRef[],
@@ -260,8 +266,44 @@ export function createRunArchivesRepo(
       if (rows.length === 0) return null;
       return { id: rows[0].id };
     },
-    async listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]> {
+    async findLatestReviewedSince(since: Date): Promise<RunArchiveRow | null> {
       const rows = await db
+        .select({
+          id: runArchives.id,
+          status: runArchives.status,
+          rankedItems: runArchives.rankedItems,
+          topN: runArchives.topN,
+          reviewed: runArchives.reviewed,
+          completedAt: runArchives.completedAt,
+          createdAt: runArchives.createdAt,
+          startedAt: runArchives.startedAt,
+          sourceTypes: runArchives.sourceTypes,
+          digestHeadline: runArchives.digestHeadline,
+          digestSummary: runArchives.digestSummary,
+          hook: runArchives.hook,
+          sourceTelemetry: runArchives.sourceTelemetry,
+          slackNotifiedAt: runArchives.slackNotifiedAt,
+          emailSentAt: runArchives.emailSentAt,
+          linkedinPostedAt: runArchives.linkedinPostedAt,
+          twitterPostedAt: runArchives.twitterPostedAt,
+          notificationState: runArchives.notificationState,
+          isDryRun: runArchives.isDryRun,
+          costBreakdown: runArchives.costBreakdown,
+        })
+        .from(runArchives)
+        .where(
+          and(
+            eq(runArchives.reviewed, true),
+            eq(runArchives.isDryRun, false),
+            gte(runArchives.completedAt, since),
+          ),
+        )
+        .orderBy(desc(runArchives.completedAt))
+        .limit(1);
+      return rows[0] ?? null;
+    },
+    async listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]> {
+      const baseQuery = db
         .select({
           runId: runArchives.id,
           completedAt: runArchives.completedAt,
@@ -273,6 +315,9 @@ export function createRunArchivesRepo(
         .from(runArchives)
         .where(and(eq(runArchives.reviewed, true), eq(runArchives.isDryRun, false)))
         .orderBy(desc(runArchives.completedAt));
+
+      const rows =
+        deps.limit !== undefined ? await baseQuery.limit(deps.limit) : await baseQuery;
 
       return hydrateListItems(rows, deps.rawItemsRepo, deps.timezone);
     },
@@ -507,6 +552,22 @@ interface ArchiveListSourceRow {
   digestHeadline: string | null;
   digestSummary: string | null;
   isDryRun: boolean;
+}
+
+export async function hydrateAsArchiveListItem(
+  row: RunArchiveRow,
+  rawItemsRepo: RawItemsRepo,
+): Promise<ArchiveListItem> {
+  const source: ArchiveListSourceRow = {
+    runId: row.id,
+    completedAt: row.completedAt,
+    rankedItems: row.rankedItems,
+    digestHeadline: row.digestHeadline,
+    digestSummary: row.digestSummary,
+    isDryRun: row.isDryRun,
+  };
+  const [item] = await hydrateListItems([source], rawItemsRepo);
+  return item;
 }
 
 async function hydrateListItems(
