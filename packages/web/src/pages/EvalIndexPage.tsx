@@ -40,6 +40,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ReportTab, type ReportScoreSheet } from "../components/eval/ReportTab";
+import {
+  configuredTimezone,
+  formatDateTimeForTimezone,
+  todayInTimezone,
+} from "../lib/dateSelectorTimezone";
 
 type Mode = "scored" | "ab";
 
@@ -56,14 +61,6 @@ interface ScoredProgressPayload {
 type CalendarProgressRow =
   | { runId: string; status: "running" }
   | CalendarRunReportEntry;
-
-function formatTodayIso(): string {
-  const d = new Date();
-  const yyyy = String(d.getFullYear());
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
 
 const RUN_STATE_KEY = "eval-run-state";
 const RUN_STATE_VERSION = 1;
@@ -134,11 +131,11 @@ function shortId(id: string): string {
   return id.slice(0, 8);
 }
 
-function formatTimestamp(iso: string | null): string {
-  if (iso === null) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
+function formatTimestamp(
+  iso: string | null,
+  timezone: string | null | undefined,
+): string {
+  return formatDateTimeForTimezone(iso, timezone);
 }
 
 function hostOf(url: string): string {
@@ -333,8 +330,14 @@ export function EvalIndexPage(): ReactElement {
   const queryClient = useQueryClient();
 
   const savedPrompt = settingsQuery.data?.rankingPrompt ?? "";
+  const timezone = useMemo(
+    () => configuredTimezone(settingsQuery.data?.scheduleTimezone),
+    [settingsQuery.data?.scheduleTimezone],
+  );
+  const today = useMemo(() => todayInTimezone(timezone), [timezone]);
   const [draft, setDraft] = useState("");
   const seededRef = useRef(false);
+  const calendarDateTouchedRef = useRef(false);
 
   useEffect(() => {
     if (!seededRef.current && settingsQuery.data) {
@@ -349,7 +352,7 @@ export function EvalIndexPage(): ReactElement {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [fixtureId, setFixtureId] = useState(initialFixtureId);
   const [bypassCache, setBypassCache] = useState(false);
-  const [calendarDate, setCalendarDate] = useState(formatTodayIso());
+  const [calendarDate, setCalendarDate] = useState(() => todayInTimezone("UTC"));
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
 
   const [running, setRunning] = useState(false);
@@ -366,6 +369,11 @@ export function EvalIndexPage(): ReactElement {
   const dirty = draft !== savedPrompt;
 
   const [showDiff, setShowDiff] = useState(false);
+
+  useEffect(() => {
+    if (calendarDateTouchedRef.current) return;
+    setCalendarDate(today);
+  }, [today]);
 
   const calendarRunsQuery = useQuery({
     queryKey: ["eval", "calendar-runs", calendarDate],
@@ -1090,8 +1098,9 @@ export function EvalIndexPage(): ReactElement {
                           data-testid="ab-date"
                           type="date"
                           value={calendarDate}
-                          max={formatTodayIso()}
+                          max={today}
                           onChange={(e) => {
+                            calendarDateTouchedRef.current = true;
                             setCalendarDate(e.target.value);
                           }}
                           className="block w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-500 focus:outline-none"
@@ -1150,7 +1159,7 @@ export function EvalIndexPage(): ReactElement {
                                     {String(run.topN)}
                                   </span>
                                   <span className="block truncate text-[11px] text-neutral-500">
-                                    {formatTimestamp(run.completedAt)} ·{" "}
+                                    {formatTimestamp(run.completedAt, timezone)} ·{" "}
                                     {run.sourceTypes.join(", ") || "sources n/a"}
                                   </span>
                                 </span>

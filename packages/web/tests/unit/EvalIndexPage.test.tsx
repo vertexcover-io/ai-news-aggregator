@@ -81,6 +81,7 @@ vi.mock("../../src/api/eval", async () => {
 
 import { EvalIndexPage } from "../../src/pages/EvalIndexPage";
 import { useSettings } from "../../src/hooks/useSettings";
+import { todayInTimezone } from "../../src/lib/dateSelectorTimezone";
 import {
   listCalendarRuns,
   saveDraftPrompt,
@@ -95,6 +96,7 @@ const runEvalMock = vi.mocked(runEval);
 
 interface SettingsLike {
   rankingPrompt: string;
+  scheduleTimezone?: string | null;
 }
 
 function makeSettingsResult(data: SettingsLike | null): unknown {
@@ -139,7 +141,10 @@ async function* streamEvents(
 
 beforeEach(() => {
   useSettingsMock.mockReturnValue(
-    makeSettingsResult({ rankingPrompt: "SAVED PROMPT" }) as ReturnType<
+    makeSettingsResult({
+      rankingPrompt: "SAVED PROMPT",
+      scheduleTimezone: "UTC",
+    }) as ReturnType<
       typeof useSettings
     >,
   );
@@ -151,6 +156,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   window.sessionStorage.clear();
 });
 
@@ -178,6 +184,27 @@ describe("EvalIndexPage", () => {
     renderPage("/admin/eval?mode=ab");
     await screen.findByTestId("prompt-editor-textarea");
     expect(screen.getByTestId("ab-date")).toBeTruthy();
+  });
+
+  it("REQ-004: defaults Mode B date to today in the admin settings timezone", async () => {
+    const timezone = "America/Adak";
+    const expectedDate = todayInTimezone(timezone);
+    useSettingsMock.mockReturnValue(
+      makeSettingsResult({
+        rankingPrompt: "SAVED PROMPT",
+        scheduleTimezone: timezone,
+      }) as ReturnType<typeof useSettings>,
+    );
+
+    renderPage("/admin/eval?mode=ab");
+    const input = await screen.findByTestId<HTMLInputElement>("ab-date");
+
+    await waitFor(() => {
+      expect(input.value).toBe(expectedDate);
+    });
+    await waitFor(() => {
+      expect(listCalendarRunsMock).toHaveBeenCalledWith(expectedDate);
+    });
   });
 
   it("Mode B Run is disabled when draft equals saved", async () => {

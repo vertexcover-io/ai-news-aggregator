@@ -13,6 +13,7 @@ export default defineConfig((options) => ({
     "src/scheduling/index.ts",
     "src/utils/index.ts",
     "src/utils/prompt-hash.ts",
+    "src/utils/timezone-date.ts",
     "src/logger.ts",
     "src/slack/index.ts",
     "src/pricing.ts",

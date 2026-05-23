@@ -12,6 +12,7 @@
     "./scheduling": "./dist/scheduling/index.js",
     "./utils": "./dist/utils/index.js",
     "./utils/prompt-hash": "./dist/utils/prompt-hash.js",
+    "./utils/timezone-date": "./dist/utils/timezone-date.js",
     "./logger": "./dist/logger.js",
     "./services": "./dist/services/index.js",
     "./services/credential-cipher": "./dist/services/credential-cipher.js",

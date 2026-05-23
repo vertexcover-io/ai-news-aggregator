@@ -688,7 +688,14 @@ describe("POST /run SSE", () => {
         },
       ]),
     );
-    const { app } = makeRouter({ listCalendarRunsByDate });
+    const settings = { ...makeSettings(), scheduleTimezone: "Asia/Kolkata" };
+    const { app } = makeRouter({
+      getSettingsRepo: () => ({
+        get: () => Promise.resolve(settings),
+        upsert: vi.fn(),
+      }),
+      listCalendarRunsByDate,
+    });
     const res = await app.request(
       "/api/admin/eval/calendar-runs?date=2026-05-22",
       { headers: authedHeaders() },
@@ -698,7 +705,10 @@ describe("POST /run SSE", () => {
       date: string;
       runs: { runId: string; itemCount: number; digestHeadline: string }[];
     };
-    expect(listCalendarRunsByDate).toHaveBeenCalledWith("2026-05-22");
+    expect(listCalendarRunsByDate).toHaveBeenCalledWith(
+      "2026-05-22",
+      "Asia/Kolkata",
+    );
     expect(body).toMatchObject({
       date: "2026-05-22",
       runs: [

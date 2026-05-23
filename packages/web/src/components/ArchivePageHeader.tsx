@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 
 interface ArchivePageHeaderProps {
-  startedAt: string;
+  issueDate: string;
   storyCount: number;
   topStoryTitle: string | null;
   digestHeadline?: string | null;
@@ -9,9 +9,20 @@ interface ArchivePageHeaderProps {
   readingTimeMin?: number;
 }
 
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function dateFromIsoDate(dateISO: string): Date | null {
+  const parsed = ISO_DATE_RE.exec(dateISO);
+  if (parsed === null) return null;
+  const [, year, month, day] = parsed;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export function formatLedgerEyebrow(iso: string): string {
-  const d = new Date(iso);
+  const d = dateFromIsoDate(iso) ?? new Date(iso);
   const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: dateFromIsoDate(iso) === null ? undefined : "UTC",
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -38,7 +49,7 @@ export function pickHeadline(
 }
 
 export function ArchivePageHeader({
-  startedAt,
+  issueDate,
   storyCount,
   topStoryTitle,
   digestHeadline,
@@ -58,7 +69,7 @@ export function ArchivePageHeader({
   return (
     <header className="text-center mt-2 mb-6">
       <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#8c3a1e] m-0 mb-[18px]">
-        {formatLedgerEyebrow(startedAt)}
+        {formatLedgerEyebrow(issueDate)}
       </p>
       <h1 className="font-serif font-semibold leading-[1.05] tracking-[-0.012em] text-[#14110d] text-[34px] sm:text-[42px] md:text-[50px] m-0 mb-[18px]">
         {pickHeadline(topStoryTitle, digestHeadline)}

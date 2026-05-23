@@ -4,12 +4,15 @@ import type { ArchiveListItem } from "@newsletter/shared";
 import { createArchivesSearchRouter } from "@api/routes/archives-search.js";
 import type { RunArchivesRepo } from "@api/repositories/run-archives.js";
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
+import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
 
 interface SearchInput {
   q?: string;
   from?: Date;
   to?: Date;
   limit?: number;
+  rawItemsRepo?: RawItemsRepo;
+  timezone?: string;
 }
 
 interface RepoStub extends RunArchivesRepo {
@@ -34,6 +37,16 @@ function makeRawRepo(): RawItemsRepo {
   return { findByIds: vi.fn(() => Promise.resolve([])) };
 }
 
+function makeSettingsRepo(timezone: string): Pick<UserSettingsRepo, "get"> {
+  return {
+    get: vi.fn(() =>
+      Promise.resolve({
+        scheduleTimezone: timezone,
+      } as Awaited<ReturnType<UserSettingsRepo["get"]>>),
+    ),
+  };
+}
+
 interface LoggerStub {
   info: ReturnType<typeof vi.fn>;
   warn: ReturnType<typeof vi.fn>;
@@ -54,6 +67,7 @@ function makeApp(opts: {
   archiveRepo?: RepoStub;
   rawItemsRepo?: RawItemsRepo;
   logger?: LoggerStub;
+  settingsRepo?: Pick<UserSettingsRepo, "get">;
 } = {}): { app: Hono; archiveRepo: RepoStub; logger: LoggerStub } {
   const archiveRepo = opts.archiveRepo ?? makeRepo();
   const logger = opts.logger ?? makeLogger();
@@ -61,6 +75,9 @@ function makeApp(opts: {
   const router = createArchivesSearchRouter({
     getArchiveRepo: () => archiveRepo,
     getRawItemsRepo: () => opts.rawItemsRepo ?? makeRawRepo(),
+    ...(opts.settingsRepo === undefined
+      ? {}
+      : { getSettingsRepo: () => opts.settingsRepo }),
     logger: logger as unknown as Parameters<typeof createArchivesSearchRouter>[0]["logger"],
   });
   app.route("/api/archives/search", router);
@@ -182,5 +199,24 @@ describe("GET /api/archives/search — happy path shape and logging", () => {
     expect(body.q).toBeUndefined();
     expect(body.from).toBeUndefined();
     expect(body.to).toBeUndefined();
+  });
+
+  it("REQ-003: converts date-only ranges using the admin settings timezone", async () => {
+    const repo = makeRepo({ archives: [], total: 0 });
+    const { app } = makeApp({
+      archiveRepo: repo,
+      settingsRepo: makeSettingsRepo("Asia/Kolkata"),
+    });
+    const res = await app.request(
+      "/api/archives/search?from=2026-05-23&to=2026-05-23",
+    );
+    expect(res.status).toBe(200);
+    expect(repo.searchReviewed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        from: new Date("2026-05-22T18:30:00.000Z"),
+        to: new Date("2026-05-23T18:29:59.999Z"),
+        timezone: "Asia/Kolkata",
+      }),
+    );
   });
 });

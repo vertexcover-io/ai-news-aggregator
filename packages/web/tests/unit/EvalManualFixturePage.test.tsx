@@ -11,6 +11,10 @@ import { Toaster } from "sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 
+vi.mock("../../src/hooks/useSettings", () => ({
+  useSettings: vi.fn(),
+}));
+
 vi.mock("../../src/api/eval", async () => {
   const actual =
     await vi.importActual<typeof import("../../src/api/eval")>(
@@ -102,6 +106,8 @@ vi.mock("../../src/api/eval", async () => {
 });
 
 import { EvalManualFixturePage } from "../../src/pages/EvalManualFixturePage";
+import { useSettings } from "../../src/hooks/useSettings";
+import { todayInTimezone } from "../../src/lib/dateSelectorTimezone";
 import {
   createManualFixture,
   EvalApiError,
@@ -109,9 +115,24 @@ import {
   listCalendarRuns,
 } from "../../src/api/eval";
 
+const useSettingsMock = vi.mocked(useSettings);
 const createManualFixtureMock = vi.mocked(createManualFixture);
 const listCalendarRunsMock = vi.mocked(listCalendarRuns);
 const getCalendarRunDetailMock = vi.mocked(getCalendarRunDetail);
+
+function makeSettingsResult(timezone: string): ReturnType<typeof useSettings> {
+  return {
+    data: {
+      scheduleTimezone: timezone,
+    },
+    dataUpdatedAt: 1,
+    isLoading: false,
+    isError: false,
+    isSuccess: true,
+    status: "success",
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof useSettings>;
+}
 
 function renderPage(): void {
   const client = new QueryClient({
@@ -141,6 +162,7 @@ function EvalFixtureWrapper(): ReactElement {
 }
 
 beforeEach(() => {
+  useSettingsMock.mockReturnValue(makeSettingsResult("UTC"));
   createManualFixtureMock.mockReset();
   listCalendarRunsMock.mockClear();
   getCalendarRunDetailMock.mockClear();
@@ -148,6 +170,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 describe("EvalManualFixturePage", () => {
@@ -270,6 +293,24 @@ describe("EvalManualFixturePage", () => {
     expect(screen.getByText("Ranked item A")).toBeTruthy();
     expect(screen.getByText("https://example.com/a")).toBeTruthy();
     expect(screen.getByText("hn")).toBeTruthy();
+  });
+
+  it("REQ-004: defaults import date to today in the admin settings timezone", async () => {
+    const timezone = "America/Adak";
+    const expectedDate = todayInTimezone(timezone);
+    useSettingsMock.mockReturnValue(makeSettingsResult(timezone));
+
+    renderPage();
+    const input = await screen.findByLabelText<HTMLInputElement>(
+      /import from date/i,
+    );
+
+    await waitFor(() => {
+      expect(input.value).toBe(expectedDate);
+    });
+    await waitFor(() => {
+      expect(listCalendarRunsMock).toHaveBeenCalledWith(expectedDate);
+    });
   });
 
   it("REQ-016 REQ-017: imports calendar sources one by one and all at once", async () => {

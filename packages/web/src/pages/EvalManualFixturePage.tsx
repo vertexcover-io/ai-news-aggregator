@@ -1,9 +1,10 @@
-import { useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { useSettings } from "../hooks/useSettings";
 import {
   createManualFixture,
   EvalApiError,
@@ -23,6 +24,11 @@ import type {
   CalendarRunDetail,
   CalendarRunSummary,
 } from "@newsletter/shared/types/eval-ranking";
+import {
+  configuredTimezone,
+  formatDateTimeForTimezone,
+  todayInTimezone,
+} from "../lib/dateSelectorTimezone";
 
 interface FormValues {
   urls: string;
@@ -53,10 +59,11 @@ function parseLines(input: string): ParsedLine[] {
   });
 }
 
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
+function formatDateTime(
+  iso: string,
+  timezone: string | null | undefined,
+): string {
+  return formatDateTimeForTimezone(iso, timezone);
 }
 
 function shortRunId(runId: string): string {
@@ -84,12 +91,19 @@ function appendUniqueUrls(existing: string, urls: readonly string[]): string {
 
 export function EvalManualFixturePage(): ReactElement {
   const navigate = useNavigate();
+  const settingsQuery = useSettings();
+  const timezone = useMemo(
+    () => configuredTimezone(settingsQuery.data?.scheduleTimezone),
+    [settingsQuery.data?.scheduleTimezone],
+  );
+  const today = useMemo(() => todayInTimezone(timezone), [timezone]);
+  const importDateTouchedRef = useRef(false);
   const { register, handleSubmit, control, getValues, setValue } =
     useForm<FormValues>({
       defaultValues: { urls: "", name: "" },
     });
   const [submitting, setSubmitting] = useState(false);
-  const [importDate, setImportDate] = useState("");
+  const [importDate, setImportDate] = useState(() => todayInTimezone("UTC"));
   const [detailRunId, setDetailRunId] = useState<string | null>(null);
   const [runDetail, setRunDetail] = useState<CalendarRunDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -100,6 +114,11 @@ export function EvalManualFixturePage(): ReactElement {
     queryFn: () => listCalendarRuns(importDate),
     enabled: /^\d{4}-\d{2}-\d{2}$/.test(importDate),
   });
+
+  useEffect(() => {
+    if (importDateTouchedRef.current) return;
+    setImportDate(today);
+  }, [today]);
 
   const urlsValue = useWatch({ control, name: "urls" });
   const parsed = useMemo(() => parseLines(urlsValue), [urlsValue]);
@@ -228,7 +247,9 @@ export function EvalManualFixturePage(): ReactElement {
                   id="fixture-import-date"
                   type="date"
                   value={importDate}
+                  max={today}
                   onChange={(event) => {
+                    importDateTouchedRef.current = true;
                     setImportDate(event.target.value);
                   }}
                   className="block w-full rounded-md border border-stone-300 px-3 py-2 text-sm font-mono focus:border-stone-900 focus:outline-none focus:ring-1 focus:ring-stone-900"
@@ -264,7 +285,7 @@ export function EvalManualFixturePage(): ReactElement {
                           top {String(run.topN)}
                         </span>
                         <span className="block text-[11px] text-stone-500">
-                          {formatDateTime(run.completedAt)} ·{" "}
+                          {formatDateTime(run.completedAt, timezone)} ·{" "}
                           {run.sourceTypes.join(", ") || "sources n/a"}
                         </span>
                       </button>

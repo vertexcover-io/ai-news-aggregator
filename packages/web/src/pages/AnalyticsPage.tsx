@@ -1,6 +1,12 @@
-import { useState, type ReactElement } from "react";
+import { useMemo, useState, type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAnalytics } from "@/api/analytics";
+import { useSettings } from "../hooks/useSettings";
+import {
+  addDaysToIsoDate,
+  configuredTimezone,
+  todayInTimezone,
+} from "../lib/dateSelectorTimezone";
 
 interface MetricCardProps {
   label: string;
@@ -18,17 +24,17 @@ function MetricCard({ label, value, description }: MetricCardProps): ReactElemen
   );
 }
 
-function todayString(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function thirtyDaysAgoString(): string {
-  return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
 export function AnalyticsPage(): ReactElement {
-  const [from, setFrom] = useState(thirtyDaysAgoString);
-  const [to, setTo] = useState(todayString);
+  const settingsQuery = useSettings();
+  const timezone = useMemo(
+    () => configuredTimezone(settingsQuery.data?.scheduleTimezone),
+    [settingsQuery.data?.scheduleTimezone],
+  );
+  const today = useMemo(() => todayInTimezone(timezone), [timezone]);
+  const [fromOverride, setFromOverride] = useState<string | null>(null);
+  const [toOverride, setToOverride] = useState<string | null>(null);
+  const from = fromOverride ?? addDaysToIsoDate(today, -30);
+  const to = toOverride ?? today;
   const [granularity, setGranularity] = useState<"daily" | "weekly" | "monthly">("daily");
 
   const { data, isLoading, isError } = useQuery({
@@ -57,7 +63,10 @@ export function AnalyticsPage(): ReactElement {
             id="analytics-from"
             type="date"
             value={from}
-            onChange={(e) => { setFrom(e.target.value); }}
+            max={to}
+            onChange={(e) => {
+              setFromOverride(e.target.value);
+            }}
             className="border border-neutral-200 rounded px-3 py-1.5 text-sm"
           />
         </div>
@@ -72,7 +81,10 @@ export function AnalyticsPage(): ReactElement {
             id="analytics-to"
             type="date"
             value={to}
-            onChange={(e) => { setTo(e.target.value); }}
+            max={today}
+            onChange={(e) => {
+              setToOverride(e.target.value);
+            }}
             className="border border-neutral-200 rounded px-3 py-1.5 text-sm"
           />
         </div>

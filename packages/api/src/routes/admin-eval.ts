@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   createLogger,
   getDb as defaultGetDb,
+  safeTimezone,
 } from "@newsletter/shared";
 import { GroundTruthSchema } from "@newsletter/shared/types/eval-ranking-schemas";
 import { EvalRunRequestSchema } from "@newsletter/shared/types/eval-ranking-schemas";
@@ -225,6 +226,7 @@ export type CreateManualFixtureFn = (
 ) => Promise<CreateManualFixtureResult>;
 export type ListCalendarRunsByDateFn = (
   dateISO: string,
+  timezone: string,
 ) => Promise<CalendarRunSummary[]>;
 export type GetCalendarRunDetailFn = (
   runId: string,
@@ -314,7 +316,9 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
         400,
       );
     }
-    const runs = await listCalendarRunsByDateFn(parsed.data.date);
+    const settings = await deps.getSettingsRepo().get();
+    const timezone = safeTimezone(settings?.scheduleTimezone);
+    const runs = await listCalendarRunsByDateFn(parsed.data.date, timezone);
     return c.json({ date: parsed.data.date, runs });
   });
 
@@ -839,9 +843,9 @@ export function createDefaultAdminEvalRouter(): Hono {
   return createAdminEvalRouter({
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
     getEvalRunsRepo: () => createEvalRunsRepo(defaultGetDb()),
-    listCalendarRunsByDate: async (dateISO) => {
+    listCalendarRunsByDate: async (dateISO, timezone) => {
       const repo = createEvalExportsRepo(defaultGetDb());
-      return repo.listCompletedRunsByDate(dateISO);
+      return repo.listCompletedRunsByDate(dateISO, timezone);
     },
     getCalendarRunDetail: async (runId) => {
       const repo = createEvalExportsRepo(defaultGetDb());

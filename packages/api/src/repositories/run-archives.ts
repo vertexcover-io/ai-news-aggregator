@@ -2,6 +2,7 @@ import { and, desc, eq, gte, ilike, inArray, lte, notInArray, sql } from "drizzl
 import { emailSends, rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import {
+  formatDateInTimezone,
   serializeArchiveSearchText,
   type ArchiveListItem,
   type ArchiveTopItem,
@@ -57,6 +58,7 @@ export interface FindPoolItemsOpts {
 
 export interface ListReviewedDeps {
   rawItemsRepo: RawItemsRepo;
+  timezone?: string;
 }
 
 export interface SearchReviewedInput {
@@ -65,6 +67,7 @@ export interface SearchReviewedInput {
   to?: Date;
   limit?: number;
   rawItemsRepo: RawItemsRepo;
+  timezone?: string;
 }
 
 export interface SearchReviewedResult {
@@ -271,7 +274,7 @@ export function createRunArchivesRepo(
         .where(and(eq(runArchives.reviewed, true), eq(runArchives.isDryRun, false)))
         .orderBy(desc(runArchives.completedAt));
 
-      return hydrateListItems(rows, deps.rawItemsRepo);
+      return hydrateListItems(rows, deps.rawItemsRepo, deps.timezone);
     },
     async searchReviewed(
       input: SearchReviewedInput,
@@ -307,7 +310,7 @@ export function createRunArchivesRepo(
           .from(runArchives)
           .where(where);
 
-        const archives = await hydrateListItems(rows, input.rawItemsRepo);
+        const archives = await hydrateListItems(rows, input.rawItemsRepo, input.timezone);
         return { archives, total: countRow.count };
       }
 
@@ -352,7 +355,7 @@ export function createRunArchivesRepo(
         isDryRun: r.is_dry_run,
       }));
 
-      const archives = await hydrateListItems(rows, input.rawItemsRepo);
+      const archives = await hydrateListItems(rows, input.rawItemsRepo, input.timezone);
       return { archives, total: totalRow[0].c };
     },
     async list(limit: number): Promise<RunArchiveRow[]> {
@@ -509,6 +512,7 @@ interface ArchiveListSourceRow {
 async function hydrateListItems(
   rows: ArchiveListSourceRow[],
   rawItemsRepo: RawItemsRepo,
+  timezone?: string,
 ): Promise<ArchiveListItem[]> {
   if (rows.length === 0) return [];
   const idSet = new Set<number>();
@@ -519,16 +523,17 @@ async function hydrateListItems(
   }
   const rawRows = await rawItemsRepo.findByIds([...idSet]);
   const byId = new Map<number, RawItemRow>(rawRows.map((r) => [r.id, r]));
-  return rows.map((r) => toArchiveListItem(r, byId));
+  return rows.map((r) => toArchiveListItem(r, byId, timezone));
 }
 
 function toArchiveListItem(
   r: ArchiveListSourceRow,
   byId: Map<number, RawItemRow>,
+  timezone?: string,
 ): ArchiveListItem {
   return {
     runId: r.runId,
-    runDate: r.completedAt.toISOString().slice(0, 10),
+    runDate: formatDateInTimezone(r.completedAt, timezone),
     storyCount: Array.isArray(r.rankedItems) ? r.rankedItems.length : 0,
     topItems: buildTopItems(r.rankedItems, byId),
     leadSummary: computeLeadSummary(r.rankedItems, byId),

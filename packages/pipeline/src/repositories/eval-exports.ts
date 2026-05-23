@@ -1,6 +1,7 @@
 import { and, asc, between, desc, eq, gte, sql } from "drizzle-orm";
 import { rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
+import { safeTimezone } from "@newsletter/shared";
 import type {
   CalendarRankingItem,
   CalendarRunDetail,
@@ -53,7 +54,10 @@ export interface EvalExportsRepo {
    * (`YYYY-MM-DD`), ordered by completion time descending. This powers
    * calendar eval run selection and fixture-import browsing.
    */
-  listCompletedRunsByDate(dateISO: string): Promise<CalendarRunSummary[]>;
+  listCompletedRunsByDate(
+    dateISO: string,
+    timezone?: string,
+  ): Promise<CalendarRunSummary[]>;
 
   /**
    * Returns a completed archive's previous ranking plus the reconstructed
@@ -186,7 +190,8 @@ export function createEvalExportsRepo(
       return rows;
     },
 
-    async listCompletedRunsByDate(dateISO) {
+    async listCompletedRunsByDate(dateISO, timezone = "UTC") {
+      const tz = safeTimezone(timezone);
       const rows = await db
         .select({
           id: runArchives.id,
@@ -203,7 +208,7 @@ export function createEvalExportsRepo(
         .where(
           and(
             eq(runArchives.status, "completed"),
-            sql`date_trunc('day', ${runArchives.completedAt}) = ${dateISO}::date`,
+            sql`((${runArchives.completedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz})::date = ${dateISO}::date`,
           ),
         )
         .orderBy(desc(runArchives.completedAt));
