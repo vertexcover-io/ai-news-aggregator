@@ -5,6 +5,7 @@ export interface BuildAppDeps {
   sessionSecret: string;
   publicArchivesRouter: Hono;
   archivesSearchRouter: Hono;
+  publicSourcesRouter: Hono;
   adminArchivesRouter: Hono;
   adminRunsRouter: Hono;
   adminSocialCredentialsRouter: Hono;
@@ -60,6 +61,9 @@ export function buildApp(deps: BuildAppDeps): Hono {
   // it does not collide with the GET /:runId catch-all.
   app.route("/api/archives/search", deps.archivesSearchRouter);
   app.route("/api/archives", deps.publicArchivesRouter);
+
+  // Public sources summary (no admin gate).
+  app.route("/api/sources", deps.publicSourcesRouter);
 
   // Path-aware admin gate: login/logout skip, everything else requires a
   // valid admin_session cookie.

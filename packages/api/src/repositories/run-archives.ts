@@ -13,7 +13,10 @@ import {
   type RunSourceTelemetry,
   type SocialMetadata,
 } from "@newsletter/shared";
+import { deriveRawItemIdentifierSql } from "./raw-items.js";
 import type { RawItemRow, RawItemsRepo } from "./raw-items.js";
+
+const DERIVED_IDENTIFIER_SQL = deriveRawItemIdentifierSql();
 
 export interface UpdateRankedItemsContext {
   rawItemsById: Map<number, RawItemRow>;
@@ -107,6 +110,19 @@ export interface RunArchivesRepo {
     error: string,
   ): Promise<void>;
   delete(id: string): Promise<{ deleted: boolean; removedEmailSends: number }>;
+  getReviewedDigestCountsByDerivedSource(opts: {
+    sinceWeek: Date;
+  }): Promise<Map<string, number>>;
+  getRecentSourceTelemetry(opts: {
+    sinceDays: number;
+  }): Promise<Map<string, RecentSourceTelemetryEntry>>;
+}
+
+export interface RecentSourceTelemetryEntry {
+  displayName: string;
+  status: "completed" | "failed" | "partial";
+  itemsFetched: number;
+  completedAt: Date;
 }
 
 export function createRunArchivesRepo(
@@ -493,6 +509,76 @@ export function createRunArchivesRepo(
           removedEmailSends: removed.length,
         };
       });
+    },
+    async getReviewedDigestCountsByDerivedSource(opts: {
+      sinceWeek: Date;
+    }): Promise<Map<string, number>> {
+      const rows = await db.execute<{
+        source_type: SourceType;
+        identifier: string;
+        n: string | number;
+      }>(sql`
+        WITH ranked_refs AS (
+          SELECT (item->>'rawItemId')::int AS raw_item_id
+          FROM run_archives,
+               jsonb_array_elements(ranked_items) AS item
+          WHERE reviewed = true
+            AND status = 'completed'
+            AND completed_at >= ${opts.sinceWeek.toISOString()}::timestamptz
+        )
+        SELECT
+          ri.source_type,
+          ${DERIVED_IDENTIFIER_SQL} AS identifier,
+          COUNT(DISTINCT ri.id) AS n
+        FROM raw_items ri
+        JOIN ranked_refs rr ON rr.raw_item_id = ri.id
+        GROUP BY ri.source_type, identifier
+      `);
+      const map = new Map<string, number>();
+      for (const r of rows) {
+        const count =
+          typeof r.n === "number" ? r.n : Number.parseInt(r.n, 10);
+        map.set(`${r.source_type} ${r.identifier}`, count);
+      }
+      return map;
+    },
+    async getRecentSourceTelemetry(opts: {
+      sinceDays: number;
+    }): Promise<Map<string, RecentSourceTelemetryEntry>> {
+      const since = new Date(
+        Date.now() - opts.sinceDays * 24 * 60 * 60 * 1000,
+      );
+      const rows = await db
+        .select({
+          sourceTelemetry: runArchives.sourceTelemetry,
+          completedAt: runArchives.completedAt,
+        })
+        .from(runArchives)
+        .where(
+          and(
+            gte(runArchives.completedAt, since),
+            eq(runArchives.status, "completed"),
+            sql`${runArchives.sourceTelemetry} IS NOT NULL`,
+          ),
+        )
+        .orderBy(desc(runArchives.completedAt));
+
+      const map = new Map<string, RecentSourceTelemetryEntry>();
+      for (const row of rows) {
+        const telemetry = row.sourceTelemetry;
+        if (!telemetry) continue;
+        for (const entry of telemetry.sources) {
+          const key = `${entry.sourceType} ${entry.identifier}`;
+          if (map.has(key)) continue;
+          map.set(key, {
+            displayName: entry.displayName,
+            status: entry.status,
+            itemsFetched: entry.itemsFetched,
+            completedAt: row.completedAt,
+          });
+        }
+      }
+      return map;
     },
   };
 }

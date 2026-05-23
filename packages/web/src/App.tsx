@@ -4,6 +4,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { ArchivePage } from "./pages/ArchivePage";
 import { ReviewPage } from "./pages/ReviewPage";
 import { SourcesPreviewPage } from "./pages/SourcesPreviewPage";
+import { SourcesPage } from "./pages/SourcesPage";
 import { ArchiveListingPage } from "./pages/ArchiveListingPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { ConfirmPage } from "./pages/ConfirmPage";
@@ -21,6 +22,7 @@ export const routes: RouteObject[] = [
     children: [
       { path: "/", element: <ArchiveListingPage /> },
       { path: "/archive/:runId", element: <ArchivePage /> },
+      { path: "/sources", element: <SourcesPage /> },
       { path: "/confirm", element: <ConfirmPage /> },
       { path: "/unsubscribe", element: <UnsubscribePage /> },
       { path: "/privacy", element: <PrivacyPolicyPage /> },

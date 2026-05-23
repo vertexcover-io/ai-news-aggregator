@@ -100,6 +100,7 @@ function makeApp(
     sessionSecret: SESSION_SECRET,
     publicArchivesRouter: createPublicArchivesRouter(deps),
     archivesSearchRouter: new Hono(),
+    publicSourcesRouter: new Hono(),
     adminArchivesRouter: createAdminArchivesRouter(deps),
     adminRunsRouter: new Hono(),
     adminSocialCredentialsRouter: new Hono(),

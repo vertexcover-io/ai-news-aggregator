@@ -19,6 +19,7 @@ import {
   createDefaultAdminArchivesRouter,
 } from "@api/routes/archives.js";
 import { createDefaultArchivesSearchRouter } from "@api/routes/archives-search.js";
+import { createDefaultPublicSourcesRouter } from "@api/routes/sources.js";
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
 import { createDefaultAdminSocialCredentialsRouter } from "@api/routes/admin-social-credentials.js";
 import { createAdminRouter } from "@api/routes/admin.js";
@@ -125,6 +126,7 @@ const app = buildApp({
   sessionSecret,
   publicArchivesRouter: createDefaultPublicArchivesRouter(),
   archivesSearchRouter: createDefaultArchivesSearchRouter(),
+  publicSourcesRouter: createDefaultPublicSourcesRouter(),
   adminArchivesRouter: createDefaultAdminArchivesRouter(),
   adminRunsRouter: createDefaultAdminRunsRouter(),
   adminSocialCredentialsRouter: createDefaultAdminSocialCredentialsRouter(),
