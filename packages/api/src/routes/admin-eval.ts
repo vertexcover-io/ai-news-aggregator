@@ -158,6 +158,8 @@ function buildCalendarRunFixture(
     runId: detail.runId,
     model,
     exportedAt: new Date().toISOString(),
+    // detail.sourcePool is already deduped by getCompletedRunDetail (REQ-006),
+    // so dedupClusters is correctly empty — fixtureToCandidates won't re-add dupes.
     pool: detail.sourcePool,
     dedupClusters: [],
     originalRankerOutput: detail.previousRanking.map((item) => ({

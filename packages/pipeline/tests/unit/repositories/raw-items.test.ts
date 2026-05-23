@@ -136,6 +136,48 @@ function createUpsertCapturingDb(): {
   return { db, captured };
 }
 
+interface CapturedUpsertFull {
+  valuesArg: RawItemInsert[] | null;
+  setArg: Record<string, unknown> | null;
+  valuesCalled: boolean;
+}
+
+function createUpsertCapturingDbFull(): {
+  db: Pick<AppDb, "insert" | "select" | "update">;
+  captured: CapturedUpsertFull;
+} {
+  const captured: CapturedUpsertFull = {
+    valuesArg: null,
+    setArg: null,
+    valuesCalled: false,
+  };
+
+  const valuesBuilder = {
+    onConflictDoUpdate: (
+      arg: { set: Record<string, unknown> },
+    ): Promise<unknown> => {
+      captured.setArg = arg.set;
+      return Promise.resolve();
+    },
+  };
+
+  const insertBuilder = {
+    values: (items: RawItemInsert[]): typeof valuesBuilder => {
+      captured.valuesCalled = true;
+      captured.valuesArg = items;
+      return valuesBuilder;
+    },
+  };
+
+  const db = {
+    insert: vi.fn(() => insertBuilder),
+    select: vi.fn(),
+    update: vi.fn(),
+  } as unknown as Pick<AppDb, "insert" | "select" | "update">;
+
+  return { db, captured };
+}
+
 // Regression: re-collected items must surface in the next ranking window.
 // Bug: collectedAt was not bumped on conflict, so HN/Reddit re-runs were
 // silently filtered out by loadCandidatesSince's `gte(collectedAt, since)`.
@@ -164,6 +206,62 @@ describe("createRawItemsRepo.upsertItems", () => {
     if (captured.setArg === null) throw new Error("expected upsert set arg");
     expect(Object.keys(captured.setArg)).toContain("collectedAt");
     expect(captured.setArg.collectedAt).toBeInstanceOf(Date);
+  });
+
+  // VS-4a (REQ-002): upsertItems with items carrying runId persists run_id
+  it("VS-4a: includes runId in onConflictDoUpdate set clause when items carry runId", async () => {
+    const { db, captured } = createUpsertCapturingDbFull();
+    const repo = createRawItemsRepo(db);
+
+    const item: RawItemInsert = {
+      sourceType: "hn",
+      externalId: "42",
+      title: "Title",
+      url: "https://hn.example/42",
+      author: "bob",
+      content: null,
+      publishedAt: new Date("2026-05-01T00:00:00Z"),
+      collectedAt: new Date("2026-05-01T00:00:00Z"),
+      engagement: { points: 5, commentCount: 1 },
+      metadata: { comments: [] },
+      updatedAt: new Date("2026-05-01T00:00:00Z"),
+      runId: "run-abc",
+    };
+
+    await repo.upsertItems([item]);
+
+    expect(captured.valuesCalled).toBe(true);
+    if (captured.setArg === null) throw new Error("expected upsert set arg");
+    expect(Object.keys(captured.setArg)).toContain("runId");
+  });
+
+  // VS-4b (REQ-003): upsertItems called without runId does not error; item has no runId stamped
+  it("VS-4b: upsertItems succeeds when item has no runId (add-post path leaves run_id NULL)", async () => {
+    const { db, captured } = createUpsertCapturingDbFull();
+    const repo = createRawItemsRepo(db);
+
+    const item: RawItemInsert = {
+      sourceType: "blog",
+      externalId: "post-1",
+      title: "A blog post",
+      url: "https://blog.example/post-1",
+      author: null,
+      content: null,
+      publishedAt: null,
+      collectedAt: new Date("2026-05-01T00:00:00Z"),
+      engagement: { points: 0, commentCount: 0 },
+      metadata: { comments: [] },
+      updatedAt: new Date("2026-05-01T00:00:00Z"),
+      // no runId — add-post path
+    };
+
+    // Must not throw
+    await expect(repo.upsertItems([item])).resolves.toBeUndefined();
+
+    expect(captured.valuesCalled).toBe(true);
+    // The inserted item must not carry a runId (no stamping on this path)
+    if (captured.valuesArg === null) throw new Error("expected valuesArg");
+    expect(captured.valuesArg[0].runId).toBeUndefined();
   });
 });
 

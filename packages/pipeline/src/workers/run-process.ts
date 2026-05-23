@@ -296,7 +296,15 @@ async function runCollecting(
     return next;
   };
 
-  const collectorDeps = { rawItemsRepo: deps.rawItemsRepo, signal };
+  // Wrap rawItemsRepo so every item written during this run carries runId.
+  // Collectors stay untouched — the stamping happens at the single wiring point.
+  const runScopedRawItemsRepo: typeof deps.rawItemsRepo = {
+    ...deps.rawItemsRepo,
+    upsertItems: (items) =>
+      deps.rawItemsRepo.upsertItems(items.map((i) => ({ ...i, runId }))),
+  };
+
+  const collectorDeps = { rawItemsRepo: runScopedRawItemsRepo, signal };
   const enrichingDeps = { ...collectorDeps, enrichment: enrichmentCtx };
 
   type SourceKey = CollectorSourceType;
@@ -343,7 +351,7 @@ async function runCollecting(
         return deps.collectFns.twitter(
           {
             client,
-            rawItemsRepo: deps.rawItemsRepo,
+            rawItemsRepo: runScopedRawItemsRepo,
             signal,
             enrichment: enrichmentCtx,
           },
@@ -360,7 +368,7 @@ async function runCollecting(
       run: () =>
         deps.collectFns.webSearch(
           {
-            rawItemsRepo: deps.rawItemsRepo,
+            rawItemsRepo: runScopedRawItemsRepo,
             provider,
             signal,
             enrichment: enrichmentCtx,

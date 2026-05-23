@@ -34,8 +34,10 @@ export const rawItems = pgTable("raw_items", {
   metadata: jsonb("metadata").$type<RawItemMetadata>().notNull().default({ comments: [] }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  runId: uuid("run_id"),
 }, (t) => [
   unique("raw_items_source_type_external_id_unique").on(t.sourceType, t.externalId),
+  index("raw_items_run_id_idx").on(t.runId),
 ]);
 
 export type RawItemInsert = typeof rawItems.$inferInsert;

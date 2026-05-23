@@ -648,4 +648,32 @@ describe("EvalIndexPage", () => {
       expect(window.sessionStorage.getItem("eval-run-state")).toBeNull();
     });
   });
+
+  it("REQ-009: calendar run list row renders itemCount (deduped pool size) from the API", async () => {
+    // The mock returns: run 1 with itemCount=2, topN=2; run 2 with itemCount=1, topN=1.
+    // After Phase 3, itemCount == deduped pool size (not topN). The row must render
+    // "{itemCount} items · top {topN}" verbatim from the API values.
+    renderPage("/admin/eval?mode=ab");
+    await screen.findByTestId("prompt-editor-textarea");
+    const dateInput = screen.getByTestId<HTMLInputElement>("ab-date");
+    const { fireEvent: fe } = await import("@testing-library/react");
+    fe.change(dateInput, { target: { value: "2026-05-22" } });
+
+    // Wait for both run rows to appear
+    await screen.findByText("Morning digest");
+
+    // Run 1: itemCount=2, topN=2 → "2 items · top 2"
+    const run1Label = screen.getByRole("checkbox", {
+      name: /select calendar run 11111111/i,
+    }).closest("label");
+    expect(run1Label?.textContent).toContain("2 items");
+    expect(run1Label?.textContent).toContain("top 2");
+
+    // Run 2: itemCount=1, topN=1 → "1 items · top 1"
+    const run2Label = screen.getByRole("checkbox", {
+      name: /select calendar run 22222222/i,
+    }).closest("label");
+    expect(run2Label?.textContent).toContain("1 items");
+    expect(run2Label?.textContent).toContain("top 1");
+  });
 });

@@ -11,6 +11,7 @@ import type {
   CalendarRunSummary,
   FixtureItem,
 } from "@newsletter/shared/types/eval-ranking";
+import { dedupCandidates } from "@pipeline/processors/dedup.js";
 import type { RawItemRow } from "./raw-items.js";
 
 /**
@@ -37,10 +38,8 @@ export interface EvalExportsRepo {
 
   /**
    * Returns every `raw_items` row whose `collected_at` falls inside the
-   * inclusive range `[from, to]`. `raw_items` has no `run_id` column, so the
-   * pre-rank pool for a run is approximated by the items collected within the
-   * run's lifetime; callers should pass `startedAt` (or `createdAt` as a
-   * fallback) for `from` and `completedAt` for `to`.
+   * inclusive range `[from, to]`. Used as a fallback for pre-migration archives
+   * that have no `run_id` on their items.
    */
   findRawItemsInWindow(opts: { from: Date; to: Date }): Promise<RawItemRow[]>;
 
@@ -127,6 +126,62 @@ function buildPreviousRanking(
   });
 }
 
+const RAW_ITEMS_SELECT = {
+  id: rawItems.id,
+  sourceType: rawItems.sourceType,
+  externalId: rawItems.externalId,
+  title: rawItems.title,
+  url: rawItems.url,
+  sourceUrl: rawItems.sourceUrl,
+  author: rawItems.author,
+  content: rawItems.content,
+  imageUrl: rawItems.imageUrl,
+  publishedAt: rawItems.publishedAt,
+  engagement: rawItems.engagement,
+  metadata: rawItems.metadata,
+} as const;
+
+/**
+ * Loads raw_items by run_id. Falls back to the time-window query when no items
+ * are tagged with the run_id (pre-migration archives). Then deduplicates the
+ * resulting FixtureItems using dedupCandidates, coalescing null engagement to
+ * {points:0, commentCount:0} for the dedup input.
+ */
+async function loadDedupedPool(
+  db: Pick<AppDb, "select">,
+  archive: EvalExportArchiveRow,
+): Promise<FixtureItem[]> {
+  const byRunId = await db
+    .select(RAW_ITEMS_SELECT)
+    .from(rawItems)
+    .where(eq(rawItems.runId, archive.id));
+
+  const rows: RawItemRow[] =
+    byRunId.length > 0
+      ? byRunId
+      : await db
+          .select(RAW_ITEMS_SELECT)
+          .from(rawItems)
+          .where(
+            between(
+              rawItems.collectedAt,
+              archive.startedAt ?? archive.createdAt,
+              archive.completedAt,
+            ),
+          );
+
+  const fixtureItems = rows.map(buildFixtureItem);
+
+  const dedupInput = fixtureItems.map((f) => ({
+    id: f.rawItemId,
+    url: f.url,
+    engagement: f.engagement ?? { points: 0, commentCount: 0 },
+  }));
+  const survivors = dedupCandidates(dedupInput);
+  const survivingIds = new Set(survivors.map((s) => s.id));
+  return fixtureItems.filter((f) => survivingIds.has(f.rawItemId));
+}
+
 export function createEvalExportsRepo(
   db: Pick<AppDb, "select">,
 ): EvalExportsRepo {
@@ -165,20 +220,7 @@ export function createEvalExportsRepo(
 
     async findRawItemsByDate(dateISO) {
       const rows = await db
-        .select({
-          id: rawItems.id,
-          sourceType: rawItems.sourceType,
-          externalId: rawItems.externalId,
-          title: rawItems.title,
-          url: rawItems.url,
-          sourceUrl: rawItems.sourceUrl,
-          author: rawItems.author,
-          content: rawItems.content,
-          imageUrl: rawItems.imageUrl,
-          publishedAt: rawItems.publishedAt,
-          engagement: rawItems.engagement,
-          metadata: rawItems.metadata,
-        })
+        .select(RAW_ITEMS_SELECT)
         .from(rawItems)
         .where(
           sql`date_trunc('day', ${rawItems.collectedAt}) = ${dateISO}::date`,
@@ -188,24 +230,10 @@ export function createEvalExportsRepo(
     },
 
     async findRawItemsInWindow({ from, to }) {
-      const rows = await db
-        .select({
-          id: rawItems.id,
-          sourceType: rawItems.sourceType,
-          externalId: rawItems.externalId,
-          title: rawItems.title,
-          url: rawItems.url,
-          sourceUrl: rawItems.sourceUrl,
-          author: rawItems.author,
-          content: rawItems.content,
-          imageUrl: rawItems.imageUrl,
-          publishedAt: rawItems.publishedAt,
-          engagement: rawItems.engagement,
-          metadata: rawItems.metadata,
-        })
+      return db
+        .select(RAW_ITEMS_SELECT)
         .from(rawItems)
         .where(between(rawItems.collectedAt, from, to));
-      return rows;
     },
 
     async listCompletedRunsByDate(dateISO, timezone = "UTC") {
@@ -231,17 +259,32 @@ export function createEvalExportsRepo(
           ),
         )
         .orderBy(desc(runArchives.completedAt));
-      return rows.map((row) => ({
-        runId: row.id,
-        completedAt: row.completedAt.toISOString(),
-        createdAt: row.createdAt.toISOString(),
-        startedAt: toIso(row.startedAt),
-        itemCount: row.rankedItems.length,
-        topN: row.topN,
-        digestHeadline: row.digestHeadline,
-        digestSummary: row.digestSummary,
-        sourceTypes: row.sourceTypes ?? [],
-      }));
+
+      // Load deduped pool per run so itemCount == detail.itemCount (REQ-009)
+      const summaries = await Promise.all(
+        rows.map(async (row) => {
+          const archive: EvalExportArchiveRow = {
+            id: row.id,
+            rankedItems: row.rankedItems,
+            createdAt: row.createdAt,
+            completedAt: row.completedAt,
+            startedAt: row.startedAt,
+          };
+          const pool = await loadDedupedPool(db, archive);
+          return {
+            runId: row.id,
+            completedAt: row.completedAt.toISOString(),
+            createdAt: row.createdAt.toISOString(),
+            startedAt: toIso(row.startedAt),
+            itemCount: pool.length,
+            topN: row.topN,
+            digestHeadline: row.digestHeadline,
+            digestSummary: row.digestSummary,
+            sourceTypes: row.sourceTypes ?? [],
+          };
+        }),
+      );
+      return summaries;
     },
 
     async getCompletedRunDetail(runId) {
@@ -270,11 +313,8 @@ export function createEvalExportsRepo(
         completedAt: row.completedAt,
         startedAt: row.startedAt,
       };
-      const rawRows = await this.findRawItemsInWindow({
-        from: row.startedAt ?? row.createdAt,
-        to: row.completedAt,
-      });
-      const sourcePool = rawRows.map(buildFixtureItem);
+      // sourcePool is the deduped collected pool attributed by run_id (REQ-004/005/006)
+      const sourcePool = await loadDedupedPool(db, archive);
       return {
         runId: row.id,
         completedAt: row.completedAt.toISOString(),

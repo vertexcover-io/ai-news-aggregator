@@ -1614,6 +1614,56 @@ describe("run-process worker", () => {
     expect(twitter).not.toHaveBeenCalled();
     expect(hn).toHaveBeenCalledOnce();
   });
+
+  // VS-4c (REQ-002): the worker's collect path stamps the run's runId onto every upserted item
+  it("VS-4c: collector's rawItemsRepo.upsertItems receives items stamped with the run's runId", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+
+    // Capture items that the hn collector's rawItemsRepo.upsertItems receives
+    let capturedUpsertItems: { runId?: string | null }[] | null = null;
+    const fakeRawItemsRepo = {
+      upsertItems: vi.fn((items: { runId?: string | null }[]) => {
+        capturedUpsertItems = items;
+        return Promise.resolve();
+      }),
+      findExistingExternalIds: vi.fn(() => Promise.resolve(new Set<string>())),
+      findBySourceAndExternalId: vi.fn(() => Promise.resolve(null)),
+      findByIds: vi.fn(() => Promise.resolve([])),
+      updateRecapData: vi.fn(() => Promise.resolve()),
+    };
+
+    // The collector receives the (wrapped) rawItemsRepo and calls upsertItems with items it collected
+    const hn = vi.fn(
+      async (deps: { rawItemsRepo: typeof fakeRawItemsRepo }) => {
+        await deps.rawItemsRepo.upsertItems([
+          { sourceType: "hn", externalId: "1", title: "T", url: "https://x.com" } as never,
+        ]);
+        return { itemsFetched: 1, itemsStored: 1, failures: 0, durationMs: 1 };
+      },
+    );
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+      collectFns: { hn, reddit: vi.fn(), web: vi.fn() },
+      rawItemsRepo: fakeRawItemsRepo as never,
+    });
+
+    await worker.handler({
+      ...baseJob,
+      data: {
+        ...baseJob.data,
+        sourceTypes: ["hn"],
+        collectors: { hn: { sinceDays: 1 } as unknown as HnCollectConfig },
+      },
+    });
+
+    // The wrapped repo should have injected runId onto the item before delegating
+    if (capturedUpsertItems === null) throw new Error("expected capturedUpsertItems");
+    expect(capturedUpsertItems).toHaveLength(1);
+    expect(capturedUpsertItems[0].runId).toBe("run-1");
+  });
 });
 
 // ---- Cancellation tests (REQ-05 through REQ-09, EDGE-03/04/05) ----

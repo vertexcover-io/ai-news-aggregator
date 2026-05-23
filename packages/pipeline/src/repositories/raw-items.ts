@@ -45,6 +45,7 @@ export function createRawItemsRepo(
           engagement: sql.raw(`excluded.${rawItems.engagement.name}`),
           metadata: sql.raw(`excluded.${rawItems.metadata.name}`),
           imageUrl: sql.raw(`excluded.${rawItems.imageUrl.name}`),
+          runId: sql.raw(`excluded.${rawItems.runId.name}`),
           collectedAt: now,
           updatedAt: now,
         },
