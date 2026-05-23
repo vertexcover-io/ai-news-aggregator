@@ -15,14 +15,26 @@ describe("ElsewhereStrip", () => {
     expect(container.querySelector('[data-section="elsewhere"]')).not.toBeNull();
   });
 
-  it("renders two columns (must-read, built)", () => {
+  it("renders three columns (must-read, sources, built)", () => {
     const { container } = render(
       <MemoryRouter>
         <ElsewhereStrip />
       </MemoryRouter>,
     );
     expect(container.querySelector('[data-column="must-read"]')).not.toBeNull();
+    expect(container.querySelector('[data-column="sources"]')).not.toBeNull();
     expect(container.querySelector('[data-column="built"]')).not.toBeNull();
+  });
+
+  it("sources column links to /sources", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ElsewhereStrip />
+      </MemoryRouter>,
+    );
+    const col = container.querySelector('[data-column="sources"]');
+    const link = col?.querySelector("a");
+    expect(link?.getAttribute("href")).toBe("/sources");
   });
 
   it("must-read column links to /must-read", () => {

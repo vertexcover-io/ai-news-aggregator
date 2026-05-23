@@ -2,10 +2,11 @@ import type { ReactElement } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAdminSession } from "../../hooks/useAdminSession";
 
-type ActiveNavItem = "must-read" | "built" | null;
+type ActiveNavItem = "must-read" | "sources" | "built" | null;
 
 function deriveActive(pathname: string): ActiveNavItem {
   if (pathname.startsWith("/must-read")) return "must-read";
+  if (pathname.startsWith("/sources")) return "sources";
   if (pathname.startsWith("/built")) return "built";
   return null;
 }
@@ -77,6 +78,15 @@ export function Masthead(): ReactElement {
       >
         <NavLink to="/must-read" active={active === "must-read"} hideOnMobile>
           Must Read
+        </NavLink>
+        <span
+          aria-hidden="true"
+          className="hidden sm:inline mx-3 text-[#6b6557]"
+        >
+          ·
+        </span>
+        <NavLink to="/sources" active={active === "sources"} hideOnMobile>
+          Sources
         </NavLink>
         <span
           aria-hidden="true"

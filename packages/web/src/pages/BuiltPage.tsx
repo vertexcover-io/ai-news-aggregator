@@ -2,6 +2,7 @@ import { useEffect, type ReactElement } from "react";
 import { setMeta } from "../lib/meta";
 import { PipelineDiagram } from "../components/built/PipelineDiagram";
 import { DefinitionTable } from "../components/built/DefinitionTable";
+import { InlineSubscribeCard } from "../components/shell/InlineSubscribeCard";
 
 export const LAST_REVIEWED = "2026-05-23";
 
@@ -206,6 +207,7 @@ export function BuiltPage(): ReactElement {
           </div>
         </section>
       </section>
+      <InlineSubscribeCard />
     </main>
   );
 }

@@ -122,12 +122,12 @@ export function Footer(): ReactElement {
             MUST READ
           </Link>
           <span className="mx-2 text-[#e7e2d6]">·</span>
-          <Link to="/built" className="text-[#6b6557] hover:text-[#8c3a1e]">
-            BUILT
+          <Link to="/sources" className="text-[#6b6557] hover:text-[#8c3a1e]">
+            SOURCES
           </Link>
           <span className="mx-2 text-[#e7e2d6]">·</span>
-          <Link to="/rss" className="text-[#6b6557] hover:text-[#8c3a1e]">
-            RSS
+          <Link to="/built" className="text-[#6b6557] hover:text-[#8c3a1e]">
+            BUILT
           </Link>
         </div>
       </div>

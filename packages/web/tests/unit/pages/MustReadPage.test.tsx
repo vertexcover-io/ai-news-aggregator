@@ -73,14 +73,17 @@ describe("MustReadPage", () => {
     ).toBeTruthy();
   });
 
-  it("REQ-011: directory nav contains the four directory items", () => {
+  it("REQ-011: masthead nav contains Must Read · Sources · Built · Subscribe", () => {
     renderPage([]);
-    const nav = document.querySelector('nav[aria-label="Directory"]');
+    const nav = document.querySelector('nav[aria-label="Primary"]');
     expect(nav).not.toBeNull();
     const text = nav?.textContent ?? "";
-    for (const label of ["Today", "Must Read", "Built", "RSS"]) {
+    for (const label of ["Must Read", "Sources", "Built", "Subscribe"]) {
       expect(text).toContain(label);
     }
+    expect(text).not.toContain("RSS");
+    // The legacy DirectoryNav is gone; no second nav row exists.
+    expect(document.querySelector('nav[aria-label="Directory"]')).toBeNull();
   });
 
   it("REQ-012: entries render in addedAt DESC order", async () => {
