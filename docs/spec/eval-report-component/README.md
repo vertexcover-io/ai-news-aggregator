@@ -2,7 +2,7 @@
 
 **Verification verdict:** ✅ **PASS** — see [verification/proof-report.md](./verification/proof-report.md) (12/12 UI claims re-proven via Playwright against the live app).
 
-**PR:** _(to be filled after creation)_
+**PR:** https://github.com/vertexcover-io/ai-news-aggregator/pull/183
 
 ## What was built
 
