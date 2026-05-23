@@ -389,7 +389,7 @@ describe("RunDetailDrawer — Report tab", () => {
     fireEvent.click(await screen.findByTestId("drawer-tab-report"));
     const empty = await screen.findByTestId("drawer-report-empty");
     expect(empty.textContent).toBeTruthy();
-    expect(screen.queryByTestId("drawer-report-funnel")).toBeNull();
+    expect(screen.queryByTestId("report-tab-funnel")).toBeNull();
   });
 
   it("EDGE-005: a failed run shows the error banner and the failed empty-report, no funnel", async () => {
@@ -407,7 +407,7 @@ describe("RunDetailDrawer — Report tab", () => {
     expect(banner.textContent).toContain("token limit exceeded");
     fireEvent.click(await screen.findByTestId("drawer-tab-report"));
     await screen.findByTestId("drawer-report-empty");
-    expect(screen.queryByTestId("drawer-report-funnel")).toBeNull();
+    expect(screen.queryByTestId("report-tab-funnel")).toBeNull();
   });
 
   it("REQ-009 REQ-010: Mode B calendar run exposes per-run report and prompt diff", async () => {
