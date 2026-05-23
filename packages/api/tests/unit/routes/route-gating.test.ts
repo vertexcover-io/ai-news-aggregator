@@ -102,6 +102,7 @@ function makeApp(
     publicHomeRouter: new Hono(),
     publicMustReadRouter: new Hono(),
     archivesSearchRouter: new Hono(),
+    publicSourcesRouter: new Hono(),
     adminArchivesRouter: createAdminArchivesRouter(deps),
     adminRunsRouter: new Hono(),
     adminEvalRouter: new Hono(),

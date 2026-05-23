@@ -29,13 +29,74 @@ export interface ListForRunDeps {
   redis: Pick<IORedis, "get">;
 }
 
+export interface RawItemsAggregateRow {
+  sourceType: SourceType;
+  identifier: string;
+  url: string | null;
+  todayCount: number;
+  weekCount: number;
+  lastCollectedAt: Date | null;
+}
+
+export interface AggregateBySourceAndIdentifierOpts {
+  sinceWeek: Date;
+  sinceToday: Date;
+}
+
 export interface RawItemsRepo {
   findByIds(ids: number[]): Promise<RawItemRow[]>;
   listForRun(runId: string, deps: ListForRunDeps): Promise<RawItemSummary[]>;
+  aggregateBySourceAndIdentifier(
+    opts: AggregateBySourceAndIdentifierOpts,
+  ): Promise<RawItemsAggregateRow[]>;
+}
+
+// NOTE: The fallback chain (regex match → hostname → 'unknown') MUST mirror
+// JS deriveRawItemIdentifier exactly — see REQ-018. Cross-checked in the
+// e2e test (packages/api/tests/e2e/sources.e2e.test.ts), including
+// malformed-URL probes for reddit/twitter/github so the hostname fallback
+// stays aligned. Backslashes are doubled (\\.) so Postgres receives \. (a
+// literal dot) rather than the JS-collapsed `.` wildcard. The host-extract
+// regex excludes `:` so a URL with a port (e.g. example.com:8080) yields
+// `example.com`, matching the JS `URL.hostname` behaviour. The `(?i)`
+// inline flag makes every POSIX regex case-insensitive, mirroring the
+// JS `/i` flag — without it, `https://X.com/foo/status/1` would miss
+// the twitter branch and fall through to the hostname fallback.
+const DERIVED_IDENTIFIER_SQL = sql`CASE
+  WHEN source_type = 'hn' THEN 'news.ycombinator.com'
+  WHEN source_type = 'reddit' THEN
+    COALESCE(
+      'r/' || substring(COALESCE(url, source_url) FROM '(?i)/r/([^/?#]+)'),
+      lower(regexp_replace(substring(COALESCE(url, source_url) FROM '://([^/?#:]+)'), '^www\\.', '')),
+      'unknown'
+    )
+  WHEN source_type = 'twitter' THEN
+    COALESCE(
+      '@' || substring(COALESCE(url, source_url) FROM '(?i)(?:x\\.com|twitter\\.com)/([^/?#]+)/status/'),
+      lower(regexp_replace(substring(COALESCE(url, source_url) FROM '://([^/?#:]+)'), '^www\\.', '')),
+      'unknown'
+    )
+  WHEN source_type = 'github' THEN
+    COALESCE(
+      substring(COALESCE(url, source_url) FROM '(?i)github\\.com/([^/?#]+/[^/?#]+)'),
+      lower(regexp_replace(substring(COALESCE(url, source_url) FROM '://([^/?#:]+)'), '^www\\.', '')),
+      'unknown'
+    )
+  WHEN source_type IN ('rss', 'blog', 'newsletter') THEN
+    COALESCE(
+      lower(regexp_replace(substring(COALESCE(url, source_url) FROM '://([^/?#:]+)'), '^www\\.', '')),
+      'unknown'
+    )
+  WHEN source_type = 'web_search' THEN 'web search'
+  ELSE 'unknown'
+END`;
+
+export function deriveRawItemIdentifierSql(): typeof DERIVED_IDENTIFIER_SQL {
+  return DERIVED_IDENTIFIER_SQL;
 }
 
 export function createRawItemsRepo(
-  db: Pick<AppDb, "select">,
+  db: Pick<AppDb, "select" | "execute">,
 ): RawItemsRepo {
   return {
     async findByIds(ids: number[]): Promise<RawItemRow[]> {
@@ -62,6 +123,48 @@ export function createRawItemsRepo(
       callDeps: ListForRunDeps,
     ): Promise<RawItemSummary[]> {
       return listRawItemsForRun(runId, { db, ...callDeps });
+    },
+    async aggregateBySourceAndIdentifier(
+      opts: AggregateBySourceAndIdentifierOpts,
+    ): Promise<RawItemsAggregateRow[]> {
+      const rows = await db.execute<{
+        source_type: SourceType;
+        identifier: string;
+        url: string | null;
+        today_count: string | number;
+        week_count: string | number;
+        last_collected_at: Date | string | null;
+      }>(sql`
+        SELECT
+          source_type,
+          ${DERIVED_IDENTIFIER_SQL} AS identifier,
+          MAX(url) AS url,
+          COUNT(*) FILTER (WHERE collected_at >= ${opts.sinceToday.toISOString()}::timestamptz) AS today_count,
+          COUNT(*) AS week_count,
+          MAX(collected_at) AS last_collected_at
+        FROM raw_items
+        WHERE collected_at >= ${opts.sinceWeek.toISOString()}::timestamptz
+        GROUP BY source_type, identifier
+      `);
+      return rows.map((r) => ({
+        sourceType: r.source_type,
+        identifier: r.identifier,
+        url: r.url,
+        todayCount:
+          typeof r.today_count === "number"
+            ? r.today_count
+            : Number.parseInt(r.today_count, 10),
+        weekCount:
+          typeof r.week_count === "number"
+            ? r.week_count
+            : Number.parseInt(r.week_count, 10),
+        lastCollectedAt:
+          r.last_collected_at === null
+            ? null
+            : r.last_collected_at instanceof Date
+              ? r.last_collected_at
+              : new Date(r.last_collected_at),
+      }));
     },
   };
 }

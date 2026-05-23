@@ -1,0 +1,619 @@
+/**
+ * E2E tests for GET /api/sources/summary (auto-sources-page feature).
+ *
+ * Requires Postgres + Redis from `pnpm infra:up`.
+ *
+ * Also includes the REQ-018 JS↔SQL identifier cross-check, which exercises
+ * the Postgres CASE expression against the shared `deriveRawItemIdentifier`
+ * JS function for at least one URL per `SourceType`.
+ */
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+} from "vitest";
+import { Hono } from "hono";
+import { randomUUID } from "node:crypto";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { config } from "dotenv";
+import { eq, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
+import {
+  getDb,
+  rawItems,
+  runArchives,
+  userSettings,
+  type SourceType,
+} from "@newsletter/shared/db";
+import type {
+  RankedItemRef,
+  RunSourceTelemetry,
+  UserSettings,
+} from "@newsletter/shared";
+import { deriveRawItemIdentifier } from "@newsletter/shared/services";
+import { SOURCE_TYPE_ORDER } from "@newsletter/shared/constants";
+import {
+  createRawItemsRepo,
+  deriveRawItemIdentifierSql,
+} from "@api/repositories/raw-items.js";
+import { createRunArchivesRepo } from "@api/repositories/run-archives.js";
+import { createUserSettingsRepo } from "@api/repositories/user-settings.js";
+import { createPublicSourcesRouter } from "@api/routes/sources.js";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(HERE, "../../../..");
+config({ path: resolve(REPO_ROOT, ".env") });
+
+const db = getDb();
+const rawItemsRepo = createRawItemsRepo(db);
+const archiveRepo = createRunArchivesRepo(db);
+const settingsRepo = createUserSettingsRepo(db);
+
+const seedPrefix = `phase4-sources-${String(Date.now())}`;
+const seededRawItemIds = new Set<number>();
+const seededRunIds = new Set<string>();
+
+interface ScenarioResult {
+  readonly id: string;
+  readonly name: string;
+  passed: boolean;
+  error?: string;
+}
+
+const scenarios: ScenarioResult[] = [];
+const startedAt = new Date().toISOString();
+
+let savedRankingPrompt: string | null = null;
+let settingsRowExisted = false;
+let savedSettings: UserSettings | null = null;
+
+function buildApp(): Hono {
+  const app = new Hono();
+  app.route(
+    "/api/sources",
+    createPublicSourcesRouter({
+      getRawItemsRepo: () => rawItemsRepo,
+      getArchiveRepo: () => archiveRepo,
+      getSettingsRepo: () => settingsRepo,
+    }),
+  );
+  return app;
+}
+
+const summarySchema = z.object({
+  generatedAt: z.string(),
+  sections: z.array(
+    z.object({
+      sourceType: z.string(),
+      rows: z.array(
+        z.object({
+          identifier: z.string(),
+          displayName: z.string(),
+          url: z.string().nullable(),
+          todayCount: z.number(),
+          weekCount: z.number(),
+          inDigestCount: z.number(),
+          status: z.enum(["healthy", "idle", "failing"]),
+          lastFetchedAt: z.string().nullable(),
+        }),
+      ),
+    }),
+  ),
+  rankingPrompt: z.string(),
+});
+
+type SummaryResponse = z.infer<typeof summarySchema>;
+
+interface InsertRawItemArgs {
+  readonly sourceType: SourceType;
+  readonly externalId: string;
+  readonly url: string;
+  readonly title: string;
+  readonly collectedAt: Date;
+}
+
+async function insertRawItem(opts: InsertRawItemArgs): Promise<number> {
+  const [row] = await db
+    .insert(rawItems)
+    .values({
+      sourceType: opts.sourceType,
+      externalId: `${seedPrefix}-${opts.externalId}`,
+      title: opts.title,
+      url: opts.url,
+      author: "sources-e2e",
+      publishedAt: opts.collectedAt,
+      collectedAt: opts.collectedAt,
+      engagement: { points: 1, commentCount: 0 },
+      metadata: { comments: [] },
+    })
+    .returning({ id: rawItems.id });
+  seededRawItemIds.add(row.id);
+  return row.id;
+}
+
+interface InsertArchiveArgs {
+  readonly rankedRawItemIds: readonly number[];
+  readonly completedAt: Date;
+  readonly telemetry: RunSourceTelemetry | null;
+  readonly reviewed: boolean;
+}
+
+async function insertArchive(opts: InsertArchiveArgs): Promise<string> {
+  const runId = randomUUID();
+  const rankedItems: RankedItemRef[] = opts.rankedRawItemIds.map(
+    (rawItemId, index) => ({
+      rawItemId,
+      score: 1 - index * 0.1,
+      rationale: `ranked ${String(index + 1)}`,
+    }),
+  );
+  await db.insert(runArchives).values({
+    id: runId,
+    status: "completed",
+    rankedItems,
+    topN: rankedItems.length,
+    reviewed: opts.reviewed,
+    completedAt: opts.completedAt,
+    startedAt: new Date(opts.completedAt.getTime() - 60_000),
+    sourceTypes: ["hn", "reddit"],
+    digestHeadline: "Sources e2e digest",
+    digestSummary: "Sources e2e digest summary",
+    sourceTelemetry: opts.telemetry,
+  });
+  seededRunIds.add(runId);
+  return runId;
+}
+
+interface SeededIds {
+  readonly localLlamaToday: readonly number[];
+  readonly localLlamaWeek: readonly number[];
+  readonly hnToday: readonly number[];
+  readonly blogToday: number;
+  readonly twitterToday: number;
+  readonly noTelemetryBlog: number;
+  readonly machineLearningToday: readonly number[];
+  readonly archiveRunId: string;
+}
+
+async function seedSources(): Promise<SeededIds> {
+  const now = new Date();
+  const today = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0),
+  );
+  const fiveDaysAgo = new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000);
+
+  const localLlamaToday: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    localLlamaToday.push(
+      await insertRawItem({
+        sourceType: "reddit",
+        externalId: `localllama-today-${String(i)}`,
+        url: `https://reddit.com/r/LocalLLaMA/comments/today${String(i)}/post`,
+        title: `LocalLLaMA today ${String(i)}`,
+        collectedAt: today,
+      }),
+    );
+  }
+
+  const localLlamaWeek: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    localLlamaWeek.push(
+      await insertRawItem({
+        sourceType: "reddit",
+        externalId: `localllama-week-${String(i)}`,
+        url: `https://reddit.com/r/LocalLLaMA/comments/week${String(i)}/post`,
+        title: `LocalLLaMA week ${String(i)}`,
+        collectedAt: fiveDaysAgo,
+      }),
+    );
+  }
+
+  const hnToday: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    hnToday.push(
+      await insertRawItem({
+        sourceType: "hn",
+        externalId: `hn-today-${String(i)}`,
+        url: `https://news.ycombinator.com/item?id=${String(1000 + i)}`,
+        title: `HN today ${String(i)}`,
+        collectedAt: today,
+      }),
+    );
+  }
+
+  const blogToday = await insertRawItem({
+    sourceType: "blog",
+    externalId: "blog-today",
+    url: "https://anthropic.com/engineering/today-post",
+    title: "Anthropic engineering today",
+    collectedAt: today,
+  });
+
+  const twitterToday = await insertRawItem({
+    sourceType: "twitter",
+    externalId: "twitter-today",
+    url: "https://x.com/karpathy/status/1234567890",
+    title: "Karpathy tweet today",
+    collectedAt: today,
+  });
+
+  const noTelemetryBlog = await insertRawItem({
+    sourceType: "blog",
+    externalId: "noname-blog-today",
+    url: "https://noname.example.com/post",
+    title: "Noname blog post",
+    collectedAt: today,
+  });
+
+  const machineLearningToday: number[] = [];
+  for (let i = 0; i < 2; i++) {
+    machineLearningToday.push(
+      await insertRawItem({
+        sourceType: "reddit",
+        externalId: `ml-today-${String(i)}`,
+        url: `https://reddit.com/r/MachineLearning/comments/today${String(i)}/post`,
+        title: `MachineLearning today ${String(i)}`,
+        collectedAt: today,
+      }),
+    );
+  }
+
+  const telemetry: RunSourceTelemetry = {
+    sources: [
+      {
+        sourceType: "reddit",
+        identifier: "r/LocalLLaMA",
+        displayName: "r/LocalLLaMA",
+        itemsFetched: 5,
+        status: "completed",
+        errors: [],
+        retries: 0,
+        durationMs: 200,
+      },
+      {
+        sourceType: "hn",
+        identifier: "news.ycombinator.com",
+        displayName: "Hacker News",
+        itemsFetched: 4,
+        status: "completed",
+        errors: [],
+        retries: 0,
+        durationMs: 200,
+      },
+      {
+        sourceType: "reddit",
+        identifier: "r/MachineLearning",
+        displayName: "r/MachineLearning",
+        itemsFetched: 0,
+        status: "failed",
+        errors: ["boom"],
+        retries: 0,
+        durationMs: 200,
+      },
+    ],
+    totalItemsFetched: 9,
+    totalErrors: 1,
+  };
+
+  const archiveRunId = await insertArchive({
+    rankedRawItemIds: [
+      localLlamaToday[0],
+      localLlamaToday[1],
+      hnToday[0],
+    ],
+    completedAt: today,
+    telemetry,
+    reviewed: true,
+  });
+
+  return {
+    localLlamaToday,
+    localLlamaWeek,
+    hnToday,
+    blogToday,
+    twitterToday,
+    noTelemetryBlog,
+    machineLearningToday,
+    archiveRunId,
+  };
+}
+
+async function cleanupSeeds(): Promise<void> {
+  if (seededRunIds.size > 0) {
+    await db
+      .delete(runArchives)
+      .where(inArray(runArchives.id, [...seededRunIds]));
+    seededRunIds.clear();
+  }
+  if (seededRawItemIds.size > 0) {
+    await db.delete(rawItems).where(inArray(rawItems.id, [...seededRawItemIds]));
+    seededRawItemIds.clear();
+  }
+}
+
+function record(id: string, name: string, fn: () => void | Promise<void>) {
+  return async (): Promise<void> => {
+    try {
+      await fn();
+      scenarios.push({ id, name, passed: true });
+    } catch (err) {
+      scenarios.push({
+        id,
+        name,
+        passed: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  };
+}
+
+beforeAll(async () => {
+  const existing = await settingsRepo.get();
+  settingsRowExisted = existing !== null;
+  if (existing) {
+    savedSettings = existing;
+    savedRankingPrompt = existing.rankingPrompt;
+  }
+});
+
+afterEach(async () => {
+  await cleanupSeeds();
+});
+
+afterAll(async () => {
+  await cleanupSeeds();
+  if (savedSettings && savedRankingPrompt !== null) {
+    await settingsRepo.upsert({
+      ...savedSettings,
+      rankingPrompt: savedRankingPrompt,
+    });
+  } else if (!settingsRowExisted) {
+    await db.delete(userSettings).where(eq(userSettings.singleton, true));
+  }
+
+  const reportPath = resolve(
+    REPO_ROOT,
+    "docs/spec/auto-sources-page/e2e-report.json",
+  );
+  mkdirSync(dirname(reportPath), { recursive: true });
+  const passed = scenarios.filter((s) => s.passed).length;
+  const failed = scenarios.length - passed;
+  const report = {
+    spec: "auto-sources-page",
+    ranAt: startedAt,
+    passed,
+    failed,
+    scenarios,
+  };
+  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+});
+
+async function getSummary(): Promise<SummaryResponse> {
+  const res = await buildApp().request("/api/sources/summary");
+  expect(res.status).toBe(200);
+  return summarySchema.parse(await res.json());
+}
+
+function findRow(
+  summary: SummaryResponse,
+  sourceType: SourceType,
+  identifier: string,
+) {
+  const section = summary.sections.find((s) => s.sourceType === sourceType);
+  return section?.rows.find((r) => r.identifier === identifier);
+}
+
+describe("GET /api/sources/summary (e2e)", () => {
+  it(
+    "VS-1: returns sections in SOURCE_TYPE_ORDER, filtered to types with data",
+    record("VS-1", "section order", async () => {
+      await seedSources();
+      const body = await getSummary();
+      const order = body.sections.map((s) => s.sourceType);
+      const orderInExpected = order.map((t) =>
+        SOURCE_TYPE_ORDER.indexOf(t as SourceType),
+      );
+      const sorted = [...orderInExpected].sort((a, b) => a - b);
+      expect(orderInExpected).toEqual(sorted);
+      expect(order).toContain("hn");
+      expect(order).toContain("reddit");
+      expect(order).toContain("twitter");
+      expect(order).toContain("blog");
+      expect(order).not.toContain("github");
+      expect(order).not.toContain("rss");
+      expect(order).not.toContain("newsletter");
+      expect(order).not.toContain("web_search");
+    }),
+  );
+
+  it(
+    "VS-3: today/week/inDigest counts are accurate",
+    record("VS-3", "counts accurate", async () => {
+      await seedSources();
+      const body = await getSummary();
+      const reddit = findRow(body, "reddit", "r/LocalLLaMA");
+      expect(reddit).toBeDefined();
+      expect(reddit?.todayCount).toBe(5);
+      expect(reddit?.weekCount).toBe(8);
+      expect(reddit?.inDigestCount).toBe(2);
+      const hn = findRow(body, "hn", "news.ycombinator.com");
+      expect(hn?.inDigestCount).toBe(1);
+    }),
+  );
+
+  it(
+    "VS-4: telemetry.status=failed surfaces as failing",
+    record("VS-4", "status failing from telemetry", async () => {
+      await seedSources();
+      const body = await getSummary();
+      const ml = findRow(body, "reddit", "r/MachineLearning");
+      expect(ml).toBeDefined();
+      expect(ml?.status).toBe("failing");
+    }),
+  );
+
+  it(
+    "VS-6: rankingPrompt is the live user_settings value",
+    record("VS-6", "rankingPrompt live value", async () => {
+      const before = await settingsRepo.get();
+      if (!before) {
+        throw new Error(
+          "user_settings row missing — seed settings before running this scenario",
+        );
+      }
+      const initial = await getSummary();
+      expect(initial.rankingPrompt).toBe(before.rankingPrompt);
+
+      const sentinel = `SENTINEL_${randomUUID()}`;
+      await settingsRepo.upsert({ ...before, rankingPrompt: sentinel });
+      const after = await getSummary();
+      expect(after.rankingPrompt).toBe(sentinel);
+
+      await settingsRepo.upsert({ ...before, rankingPrompt: before.rankingPrompt });
+      const restored = await getSummary();
+      expect(restored.rankingPrompt).toBe(before.rankingPrompt);
+    }),
+  );
+
+  it(
+    "VS-8: rows sorted by todayCount desc, displayName asc",
+    record("VS-8", "row sort order", async () => {
+      await seedSources();
+      const body = await getSummary();
+      const reddit = body.sections.find((s) => s.sourceType === "reddit");
+      expect(reddit).toBeDefined();
+      const ids = reddit?.rows.map((r) => r.identifier) ?? [];
+      const localIdx = ids.indexOf("r/LocalLLaMA");
+      const mlIdx = ids.indexOf("r/MachineLearning");
+      expect(localIdx).toBeGreaterThanOrEqual(0);
+      expect(mlIdx).toBeGreaterThanOrEqual(0);
+      expect(localIdx).toBeLessThan(mlIdx);
+    }),
+  );
+
+  it(
+    "VS-9: displayName falls back to identifier when telemetry missing",
+    record("VS-9", "displayName fallback", async () => {
+      await seedSources();
+      const body = await getSummary();
+      const blog = findRow(body, "blog", "noname.example.com");
+      expect(blog).toBeDefined();
+      expect(blog?.displayName).toBe("noname.example.com");
+    }),
+  );
+
+  it(
+    "VS-10: public access without admin cookie returns 200 with valid shape",
+    record("VS-10", "public access", async () => {
+      await seedSources();
+      const res = await buildApp().request("/api/sources/summary");
+      expect(res.status).toBe(200);
+      const body = summarySchema.parse(await res.json());
+      expect(body.generatedAt).toMatch(/T\d{2}:\d{2}:\d{2}/);
+    }),
+  );
+});
+
+describe("JS↔SQL identifier cross-check (REQ-018 / VS-5)", () => {
+  interface ProbeCase {
+    readonly sourceType: SourceType;
+    readonly url: string;
+  }
+
+  const cases: readonly ProbeCase[] = [
+    // Canonical URLs (regex hits).
+    { sourceType: "hn", url: "https://news.ycombinator.com/item?id=42" },
+    {
+      sourceType: "reddit",
+      url: "https://reddit.com/r/LocalLLaMA/comments/abc/post",
+    },
+    {
+      sourceType: "twitter",
+      url: "https://x.com/karpathy/status/1234567890",
+    },
+    { sourceType: "rss", url: "https://www.theverge.com/rss/index.xml" },
+    {
+      sourceType: "github",
+      url: "https://github.com/anthropics/claude-code/blob/main/x.py",
+    },
+    {
+      sourceType: "blog",
+      url: "https://anthropic.com/engineering/post-x",
+    },
+    {
+      sourceType: "newsletter",
+      url: "https://stratechery.com/2026/example/",
+    },
+    {
+      sourceType: "web_search",
+      url: "https://example.com/from-search",
+    },
+    // Malformed URLs (regex miss → hostname fallback). REQ-018 requires
+    // the SQL CASE to fall through to hostname before 'unknown', matching
+    // JS deriveRawItemIdentifier's hostnameFallback.
+    {
+      sourceType: "reddit",
+      url: "https://example.com/no-r-prefix",
+    },
+    {
+      sourceType: "twitter",
+      url: "https://x.com/karpathy",
+    },
+    {
+      sourceType: "twitter",
+      url: "https://twitter.com/simonw",
+    },
+    { sourceType: "github", url: "https://github.com/" },
+    // www-prefixed hosts should be normalised to bare host.
+    { sourceType: "blog", url: "https://www.anthropic.com/engineering/post" },
+    { sourceType: "rss", url: "https://www.example.com/feed" },
+    // Uppercase hosts lowercased.
+    { sourceType: "blog", url: "https://BLOG.OpenAI.com/post" },
+    // Uppercase hostname in the keyword-matching regexes — JS uses /i, so
+    // SQL must also match case-insensitively (via the (?i) inline flag).
+    // Without it, these would fall through to the hostname fallback and
+    // diverge from JS.
+    {
+      sourceType: "twitter",
+      url: "https://X.com/karpathy/status/1234567890",
+    },
+    {
+      sourceType: "github",
+      url: "https://GitHub.com/anthropics/claude-code",
+    },
+    {
+      sourceType: "reddit",
+      url: "https://www.Reddit.com/R/LocalLLaMA/comments/abc",
+    },
+  ];
+
+  it(
+    "REQ-018: Postgres CASE expression matches JS deriveRawItemIdentifier",
+    record("VS-5", "JS vs SQL identifier alignment", async () => {
+      const caseSql = deriveRawItemIdentifierSql();
+      for (const c of cases) {
+        const rows = await db.execute<{ identifier: string }>(sql`
+          SELECT (${caseSql}) AS identifier
+          FROM (VALUES (${c.sourceType}::text, ${c.url}::text, NULL::text))
+            AS t(source_type, url, source_url)
+        `);
+        const sqlResult = rows[0]?.identifier;
+        const jsResult = deriveRawItemIdentifier({
+          sourceType: c.sourceType,
+          url: c.url,
+          sourceUrl: null,
+        });
+        expect(
+          sqlResult,
+          `mismatch for ${c.sourceType} ${c.url}`,
+        ).toBe(jsResult);
+      }
+    }),
+  );
+});

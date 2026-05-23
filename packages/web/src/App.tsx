@@ -9,6 +9,7 @@ import { MustReadPage } from "./pages/MustReadPage";
 import { BuiltPage } from "./pages/BuiltPage";
 import { RssPage } from "./pages/RssPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { SourcesPage } from "./pages/SourcesPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { ConfirmPage } from "./pages/ConfirmPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
@@ -34,6 +35,7 @@ export const routes: RouteObject[] = [
       { path: "/built", element: <BuiltPage /> },
       { path: "/rss", element: <RssPage /> },
       { path: "/archive/:runId", element: <ArchivePage /> },
+      { path: "/sources", element: <SourcesPage /> },
       { path: "/confirm", element: <ConfirmPage /> },
       { path: "/unsubscribe", element: <UnsubscribePage /> },
       { path: "/privacy", element: <PrivacyPolicyPage /> },

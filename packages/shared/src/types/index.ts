@@ -135,4 +135,5 @@ export * from "./notifications.js";
 export * from "./cost-breakdown.js";
 export * from "./must-read.js";
 export * from "./home.js";
+export * from "./sources-summary.js";
 export type { Candidate } from "./candidate.js";
