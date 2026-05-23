@@ -1,0 +1,153 @@
+{
+  "rankedItems": [
+    {
+      "rawItemId": 162,
+      "score": 8.30973892487738,
+      "rationale": "Specific hardware (6GB VRAM laptop), quantitative comparison (30% faster TG, 1.5x-1.75x speedup), and direct A/B testing against Unsloth baseline. Actionable for resource-constrained users.",
+      "title": "ByteShape Qwen3.6-35B-A3B: 30% Faster Than Unsloth on 6GB VRAM Laptop",
+      "summary": "ByteShape CPU-5 quantization (Q4_K_S-4.22bpw, 18.3GB) delivers 30% faster token generation than Unsloth UD-IQ4_XS on a 6GB VRAM RTX 3060 laptop with CPU offload, despite being slightly larger. Tested with 65k context, achieving consistent performance across multiple runs after system reboot.",
+      "bullets": [
+        "30% faster generation (TG) vs Unsloth UD-IQ4_XS on 6GB VRAM RTX 3060",
+        "ByteShape: 18.3GB vs Unsloth: 17.7GB (0.6GB larger, 30% speed gain)",
+        "105k context window achievable with Q4_0 Hadamard KV cache",
+        "Slightly lower prompt processing (PP) speed but better for interactive use"
+      ],
+      "bottomLine": "Concrete speedup metric on consumer hardware; ByteShape quants appear underrated vs imatrix alternatives."
+    },
+    {
+      "rawItemId": 165,
+      "score": 8.263411490886188,
+      "rationale": "Concrete release with specific model sizes (50M, 124M, 350M), training data (20B tokens), and reproducible code examples. First in SupraLabs scaling plan signals systematic approach to efficiency.",
+      "title": "Supra-50M Released: Compact 50M-Parameter Model with Competitive Benchmarks",
+      "summary": "SupraLabs released Supra-50M, a 50M-parameter causal language model trained on 20 billion tokens of high-quality educational text, achieving competitive results despite being significantly smaller than comparable open models. Includes BASE and INSTRUCT versions with custom byte-level BPE tokenizer trained on 500k documents from fineweb-edu.",
+      "bullets": [
+        "50M parameters trained on 20B tokens of educational web text",
+        "Custom BPE tokenizer from 500k fineweb-edu documents",
+        "Llama-style architecture with reproducible inference code provided",
+        "Part of SupraLabs Scaling Up Plan (124M and 350M variants announced)"
+      ],
+      "bottomLine": "Smallest model in digest with concrete training data and architecture details; validates efficiency-first approach at scale."
+    },
+    {
+      "rawItemId": 161,
+      "score": 8.089139611291985,
+      "rationale": "Specific hardware (RTX 3090), concrete speedups (4.40x-4.93x), and two model benchmarks with acceptance rates. DFlash implementation shows measurable inference optimization.",
+      "title": "BeeLlama v0.2.0: 4.4-4.9x Speedup on RTX 3090 via DFlash Optimization",
+      "summary": "BeeLlama v0.2.0 achieves 164 tps on Qwen 3.6 27B (4.40x baseline) and 177.8 tps on Gemma 4 31B (4.93x baseline) on single RTX 3090 through optimized DFlash implementation, cleaner prefill handling, and drafter K/V projection caching. Prompt processing speed remains near baseline.",
+      "bullets": [
+        "Qwen 3.6 27B: 164 tps (4.40x speedup) with 62% draft acceptance",
+        "Gemma 4 31B: 177.8 tps (4.93x speedup) with 71% draft acceptance",
+        "Prompt processing speed near baseline (no regression on prefill)",
+        "Supports DFlash GGUFs with upstream architecture"
+      ],
+      "bottomLine": "Speculative decoding with DFlash achieves 4-5x speedup without quality loss; practical for production inference."
+    },
+    {
+      "rawItemId": 170,
+      "score": 8.0559433533709,
+      "rationale": "Quantitative shootout with wikitext-2 eval (583 chunks), token accuracy percentages (89.4% vs 94%), and exponential error analysis. Shows UD-Q5_K_M wins on quality with minimal speed penalty.",
+      "title": "Qwen3-Coder Quantization Shootout: UD-Q5_K_M Wins on Quality Despite Size",
+      "summary": "Quantization comparison on Qwen3-Coder-Next across MXFP4_MOE, Q4_K_M, Q5_K_M, and UD-Q5_K_M using wikitext-2 evaluation (583 chunks, ctx 512) on 3× R9700 PRO. UD-Q5_K_M achieves 94% token accuracy vs 89.4% for MXFP4, translating to 0.21% vs 0.0014% perfect agreement over 100 tokens.",
+      "bullets": [
+        "UD-Q5_K_M: 94% token accuracy vs MXFP4: 89.4% (5% difference compounds to 500× by token 100)",
+        "100-token perfect agreement: UD-Q5 (0.21%) vs MXFP4 (0.0014%)",
+        "Speed penalty minimal: UD-Q5 within 9% of Q4_K_M on decode (decode-bound for interactive coding)",
+        "UD-Q5 only 22% larger than Q4_K_M but significantly better quality"
+      ],
+      "bottomLine": "Token accuracy compounds exponentially; UD-Q5_K_M's 5% improvement prevents hallucination cascades in long-form code generation."
+    },
+    {
+      "rawItemId": 164,
+      "score": 7.676537881718394,
+      "rationale": "Specific model size (27B), quantization (IQ4_KS, 14.1GB), context window (105k), and perplexity metric (7.4040 ± 0.02773). Addresses 16GB VRAM constraint with measurable quality.",
+      "title": "Qwen-27B-IQ4_KS: 14.1GB Quantization for 16GB VRAM with 105k Context",
+      "summary": "Qwen3.6-27B-i1-IQ4_KS quantization (14.1GB) achieves 105k context window on 16GB VRAM NVIDIA GPUs using ik_llama.cpp with Q4_0 Hadamard KV cache. Perplexity: 7.4040 ± 0.02773 over 12 chunks (65k context), 1.5x-1.75x faster than previous IQ4_XS variant with comparable quality.",
+      "bullets": [
+        "14.1GB model fits 16GB VRAM with 105k context (vs 14.7GB previous variant)",
+        "Perplexity: 7.4040 ± 0.02773 (65k context, 12 chunks)",
+        "1.5x-1.75x faster than IQ4_XS; eliminates blank output issues",
+        "Requires ik_llama.cpp (NVIDIA CUDA/CPU only, no AMD/Metal support)"
+      ],
+      "bottomLine": "Smallest 27B variant for 16GB VRAM; perplexity metric confirms quality parity with larger quantizations."
+    },
+    {
+      "rawItemId": 169,
+      "score": 7.418351327306883,
+      "rationale": "Concrete ML pipeline with F1 99%, model size (65MB ONNX int8), cost ($5 total API spend), and browser deployment. Demonstrates agentic tool effectiveness.",
+      "title": "Prompt Injection Detector: F1 99%, 65MB ONNX, Trained via ML-Agent + DeepSeek",
+      "summary": "Trained prompt injection classifier using ml-intern agent + DeepSeek v4 Flash. DistilBERT model achieves F1 99% on synthetic dataset, quantized to 65MB ONNX int8, runs in browser via Transformers.js v3. Total API cost: <$5 across all agent runs. Trained on deepset/prompt-injections and Shomi28/prompt-injection-dataset.",
+      "bullets": [
+        "F1 score: 99% (DistilBERT, CPU inference optimized)",
+        "Model size: 65MB ONNX int8 (browser-deployable)",
+        "Total API cost: <$5 (DeepSeek v4 Flash via OpenRouter)",
+        "Runs in browser with Transformers.js v3; no server required"
+      ],
+      "bottomLine": "Agentic training cost-effective for specialized tasks; F1 99% on security-critical classifier validates approach."
+    },
+    {
+      "rawItemId": 171,
+      "score": 7.241205982348898,
+      "rationale": "Technical deep-dive on asymmetric KV cache quantization with precision loss metric (1.3%) and memory savings (>50%). Addresses infrastructure bottleneck with concrete numbers.",
+      "title": "Asymmetric KV Cache Quantization: 1.3% Precision Loss, 50%+ Memory Savings",
+      "summary": "Asymmetric KV cache quantization (q8_0 keys, q4_0 values) in llama.cpp saves >50% memory vs f16/f16 with only 1.3% precision loss. Requires compilation flag or ik_llama.cpp; asymmetric combinations (q8_0/q4_0) currently cause CPU offload on CUDA unless FA_ALL_QUANTS enabled.",
+      "bullets": [
+        "Asymmetric q8/q4 KV cache: >50% memory savings vs f16/f16",
+        "Precision loss: only 1.3% (confirmed by user eval)",
+        "Current limitation: asymmetric combos trigger CPU offload on CUDA without FA_ALL_QUANTS",
+        "Workaround: compile with -DGGML_CUDA_FA_ALL_QUANTS=ON or use ik_llama.cpp"
+      ],
+      "bottomLine": "Infrastructure fix unlocks memory efficiency; 1.3% precision cost is negligible for most workloads."
+    },
+    {
+      "rawItemId": 160,
+      "score": 6.70241718837763,
+      "rationale": "Specific funding amount ($10.29B) and strategic commitment to open-source over commercialization. Signals sustained competition and resource availability for model development.",
+      "title": "DeepSeek Secures $10.29B Funding, Commits to Open-Source AI Development",
+      "summary": "DeepSeek founder Liang Wenfeng announced $10.29 billion financing round with explicit commitment to continue developing open-source AI models rather than pursuing short-term commercialization. Signals sustained investment in open-weight model development and AGI research.",
+      "bullets": [
+        "$10.29B funding round (largest for open-source AI to date)",
+        "Founder commits to open-source development over commercialization",
+        "Sustained competition for Qwen, Llama, and other open models",
+        "Resources enable long-term research vs quarterly revenue pressure"
+      ],
+      "bottomLine": "Largest open-source AI funding validates market; sustained competition drives innovation across all models."
+    },
+    {
+      "rawItemId": 167,
+      "score": 6.598935698474052,
+      "rationale": "Novel optimization for MoE models on 12GB VRAM: expert-first caching vs layer-first. Concrete speedup (19→26 t/s at 62% hit rate) with measurable break-even (42% hit rate).",
+      "title": "Expert-First MoE Caching: 12GB VRAM Optimization Boosts 19→26 t/s on RTX 2060",
+      "summary": "Experimental llama.cpp fork implements expert-first caching for MoE models on 12GB VRAM (RTX 2060). Instead of offloading complete layers to CPU, caches frequently-used experts in VRAM. Achieves 26 t/s at 62% expert hit rate (vs 19 t/s default --n-cpu-moe), with break-even at 42% hit rate. Supports 100k context with Q6 quantization.",
+      "bullets": [
+        "Expert-first caching: 26 t/s at 62% hit rate vs 19 t/s default (37% speedup)",
+        "Break-even: 42% expert hit rate (below this, CPU offload faster)",
+        "Targets Qwen 35B A3B (8 experts/token) and Gemma 26B A4B",
+        "100k context with Q6 quantization on RTX 2060 (12GB VRAM)"
+      ],
+      "bottomLine": "Novel MoE optimization for consumer GPUs; expert caching outperforms layer-first offloading on 12GB VRAM."
+    },
+    {
+      "rawItemId": 156,
+      "score": 6.425579821828825,
+      "rationale": "Specific model size (4B VLM), training compute (8xH100 for 3 days), and multiple quantization formats (GPTQ, W8A8, FP8, Q4, Q6). Actionable for document extraction.",
+      "title": "NuExtract3: 4B Open-Weight VLM for Document Extraction, Self-Hostable",
+      "summary": "NuExtract3, a 4B VLM based on Qwen3.5-4B under Apache-2.0 license, trained on 8xH100 for 3 days for document extraction, Markdown conversion, and structured data extraction. Supports multiple quantizations (GPTQ, W8A8, FP8, Q4, Q6) and runs on 4GB VRAM. Includes Safetensors, GGUF, and MLX weights.",
+      "bullets": [
+        "4B parameters (Qwen3.5-4B base) trained on 8xH100 for 3 days",
+        "Handles PDFs, screenshots, forms, tables, receipts, invoices, multi-page documents",
+        "Multiple quantizations: GPTQ, W8A8, FP8, Q4, Q6 (4GB VRAM minimum)",
+        "Apache-2.0 license; self-hostable via vLLM, SGLang, llama.cpp"
+      ],
+      "bottomLine": "Smallest VLM for document extraction; 4GB VRAM requirement enables edge deployment."
+    }
+  ],
+  "usage": {
+    "inputTokens": 25331,
+    "outputTokens": 3990,
+    "cacheCreationTokens": 0,
+    "cacheReadTokens": 0
+  },
+  "model": "claude-haiku-4-5-20251001",
+  "savedAt": "2026-05-22T20:19:22.792Z",
+  "promptHash": "e43567b98f51c21d"
+}

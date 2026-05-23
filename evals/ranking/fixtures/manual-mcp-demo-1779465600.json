@@ -1,0 +1,72 @@
+{
+  "fixtureId": "manual-mcp-demo-1779465600",
+  "source": "manual",
+  "date": null,
+  "runId": null,
+  "model": "claude-haiku-4-5-20251001",
+  "exportedAt": "2026-05-22T08:00:00.000Z",
+  "pool": [
+    {
+      "rawItemId": -1,
+      "title": "Claude 4.7 ships with 1M-token context window",
+      "url": "https://www.anthropic.com/news/claude-4-7",
+      "sourceType": "manual",
+      "publishedAt": "2026-05-20T10:00:00.000Z",
+      "content": "Anthropic announces Claude 4.7 Opus with 1 million token context window, available now in the API.",
+      "enrichedLink": null,
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": { "points": 0, "commentCount": 0 }
+    },
+    {
+      "rawItemId": -2,
+      "title": "OpenAI releases GPT-5 with improved reasoning",
+      "url": "https://openai.com/blog/gpt-5",
+      "sourceType": "manual",
+      "publishedAt": "2026-05-19T14:00:00.000Z",
+      "content": "GPT-5 delivers state-of-the-art reasoning across math, code, and science benchmarks.",
+      "enrichedLink": null,
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": { "points": 0, "commentCount": 0 }
+    },
+    {
+      "rawItemId": -3,
+      "title": "Local LLaMA-4 405B beats Claude on math benchmarks",
+      "url": "https://ai.meta.com/blog/llama-4",
+      "sourceType": "manual",
+      "publishedAt": "2026-05-18T09:00:00.000Z",
+      "content": "Meta's open-weights LLaMA-4 405B model surpasses Claude 4 Opus on AIME and IMO benchmarks.",
+      "enrichedLink": null,
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": { "points": 0, "commentCount": 0 }
+    },
+    {
+      "rawItemId": -4,
+      "title": "AI startup raises $50M Series B for code-gen agents",
+      "url": "https://techcrunch.com/2026/05/17/codeacme",
+      "sourceType": "manual",
+      "publishedAt": "2026-05-17T16:30:00.000Z",
+      "content": "CodeAcme raises $50M Series B led by Andreessen Horowitz to scale code-generation agents.",
+      "enrichedLink": null,
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": { "points": 0, "commentCount": 0 }
+    },
+    {
+      "rawItemId": -5,
+      "title": "Cursor adds background agents in 1.0 release",
+      "url": "https://cursor.sh/blog/1.0",
+      "sourceType": "manual",
+      "publishedAt": "2026-05-16T13:00:00.000Z",
+      "content": "Cursor 1.0 introduces background agents that run long-form coding tasks asynchronously.",
+      "enrichedLink": null,
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": { "points": 0, "commentCount": 0 }
+    }
+  ],
+  "dedupClusters": [],
+  "originalRankerOutput": null
+}

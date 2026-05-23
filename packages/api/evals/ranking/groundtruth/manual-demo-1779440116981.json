@@ -1,0 +1,69 @@
+{
+  "fixtureId": "manual-demo-1779440116981",
+  "gradedBy": [
+    "ritesh"
+  ],
+  "gradedAt": "2026-05-22T09:18:21.025Z",
+  "labels": [
+    {
+      "rawItemId": -1,
+      "tier": "drop"
+    },
+    {
+      "rawItemId": -2,
+      "tier": "nice"
+    },
+    {
+      "rawItemId": -3,
+      "tier": "drop"
+    },
+    {
+      "rawItemId": -4,
+      "tier": "drop"
+    },
+    {
+      "rawItemId": -5,
+      "tier": "must"
+    },
+    {
+      "rawItemId": -6,
+      "tier": "nice"
+    },
+    {
+      "rawItemId": -7,
+      "tier": "drop"
+    },
+    {
+      "rawItemId": -8,
+      "tier": "must"
+    },
+    {
+      "rawItemId": -9,
+      "tier": "nice"
+    },
+    {
+      "rawItemId": -10,
+      "tier": "drop"
+    },
+    {
+      "rawItemId": -11,
+      "tier": "nice"
+    },
+    {
+      "rawItemId": -12,
+      "tier": "nice"
+    },
+    {
+      "rawItemId": -13,
+      "tier": "drop"
+    },
+    {
+      "rawItemId": -14,
+      "tier": "drop"
+    },
+    {
+      "rawItemId": -15,
+      "tier": "must"
+    }
+  ]
+}

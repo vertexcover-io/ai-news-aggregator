@@ -1,0 +1,73 @@
+{
+  "rankedItems": [
+    {
+      "rawItemId": -2,
+      "score": 6.592088057278861,
+      "rationale": "Highest novelty and actionability: concrete metrics (35 people, 3M users, $124M raised, 100K weekly signups, 70% margins, 3-month payback), detailed infrastructure strategy for agent-native world, specific technical solutions (Temporal, Nixpacks, feature flags), and clear business model differentiation.",
+      "title": "Railway: The Agent-Native Cloud — Jake Cooper",
+      "summary": "Railway raised $124M and operates with 35 people serving 3 million users, adding 100,000 signups weekly. The company built bare metal data centers with 70% margins and 3-month payback periods, positioning itself as infrastructure for an agent-native future. Founder Jake Cooper discusses how Railway is rebuilding cloud infrastructure from scratch with feature flags, progressive rollouts, and agent-safe production forks.",
+      "bullets": [
+        "35-person team supports 3M users with 100K weekly signups",
+        "Bare metal data centers achieve 70% margins and 3-month cloud payback",
+        "$124M raised; hardware value now exceeds total capital raised",
+        "Own-metal infrastructure enables agent-native deployment at scale",
+        "Feature flags and production forks designed for AI agent safety"
+      ],
+      "bottomLine": "Railway represents a concrete shift in infrastructure thinking: moving from hyperscaler dependency to purpose-built systems for autonomous agents, with proven unit economics and rapid user growth."
+    },
+    {
+      "rawItemId": -3,
+      "score": 5.803903615647693,
+      "rationale": "High signal with concrete numbers: 8,000 layoffs (10% of 80K workforce), 7,000 redirected to AI teams, $125-145B capex (2x 2025), specific severance details (16 weeks base + 2 weeks per year, 18 months health), clear strategic pivot with measurable scope.",
+      "title": "Meta Restructures: 8,000 Layoffs, 7,000 Redirected to AI Teams",
+      "summary": "Meta began notifying 8,000 employees (10% of ~80,000 workforce) of layoffs on May 19, with an additional 7,000 workers redirected to new AI-focused teams including Applied AI Engineering and Agent Transformation XFN. The restructuring affects roughly 20% of payroll. Meta's 2026 capex is projected at $125-145B, more than double 2025 spending, signaling massive AI infrastructure investment.",
+      "bullets": [
+        "8,000 layoffs (10% of workforce); 7,000 redirected to AI teams = 20% payroll impact",
+        "$125-145B capex in 2026 vs. ~$60B in 2025 (2x increase)",
+        "US severance: 16 weeks base + 2 weeks per year; 18 months health coverage",
+        "Engineering and product divisions bearing disproportionate cuts",
+        "Largest companywide cuts since 2022-2023 'Year of Efficiency' (21,000 positions)"
+      ],
+      "bottomLine": "Meta's restructuring quantifies the AI arms race: doubling capex while cutting 10% of workforce signals aggressive infrastructure buildout and shift toward AI-native organizational structure."
+    },
+    {
+      "rawItemId": -1,
+      "score": 2.7181294825987643,
+      "rationale": "Lower novelty and actionability: focuses on incremental improvement in AI-generated choreography quality, lacks concrete metrics on adoption or commercial viability, mentions known technical limitations (color detail, grading artifacts) without quantified progress, niche creative application.",
+      "title": "AMOK: AI-Generated Choreography Study",
+      "summary": "A study on AI-generated choreographies using Seedance 2 on Uisato Studio shows improving results, though significant limitations remain. Primary challenges include insufficient color detail and known grading artifacts in the model, with hopes for fixes in upcoming version 2.1.",
+      "bullets": [
+        "AI choreography generation approaching compelling results",
+        "Main limitation: absence of detailed color in outputs",
+        "Known grading artifacts persist in current model",
+        "Version 2.1 expected to address technical limitations",
+        "Niche creative application of generative AI"
+      ],
+      "bottomLine": "Incremental progress in creative AI generation, but lacks commercial metrics, adoption data, or clear path to mainstream application; primarily of interest to choreography and dance communities."
+    },
+    {
+      "rawItemId": -4,
+      "score": 1.7162154046291755,
+      "rationale": "Moderate novelty with healthcare application angle; concrete problem scale (4.5B people) and economic projection ($47T by 2030), but lacks specific implementation metrics, adoption numbers, or cost savings data. Actionable as trend but needs more granular data.",
+      "title": "Virtual Health Closing 4.5B-Person Healthcare Access Gap",
+      "summary": "Approximately 4.5 billion people lack access to essential health services. Virtual health technology offers a scalable solution, with healthcare's economic burden projected to reach $47 trillion by 2030. Hospitals in Saudi Arabia and the US are implementing virtual health systems, providing case studies for global adoption.",
+      "bullets": [
+        "4.5 billion people lack access to essential health services",
+        "Healthcare economic burden projected at $47 trillion by 2030",
+        "Hospitals in Saudi Arabia and US implementing virtual health systems",
+        "Technology can reduce costs while improving care delivery",
+        "Scalable path to closing global healthcare access gap"
+      ],
+      "bottomLine": "Virtual health represents a high-impact application area with massive addressable market, though specific adoption metrics and cost-benefit data are needed to assess near-term momentum."
+    }
+  ],
+  "usage": {
+    "inputTokens": 4628,
+    "outputTokens": 1368,
+    "cacheCreationTokens": 0,
+    "cacheReadTokens": 0
+  },
+  "model": "claude-haiku-4-5-20251001",
+  "savedAt": "2026-05-22T12:57:08.919Z",
+  "promptHash": "032950749f4a98ff"
+}

@@ -1,0 +1,95 @@
+{
+  "rankedItems": [
+    {
+      "rawItemId": -3,
+      "score": 6.0905161398772085,
+      "rationale": "Concrete product launch with clear use cases (designs, prototypes, slides); part of broader ecosystem news including 11 named partners in security initiative; actionable for designers and enterprises.",
+      "title": "Introducing Claude Design by Anthropic Labs",
+      "summary": "Anthropic launched Claude Design, enabling users to collaborate with Claude on visual work including designs, prototypes, slides, and one-pagers. This represents expansion into creative/design workflows.",
+      "bullets": [
+        "New product: Claude Design for visual collaboration",
+        "Supports designs, prototypes, slides, one-pagers",
+        "Part of Anthropic Labs initiative",
+        "Targets creative professionals and teams"
+      ],
+      "bottomLine": "Significant product expansion into design space with clear use cases; actionable for creative professionals seeking AI-assisted design tools."
+    },
+    {
+      "rawItemId": -3,
+      "score": 5.8755567467050716,
+      "rationale": "Concrete partnership with 11 named organizations (AWS, Apple, Broadcom, Cisco, CrowdStrike, Google, JPMorganChase, Linux Foundation, Microsoft, NVIDIA, Palo Alto Networks); addresses critical infrastructure security; high signal for enterprise adoption.",
+      "title": "Project Glasswing: Industry Coalition for Software Security",
+      "summary": "Project Glasswing brings together 11 major technology companies including Amazon, Apple, Google, Microsoft, and NVIDIA to secure the world's most critical software infrastructure.",
+      "bullets": [
+        "11 major tech companies participating",
+        "Partners: AWS, Apple, Broadcom, Cisco, CrowdStrike, Google, JPMorganChase, Linux Foundation, Microsoft, NVIDIA, Palo Alto Networks",
+        "Focus: Securing critical software globally",
+        "Industry-wide security initiative"
+      ],
+      "bottomLine": "Major industry coalition addressing software security; significant for enterprises and security professionals; demonstrates broad tech sector alignment on critical infrastructure protection."
+    },
+    {
+      "rawItemId": -3,
+      "score": 5.588944222475556,
+      "rationale": "Concrete data point: 81,000 participants in qualitative study; largest and most multilingual study of its kind; provides actionable insights into user behavior and concerns; clear strategic positioning.",
+      "title": "What 81,000 People Want from AI",
+      "summary": "Anthropic conducted the largest multilingual qualitative study of its kind, surveying 81,000 Claude.ai users about their AI usage, aspirations, and concerns.",
+      "bullets": [
+        "81,000 participants surveyed",
+        "Largest qualitative AI study of its kind",
+        "Multilingual research",
+        "Covers user dreams and fears about AI"
+      ],
+      "bottomLine": "Significant user research providing insights into AI adoption patterns and concerns; actionable for product development and understanding market sentiment."
+    },
+    {
+      "rawItemId": -3,
+      "score": 5.37398482930342,
+      "rationale": "Clear strategic positioning: ad-free model as competitive differentiator; addresses trust concerns; explains business model rationale; actionable for understanding Anthropic's go-to-market strategy.",
+      "title": "Claude Remains Ad-Free by Design",
+      "summary": "Anthropic committed to keeping Claude ad-free, explaining that advertising incentives are incompatible with building a genuinely helpful AI assistant while maintaining user trust.",
+      "bullets": [
+        "Ad-free commitment",
+        "Trust-based business model",
+        "Advertising incompatible with helpful AI",
+        "Plans to expand access without compromising trust"
+      ],
+      "bottomLine": "Strategic positioning emphasizing trust and user experience over ad-based monetization; differentiates from competitors; relevant for understanding AI assistant market dynamics."
+    },
+    {
+      "rawItemId": -2,
+      "score": 1.5047157522049575,
+      "rationale": "Reddit post with minimal content; appears to be test post; no concrete information, data, or actionable insights; low signal-to-noise ratio.",
+      "title": "Reddit: LocalLLaMA Test Post",
+      "summary": "A test post in the LocalLLaMA subreddit with minimal substantive content.",
+      "bullets": [
+        "Appears to be test post",
+        "Minimal content provided",
+        "Community discussion forum"
+      ],
+      "bottomLine": "Low signal content; not actionable for strategic decision-making."
+    },
+    {
+      "rawItemId": -1,
+      "score": 1.2897563590328207,
+      "rationale": "Hacker News link without content; no body text provided; cannot assess novelty, signal, or actionability; insufficient information.",
+      "title": "Hacker News Discussion",
+      "summary": "A Hacker News discussion thread without accessible content details.",
+      "bullets": [
+        "Link only, no content provided",
+        "Cannot assess discussion quality",
+        "Requires direct access to evaluate"
+      ],
+      "bottomLine": "Insufficient information to evaluate; requires direct access to source material."
+    }
+  ],
+  "usage": {
+    "inputTokens": 8111,
+    "outputTokens": 1103,
+    "cacheCreationTokens": 0,
+    "cacheReadTokens": 0
+  },
+  "model": "claude-haiku-4-5-20251001",
+  "savedAt": "2026-05-22T17:28:19.687Z",
+  "promptHash": "032950749f4a98ff"
+}
