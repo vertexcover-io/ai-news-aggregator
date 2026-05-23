@@ -4,11 +4,14 @@ import type { MiddlewareHandler } from "hono";
 export interface BuildAppDeps {
   sessionSecret: string;
   publicArchivesRouter: Hono;
+  publicHomeRouter: Hono;
+  publicMustReadRouter: Hono;
   archivesSearchRouter: Hono;
   adminArchivesRouter: Hono;
   adminRunsRouter: Hono;
   adminEvalRouter: Hono;
   adminSocialCredentialsRouter: Hono;
+  adminMustReadRouter: Hono;
   runsRouter: Hono;
   settingsRouter: Hono;
   /**
@@ -62,6 +65,10 @@ export function buildApp(deps: BuildAppDeps): Hono {
   app.route("/api/archives/search", deps.archivesSearchRouter);
   app.route("/api/archives", deps.publicArchivesRouter);
 
+  // Public home composite + must-read listing.
+  app.route("/api/home", deps.publicHomeRouter);
+  app.route("/api/must-read", deps.publicMustReadRouter);
+
   // Path-aware admin gate: login/logout skip, everything else requires a
   // valid admin_session cookie.
   const gate = deps.requireAdminFactory(deps.sessionSecret);
@@ -81,6 +88,7 @@ export function buildApp(deps: BuildAppDeps): Hono {
   adminApp.route("/runs", deps.adminRunsRouter);
   adminApp.route("/eval", deps.adminEvalRouter);
   adminApp.route("/social-credentials", deps.adminSocialCredentialsRouter);
+  adminApp.route("/must-read", deps.adminMustReadRouter);
   adminApp.route("/analytics", deps.analyticsRouter);
   app.route("/api/admin", adminApp);
 

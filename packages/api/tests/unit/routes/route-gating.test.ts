@@ -99,11 +99,14 @@ function makeApp(
   return buildApp({
     sessionSecret: SESSION_SECRET,
     publicArchivesRouter: createPublicArchivesRouter(deps),
+    publicHomeRouter: new Hono(),
+    publicMustReadRouter: new Hono(),
     archivesSearchRouter: new Hono(),
     adminArchivesRouter: createAdminArchivesRouter(deps),
     adminRunsRouter: new Hono(),
     adminEvalRouter: new Hono(),
     adminSocialCredentialsRouter: new Hono(),
+    adminMustReadRouter: new Hono(),
     runsRouter: makeStubRunsRouter(),
     settingsRouter: makeStubSettingsRouter(),
     adminRouter: createAdminRouter({
