@@ -79,4 +79,58 @@ if (typeof window !== "undefined") {
   });
 }
 
+// jsdom's localStorage proxy in this Node/jsdom combo is missing methods. Replace the
+// whole object with a Map-backed in-memory polyfill so tests get a working Storage.
+if (typeof window !== "undefined") {
+  const store = new Map<string, string>();
+  const storage: Storage = {
+    get length(): number {
+      return store.size;
+    },
+    clear(): void {
+      store.clear();
+    },
+    getItem(key: string): string | null {
+      return store.get(key) ?? null;
+    },
+    key(index: number): string | null {
+      return Array.from(store.keys())[index] ?? null;
+    },
+    removeItem(key: string): void {
+      store.delete(key);
+    },
+    setItem(key: string, value: string): void {
+      store.set(key, value);
+    },
+  };
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    writable: true,
+    value: storage,
+  });
+  Object.defineProperty(window, "sessionStorage", {
+    configurable: true,
+    writable: true,
+    value: storage,
+  });
+}
+
+// React Router v7's startNavigation creates a Request with a custom AbortSignal that
+// jsdom's undici doesn't accept ("Expected signal to be an instance of AbortSignal").
+// When a test triggers a navigate() after the assertion has settled (e.g. post-mutation
+// redirect), the rejection fires after teardown and vitest reports it as unhandled even
+// though the test itself passed. Filter only this specific known-harmless rejection.
+if (typeof process !== "undefined") {
+  process.on("unhandledRejection", (reason: unknown) => {
+    if (
+      reason instanceof TypeError &&
+      reason.message.includes("Expected signal") &&
+      reason.message.includes("AbortSignal")
+    ) {
+      return;
+    }
+    throw reason;
+  });
+}
+
 export {};
