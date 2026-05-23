@@ -1,7 +1,10 @@
 import { and, asc, between, desc, eq, gte, sql } from "drizzle-orm";
 import { rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
-import { safeTimezone } from "@newsletter/shared";
+import {
+  endOfDateInTimezone,
+  startOfDateInTimezone,
+} from "@newsletter/shared";
 import type {
   CalendarRankingItem,
   CalendarRunDetail,
@@ -50,9 +53,9 @@ export interface EvalExportsRepo {
   findRawItemsByDate(dateISO: string): Promise<RawItemRow[]>;
 
   /**
-   * Returns completed newsletter archives for a UTC calendar day
-   * (`YYYY-MM-DD`), ordered by completion time descending. This powers
-   * calendar eval run selection and fixture-import browsing.
+   * Returns completed newsletter archives for a calendar day in the selected
+   * admin timezone (`YYYY-MM-DD`), ordered by completion time descending. This
+   * powers calendar eval run selection and fixture-import browsing.
    */
   listCompletedRunsByDate(
     dateISO: string,
@@ -64,6 +67,21 @@ export interface EvalExportsRepo {
    * source pool from raw_items collected during the run window.
    */
   getCompletedRunDetail(runId: string): Promise<CalendarRunDetail | null>;
+}
+
+export interface CompletedRunsDateWindow {
+  readonly from: Date;
+  readonly to: Date;
+}
+
+export function completedRunsDateWindow(
+  dateISO: string,
+  timezone: string | null | undefined,
+): CompletedRunsDateWindow | null {
+  const from = startOfDateInTimezone(dateISO, timezone);
+  const to = endOfDateInTimezone(dateISO, timezone);
+  if (from === null || to === null) return null;
+  return { from, to };
 }
 
 function toIso(value: Date | null): string | null {
@@ -191,7 +209,8 @@ export function createEvalExportsRepo(
     },
 
     async listCompletedRunsByDate(dateISO, timezone = "UTC") {
-      const tz = safeTimezone(timezone);
+      const window = completedRunsDateWindow(dateISO, timezone);
+      if (window === null) return [];
       const rows = await db
         .select({
           id: runArchives.id,
@@ -208,7 +227,7 @@ export function createEvalExportsRepo(
         .where(
           and(
             eq(runArchives.status, "completed"),
-            sql`((${runArchives.completedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz})::date = ${dateISO}::date`,
+            between(runArchives.completedAt, window.from, window.to),
           ),
         )
         .orderBy(desc(runArchives.completedAt));
