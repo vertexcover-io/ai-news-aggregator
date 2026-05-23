@@ -9,6 +9,8 @@ import type {
 import type { RunArchivesRepo } from "@api/repositories/run-archives.js";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
 
+const NOW = new Date("2026-05-23T12:00:00.000Z");
+
 function makeRawItemsRepo(agg: RawItemsAggregateRow[]): RawItemsRepo {
   return {
     findByIds: () => Promise.resolve([]),
@@ -37,86 +39,142 @@ function makeRunArchivesRepo(): RunArchivesRepo {
     delete: () => Promise.resolve({ deleted: false, removedEmailSends: 0 }),
     getReviewedDigestCountsByDerivedSource: () => Promise.resolve(new Map()),
     getRecentSourceTelemetry: () => Promise.resolve(new Map()),
+    getSourceFailuresInRange: () => Promise.resolve([]),
+    countCompletedRunsInRange: () => Promise.resolve(0),
   };
 }
 
-function makeSettingsRepo(rankingPrompt: string): UserSettingsRepo {
+function makeSettingsRepo(): UserSettingsRepo {
   return {
     get: () =>
-      Promise.resolve({ rankingPrompt } as unknown as UserSettings),
+      Promise.resolve({
+        id: "settings",
+        topN: 12,
+        halfLifeHours: 24,
+        hnEnabled: true,
+        hnConfig: null,
+        redditEnabled: false,
+        redditConfig: null,
+        webEnabled: false,
+        webConfig: null,
+        twitterEnabled: false,
+        twitterConfig: null,
+        webSearchEnabled: false,
+        webSearchConfig: null,
+        posthogEnabled: false,
+        posthogProjectToken: null,
+        posthogHost: null,
+        scheduleTime: "07:00",
+        pipelineTime: "07:00",
+        emailTime: "07:30",
+        linkedinTime: "07:45",
+        twitterTime: "08:00",
+        scheduleTimezone: "UTC",
+        scheduleEnabled: false,
+        emailEnabled: true,
+        linkedinEnabled: true,
+        twitterPostEnabled: true,
+        autoReview: false,
+        rankingPrompt: "the prompt",
+        updatedAt: NOW.toISOString(),
+      } as UserSettings),
     upsert: () => {
       throw new Error("n/a");
     },
   };
 }
 
-describe("GET /api/sources/summary", () => {
-  function buildAppWith(agg: RawItemsAggregateRow[]): Hono {
-    const router = createPublicSourcesRouter({
-      getRawItemsRepo: () => makeRawItemsRepo(agg),
-      getArchiveRepo: () => makeRunArchivesRepo(),
-      getSettingsRepo: () => makeSettingsRepo("the prompt"),
-    });
-    const app = new Hono();
-    app.route("/api/sources", router);
-    return app;
-  }
+function buildApp(agg: RawItemsAggregateRow[]): Hono {
+  const router = createPublicSourcesRouter({
+    getRawItemsRepo: () => makeRawItemsRepo(agg),
+    getArchiveRepo: () => makeRunArchivesRepo(),
+    getSettingsRepo: () => makeSettingsRepo(),
+    now: () => NOW,
+  });
+  const app = new Hono();
+  app.route("/api/sources", router);
+  return app;
+}
 
-  it("returns 200 with response shape matching REQ-012", async () => {
+describe("GET /api/sources/summary", () => {
+  it("returns 200 with response shape including range, configured, failures", async () => {
     const agg: RawItemsAggregateRow[] = [
       {
         sourceType: "hn",
         identifier: "news.ycombinator.com",
         url: "https://news.ycombinator.com/item?id=1",
-        todayCount: 3,
-        weekCount: 8,
+        fetchedCount: 8,
         lastCollectedAt: new Date("2026-05-23T10:00:00.000Z"),
       },
     ];
-    const app = buildAppWith(agg);
+    const app = buildApp(agg);
     const res = await app.request("/api/sources/summary");
     expect(res.status).toBe(200);
-    interface ResponseRow {
-      identifier: string;
-      displayName: string;
-      url: string | null;
-      todayCount: number;
-      weekCount: number;
-      inDigestCount: number;
-      status: string;
-      lastFetchedAt: string | null;
-    }
-    interface ResponseSection {
-      sourceType: string;
-      rows: ResponseRow[];
-    }
     const body = (await res.json()) as {
       generatedAt: string;
-      sections: ResponseSection[];
+      range: { from: string; to: string; runsInRange: number };
+      sections: { sourceType: string; rows: unknown[] }[];
+      configured: { sourceType: string; rows: unknown[] }[];
+      failures: unknown[];
       rankingPrompt: string;
     };
-    expect(typeof body.generatedAt).toBe("string");
-    expect(Array.isArray(body.sections)).toBe(true);
+    expect(body.range.runsInRange).toBe(0);
+    expect(typeof body.range.from).toBe("string");
+    expect(typeof body.range.to).toBe("string");
     expect(body.sections).toHaveLength(1);
     expect(body.sections[0].sourceType).toBe("hn");
-    expect(body.sections[0].rows[0]).toEqual({
-      identifier: "news.ycombinator.com",
-      displayName: "news.ycombinator.com",
-      url: "https://news.ycombinator.com/item?id=1",
-      todayCount: 3,
-      weekCount: 8,
-      inDigestCount: 0,
-      status: expect.any(String),
-      lastFetchedAt: "2026-05-23T10:00:00.000Z",
-    });
+    expect(body.configured.map((s) => s.sourceType)).toContain("hn");
+    expect(body.failures).toEqual([]);
     expect(body.rankingPrompt).toBe("the prompt");
   });
 
-  it("returns empty sections array when no data", async () => {
-    const app = buildAppWith([]);
+  it("defaults to a 7-day window when no params provided", async () => {
+    const app = buildApp([]);
     const res = await app.request("/api/sources/summary");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { sections: unknown[] };
-    expect(body.sections).toEqual([]);
+    const body = (await res.json()) as {
+      range: { from: string; to: string };
+    };
+    const from = new Date(body.range.from).getTime();
+    const to = new Date(body.range.to).getTime();
+    expect(to - from).toBeCloseTo(7 * 24 * 60 * 60 * 1000, -2);
+    expect(body.range.to).toBe(NOW.toISOString());
+  });
+
+  it("honours explicit from/to query params", async () => {
+    const app = buildApp([]);
+    const res = await app.request(
+      "/api/sources/summary?from=2026-05-01T00:00:00Z&to=2026-05-10T00:00:00Z",
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      range: { from: string; to: string };
+    };
+    expect(body.range.from).toBe("2026-05-01T00:00:00.000Z");
+    expect(body.range.to).toBe("2026-05-10T00:00:00.000Z");
+  });
+
+  it("400s when from >= to", async () => {
+    const app = buildApp([]);
+    const res = await app.request(
+      "/api/sources/summary?from=2026-05-10T00:00:00Z&to=2026-05-01T00:00:00Z",
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("400s on invalid date", async () => {
+    const app = buildApp([]);
+    const res = await app.request("/api/sources/summary?from=not-a-date");
+    expect(res.status).toBe(400);
+  });
+
+  it("clamps to in the future down to now", async () => {
+    const app = buildApp([]);
+    const future = "2099-01-01T00:00:00.000Z";
+    const res = await app.request(`/api/sources/summary?to=${future}`);
+    const body = (await res.json()) as {
+      range: { to: string };
+    };
+    expect(body.range.to).toBe(NOW.toISOString());
   });
 });

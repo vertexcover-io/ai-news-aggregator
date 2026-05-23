@@ -1,16 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  cleanup,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import type {
+  ConfiguredSection,
   SourcesSummaryResponse,
-  SourcesSummaryRow,
-  SourcesSummarySection,
 } from "@newsletter/shared/types";
 import { SourcesPage } from "../../../src/pages/SourcesPage";
 
@@ -30,25 +24,21 @@ beforeEach(() => {
   mockFetch.mockReset();
 });
 
-function makeRow(overrides: Partial<SourcesSummaryRow> = {}): SourcesSummaryRow {
+function makeResponse(
+  configured: ConfiguredSection[],
+): SourcesSummaryResponse {
   return {
-    identifier: "example",
-    displayName: "Example",
-    url: "https://example.com",
-    todayCount: 0,
-    weekCount: 0,
-    inDigestCount: 0,
-    status: "healthy",
-    lastFetchedAt: null,
-    ...overrides,
+    generatedAt: "2026-05-23T12:00:00Z",
+    range: {
+      from: "2026-05-16T12:00:00Z",
+      to: "2026-05-23T12:00:00Z",
+      runsInRange: 0,
+    },
+    sections: [],
+    configured,
+    failures: [],
+    rankingPrompt: "PROMPT",
   };
-}
-
-function makeSection(
-  sourceType: SourcesSummarySection["sourceType"],
-  rows: SourcesSummaryRow[],
-): SourcesSummarySection {
-  return { sourceType, rows };
 }
 
 function renderPage(data: SourcesSummaryResponse): ReturnType<typeof render> {
@@ -65,138 +55,148 @@ function renderPage(data: SourcesSummaryResponse): ReturnType<typeof render> {
   );
 }
 
-describe("SourcesPage", () => {
+describe("SourcesPage (public)", () => {
   it("renders the page headline", async () => {
-    renderPage({
-      generatedAt: "2026-05-23T12:00:00Z",
-      sections: [],
-      rankingPrompt: "PROMPT",
-    });
+    renderPage(makeResponse([]));
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", {
-          level: 1,
-          name: "The reading list behind the newsletter.",
-        }),
+        screen.getByText("The reading list behind the newsletter."),
       ).toBeTruthy();
     });
   });
 
-  it("renders sections in SOURCE_TYPE_ORDER", async () => {
-    const data: SourcesSummaryResponse = {
-      generatedAt: "2026-05-23T12:00:00Z",
-      sections: [
-        makeSection("blog", [makeRow({ identifier: "anthropic.com", displayName: "Anthropic" })]),
-        makeSection("hn", [makeRow({ identifier: "news.ycombinator.com", displayName: "HN" })]),
-        makeSection("reddit", [makeRow({ identifier: "r/LocalLLaMA", displayName: "r/LocalLLaMA" })]),
-      ],
-      rankingPrompt: "PROMPT",
-    };
-    renderPage(data);
+  it("renders each configured section with rows", async () => {
+    renderPage(
+      makeResponse([
+        {
+          sourceType: "hn",
+          rows: [
+            {
+              identifier: "news.ycombinator.com",
+              displayName: "Hacker News",
+              url: "https://news.ycombinator.com",
+            },
+          ],
+        },
+        {
+          sourceType: "reddit",
+          rows: [
+            {
+              identifier: "r/LocalLLaMA",
+              displayName: "r/LocalLLaMA",
+              url: "https://reddit.com/r/LocalLLaMA",
+            },
+          ],
+        },
+      ]),
+    );
     await waitFor(() => {
-      expect(screen.getByText("HN")).toBeTruthy();
+      expect(screen.getAllByText("Hacker News").length).toBeGreaterThan(0);
     });
-    const headings = screen.getAllByRole("heading", { level: 2 });
-    const titles = headings.map((h) => h.textContent);
-    const hnIdx = titles.indexOf("Hacker News");
-    const redditIdx = titles.indexOf("Reddit");
-    const blogIdx = titles.indexOf("Engineering Blogs");
-    expect(hnIdx).toBeGreaterThanOrEqual(0);
-    expect(hnIdx).toBeLessThan(redditIdx);
-    expect(redditIdx).toBeLessThan(blogIdx);
+    expect(screen.getByText("r/LocalLLaMA")).toBeTruthy();
+    expect(screen.getByText("Reddit")).toBeTruthy();
   });
 
-  it("hides sections that have no rows", async () => {
-    const data: SourcesSummaryResponse = {
-      generatedAt: "2026-05-23T12:00:00Z",
-      sections: [
-        makeSection("hn", [makeRow({ displayName: "HN" })]),
-        makeSection("reddit", []),
-      ],
-      rankingPrompt: "PROMPT",
-    };
-    renderPage(data);
+  it("renders web_search rows in italics with 'via Tavily' label", async () => {
+    renderPage(
+      makeResponse([
+        {
+          sourceType: "web_search",
+          rows: [
+            {
+              identifier: "",
+              displayName: '"harness engineering"',
+              url: null,
+            },
+          ],
+        },
+      ]),
+    );
     await waitFor(() => {
-      expect(screen.getByText("HN")).toBeTruthy();
+      expect(screen.getByText('"harness engineering"')).toBeTruthy();
     });
-    expect(screen.queryByText("Reddit")).toBeNull();
+    expect(screen.getByText("via Tavily")).toBeTruthy();
   });
 
-  it("sorts rows by todayCount descending within a section", async () => {
-    const data: SourcesSummaryResponse = {
-      generatedAt: "2026-05-23T12:00:00Z",
-      sections: [
-        makeSection("reddit", [
-          makeRow({ identifier: "r/LocalLLaMA", displayName: "r/LocalLLaMA", todayCount: 3 }),
-          makeRow({ identifier: "r/MachineLearning", displayName: "r/MachineLearning", todayCount: 5 }),
-          makeRow({ identifier: "r/singularity", displayName: "r/singularity", todayCount: 1 }),
-        ]),
-      ],
-      rankingPrompt: "PROMPT",
-    };
-    renderPage(data);
+  it("uses the URL when row.url is set", async () => {
+    renderPage(
+      makeResponse([
+        {
+          sourceType: "blog",
+          rows: [
+            {
+              identifier: "anthropic.com",
+              displayName: "Anthropic",
+              url: "https://www.anthropic.com/news",
+            },
+          ],
+        },
+      ]),
+    );
     await waitFor(() => {
-      expect(screen.getByText("r/MachineLearning")).toBeTruthy();
+      expect(screen.getByText("Anthropic")).toBeTruthy();
     });
-    const rows = document.querySelectorAll('[data-source-row="true"]');
-    expect(rows.length).toBe(3);
-    expect(rows[0].textContent).toContain("r/MachineLearning");
-    expect(rows[1].textContent).toContain("r/LocalLLaMA");
-    expect(rows[2].textContent).toContain("r/singularity");
+    const link = screen.getByText("Anthropic").closest("a");
+    expect(link?.getAttribute("href")).toBe("https://www.anthropic.com/news");
   });
 
-  it("renders status glyphs with the correct aria-label", async () => {
-    const data: SourcesSummaryResponse = {
-      generatedAt: "2026-05-23T12:00:00Z",
-      sections: [
-        makeSection("hn", [
-          makeRow({ identifier: "a", displayName: "Healthy Source", status: "healthy" }),
-          makeRow({ identifier: "b", displayName: "Idle Source", status: "idle" }),
-          makeRow({ identifier: "c", displayName: "Failing Source", status: "failing" }),
-        ]),
-      ],
-      rankingPrompt: "PROMPT",
-    };
-    renderPage(data);
+  it("falls back to a plain span when row.url is null", async () => {
+    renderPage(
+      makeResponse([
+        {
+          sourceType: "web_search",
+          rows: [
+            { identifier: "", displayName: '"my topic"', url: null },
+          ],
+        },
+      ]),
+    );
     await waitFor(() => {
-      expect(screen.getByLabelText("Healthy")).toBeTruthy();
+      expect(screen.getByText('"my topic"')).toBeTruthy();
     });
-    expect(screen.getByLabelText("Idle")).toBeTruthy();
-    expect(screen.getByLabelText("Failing")).toBeTruthy();
+    expect(screen.getByText('"my topic"').closest("a")).toBeNull();
   });
 
-  it("renders the rankingPrompt verbatim", async () => {
-    const prompt = "You are a ranker.\nRank by Novelty, Signal, Actionability.\nReturn JSON.";
-    renderPage({
-      generatedAt: "2026-05-23T12:00:00Z",
-      sections: [],
-      rankingPrompt: prompt,
-    });
+  it("renders the source count line", async () => {
+    renderPage(
+      makeResponse([
+        {
+          sourceType: "hn",
+          rows: [
+            {
+              identifier: "news.ycombinator.com",
+              displayName: "Hacker News",
+              url: "https://news.ycombinator.com",
+            },
+          ],
+        },
+        {
+          sourceType: "reddit",
+          rows: [
+            {
+              identifier: "r/A",
+              displayName: "r/A",
+              url: "https://reddit.com/r/A",
+            },
+            {
+              identifier: "r/B",
+              displayName: "r/B",
+              url: "https://reddit.com/r/B",
+            },
+          ],
+        },
+      ]),
+    );
     await waitFor(() => {
-      expect(screen.getByText(/You are a ranker/)).toBeTruthy();
+      expect(screen.getByText("3 sources")).toBeTruthy();
     });
-    const pre = document.querySelector("pre");
-    expect(pre).not.toBeNull();
-    expect(pre?.textContent).toBe(prompt);
+    expect(screen.getByText("2 categories")).toBeTruthy();
   });
 
-  it("renders displayName from response, not identifier when both differ", async () => {
-    const data: SourcesSummaryResponse = {
-      generatedAt: "2026-05-23T12:00:00Z",
-      sections: [
-        makeSection("blog", [
-          makeRow({
-            identifier: "anthropic.com",
-            displayName: "Anthropic Engineering",
-          }),
-        ]),
-      ],
-      rankingPrompt: "PROMPT",
-    };
-    renderPage(data);
+  it("renders the How we pick footer", async () => {
+    renderPage(makeResponse([]));
     await waitFor(() => {
-      expect(screen.getByText("Anthropic Engineering")).toBeTruthy();
+      expect(screen.getByText("How we pick")).toBeTruthy();
     });
-    expect(screen.queryByText("anthropic.com")).toBeNull();
   });
 });

@@ -33,14 +33,13 @@ export interface RawItemsAggregateRow {
   sourceType: SourceType;
   identifier: string;
   url: string | null;
-  todayCount: number;
-  weekCount: number;
+  fetchedCount: number;
   lastCollectedAt: Date | null;
 }
 
 export interface AggregateBySourceAndIdentifierOpts {
-  sinceWeek: Date;
-  sinceToday: Date;
+  from: Date;
+  to: Date;
 }
 
 export interface RawItemsRepo {
@@ -131,33 +130,28 @@ export function createRawItemsRepo(
         source_type: SourceType;
         identifier: string;
         url: string | null;
-        today_count: string | number;
-        week_count: string | number;
+        fetched_count: string | number;
         last_collected_at: Date | string | null;
       }>(sql`
         SELECT
           source_type,
           ${DERIVED_IDENTIFIER_SQL} AS identifier,
           MAX(url) AS url,
-          COUNT(*) FILTER (WHERE collected_at >= ${opts.sinceToday.toISOString()}::timestamptz) AS today_count,
-          COUNT(*) AS week_count,
+          COUNT(*) AS fetched_count,
           MAX(collected_at) AS last_collected_at
         FROM raw_items
-        WHERE collected_at >= ${opts.sinceWeek.toISOString()}::timestamptz
+        WHERE collected_at >= ${opts.from.toISOString()}::timestamptz
+          AND collected_at <  ${opts.to.toISOString()}::timestamptz
         GROUP BY source_type, identifier
       `);
       return rows.map((r) => ({
         sourceType: r.source_type,
         identifier: r.identifier,
         url: r.url,
-        todayCount:
-          typeof r.today_count === "number"
-            ? r.today_count
-            : Number.parseInt(r.today_count, 10),
-        weekCount:
-          typeof r.week_count === "number"
-            ? r.week_count
-            : Number.parseInt(r.week_count, 10),
+        fetchedCount:
+          typeof r.fetched_count === "number"
+            ? r.fetched_count
+            : Number.parseInt(r.fetched_count, 10),
         lastCollectedAt:
           r.last_collected_at === null
             ? null

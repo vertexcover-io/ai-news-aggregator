@@ -111,11 +111,18 @@ export interface RunArchivesRepo {
   ): Promise<void>;
   delete(id: string): Promise<{ deleted: boolean; removedEmailSends: number }>;
   getReviewedDigestCountsByDerivedSource(opts: {
-    sinceWeek: Date;
+    from: Date;
+    to: Date;
   }): Promise<Map<string, number>>;
   getRecentSourceTelemetry(opts: {
-    sinceDays: number;
+    from: Date;
+    to: Date;
   }): Promise<Map<string, RecentSourceTelemetryEntry>>;
+  getSourceFailuresInRange(opts: {
+    from: Date;
+    to: Date;
+  }): Promise<RangeFailureEntry[]>;
+  countCompletedRunsInRange(opts: { from: Date; to: Date }): Promise<number>;
 }
 
 export interface RecentSourceTelemetryEntry {
@@ -123,6 +130,15 @@ export interface RecentSourceTelemetryEntry {
   status: "completed" | "failed" | "partial";
   itemsFetched: number;
   completedAt: Date;
+}
+
+export interface RangeFailureEntry {
+  sourceType: SourceType;
+  identifier: string;
+  displayName: string;
+  runsAffected: number;
+  lastErrorMessage: string;
+  lastFailedAt: Date;
 }
 
 export function createRunArchivesRepo(
@@ -511,7 +527,8 @@ export function createRunArchivesRepo(
       });
     },
     async getReviewedDigestCountsByDerivedSource(opts: {
-      sinceWeek: Date;
+      from: Date;
+      to: Date;
     }): Promise<Map<string, number>> {
       const rows = await db.execute<{
         source_type: SourceType;
@@ -524,7 +541,8 @@ export function createRunArchivesRepo(
                jsonb_array_elements(ranked_items) AS item
           WHERE reviewed = true
             AND status = 'completed'
-            AND completed_at >= ${opts.sinceWeek.toISOString()}::timestamptz
+            AND completed_at >= ${opts.from.toISOString()}::timestamptz
+            AND completed_at <  ${opts.to.toISOString()}::timestamptz
         )
         SELECT
           ri.source_type,
@@ -543,11 +561,9 @@ export function createRunArchivesRepo(
       return map;
     },
     async getRecentSourceTelemetry(opts: {
-      sinceDays: number;
+      from: Date;
+      to: Date;
     }): Promise<Map<string, RecentSourceTelemetryEntry>> {
-      const since = new Date(
-        Date.now() - opts.sinceDays * 24 * 60 * 60 * 1000,
-      );
       const rows = await db
         .select({
           sourceTelemetry: runArchives.sourceTelemetry,
@@ -556,7 +572,8 @@ export function createRunArchivesRepo(
         .from(runArchives)
         .where(
           and(
-            gte(runArchives.completedAt, since),
+            gte(runArchives.completedAt, opts.from),
+            sql`${runArchives.completedAt} < ${opts.to.toISOString()}::timestamptz`,
             eq(runArchives.status, "completed"),
             sql`${runArchives.sourceTelemetry} IS NOT NULL`,
           ),
@@ -579,6 +596,86 @@ export function createRunArchivesRepo(
         }
       }
       return map;
+    },
+    async getSourceFailuresInRange(opts: {
+      from: Date;
+      to: Date;
+    }): Promise<RangeFailureEntry[]> {
+      const rows = await db.execute<{
+        source_type: SourceType;
+        identifier: string;
+        display_name: string;
+        runs_affected: string | number;
+        last_error: string;
+        last_failed_at: Date | string;
+      }>(sql`
+        WITH expanded AS (
+          SELECT
+            ra.completed_at,
+            (entry->>'sourceType')::text AS source_type,
+            (entry->>'identifier')::text AS identifier,
+            COALESCE((entry->>'displayName')::text, (entry->>'identifier')::text) AS display_name,
+            (entry->>'status')::text AS status,
+            entry->'errors' AS errors
+          FROM run_archives ra,
+               jsonb_array_elements(ra.source_telemetry->'sources') AS entry
+          WHERE ra.status = 'completed'
+            AND ra.completed_at >= ${opts.from.toISOString()}::timestamptz
+            AND ra.completed_at <  ${opts.to.toISOString()}::timestamptz
+            AND ra.source_telemetry IS NOT NULL
+        ),
+        filtered AS (
+          SELECT
+            source_type,
+            identifier,
+            display_name,
+            completed_at,
+            COALESCE(
+              (SELECT errors->>(jsonb_array_length(errors) - 1) WHERE jsonb_array_length(errors) > 0),
+              status
+            ) AS error_message
+          FROM expanded
+          WHERE status IN ('failed', 'partial')
+        )
+        SELECT
+          source_type,
+          identifier,
+          MAX(display_name) AS display_name,
+          COUNT(DISTINCT completed_at) AS runs_affected,
+          (ARRAY_AGG(error_message ORDER BY completed_at DESC))[1] AS last_error,
+          MAX(completed_at) AS last_failed_at
+        FROM filtered
+        GROUP BY source_type, identifier
+        ORDER BY runs_affected DESC, last_failed_at DESC
+      `);
+      return rows.map((r) => ({
+        sourceType: r.source_type,
+        identifier: r.identifier,
+        displayName: r.display_name,
+        runsAffected:
+          typeof r.runs_affected === "number"
+            ? r.runs_affected
+            : Number.parseInt(r.runs_affected, 10),
+        lastErrorMessage: r.last_error,
+        lastFailedAt:
+          r.last_failed_at instanceof Date
+            ? r.last_failed_at
+            : new Date(r.last_failed_at),
+      }));
+    },
+    async countCompletedRunsInRange(opts: {
+      from: Date;
+      to: Date;
+    }): Promise<number> {
+      const rows = await db.execute<{ n: string | number }>(sql`
+        SELECT COUNT(*) AS n
+        FROM run_archives
+        WHERE status = 'completed'
+          AND completed_at >= ${opts.from.toISOString()}::timestamptz
+          AND completed_at <  ${opts.to.toISOString()}::timestamptz
+      `);
+      const r = rows[0];
+      return typeof r.n === "number" ? r.n : Number.parseInt(r.n, 10);
     },
   };
 }

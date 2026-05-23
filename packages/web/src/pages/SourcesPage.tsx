@@ -1,41 +1,18 @@
 import { useEffect, type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "react-router-dom";
-import {
-  SOURCE_TYPE_ORDER,
-  SOURCE_TYPE_SECTION_LABELS,
-} from "@newsletter/shared/constants";
+import { SOURCE_TYPE_SECTION_LABELS } from "@newsletter/shared/constants";
 import type {
+  ConfiguredRow,
+  ConfiguredSection,
   SourcesSummaryResponse,
-  SourcesSummaryRow,
-  SourcesSummarySection,
 } from "@newsletter/shared/types";
 import { fetchSourcesSummary } from "../api/sources";
 import { setMeta } from "../lib/meta";
 
-type Status = SourcesSummaryRow["status"];
-
-const STATUS_GLYPH: Record<Status, string> = {
-  healthy: "●",
-  idle: "○",
-  failing: "✕",
-};
-
-const STATUS_LABEL: Record<Status, string> = {
-  healthy: "Healthy",
-  idle: "Idle",
-  failing: "Failing",
-};
-
-const STATUS_COLOR: Record<Status, string> = {
-  healthy: "text-[#14110d]",
-  idle: "text-[#6b6557]",
-  failing: "text-[#8c3a1e]",
-};
-
 function Masthead(): ReactElement {
   return (
-    <header className="flex items-start justify-between gap-6 pt-7 pb-5">
+    <header className="flex items-start justify-between gap-6 pt-6 pb-4">
       <div className="flex flex-col gap-1">
         <a
           href="/"
@@ -58,27 +35,18 @@ function Masthead(): ReactElement {
 }
 
 function Nav(): ReactElement {
-  const linkClass = (
-    { isActive }: { isActive: boolean },
-  ): string =>
+  const linkClass = ({ isActive }: { isActive: boolean }): string =>
     [
       "py-0.5 font-mono text-[11.5px] uppercase tracking-[0.18em]",
       isActive
         ? "border-b border-[#8c3a1e] text-[#8c3a1e]"
         : "text-[#6b6557] hover:text-[#14110d]",
     ].join(" ");
-
-  const sep = (
-    <span className="select-none px-3 text-[#e7e2d6]">·</span>
-  );
-
+  const sep = <span className="select-none px-3 text-[#e7e2d6]">·</span>;
   return (
     <>
       <hr className="border-t border-[#e7e2d6]" />
-      <nav
-        aria-label="Primary"
-        className="flex flex-wrap py-3.5"
-      >
+      <nav aria-label="Primary" className="flex flex-wrap py-3">
         <NavLink to="/" end className={linkClass}>
           Today
         </NavLink>
@@ -96,198 +64,141 @@ function Nav(): ReactElement {
   );
 }
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function totalSourceCount(sections: SourcesSummarySection[]): number {
+function totalRows(sections: ConfiguredSection[]): number {
   return sections.reduce((acc, s) => acc + s.rows.length, 0);
 }
 
-function PageHeader({
-  generatedAt,
-  total,
+function PageHead({
+  sourceCount,
+  sectionCount,
 }: {
-  generatedAt: string;
-  total: number;
+  sourceCount: number;
+  sectionCount: number;
 }): ReactElement {
   return (
-    <section className="pt-14 pb-10">
-      <h1 className="m-0 mb-6 max-w-[14ch] font-serif text-[40px] font-medium leading-[1.05] tracking-[-0.015em] text-[#14110d] sm:text-[52px]">
+    <section className="pt-8 pb-6">
+      <h1 className="m-0 mb-3 max-w-[18ch] font-serif text-[34px] font-medium leading-[1.05] tracking-[-0.015em] text-[#14110d] sm:text-[42px]">
         The reading list behind the newsletter.
       </h1>
-      <p className="m-0 mb-7 max-w-[48ch] font-serif text-[19px] italic leading-[1.45] text-[#14110d]">
-        AI sources, read daily. The list that produces the digest.
+      <p className="m-0 mb-5 max-w-[52ch] font-serif text-[17px] italic leading-[1.4] text-[#14110d]">
+        We read these every day. An LLM ranks the day&apos;s items on novelty,
+        signal-vs-hype, and actionability. Picks go through human review
+        before they hit your inbox.
       </p>
-      <p className="font-mono text-[11.5px] uppercase tracking-[0.1em] text-[#6b6557]">
-        Last updated: {formatDate(generatedAt)}
-        <span className="px-2 text-[#e7e2d6]">·</span>
-        {total} sources
+      <p className="flex flex-wrap items-center gap-x-2 font-mono text-[10.5px] uppercase tracking-[0.14em] text-[#6b6557]">
+        <span>{sourceCount} sources</span>
+        <span className="text-[#e7e2d6]">·</span>
+        <span>
+          {sectionCount} categor{sectionCount === 1 ? "y" : "ies"}
+        </span>
+        <span className="text-[#e7e2d6]">·</span>
+        <span>Updated daily</span>
       </p>
-      <hr className="mt-9 border-t border-[#e7e2d6]" />
     </section>
   );
 }
 
-function dim(value: number): string {
-  return value === 0 ? "text-[#6b6557]" : "text-[#14110d]";
+function hostnameForDisplay(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
-function Row({ row }: { row: SourcesSummaryRow }): ReactElement {
+function Row({
+  row,
+  sourceType,
+}: {
+  row: ConfiguredRow;
+  sourceType: ConfiguredSection["sourceType"];
+}): ReactElement {
+  const isQuery = sourceType === "web_search";
+  const host = row.url !== null ? hostnameForDisplay(row.url) : null;
+
+  const nameClass = `font-serif text-[16px] font-medium leading-[1.3] text-[#14110d] hover:text-[#8c3a1e] ${
+    isQuery ? "italic" : ""
+  }`;
+
   const nameEl =
     row.url !== null && row.url.length > 0 ? (
       <a
         href={row.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="font-serif text-[17px] font-medium leading-[1.3] text-[#14110d] hover:text-[#8c3a1e]"
+        className={nameClass}
       >
         {row.displayName}
       </a>
     ) : (
-      <span className="font-serif text-[17px] font-medium leading-[1.3] text-[#14110d]">
-        {row.displayName}
-      </span>
+      <span className={nameClass}>{row.displayName}</span>
     );
 
   return (
     <div
       data-source-row="true"
-      className="relative grid grid-cols-1 gap-2 border-t border-[#e7e2d6] py-3 sm:grid-cols-[1fr_64px_64px_64px_24px] sm:items-baseline sm:gap-4"
+      className="grid grid-cols-[1fr_auto] items-baseline gap-4 py-2.5"
     >
       {nameEl}
-      <span
-        className={`hidden text-right font-mono text-[13px] sm:inline ${dim(row.todayCount)}`}
-      >
-        {row.todayCount}
+      <span className="font-mono text-[11.5px] text-[#a39a86]">
+        {isQuery ? "via Tavily" : host !== null ? `${host} ↗` : ""}
       </span>
-      <span
-        className={`hidden text-right font-mono text-[13px] sm:inline ${dim(row.weekCount)}`}
-      >
-        {row.weekCount}
-      </span>
-      <span
-        className={`hidden text-right font-mono text-[13px] sm:inline ${dim(row.inDigestCount)}`}
-      >
-        {row.inDigestCount}
-      </span>
-      <span
-        aria-label={STATUS_LABEL[row.status]}
-        className={`absolute right-4 top-3 font-mono text-[14px] sm:static sm:text-right ${STATUS_COLOR[row.status]}`}
-      >
-        {STATUS_GLYPH[row.status]}
-      </span>
-      <div className="flex flex-wrap gap-3 font-mono text-[12px] text-[#6b6557] sm:hidden">
-        <span>
-          Today: <span className={dim(row.todayCount)}>{row.todayCount}</span>
-        </span>
-        <span>
-          Week: <span className={dim(row.weekCount)}>{row.weekCount}</span>
-        </span>
-        <span>
-          Digest:{" "}
-          <span className={dim(row.inDigestCount)}>{row.inDigestCount}</span>
+    </div>
+  );
+}
+
+function Section({ section }: { section: ConfiguredSection }): ReactElement {
+  return (
+    <section className="pt-6">
+      <div className="flex items-baseline justify-between gap-4 border-b border-[#8c3a1e] pb-1">
+        <h2 className="m-0 font-mono text-[12px] font-medium uppercase tracking-[0.22em] text-[#14110d]">
+          {SOURCE_TYPE_SECTION_LABELS[section.sourceType]}
+        </h2>
+        <span className="font-mono text-[10.5px] tabular-nums text-[#a39a86]">
+          {section.rows.length}{" "}
+          {section.sourceType === "web_search"
+            ? section.rows.length === 1
+              ? "query"
+              : "queries"
+            : section.rows.length === 1
+              ? "source"
+              : "sources"}
         </span>
       </div>
-    </div>
-  );
-}
-
-function ColumnHeader(): ReactElement {
-  return (
-    <div className="hidden grid-cols-[1fr_64px_64px_64px_24px] items-baseline gap-4 pb-2 sm:grid">
-      <span />
-      <span className="text-right font-mono text-[10px] uppercase tracking-[0.14em] text-[#6b6557]">
-        Today
-      </span>
-      <span className="text-right font-mono text-[10px] uppercase tracking-[0.14em] text-[#6b6557]">
-        Week
-      </span>
-      <span className="text-right font-mono text-[10px] uppercase tracking-[0.14em] text-[#6b6557]">
-        Digest
-      </span>
-      <span />
-    </div>
-  );
-}
-
-function sortRows(rows: SourcesSummaryRow[]): SourcesSummaryRow[] {
-  return [...rows].sort((a, b) => {
-    if (b.todayCount !== a.todayCount) return b.todayCount - a.todayCount;
-    return a.displayName.localeCompare(b.displayName, undefined, {
-      sensitivity: "base",
-    });
-  });
-}
-
-function Section({
-  section,
-  showColumnHeader,
-}: {
-  section: SourcesSummarySection;
-  showColumnHeader: boolean;
-}): ReactElement {
-  const rows = sortRows(section.rows);
-  return (
-    <section className="pt-16">
-      <h2 className="m-0 border-b border-[#8c3a1e] pb-2.5 font-mono text-[13.5px] font-medium uppercase tracking-[0.22em] text-[#14110d]">
-        {SOURCE_TYPE_SECTION_LABELS[section.sourceType]}
-      </h2>
-      <div className="mt-4">
-        {showColumnHeader ? <ColumnHeader /> : null}
-        {rows.map((row) => (
-          <Row key={`${section.sourceType}:${row.identifier}`} row={row} />
+      <div className="mt-1 divide-y divide-[#efeadd]">
+        {section.rows.map((r) => (
+          <Row
+            key={`${section.sourceType}:${r.identifier || r.displayName}`}
+            row={r}
+            sourceType={section.sourceType}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function RankingPromptPanel({ prompt }: { prompt: string }): ReactElement {
+function HowWePick(): ReactElement {
   return (
-    <section className="pt-16 pb-16">
-      <h2 className="m-0 border-b border-[#8c3a1e] pb-2.5 font-mono text-[13.5px] font-medium uppercase tracking-[0.22em] text-[#14110d]">
-        Ranking Prompt
+    <section className="mt-10 border-t border-[#e7e2d6] pt-6">
+      <h2 className="m-0 mb-3 font-mono text-[12px] font-medium uppercase tracking-[0.22em] text-[#14110d]">
+        How we pick
       </h2>
-      <p className="mt-4 mb-5 font-serif text-[16px] italic leading-[1.55] text-[#6b6557]">
-        This is the live system prompt used to rerank the day's stories. Edits
-        in the admin settings take effect on the next run.
+      <p className="m-0 max-w-[60ch] font-serif text-[16px] leading-[1.55] text-[#14110d]">
+        Three axes — Novelty, Signal-vs-hype, Actionability — applied to every
+        item the collectors return. A human reviews the top twelve before
+        publish.
       </p>
-      <pre
-        className="m-0 whitespace-pre-wrap break-words bg-transparent p-0 font-mono text-[13px] leading-[1.6] text-[#14110d]"
-      >
-        {prompt}
-      </pre>
     </section>
   );
 }
 
-function orderSections(
-  sections: SourcesSummarySection[],
-): SourcesSummarySection[] {
-  const bySourceType = new Map(sections.map((s) => [s.sourceType, s]));
-  const ordered: SourcesSummarySection[] = [];
-  for (const sourceType of SOURCE_TYPE_ORDER) {
-    const s = bySourceType.get(sourceType);
-    if (s && s.rows.length > 0) ordered.push(s);
-  }
-  return ordered;
-}
-
 function Shell({ children }: { children: ReactElement }): ReactElement {
   return (
-    <div className="bg-[#fbfaf7] text-[#14110d]">
-      <div className="mx-auto max-w-[820px] px-4 sm:px-8">
-        <Masthead />
-        <Nav />
-        {children}
-      </div>
+    <div className="mx-auto max-w-[820px] px-4 sm:px-8">
+      <Masthead />
+      <Nav />
+      {children}
     </div>
   );
 }
@@ -303,44 +214,40 @@ export function SourcesPage(): ReactElement {
 
   const { data, isLoading, isError } = useQuery<SourcesSummaryResponse>({
     queryKey: ["sources-summary"],
-    queryFn: fetchSourcesSummary,
+    queryFn: () => fetchSourcesSummary(),
   });
 
   if (isLoading) {
     return (
       <Shell>
-        <div className="py-24 text-center font-mono text-[11px] uppercase tracking-[0.18em] text-[#6b6557]">
+        <div className="py-16 text-center font-mono text-[11px] uppercase tracking-[0.18em] text-[#6b6557]">
           Loading…
         </div>
       </Shell>
     );
   }
-
   if (isError || !data) {
     return (
       <Shell>
-        <div className="py-24 text-center font-mono text-[11px] uppercase tracking-[0.18em] text-[#6b6557]">
+        <div className="py-16 text-center font-mono text-[11px] uppercase tracking-[0.18em] text-[#6b6557]">
           Could not load sources
         </div>
       </Shell>
     );
   }
 
-  const sections = orderSections(data.sections);
-  const total = totalSourceCount(sections);
-
+  const sections = data.configured;
   return (
     <Shell>
-      <main className="pb-20">
-        <PageHeader generatedAt={data.generatedAt} total={total} />
-        {sections.map((section, idx) => (
-          <Section
-            key={section.sourceType}
-            section={section}
-            showColumnHeader={idx === 0}
-          />
+      <main className="pb-12">
+        <PageHead
+          sourceCount={totalRows(sections)}
+          sectionCount={sections.length}
+        />
+        {sections.map((s) => (
+          <Section key={s.sourceType} section={s} />
         ))}
-        <RankingPromptPanel prompt={data.rankingPrompt} />
+        <HowWePick />
       </main>
     </Shell>
   );

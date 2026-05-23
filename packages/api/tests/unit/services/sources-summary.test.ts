@@ -1,36 +1,34 @@
 import { describe, it, expect } from "vitest";
-import type { SourceType, UserSettings } from "@newsletter/shared";
+import type { UserSettings } from "@newsletter/shared";
 import { buildSourcesSummary } from "@api/services/sources-summary.js";
 import type {
   RawItemsRepo,
   RawItemsAggregateRow,
 } from "@api/repositories/raw-items.js";
-import type { RunArchivesRepo } from "@api/repositories/run-archives.js";
+import type {
+  RangeFailureEntry,
+  RecentSourceTelemetryEntry,
+  RunArchivesRepo,
+} from "@api/repositories/run-archives.js";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
 
-interface FakeRawItemsState {
-  agg: RawItemsAggregateRow[];
-}
+const NOW = new Date("2026-05-23T12:00:00.000Z");
+const FROM = new Date("2026-05-16T12:00:00.000Z");
+const TO = NOW;
 
-function makeRawItemsRepo(state: FakeRawItemsState): RawItemsRepo {
+function makeRawItemsRepo(agg: RawItemsAggregateRow[]): RawItemsRepo {
   return {
     findByIds: () => Promise.resolve([]),
     listForRun: () => Promise.resolve([]),
-    aggregateBySourceAndIdentifier: () => Promise.resolve(state.agg),
+    aggregateBySourceAndIdentifier: () => Promise.resolve(agg),
   };
 }
 
 function makeRunArchivesRepo(opts: {
   digestCounts?: Map<string, number>;
-  telemetry?: Map<
-    string,
-    {
-      displayName: string;
-      status: "completed" | "failed" | "partial";
-      itemsFetched: number;
-      completedAt: Date;
-    }
-  >;
+  telemetry?: Map<string, RecentSourceTelemetryEntry>;
+  failures?: RangeFailureEntry[];
+  runsInRange?: number;
 }): RunArchivesRepo {
   return {
     findById: () => Promise.resolve(null),
@@ -53,317 +51,311 @@ function makeRunArchivesRepo(opts: {
       Promise.resolve(opts.digestCounts ?? new Map()),
     getRecentSourceTelemetry: () =>
       Promise.resolve(opts.telemetry ?? new Map()),
+    getSourceFailuresInRange: () => Promise.resolve(opts.failures ?? []),
+    countCompletedRunsInRange: () => Promise.resolve(opts.runsInRange ?? 0),
   };
 }
 
-function makeSettingsRepo(rankingPrompt: string): UserSettingsRepo {
+function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
-    get: () =>
-      Promise.resolve({
-        rankingPrompt,
-      } as unknown as UserSettings),
+    id: "settings",
+    topN: 12,
+    halfLifeHours: 24,
+    hnEnabled: true,
+    hnConfig: null,
+    redditEnabled: true,
+    redditConfig: {
+      subreddits: ["LocalLLaMA"],
+      sort: "hot",
+      limit: 25,
+      sinceDays: 1,
+    },
+    webEnabled: true,
+    webConfig: {
+      sources: [
+        { name: "Anthropic", listingUrl: "https://www.anthropic.com/news" },
+      ],
+      maxItems: 10,
+      sinceDays: 7,
+    },
+    twitterEnabled: false,
+    twitterConfig: null,
+    webSearchEnabled: true,
+    webSearchConfig: {
+      provider: "tavily",
+      queries: [{ query: "harness engineering", sinceDays: 7, maxItems: 5 }],
+    },
+    posthogEnabled: false,
+    posthogProjectToken: null,
+    posthogHost: null,
+    scheduleTime: "07:00",
+    pipelineTime: "07:00",
+    emailTime: "07:30",
+    linkedinTime: "07:45",
+    twitterTime: "08:00",
+    scheduleTimezone: "UTC",
+    scheduleEnabled: false,
+    emailEnabled: true,
+    linkedinEnabled: true,
+    twitterPostEnabled: true,
+    autoReview: false,
+    rankingPrompt: "prompt",
+    updatedAt: NOW.toISOString(),
+    ...overrides,
+  };
+}
+
+function makeSettingsRepo(s: UserSettings | null): UserSettingsRepo {
+  return {
+    get: () => Promise.resolve(s),
     upsert: () => {
       throw new Error("n/a");
     },
   };
 }
 
-const NOW = new Date("2026-05-23T12:00:00.000Z");
-
 describe("buildSourcesSummary", () => {
-  it("returns sections in SOURCE_TYPE_ORDER and omits empty sections", async () => {
-    const agg: RawItemsAggregateRow[] = [
-      {
-        sourceType: "blog",
-        identifier: "anthropic.com",
-        url: "https://anthropic.com/x",
-        todayCount: 1,
-        weekCount: 3,
-        lastCollectedAt: new Date("2026-05-23T10:00:00.000Z"),
-      },
-      {
-        sourceType: "hn",
-        identifier: "news.ycombinator.com",
-        url: "https://news.ycombinator.com/item?id=1",
-        todayCount: 2,
-        weekCount: 5,
-        lastCollectedAt: new Date("2026-05-23T11:00:00.000Z"),
-      },
-    ];
+  it("emits range with runsInRange and ISO from/to", async () => {
     const result = await buildSourcesSummary({
-      rawItemsRepo: makeRawItemsRepo({ agg }),
-      runArchivesRepo: makeRunArchivesRepo({}),
-      userSettingsRepo: makeSettingsRepo("prompt"),
+      rawItemsRepo: makeRawItemsRepo([]),
+      runArchivesRepo: makeRunArchivesRepo({ runsInRange: 5 }),
+      userSettingsRepo: makeSettingsRepo(makeSettings()),
+      from: FROM,
+      to: TO,
       now: () => NOW,
     });
-    expect(result.sections.map((s) => s.sourceType)).toEqual(["hn", "blog"]);
-  });
-
-  it("sorts rows by todayCount desc then displayName asc (case-insensitive)", async () => {
-    const agg: RawItemsAggregateRow[] = [
-      {
-        sourceType: "reddit",
-        identifier: "r/LocalLLaMA",
-        url: "https://reddit.com/r/LocalLLaMA/comments/x",
-        todayCount: 3,
-        weekCount: 5,
-        lastCollectedAt: new Date("2026-05-23T11:00:00.000Z"),
-      },
-      {
-        sourceType: "reddit",
-        identifier: "r/MachineLearning",
-        url: "https://reddit.com/r/MachineLearning/comments/x",
-        todayCount: 5,
-        weekCount: 9,
-        lastCollectedAt: new Date("2026-05-23T11:00:00.000Z"),
-      },
-      {
-        sourceType: "reddit",
-        identifier: "r/aaa",
-        url: "https://reddit.com/r/aaa/comments/x",
-        todayCount: 5,
-        weekCount: 7,
-        lastCollectedAt: new Date("2026-05-23T11:00:00.000Z"),
-      },
-    ];
-    const result = await buildSourcesSummary({
-      rawItemsRepo: makeRawItemsRepo({ agg }),
-      runArchivesRepo: makeRunArchivesRepo({}),
-      userSettingsRepo: makeSettingsRepo("p"),
-      now: () => NOW,
-    });
-    expect(result.sections).toHaveLength(1);
-    expect(result.sections[0].rows.map((r) => r.identifier)).toEqual([
-      "r/aaa",
-      "r/MachineLearning",
-      "r/LocalLLaMA",
-    ]);
-  });
-
-  it("falls back displayName to identifier when no telemetry", async () => {
-    const agg: RawItemsAggregateRow[] = [
-      {
-        sourceType: "hn",
-        identifier: "news.ycombinator.com",
-        url: "https://news.ycombinator.com/item?id=1",
-        todayCount: 1,
-        weekCount: 1,
-        lastCollectedAt: NOW,
-      },
-    ];
-    const result = await buildSourcesSummary({
-      rawItemsRepo: makeRawItemsRepo({ agg }),
-      runArchivesRepo: makeRunArchivesRepo({}),
-      userSettingsRepo: makeSettingsRepo("p"),
-      now: () => NOW,
-    });
-    const row = result.sections[0].rows[0];
-    expect(row.displayName).toBe("news.ycombinator.com");
-  });
-
-  it("uses telemetry.displayName when available", async () => {
-    const agg: RawItemsAggregateRow[] = [
-      {
-        sourceType: "reddit",
-        identifier: "r/LocalLLaMA",
-        url: "https://reddit.com/r/LocalLLaMA/comments/x",
-        todayCount: 1,
-        weekCount: 1,
-        lastCollectedAt: NOW,
-      },
-    ];
-    const telemetry = new Map([
-      [
-        "reddit r/LocalLLaMA",
-        {
-          displayName: "LocalLLaMA Subreddit",
-          status: "completed" as const,
-          itemsFetched: 5,
-          completedAt: new Date("2026-05-23T08:00:00.000Z"),
-        },
-      ],
-    ]);
-    const result = await buildSourcesSummary({
-      rawItemsRepo: makeRawItemsRepo({ agg }),
-      runArchivesRepo: makeRunArchivesRepo({ telemetry }),
-      userSettingsRepo: makeSettingsRepo("p"),
-      now: () => NOW,
-    });
-    expect(result.sections[0].rows[0].displayName).toBe("LocalLLaMA Subreddit");
-  });
-
-  it("classifies status: healthy", async () => {
-    const agg: RawItemsAggregateRow[] = [
-      {
-        sourceType: "hn" as SourceType,
-        identifier: "news.ycombinator.com",
-        url: "https://x",
-        todayCount: 1,
-        weekCount: 1,
-        lastCollectedAt: new Date("2026-05-22T00:00:00.000Z"),
-      },
-    ];
-    const telemetry = new Map([
-      [
-        "hn news.ycombinator.com",
-        {
-          displayName: "HN",
-          status: "completed" as const,
-          itemsFetched: 5,
-          completedAt: new Date("2026-05-22T00:00:00.000Z"),
-        },
-      ],
-    ]);
-    const result = await buildSourcesSummary({
-      rawItemsRepo: makeRawItemsRepo({ agg }),
-      runArchivesRepo: makeRunArchivesRepo({ telemetry }),
-      userSettingsRepo: makeSettingsRepo("p"),
-      now: () => NOW,
-    });
-    expect(result.sections[0].rows[0].status).toBe("healthy");
-  });
-
-  it("classifies status: failing when telemetry.status=failed", async () => {
-    const agg: RawItemsAggregateRow[] = [
-      {
-        sourceType: "reddit",
-        identifier: "r/x",
-        url: "https://reddit.com/r/x/comments/y",
-        todayCount: 1,
-        weekCount: 1,
-        lastCollectedAt: new Date("2026-05-22T00:00:00.000Z"),
-      },
-    ];
-    const telemetry = new Map([
-      [
-        "reddit r/x",
-        {
-          displayName: "r/x",
-          status: "failed" as const,
-          itemsFetched: 0,
-          completedAt: new Date("2026-05-22T00:00:00.000Z"),
-        },
-      ],
-    ]);
-    const result = await buildSourcesSummary({
-      rawItemsRepo: makeRawItemsRepo({ agg }),
-      runArchivesRepo: makeRunArchivesRepo({ telemetry }),
-      userSettingsRepo: makeSettingsRepo("p"),
-      now: () => NOW,
-    });
-    expect(result.sections[0].rows[0].status).toBe("failing");
-  });
-
-  it("classifies status: failing when lastFetched older than 14 days", async () => {
-    const agg: RawItemsAggregateRow[] = [
-      {
-        sourceType: "hn",
-        identifier: "news.ycombinator.com",
-        url: "https://x",
-        todayCount: 0,
-        weekCount: 0,
-        lastCollectedAt: new Date("2026-05-01T00:00:00.000Z"),
-      },
-    ];
-    const result = await buildSourcesSummary({
-      rawItemsRepo: makeRawItemsRepo({ agg }),
-      runArchivesRepo: makeRunArchivesRepo({}),
-      userSettingsRepo: makeSettingsRepo("p"),
-      now: () => NOW,
-    });
-    expect(result.sections[0].rows[0].status).toBe("failing");
-  });
-
-  it("classifies status: idle when partial telemetry but recent", async () => {
-    const agg: RawItemsAggregateRow[] = [
-      {
-        sourceType: "blog",
-        identifier: "x.com",
-        url: "https://x.com/post",
-        todayCount: 0,
-        weekCount: 1,
-        lastCollectedAt: new Date("2026-05-22T00:00:00.000Z"),
-      },
-    ];
-    const telemetry = new Map([
-      [
-        "blog x.com",
-        {
-          displayName: "X",
-          status: "partial" as const,
-          itemsFetched: 1,
-          completedAt: new Date("2026-05-22T00:00:00.000Z"),
-        },
-      ],
-    ]);
-    const result = await buildSourcesSummary({
-      rawItemsRepo: makeRawItemsRepo({ agg }),
-      runArchivesRepo: makeRunArchivesRepo({ telemetry }),
-      userSettingsRepo: makeSettingsRepo("p"),
-      now: () => NOW,
-    });
-    expect(result.sections[0].rows[0].status).toBe("idle");
-  });
-
-  it("passes rankingPrompt through verbatim", async () => {
-    const verbatim = "Some MULTI-line\n  prompt with\twhitespace.";
-    const result = await buildSourcesSummary({
-      rawItemsRepo: makeRawItemsRepo({ agg: [] }),
-      runArchivesRepo: makeRunArchivesRepo({}),
-      userSettingsRepo: makeSettingsRepo(verbatim),
-      now: () => NOW,
-    });
-    expect(result.rankingPrompt).toBe(verbatim);
-  });
-
-  it("inDigestCount looks up by `${sourceType} ${identifier}`", async () => {
-    const agg: RawItemsAggregateRow[] = [
-      {
-        sourceType: "reddit",
-        identifier: "r/LocalLLaMA",
-        url: "https://reddit.com/r/LocalLLaMA/comments/y",
-        todayCount: 5,
-        weekCount: 8,
-        lastCollectedAt: NOW,
-      },
-    ];
-    const digestCounts = new Map([["reddit r/LocalLLaMA", 2]]);
-    const result = await buildSourcesSummary({
-      rawItemsRepo: makeRawItemsRepo({ agg }),
-      runArchivesRepo: makeRunArchivesRepo({ digestCounts }),
-      userSettingsRepo: makeSettingsRepo("p"),
-      now: () => NOW,
-    });
-    expect(result.sections[0].rows[0].inDigestCount).toBe(2);
-  });
-
-  it("emits generatedAt as ISO string", async () => {
-    const result = await buildSourcesSummary({
-      rawItemsRepo: makeRawItemsRepo({ agg: [] }),
-      runArchivesRepo: makeRunArchivesRepo({}),
-      userSettingsRepo: makeSettingsRepo("p"),
-      now: () => NOW,
+    expect(result.range).toEqual({
+      from: FROM.toISOString(),
+      to: TO.toISOString(),
+      runsInRange: 5,
     });
     expect(result.generatedAt).toBe(NOW.toISOString());
   });
 
-  it.todo(
-    "REQ-018 cross-check lives in e2e — see packages/api/tests/e2e/sources.e2e.test.ts",
-  );
-
-  it("handles null settings (rankingPrompt defaults to empty)", async () => {
-    const settingsRepo: UserSettingsRepo = {
-      get: () => Promise.resolve(null),
-      upsert: () => {
-        throw new Error("n/a");
+  it("filters sections to only configured identifiers", async () => {
+    const agg: RawItemsAggregateRow[] = [
+      // Configured Reddit row.
+      {
+        sourceType: "reddit",
+        identifier: "r/LocalLLaMA",
+        url: "https://reddit.com/r/LocalLLaMA/x",
+        fetchedCount: 10,
+        lastCollectedAt: NOW,
       },
-    };
+      // Outbound link host — NOT configured, must be filtered out.
+      {
+        sourceType: "reddit",
+        identifier: "huggingface.co",
+        url: "https://huggingface.co/x",
+        fetchedCount: 2,
+        lastCollectedAt: NOW,
+      },
+    ];
     const result = await buildSourcesSummary({
-      rawItemsRepo: makeRawItemsRepo({ agg: [] }),
+      rawItemsRepo: makeRawItemsRepo(agg),
       runArchivesRepo: makeRunArchivesRepo({}),
-      userSettingsRepo: settingsRepo,
+      userSettingsRepo: makeSettingsRepo(makeSettings()),
+      from: FROM,
+      to: TO,
       now: () => NOW,
     });
+    const reddit = result.sections.find((s) => s.sourceType === "reddit");
+    expect(reddit?.rows.map((r) => r.identifier)).toEqual(["r/LocalLLaMA"]);
+  });
+
+  it("includes web_search rows regardless of identifier match", async () => {
+    const agg: RawItemsAggregateRow[] = [
+      {
+        sourceType: "web_search",
+        identifier: "web search",
+        url: null,
+        fetchedCount: 10,
+        lastCollectedAt: NOW,
+      },
+    ];
+    const result = await buildSourcesSummary({
+      rawItemsRepo: makeRawItemsRepo(agg),
+      runArchivesRepo: makeRunArchivesRepo({}),
+      userSettingsRepo: makeSettingsRepo(makeSettings()),
+      from: FROM,
+      to: TO,
+      now: () => NOW,
+    });
+    const ws = result.sections.find((s) => s.sourceType === "web_search");
+    expect(ws?.rows[0]?.fetchedCount).toBe(10);
+  });
+
+  it("builds configured rows per source type from user_settings", async () => {
+    const result = await buildSourcesSummary({
+      rawItemsRepo: makeRawItemsRepo([]),
+      runArchivesRepo: makeRunArchivesRepo({}),
+      userSettingsRepo: makeSettingsRepo(
+        makeSettings({
+          twitterEnabled: true,
+          twitterConfig: {
+            listIds: ["1234567890"],
+            users: [{ handle: "karpathy", userId: "u1" }],
+            maxTweetsPerSource: 100,
+            sinceHours: 24,
+          },
+        }),
+      ),
+      from: FROM,
+      to: TO,
+      now: () => NOW,
+    });
+    const byType = new Map(result.configured.map((s) => [s.sourceType, s]));
+    expect(byType.get("hn")?.rows[0]?.displayName).toBe("Hacker News");
+    expect(byType.get("reddit")?.rows.map((r) => r.displayName)).toEqual([
+      "r/LocalLLaMA",
+    ]);
+    expect(byType.get("twitter")?.rows.map((r) => r.displayName)).toEqual([
+      "@karpathy",
+      "List #1234567890",
+    ]);
+    expect(byType.get("blog")?.rows[0]).toMatchObject({
+      identifier: "anthropic.com",
+      displayName: "Anthropic",
+      url: "https://www.anthropic.com/news",
+    });
+    expect(byType.get("web_search")?.rows[0]?.displayName).toBe(
+      '"harness engineering"',
+    );
+  });
+
+  it("omits sections from configured when source disabled", async () => {
+    const result = await buildSourcesSummary({
+      rawItemsRepo: makeRawItemsRepo([]),
+      runArchivesRepo: makeRunArchivesRepo({}),
+      userSettingsRepo: makeSettingsRepo(
+        makeSettings({ hnEnabled: false, redditEnabled: false }),
+      ),
+      from: FROM,
+      to: TO,
+      now: () => NOW,
+    });
+    const types = result.configured.map((s) => s.sourceType);
+    expect(types).not.toContain("hn");
+    expect(types).not.toContain("reddit");
+  });
+
+  it("hydrates failureCount and lastFailureMessage from failures aggregation", async () => {
+    const agg: RawItemsAggregateRow[] = [
+      {
+        sourceType: "reddit",
+        identifier: "r/LocalLLaMA",
+        url: "https://reddit.com/r/LocalLLaMA/x",
+        fetchedCount: 5,
+        lastCollectedAt: NOW,
+      },
+    ];
+    const failures: RangeFailureEntry[] = [
+      {
+        sourceType: "reddit",
+        identifier: "r/LocalLLaMA",
+        displayName: "r/LocalLLaMA",
+        runsAffected: 3,
+        lastErrorMessage: "RSS 403",
+        lastFailedAt: NOW,
+      },
+    ];
+    const result = await buildSourcesSummary({
+      rawItemsRepo: makeRawItemsRepo(agg),
+      runArchivesRepo: makeRunArchivesRepo({ failures }),
+      userSettingsRepo: makeSettingsRepo(makeSettings()),
+      from: FROM,
+      to: TO,
+      now: () => NOW,
+    });
+    const row = result.sections
+      .find((s) => s.sourceType === "reddit")
+      ?.rows.find((r) => r.identifier === "r/LocalLLaMA");
+    expect(row?.failureCount).toBe(3);
+    expect(row?.lastFailureMessage).toBe("RSS 403");
+  });
+
+  it("emits failures field at top level", async () => {
+    const failures: RangeFailureEntry[] = [
+      {
+        sourceType: "twitter",
+        identifier: "@karpathy",
+        displayName: "@karpathy",
+        runsAffected: 5,
+        lastErrorMessage: "auth failed",
+        lastFailedAt: new Date("2026-05-22T04:50:00.000Z"),
+      },
+    ];
+    const result = await buildSourcesSummary({
+      rawItemsRepo: makeRawItemsRepo([]),
+      runArchivesRepo: makeRunArchivesRepo({ failures }),
+      userSettingsRepo: makeSettingsRepo(makeSettings()),
+      from: FROM,
+      to: TO,
+      now: () => NOW,
+    });
+    expect(result.failures).toEqual([
+      {
+        sourceType: "twitter",
+        identifier: "@karpathy",
+        displayName: "@karpathy",
+        runsAffected: 5,
+        lastErrorMessage: "auth failed",
+        lastFailedAt: "2026-05-22T04:50:00.000Z",
+      },
+    ]);
+  });
+
+  it("sorts section rows alphabetically (case-insensitive) by displayName", async () => {
+    const agg: RawItemsAggregateRow[] = [
+      {
+        sourceType: "reddit",
+        identifier: "r/zeta",
+        url: null,
+        fetchedCount: 5,
+        lastCollectedAt: NOW,
+      },
+      {
+        sourceType: "reddit",
+        identifier: "r/Alpha",
+        url: null,
+        fetchedCount: 1,
+        lastCollectedAt: NOW,
+      },
+    ];
+    const result = await buildSourcesSummary({
+      rawItemsRepo: makeRawItemsRepo(agg),
+      runArchivesRepo: makeRunArchivesRepo({}),
+      userSettingsRepo: makeSettingsRepo(
+        makeSettings({
+          redditConfig: {
+            subreddits: ["Alpha", "zeta"],
+            sort: "hot",
+            limit: 25,
+            sinceDays: 1,
+          },
+        }),
+      ),
+      from: FROM,
+      to: TO,
+      now: () => NOW,
+    });
+    expect(
+      result.sections
+        .find((s) => s.sourceType === "reddit")
+        ?.rows.map((r) => r.identifier),
+    ).toEqual(["r/Alpha", "r/zeta"]);
+  });
+
+  it("returns empty configured when settings is null", async () => {
+    const result = await buildSourcesSummary({
+      rawItemsRepo: makeRawItemsRepo([]),
+      runArchivesRepo: makeRunArchivesRepo({}),
+      userSettingsRepo: makeSettingsRepo(null),
+      from: FROM,
+      to: TO,
+      now: () => NOW,
+    });
+    expect(result.configured).toEqual([]);
     expect(result.rankingPrompt).toBe("");
   });
 });
