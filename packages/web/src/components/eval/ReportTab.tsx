@@ -4,11 +4,14 @@ import type {
   ExpectedRankingItem,
   Tier,
 } from "@newsletter/shared/types/eval-ranking";
+import { RankingFunnel } from "./CalendarReportComparison";
 
 export interface ReportTabProps {
   actualRanking: readonly ActualRankingItem[];
   expectedRanking: readonly ExpectedRankingItem[] | undefined;
   scoreSheet: ReportScoreSheet | null;
+  poolSize: number | undefined;
+  costUsd: number;
 }
 
 export interface ReportScoreSheet {
@@ -269,6 +272,8 @@ export function ReportTab({
   actualRanking,
   expectedRanking,
   scoreSheet,
+  poolSize,
+  costUsd,
 }: ReportTabProps): ReactElement {
   const expectedByItem = new Map<number, ExpectedRankingItem>();
   for (const e of expectedRanking ?? []) {
@@ -307,9 +312,20 @@ export function ReportTab({
 
   return (
     <div className="flex h-full flex-col">
+      <div className="px-4 pt-4">
+        <RankingFunnel
+          sent={poolSize}
+          ranked={actualRanking.length}
+          costUsd={costUsd}
+          testIdPrefix="report-tab"
+        />
+      </div>
       <ScoreStrip scoreSheet={scoreSheet} />
       <MissingMustBanner missing={missingMust} />
-      <div className="overflow-auto">
+      <div
+        data-testid="report-tab-ranking-scroll"
+        className="scrollbar-none overflow-auto"
+      >
         <table
           data-testid="drawer-report-table"
           className="w-full table-fixed text-sm"

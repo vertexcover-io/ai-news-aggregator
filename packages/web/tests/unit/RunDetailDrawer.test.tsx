@@ -121,6 +121,73 @@ describe("RunDetailDrawer", () => {
     expect(score.textContent).toContain("Rank-1 = must");
   });
 
+  it("REQ-001: presents exactly two tabs named 'Prompt & Cost' and 'Report'", async () => {
+    getEvalRunMock.mockResolvedValue(makeRunWithReport());
+    renderDrawer();
+    await screen.findByTestId("drawer-tab-prompt-cost");
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs).toHaveLength(2);
+    const names = tabs.map((t) => (t.textContent ?? "").trim());
+    expect(names.some((n) => n.startsWith("Prompt & Cost"))).toBe(true);
+    expect(names.some((n) => n.startsWith("Report"))).toBe(true);
+  });
+
+  it("REQ-002: the Prompt & Cost panel contains the prompt snapshot, score table, and cost table together", async () => {
+    getEvalRunMock.mockResolvedValue(makeRun());
+    renderDrawer();
+    // Legacy Mode A (no report data) defaults to the Prompt & Cost tab.
+    const panel = await screen.findByTestId("drawer-tab-panel-prompt-cost");
+    const snapshot = await screen.findByTestId("drawer-snapshot-pane");
+    const scoreTable = await screen.findByTestId("drawer-score-breakdown");
+    const costTable = await screen.findByTestId("drawer-cost-breakdown");
+    expect(panel.contains(snapshot)).toBe(true);
+    expect(panel.contains(scoreTable)).toBe(true);
+    expect(panel.contains(costTable)).toBe(true);
+  });
+
+  it("REQ-005: a running run defaults to the Prompt & Cost tab", async () => {
+    getEvalRunMock.mockResolvedValue(
+      makeRun({
+        status: "running",
+        finishedAt: null,
+        scoreBreakdown: null,
+        costBreakdown: null,
+      }),
+    );
+    renderDrawer();
+    const tab = await screen.findByTestId("drawer-tab-prompt-cost");
+    await waitFor(() => {
+      expect(tab.getAttribute("aria-selected")).toBe("true");
+    });
+    await screen.findByTestId("drawer-tab-panel-prompt-cost");
+  });
+
+  it("REQ-005: a failed run defaults to the Prompt & Cost tab", async () => {
+    getEvalRunMock.mockResolvedValue(
+      makeRun({
+        status: "failed",
+        finishedAt: "2026-05-21T19:14:30.000Z",
+        scoreBreakdown: null,
+        costBreakdown: null,
+        errorMessage: "rerank stage threw",
+      }),
+    );
+    renderDrawer();
+    const tab = await screen.findByTestId("drawer-tab-prompt-cost");
+    await waitFor(() => {
+      expect(tab.getAttribute("aria-selected")).toBe("true");
+    });
+  });
+
+  it("REQ-005: a legacy done run with no report data defaults to the Prompt & Cost tab", async () => {
+    getEvalRunMock.mockResolvedValue(makeRun());
+    renderDrawer();
+    const tab = await screen.findByTestId("drawer-tab-prompt-cost");
+    await waitFor(() => {
+      expect(tab.getAttribute("aria-selected")).toBe("true");
+    });
+  });
+
   it("shows running placeholders for a running run", async () => {
     getEvalRunMock.mockResolvedValue(
       makeRun({
@@ -193,7 +260,7 @@ function expected(
   };
 }
 
-function makeRunWithReport(): EvalRun {
+function makeRunWithReport(poolSize?: number): EvalRun {
   // Scenario chosen to exercise all four delta cases:
   //   rawItemId 101 — expected rank 1 (must), actual rank 1  → "—" unchanged
   //   rawItemId 102 — expected rank 2 (must), actual rank 4  → ↓2
@@ -239,6 +306,7 @@ function makeRunWithReport(): EvalRun {
           },
           actualRanking,
           expectedRanking,
+          ...(poolSize === undefined ? {} : { poolSize }),
         },
       ],
     },
@@ -246,10 +314,10 @@ function makeRunWithReport(): EvalRun {
 }
 
 describe("RunDetailDrawer — Report tab", () => {
-  it("renders both tabs and defaults to Report for a Mode A done run with report data", async () => {
+  it("REQ-004: renders both tabs and defaults to Report for a Mode A done run with report data", async () => {
     getEvalRunMock.mockResolvedValue(makeRunWithReport());
     renderDrawer();
-    await screen.findByTestId("drawer-tab-breakdown");
+    await screen.findByTestId("drawer-tab-prompt-cost");
     await screen.findByTestId("drawer-tab-report");
     await waitFor(() => {
       expect(
@@ -298,13 +366,48 @@ describe("RunDetailDrawer — Report tab", () => {
   it("legacy Mode A run without actualRanking renders the empty-state", async () => {
     getEvalRunMock.mockResolvedValue(makeRun());
     renderDrawer();
-    // Legacy runs lack reportData so the drawer defaults to Breakdown.
-    await screen.findByTestId("drawer-tab-breakdown");
+    // Legacy runs lack reportData so the drawer defaults to Prompt & Cost.
+    await screen.findByTestId("drawer-tab-prompt-cost");
     fireEvent.click(screen.getByTestId("drawer-tab-report"));
     await screen.findByTestId("drawer-report-empty");
     expect(
       screen.getByTestId("drawer-report-empty").textContent,
     ).toContain("No report available");
+  });
+
+  it("EDGE-004: a running run shows the running placeholder under Report and no funnel", async () => {
+    getEvalRunMock.mockResolvedValue(
+      makeRun({
+        status: "running",
+        finishedAt: null,
+        scoreBreakdown: null,
+        costBreakdown: null,
+      }),
+    );
+    renderDrawer();
+    // Mode A always shows the Report tab; running default is Prompt & Cost.
+    fireEvent.click(await screen.findByTestId("drawer-tab-report"));
+    const empty = await screen.findByTestId("drawer-report-empty");
+    expect(empty.textContent).toBeTruthy();
+    expect(screen.queryByTestId("report-tab-funnel")).toBeNull();
+  });
+
+  it("EDGE-005: a failed run shows the error banner and the failed empty-report, no funnel", async () => {
+    getEvalRunMock.mockResolvedValue(
+      makeRun({
+        status: "failed",
+        finishedAt: "2026-05-21T19:14:30.000Z",
+        scoreBreakdown: null,
+        costBreakdown: null,
+        errorMessage: "rerank stage threw: token limit exceeded",
+      }),
+    );
+    renderDrawer();
+    const banner = await screen.findByTestId("drawer-error-banner");
+    expect(banner.textContent).toContain("token limit exceeded");
+    fireEvent.click(await screen.findByTestId("drawer-tab-report"));
+    await screen.findByTestId("drawer-report-empty");
+    expect(screen.queryByTestId("report-tab-funnel")).toBeNull();
   });
 
   it("REQ-009 REQ-010: Mode B calendar run exposes per-run report and prompt diff", async () => {
@@ -378,7 +481,7 @@ describe("RunDetailDrawer — Report tab", () => {
       }),
     );
     renderDrawer();
-    await screen.findByTestId("drawer-tab-breakdown");
+    await screen.findByTestId("drawer-tab-prompt-cost");
     fireEvent.click(await screen.findByTestId("drawer-tab-report"));
     const panel = await screen.findByTestId("drawer-tab-panel-report");
     expect(panel.textContent).toContain("Previous story");
@@ -402,15 +505,113 @@ describe("RunDetailDrawer — Report tab", () => {
       }),
     );
     renderDrawer();
-    await screen.findByTestId("drawer-tab-breakdown");
+    await screen.findByTestId("drawer-tab-prompt-cost");
     expect(screen.queryByTestId("drawer-tab-report")).toBeNull();
   });
 
-  it("preserves existing Breakdown test IDs after the tab refactor", async () => {
+  it("REQ-010: Mode A Report tab label shows a 'sent → ranked' hint chip when poolSize is known", async () => {
+    // poolSize 32, actualRanking has 5 items → "32 → 5"
+    getEvalRunMock.mockResolvedValue(makeRunWithReport(32));
+    renderDrawer();
+    const hint = await screen.findByTestId("drawer-tab-report-hint");
+    expect(hint.textContent).toContain("32");
+    expect(hint.textContent).toContain("5");
+    expect(hint.textContent).toContain("→");
+  });
+
+  it("EDGE-001: Mode A Report tab hint is hidden when poolSize is unknown", async () => {
     getEvalRunMock.mockResolvedValue(makeRunWithReport());
     renderDrawer();
-    fireEvent.click(await screen.findByTestId("drawer-tab-breakdown"));
-    await screen.findByTestId("drawer-tab-panel-breakdown");
+    await screen.findByTestId("drawer-tab-report");
+    expect(screen.queryByTestId("drawer-tab-report-hint")).toBeNull();
+  });
+
+  it("REQ-007 EDGE-006: Mode A Report panel renders the funnel with the fixture pool size as sent", async () => {
+    getEvalRunMock.mockResolvedValue(makeRunWithReport(32));
+    renderDrawer();
+    await screen.findByTestId("drawer-tab-panel-report");
+    const sent = await screen.findByTestId("report-tab-funnel-sent");
+    expect(sent.textContent).toContain("32");
+    const ranked = screen.getByTestId("report-tab-funnel-ranked");
+    expect(ranked.textContent).toContain("5");
+  });
+
+  it("REQ-010: Mode B Report tab label shows a 'sent → ranked' hint chip when poolSize is known", async () => {
+    getEvalRunMock.mockResolvedValue(
+      makeRun({
+        mode: "ab",
+        fixtureId: null,
+        date: "2026-05-21",
+        savedPromptHash: "savedhash",
+        savedPromptSnapshot: "SAVED PROMPT",
+        draftPromptHash: "drafthash",
+        draftPromptSnapshot: "DRAFT PROMPT",
+        scoreBreakdown: {
+          calendarRuns: [
+            {
+              runId: "11111111-1111-4111-8111-111111111111",
+              status: "done",
+              poolSize: 47,
+              previousRanking: [
+                {
+                  rank: 1,
+                  rawItemId: 1,
+                  title: "Previous story",
+                  url: "https://example.com/previous",
+                  sourceType: "hn",
+                  score: 0.91,
+                  rationale: "",
+                  summary: "",
+                  bullets: [],
+                  bottomLine: "",
+                },
+              ],
+              draftRanking: [
+                {
+                  rank: 1,
+                  rawItemId: 2,
+                  title: "Draft story",
+                  url: "https://example.com/draft",
+                  sourceType: "github",
+                  score: 0.95,
+                  rationale: "",
+                  summary: "",
+                  bullets: [],
+                  bottomLine: "",
+                },
+              ],
+              promptDiff: {
+                savedPromptHash: "savedhash",
+                draftPromptHash: "drafthash",
+                savedPromptSnapshot: "SAVED PROMPT",
+                draftPromptSnapshot: "DRAFT PROMPT",
+              },
+              cost: {
+                usd: 0.0422,
+                tokensIn: 100,
+                tokensOut: 50,
+                cacheHit: false,
+                promptHash: "drafthash",
+              },
+            },
+          ],
+        },
+        costBreakdown: { totalUsd: 0.0422 },
+      }),
+    );
+    renderDrawer();
+    const hint = await screen.findByTestId("drawer-tab-report-hint");
+    // poolSize 47 → 1 draft item
+    expect(hint.textContent).toContain("47");
+    expect(hint.textContent).toContain("1");
+    expect(hint.textContent).toContain("→");
+  });
+
+  it("preserves the score/cost breakdown test IDs in the Prompt & Cost panel after the tab refactor", async () => {
+    getEvalRunMock.mockResolvedValue(makeRunWithReport());
+    renderDrawer();
+    fireEvent.click(await screen.findByTestId("drawer-tab-prompt-cost"));
+    await screen.findByTestId("drawer-tab-panel-prompt-cost");
     await screen.findByTestId("drawer-score-breakdown");
     await screen.findByTestId("drawer-cost-breakdown");
   });

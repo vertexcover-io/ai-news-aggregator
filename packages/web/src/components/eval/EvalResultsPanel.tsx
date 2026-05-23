@@ -14,6 +14,7 @@ export interface EvalProgressRow {
   error?: string;
   actualRanking?: ActualRankingItem[];
   expectedRanking?: ExpectedRankingItem[];
+  poolSize?: number;
 }
 
 export interface EvalResultsPanelProps {

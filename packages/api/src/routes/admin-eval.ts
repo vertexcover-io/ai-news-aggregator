@@ -611,6 +611,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
             error: string | null;
             actualRanking?: ActualRankingItem[];
             expectedRanking?: ExpectedRankingItem[];
+            poolSize?: number;
           }
           const perFixtureRecords: PerFixtureRecord[] = [];
           const perFixtureCosts: { fixtureId: string; cost: RunEvalOutput["cost"] }[] = [];
@@ -651,6 +652,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
                 error: null,
                 actualRanking,
                 expectedRanking,
+                poolSize: t.fixture.pool.length,
               });
               perFixtureCosts.push({
                 fixtureId: t.fixture.fixtureId,
@@ -665,6 +667,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
                   cost: result.cost,
                   actualRanking,
                   expectedRanking,
+                  poolSize: t.fixture.pool.length,
                 }),
               });
             } catch (err) {
@@ -787,6 +790,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
                 draftPromptSnapshot,
               },
               cost: result.cost,
+              poolSize: detail.sourcePool.length,
             };
             calendarRuns.push(entry);
             perRunCosts.push({ runId: selectedRunId, cost: result.cost });

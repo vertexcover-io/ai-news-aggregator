@@ -208,6 +208,12 @@ export type CalendarRunReportEntry =
       draftRanking: CalendarRankingItem[];
       promptDiff: CalendarPromptDiff;
       cost: PerFixtureCost;
+      /**
+       * Count of items sent to the LLM ranker (= the deduped candidate-pool
+       * size). Optional: runs persisted before this field landed do not carry
+       * it, so legacy `done` entries omit it.
+       */
+      poolSize?: number;
     }
   | {
       runId: string;
@@ -223,6 +229,11 @@ export interface PerFixtureResult {
   cost: PerFixtureCost;
   actualRanking?: ActualRankingItem[];
   expectedRanking?: ExpectedRankingItem[];
+  /**
+   * Count of items sent to the LLM ranker (= the fixture pool size). Optional:
+   * runs persisted before this field landed do not carry it.
+   */
+  poolSize?: number;
 }
 
 /** One row of the sourcing report aggregated across graded fixtures. */

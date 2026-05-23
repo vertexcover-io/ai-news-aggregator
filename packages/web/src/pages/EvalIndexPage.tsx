@@ -56,6 +56,7 @@ interface ScoredProgressPayload {
   error?: string;
   actualRanking?: ActualRankingItem[];
   expectedRanking?: ExpectedRankingItem[];
+  poolSize?: number;
 }
 
 type CalendarProgressRow =
@@ -412,6 +413,9 @@ export function EvalIndexPage(): ReactElement {
               ...(payload.expectedRanking === undefined
                 ? {}
                 : { expectedRanking: payload.expectedRanking }),
+              ...(payload.poolSize === undefined
+                ? {}
+                : { poolSize: payload.poolSize }),
             };
             if (idx >= 0) next[idx] = row;
             else next.push(row);
@@ -1134,6 +1138,8 @@ export function EvalIndexPage(): ReactElement {
               actualRanking={reportRow.actualRanking}
               expectedRanking={reportRow.expectedRanking}
               scoreSheet={scoreSheetFromScore(reportRow.score)}
+              poolSize={reportRow.poolSize}
+              costUsd={reportRow.cost?.usd ?? 0}
             />
           ) : null}
         </DialogContent>

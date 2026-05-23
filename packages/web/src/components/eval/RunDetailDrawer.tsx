@@ -17,7 +17,7 @@ import { getEvalRun, EvalApiError } from "../../api/eval";
 import { EmptyReport, ReportTab, type ReportScoreSheet } from "./ReportTab";
 import { CalendarReportComparison } from "./CalendarReportComparison";
 
-type DrawerTab = "breakdown" | "report";
+type DrawerTab = "prompt-cost" | "report";
 
 interface PerFixtureEntry {
   fixtureId?: unknown;
@@ -27,6 +27,7 @@ interface PerFixtureEntry {
   error?: unknown;
   actualRanking?: unknown;
   expectedRanking?: unknown;
+  poolSize?: unknown;
 }
 
 function pickArray<T>(value: unknown, guard: (v: unknown) => v is T): T[] | null {
@@ -91,6 +92,8 @@ function isCalendarRunReportEntry(v: unknown): v is CalendarRunReportEntry {
   if (typeof o.runId !== "string") return false;
   if (o.status === "error") return typeof o.error === "string";
   if (o.status !== "done") return false;
+  // poolSize is optional; reject only if present and not a number.
+  if (o.poolSize !== undefined && typeof o.poolSize !== "number") return false;
   const previous = pickArray(o.previousRanking, isCalendarRankingItem);
   const draft = pickArray(o.draftRanking, isCalendarRankingItem);
   const promptDiff = pickObject(o.promptDiff);
@@ -102,6 +105,8 @@ interface DrawerReportData {
   actual: ActualRankingItem[];
   expected: ExpectedRankingItem[] | undefined;
   scoreSheet: ReportScoreSheet | null;
+  poolSize: number | undefined;
+  costUsd: number;
 }
 
 function extractReportData(run: EvalRun): DrawerReportData | null {
@@ -138,10 +143,22 @@ function extractReportData(run: EvalRun): DrawerReportData | null {
               ? score.rankOneIsMustInclude
               : null,
         };
+  const poolSize =
+    typeof first.poolSize === "number" ? first.poolSize : undefined;
+  const cost =
+    first.cost !== null && typeof first.cost === "object"
+      ? (first.cost as Record<string, unknown>)
+      : null;
+  const costUsd =
+    cost !== null && typeof cost.usd === "number" && Number.isFinite(cost.usd)
+      ? cost.usd
+      : 0;
   return {
     actual,
     expected: expected ?? undefined,
     scoreSheet,
+    poolSize,
+    costUsd,
   };
 }
 
@@ -155,6 +172,27 @@ function extractCalendarReports(run: EvalRun): CalendarRunReportEntry[] {
 
 function shortRunId(runId: string): string {
   return runId.slice(0, 8);
+}
+
+interface ReportTabHint {
+  sent: number;
+  ranked: number;
+}
+
+function deriveTabHint(
+  reportData: DrawerReportData | null,
+  calendarReports: readonly CalendarRunReportEntry[],
+): ReportTabHint | null {
+  if (reportData !== null) {
+    return reportData.poolSize === undefined
+      ? null
+      : { sent: reportData.poolSize, ranked: reportData.actual.length };
+  }
+  const firstDone = calendarReports.find((entry) => entry.status === "done");
+  if (firstDone?.status !== "done") return null;
+  return firstDone.poolSize === undefined
+    ? null
+    : { sent: firstDone.poolSize, ranked: firstDone.draftRanking.length };
 }
 
 export interface RunDetailDrawerProps {
@@ -543,7 +581,7 @@ export function RunDetailDrawer({
   const calendarReports = run !== null ? extractCalendarReports(run) : [];
   const calendarReportAvailable = calendarReports.length > 0;
   // Done runs that carry report fields default to Report; legacy shapes,
-  // running runs, and failed runs default to Breakdown.
+  // running runs, and failed runs default to Prompt & Cost.
   const reportAvailable =
     (run?.mode === "scored" && reportData !== null) || calendarReportAvailable;
   // We can't lazily-init the default off `reportAvailable` because the run
@@ -555,13 +593,13 @@ export function RunDetailDrawer({
     runId: string | null;
     seenAvailable: boolean;
     tab: DrawerTab;
-  }>({ runId: null, seenAvailable: false, tab: "breakdown" });
+  }>({ runId: null, seenAvailable: false, tab: "prompt-cost" });
 
   let activeTab: DrawerTab = tabState.tab;
   const sameRun = tabState.runId === runId;
   if (!sameRun) {
     // New run opened — reset to the default for the current data shape.
-    activeTab = reportAvailable ? "report" : "breakdown";
+    activeTab = reportAvailable ? "report" : "prompt-cost";
     setTabState({
       runId,
       seenAvailable: reportAvailable,
@@ -581,6 +619,7 @@ export function RunDetailDrawer({
     });
   };
   const showReportTab = run?.mode === "scored" || calendarReportAvailable;
+  const tabHint = deriveTabHint(reportData, calendarReports);
 
   return (
     <Dialog
@@ -641,82 +680,88 @@ export function RunDetailDrawer({
               </div>
             </header>
 
-            <div
-              className="grid h-[480px]"
-              style={{ gridTemplateColumns: "1.4fr 1fr" }}
-            >
-              <div className="border-r border-neutral-200">
-                <SnapshotPane
-                  hash={run.draftPromptHash}
-                  snapshot={run.draftPromptSnapshot}
-                />
-              </div>
-
-              <div className="flex flex-col overflow-hidden">
-                {run.status === "failed" && run.errorMessage !== null ? (
-                  <div
-                    data-testid="drawer-error-banner"
-                    className="m-4 rounded border border-rose-200 bg-rose-50 p-3"
-                  >
-                    <div className="font-mono text-[11px] uppercase tracking-wider text-rose-700">
-                      Run failed
-                    </div>
-                    <p className="mt-1 font-mono text-xs whitespace-pre-wrap text-rose-900">
-                      {run.errorMessage}
-                    </p>
-                  </div>
-                ) : null}
-
+            <div className="flex h-[520px] flex-col overflow-hidden">
+              {run.status === "failed" && run.errorMessage !== null ? (
                 <div
-                  role="tablist"
-                  aria-label="Run detail views"
-                  className="flex border-b border-neutral-200 bg-neutral-50/50"
+                  data-testid="drawer-error-banner"
+                  className="m-4 rounded border border-rose-200 bg-rose-50 p-3"
                 >
+                  <div className="font-mono text-[11px] uppercase tracking-wider text-rose-700">
+                    Run failed
+                  </div>
+                  <p className="mt-1 font-mono text-xs whitespace-pre-wrap text-rose-900">
+                    {run.errorMessage}
+                  </p>
+                </div>
+              ) : null}
+
+              <div
+                role="tablist"
+                aria-label="Run detail views"
+                className="flex border-b border-neutral-200 bg-neutral-50/50"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === "prompt-cost"}
+                  aria-controls="drawer-tab-panel-prompt-cost"
+                  data-testid="drawer-tab-prompt-cost"
+                  onClick={() => {
+                    setActiveTab("prompt-cost");
+                  }}
+                  className={`border-b-2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider ${
+                    activeTab === "prompt-cost"
+                      ? "border-[#8c3a1e] text-neutral-900"
+                      : "border-transparent text-neutral-500 hover:text-neutral-800"
+                  }`}
+                >
+                  Prompt & Cost
+                </button>
+                {showReportTab ? (
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={activeTab === "breakdown"}
-                    aria-controls="drawer-tab-panel-breakdown"
-                    data-testid="drawer-tab-breakdown"
+                    aria-selected={activeTab === "report"}
+                    aria-controls="drawer-tab-panel-report"
+                    data-testid="drawer-tab-report"
                     onClick={() => {
-                      setActiveTab("breakdown");
+                      setActiveTab("report");
                     }}
                     className={`border-b-2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider ${
-                      activeTab === "breakdown"
+                      activeTab === "report"
                         ? "border-[#8c3a1e] text-neutral-900"
                         : "border-transparent text-neutral-500 hover:text-neutral-800"
                     }`}
                   >
-                    Breakdown
+                    Report
+                    {tabHint !== null ? (
+                      <span
+                        data-testid="drawer-tab-report-hint"
+                        className="ml-2 inline-flex items-center rounded-sm border border-neutral-200 bg-white px-1.5 py-0.5 font-mono text-[10px] tracking-normal text-neutral-600 tabular-nums"
+                      >
+                        {String(tabHint.sent)} → {String(tabHint.ranked)}
+                      </span>
+                    ) : null}
                   </button>
-                  {showReportTab ? (
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={activeTab === "report"}
-                      aria-controls="drawer-tab-panel-report"
-                      data-testid="drawer-tab-report"
-                      onClick={() => {
-                        setActiveTab("report");
-                      }}
-                      className={`border-b-2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider ${
-                        activeTab === "report"
-                          ? "border-[#8c3a1e] text-neutral-900"
-                          : "border-transparent text-neutral-500 hover:text-neutral-800"
-                      }`}
-                    >
-                      Report
-                    </button>
-                  ) : null}
-                </div>
+                ) : null}
+              </div>
 
-                {activeTab === "breakdown" ? (
-                  <div
-                    id="drawer-tab-panel-breakdown"
-                    role="tabpanel"
-                    data-testid="drawer-tab-panel-breakdown"
-                    className="overflow-auto"
-                  >
+              {activeTab === "prompt-cost" ? (
+                <div
+                  id="drawer-tab-panel-prompt-cost"
+                  role="tabpanel"
+                  data-testid="drawer-tab-panel-prompt-cost"
+                  className="grid min-h-0 flex-1"
+                  style={{ gridTemplateColumns: "1.4fr 1fr" }}
+                >
+                  <div className="min-h-0 overflow-auto border-r border-neutral-200">
+                    <SnapshotPane
+                      hash={run.draftPromptHash}
+                      snapshot={run.draftPromptSnapshot}
+                    />
+                  </div>
+
+                  <div className="min-h-0 overflow-auto">
                     <header className="flex items-baseline justify-between border-b border-neutral-200 px-4 py-3">
                       <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-700">
                         Score breakdown
@@ -772,35 +817,37 @@ export function RunDetailDrawer({
                       />
                     )}
                   </div>
-                ) : (
-                  <div
-                    id="drawer-tab-panel-report"
-                    role="tabpanel"
-                    data-testid="drawer-tab-panel-report"
-                    className="flex min-h-0 flex-1 flex-col"
-                  >
-                    {reportData !== null ? (
-                      <ReportTab
-                        actualRanking={reportData.actual}
-                        expectedRanking={reportData.expected}
-                        scoreSheet={reportData.scoreSheet}
-                      />
-                    ) : calendarReportAvailable ? (
-                      <CalendarReportPanel reports={calendarReports} />
-                    ) : (
-                      <EmptyReport
-                        reason={
-                          run.status === "running"
-                            ? "running"
-                            : run.status === "failed"
-                              ? "failed"
-                              : "legacy"
-                        }
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div
+                  id="drawer-tab-panel-report"
+                  role="tabpanel"
+                  data-testid="drawer-tab-panel-report"
+                  className="flex min-h-0 flex-1 flex-col"
+                >
+                  {reportData !== null ? (
+                    <ReportTab
+                      actualRanking={reportData.actual}
+                      expectedRanking={reportData.expected}
+                      scoreSheet={reportData.scoreSheet}
+                      poolSize={reportData.poolSize}
+                      costUsd={reportData.costUsd}
+                    />
+                  ) : calendarReportAvailable ? (
+                    <CalendarReportPanel reports={calendarReports} />
+                  ) : (
+                    <EmptyReport
+                      reason={
+                        run.status === "running"
+                          ? "running"
+                          : run.status === "failed"
+                            ? "failed"
+                            : "legacy"
+                      }
+                    />
+                  )}
+                </div>
+              )}
             </div>
           </>
         )}

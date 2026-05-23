@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CalendarRunReportEntrySchema,
   EvalResultSchema,
   EvalRunRequestSchema,
   EvalScoreSchema,
   FixtureSchema,
   GroundTruthSchema,
+  PerFixtureResultSchema,
   PerItemDiffRowSchema,
   RankedItemSchema,
   SourcingReportRowSchema,
@@ -119,6 +121,79 @@ describe("eval-ranking zod schemas", () => {
         dropCount: 0,
       }),
     ).toThrow();
+  });
+
+  it("CalendarRunReportEntrySchema round-trips a done entry with poolSize (REQ-009)", () => {
+    const entry = {
+      runId: "run-1",
+      status: "done" as const,
+      previousRanking: [],
+      draftRanking: [],
+      promptDiff: {
+        savedPromptHash: null,
+        draftPromptHash: "abcd",
+        savedPromptSnapshot: null,
+        draftPromptSnapshot: "draft",
+      },
+      cost: {
+        promptHash: "abcd",
+        tokensIn: 10,
+        tokensOut: 5,
+        usd: 0.001,
+        cacheHit: false,
+      },
+      poolSize: 37,
+    };
+    const parsed = CalendarRunReportEntrySchema.parse(entry);
+    expect(parsed.status).toBe("done");
+    if (parsed.status === "done") {
+      expect(parsed.poolSize).toBe(37);
+    }
+  });
+
+  it("CalendarRunReportEntrySchema accepts a done entry WITHOUT poolSize (legacy, EDGE-001)", () => {
+    const legacy = {
+      runId: "run-legacy",
+      status: "done" as const,
+      previousRanking: [],
+      draftRanking: [],
+      promptDiff: {
+        savedPromptHash: null,
+        draftPromptHash: "abcd",
+        savedPromptSnapshot: null,
+        draftPromptSnapshot: "draft",
+      },
+      cost: {
+        promptHash: "abcd",
+        tokensIn: 10,
+        tokensOut: 5,
+        usd: 0.001,
+        cacheHit: false,
+      },
+    };
+    const parsed = CalendarRunReportEntrySchema.parse(legacy);
+    expect(parsed.status).toBe("done");
+    if (parsed.status === "done") {
+      expect(parsed.poolSize).toBeUndefined();
+    }
+  });
+
+  it("PerFixtureResultSchema round-trips poolSize and accepts its absence (REQ-008, EDGE-001)", () => {
+    const cost = {
+      promptHash: "abcd",
+      tokensIn: 10,
+      tokensOut: 5,
+      usd: 0.001,
+      cacheHit: false,
+    };
+    const withPool = PerFixtureResultSchema.parse({
+      fixtureId: "f1",
+      cost,
+      poolSize: 42,
+    });
+    expect(withPool.poolSize).toBe(42);
+    const withoutPool = PerFixtureResultSchema.parse({ fixtureId: "f1", cost });
+    expect(withoutPool.poolSize).toBeUndefined();
   });
 
   it("EvalResultSchema round-trips a minimal scored result", () => {
