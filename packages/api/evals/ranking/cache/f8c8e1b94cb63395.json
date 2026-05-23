@@ -1,0 +1,78 @@
+{
+  "rankedItems": [
+    {
+      "rawItemId": -1,
+      "score": 68.07047450450997,
+      "rationale": "Highest novelty: first autonomous AI solution to prominent open math problem. Strong signal: validated by external mathematicians and Fields medalist. Concrete numbers: δ=0.014 improvement, 80-year history, n^1+δ construction. Actionable for math/AI communities.",
+      "title": "An OpenAI model has disproved a central conjecture in discrete geometry",
+      "summary": "OpenAI's reasoning model resolved the unit distance problem, a central question in combinatorial geometry since 1946. The proof constructs point configurations with n^1+δ unit-distance pairs (δ=0.014), disproving Erdős's conjecture that square grids were essentially optimal. The solution unexpectedly applies algebraic number theory concepts like class field towers and Golod–Shafarevich theory to an elementary geometric question, validated by external mathematicians.",
+      "bullets": [
+        "First autonomous AI solution to a prominent open problem in active mathematical field",
+        "Disproves 80-year-old conjecture with polynomial improvement factor δ=0.014",
+        "Bridges algebraic number theory and discrete geometry in unexpected way",
+        "Validated by external mathematicians; Fields medalist Tim Gowers calls it 'a milestone in AI mathematics'",
+        "Demonstrates AI reasoning depth: proof requires coherent multi-step argumentation"
+      ],
+      "bottomLine": "Landmark achievement showing AI can autonomously contribute to frontier mathematics research with original insights, not just assist human mathematicians."
+    },
+    {
+      "rawItemId": -4,
+      "score": 44.424941255574936,
+      "rationale": "Moderate novelty: ChatGPT Images 2.0 expansion to India. Concrete number: 1 billion images created. Signal-vs-hype: real usage metric but limited context. Actionable for understanding AI adoption in emerging markets.",
+      "title": "Sam Altman on X: ChatGPT Images 2.0 in India",
+      "summary": "Sam Altman announced that ChatGPT Images 2.0 has generated over 1 billion images in India, highlighting significant adoption of image generation capabilities in the region.",
+      "bullets": [
+        "1 billion images created in India using ChatGPT Images 2.0",
+        "Indicates strong market penetration in emerging economy",
+        "Demonstrates practical AI tool adoption beyond text generation"
+      ],
+      "bottomLine": "Strong user adoption metric showing image generation AI reaching scale in major emerging market."
+    },
+    {
+      "rawItemId": -5,
+      "score": 41.55881601327978,
+      "rationale": "High signal-vs-hype: addresses real infrastructure constraint. Concrete concern: H100 costs higher than 3 years ago, supply locked up. Actionability: identifies bottleneck for researchers. Novelty moderate: known issue but worsening.",
+      "title": "Yuchen Jin on X: GPU shortage crisis worsens",
+      "summary": "GPU availability has reached critical shortage levels, with H100 costs exceeding prices from 3 years ago and on-demand access unavailable. Major AI labs have secured multi-year supply contracts, potentially blocking university researchers and independent developers from accessing necessary compute resources.",
+      "bullets": [
+        "H100 GPU costs higher today than 3 years ago despite Moore's Law expectations",
+        "Supply locked up by major AI labs for years; on-demand access unavailable",
+        "Risk of excluding university researchers and individual developers from AI development"
+      ],
+      "bottomLine": "Infrastructure bottleneck threatens democratization of AI research and development outside major labs."
+    },
+    {
+      "rawItemId": -2,
+      "score": 25.078595870082623,
+      "rationale": "Low novelty: anecdotal story. Weak signal: no concrete metrics or technical details. Limited actionability: personal narrative without broader implications. Incomplete data.",
+      "title": "jake 🗺️ on X: AI used to translate grandfather's German documents",
+      "summary": "A personal account of using AI to translate German documents from a deceased grandfather's estate, demonstrating practical utility of translation tools during family archival work.",
+      "bullets": [
+        "AI translation enabled family to access historical documents in German",
+        "Practical application during emotionally difficult period",
+        "Demonstrates accessibility benefit of AI tools"
+      ],
+      "bottomLine": "Anecdotal evidence of AI's utility for personal document translation and family history preservation."
+    },
+    {
+      "rawItemId": -3,
+      "score": 14.330626211475785,
+      "rationale": "No content provided. Cannot assess novelty, signal, or actionability. Appears to be empty or corrupted entry.",
+      "title": "2056186307320095145",
+      "summary": "No content available for analysis.",
+      "bullets": [
+        "Insufficient data"
+      ],
+      "bottomLine": "Entry contains no evaluable content."
+    }
+  ],
+  "usage": {
+    "inputTokens": 3857,
+    "outputTokens": 1219,
+    "cacheCreationTokens": 0,
+    "cacheReadTokens": 0
+  },
+  "model": "claude-haiku-4-5-20251001",
+  "savedAt": "2026-05-22T17:33:10.030Z",
+  "promptHash": "032950749f4a98ff"
+}

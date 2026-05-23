@@ -1,0 +1,29 @@
+{
+  "fixtureId": "manual-fixture-1779471038595",
+  "gradedBy": [
+    "ritesh"
+  ],
+  "gradedAt": "2026-05-22T17:32:23.936Z",
+  "labels": [
+    {
+      "rawItemId": -1,
+      "tier": "must"
+    },
+    {
+      "rawItemId": -2,
+      "tier": "drop"
+    },
+    {
+      "rawItemId": -3,
+      "tier": "nice"
+    },
+    {
+      "rawItemId": -4,
+      "tier": "drop"
+    },
+    {
+      "rawItemId": -5,
+      "tier": "nice"
+    }
+  ]
+}

@@ -455,6 +455,22 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     expect(spy.mock.calls).toHaveLength(0);
   });
 
+  it("REQ-007 EDGE-003: computes runDate in the configured timezone", async () => {
+    const archive = makeDefaultArchive({
+      reviewed: true,
+      completedAt: new Date("2026-05-22T19:47:55.923Z"),
+      rankedItems: [],
+    });
+    const db = makeFakeDbReviewed([archive]);
+    const { repo } = makeFakeRawItemsRepo([]);
+    const result = await createRunArchivesRepo(db).listReviewed({
+      rawItemsRepo: repo,
+      timezone: "Asia/Kolkata",
+    });
+
+    expect(result[0].runDate).toBe("2026-05-23");
+  });
+
   // 13. EDGE-002: row with empty rankedItems → topItems=[], leadSummary=null, storyCount=0
   it("returns topItems=[], leadSummary=null, storyCount=0 for row with no rankedItems (EDGE-002)", async () => {
     const archive = makeDefaultArchive({ reviewed: true, rankedItems: [] });

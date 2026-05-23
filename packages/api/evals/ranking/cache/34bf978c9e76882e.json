@@ -1,0 +1,153 @@
+{
+  "rankedItems": [
+    {
+      "rawItemId": 161,
+      "score": 7.6610666168497366,
+      "rationale": "Specific numerical benchmarks: 4.4x-4.9x speedup on RTX 3090, 164-177.8 tps measurements, DFlash implementation details. Actionable for users with concrete hardware specs.",
+      "title": "BeeLlama v0.2.0: 4.4-4.9x Speedup via DFlash on RTX 3090",
+      "summary": "BeeLlama v0.2.0 delivers major performance improvements through optimized DFlash implementation. Qwen 3.6 27B achieves 164 tps (4.40x baseline), Gemma 4 31B reaches 177.8 tps (4.93x baseline) on single RTX 3090. Improvements from lower DFlash overhead, cleaner prefill handling, drafter K/V projection caching, and safer CUDA execution.",
+      "bullets": [
+        "Qwen 3.6 27B: 164 tps (4.40x speedup) vs baseline",
+        "Gemma 4 31B: 177.8 tps (4.93x speedup) vs baseline",
+        "Prompt processing speed near baseline maintained",
+        "Stricter draft/target validation and reasoning boundaries"
+      ],
+      "bottomLine": "Production-ready speedups with maintained quality; enables real-time inference on consumer hardware."
+    },
+    {
+      "rawItemId": 170,
+      "score": 7.288409417978047,
+      "rationale": "Quantitative shootout with explicit metrics: 89.4% vs 94% token accuracy, 500x divergence calculation, speed tradeoffs measured. Demonstrates exponential error compounding in autoregressive models.",
+      "title": "Qwen3-Coder Quantization Shootout: UD-Q5_K_M Wins on Quality",
+      "summary": "Comprehensive quantization evaluation on Qwen3-Coder-Next across MXFP4_MOE, Q4_K_M, Q5_K_M, and UD-Q5_K_M formats using wikitext-2 (583 chunks). UD-Q5_K_M achieves 94% token accuracy vs 89.4% for MXFP4, translating to 500x better agreement by token 100. Only 10GB larger with negligible decode speed penalty.",
+      "bullets": [
+        "UD-Q5_K_M: 94% token accuracy vs MXFP4 89.4%",
+        "5% accuracy difference = 500x divergence by token 100",
+        "Decode speed within 9% despite 22% larger size",
+        "Prefill/refill speed tradeoffs quantified per hardware"
+      ],
+      "bottomLine": "Token accuracy compounds exponentially; 5% precision difference becomes critical on long-context tasks."
+    },
+    {
+      "rawItemId": 165,
+      "score": 7.224107188292309,
+      "rationale": "Concrete release with specific model sizes (50M, 124M, 350M), training data (20B tokens), and reproducible code examples. First in SupraLabs scaling plan signals systematic approach to efficient models.",
+      "title": "Supra-50M Released: Compact 50M-Parameter Causal Language Model",
+      "summary": "SupraLabs released Supra-50M (BASE and INSTRUCT), a 50M-parameter model trained on 20 billion tokens of high-quality educational text using custom byte-level BPE tokenizer. Achieves competitive results on benchmarks despite being significantly smaller than comparable open models. Includes Supra-124M and Supra-350M variants with reasoning and coding capabilities.",
+      "bullets": [
+        "50M parameters trained on 20B tokens from fineweb-edu",
+        "Custom byte-level BPE tokenizer from 500k documents",
+        "BASE and INSTRUCT versions with code examples provided",
+        "Part of SupraLabs Scaling Up Plan roadmap"
+      ],
+      "bottomLine": "Systematic approach to efficient model scaling with reproducible training methodology and open-source release strategy."
+    },
+    {
+      "rawItemId": 162,
+      "score": 7.182055573678782,
+      "rationale": "Specific performance comparison: 30% faster TG than Unsloth IQ on 6GB VRAM laptop with detailed hardware specs and configuration. Concrete use case validation.",
+      "title": "ByteShape Qwen3.6-35B-A3B: 30% Faster Than Unsloth IQ on 6GB VRAM",
+      "summary": "ByteShape CPU-5 quant (Q4_K_S-4.22bpw, 18.3GB) achieves 30% faster token generation than Unsloth UD-IQ4_XS (17.7GB) on 6GB VRAM laptop with CPU offload. Tested on Asus ROG Zephyrus G14 (RTX 3060, Ryzen 7 5800HS) with 65536 context window and 2048 ubatch size.",
+      "bullets": [
+        "30% faster TG than Unsloth UD-IQ4_XS on same hardware",
+        "18.3GB model fits 6GB VRAM with CPU offload",
+        "65536 context window maintained",
+        "Slightly lower PP speed but better overall throughput"
+      ],
+      "bottomLine": "Practical speedup on constrained hardware; imatrix vs regular quants explain performance differences."
+    },
+    {
+      "rawItemId": 176,
+      "score": 7.11515729321085,
+      "rationale": "Novel algorithmic approach (Vector Policy Optimization) with concrete task improvements. Addresses inference-time search diversity—actionable for scaling systems.",
+      "title": "Vector Policy Optimization: Training for Diversity Improves Test-Time Search",
+      "summary": "VPO is an RL algorithm that trains LLMs to anticipate diverse downstream reward functions and produce diverse solutions, enabling better performance in inference-time search (pass@k, best@k). Treats rewards as vector-valued (e.g., per-test-case correctness). Acts as drop-in GRPO replacement. Across four tasks, VPO matches or beats scalar RL baselines, with gaps widening as search budget grows.",
+      "bullets": [
+        "Vector-valued reward training vs scalar optimization",
+        "Drop-in GRPO advantage estimator replacement",
+        "Improves pass@k and best@k metrics",
+        "Unlocks problems GRPO models cannot solve"
+      ],
+      "bottomLine": "Algorithmic shift toward diversity-aware training; critical for inference-scaling search procedures."
+    },
+    {
+      "rawItemId": 164,
+      "score": 7.038413825987479,
+      "rationale": "Specific model size (14.1GB), context window (105k), perplexity metric (7.4040), and production testing over multiple days. Concrete quality measurements.",
+      "title": "Qwen-27B-IQ4_KS: 14.1GB with 105k Context, 1.5-1.75x Faster",
+      "summary": "Qwen3.6-27B-i1-IQ4_KS quantization (14.1GB) achieves 1.5-1.75x faster performance than previous IQ4_XS variant with comparable quality. Supports 105k context window with Q4_0 Hadamard KV cache. Perplexity: 7.4040 ±0.02773 over 12 chunks (65536 context). Tested in production workflows for multiple days.",
+      "bullets": [
+        "14.1GB model size vs 14.7GB previous variant",
+        "1.5-1.75x faster than UD-IQ4_XS",
+        "105k context window with Q4_0 KV cache",
+        "Perplexity 7.4040 on wikitext evaluation"
+      ],
+      "bottomLine": "Production-validated quantization with measurable speedup and quality parity."
+    },
+    {
+      "rawItemId": 169,
+      "score": 6.901058175614812,
+      "rationale": "Concrete metrics: F1 99%, 65MB ONNX int8 model, $5 total cost, runs in browser. Actionable security application with measured performance.",
+      "title": "Prompt Injection Detector: F1 99%, 65MB, Runs in Browser",
+      "summary": "Trained prompt injection classifier using ml-intern + DeepSeek v4 Flash. DistilBERT model achieves F1 99% on synthetic dataset, quantized to ONNX int8 (65MB), runs in browser with Transformers.js v3. Total cost under $5 using OpenRouter API. Trained on deepset/prompt-injections and Shomi28/prompt-injection-dataset.",
+      "bullets": [
+        "F1 99% on prompt injection detection",
+        "65MB ONNX int8 quantization",
+        "Runs in browser with Transformers.js v3",
+        "Under $5 total training cost via OpenRouter"
+      ],
+      "bottomLine": "Practical security tool with browser deployment; demonstrates ml-intern agent effectiveness."
+    },
+    {
+      "rawItemId": 171,
+      "score": 6.488727985149207,
+      "rationale": "Technical deep-dive on asymmetric KV cache quantization with concrete precision loss measurement (1.3%) and memory savings (>50%). Addresses real performance bottleneck.",
+      "title": "Asymmetric KV Cache (q8/q4): 1.3% Precision Loss, 50%+ Memory Savings",
+      "summary": "Discussion of asymmetric KV quantization in llama.cpp (e.g., -ctk q8_0 -ctv q4_0). Standard asymmetric combinations cause prompt processing to offload to CPU, tanking performance. User evaluation confirms 1.3% precision loss while saving >50% memory vs f16/f16. Suggests including KV cache quant combos during compilation without FA_ALL_QUANTS.",
+      "bullets": [
+        "Asymmetric q8/q4 KV cache saves >50% memory",
+        "Only 1.3% precision loss measured",
+        "Avoids CPU offload with proper compilation flags",
+        "Enables 105k context on 16GB VRAM"
+      ],
+      "bottomLine": "Practical memory optimization with minimal quality impact; compilation strategy matters."
+    },
+    {
+      "rawItemId": 157,
+      "score": 5.64778626307586,
+      "rationale": "Identifies real production gap (benchmarks vs robustness) but lacks concrete solutions or metrics. Signals important problem without actionable path forward.",
+      "title": "Benchmark Performance Doesn't Predict Production Robustness",
+      "summary": "Observation that benchmark performance often fails to predict production behavior. Systems score well internally but fail under ambiguous user intent, messy context, contradictory instructions, and long-running sessions. Current evaluation heavily rewards clean-task optimization over behavioral robustness. Seeks alternatives to standard eval pipelines.",
+      "bullets": [
+        "Benchmarks miss ambiguous intent, messy context, contradictions",
+        "Long-running sessions expose robustness gaps",
+        "Standard evals optimize for clean tasks",
+        "Need for production-focused evaluation methods"
+      ],
+      "bottomLine": "Important gap identified but solutions remain open; signals need for robustness-aware evaluation."
+    },
+    {
+      "rawItemId": 180,
+      "score": 5.247369893169029,
+      "rationale": "Specific bug fix (VRAM leak in MTP models) with technical root cause (spec, ctx_dft, model_dft cleanup). Actionable for users experiencing crashes.",
+      "title": "llama.cpp b9274: Fixes MTP VRAM Leak via Proper Resource Cleanup",
+      "summary": "Build b9274 addresses VRAM leak in Multi-Token Prediction models. destroy() function in server_context_impl was not freeing speculative decoder (spec), draft context (ctx_dft), or draft model (model_dft). On each sleep/resume cycle, GPU resources accumulated without cleanup, eventually crashing with OOM. Fix ensures proper cleanup order to avoid use-after-free.",
+      "bullets": [
+        "MTP models leaked VRAM on sleep/resume cycles",
+        "spec, ctx_dft, model_dft not freed in destroy()",
+        "Proper cleanup order prevents use-after-free",
+        "Resolves OOM crashes after minutes of use"
+      ],
+      "bottomLine": "Critical stability fix for MTP deployments; proper resource lifecycle management."
+    }
+  ],
+  "usage": {
+    "inputTokens": 25332,
+    "outputTokens": 3009,
+    "cacheCreationTokens": 0,
+    "cacheReadTokens": 0
+  },
+  "model": "claude-haiku-4-5-20251001",
+  "savedAt": "2026-05-23T05:59:59.800Z",
+  "promptHash": "c627f2d38075961d"
+}

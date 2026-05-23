@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./dist/index.js",
-    "./add-post": "./dist/add-post-entry.js"
+    "./add-post": "./dist/add-post-entry.js",
+    "./eval": "./dist/eval-entry.js"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -18,6 +19,8 @@
     "test:watch": "vitest --project unit",
     "eval:rank": "tsx src/scripts/evaluate-rank-prompt.ts",
     "eval:rank-run": "tsx src/scripts/evaluate-run-rank-prompt.ts",
+    "eval:export-fixtures": "tsx src/scripts/eval-export-fixtures.ts",
+    "eval:ranking": "tsx src/scripts/eval-ranking.ts",
     "lint": "eslint ."
   },
   "dependencies": {

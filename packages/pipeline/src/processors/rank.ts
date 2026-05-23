@@ -81,13 +81,16 @@ export const rankedResponseSchema = z.object({
 
 type RankedResponseEntry = z.infer<typeof rankedEntrySchema>;
 
-const AXES = [
-  "Developer-relevance",
-  "Builder-impact",
-  "Agentic-systems-relevance",
-  "Evidence-quality",
-  "Signal-vs-hype",
-] as const;
+// Note: a prior version of this file kept a hard-coded AXES list and
+// silently filtered out ranked items whose `rationale` didn't contain one
+// of those literal hyphenated substrings (Developer-relevance,
+// Builder-impact, Agentic-systems-relevance, Evidence-quality,
+// Signal-vs-hype). That guard fought the admin-editable ranking prompt
+// feature: any operator who saved a prompt with different axis vocabulary
+// (e.g. the older "Novelty / Signal / Actionability" labels) would get
+// every LLM-ranked item dropped with "rationale_axis_missing" warnings.
+// The Zod schema already requires `rationale` is a non-empty string of
+// meaningful length — that's the boundary check we trust.
 
 // Approximate token count as ceil(chars / 4). This is coarse but good enough
 // for a truncation budget; swap in a real tokenizer if precision ever matters.
@@ -206,7 +209,6 @@ export async function rankCandidates(
   );
 
   const systemPrompt = options.systemPrompt;
-  const axes = AXES;
 
   const promptPayload = {
     requestedTopN: options.topN,
@@ -287,26 +289,9 @@ export async function rankCandidates(
     providerMetadata: result.providerMetadata,
   });
 
-  const axisValidated = result.object.ranked.filter((entry) => {
-    const rationaleLower = entry.rationale.toLowerCase();
-    const mentionsAxis = axes.some((axis) =>
-      rationaleLower.includes(axis.toLowerCase()),
-    );
-    if (!mentionsAxis) {
-      logger.warn(
-        {
-          event: "run.rank.rationale_axis_missing",
-          runId: options.runId,
-          itemId: entry.id,
-          rationale: entry.rationale,
-        },
-        "skipping ranked item: rationale does not name a scoring axis",
-      );
-    }
-    return mentionsAxis;
-  });
+  const rankedEntries = result.object.ranked;
 
-  for (const r of axisValidated) {
+  for (const r of rankedEntries) {
     const bulletsWords = r.bullets.reduce(
       (n, b) => n + countWords(b),
       0,
@@ -329,7 +314,7 @@ export async function rankCandidates(
   }
 
   const byId = new Map(shortlist.map((c) => [c.id, c]));
-  const validEntries = axisValidated.filter((r) => {
+  const validEntries = rankedEntries.filter((r) => {
     const candidate = byId.get(r.id);
     if (candidate === undefined) return false;
     if (getRankedTitle(r, candidate) !== "") return true;

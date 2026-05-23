@@ -1,0 +1,87 @@
+{
+  "fixtureId": "manual-fixture-1779471038595",
+  "source": "manual",
+  "date": null,
+  "runId": null,
+  "model": "claude-haiku-4-5-20251001",
+  "exportedAt": "2026-05-22T17:30:38.595Z",
+  "pool": [
+    {
+      "rawItemId": -1,
+      "title": "An OpenAI model has disproved a central conjecture in discrete geometry",
+      "url": "https://openai.com/index/model-disproves-discrete-geometry-conjecture/",
+      "sourceType": "blog",
+      "publishedAt": null,
+      "content": "For nearly 80 years, mathematicians have studied a deceptively simple question: if you place nn points in the plane, how many pairs of points can be exactly distance 11 apart?\n\nThis is the planar unit distance problem, first posed by Paul Erdős in 1946. It is one of the best-known questions in combinatorial geometry, easy to state and remarkably difficult to resolve. The 2005 book _Research Problems in Discrete Geometry_, by Brass, Moser, and Pach, calls it “possibly the best known (and simplest to explain) problem in combinatorial geometry.” Noga Alon, a leading combinatorialist at Princeton, describes it as “one of Erdős’ favorite problems.” Erdős even offered a monetary prize for resolving this problem.\n\nToday, we share a breakthrough on the unit distance problem. Since Erdős’s original work, the prevailing belief has been that the “square grid” constructions depicted further below were essentially optimal for maximizing the number of unit-distance pairs. An internal OpenAI model has disproved this longstanding conjecture, providing an infinite family of examples that yield a polynomial improvement. The proof has been checked by a group of external mathematicians. They have also written a companion paper explaining the argument and providing further background and context for the significance of the result.\n\nThe result is also notable for how it was found. The proof came from a new general-purpose reasoning model, rather than from a system trained specifically for mathematics, scaffolded to search through proof strategies, or targeted at the unit distance problem in particular. As part of a broader effort to test whether advanced models can contribute to frontier research, we evaluated it on a collection of Erdős problems. In this case, it produced a proof resolving the open problem.\n\nThis proof is an important milestone for the math and AI communities. It marks the first time that a prominent open problem, central to a subfield of mathematics, has been solved autonomously by AI. It also demonstrates the depth of reasoning these systems now support. Mathematics provides a particularly clear testbed for reasoning: the problems are precise, potential proofs can be checked, and a long argument only works if the reasoning holds together from beginning to end. The method by which the problem was solved is also notable. The proof brings unexpected, sophisticated ideas from algebraic number theory to bear on an elementary geometric question.\n\nFields medalist Tim Gowers, writing in the companion paper, calls the result “a milestone in AI mathematics.” According to leading number theorist Arul Shankar, “In my opinion this paper demonstrates that current AI models go beyond just helpers to human mathematicians – they are capable of having original ingenious ideas, and then carrying them out to fruition”.\n\nMathematicians on the result\n\n1 of 4\n\n_Previously known construction of many unit distances from a rescaled square grid._\n\n## The unit distance problem\n\nLet u(n)u(n) be the largest possible number of unit-distance pairs among nn points in the plane. Examples attaining linear growth rate are easy to construct: placing nn points in a line gives n−1n-1 pairs, while a square grid gives about 2n2n pairs. The previously best known construction, coming from a rescaled square grid, turns out to give even more: n1+C/log⁡log⁡(n)n^{1 + C / \\\\log \\\\log(n)} for a constant CC. Since log⁡log⁡(n)\\\\log \\\\log(n) tends to infinity with nn, the additional term in the exponent tends to 00, meaning these constructions achieve growth only slightly faster than linear. For decades, it was widely believed that this rate was essentially the best possible, and no construction could improve significantly over the square grid. In technical terms, Erdős conjectured an upper bound of n1+o(1)n^{1+o(1)} in which the additional o(1)o(1) indicates a term tending to 00 with nn.\n\nOur new result disproves this conjecture. More precisely, for infinitely many values of\n\nnn, the proof constructs configurations of nn points with at least n1+δn^{1+\\\\delta} unit-distance pairs, for some fixed exponent δ\\>0\\\\delta > 0. (The original AI proof does not give an explicit δ\\\\delta, but a forthcoming refinement due to Princeton mathematics professor Will Sawin has shown one can take δ\\=0.014\\\\delta=0.014.)\n\nThe history of the problem helps to see why the result is surprising. The best known lower bound had been essentially unchanged since Erdős’s original 1946 construction. The best upper bound,\n\nO(n4/3)O(n^{4/3}), dates to work by Spencer, Szemerédi, and Trotter in 1984, and despite later refinements and related structural work by Székely, Katz and Silier, Pach, Raz, and Solymosi and by others, the upper bound has remained essentially unchanged. As evidence in favor of the conjecture, Matoušek and Alon-Bucić-Sauermann studied the problem with non-Euclidean distances in the plane, and proved that \"most\" of these non-Euclidean distances obey the conjecture in some sense.\n\nSurprisingly, the key ingredients of the construction come from a very different part of mathematics known as algebraic number theory, which studies concepts like factorization in extensions of the integers known as algebraic number fields.\n\n_After verifying the initial proof, we investigated the success rate of our models on this problem with varying amounts of test-time compute. The results are shown here._\n\n## New techniques from algebraic number theory\n\nAt a high level, the proof begins with a familiar geometric idea and pushes it in an unexpected direction.\n\nErdős’s original lower bound can be understood through the Gaussian integers: numbers of the form a+bia+bi, where aa and bb are integers and ii is the square root of −1\\-1. The Gaussian integers extend the ordinary integers and, like them, enjoy properties such a unique factorization into primes. Such extensions of the ordinary integers or rationals are known as algebraic number fields. The new argument replaces the Gaussian integers by more complicated generalizations from algebraic number theory with richer symmetries that can create many more unit-length differences.\n\nThe precise argument uses tools such as infinite class field towers and Golod–Shafarevich theory to show the number fields required for the argument actually exist. These ideas were well-known to algebraic number theorists, but it came as a great surprise that these concepts have implications for geometric questions in the Euclidean plane.\n\n## What this means for mathematics\n\nThis result marks an important moment in the interaction between AI and mathematics: an AI system has autonomously resolved a longstanding open problem at the center of an active field. It also offers an early glimpse of a new kind of collaboration between AI and human mathematicians. In this case, the companion work by external mathematicians paints a substantially richer picture than the original solution alone.\n\nAs Thomas Bloom writes in the companion note:\n\n“_When assessing the importance and influence of an AI-generated proof, a question I ask myself is: has this taught us something new about the problem? Do we understand discrete geometry better now? I think the answer is a moderated yes: this shows that there is a lot more that number theoretic constructions have to say about these sorts of questions than we suspected; moreover, that the number theory required can be very deep. No doubt many algebraic number theorists will be taking a close look at other open problems in discrete geometry in the coming months._”\n\nThe unexpected connection between algebraic number theory and discrete geometry revealed by the solution is part of what makes the result notable. It does not simply settle a specific conjecture, but may provide mathematicians with a bridge to begin exploring further related problems.\n\nBloom also points toward a broader possibility:\n\n“_The frontiers of knowledge are very spiky, and no doubt the coming months and years will see similar successes in many other areas of mathematics, where long-standing open problems are resolved by an AI revealing unexpected connections and pushing the existing technical machinery to its limit. AI is helping us to more fully explore the cathedral of mathematics we have build over the centuries; what other unseen wonders are waiting in the wings?_”\n\nThis result provides a promising example: AI contributing not only a solution, but a mathematical discovery whose significance becomes clearer and richer through subsequent human understanding.\n\n## Why this matters\n\nThe takeaway is bigger than this particular result. Better mathematical reasoning can make AI a stronger research partner: something that can hold together difficult lines of thought, connect ideas across distant areas of knowledge, surface promising paths experts may not have prioritized, and help researchers make progress on problems that would otherwise be too complex or time-intensive to tackle.\n\nThose capabilities matter beyond mathematics. If a model can keep a complicated argument coherent, connect ideas across distant areas of knowledge, and produce work that survives expert scrutiny, those are also useful abilities in biology, physics, materials science, engineering, and medicine, and they are part of our longer-term path toward more automated research: systems that can help scientists and engineers explore more ideas and pursue harder technical questions.\n\nAI is about to start taking a very serious role in the creative parts of research, and most importantly AI research itself. While this progress is not unexpected, it reinforces the urgency we feel about understanding this next phase of AI development, the challenges of aligning very intelligent systems, and the future of human-AI collaboration.\n\nThat future still depends on human judgment. Expertise becomes more valuable, not less. AI can help search, suggest, and verify. People choose the problems that matter, interpret the results, and decide what questions to pursue next.",
+      "enrichedLink": null,
+      "enrichmentStatus": "failed",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -2,
+      "title": "jake 🗺️ on X: \"given the ai hate rn, here's a story on how my dad used it as a tool for good during a very difficult time.\n\nmy grandpa passed away 3 months ago. he grew up in switzerland and had a number of old documents stored under his bed.\n\neverything was written in german but none of our\" / X",
+      "url": "https://x.com/jakeottiger/status/2056167723026055344",
+      "sourceType": "blog",
+      "publishedAt": null,
+      "content": "Don’t miss what’s happening\n\nPeople on X are the first to know.",
+      "enrichedLink": null,
+      "enrichmentStatus": "failed",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -3,
+      "title": "2056186307320095145",
+      "url": "https://x.com/gdb/status/2056186307320095145",
+      "sourceType": "blog",
+      "publishedAt": null,
+      "content": "",
+      "enrichedLink": null,
+      "enrichmentStatus": "failed",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -4,
+      "title": "Sam Altman on X: \"ChatGPT Images 2.0 💚 India.\n\nAlready more than 1 billion images created there; awesome to see.\" / X",
+      "url": "https://x.com/sama/status/2056165722804654196",
+      "sourceType": "blog",
+      "publishedAt": null,
+      "content": "Don’t miss what’s happening\n\nPeople on X are the first to know.\n\n[\n\nLog in\n\n\n\n](https://x.com/login)\n\n[\n\nSign up\n\n\n\n](https://x.com/i/flow/signup)\n\n## [](https://x.com/)\n\n## Post\n\n## Conversation\n\n[\n\nSam Altman\n\n\n\n](https://x.com/sama)\n\n[\n\n@sama\n\n](https://x.com/sama)\n\nChatGPT Images 2.0 ![💚](https://abs.twimg.com/emoji/v2/svg/1f49a.svg) India. Already more than 1 billion images created there; awesome to see.\n\n[5:41 AM · May 18, 2026](https://x.com/sama/status/2056165722804654196)\n\n## \n\nNew to X?\n\nSign up now to get your own personalized timeline!\n\n[\n\nCreate account\n\n\n\n](https://x.com/i/flow/signup)\n\nBy signing up, you agree to the [Terms of Service](https://x.com/tos) and [Privacy Policy](https://x.com/privacy), including [Cookie Use.](https://help.x.com/rules-and-policies/twitter-cookies)\n\n[Terms of Service](https://x.com/tos)\n\n|\n\n[Privacy Policy](https://x.com/privacy)\n\n|\n\n[Cookie Policy](https://support.x.com/articles/20170514)\n\n|\n\n[Accessibility](https://help.x.com/resources/accessibility)\n\n|\n\n[Ads info](https://business.x.com/en/help/troubleshooting/how-twitter-ads-work.html?ref=web-twc-ao-gbl-adsinfo&utm_source=twc&utm_medium=web&utm_campaign=ao&utm_content=adsinfo)\n\n|\n\n© 2026 X Corp.",
+      "enrichedLink": null,
+      "enrichmentStatus": "failed",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -5,
+      "title": "Yuchen Jin on X: \"GPU shortage is worse than ever.\n\nH100s cost more today than they did 3 years ago, and you cannot get them on-demand.\n\nThe big AI labs have locked up most of the supply for years. I’m worried university researchers and individual developers simply won’t be able to get GPUs. https://t.co/XW12t3ZcTv\" / X",
+      "url": "https://x.com/Yuchenj_UW/status/2056218976913694879",
+      "sourceType": "blog",
+      "publishedAt": null,
+      "content": "Don’t miss what’s happening\n\nPeople on X are the first to know.",
+      "enrichedLink": null,
+      "enrichmentStatus": "failed",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    }
+  ],
+  "dedupClusters": [],
+  "originalRankerOutput": null
+}

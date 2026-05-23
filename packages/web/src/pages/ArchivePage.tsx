@@ -10,9 +10,21 @@ import { ScrollToTop } from "../components/ScrollToTop";
 import { readingTimeMinutes } from "../lib/readingTime";
 import { captureBrowserEvent } from "../lib/analytics";
 
-function formatIssueDate(iso: string): string {
-  const d = new Date(iso);
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function dateFromIsoDate(dateISO: string): Date | null {
+  const parsed = ISO_DATE_RE.exec(dateISO);
+  if (parsed === null) return null;
+  const [, year, month, day] = parsed;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatIssueDate(value: string): string {
+  const dateOnly = dateFromIsoDate(value);
+  const d = dateOnly ?? new Date(value);
   return d.toLocaleDateString("en-US", {
+    timeZone: dateOnly === null ? undefined : "UTC",
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -66,7 +78,8 @@ export function ArchivePage(): ReactElement {
   const topStoryTitle = hasTopStory ? items[0].title : null;
   const digestHeadline = data?.digestHeadline ?? null;
   const digestSummary = data?.digestSummary ?? null;
-  const issueDate = data?.startedAt ? formatIssueDate(data.startedAt) : "";
+  const issueDateValue = data?.issueDate ?? data?.startedAt ?? "";
+  const issueDate = issueDateValue.length > 0 ? formatIssueDate(issueDateValue) : "";
   const fallbackTitle = `AI news - ${issueDate}`;
   const shareTitle = topStoryTitle ?? digestHeadline ?? fallbackTitle;
   const readingMin = readingTimeMinutes(items);
@@ -179,7 +192,7 @@ export function ArchivePage(): ReactElement {
       <>
         <BackToArchive />
         <ArchivePageHeader
-          startedAt={data.startedAt}
+          issueDate={data.issueDate ?? data.startedAt}
           storyCount={items.length}
           topStoryTitle={topStoryTitle}
           digestHeadline={digestHeadline}

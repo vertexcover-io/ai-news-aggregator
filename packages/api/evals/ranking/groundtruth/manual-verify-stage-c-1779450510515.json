@@ -1,0 +1,21 @@
+{
+  "fixtureId": "manual-verify-stage-c-1779450510515",
+  "gradedBy": [
+    "aman"
+  ],
+  "gradedAt": "2026-05-22T11:52:47.872Z",
+  "labels": [
+    {
+      "rawItemId": -1,
+      "tier": "must"
+    },
+    {
+      "rawItemId": -2,
+      "tier": "nice"
+    },
+    {
+      "rawItemId": -3,
+      "tier": "drop"
+    }
+  ]
+}

@@ -1,7 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
-import { loadCandidatesSince } from "@pipeline/services/candidate-loader";
+import {
+  loadCandidatesSince,
+  pickCandidateContent,
+} from "@pipeline/services/candidate-loader";
 import type { CandidatesRepo, CandidateRow } from "@pipeline/repositories/candidates.js";
-import type { RawItemComment, RawItemMetadata } from "@newsletter/shared";
+import type {
+  EnrichedLinkContent,
+  RawItemComment,
+  RawItemMetadata,
+} from "@newsletter/shared";
 
 const SAMPLE_COMMENT: RawItemComment = {
   id: "c1",
@@ -31,6 +38,84 @@ function makeRepo(rows: CandidateRow[]): CandidatesRepo {
   };
 }
 
+describe("pickCandidateContent", () => {
+  const okEnriched: EnrichedLinkContent = {
+    url: "https://example.com",
+    fetchedAt: "2026-04-01T00:00:00Z",
+    status: "ok",
+    markdown: "MARKDOWN_BODY",
+  };
+
+  it("prefers raw content over enriched markdown", () => {
+    expect(
+      pickCandidateContent("raw-body", { comments: [], enrichedLink: okEnriched }),
+    ).toBe("raw-body");
+  });
+
+  it("returns enriched markdown when raw content is null", () => {
+    expect(
+      pickCandidateContent(null, { comments: [], enrichedLink: okEnriched }),
+    ).toBe("MARKDOWN_BODY");
+  });
+
+  it("returns null when raw content is empty string and no enriched markdown", () => {
+    expect(pickCandidateContent("", { comments: [] })).toBeNull();
+  });
+
+  it("ignores enriched markdown when enrichment status is failed", () => {
+    expect(
+      pickCandidateContent(null, {
+        comments: [],
+        enrichedLink: {
+          ...okEnriched,
+          status: "failed",
+          failureReason: "timeout",
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("ignores enriched markdown when status=skipped even if markdown present", () => {
+    expect(
+      pickCandidateContent(null, {
+        comments: [],
+        enrichedLink: {
+          ...okEnriched,
+          status: "skipped",
+          skipReason: "cache-hit",
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("accepts an explicit enrichedLink arg ignoring the metadata path (for fixtures)", () => {
+    expect(pickCandidateContent(null, null, okEnriched)).toBe("MARKDOWN_BODY");
+  });
+
+  it("explicit enrichedLink arg wins over metadata.enrichedLink", () => {
+    const olderEnriched: EnrichedLinkContent = {
+      ...okEnriched,
+      markdown: "OLDER",
+    };
+    const newerEnriched: EnrichedLinkContent = {
+      ...okEnriched,
+      markdown: "NEWER",
+    };
+    expect(
+      pickCandidateContent(
+        null,
+        { comments: [], enrichedLink: olderEnriched },
+        newerEnriched,
+      ),
+    ).toBe("NEWER");
+  });
+
+  it("returns null when both content and metadata are null/undefined", () => {
+    expect(pickCandidateContent(null, null)).toBeNull();
+    expect(pickCandidateContent(null, undefined)).toBeNull();
+  });
+});
+
 describe("loadCandidatesSince", () => {
   it("REQ-010: maps non-null content through to candidate.content", async () => {
     const repo = makeRepo([baseRow({ content: "article body markdown" })]);
@@ -45,7 +130,7 @@ describe("loadCandidatesSince", () => {
     expect(result[0].content).toBe("article body markdown");
   });
 
-  it("REQ-011: preserves null content and types comments as RawItemComment[]", async () => {
+  it("REQ-011: preserves null content when no enrichedLink markdown and types comments as RawItemComment[]", async () => {
     const repo = makeRepo([
       baseRow({
         content: null,
@@ -63,6 +148,76 @@ describe("loadCandidatesSince", () => {
     const comments: RawItemComment[] = result[0].comments;
     expect(comments).toHaveLength(1);
     expect(comments[0]).toEqual(SAMPLE_COMMENT);
+  });
+
+  it("falls back to enrichedLink.markdown when raw content is null", async () => {
+    const enrichedLink: EnrichedLinkContent = {
+      url: "https://example.com",
+      fetchedAt: "2026-04-01T00:00:00Z",
+      status: "ok",
+      markdown: "# enriched article body",
+    };
+    const repo = makeRepo([
+      baseRow({
+        content: null,
+        metadata: { comments: [], enrichedLink } as RawItemMetadata,
+      }),
+    ]);
+
+    const result = await loadCandidatesSince(
+      repo,
+      new Date("2026-04-01T00:00:00Z"),
+      ["hn"],
+    );
+
+    expect(result[0].content).toBe("# enriched article body");
+  });
+
+  it("prefers raw content over enriched markdown when both are present", async () => {
+    const enrichedLink: EnrichedLinkContent = {
+      url: "https://example.com",
+      fetchedAt: "2026-04-01T00:00:00Z",
+      status: "ok",
+      markdown: "ENRICHED",
+    };
+    const repo = makeRepo([
+      baseRow({
+        content: "RAW",
+        metadata: { comments: [], enrichedLink } as RawItemMetadata,
+      }),
+    ]);
+
+    const result = await loadCandidatesSince(
+      repo,
+      new Date("2026-04-01T00:00:00Z"),
+      ["hn"],
+    );
+
+    expect(result[0].content).toBe("RAW");
+  });
+
+  it("returns null when enrichedLink status is not ok (skipped or failed)", async () => {
+    const enrichedLink: EnrichedLinkContent = {
+      url: "https://example.com",
+      fetchedAt: "2026-04-01T00:00:00Z",
+      status: "skipped",
+      skipReason: "same-platform-link",
+      markdown: "should-be-ignored-when-status-is-skipped",
+    };
+    const repo = makeRepo([
+      baseRow({
+        content: null,
+        metadata: { comments: [], enrichedLink } as RawItemMetadata,
+      }),
+    ]);
+
+    const result = await loadCandidatesSince(
+      repo,
+      new Date("2026-04-01T00:00:00Z"),
+      ["hn"],
+    );
+
+    expect(result[0].content).toBeNull();
   });
 
   it("REQ-012: row with metadata.comments === [] yields empty comments array", async () => {

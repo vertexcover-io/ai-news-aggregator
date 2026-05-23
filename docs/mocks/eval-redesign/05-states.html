@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1440" />
+<title>Eval — Component States · Mock</title>
+<link rel="stylesheet" href="_theme.css" />
+<style>
+  .state-section {
+    background: var(--c-bg);
+    border: 1px solid var(--c-line);
+    border-radius: var(--r-lg);
+    margin: var(--sp-6) auto;
+    max-width: 1280px;
+    overflow: hidden;
+  }
+  .state-header {
+    padding: var(--sp-5) var(--sp-6);
+    background: var(--c-bg-sunk);
+    border-bottom: 1px solid var(--c-line);
+  }
+  .state-eyebrow {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--c-mute);
+    margin-bottom: var(--sp-2);
+  }
+  .state-title {
+    font-family: var(--f-serif);
+    font-weight: 500;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    color: var(--c-ink);
+  }
+  .state-desc {
+    margin-top: var(--sp-2);
+    font-size: 13px;
+    color: var(--c-mute);
+    max-width: 70ch;
+  }
+  .state-body {
+    padding: var(--sp-6);
+    background: var(--c-bg-soft);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-6);
+  }
+
+  /* ==============================
+     A. Prompt diff modal
+     ============================== */
+
+  .diff-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--sp-5);
+  }
+
+  .diff-modal {
+    width: 100%;
+    max-width: 420px;
+    background: var(--c-bg);
+    border: 1px solid var(--c-line-strong);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-2);
+    overflow: hidden;
+  }
+  .diff-modal__head {
+    padding: var(--sp-4) var(--sp-5);
+    border-bottom: 1px solid var(--c-line);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .diff-modal__title {
+    font-family: var(--f-serif);
+    font-weight: 500;
+    font-size: 16px;
+    color: var(--c-ink);
+  }
+  .diff-modal__close {
+    width: 28px; height: 28px;
+    border-radius: var(--r-sm);
+    background: var(--c-bg-sunk);
+    color: var(--c-mute);
+    font-size: 14px;
+    line-height: 28px;
+    text-align: center;
+  }
+  .diff-modal__meta {
+    padding: var(--sp-3) var(--sp-5);
+    background: var(--c-bg-sunk);
+    border-bottom: 1px solid var(--c-line);
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--c-mute);
+    display: flex; gap: var(--sp-3);
+  }
+  .diff-modal__meta strong { color: var(--c-ink); font-weight: 500; }
+
+  .diff-body {
+    font-family: var(--f-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    max-height: 320px;
+    overflow-y: auto;
+    background: #fbfaf9;
+    padding: var(--sp-3) 0;
+  }
+  .diff-body__line {
+    padding: 0 var(--sp-5);
+    white-space: pre-wrap;
+    color: var(--c-ink-soft);
+  }
+  .diff-body__line--add {
+    background: #ecfdf5;
+    color: var(--c-ok);
+  }
+  .diff-body__line--add::before { content: "+ "; opacity: 0.7; }
+  .diff-body__line--del {
+    background: #fef2f2;
+    color: var(--c-err);
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+  }
+  .diff-body__line--del::before { content: "− "; opacity: 0.7; text-decoration: none; display: inline-block; }
+  .diff-body__line--ctx { color: var(--c-mute); }
+  .diff-body__line--ctx::before { content: "  "; }
+
+  .diff-empty {
+    padding: var(--sp-8) var(--sp-5);
+    text-align: center;
+    color: var(--c-mute);
+    font-size: 13px;
+  }
+  .diff-empty__icon {
+    font-family: var(--f-mono);
+    font-size: 28px;
+    color: var(--c-line-strong);
+    margin-bottom: var(--sp-3);
+  }
+
+  .diff-modal__foot {
+    padding: var(--sp-3) var(--sp-5);
+    border-top: 1px solid var(--c-line);
+    display: flex; justify-content: flex-end; gap: var(--sp-2);
+    background: var(--c-bg);
+  }
+
+  /* ==============================
+     B. Run detail drawer
+     ============================== */
+
+  .drawer {
+    width: 1120px;
+    background: var(--c-bg);
+    border: 1px solid var(--c-line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-2);
+    overflow: hidden;
+    margin: 0 auto;
+  }
+  .drawer__head {
+    padding: var(--sp-4) var(--sp-5);
+    border-bottom: 1px solid var(--c-line);
+    background: var(--c-bg);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .drawer__meta { display: flex; align-items: center; gap: var(--sp-4); }
+  .drawer__id {
+    font-family: var(--f-mono);
+    font-size: 13px;
+    color: var(--c-ink);
+    font-weight: 500;
+  }
+  .drawer__time {
+    font-family: var(--f-mono);
+    font-size: 12px;
+    color: var(--c-mute);
+  }
+  .drawer__nav { display: flex; gap: var(--sp-2); }
+
+  .drawer__body {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    min-height: 540px;
+  }
+  .drawer__left {
+    border-right: 1px solid var(--c-line);
+    display: flex; flex-direction: column;
+  }
+  .drawer__pane-head {
+    padding: var(--sp-3) var(--sp-5);
+    border-bottom: 1px solid var(--c-line);
+    background: var(--c-bg-sunk);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .drawer__pane-title {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--c-ink);
+  }
+  .drawer__pane-sub {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--c-mute);
+  }
+
+  /* Prompt snapshot — code-block style with line numbers */
+  .snapshot {
+    flex: 1;
+    background: #fbfaf9;
+    overflow: auto;
+  }
+  .snapshot__inner {
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    font-family: var(--f-mono);
+    font-size: 12px;
+    line-height: 1.65;
+  }
+  .snapshot__num {
+    text-align: right;
+    padding: 0 var(--sp-3) 0 var(--sp-4);
+    color: var(--c-mute-soft);
+    border-right: 1px solid var(--c-line);
+    user-select: none;
+  }
+  .snapshot__line {
+    padding: 0 var(--sp-5);
+    white-space: pre;
+    color: var(--c-ink);
+  }
+  .snapshot__num:first-of-type { padding-top: var(--sp-3); }
+  .snapshot__line:first-of-type { padding-top: var(--sp-3); }
+  .snapshot__num:last-of-type { padding-bottom: var(--sp-3); }
+  .snapshot__line:last-of-type { padding-bottom: var(--sp-3); }
+
+  /* Right pane — score + cost */
+  .drawer__right { display: flex; flex-direction: column; }
+  .breakdown {
+    padding: var(--sp-4) var(--sp-5);
+    border-bottom: 1px solid var(--c-line);
+  }
+  .breakdown__row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: var(--sp-3);
+    padding: var(--sp-2) 0;
+    font-size: 12px;
+    border-bottom: 1px solid var(--c-line);
+  }
+  .breakdown__row:last-child { border-bottom: 0; }
+  .breakdown__row--total {
+    border-top: 1px solid var(--c-ink);
+    margin-top: var(--sp-2);
+    padding-top: var(--sp-3);
+    border-bottom: 0;
+    font-weight: 600;
+  }
+  .breakdown__row span:last-child {
+    font-family: var(--f-mono);
+    tabular-nums: tabular-nums;
+    color: var(--c-ink);
+  }
+  .breakdown__row .muted {
+    color: var(--c-mute);
+  }
+
+  .breakdown__sub-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: var(--sp-3);
+    padding: 4px 0 4px var(--sp-4);
+    font-size: 11px;
+    color: var(--c-mute);
+    font-family: var(--f-mono);
+  }
+  .breakdown__sub-row span:last-child {
+    tabular-nums: tabular-nums;
+  }
+
+  /* ==============================
+     C. Empty state
+     ============================== */
+
+  .empty {
+    background: var(--c-bg);
+    border: 1px dashed var(--c-line-strong);
+    border-radius: var(--r-lg);
+    padding: var(--sp-16) var(--sp-8);
+    text-align: center;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .empty__icon {
+    font-family: var(--f-mono);
+    font-size: 32px;
+    color: var(--c-mute-soft);
+    margin-bottom: var(--sp-5);
+    line-height: 1;
+  }
+  .empty__title {
+    font-family: var(--f-serif);
+    font-weight: 500;
+    font-size: 22px;
+    color: var(--c-ink);
+    margin-bottom: var(--sp-2);
+    letter-spacing: -0.01em;
+  }
+  .empty__body {
+    font-size: 14px;
+    color: var(--c-mute);
+    line-height: 1.6;
+    margin-bottom: var(--sp-6);
+    max-width: 50ch;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .empty__actions { display: flex; gap: var(--sp-3); justify-content: center; }
+
+</style>
+</head>
+<body>
+
+<aside class="notes">
+  <div class="notes__title">DESIGN NOTES · 05 / STATES</div>
+  <div class="notes__body">
+    <p>Three component-level states used across the eval surfaces: <strong>(A)</strong> the prompt diff modal at three sizes (empty / small / large with scroll); <strong>(B)</strong> the run detail drawer that opens from the runs table when you click a run id or prompt hash — left pane is the prompt snapshot rendered as a code block with line numbers, right pane has score + cost breakdowns; <strong>(C)</strong> the runs-page empty state for first-time users who haven't run an eval yet.</p>
+    <p><strong>Why this matters:</strong> The diff modal already exists but its empty + edge-case states aren't accounted for. The drawer is new — it's the entry point for "view this prompt that was used in run X" and feeds the compare flow on 04. The empty state turns a confusing blank page into a guided next step.</p>
+  </div>
+</aside>
+
+<div class="app">
+
+  <header class="masthead">
+    <div class="masthead__brand">
+      <span class="masthead__title">Newsletter</span>
+      <span class="masthead__sub">Mock · Component states</span>
+    </div>
+    <nav class="masthead__nav">
+      <a href="01-eval-index.html">01 · Eval</a>
+      <a href="02-eval-grade.html">02 · Grade</a>
+      <a href="03-eval-fixture-new.html">03 · New</a>
+      <a href="04-eval-runs.html">04 · Runs</a>
+      <a href="#" class="is-active">05 · States</a>
+    </nav>
+  </header>
+
+  <!-- =================================================
+       A. PROMPT DIFF MODAL — 3 sizes
+       ================================================= -->
+
+  <section class="state-section">
+    <header class="state-header">
+      <div class="state-eyebrow">A · Prompt diff modal</div>
+      <h2 class="state-title">Three sizes</h2>
+      <p class="state-desc">Opened from "View diff" on the eval index page, or from "Compare prompts" on the runs page. Empty state happens when the saved and draft prompts are identical (shouldn't normally trigger since the trigger button is gated, but defensive).</p>
+    </header>
+    <div class="state-body">
+      <div class="diff-grid">
+
+        <!-- Empty -->
+        <div class="diff-modal">
+          <header class="diff-modal__head">
+            <span class="diff-modal__title">Prompt diff</span>
+            <button class="diff-modal__close">×</button>
+          </header>
+          <div class="diff-modal__meta">
+            <span><strong>a4f1c9d2</strong></span>
+            <span style="color:var(--c-mute-soft);">→</span>
+            <span><strong>a4f1c9d2</strong></span>
+            <span style="margin-left:auto;">no changes</span>
+          </div>
+          <div class="diff-empty">
+            <div class="diff-empty__icon">≡</div>
+            <p>Saved prompt and draft are identical.<br/>Nothing to diff.</p>
+          </div>
+          <footer class="diff-modal__foot">
+            <button class="btn btn--default btn--sm">Close</button>
+          </footer>
+        </div>
+
+        <!-- Small diff -->
+        <div class="diff-modal">
+          <header class="diff-modal__head">
+            <span class="diff-modal__title">Prompt diff</span>
+            <button class="diff-modal__close">×</button>
+          </header>
+          <div class="diff-modal__meta">
+            <span><strong>a4f1c9d2</strong></span>
+            <span style="color:var(--c-mute-soft);">→</span>
+            <span><strong>b8e7f203</strong></span>
+            <span style="margin-left:auto;color:var(--c-ok);">+3</span>
+            <span style="color:var(--c-err);">−1</span>
+          </div>
+          <div class="diff-body">
+            <div class="diff-body__line diff-body__line--ctx">Output a final 0–10 score = (novelty * 0.35) +</div>
+            <div class="diff-body__line diff-body__line--del">(signal * 0.40) + (actionability * 0.25), and</div>
+            <div class="diff-body__line diff-body__line--add">(signal * 0.45) + (actionability * 0.20), and</div>
+            <div class="diff-body__line diff-body__line--add">favor items with primary-source citations over</div>
+            <div class="diff-body__line diff-body__line--add">aggregator commentary.</div>
+            <div class="diff-body__line diff-body__line--ctx">produce a 4–7 word neutral newswire</div>
+          </div>
+          <footer class="diff-modal__foot">
+            <button class="btn btn--ghost btn--sm">Cancel</button>
+            <button class="btn btn--primary btn--sm">Save</button>
+          </footer>
+        </div>
+
+        <!-- Large with scroll -->
+        <div class="diff-modal">
+          <header class="diff-modal__head">
+            <span class="diff-modal__title">Prompt diff</span>
+            <button class="diff-modal__close">×</button>
+          </header>
+          <div class="diff-modal__meta">
+            <span><strong>a4f1c9d2</strong></span>
+            <span style="color:var(--c-mute-soft);">→</span>
+            <span><strong>c2d3e470</strong></span>
+            <span style="margin-left:auto;color:var(--c-ok);">+14</span>
+            <span style="color:var(--c-err);">−9</span>
+          </div>
+          <div class="diff-body">
+            <div class="diff-body__line diff-body__line--del">You are ranking AI news items for a daily digest.</div>
+            <div class="diff-body__line diff-body__line--add">You are ranking AI news items for a daily curated</div>
+            <div class="diff-body__line diff-body__line--add">digest. For each item return a score 0–10 across</div>
+            <div class="diff-body__line diff-body__line--add">three axes:</div>
+            <div class="diff-body__line diff-body__line--ctx"></div>
+            <div class="diff-body__line diff-body__line--ctx">  • Novelty       — Does this break new ground?</div>
+            <div class="diff-body__line diff-body__line--del">  • Signal/hype   — Is the claim measurable?</div>
+            <div class="diff-body__line diff-body__line--add">  • Signal/hype   — Is the claim measurable, or</div>
+            <div class="diff-body__line diff-body__line--add">    marketing fluff?</div>
+            <div class="diff-body__line diff-body__line--ctx">  • Actionability — Can an engineer use this today?</div>
+            <div class="diff-body__line diff-body__line--ctx"></div>
+            <div class="diff-body__line diff-body__line--add">Prefer items with concrete benchmarks, code, or</div>
+            <div class="diff-body__line diff-body__line--add">first-party releases. Demote: opinion pieces,</div>
+            <div class="diff-body__line diff-body__line--add">"X will revolutionize Y" claims, launch posts</div>
+            <div class="diff-body__line diff-body__line--add">without measurable claims, listicles, and</div>
+            <div class="diff-body__line diff-body__line--add">Twitter-thread recaps of conference talks.</div>
+            <div class="diff-body__line diff-body__line--del">Skip aggregator articles when primary source is</div>
+            <div class="diff-body__line diff-body__line--del">available.</div>
+            <div class="diff-body__line diff-body__line--ctx"></div>
+            <div class="diff-body__line diff-body__line--add">Output a final 0–10 score and a 4–7 word neutral</div>
+            <div class="diff-body__line diff-body__line--add">newswire title that replaces the source title.</div>
+          </div>
+          <footer class="diff-modal__foot">
+            <button class="btn btn--ghost btn--sm">Cancel</button>
+            <button class="btn btn--primary btn--sm">Save</button>
+          </footer>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================
+       B. RUN DETAIL DRAWER
+       ================================================= -->
+
+  <section class="state-section">
+    <header class="state-header">
+      <div class="state-eyebrow">B · Run detail</div>
+      <h2 class="state-title">Drawer opened from runs table</h2>
+      <p class="state-desc">Triggered by clicking a run id or prompt hash in the runs table (04). Left pane: the exact <code>prompt_snapshot</code> captured at run start, rendered as a code block with line numbers — so you can copy or diff it later. Right pane: full score breakdown + cost breakdown joined from <code>score_breakdown</code> and <code>cost_breakdown</code> jsonb columns.</p>
+    </header>
+    <div class="state-body">
+      <div class="drawer">
+        <header class="drawer__head">
+          <div class="drawer__meta">
+            <span class="drawer__id">r/4f8a21</span>
+            <span class="status status--done"><span class="dot dot--ok"></span> Done</span>
+            <span class="chip chip--info">Mode A</span>
+            <span class="drawer__time">started 2026-05-21 19:14:08 · finished 19:14:26</span>
+          </div>
+          <div class="drawer__nav">
+            <button class="btn btn--ghost btn--sm">↑ prev run</button>
+            <button class="btn btn--ghost btn--sm">next ↓</button>
+            <button class="btn btn--default btn--sm">Open in eval</button>
+            <button class="btn btn--ghost btn--sm">×</button>
+          </div>
+        </header>
+
+        <div class="drawer__body">
+
+          <!-- LEFT: prompt snapshot -->
+          <div class="drawer__left">
+            <header class="drawer__pane-head">
+              <span class="drawer__pane-title">Prompt snapshot</span>
+              <span class="drawer__pane-sub">hash · <span style="color:var(--c-ink);">b8e7f203</span> · 24 lines · 721 chars</span>
+            </header>
+            <div class="snapshot">
+              <div class="snapshot__inner">
+                <span class="snapshot__num">1</span><span class="snapshot__line">You are ranking AI news items for a daily curated</span>
+                <span class="snapshot__num">2</span><span class="snapshot__line">digest. For each item return a score 0–10 across</span>
+                <span class="snapshot__num">3</span><span class="snapshot__line">three axes:</span>
+                <span class="snapshot__num">4</span><span class="snapshot__line"></span>
+                <span class="snapshot__num">5</span><span class="snapshot__line">  • Novelty       — Does this break new ground, or</span>
+                <span class="snapshot__num">6</span><span class="snapshot__line">    rehash known material?</span>
+                <span class="snapshot__num">7</span><span class="snapshot__line">  • Signal/hype   — Is the claim measurable, or</span>
+                <span class="snapshot__num">8</span><span class="snapshot__line">    marketing fluff?</span>
+                <span class="snapshot__num">9</span><span class="snapshot__line">  • Actionability — Can a working engineer use</span>
+                <span class="snapshot__num">10</span><span class="snapshot__line">    this today?</span>
+                <span class="snapshot__num">11</span><span class="snapshot__line"></span>
+                <span class="snapshot__num">12</span><span class="snapshot__line">Prefer items with concrete benchmarks, code, or</span>
+                <span class="snapshot__num">13</span><span class="snapshot__line">first-party releases. Demote: opinion pieces,</span>
+                <span class="snapshot__num">14</span><span class="snapshot__line">"X company will revolutionize Y", launch posts</span>
+                <span class="snapshot__num">15</span><span class="snapshot__line">without measurable claims, listicles, and</span>
+                <span class="snapshot__num">16</span><span class="snapshot__line">Twitter-thread recaps of conference talks.</span>
+                <span class="snapshot__num">17</span><span class="snapshot__line"></span>
+                <span class="snapshot__num">18</span><span class="snapshot__line">Output a final 0–10 score =</span>
+                <span class="snapshot__num">19</span><span class="snapshot__line">  (novelty * 0.35) +</span>
+                <span class="snapshot__num">20</span><span class="snapshot__line">  (signal * 0.45) +</span>
+                <span class="snapshot__num">21</span><span class="snapshot__line">  (actionability * 0.20),</span>
+                <span class="snapshot__num">22</span><span class="snapshot__line">and produce a 4–7 word neutral newswire title</span>
+                <span class="snapshot__num">23</span><span class="snapshot__line">that replaces the source title in the digest.</span>
+                <span class="snapshot__num">24</span><span class="snapshot__line"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: breakdowns -->
+          <div class="drawer__right">
+
+            <header class="drawer__pane-head">
+              <span class="drawer__pane-title">Score breakdown</span>
+              <span class="drawer__pane-sub">fixture · manual-curated-may-21</span>
+            </header>
+            <div class="breakdown">
+              <div class="breakdown__row">
+                <span>nDCG@10</span>
+                <span>0.912</span>
+              </div>
+              <div class="breakdown__row">
+                <span>nDCG@5</span>
+                <span>0.943</span>
+              </div>
+              <div class="breakdown__row">
+                <span>Precision@10</span>
+                <span>0.800</span>
+              </div>
+              <div class="breakdown__row">
+                <span>Must-include recall</span>
+                <span>1.000</span>
+              </div>
+              <div class="breakdown__row">
+                <span>Rank-1 = must</span>
+                <span>yes</span>
+              </div>
+              <div class="breakdown__row breakdown__row--total">
+                <span>Headline · nDCG@10</span>
+                <span>0.912</span>
+              </div>
+            </div>
+
+            <header class="drawer__pane-head">
+              <span class="drawer__pane-title">Cost breakdown</span>
+              <span class="drawer__pane-sub">claude-haiku-4-5 · 1 call</span>
+            </header>
+            <div class="breakdown" style="border-bottom: 0;">
+              <div class="breakdown__row">
+                <span>Rerank · input</span>
+                <span class="muted">14,283 tok</span>
+              </div>
+              <div class="breakdown__sub-row">
+                <span>cache write (5m)</span>
+                <span>0 tok</span>
+              </div>
+              <div class="breakdown__sub-row">
+                <span>cache read</span>
+                <span>12,801 tok</span>
+              </div>
+              <div class="breakdown__row">
+                <span>Rerank · output</span>
+                <span class="muted">2,847 tok</span>
+              </div>
+              <div class="breakdown__row breakdown__row--total">
+                <span>Total cost</span>
+                <span>$0.014</span>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================
+       C. EMPTY STATE
+       ================================================= -->
+
+  <section class="state-section">
+    <header class="state-header">
+      <div class="state-eyebrow">C · Runs page · empty</div>
+      <h2 class="state-title">First-time empty state</h2>
+      <p class="state-desc">Shown on <code>/admin/eval/runs</code> when the table is empty (fresh deployment, or right after enabling persistence). Guides the user to either run a scored eval (Mode A) or wait for the next daily run to land here.</p>
+    </header>
+    <div class="state-body">
+
+      <div class="empty">
+        <div class="empty__icon">∅</div>
+        <h3 class="empty__title">No eval runs yet</h3>
+        <p class="empty__body">
+          Every scored eval — Mode A and Mode B — lands here once you run it. Persisted across server restarts, queryable, and comparable against any other run.
+        </p>
+        <div class="empty__actions">
+          <a href="01-eval-index.html" class="btn btn--primary">Run your first eval</a>
+          <a href="03-eval-fixture-new.html" class="btn btn--default">+ New fixture</a>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+
+</body>
+</html>

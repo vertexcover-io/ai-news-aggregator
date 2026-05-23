@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { emailSends, runArchives, sesEvents, subscribers, userSettings } from "@shared/db/schema.js";
+import { emailSends, rawItems, runArchives, sesEvents, subscribers, userSettings } from "@shared/db/schema.js";
+import type { RawItemInsert } from "@shared/db/schema.js";
 import type {
   RunSubmitTwitterConfig,
   RunSubmitTwitterUser,
@@ -81,6 +82,37 @@ describe("schema: sesEvents", () => {
     for (const col of cols) {
       expect(sesEvents[col as keyof typeof sesEvents]).toBeDefined();
     }
+  });
+});
+
+// REQ-001 — raw_items.run_id column
+describe("schema: rawItems — run_id column (REQ-001)", () => {
+  it("exposes a runId column on the rawItems table", () => {
+    expect(rawItems.runId).toBeDefined();
+  });
+
+  it("RawItemInsert accepts runId as a uuid string", () => {
+    const insert: RawItemInsert = {
+      sourceType: "hn",
+      externalId: "ext-1",
+      title: "Test",
+      url: "https://example.com",
+      collectedAt: new Date(),
+      runId: "550e8400-e29b-41d4-a716-446655440000",
+    };
+    expect(insert.runId).toBe("550e8400-e29b-41d4-a716-446655440000");
+  });
+
+  it("RawItemInsert accepts omitting runId (add-post path with no run context)", () => {
+    const insert: RawItemInsert = {
+      sourceType: "rss",
+      externalId: "ext-2",
+      title: "Test 2",
+      url: "https://example2.com",
+      collectedAt: new Date(),
+    };
+    // runId is absent — must compile and be undefined at runtime
+    expect(insert.runId).toBeUndefined();
   });
 });
 

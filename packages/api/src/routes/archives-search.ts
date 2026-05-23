@@ -1,6 +1,12 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { createLogger, getDb as defaultGetDb } from "@newsletter/shared";
+import {
+  createLogger,
+  getDb as defaultGetDb,
+  safeTimezone,
+  startOfDateInTimezone,
+  endOfDateInTimezone,
+} from "@newsletter/shared";
 import {
   createRunArchivesRepo,
   type RunArchivesRepo,
@@ -9,10 +15,15 @@ import {
   createRawItemsRepo,
   type RawItemsRepo,
 } from "@api/repositories/raw-items.js";
+import {
+  createUserSettingsRepo,
+  type UserSettingsRepo,
+} from "@api/repositories/user-settings.js";
 
 export interface ArchivesSearchRouterDeps {
   getArchiveRepo: () => RunArchivesRepo;
   getRawItemsRepo: () => RawItemsRepo;
+  getSettingsRepo?: () => Pick<UserSettingsRepo, "get">;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -25,14 +36,12 @@ const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional(),
 });
 
-function parseDate(s: string): Date | null {
-  const d = new Date(`${s}T00:00:00.000Z`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function endOfDay(s: string): Date | null {
-  const d = new Date(`${s}T23:59:59.999Z`);
-  return Number.isNaN(d.getTime()) ? null : d;
+async function getConfiguredTimezone(
+  deps: Pick<ArchivesSearchRouterDeps, "getSettingsRepo">,
+): Promise<string> {
+  if (deps.getSettingsRepo === undefined) return "UTC";
+  const settings = await deps.getSettingsRepo().get();
+  return safeTimezone(settings?.scheduleTimezone);
 }
 
 export function createArchivesSearchRouter(
@@ -58,8 +67,9 @@ export function createArchivesSearchRouter(
     }
     const { q, from, to, limit } = parsed.data;
 
-    const fromDate = from ? parseDate(from) : undefined;
-    const toDate = to ? endOfDay(to) : undefined;
+    const timezone = await getConfiguredTimezone(deps);
+    const fromDate = from ? startOfDateInTimezone(from, timezone) : undefined;
+    const toDate = to ? endOfDateInTimezone(to, timezone) : undefined;
     if (fromDate === null || toDate === null) {
       return c.json({ error: "bad-request" }, 400);
     }
@@ -74,6 +84,7 @@ export function createArchivesSearchRouter(
       to: toDate,
       limit,
       rawItemsRepo: deps.getRawItemsRepo(),
+      timezone,
     });
     const durationMs = Date.now() - start;
 
@@ -109,5 +120,6 @@ export function createDefaultArchivesSearchRouter(): Hono {
   return createArchivesSearchRouter({
     getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
     getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
+    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
   });
 }

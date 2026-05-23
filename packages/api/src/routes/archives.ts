@@ -6,6 +6,8 @@ import {
   createLogger,
   getDb as defaultGetDb,
   createRedisConnection,
+  formatDateInTimezone,
+  safeTimezone,
 } from "@newsletter/shared";
 import type {
   ArchiveListResponse,
@@ -19,8 +21,13 @@ import {
 } from "@api/repositories/raw-items.js";
 import {
   createRunArchivesRepo,
+  type RunArchiveRow,
   type RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
+import {
+  createUserSettingsRepo,
+  type UserSettingsRepo,
+} from "@api/repositories/user-settings.js";
 import {
   archivePatchSchema,
   addPostSchema,
@@ -42,6 +49,7 @@ import { captureAnalytics } from "@api/lib/posthog.js";
 export interface ArchivesRouterDeps {
   getRawItemsRepo: () => RawItemsRepo;
   getArchiveRepo: () => RunArchivesRepo;
+  getSettingsRepo?: () => Pick<UserSettingsRepo, "get">;
   hydrateAddedPost?: HydrateAddedPostFn;
   generateRecapFn?: GenerateRecapFn;
   logger?: ReturnType<typeof createLogger>;
@@ -49,13 +57,30 @@ export interface ArchivesRouterDeps {
   redis?: Pick<IORedis, "del">;
 }
 
+async function getConfiguredTimezone(
+  deps: Pick<ArchivesRouterDeps, "getSettingsRepo">,
+): Promise<string> {
+  if (deps.getSettingsRepo === undefined) return "UTC";
+  const settings = await deps.getSettingsRepo().get();
+  return safeTimezone(settings?.scheduleTimezone);
+}
+
+function getIssueDate(
+  archive: Pick<RunArchiveRow, "startedAt" | "completedAt">,
+  timezone: string,
+): string {
+  return formatDateInTimezone(archive.startedAt ?? archive.completedAt, timezone);
+}
+
 export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
   const logger = deps.logger ?? createLogger("api:archives");
   const archives = new Hono();
 
   archives.get("/", async (c) => {
+    const timezone = await getConfiguredTimezone(deps);
     const items = await deps.getArchiveRepo().listReviewed({
       rawItemsRepo: deps.getRawItemsRepo(),
+      timezone,
     });
     return c.json({ archives: items } satisfies ArchiveListResponse);
   });
@@ -67,6 +92,7 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
       if (!archive) return c.json({ error: "not found" }, 404);
       if (!archive.reviewed) return c.json({ error: "not found" }, 404);
       if (archive.isDryRun) return c.json({ error: "not found" }, 404);
+      const timezone = await getConfiguredTimezone(deps);
 
       const state: RunState & {
         sourceTypes: string[] | null;
@@ -79,6 +105,7 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
         stage: archive.status === "completed" ? "completed" : "failed",
         topN: archive.topN,
         startedAt: archive.startedAt?.toISOString() ?? archive.completedAt.toISOString(),
+        issueDate: getIssueDate(archive, timezone),
         updatedAt: archive.completedAt.toISOString(),
         completedAt: archive.completedAt.toISOString(),
         sources: {},
@@ -118,6 +145,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     try {
       const archive = await deps.getArchiveRepo().findById(runId);
       if (!archive) return c.json({ error: "not found" }, 404);
+      const timezone = await getConfiguredTimezone(deps);
 
       const state: RunState & {
         sourceTypes: string[] | null;
@@ -131,6 +159,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         stage: archive.status === "completed" ? "completed" : "failed",
         topN: archive.topN,
         startedAt: archive.startedAt?.toISOString() ?? archive.completedAt.toISOString(),
+        issueDate: getIssueDate(archive, timezone),
         updatedAt: archive.completedAt.toISOString(),
         completedAt: archive.completedAt.toISOString(),
         sources: {},
@@ -409,6 +438,7 @@ function createDefaultArchivesDeps(): ArchivesRouterDeps {
   return {
     getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
     getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
+    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
     hydrateAddedPost: createDefaultHydrateAddedPost(),
     generateRecapFn: createDefaultGenerateRecapFn(),
     processingQueue: getDefaultProcessingQueue(),

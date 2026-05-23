@@ -7,7 +7,7 @@ import {
 } from "../../src/components/ArchivePageHeader";
 
 function renderHeader(props: {
-  startedAt: string;
+  issueDate: string;
   storyCount: number;
   topStoryTitle: string | null;
   digestHeadline?: string | null;
@@ -29,6 +29,12 @@ describe("formatLedgerEyebrow", () => {
     expect(result).toContain("2026");
     expect(result.split("·").length).toBe(3);
   });
+
+  it("formats date-only issue dates without browser timezone drift", () => {
+    expect(formatLedgerEyebrow("2026-05-23")).toBe(
+      "SATURDAY · MAY 23 · 2026",
+    );
+  });
 });
 
 describe("ArchivePageHeader", () => {
@@ -38,7 +44,7 @@ describe("ArchivePageHeader", () => {
 
   it("renders topStoryTitle as h1 and digestSummary as dek", () => {
     renderHeader({
-      startedAt: "2026-04-18T10:00:00Z",
+      issueDate: "2026-04-18",
       storyCount: 5,
       topStoryTitle: "Top Story Title",
       digestSummary: "Plus: OpenAI launches GPT-5 with multimodal reasoning.",
@@ -51,7 +57,7 @@ describe("ArchivePageHeader", () => {
 
   it("falls back to topStoryTitle when digestSummary is null", () => {
     renderHeader({
-      startedAt: "2026-04-18T10:00:00Z",
+      issueDate: "2026-04-18",
       storyCount: 5,
       topStoryTitle: "Top Story Title",
       digestSummary: null,
@@ -63,7 +69,7 @@ describe("ArchivePageHeader", () => {
 
   it("falls back to topStoryTitle when digestSummary is empty string (EDGE-011)", () => {
     renderHeader({
-      startedAt: "2026-04-18T10:00:00Z",
+      issueDate: "2026-04-18",
       storyCount: 5,
       topStoryTitle: "Top Story Title",
       digestSummary: "",
@@ -75,7 +81,7 @@ describe("ArchivePageHeader", () => {
 
   it("uses 'An archived issue' when both digestHeadline and topStoryTitle are null", () => {
     renderHeader({
-      startedAt: "2026-04-18T10:00:00Z",
+      issueDate: "2026-04-18",
       storyCount: 5,
       topStoryTitle: null,
       digestHeadline: null,
@@ -87,7 +93,7 @@ describe("ArchivePageHeader", () => {
 
   it("renders '1 story' (singular) for storyCount === 1", () => {
     renderHeader({
-      startedAt: "2026-04-18T10:00:00Z",
+      issueDate: "2026-04-18",
       storyCount: 1,
       topStoryTitle: null,
     });
@@ -96,7 +102,7 @@ describe("ArchivePageHeader", () => {
 
   it("renders '8 stories' (plural) for storyCount === 8", () => {
     renderHeader({
-      startedAt: "2026-04-18T10:00:00Z",
+      issueDate: "2026-04-18",
       storyCount: 8,
       topStoryTitle: null,
     });
@@ -105,7 +111,7 @@ describe("ArchivePageHeader", () => {
 
   it("renders '0 stories' for storyCount === 0", () => {
     renderHeader({
-      startedAt: "2026-04-18T10:00:00Z",
+      issueDate: "2026-04-18",
       storyCount: 0,
       topStoryTitle: null,
     });
@@ -114,7 +120,7 @@ describe("ArchivePageHeader", () => {
 
   it("does not render an inline back link inside the header (back link lives in a separate row)", () => {
     renderHeader({
-      startedAt: "2026-04-18T10:00:00Z",
+      issueDate: "2026-04-18",
       storyCount: 5,
       topStoryTitle: null,
     });
@@ -123,7 +129,7 @@ describe("ArchivePageHeader", () => {
 
   it("eyebrow element has font-mono", () => {
     renderHeader({
-      startedAt: "2026-04-18T10:00:00Z",
+      issueDate: "2026-04-18",
       storyCount: 5,
       topStoryTitle: null,
     });
@@ -133,7 +139,7 @@ describe("ArchivePageHeader", () => {
 
   it("h1 element has font-serif class", () => {
     renderHeader({
-      startedAt: "2026-04-18T10:00:00Z",
+      issueDate: "2026-04-18",
       storyCount: 5,
       topStoryTitle: "Top Story Title",
     });

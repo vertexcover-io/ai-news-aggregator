@@ -238,16 +238,17 @@ describe("rankCandidates", () => {
     expect(call.temperature).toBe(0);
   });
 
-  it("skips items whose rationale does not name a scoring axis, run continues (REQ-065 softened)", async () => {
-    // Previously this threw and killed the entire run. New behaviour: drop the
-    // unvalidated item, log a warn, keep the rest. One bad rationale must not
-    // brick a daily run (Stage-5 finding 2026-05-04: a tweet with terse
-    // content produced rationale "Low on all axes..." which is semantically
-    // valid but lexically doesn't match a single axis name).
+  it("keeps every ranked item regardless of which axis vocabulary its rationale uses", async () => {
+    // Removed the hard-coded AXES substring filter (was: drop items whose
+    // rationale doesn't contain one of 5 hyphenated magic strings). That
+    // guard fought the admin-editable ranking prompt — the operator can
+    // save any prompt with any axis vocabulary, and the LLM's rationales
+    // legitimately follow the prompt's labels. Now every entry the LLM
+    // returns (with a non-empty title) flows through to the digest.
     const generateObject = makeGenerate({
       ranked: [
         makeRankedEntry({ id: 1, score: 80, rationale: "strong Developer-relevance" }),
-        makeRankedEntry({ id: 2, score: 50, rationale: "just because" }),
+        makeRankedEntry({ id: 2, score: 50, rationale: "novelty + actionability for AI teams" }),
         makeRankedEntry({ id: 3, score: 70, rationale: "good Builder-impact" }),
       ],
     });
@@ -262,9 +263,11 @@ describe("rankCandidates", () => {
       },
     );
 
-    // Items 1 and 3 survive; item 2 is dropped.
+    // All three survive — including the one that previously would have been
+    // filtered out for using "novelty/actionability" instead of the
+    // hard-coded magic substrings.
     const ids = result.rankedItems.map((r) => r.rawItemId).sort();
-    expect(ids).toEqual([1, 3]);
+    expect(ids).toEqual([1, 2, 3]);
   });
 
   it("skips empty-title ranked rows instead of failing the whole run", async () => {
@@ -295,51 +298,11 @@ describe("rankCandidates", () => {
     expect(result.rankedItems.map((r) => r.rawItemId)).toEqual([1]);
   });
 
-  it("throws if EVERY rationale fails axis validation (REQ-065 still gates totally-bad runs)", async () => {
-    const generateObject = makeGenerate({
-      ranked: [
-        makeRankedEntry({ id: 1, score: 50, rationale: "just because" }),
-        makeRankedEntry({ id: 2, score: 40, rationale: "no reason" }),
-      ],
-    });
-
-    await expect(
-      rankCandidates([makeCandidate(1), makeCandidate(2)], {
-        topN: 5,
-        systemPrompt: TEST_SYSTEM_PROMPT,
-        generateObject,
-        loadBodies: stubLoadBodies,
-      }),
-    ).rejects.toThrow(/no valid items/i);
-  });
-
-  it("accepts lowercase new axis names in rationales (REQ-065 case-insensitive)", async () => {
-    // Regression: Claude naturally writes "strong developer-relevance — ..." mid-sentence
-    // rather than "Strong developer-relevance — ...". The validator must be case-insensitive
-    // so grammatically natural rationales don't trip the guard.
-    const generateObject = makeGenerate({
-      ranked: [
-        makeRankedEntry({
-          id: 1,
-          score: 80,
-          rationale:
-            "Strong developer-relevance — this directly helps agentic systems teams improve production workflows.",
-        }),
-      ],
-    });
-
-    const result = await rankCandidates([makeCandidate(1)], {
-      topN: 5,
-      systemPrompt: TEST_SYSTEM_PROMPT,
-      generateObject,
-      loadBodies: stubLoadBodies,
-    });
-
-    expect(result.rankedItems).toHaveLength(1);
-    expect(result.rankedItems[0].rawItemId).toBe(1);
-  });
-
-  it("rejects old-only ranking axes when every rationale lacks the new axes", async () => {
+  it("accepts items whose rationale uses the old Novelty / Signal / Actionability vocabulary", async () => {
+    // Regression guard for the bug we just fixed: a saved prompt that uses
+    // these axis labels (instead of the original hard-coded
+    // Developer-relevance / Builder-impact / ...) used to have every item
+    // dropped silently. Now they pass through.
     const generateObject = makeGenerate({
       ranked: [
         makeRankedEntry({
@@ -355,14 +318,14 @@ describe("rankCandidates", () => {
       ],
     });
 
-    await expect(
-      rankCandidates([makeCandidate(1), makeCandidate(2)], {
-        topN: 5,
-        systemPrompt: TEST_SYSTEM_PROMPT,
-        generateObject,
-        loadBodies: stubLoadBodies,
-      }),
-    ).rejects.toThrow(/no valid items/i);
+    const result = await rankCandidates([makeCandidate(1), makeCandidate(2)], {
+      topN: 5,
+      systemPrompt: TEST_SYSTEM_PROMPT,
+      generateObject,
+      loadBodies: stubLoadBodies,
+    });
+
+    expect(result.rankedItems.map((r) => r.rawItemId).sort()).toEqual([1, 2]);
   });
 
   it("multiplies LLM score by recencyDecay for a 48h-old item (REQ-066)", async () => {

@@ -64,6 +64,7 @@ export interface RunState {
   stage: RunStage;
   topN: number;
   startedAt: string;
+  issueDate?: string;
   updatedAt: string;
   completedAt: string | null;
   sources: {

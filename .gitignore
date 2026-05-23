@@ -14,6 +14,9 @@ runtime.env
 docs/*
 !docs/plans/
 !docs/spec/
+!docs/mocks/
+!docs/mocks/**
+
 docs/spec/**
 !docs/spec/**/
 !docs/spec/**/spec.md
@@ -26,6 +29,10 @@ docs/spec/**
 !docs/spec/**/google-group-setup.md
 !docs/spec/**/verification/
 !docs/spec/**/verification/proof-report.md
+!docs/spec/**/verification/adversarial-findings.md
+!docs/spec/**/verification/verification-stubs.md
+!docs/spec/**/learnings.md
+!docs/spec/**/README.md
 # VER-68: ship full audit trail (probes + library-probe + verification logs)
 !docs/spec/share-archive-on-social/library-probe.md
 !docs/spec/share-archive-on-social/probes/
@@ -34,6 +41,10 @@ docs/spec/**
 !docs/spec/share-archive-on-social/verification/*.log
 !docs/spec/**/verification/*.png
 !docs/spec/**/verification/*.jpg
+!docs/spec/**/verification/screenshots/
+!docs/spec/**/verification/screenshots/*.png
+!docs/spec/**/verification/screenshots/*.jpg
+!docs/spec/**/verification/playwright-mcp-addendum.md
 # slack-notify-on-reviewed: ship design + library-probe + probes + live-run proof
 !docs/spec/slack-notify-on-reviewed/design.md
 !docs/spec/slack-notify-on-reviewed/library-probe.md
@@ -122,3 +133,10 @@ docs/spec/**
 
 # Playwright per-run output (traces, screenshots) — regenerates every run
 packages/web/test-results/
+
+# ranking-eval-pipeline: LLM response cache is per-developer, never committed
+evals/ranking/cache/
+# ranking-eval-pipeline: ship reviewer index + design + library-probe
+!docs/spec/ranking-eval-pipeline/README.md
+!docs/spec/ranking-eval-pipeline/design.md
+!docs/spec/ranking-eval-pipeline/library-probe.md

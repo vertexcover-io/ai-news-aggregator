@@ -1,0 +1,334 @@
+{
+  "fixtureId": "manual-demo-1779440116981",
+  "source": "manual",
+  "date": null,
+  "runId": null,
+  "model": "claude-haiku-4-5-20251001",
+  "exportedAt": "2026-05-22T08:55:16.981Z",
+  "pool": [
+    {
+      "rawItemId": -1,
+      "title": "antirez/deepseek-v4-gguf · Hugging Face",
+      "url": "https://huggingface.co/antirez/deepseek-v4-gguf",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://huggingface.co/antirez/deepseek-v4-gguf",
+        "fetchedAt": "2026-05-22T08:55:17.651Z",
+        "status": "ok",
+        "title": "antirez/deepseek-v4-gguf · Hugging Face",
+        "imageUrl": "https://cdn-thumbnails.huggingface.co/social-thumbnails/models/antirez/deepseek-v4-gguf.png",
+        "domain": "huggingface.co",
+        "contentType": "html",
+        "markdown": "## [](https://huggingface.co/antirez/deepseek-v4-gguf#deepseek-v4-flash--gguf-for-ds4)DeepSeek V4 Flash — GGUF for ds4\n\nThis quants are specific for the DS4 inference engine. They may work with other inference engines or not (they should, but not the MTP model which requires a specific loader).\n\n[https://github.com/antirez/ds4](https://github.com/antirez/ds4)\n\n## [](https://huggingface.co/antirez/deepseek-v4-gguf#files)Files\n\n| File | Size | Routed experts (`ffn_{gate,up,down}_exps`) | Everything else |\n| --- | --- | --- | --- |\n| `DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf` | 80.8 GiB | `IQ2_XXS` (gate, up) + `Q2_K` (down) | `Q8_0` attn proj / shared experts / output, `F16` router + embed + indexer + compressor + HC, `F32` norms / sinks / bias |\n| `DeepSeek-V4-Flash-Q4KExperts-F16HC-F16Compressor-F16Indexer-Q8Attn-Q8Shared-Q8Out-chat-v2.gguf` | 153.3 GiB | `Q4_K` (all three) | same as above |\n| `DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf` | 3.6 GiB | MTP / speculative-decoding support (optional, not standalone). |  |\n\nUse **q2** on 128 GB Mac machines, **q4** on machines with ≥ 256 GB RAM, pair either with **MTP** for optional speculative decoding.\n\n## [](https://huggingface.co/antirez/deepseek-v4-gguf#quantization-recipe)Quantization recipe\n\nThe filename is the spec. In detail, for the **q2** file:\n\n| Tensor class | Quant | Notes |\n| --- | --- | --- |\n| `blk.*.ffn_gate_exps`, `blk.*.ffn_up_exps` | **`IQ2_XXS`** | routed-expert up/gate |\n| `blk.*.ffn_down_exps` | **`Q2_K`** | routed-expert down (K-quant for quality) |\n| `blk.*.ffn_{gate,up,down}_shexp` | `Q8_0` | shared experts |\n| `blk.*.attn_q_a`, `attn_q_b`, `attn_kv`, `attn_output_a`, `attn_output_b` | `Q8_0` | all attention projections (MLA + low-rank output) |\n| `output.weight` | `Q8_0` | output head |\n| `token_embd.weight` | `F16` | input embedding |\n| `blk.*.ffn_gate_inp` (router) | `F16` | learned router |\n| `blk.*.exp_probs_b` (router bias), `blk.*.attn_sinks`, all `*_norm.weight` | `F32` |  |\n| `blk.*.ffn_gate_tid2eid` | `I32` | hash-routing tables (first 3 layers only) |\n| `blk.*.attn_compressor_*`, `blk.*.indexer_*`, `blk.*.hc_*`, `blk.*.output_hc_*` | `F16` / `F32` | DSv4-specific auxiliary blocks |\n\nFor the **q4** file, only the three routed-expert classes change to `Q4_K`. Everything else is byte-for-byte identical to the q2 recipe.\n\nThe motivation behind the asymmetry: the routed experts are the majority of the parameter count but each individual expert handles only a fraction of tokens, so aggressive quantization on them costs less in average quality than the same treatment of router, projections, or shared experts. Keeping the decision-making components at `Q8_0` preserves model behavior; crushing the experts buys the size.\n\n## [](https://huggingface.co/antirez/deepseek-v4-gguf#usage)Usage\n\n```\ngit clone https://github.com/antirez/ds4\ncd ds4\n./download_model.sh q2     # 128 GB RAM machines\n./download_model.sh q4     # >= 256 GB RAM machines\n./download_model.sh mtp    # optional MTP / speculative decoding\nmake\n\n./ds4 -p \"Explain Redis streams in one paragraph.\"\n./ds4-server --ctx 100000 --kv-disk-dir /tmp/ds4-kv --kv-disk-space-mb 8192\n```\n\nThe `download_model.sh` script fetches from this repository, resumes partial downloads, and points `./ds4flash.gguf` at the selected variant.\n\n## [](https://huggingface.co/antirez/deepseek-v4-gguf#license)License\n\nMIT. The base model copyright is held by DeepSeek; the GGUFs are redistributed under the base model's release terms.",
+        "textLength": 2957
+      },
+      "enrichmentStatus": "ok",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -2,
+      "title": "AI Impact Summit 2026: How we’re partnering to make AI work for everyone",
+      "url": "https://blog.google/innovation-and-ai/technology/ai/ai-impact-summit-2026-india/",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://blog.google/innovation-and-ai/technology/ai/ai-impact-summit-2026-india/",
+        "fetchedAt": "2026-05-22T08:55:18.382Z",
+        "status": "ok",
+        "title": "AI Impact Summit 2026: How we’re partnering to make AI work for everyone",
+        "byline": "James Manyika",
+        "imageUrl": "https://storage.googleapis.com/gweb-uniblog-publish-prod/images/AI-Summit-SS.width-1300.png",
+        "domain": "blog.google",
+        "contentType": "html",
+        "markdown": "At Google, our goal has always been to improve the lives of as many people as possible through technology. Every time people use technology to solve a real problem — from finding an answer for any question, to screening for disease from the sound of a cough — we take another step towards what we set out to achieve. AI is making it possible to solve problems for people, economies, science and society faster than ever, but those solutions are only possible if everyone, everywhere, has access to these tools.\n\nAs leaders gather this week for the AI Impact Summit in India, we're announcing new partnerships and programs to accelerate progress globally, by building new infrastructure, expanding connectivity and access, empowering governments, advancing science, helping people learn new skills and building useful and safe products for everyone.\n\n## Investing in infrastructure, science and government capacity\n\nThis work starts with a strong foundation. We recently announced a [$15 billion investment](https://blog.google/intl/en-in/company-news/our-first-ai-hub-in-india-powered-by-a-15-billion-investment/) to establish foundational AI infrastructure in India, and have been building subsea cables in the [Pacific,](https://cloud.google.com/blog/products/infrastructure/honomoana-and-tabua-subsea-cables-connect-south-pacific) [Africa](https://cloud.google.com/blog/products/infrastructure/investing-in-connectivity-and-growth-for-africa?e=48754805) and [around the world](https://cloud.google.com/blog/products/infrastructure/talaylink-subsea-cable-to-connect-australia-and-thailand). Today we are announcing the [America-India Connect initiative](https://cloud.google.com/blog/products/infrastructure/america-india-connect-infrastructure-connects-four-continents), which will deliver new strategic fiber-optic routes to increase the reach, reliability and resilience of digital connectivity between the U.S., India and multiple locations across the Southern Hemisphere.\n\nTo take advantage of the opportunities this infrastructure creates, we must also invest in people and the organizations working to solve critical challenges. Governments and public sector organizations are in a unique position to shape AI’s trajectory. While [new data](https://indexaiglobalpublicservices.publicfirst.co/) shows 74% of public servants globally are already using AI, only 18% believe their governments are using it effectively. To help bridge this gap, we're announcing several new initiatives:\n\n-   A $30 million Google.org Global [AI for Government Innovation Impact Challenge](https://blog.google/company-news/outreach-and-initiatives/google-org/global-impact-challenge-ai-government-2026/) to support partnerships that transform public services using AI — from everyday essential services to complex societal challenges.\n-   A $30 million Google.org [AI for Science Impact Challenge](https://blog.google/company-news/outreach-and-initiatives/google-org/impact-challenge-ai-science-open-call/) to support researchers globally who are using AI to drive scientific breakthroughs.\n-   Google DeepMind establishes [a new partnership with Indian government bodies and local institutions](http://deepmind.google/blog/accelerating-discovery-in-india-through-ai-powered-science-and-education/) to unlock new discoveries in science and education. This includes providing access to its frontier AI for Science models and powering innovation hubs with GenAI assistants, among other projects. This forms part of Google DeepMind’s broader [National Partnerships for AI](https://deepmind.google/national-partnerships-for-ai/) initiative — working with governments to broaden access to frontier AI capabilities for national priorities.\n-   The [Google Center for Climate Technology](https://blog.google/intl/en-in/company-news/outreach-initiatives/announcing-our-new-climate-tech-collaboration-in-india/) in collaboration with the office of the Principal Scientific Advisor to the Government of India, to accelerate research and adoption of scalable AI-powered climate solutions.\n\n## Creating opportunity and capacity to solve problems with AI skills\n\nEquipping people and civil servants with AI skills empowers them to use AI tools to solve problems at their job or for their community. This is an important piece of realizing AI’s potential for economic growth and innovation globally. We have trained over 100 million people on digital skills globally, and now we are announcing some of our most ambitious skilling programs to date:\n\n-   An [AI Professional Certificate program](http://grow.google/aicert) to help people all over the world learn how to use AI at work, in partnership with government bodies, education institutions and employers. This includes scholarships through nonprofits to broaden reach. In India, we're partnering with Wadhwani AI to bring this program to students and early career professionals.\n-   A landmark [partnership with Karmayogi Bharat](https://cloud.google.com/blog/products/infrastructure/america-india-connect-infrastructure-connects-four-continents) to accelerate Mission Karmayogi’s vision of building a future-ready civil service. Google Cloud provides the secure and resilient infrastructure for the iGOT Karmayogi platform that supports over 20 million public servants across 800+ districts. By digitizing and structuring legacy training repositories into searchable knowledge assets, and progressively enabling content in 18+ Indian languages, the partnership advances professional development and empowers officials to learn in their preferred language.\n\nThis builds on our efforts around the world partnering with governments to equip public officials, from [providing AI tools to public officers in Malaysia](https://www.googlecloudpresscorner.com/2025-02-05-445,000-Public-Officers-in-Malaysia-to-Benefit-from-Generative-AI-Under-the-AI-at-Work-2-0-Initiative-by-the-Ministry-of-Digital-and-Google-Cloud) to an [AI Skilling Blueprint in Africa.](https://blog.google/intl/en-africa/company-news/outreach-and-initiatives/a-new-blueprint-to-empower-africas-next-generation-of-ai-builders/)\n\n## Building helpful products for everyone\n\nWe want to build AI that is helpful in people's daily lives by breaking down barriers and making knowledge more accessible for everyone. We are making our tools more inclusive and secure through several key updates:\n\n-   **Reducing language barriers:** Our new [live speech-to-speech translation model](https://blog.google/products-and-platforms/products/search/gemini-capabilities-translation-upgrades/) erases language barriers by enabling real-time translated conversations in over 70 languages, including 10 Indic languages like Bengali, Hindi, Tamil and Telugu. And we’re helping people [learn new languages](https://blog.google/products-and-platforms/products/translate/language-learning-live-translate/) with AI-powered speaking and listening practice, tailored to each person’s level and ability.\n-   **Smarter search:** In the coming weeks we’re enhancing the model that powers Search Live, our real-time voice and camera tool, so more people can ask questions about what they see in their own language, including Hindi, Indonesian, Japanese, Korean, Brazilian Portuguese and more. We're also testing ways to make it easier to get helpful information from visual search even when the images aren't clear. Lens will detect blurry images and ask follow-up questions to improve accuracy of results.\n-   **Personalized learning:** For students in India, we recently added new self-study features and [JEE Main practice tests](https://blog.google/intl/en-in/new-ai-tools-to-support-indias-next-generation/) to the Gemini app (also coming soon to AI Mode in Search), transforming how they can prepare for exams with tailored help. Both Gemini and AI Mode are growing rapidly across the globe, and India is among our top 3 countries for each.\n-   **Investing in safeguards to protect people online:** Since launching in November, our SynthID verification feature in Gemini App has been used over 20 million times in a range of languages, helping people identify Google AI-generated images, video and audio. And in Circle to Search and Lens, we’re now able to [identify scam messages](https://blog.google/products-and-platforms/products/search/scam-detection-circle-to-search-lens/), helping millions of people avoid fraud. We’ve also released our [latest Responsible AI progress report](https://ai.google/static/documents/ai-responsibility-update-2026.pdf) to share more about our bold and responsible approach to AI development and implementation.\n\nRealizing the promise of AI requires working together. At Google, we’re committed to bringing the extraordinary within reach, for everyone.",
+        "textLength": 6572
+      },
+      "enrichmentStatus": "ok",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -3,
+      "title": "https://x.com/willdepue/status/2054749615405068664",
+      "url": "https://x.com/willdepue/status/2054749615405068664",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://x.com/willdepue/status/2054749615405068664",
+        "fetchedAt": "2026-05-22T08:55:18.382Z",
+        "status": "skipped",
+        "skipReason": "same-platform"
+      },
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -4,
+      "title": "https://www.reddit.com/r/LocalLLaMA/comments/1tdifwb/minimax_m27_ultra_uncensored_heretic_is_out_now/",
+      "url": "https://www.reddit.com/r/LocalLLaMA/comments/1tdifwb/minimax_m27_ultra_uncensored_heretic_is_out_now/",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://www.reddit.com/r/LocalLLaMA/comments/1tdifwb/minimax_m27_ultra_uncensored_heretic_is_out_now/",
+        "fetchedAt": "2026-05-22T08:55:18.382Z",
+        "status": "skipped",
+        "skipReason": "same-platform"
+      },
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -5,
+      "title": "https://www.reddit.com/r/AI_Agents/comments/1tglfcc/were_building_a_control_and_settlement_layer_for/",
+      "url": "https://www.reddit.com/r/AI_Agents/comments/1tglfcc/were_building_a_control_and_settlement_layer_for/",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://www.reddit.com/r/AI_Agents/comments/1tglfcc/were_building_a_control_and_settlement_layer_for/",
+        "fetchedAt": "2026-05-22T08:55:18.382Z",
+        "status": "skipped",
+        "skipReason": "same-platform"
+      },
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -6,
+      "title": "https://x.com/etnshow/status/2054825635311202349",
+      "url": "https://x.com/etnshow/status/2054825635311202349",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://x.com/etnshow/status/2054825635311202349",
+        "fetchedAt": "2026-05-22T08:55:18.382Z",
+        "status": "skipped",
+        "skipReason": "same-platform"
+      },
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -7,
+      "title": "https://i.postimg.cc/9X9mPTRp/image.png",
+      "url": "https://i.postimg.cc/9X9mPTRp/image.png",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://i.postimg.cc/9X9mPTRp/image.png",
+        "fetchedAt": "2026-05-22T08:55:18.382Z",
+        "status": "skipped",
+        "skipReason": "non-html-media"
+      },
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -8,
+      "title": "Claude Code's product lead talks usage limits, transparency, and the \"lean harness\"",
+      "url": "https://arstechnica.com/ai/2026/05/claude-codes-product-lead-talks-usage-limits-transparency-and-the-lean-harness/",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://arstechnica.com/ai/2026/05/claude-codes-product-lead-talks-usage-limits-transparency-and-the-lean-harness/",
+        "fetchedAt": "2026-05-22T08:55:20.351Z",
+        "status": "ok",
+        "title": "Claude Code's product lead talks usage limits, transparency, and the \"lean harness\"",
+        "byline": "Samuel Axon",
+        "imageUrl": "https://cdn.arstechnica.net/wp-content/uploads/2026/05/Cat-Wu-1152x648-1778778452.jpg",
+        "domain": "arstechnica.com",
+        "contentType": "html",
+        "markdown": "Agentic Development\n\n“We have no grand plan,” says Anthropic’s Cat Wu—but that’s by design.\n\nCat Wu, head of product for Claude Code, speaks at Anthropic's Code with Claude 2026 conference in San Francisco. Credit: [Anthropic](https://www.youtube.com/watch?v=GMIWm5y90xA)\n\nSAN FRANCISCO—Amid an ever-expanding array of surfaces, growing demand for tokens and compute, and a rapidly evolving user base, Anthropic doesn’t have a long-term road map for Claude Code. However, it’s betting that such a plan would be rendered moot by improvements in model capabilities and new signals from developers on how best to use it. That’s the takeaway from a 30-minute conversation Ars had with Cat Wu, Anthropic’s head of product for Claude Code.\n\nLast week, in a three-level car rental parking garage meticulously converted into an event space in downtown San Francisco, Anthropic put on its second annual Code with Claude developer conference. As previously reported, the single-day event included a keynote introducing new [features](https://arstechnica.com/ai/2026/05/anthropics-claude-can-now-dream-sort-of/) for Managed Agents and announcing a compute deal [with SpaceX](https://arstechnica.com/ai/2026/05/anthropic-raises-claude-code-usage-limits-credits-new-deal-with-spacex/).\n\nThat compute deal was accompanied by a doubling of usage limits for Claude Code users on the company’s Pro and Max plans—a response to a lot of user frustration about a compute crunch, especially in recent weeks.\n\nAnthropic’s products—especially Claude Code, its tool for agentic software development—have seen runaway popularity. “We tried to plan very well for a world of 10x growth per year,” Anthropic CEO Dario Amodei said on stage at the conference. “And yet we saw 80x, and so that is the reason we have had difficulties with compute.”\n\nUser growth was accompanied by a shift in how people used the company’s models, away from simple chat interfaces to complex, multi-agent workflows that are many times more demanding.\n\nDuring the crunch, Anthropic has been testing solutions to reduce demand, like enforcing stricter limits during peak hours or [removing](https://arstechnica.com/ai/2026/04/anthropic-tested-removing-claude-code-from-the-pro-plan/) Claude Code from its cheaper subscription plan.\n\nAnd over the past year, Anthropic has released a plethora of new features, products, and surfaces for interacting with its models. Claude Code went from the CLI to the IDE to the desktop, and new tools for managing multiple agents were rolled out, too. The pace at which the company has shipped has been intense and chaotic at times.\n\nMeanwhile, competitors like OpenAI’s Codex, GitHub Copilot, the Cursor IDE, Augment Code, and others are rolling out their own new products and features in this space, sometimes with differentiating hooks like more explicit context, which they claim leads to better results or greater efficiency.\n\nAt the event, I spoke with Wu about how Anthropic is operating in this context.\n\nAs head of product for Claude Code, Wu works closely with its creator, Boris Cherny, to identify which features to prioritize and how the teams at Anthropic test, use, and roll out those features. She does not oversee the models, but the product strategy she describes makes a big bet that the models will continue to improve so rapidly that it’s hard to make a plan for what a product like Claude Code should look like in the future.\n\nAs Wu tells it, the Claude Code team is going through development cycles of just a week or so to roll out new products or features in a Wild West of experimentation, discovering new use cases and methodologies.\n\nWe discussed user frustrations with usage limits, the role of structured data in making Claude Code work, IDE integration, future capabilities of the tool, and more.\n\n## A conversation with Cat Wu\n\n_This interview has been edited for length and clarity._\n\n_**Ars**: You’re shipping a lot of things and adding a lot of different surfaces very quickly. There’s the command line, and there’s the IDE integration, there’s the desktop app, and then there’s all this differentiation between Code and Cowork and Managed Agents and so on._\n\n_Do you still consider the command line the center of gravity for it? Or do you see people moving more to the desktop or web apps more and more?_\n\n**Wu**: We actually find that every developer has a different preference, so our usage is pretty split between all these. All these have a substantial number of users. I would say the center of gravity is still the CLI. It’s still the one that has the most power-user features, it’s where most of our features land first, and it’s also just the fastest for us to iterate on. It’s also what most of our team uses.\n\nHowever, we are seeing a gradual shift in our team from the CLI to desktop because maybe last year people had like one agent and then over the course of the year they started having six terminal tabs, and then people started adding fancy ways to monitor a bunch of terminal tabs and get pings and other notifications, and I think people are now at the point where they feel, “OK, I don’t want to read ten tabs anymore. I just want to, like—I understand why people have graphical interfaces,” so a lot of people are moving over to desktop just to get that rich view.\n\n_**Ars**: At the rate that you’re shipping new surfaces, if you extrapolate that out, it might become unmanageable from a development or product point of view. You would have all these things to maintain for different purposes, and it could also get confusing for users._\n\n_Do you see a world where you might start consolidating, or do you think this is the best solution because you have something customized for each kind of user?_\n\n**Wu**: Yeah, I think of it as a bit of a progression. So most people start in the CLI or IDE, you get to the point where you’re managed against a ton of agents and you want to know which ones are blocks, and you can focus on those, and people go to desktop for that.\n\nAnd then people are like, ‘Wait, I’m just copy and pasting messages from my customer feedback channel into Claude and babysitting it locally.’ So that’s why we added these higher level things like routines that can just watch that Slack channel where you’re getting feedback or data or whatever to kick off these runs… all the products are just a way to help you more easily elicit the intelligence of the models. We actually remove scaffolds. We remove parts of the system prompt and tool descriptions over time as models get smarter.\n\nI can definitely see a world where maybe we all just collapse back to the text box again because maybe the model is just always right, so you actually don’t need to follow every step from every prompt. Maybe it doesn’t get blocked. So I can see a world where it collapses, but I think for now we need all these tools to meet people where they are while the models get better.\n\n_**Ars**: Is part of that approach following signals from users in real time, as opposed to having, you know, a lot of companies—they have this grand plan, here’s our whole year of everything…_\n\n**Wu**: Oh, we have no grand plan! \\[Laughs.\\]\n\n_**Ars**: I can tell! I don’t mean that in a bad way, because it seems you’re rolling stuff out to meet all these latent demands and signals. It’s different than something like OpenAI, where they’re talking about a super app, right? What’s your thought on that kind of approach of bringing it all into one super app that does everything for everybody? Do you think that’s a bad idea?_\n\n**Wu**: There are a few guiding principles for us. One is we believe that models will continue to grow on the exponential, and it’s really important for us to build where the puck is going.\n\nI think we’re pretty humble about not knowing exactly what the right form factor is but encouraging our teams to explore that as much as possible to figure out what’s best for the next model.\n\nI don’t know if you’ve read “The Bitter Lesson”?\n\n_**Ars**: Mm-hmm, yeah._\n\n_\\[The Bitter Lesson is a 2019 essay by computer scientist and reinforcement learning pioneer Richard Sutton. In part, it argues that efforts to bake domain-specific structures into AI systems have often “proved ultimately counterproductive” and that the methods that win out over time are general-purpose ones that scale with available compute.\\]_\n\n**Wu**: Yeah, that is one of our guiding principles for our team. And I think it’s really hard—because the models are changing so quickly—it’s really hard to say that this will definitely be the next form factor. We have a few guesses. We dogfood internally a lot of these ideas, but we’re pretty open-minded to just being wrong, and we just need to stay really close to the model capabilities.\n\n_**Ars**: I know some of these things have arisen from seeing users who are just using it this way and then deciding to productize that and make it more convenient._\n\n_Are there things that you’re seeing right now that are like that, that you haven’t productized yet where you’re saying, “OK, now we need to be thinking about this in the near future”?_\n\n**Wu**: We try to go from conviction to a product shift pretty quickly, ideally in a week or so. So usually there isn’t a big delay between us feeling that user pull and shipping something.\n\nI think there is maybe this next level where Claude can anticipate what you want. Like, it can proactively know that, “Oh, you’re working on a voice feature,” so it should monitor GitHub issues and feedback in Slack and Twitter and whatever for people saying that there are bugs in voice or that they have new feature requests, and it just makes the routine for itself to monitor for this.\n\nIt’s actually not that far away, but I think this is an imminent next step… Claude should probably decide to actually listen for feedback on your feature and then decide how to notify you on its ideas. So the engineer doesn’t need to set up an automation, but Claude just thinks, “OK, this is what you work on, so let me monitor it and then propose what you could do today.”\n\n_**Ars**: Developers using these tools are frustrated that there’s just not enough compute to go around. The limits are a problem._\n\n_There are tools that exist right now that look at what the IDE knows about the code base—this function is referenced in these different places, and so on—and the idea is that makes it more efficient to comb through the codebase in terms of token usage because you have the structured data._ _Is that something that you are considering, or do you have reasons to not go in that direction?_\n\n**Wu**: We do have plugins that tell Claude Code this semantic information. We have a few LSPs available that let you, for example, say, “I want to go to like where this function is defined,” and it will jump into that exact spot without using search and stuff.\n\nWe don’t find that it makes a measurable improvement in performance, but we’ve designed Claude Code to be extensible enough that if you want a plugin that does that, it’s available, and you can connect it. But we’ve found that Claude Code is pretty good at generating high-quality code without needing to add that to be able to navigate the codebase.\n\n_**Ars**: The question is less about the quality of the code than the efficiency of getting there, right? Because, again, people get very frustrated with usage limits. Sometimes people try to introduce some kind of structure for an LLM, and they find out that has an unexpected hidden cost. Is that what you’re saying happens with that kind of semantic information? Do you have data that tells you that’s not the way to go with this?_\n\n**Wu**: Going by the evals, we don’t see a measurable change. And I think we generally lean more toward shipping a leaner harness with fewer opinionated tools and just letting developers add their own if they want. So unless a tool clearly improves token performance or accuracy, we default toward not shipping it.\n\nI think token efficiency is always top of mind for us because we just want to give people the maximum amount of intelligence per token, so we’re constantly experimenting with ways to reduce it, but it’s actually harder than I wish it were to do it well.\n\nFor us, the most important thing is just maintaining intelligence, so we would only ship something if we felt like it actually makes a model more intelligent because that’s that’s really the north star for us, not token efficiency.\n\n_**Ars**: For some users it might be easier to accept limitations on token availability if it was more transparent. But at the same time, my impression is that actually having real transparency about the token usage of “this task did this much because you did this instead of this”—that’s actually hard to do._\n\n_I assume you’ve looked into ways to communicate that to users. What have you found when you’ve tried to do that?_\n\n**Wu**: We did get a lot of questions about that, like, “Hey, my usage limits got used up quickly, where did they go?” And I think that’s totally valid, and we need to be transparent about that. It is hard to diagnose.\n\nSo when people have these complaints, we pick a few people, we jump on a call with them, and we actually just debug live because your full transcript is fully stored locally, so you actually have all the data on your computer already about all the tokens that you use…\n\nWe noticed two main patterns. One, people have these really long sessions, they step away for two hours, they come back and then the cache is broken—and when the cache is broken, it’s actually much more expensive to send the next query. So we start showing a notification that says, “Hey, the cache is broken, run /clear if you want to start a new session.” So it’s just a reminder that this one’s pretty expensive to resume. Also, when you run /usage, you’ll actually see, “Hey, these sessions cost a lot because your cache is broken.”\n\nAnother common pattern we found was that some people were installing plugins that actually told Claude to kick off a ton of subagents, so there are people who were running a hundred subagents behind the scenes, which is really expensive because that’s like 100 Claude Codes, but they didn’t realize… and then we added some usage, so it will tell you you’re using a ton of subagents.\n\nI think there’s more we can do, and as we figure out what the bad patterns are, or the concerning patterns are, we want to surface it to the users.\n\nThis is really pretty hard. So it’s really important for us to be transparent, but we need to have a strong thesis about where the tokens are going before we know how to surface it in a useful way.\n\n_**Ars**: Last question: You have these very different kinds of organizations or users that are using this. You’ve got people vibe-coding with no programming experience whatsoever, you have experienced individual developers, you have teams like the size of a few dozen people, you have large enterprises. How do you make this work for all those different kinds of users and team sizes? Because they have such radically different needs._\n\n**Wu**: We try to make the core harness as un-opinionated as possible. It’s just our minimal viable set of tools, so make a plan, make a to-do list, edit files, a few others, ask clarifying questions for the user. We try to make this very general and then let everyone else bring in the customizations that work well.\n\nI think that along this adoption axis or something that you walk through, what we find is that, as the models get better, the adoption grows pretty much along the trajectory that you talked about. So Opus 4.5, for example, was a massive unlock for enterprises. That was the one where even if you weren’t familiar with how to get the most out of AI tools, you could just use Claude Code on your possibly legacy codebase, and it just works. And I think that was a big unlock for the people who didn’t want to do a bunch of education to learn how to coax it to work.\n\n_**Ars**: Thank you for chatting with me._\n\n**Wu**: Yeah, thank you!\n\n## Takeaways\n\nAnthropic isn’t alone in placing a big bet on the notion that models will continue to improve as compute scales so much that planning ahead is difficult. This is part of why there is such massive investment in compute infrastructure, with Anthropic and other companies working on models: The guiding philosophy of the current AI spring depends on growing compute efficiency and access. That’s happening while the existing infrastructure is not always keeping up with user demands, though.\n\nAs Wu noted at the end, the better the models’ performance, the deeper AI integration goes at increasingly large organizations. Maybe it starts with vibe coding, but larger, more buttoned-down organizations are using either Claude Code or tools like it more than they were before. There still remain several questions that we didn’t get into in our short conversation, though—for example, methodologies and governance for ensuring that work done by these agents meets the standards it needs to in that kind of environment.\n\nAnthropic also isn’t alone in its philosophy of maintaining an un-opinionated harness, largely clear of structured semantic data and the like. Nonetheless, several competitors, like Cursor or Augment Code, are actively exploring what domain-specific structure might do for specialized applications. It remains to be seen exactly where we’ll land on that.\n\nThe messaging and product strategy around Claude Code have at times seemed chaotic to developers and users. Wu presents that as both a side effect of the current landscape and a virtue in terms of staying agile as models improve. If the next year moves at the pace of the previous one, that may be a reasonable tack—but for better or worse, there are sure to be some more surprises for both Anthropic and developers along the way.\n\n[![Photo of Samuel Axon](https://cdn.arstechnica.net/wp-content/uploads/2025/11/photo1-300x300.jpeg)](https://arstechnica.com/author/samuelaxon/)\n\nSamuel Axon is the editorial lead for tech and gaming coverage at Ars Technica. He covers AI, software development, gaming, entertainment, and mixed reality. He has been writing about gaming and technology for nearly two decades at Engadget, PC World, Mashable, Vice, Polygon, Wired, and others. He previously ran a marketing and PR agency in the gaming industry, led editorial for the TV network CBS, and worked on social media marketing strategy for Samsung Mobile at the creative agency SPCSHP. He also is an independent software and game developer for iOS, Windows, and other platforms, and he is a graduate of DePaul University, where he studied interactive media and software development.\n\n[47 Comments](https://arstechnica.com/ai/2026/05/claude-codes-product-lead-talks-usage-limits-transparency-and-the-lean-harness/#comments \"47 comments\")\n\n1.  [![Listing image for first story in Most Read: Zillow loses thousands of listings in fight over “hidden” homes](https://cdn.arstechnica.net/wp-content/uploads/2026/05/GettyImages-1488901494-500x500-1779385946.jpg)](https://arstechnica.com/tech-policy/2026/05/zillow-loses-access-to-thousands-of-home-listings-amid-bitter-legal-feud/)",
+        "textLength": 19610
+      },
+      "enrichmentStatus": "ok",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -9,
+      "title": "https://x.com/itsclivetime/status/2055144998270824515",
+      "url": "https://x.com/itsclivetime/status/2055144998270824515",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://x.com/itsclivetime/status/2055144998270824515",
+        "fetchedAt": "2026-05-22T08:55:20.351Z",
+        "status": "skipped",
+        "skipReason": "same-platform"
+      },
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -10,
+      "title": "https://www.reddit.com/r/artificial/comments/1tgbjgq/why_do_some_people_have_such_strong_resistance_to/",
+      "url": "https://www.reddit.com/r/artificial/comments/1tgbjgq/why_do_some_people_have_such_strong_resistance_to/",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://www.reddit.com/r/artificial/comments/1tgbjgq/why_do_some_people_have_such_strong_resistance_to/",
+        "fetchedAt": "2026-05-22T08:55:20.351Z",
+        "status": "skipped",
+        "skipReason": "same-platform"
+      },
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -11,
+      "title": "https://www.reddit.com/r/AI_Agents/comments/1ter92l/opensales_opensource_multiagent_outbound_icp_in/",
+      "url": "https://www.reddit.com/r/AI_Agents/comments/1ter92l/opensales_opensource_multiagent_outbound_icp_in/",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://www.reddit.com/r/AI_Agents/comments/1ter92l/opensales_opensource_multiagent_outbound_icp_in/",
+        "fetchedAt": "2026-05-22T08:55:20.351Z",
+        "status": "skipped",
+        "skipReason": "same-platform"
+      },
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -12,
+      "title": "https://www.reddit.com/r/AI_Agents/comments/1tdbwp4/codex_is_now_on_mobile_via_chatgpt_app/",
+      "url": "https://www.reddit.com/r/AI_Agents/comments/1tdbwp4/codex_is_now_on_mobile_via_chatgpt_app/",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://www.reddit.com/r/AI_Agents/comments/1tdbwp4/codex_is_now_on_mobile_via_chatgpt_app/",
+        "fetchedAt": "2026-05-22T08:55:20.351Z",
+        "status": "skipped",
+        "skipReason": "same-platform"
+      },
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -13,
+      "title": "https://www.reddit.com/r/AI_Agents/comments/1ti1xkb/no_code_llm_finetuning/",
+      "url": "https://www.reddit.com/r/AI_Agents/comments/1ti1xkb/no_code_llm_finetuning/",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://www.reddit.com/r/AI_Agents/comments/1ti1xkb/no_code_llm_finetuning/",
+        "fetchedAt": "2026-05-22T08:55:20.351Z",
+        "status": "skipped",
+        "skipReason": "same-platform"
+      },
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -14,
+      "title": "https://v.redd.it/s6twujcdk61h1",
+      "url": "https://v.redd.it/s6twujcdk61h1",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://v.redd.it/s6twujcdk61h1",
+        "fetchedAt": "2026-05-22T08:55:20.351Z",
+        "status": "skipped",
+        "skipReason": "same-platform"
+      },
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -15,
+      "title": "Codex | AI Assistant for Work and Code",
+      "url": "http://ChatGPTCodex.com",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "http://chatgptcodex.com/",
+        "fetchedAt": "2026-05-22T08:55:24.109Z",
+        "status": "ok",
+        "title": "Codex | AI Assistant for Work and Code",
+        "imageUrl": "https://images.ctfassets.net/8su2tbn87fck/1AFmJlFiOIpmqlLkWyw9oR/4a5d06b26c38f883e1b8f25771b7876a/image.png?w=1600&h=900&fit=fill",
+        "domain": "chatgptcodex.com",
+        "contentType": "html",
+        "markdown": "Codex\n\nYour AI assistant for work.\n\nTrusted by top teams\n\n![Cisco](https://openaiassets.blob.core.windows.net/$web/codex/landing/5f53f01c-79c7-4391-aa04-47a78ff781ed/Cisco.png)\n\n![Instacart](https://openaiassets.blob.core.windows.net/$web/codex/landing/5f53f01c-79c7-4391-aa04-47a78ff781ed/Instacart.png)\n\n![Duolingo](https://openaiassets.blob.core.windows.net/$web/codex/landing/5f53f01c-79c7-4391-aa04-47a78ff781ed/Duolingo.png)\n\n![Vanta](https://openaiassets.blob.core.windows.net/$web/codex/landing/5f53f01c-79c7-4391-aa04-47a78ff781ed/Vanta.png)\n\n## Ways to use Codex\n\n![](https://images.ctfassets.net/8su2tbn87fck/6F0hibYAGoLdpUpzTkP7yt/e95eccba318539a96d69cab9d32bad30/codex-ways-to-use-members.svg?q=90)\n\n### Codex for work\n\nGets tasks and projects done from start to finish.\n\n[\n\nLearn more\n\n](http://chatgptcodex.com/codex/for-work)\n\n![](https://images.ctfassets.net/8su2tbn87fck/7BQrgXKI2U6xokPPn9aG79/22b2ddf41d0dd9179d734f8df0701d58/codex-ways-to-use-branch.svg?q=90)\n\n### Codex for developers\n\nBuilt for real engineering work, across multiple surfaces.\n\n[\n\nLearn more\n\n](http://chatgptcodex.com/codex/for-developers)\n\nGet work done faster\n\nYour research assistant\n\nGive Codex the files, notes, data, decisions, and code behind the task. It works from the actual materials that shape the job, so you do not have to flatten real work into a single prompt.\n\n![Screen showing a text box with the prompt to use Gmail, Google Drive, and Slack to investigate wholesale order shipping delays, summarize root cause, impacted customers, inventory issues, and recommended fixes. Background shows a partial document titled \"Investigation Summary: Wholesale Order Shipping Delays\" with details on contributors and estimated impact.](https://images.ctfassets.net/8su2tbn87fck/yetd8bhPJ3UmxIOfFZ7d3/6d030399abd1760ac7d7d7d94aa4e975/Codex-Landing-Features-Faster.png?q=90&fm=webp)\n\nGet finished work back\n\nCreate briefs, spreadsheets, decks, visuals, messages, tools, automations, prototypes, plans, and code changes you can review, refine, and use.\n\n![Text box on blue and light purple gradient background with text about debugging Stripe charges using logs, screenshots, Slack threads, and Linear tickets to find and fix a retry idempotency bug.](https://images.ctfassets.net/8su2tbn87fck/7lV3hJqrajgMTjdpSjd5xe/938ad57694ae7797c70cccd8d58bb360/Codex-Landing-Features-Delegate.png?q=90&fm=webp)\n\nMake good work repeatable\n\nFor work you do again and again, Codex can gather the latest context from GitHub, Slack, and docs, then help turn proven workflows into updates, summaries, follow-ups, automations, and code changes.\n\n![A task list with three sections: Up next shows four tasks with statuses and start times; Unread shows two tasks marked with blue dots and recent times; Read shows two completed tasks with checkmarks and days since done.](https://images.ctfassets.net/8su2tbn87fck/6gYsIZgJt9qAyr4OMKAglB/b309df8d9f3ce08ab4256fe23b9f281c/Codex-Landing-Features-Work-back.png?q=90&fm=webp)\n\nFor the work teams do every day\n\nUse Codex for KPI readouts, pipeline updates, finance reviews, launch briefs, renewal prep, recruiting packets, customer summaries, bug triage, prototype builds, and follow-ups.\n\n![Text on a digital interface showing a weekly report titled \"Team Update\". A message bubble says, \"That’s exactly what I wanted for this weekly report. Can you create an automation that does what we just finished every week at 4pm on Thursdays?\" The interface includes options for GPT-5.5 and a microphone icon, suggesting AI-assisted report generation.](https://images.ctfassets.net/8su2tbn87fck/1gFawhsuwPz29BN2WGCNGD/b8717e1abd8e559e3bd1302b89e3fd2b/Codex-Landing-Features-Repeat.png?q=90&fm=webp)\n\nYou stay in control\n\nCodex shows the sources, assumptions, changes, and next steps so teams can review, refine, and decide what happens next.\n\n![List of integrations with icons, names, short descriptions, and toggle buttons or connect buttons. Linear and Notion are enabled with toggles, Stripe and Figma show “Connect” buttons and are inactive. Background is a blue gradient.](https://images.ctfassets.net/8su2tbn87fck/4hrgJiKssz9WHiPfFya0CM/4445c6892cb4d4bbbd3b8d57b34c968b/Codex-Landing-Features-Control.png?q=90&fm=webp)\n\n## \n\nChoose a ChatGPT  plan to get started\n\n### Plus\n\nIncludes Codex usage for focused coding sessions each week.\n\n### Pro\n\nHigher usage limits to power  full workdays across multiple projects.\n\n### Business\n\nSecure, shared workspace with admin controls and flexible pricing for teams using Codex across repositories.\n\nThe same agent everywhere you code\n\nUse Codex across multiple surfaces, all connected by your ChatGPT account.\n\n![Start in the Codex app](https://persistent.oaistatic.com/codex/landing-assets-v3/surfaces/light/app.webp)\n\nStart in the Codex app\n\n![Move to your editor](https://persistent.oaistatic.com/codex/landing-assets-v3/surfaces/light/editor.webp)\n\nMove to your editor\n\n![Keep going in the terminal](https://persistent.oaistatic.com/codex/landing-assets-v3/surfaces/light/terminal.webp)\n\nKeep going in the terminal\n\nCodex for teams\n\nPay as you go-no seat fees. Scale without limits.\n\n[\n\nStart now\n\n](http://chatgptcodex.com/explore/codex_team)\n\n\\>\\_ship|\n\nShip better code, faster\n\nAutomate PR reviews and continuously scan for vulnerabilities.\n\nBuilt for how your team works\n\nRun agent workflows locally, in the cloud, or plug into your existing tools like Slack or Linear.\n\nEnterprise-ready\n\nAdvanced analytics, 100+ integrations, and full security controls.\n\nTry Codex today\n\nYour AI assistant for work.",
+        "textLength": 2079
+      },
+      "enrichmentStatus": "ok",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    }
+  ],
+  "dedupClusters": [],
+  "originalRankerOutput": null
+}

@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1440" />
+<title>Eval — Grade Fixture · Mock</title>
+<link rel="stylesheet" href="_theme.css" />
+<style>
+  .grade-grid {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: var(--sp-6);
+    align-items: start;
+  }
+
+  /* Persistent shortcut bar — fixed under page-head, not in the way */
+  .keybar {
+    background: var(--c-bg);
+    border: 1px solid var(--c-line);
+    border-radius: var(--r-md);
+    padding: var(--sp-2) var(--sp-4);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-5);
+    margin-bottom: var(--sp-5);
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--c-mute);
+  }
+  .keybar__group { display: inline-flex; align-items: center; gap: var(--sp-2); }
+  kbd {
+    display: inline-block;
+    min-width: 22px;
+    height: 22px;
+    line-height: 20px;
+    padding: 0 6px;
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--c-ink);
+    background: var(--c-bg-sunk);
+    border: 1px solid var(--c-line-strong);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    text-align: center;
+  }
+  .keybar__sep { width: 1px; height: 16px; background: var(--c-line); }
+
+  /* Cluster row — flat, no card-on-card; rhythm via hairlines + indent */
+  .clusters {
+    background: var(--c-bg);
+    border: 1px solid var(--c-line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+  }
+  .cluster {
+    display: grid;
+    grid-template-columns: 48px 64px 1fr 220px;
+    align-items: start;
+    gap: var(--sp-4);
+    padding: var(--sp-4) var(--sp-5);
+    border-bottom: 1px solid var(--c-line);
+    background: var(--c-bg);
+    position: relative;
+    transition: background 120ms ease;
+  }
+  .cluster:last-child { border-bottom: 0; }
+  .cluster:hover { background: var(--c-bg-sunk); }
+
+  /* Selected — left rail rust bar, no full-bg flash */
+  .cluster.is-selected {
+    background: #fcfbfa;
+  }
+  .cluster.is-selected::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--c-rust);
+  }
+
+  /* Labeled — soft tint */
+  .cluster.is-must { background: var(--c-must-soft); }
+  .cluster.is-nice { background: var(--c-nice-soft); }
+  .cluster.is-drop { background: var(--c-bg-sunk); }
+
+  .cluster__index {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--c-mute-soft);
+    padding-top: 4px;
+    text-align: right;
+    letter-spacing: 0.05em;
+  }
+
+  .cluster__thumb {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--r-md);
+    background: var(--c-bg-sunk);
+    border: 1px solid var(--c-line);
+    object-fit: cover;
+    display: block;
+  }
+
+  .cluster__body { min-width: 0; }
+  .cluster__meta {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-2);
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--c-mute);
+  }
+  .cluster__title {
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--c-ink);
+    margin-bottom: var(--sp-2);
+  }
+  .cluster__url {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--c-mute);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cluster__expanded {
+    margin-top: var(--sp-3);
+    padding-top: var(--sp-3);
+    border-top: 1px solid var(--c-line);
+    font-size: 13px;
+    color: var(--c-mute);
+    line-height: 1.6;
+  }
+
+  .cluster__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    justify-content: flex-end;
+  }
+
+  .tier-btn {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    width: 56px;
+    height: 56px;
+    border: 1px solid var(--c-line-strong);
+    border-radius: var(--r-md);
+    background: var(--c-bg);
+    transition: all 120ms ease;
+  }
+  .tier-btn:hover { border-color: var(--c-ink); background: var(--c-bg-sunk); }
+  .tier-btn__key {
+    font-family: var(--f-mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--c-ink);
+  }
+  .tier-btn__label {
+    font-family: var(--f-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--c-mute);
+  }
+
+  .tier-btn.is-selected.must { background: var(--c-must-soft); border-color: var(--c-must); }
+  .tier-btn.is-selected.must .tier-btn__key,
+  .tier-btn.is-selected.must .tier-btn__label { color: var(--c-must); }
+  .tier-btn.is-selected.nice { background: var(--c-nice-soft); border-color: var(--c-warn-line); }
+  .tier-btn.is-selected.nice .tier-btn__key,
+  .tier-btn.is-selected.nice .tier-btn__label { color: var(--c-nice); }
+  .tier-btn.is-selected.drop { background: var(--c-bg-sunk); border-color: var(--c-mute); }
+  .tier-btn.is-selected.drop .tier-btn__key,
+  .tier-btn.is-selected.drop .tier-btn__label { color: var(--c-drop); }
+
+  /* Right rail — progress glance */
+  .progress {
+    position: sticky;
+    top: var(--sp-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+  }
+
+  .ring {
+    --pct: 50;
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    background: conic-gradient(
+      var(--c-rust) 0deg,
+      var(--c-rust) calc(var(--pct) * 3.6deg),
+      var(--c-line) calc(var(--pct) * 3.6deg),
+      var(--c-line) 360deg
+    );
+    display: flex; align-items: center; justify-content: center;
+    margin: var(--sp-3) auto;
+  }
+  .ring__inner {
+    width: 116px; height: 116px;
+    border-radius: 50%;
+    background: var(--c-bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .ring__big {
+    font-family: var(--f-mono);
+    font-size: 28px;
+    font-weight: 500;
+    color: var(--c-ink);
+    line-height: 1;
+    tabular-nums: tabular-nums;
+  }
+  .ring__sub {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--c-mute);
+    margin-top: 4px;
+  }
+
+  /* Tier bars */
+  .tier-list { display: flex; flex-direction: column; gap: var(--sp-2); padding: 0 var(--sp-4) var(--sp-3); }
+  .tier-bar {
+    display: grid;
+    grid-template-columns: 48px 1fr 28px;
+    align-items: center;
+    gap: var(--sp-3);
+    font-family: var(--f-mono);
+    font-size: 11px;
+  }
+  .tier-bar__label { text-transform: uppercase; letter-spacing: 0.1em; color: var(--c-mute); }
+  .tier-bar__track {
+    height: 6px; background: var(--c-line); border-radius: 3px; overflow: hidden;
+  }
+  .tier-bar__fill { height: 100%; border-radius: 3px; }
+  .tier-bar.must .tier-bar__fill { background: var(--c-must); }
+  .tier-bar.nice .tier-bar__fill { background: var(--c-nice); }
+  .tier-bar.drop .tier-bar__fill { background: var(--c-drop); }
+  .tier-bar__count {
+    font-variant-numeric: tabular-nums;
+    color: var(--c-ink);
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+
+<aside class="notes">
+  <div class="notes__title">DESIGN NOTES · 02 / EVAL GRADE</div>
+  <div class="notes__body">
+    <p><strong>What changed:</strong> Cluster rows are now flat rows inside one bordered table (not card-on-card). Selected state is a 3px rust left-rail instead of a full amber border — quieter, more like a focused row in a code editor. Tier label buttons become numbered 1/2/3 keycap tiles on the right of each row, mirroring the keyboard exactly. The keyboard shortcut bar is pinned under the page head so it's always glanceable. Progress sidebar is a single conic-gradient ring + three tier bars (must / nice / drop) for instant proportion read.</p>
+    <p><strong>Why:</strong> The amber selection in the current build is too loud and fights the labeled-row tints. A rail accent reads as "you are here" without coloring the row. The keycap-tile actions teach the keyboard shortcuts visually — pressing the number on the keyboard mirrors clicking the same-numbered tile. The ring is the single thing the grader needs to glance at: "am I close to done?"</p>
+    <p><strong>Reflow &lt; 768 px:</strong> Right rail collapses into a sticky bottom bar (compact ring + tier counts). Cluster rows lose the thumbnail at &lt;480px; keycap tiles drop below the title.</p>
+  </div>
+</aside>
+
+<div class="app">
+
+  <header class="masthead">
+    <div class="masthead__brand">
+      <span class="masthead__title">Newsletter</span>
+      <span class="masthead__sub">Admin · Grading</span>
+    </div>
+    <nav class="masthead__nav">
+      <a href="01-eval-index.html">← Back to eval</a>
+    </nav>
+    <div class="masthead__user">
+      <span class="masthead__user-name">Graded by · aman</span>
+    </div>
+  </header>
+
+  <div class="page-head">
+    <div>
+      <div class="page-head__eyebrow">Grade fixture · manual</div>
+      <h1 class="page-head__title">Curated · May 21</h1>
+      <p class="page-head__lede"><span class="mono">manual-curated-may-21-1779504000</span> · 8 dedup clusters · created from 15 raw items</p>
+    </div>
+    <div class="page-head__actions">
+      <button class="btn btn--ghost">Reset labels</button>
+      <button class="btn btn--default" disabled>Export & download</button>
+      <button class="btn btn--primary" disabled>Save to repo</button>
+    </div>
+  </div>
+
+  <main class="shell">
+
+    <!-- Persistent keyboard hints -->
+    <div class="keybar">
+      <div class="keybar__group"><kbd>1</kbd> must</div>
+      <div class="keybar__group"><kbd>2</kbd> nice</div>
+      <div class="keybar__group"><kbd>3</kbd> drop</div>
+      <div class="keybar__sep"></div>
+      <div class="keybar__group"><kbd>Space</kbd> expand</div>
+      <div class="keybar__sep"></div>
+      <div class="keybar__group"><kbd>↑</kbd><kbd>↓</kbd> navigate</div>
+      <div class="keybar__sep"></div>
+      <div class="keybar__group" style="margin-left:auto;"><span>autosave on · last edit 14 s ago</span></div>
+    </div>
+
+    <div class="grade-grid">
+
+      <!-- LEFT: clusters -->
+      <section class="clusters">
+
+        <!-- 1: must, labeled -->
+        <article class="cluster is-must">
+          <div class="cluster__index">01</div>
+          <img class="cluster__thumb" alt="" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%238c3a1e' opacity='0.1'/%3E%3Ctext x='32' y='38' text-anchor='middle' font-family='monospace' font-size='10' fill='%238c3a1e'%3EHN%3C/text%3E%3C/svg%3E" />
+          <div class="cluster__body">
+            <div class="cluster__meta">
+              <span class="chip">hn</span>
+              <span>4 h ago</span>
+              <span class="chip">+2 dups</span>
+              <span>1247 pts · 312 comments</span>
+            </div>
+            <div class="cluster__title">Claude Opus 4.7 hits 84.7% on SWE-Bench Verified, opens 1M context to Pro</div>
+            <div class="cluster__url">news.ycombinator.com/item?id=41523109</div>
+          </div>
+          <div class="cluster__actions">
+            <button class="tier-btn is-selected must">
+              <span class="tier-btn__key">1</span>
+              <span class="tier-btn__label">Must</span>
+            </button>
+            <button class="tier-btn"><span class="tier-btn__key">2</span><span class="tier-btn__label">Nice</span></button>
+            <button class="tier-btn"><span class="tier-btn__key">3</span><span class="tier-btn__label">Drop</span></button>
+          </div>
+        </article>
+
+        <!-- 2: nice, labeled -->
+        <article class="cluster is-nice">
+          <div class="cluster__index">02</div>
+          <img class="cluster__thumb" alt="" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%2392400e' opacity='0.1'/%3E%3Ctext x='32' y='38' text-anchor='middle' font-family='monospace' font-size='10' fill='%2392400e'%3EARX%3C/text%3E%3C/svg%3E" />
+          <div class="cluster__body">
+            <div class="cluster__meta">
+              <span class="chip">arxiv</span>
+              <span>1 d ago</span>
+              <span>via reddit/r/MachineLearning</span>
+            </div>
+            <div class="cluster__title">Selective ReLU activation reduces inference latency 23% on Llama-class MoE</div>
+            <div class="cluster__url">arxiv.org/abs/2511.18402</div>
+          </div>
+          <div class="cluster__actions">
+            <button class="tier-btn"><span class="tier-btn__key">1</span><span class="tier-btn__label">Must</span></button>
+            <button class="tier-btn is-selected nice">
+              <span class="tier-btn__key">2</span>
+              <span class="tier-btn__label">Nice</span>
+            </button>
+            <button class="tier-btn"><span class="tier-btn__key">3</span><span class="tier-btn__label">Drop</span></button>
+          </div>
+        </article>
+
+        <!-- 3: drop, labeled -->
+        <article class="cluster is-drop">
+          <div class="cluster__index">03</div>
+          <img class="cluster__thumb" alt="" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%2357534e' opacity='0.1'/%3E%3Ctext x='32' y='38' text-anchor='middle' font-family='monospace' font-size='10' fill='%2357534e'%3ETW%3C/text%3E%3C/svg%3E" />
+          <div class="cluster__body">
+            <div class="cluster__meta">
+              <span class="chip">twitter</span>
+              <span>6 h ago</span>
+              <span>@levelsio · 412 likes</span>
+            </div>
+            <div class="cluster__title">"GPT-5 will change everything" — a 12-tweet thread on the future of AGI</div>
+            <div class="cluster__url">x.com/levelsio/status/187...</div>
+          </div>
+          <div class="cluster__actions">
+            <button class="tier-btn"><span class="tier-btn__key">1</span><span class="tier-btn__label">Must</span></button>
+            <button class="tier-btn"><span class="tier-btn__key">2</span><span class="tier-btn__label">Nice</span></button>
+            <button class="tier-btn is-selected drop">
+              <span class="tier-btn__key">3</span>
+              <span class="tier-btn__label">Drop</span>
+            </button>
+          </div>
+        </article>
+
+        <!-- 4: SELECTED, expanded, unlabeled -->
+        <article class="cluster is-selected">
+          <div class="cluster__index">04</div>
+          <img class="cluster__thumb" alt="" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23166534' opacity='0.1'/%3E%3Ctext x='32' y='38' text-anchor='middle' font-family='monospace' font-size='10' fill='%23166534'%3EGH%3C/text%3E%3C/svg%3E" />
+          <div class="cluster__body">
+            <div class="cluster__meta">
+              <span class="chip">github</span>
+              <span>22 h ago</span>
+              <span class="chip">+1 dup</span>
+              <span>4.2k stars in 72 h</span>
+            </div>
+            <div class="cluster__title">vllm-project/vllm v0.8.0 ships native FP8 KV cache support</div>
+            <div class="cluster__url">github.com/vllm-project/vllm/releases/tag/v0.8.0</div>
+            <div class="cluster__expanded">
+              FP8 KV cache cuts memory use ~45% on H100 with &lt;1% perplexity loss on Llama-3-70B and Mixtral-8x22B. Calibration scripts and benchmarking notebooks included. Breaking: removes pre-0.6 worker API.
+            </div>
+          </div>
+          <div class="cluster__actions">
+            <button class="tier-btn"><span class="tier-btn__key">1</span><span class="tier-btn__label">Must</span></button>
+            <button class="tier-btn"><span class="tier-btn__key">2</span><span class="tier-btn__label">Nice</span></button>
+            <button class="tier-btn"><span class="tier-btn__key">3</span><span class="tier-btn__label">Drop</span></button>
+          </div>
+        </article>
+
+        <!-- 5–8: unlabeled, no expansion -->
+        <article class="cluster">
+          <div class="cluster__index">05</div>
+          <img class="cluster__thumb" alt="" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23a8a29e' opacity='0.15'/%3E%3Ctext x='32' y='38' text-anchor='middle' font-family='monospace' font-size='10' fill='%2378716c'%3EWEB%3C/text%3E%3C/svg%3E" />
+          <div class="cluster__body">
+            <div class="cluster__meta">
+              <span class="chip">web-search</span>
+              <span>2 d ago</span>
+            </div>
+            <div class="cluster__title">DeepMind releases AlphaProteo benchmarking suite for de novo protein binders</div>
+            <div class="cluster__url">deepmind.google/discover/blog/alphaproteo-benchmark/</div>
+          </div>
+          <div class="cluster__actions">
+            <button class="tier-btn"><span class="tier-btn__key">1</span><span class="tier-btn__label">Must</span></button>
+            <button class="tier-btn"><span class="tier-btn__key">2</span><span class="tier-btn__label">Nice</span></button>
+            <button class="tier-btn"><span class="tier-btn__key">3</span><span class="tier-btn__label">Drop</span></button>
+          </div>
+        </article>
+
+        <article class="cluster">
+          <div class="cluster__index">06</div>
+          <img class="cluster__thumb" alt="" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23a8a29e' opacity='0.15'/%3E%3Ctext x='32' y='38' text-anchor='middle' font-family='monospace' font-size='10' fill='%2378716c'%3ERED%3C/text%3E%3C/svg%3E" />
+          <div class="cluster__body">
+            <div class="cluster__meta">
+              <span class="chip">reddit</span>
+              <span>8 h ago</span>
+              <span>r/LocalLLaMA · 891 upvotes</span>
+            </div>
+            <div class="cluster__title">Mistral-Nemo-12B beats Llama-3.1-70B on EQ-Bench at 1/5 the param count</div>
+            <div class="cluster__url">reddit.com/r/LocalLLaMA/comments/1g8h2k</div>
+          </div>
+          <div class="cluster__actions">
+            <button class="tier-btn"><span class="tier-btn__key">1</span><span class="tier-btn__label">Must</span></button>
+            <button class="tier-btn"><span class="tier-btn__key">2</span><span class="tier-btn__label">Nice</span></button>
+            <button class="tier-btn"><span class="tier-btn__key">3</span><span class="tier-btn__label">Drop</span></button>
+          </div>
+        </article>
+
+        <article class="cluster">
+          <div class="cluster__index">07</div>
+          <img class="cluster__thumb" alt="" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23a8a29e' opacity='0.15'/%3E%3Ctext x='32' y='38' text-anchor='middle' font-family='monospace' font-size='10' fill='%2378716c'%3EHN%3C/text%3E%3C/svg%3E" />
+          <div class="cluster__body">
+            <div class="cluster__meta">
+              <span class="chip">hn</span>
+              <span>11 h ago</span>
+              <span>289 pts</span>
+            </div>
+            <div class="cluster__title">Show HN: I wrote a 200-line CUDA kernel that's 8% faster than cuBLAS on H100</div>
+            <div class="cluster__url">news.ycombinator.com/item?id=41525802</div>
+          </div>
+          <div class="cluster__actions">
+            <button class="tier-btn"><span class="tier-btn__key">1</span><span class="tier-btn__label">Must</span></button>
+            <button class="tier-btn"><span class="tier-btn__key">2</span><span class="tier-btn__label">Nice</span></button>
+            <button class="tier-btn"><span class="tier-btn__key">3</span><span class="tier-btn__label">Drop</span></button>
+          </div>
+        </article>
+
+        <article class="cluster">
+          <div class="cluster__index">08</div>
+          <img class="cluster__thumb" alt="" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23a8a29e' opacity='0.15'/%3E%3Ctext x='32' y='38' text-anchor='middle' font-family='monospace' font-size='10' fill='%2378716c'%3EBLO%3C/text%3E%3C/svg%3E" />
+          <div class="cluster__body">
+            <div class="cluster__meta">
+              <span class="chip">web-search</span>
+              <span>3 d ago</span>
+            </div>
+            <div class="cluster__title">Anthropic publishes detailed mechanistic interpretability report on Claude 3.5 Sonnet</div>
+            <div class="cluster__url">anthropic.com/research/mech-interp-sonnet-2026</div>
+          </div>
+          <div class="cluster__actions">
+            <button class="tier-btn"><span class="tier-btn__key">1</span><span class="tier-btn__label">Must</span></button>
+            <button class="tier-btn"><span class="tier-btn__key">2</span><span class="tier-btn__label">Nice</span></button>
+            <button class="tier-btn"><span class="tier-btn__key">3</span><span class="tier-btn__label">Drop</span></button>
+          </div>
+        </article>
+
+      </section>
+
+      <!-- RIGHT: progress -->
+      <aside class="progress">
+        <div class="panel">
+          <header class="panel__head">
+            <span class="panel__title">Progress</span>
+            <span class="panel__sub">3 of 8</span>
+          </header>
+
+          <div class="ring" style="--pct: 37.5;">
+            <div class="ring__inner">
+              <span class="ring__big">37<span style="font-size:14px;color:var(--c-mute);">%</span></span>
+              <span class="ring__sub">5 to go</span>
+            </div>
+          </div>
+
+          <div class="tier-list">
+            <div class="tier-bar must">
+              <span class="tier-bar__label">Must</span>
+              <span class="tier-bar__track"><span class="tier-bar__fill" style="width:33%"></span></span>
+              <span class="tier-bar__count">1</span>
+            </div>
+            <div class="tier-bar nice">
+              <span class="tier-bar__label">Nice</span>
+              <span class="tier-bar__track"><span class="tier-bar__fill" style="width:33%"></span></span>
+              <span class="tier-bar__count">1</span>
+            </div>
+            <div class="tier-bar drop">
+              <span class="tier-bar__label">Drop</span>
+              <span class="tier-bar__track"><span class="tier-bar__fill" style="width:33%"></span></span>
+              <span class="tier-bar__count">1</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status guidance card -->
+        <div class="panel" style="background: var(--c-bg-sunk);">
+          <div class="panel__body" style="padding: var(--sp-4) var(--sp-5);">
+            <div class="eyebrow" style="margin-bottom: var(--sp-2);">Tip</div>
+            <p style="font-size:12px;color:var(--c-mute);line-height:1.6;">
+              Aim for ~30% <strong>must</strong>, ~40% <strong>nice</strong>, ~30% <strong>drop</strong> in a healthy fixture. Heavy skew toward one tier weakens nDCG signal.
+            </p>
+          </div>
+        </div>
+
+        <!-- Fixture info -->
+        <div class="panel">
+          <header class="panel__head">
+            <span class="panel__title">Fixture</span>
+          </header>
+          <div style="padding: var(--sp-3) var(--sp-5) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2);">
+            <div style="display:flex;justify-content:space-between;font-size:12px;">
+              <span class="muted">Created</span>
+              <span class="mono">2026-05-21 14:08</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;">
+              <span class="muted">Source</span>
+              <span class="mono">manual · 5 URLs</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;">
+              <span class="muted">Items pooled</span>
+              <span class="mono">15 raw → 8 clusters</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;">
+              <span class="muted">Dedup rate</span>
+              <span class="mono">47%</span>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+    </div>
+
+  </main>
+</div>
+
+</body>
+</html>

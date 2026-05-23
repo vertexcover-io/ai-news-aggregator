@@ -14,6 +14,7 @@ import type {
   RawItemsRepo,
 } from "@api/repositories/raw-items.js";
 import type { RunArchivesRepo, RunArchiveRow } from "@api/repositories/run-archives.js";
+import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
 import type { GenerateRecapFn } from "@api/services/review.js";
 import type { Queue } from "bullmq";
 
@@ -41,11 +42,22 @@ function makeArchiveRepo(
   };
 }
 
+function makeSettingsRepo(timezone: string): Pick<UserSettingsRepo, "get"> {
+  return {
+    get: vi.fn(() =>
+      Promise.resolve({
+        scheduleTimezone: timezone,
+      } as Awaited<ReturnType<UserSettingsRepo["get"]>>),
+    ),
+  };
+}
+
 function makeApp(opts: {
   repo?: RawItemsRepo;
   archiveRepo: RunArchivesRepo;
   generateRecapFn?: GenerateRecapFn;
   processingQueue?: Pick<Queue, "add">;
+  settingsRepo?: Pick<UserSettingsRepo, "get">;
 }): Hono {
   const app = new Hono();
   const router = createArchivesRouter({
@@ -53,6 +65,9 @@ function makeApp(opts: {
     getArchiveRepo: () => opts.archiveRepo,
     generateRecapFn: opts.generateRecapFn,
     processingQueue: opts.processingQueue,
+    ...(opts.settingsRepo === undefined
+      ? {}
+      : { getSettingsRepo: () => opts.settingsRepo }),
   });
   app.route("/api/archives", router);
   return app;
@@ -100,6 +115,31 @@ describe("GET /api/archives/:runId", () => {
       title: "Archived Article",
       score: 0.85,
     });
+  });
+
+  it("REQ-002: returns issueDate in the admin settings timezone", async () => {
+    const completedAt = new Date("2026-05-22T19:47:55.923Z");
+    const archiveRepo = makeArchiveRepo({
+      id: "near-midnight-archive",
+      status: "completed",
+      rankedItems: [],
+      topN: 5,
+      reviewed: true,
+      completedAt,
+      createdAt: completedAt,
+      startedAt: new Date("2026-05-22T19:44:00.000Z"),
+      sourceTypes: null,
+      isDryRun: false,
+    });
+    const app = makeApp({
+      archiveRepo,
+      settingsRepo: makeSettingsRepo("Asia/Kolkata"),
+    });
+    const res = await app.request("/api/archives/near-midnight-archive");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as RunState & { issueDate?: string };
+    expect(body.startedAt).toBe("2026-05-22T19:44:00.000Z");
+    expect(body.issueDate).toBe("2026-05-23");
   });
 
   it("returns 404 when archive not found in PostgreSQL", async () => {

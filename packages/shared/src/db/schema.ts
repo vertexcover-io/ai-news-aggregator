@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type {
   NotificationState,
   RawItemEngagement,
@@ -34,8 +34,10 @@ export const rawItems = pgTable("raw_items", {
   metadata: jsonb("metadata").$type<RawItemMetadata>().notNull().default({ comments: [] }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  runId: uuid("run_id"),
 }, (t) => [
   unique("raw_items_source_type_external_id_unique").on(t.sourceType, t.externalId),
+  index("raw_items_run_id_idx").on(t.runId),
 ]);
 
 export type RawItemInsert = typeof rawItems.$inferInsert;
@@ -201,3 +203,27 @@ export const sesEvents = pgTable("ses_events", {
 
 export type SesEventInsert = typeof sesEvents.$inferInsert;
 export type SesEventSelect = typeof sesEvents.$inferSelect;
+
+export const evalRuns = pgTable("eval_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  mode: text("mode").notNull(),
+  fixtureId: text("fixture_id"),
+  date: text("date"),
+  windowSize: integer("window_size"),
+  draftPromptHash: text("draft_prompt_hash").notNull(),
+  draftPromptSnapshot: text("draft_prompt_snapshot").notNull(),
+  savedPromptHash: text("saved_prompt_hash"),
+  savedPromptSnapshot: text("saved_prompt_snapshot"),
+  status: text("status").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  scoreBreakdown: jsonb("score_breakdown"),
+  costBreakdown: jsonb("cost_breakdown"),
+  errorMessage: text("error_message"),
+}, (t) => [
+  index("eval_runs_started_at_idx").on(t.startedAt.desc()),
+  index("eval_runs_prompt_hash_idx").on(t.draftPromptHash),
+]);
+
+export type EvalRunInsert = typeof evalRuns.$inferInsert;
+export type EvalRunSelect = typeof evalRuns.$inferSelect;

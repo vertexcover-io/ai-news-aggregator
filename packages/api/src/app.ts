@@ -7,6 +7,7 @@ export interface BuildAppDeps {
   archivesSearchRouter: Hono;
   adminArchivesRouter: Hono;
   adminRunsRouter: Hono;
+  adminEvalRouter: Hono;
   adminSocialCredentialsRouter: Hono;
   runsRouter: Hono;
   settingsRouter: Hono;
@@ -78,6 +79,7 @@ export function buildApp(deps: BuildAppDeps): Hono {
   adminApp.route("/", deps.adminRouter);
   adminApp.route("/archives", deps.adminArchivesRouter);
   adminApp.route("/runs", deps.adminRunsRouter);
+  adminApp.route("/eval", deps.adminEvalRouter);
   adminApp.route("/social-credentials", deps.adminSocialCredentialsRouter);
   adminApp.route("/analytics", deps.analyticsRouter);
   app.route("/api/admin", adminApp);

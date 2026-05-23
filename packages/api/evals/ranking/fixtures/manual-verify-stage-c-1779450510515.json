@@ -1,0 +1,67 @@
+{
+  "fixtureId": "manual-verify-stage-c-1779450510515",
+  "source": "manual",
+  "date": null,
+  "runId": null,
+  "model": "claude-haiku-4-5-20251001",
+  "exportedAt": "2026-05-22T11:48:30.515Z",
+  "pool": [
+    {
+      "rawItemId": -1,
+      "title": "https://news.ycombinator.com/item?id=44550234",
+      "url": "https://news.ycombinator.com/item?id=44550234",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://news.ycombinator.com/item?id=44550234",
+        "fetchedAt": "2026-05-22T11:48:37.691Z",
+        "status": "skipped",
+        "skipReason": "same-platform"
+      },
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -2,
+      "title": "https://www.reddit.com/r/LocalLLaMA/comments/1g8h2k/test_post/",
+      "url": "https://www.reddit.com/r/LocalLLaMA/comments/1g8h2k/test_post/",
+      "sourceType": "web_search",
+      "publishedAt": null,
+      "content": null,
+      "enrichedLink": {
+        "url": "https://www.reddit.com/r/LocalLLaMA/comments/1g8h2k/test_post/",
+        "fetchedAt": "2026-05-22T11:48:37.691Z",
+        "status": "skipped",
+        "skipReason": "same-platform"
+      },
+      "enrichmentStatus": "skipped",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    },
+    {
+      "rawItemId": -3,
+      "title": "Newsroom",
+      "url": "https://anthropic.com/news",
+      "sourceType": "blog",
+      "publishedAt": null,
+      "content": "ProductApr 17, 2026\n\n#### Introducing Claude Design by Anthropic Labs\n\nToday, we’re launching Claude Design, a new Anthropic Labs product that lets you collaborate with Claude to create polished visual work like designs, prototypes, slides, one-pagers, and more.\n\nAnnouncementsApr 7, 2026\n\n#### Project Glasswing\n\nA new initiative that brings together Amazon Web Services, Anthropic, Apple, Broadcom, Cisco, CrowdStrike, Google, JPMorganChase, the Linux Foundation, Microsoft, NVIDIA, and Palo Alto Networks in an effort to secure the world's most critical software.\n\nMar 18, 2026\n\n#### What 81,000 people want from AI\n\nWe invited Claude.ai users to share how they use AI, what they dream it could make possible, and what they fear it might do. Nearly 81,000 people participated—the largest and most multilingual qualitative study of its kind. Here's what we found.\n\nAnnouncementsFeb 4, 2026\n\n#### Claude is a space to think\n\nWe’ve made a choice: Claude will remain ad-free. We explain why advertising incentives are incompatible with a genuinely helpful AI assistant, and how we plan to expand access without compromising user trust.",
+      "enrichedLink": null,
+      "enrichmentStatus": "failed",
+      "comments": [],
+      "engagement": {
+        "points": 0,
+        "commentCount": 0
+      }
+    }
+  ],
+  "dedupClusters": [],
+  "originalRankerOutput": null
+}
