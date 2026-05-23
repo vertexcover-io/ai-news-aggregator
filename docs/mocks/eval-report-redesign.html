@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Eval Run Report — Redesign Mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Geist+Mono:wght@400;500;600&family=Geist:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --paper: #FAFAF7;
+    --rust: #8c3a1e;
+    --rust-hover: #7a3219;
+    --rust-tint: #fbf2ee;
+    --rust-border: #e2c4b6;
+    --ink: #0a0a0a;
+    --n950: #0a0a0a; --n900: #171717; --n800: #262626; --n700: #404040;
+    --n600: #525252; --n500: #737373; --n400: #a3a3a3; --n300: #d4d4d4;
+    --n200: #e5e5e5; --n100: #f5f5f5; --n50: #fafafa;
+    --serif: "Newsreader", Georgia, serif;
+    --mono: "Geist Mono", ui-monospace, monospace;
+    --sans: "Geist", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  /* Individually scrollable regions, scrollbar hidden but scroll preserved */
+  .scroll-hidden { scrollbar-width: none; -ms-overflow-style: none; }
+  .scroll-hidden::-webkit-scrollbar { width: 0; height: 0; display: none; }
+  body {
+    font-family: var(--sans);
+    background:
+      radial-gradient(circle at 20% -10%, rgba(140,58,30,0.05), transparent 40%),
+      #6b6b6b;
+    color: var(--n900);
+    min-height: 100vh;
+    padding: 40px 24px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .stage-label {
+    max-width: 1040px; margin: 0 auto 18px; color: #e9e9e9;
+    font-family: var(--mono); font-size: 12px; letter-spacing: .12em;
+    text-transform: uppercase; display: flex; gap: 10px; align-items: center;
+  }
+  .stage-label .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--rust); }
+
+  /* ---------- Modal shell ---------- */
+  .modal {
+    max-width: 1040px; margin: 0 auto; background: #fff;
+    border-radius: 14px; overflow: hidden;
+    box-shadow: 0 24px 60px -12px rgba(0,0,0,.45), 0 0 0 1px rgba(0,0,0,.04);
+    display: flex; flex-direction: column;
+  }
+
+  /* ---------- Header ---------- */
+  .modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--n200);
+  }
+  .head-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .run-id { font-family: var(--mono); font-size: 14px; font-weight: 500; color: var(--n800); }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+    padding: 3px 7px; border-radius: 3px;
+  }
+  .chip.done { color: #047857; }
+  .chip.done .led { width: 6px; height: 6px; border-radius: 999px; background: #059669; }
+  .chip.mode { border: 1px solid #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+  .ts { font-family: var(--mono); font-size: 11px; color: var(--n500); }
+  .close {
+    width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--n200);
+    background: #fff; color: var(--n500); font-size: 16px; cursor: pointer; line-height: 1;
+  }
+  .close:hover { background: var(--n50); color: var(--n800); }
+
+  /* ---------- Tab bar ---------- */
+  .tabbar {
+    display: flex; gap: 2px; padding: 0 20px; border-bottom: 1px solid var(--n200);
+    background: linear-gradient(to bottom, var(--n50), #fff);
+  }
+  .tab {
+    appearance: none; background: none; border: none; cursor: pointer;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--n500); padding: 13px 14px 12px; border-bottom: 2px solid transparent;
+    display: flex; align-items: center; gap: 8px; position: relative; top: 1px;
+  }
+  .tab .count {
+    font-size: 10px; background: var(--n100); color: var(--n600);
+    border-radius: 999px; padding: 1px 7px; letter-spacing: 0;
+  }
+  .tab:hover { color: var(--n800); }
+  .tab[aria-selected="true"] { color: var(--n950); border-bottom-color: var(--rust); }
+  .tab[aria-selected="true"] .count { background: var(--rust-tint); color: var(--rust); }
+
+  /* ---------- Panel body ---------- */
+  .panel { display: none; height: 560px; overflow: auto; }
+  .panel.active { display: block; }
+
+  /* ===== TAB 1 — PROMPT & COST ===== */
+  .pc-grid { display: grid; grid-template-columns: 1.35fr 1fr; height: 100%; min-height: 0; }
+  .pc-prompt { border-right: 1px solid var(--n200); display: flex; flex-direction: column; min-height: 0; }
+  .section-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid var(--n200);
+  }
+  .section-head .lbl { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--n700); }
+  .section-head .meta { font-family: var(--mono); font-size: 11px; color: var(--n400); }
+  .section-head .meta b { color: var(--n700); font-weight: 500; }
+  .prompt-body {
+    flex: 1; min-height: 0; overflow: auto; background: var(--paper);
+    display: grid; grid-template-columns: 44px 1fr;
+    font-family: var(--mono); font-size: 12px; line-height: 1.85;
+  }
+  .ln { text-align: right; padding-right: 10px; color: var(--n400); user-select: none; border-right: 1px solid var(--n200); }
+  .lc { padding-left: 12px; color: var(--n800); white-space: pre-wrap; }
+  .lc.h { color: var(--rust); font-weight: 600; }
+  .pc-cost { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+  table.bk { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.bk th, table.bk td { text-align: left; padding: 8px 16px; border-bottom: 1px solid var(--n100); }
+  table.bk th { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--n500); background: var(--n50); font-weight: 500; }
+  table.bk td { color: var(--n800); }
+  table.bk td.num { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+  table.bk tr.total td { font-weight: 600; color: var(--n950); border-top: 1px solid var(--n300); background: var(--rust-tint); }
+
+  /* ===== TAB 2 — REPORT ===== */
+  .report-wrap { padding: 18px 20px 24px; }
+
+  /* Funnel */
+  .funnel {
+    display: flex; align-items: stretch; gap: 0; margin-bottom: 20px;
+    border: 1px solid var(--n200); border-radius: 10px; overflow: hidden; background: #fff;
+  }
+  .fstep { flex: 1; padding: 16px 18px; position: relative; }
+  .fstep + .fstep { border-left: 1px solid var(--n200); }
+  .fstep .k { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--n500); }
+  .fstep .v { font-family: var(--serif); font-size: 30px; line-height: 1; margin-top: 8px; color: var(--n950); font-weight: 500; }
+  .fstep .v small { font-family: var(--sans); font-size: 12px; color: var(--n500); font-weight: 400; }
+  .fstep.cost .v { color: var(--rust); }
+  .fstep .arrow {
+    position: absolute; right: -11px; top: 50%; transform: translateY(-50%);
+    z-index: 2; width: 22px; height: 22px; border-radius: 999px; background: #fff;
+    border: 1px solid var(--n200); display: grid; place-items: center; color: var(--n400); font-size: 11px;
+  }
+  .funnel-note { margin: -10px 2px 20px; font-size: 12px; color: var(--n500); font-style: italic; font-family: var(--serif); }
+
+  /* Two ranking columns */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .rcol { border: 1px solid var(--n200); border-radius: 10px; overflow: hidden; background: #fff; }
+  .rcol-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 11px 14px; border-bottom: 1px solid var(--n200); background: var(--n50);
+  }
+  .rcol-head h3 { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--n800); font-weight: 600; }
+  .rcol-head .sub { font-size: 11px; color: var(--n500); }
+  .rcol.draft .rcol-head { background: var(--rust-tint); border-bottom-color: var(--rust-border); }
+  .rcol.draft .rcol-head h3 { color: var(--rust); }
+  .rlist { max-height: 360px; overflow: auto; }
+  .ritem { display: grid; grid-template-columns: 36px 1fr; gap: 12px; padding: 13px 14px; border-bottom: 1px solid var(--n100); }
+  .ritem:last-child { border-bottom: none; }
+  .rank {
+    width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--n200); background: var(--n50);
+    display: grid; place-items: center; font-family: var(--mono); font-size: 13px; font-weight: 600;
+    color: var(--n700); font-variant-numeric: tabular-nums;
+  }
+  .rcol.draft .rank { border-color: var(--rust-border); background: #fff; color: var(--rust); }
+  .rtitle { font-size: 14.5px; font-weight: 600; line-height: 1.35; color: var(--n950); }
+  .rtags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; font-family: var(--mono); font-size: 11px; }
+  .rtag { background: var(--n100); color: var(--n600); border-radius: 3px; padding: 2px 7px; }
+  .rtag.score { color: var(--n800); }
+  .rtag a { color: var(--n700); text-decoration: none; }
+  .rtag a:hover { text-decoration: underline; }
+  .delta { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 3px; letter-spacing: .04em; }
+  .delta.new { background: #ecfdf5; color: #047857; }
+  .delta.up { background: #eff6ff; color: #1d4ed8; }
+  .delta.down { background: #fef2f2; color: #b91c1c; }
+
+  /* prompt panes inside report (mode B) */
+  .prompts2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .ppane { border: 1px solid var(--n200); border-radius: 10px; overflow: hidden; }
+  .ppane-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid var(--n200); background: var(--n50); }
+  .ppane-head .lbl { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--n800); font-weight: 600; }
+  .ppane-head code { font-family: var(--mono); font-size: 11px; color: var(--n500); background: #fff; padding: 2px 6px; border-radius: 3px; }
+  .ppane pre { max-height: 150px; overflow: auto; padding: 12px; font-family: var(--mono); font-size: 12px; line-height: 1.7; color: var(--n800); white-space: pre-wrap; }
+
+  /* mode A score strip */
+  .scorestrip { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+  .scard { border: 1px solid var(--n200); border-radius: 8px; padding: 10px 14px; min-width: 110px; }
+  .scard .k { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--n500); }
+  .scard .v { font-family: var(--serif); font-size: 22px; margin-top: 4px; color: var(--n950); }
+
+  /* mode switcher (mock-only) */
+  .switch { max-width: 1040px; margin: 18px auto 0; display: flex; gap: 8px; justify-content: center; }
+  .switch button {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    padding: 8px 16px; border-radius: 7px; border: 1px solid rgba(255,255,255,.25); cursor: pointer;
+    background: rgba(255,255,255,.08); color: #eee;
+  }
+  .switch button.on { background: #fff; color: var(--n900); border-color: #fff; }
+  .switch .lbl { color: #cfcfcf; font-family: var(--mono); font-size: 11px; align-self: center; margin-right: 4px; letter-spacing: .08em; text-transform: uppercase; }
+</style>
+</head>
+<body>
+
+<div class="stage-label"><span class="dot"></span> Eval Run Report · redesign mock · faithful to the existing Ledger aesthetic</div>
+
+<div class="modal">
+  <div class="modal-head">
+    <div class="head-left">
+      <span class="run-id" id="m-runid">r/ce6c9d</span>
+      <span class="chip done"><span class="led"></span> Done</span>
+      <span class="chip mode" id="m-mode">Mode B</span>
+      <span class="ts">started 2026-05-23 15:33:34 · finished 15:34:33</span>
+    </div>
+    <button class="close" aria-label="Close">✕</button>
+  </div>
+
+  <!-- TWO TABS -->
+  <div class="tabbar" role="tablist">
+    <button class="tab" id="tab-pc" role="tab" aria-selected="true" onclick="showTab('pc')">Prompt &amp; Cost</button>
+    <button class="tab" id="tab-rep" role="tab" aria-selected="false" onclick="showTab('rep')">
+      Report <span class="count" id="rep-count">47 → 10</span>
+    </button>
+  </div>
+
+  <!-- ========== PANEL 1: PROMPT & COST ========== -->
+  <div class="panel active" id="panel-pc" role="tabpanel">
+    <div class="pc-grid">
+      <div class="pc-prompt">
+        <div class="section-head">
+          <span class="lbl">Prompt snapshot</span>
+          <span class="meta">hash · <b>644ea463</b> · 144 lines · 4238 chars</span>
+        </div>
+        <div class="prompt-body">
+          <div class="ln">1</div><div class="lc h">## Audience</div>
+          <div class="ln">2</div><div class="lc"></div>
+          <div class="ln">3</div><div class="lc">The reader is a developer, tech lead, engineering manager, or founder working with AI tooling.</div>
+          <div class="ln">4</div><div class="lc"></div>
+          <div class="ln">5</div><div class="lc h">## Editorial Priorities</div>
+          <div class="ln">6</div><div class="lc"></div>
+          <div class="ln">7</div><div class="lc">Favor:</div>
+          <div class="ln">8</div><div class="lc">- Primary-source releases and technical reports.</div>
+          <div class="ln">9</div><div class="lc">- Coding agents, orchestration, evals, runtime controls, structured outputs, observability.</div>
+          <div class="ln">10</div><div class="lc">- Builder/operator perspectives over broad industry commentary.</div>
+          <div class="ln">11</div><div class="lc">- Official developer-tool or coding-agent launches even with low engagement.</div>
+          <div class="ln">12</div><div class="lc"></div>
+          <div class="ln">13</div><div class="lc">Downrank:</div>
+          <div class="ln">14</div><div class="lc">- Consumer AI novelty.</div>
+          <div class="ln">15</div><div class="lc">- Funding-only, quota-only, or hype-driven announcements.</div>
+          <div class="ln">16</div><div class="lc">- Policy/governance drama without clear engineering consequences.</div>
+          <div class="ln">17</div><div class="lc">- Generic thought leadership, prompt listicles, weak leaderboard posts.</div>
+        </div>
+      </div>
+
+      <div class="pc-cost">
+        <div class="section-head"><span class="lbl">Score breakdown</span><span class="meta">date · 2026-05-23</span></div>
+        <table class="bk">
+          <thead><tr><th>Metric</th><th style="text-align:right">Value</th></tr></thead>
+          <tbody>
+            <tr><td>nDCG@10</td><td class="num">0.842</td></tr>
+            <tr><td>nDCG@5</td><td class="num">0.791</td></tr>
+            <tr><td>Precision@10</td><td class="num">0.700</td></tr>
+            <tr><td>Must-include recall</td><td class="num">0.857</td></tr>
+          </tbody>
+        </table>
+        <div class="section-head" style="margin-top:6px"><span class="lbl">Cost breakdown</span><span class="meta">claude-haiku-4-5</span></div>
+        <table class="bk">
+          <thead><tr><th>Stage</th><th style="text-align:right">In tok</th><th style="text-align:right">Out tok</th><th style="text-align:right">Cost</th></tr></thead>
+          <tbody>
+            <tr><td>rank (saved)</td><td class="num">18,204</td><td class="num">2,910</td><td class="num">$0.0203</td></tr>
+            <tr><td>rank (draft)</td><td class="num">18,204</td><td class="num">3,118</td><td class="num">$0.0219</td></tr>
+            <tr class="total"><td>Total</td><td class="num">36,408</td><td class="num">6,028</td><td class="num">$0.0422</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== PANEL 2: REPORT ========== -->
+  <div class="panel" id="panel-rep" role="tabpanel">
+    <div class="report-wrap">
+
+      <!-- FUNNEL: collected → sent → ranked, + cost -->
+      <div class="funnel" id="funnel-b">
+        <div class="fstep">
+          <div class="k">Candidate pool</div>
+          <div class="v">47 <small>deduped</small></div>
+          <div class="arrow">→</div>
+        </div>
+        <div class="fstep">
+          <div class="k">Sent for ranking</div>
+          <div class="v">47 <small>items</small></div>
+          <div class="arrow">→</div>
+        </div>
+        <div class="fstep">
+          <div class="k">Ranked (top-N)</div>
+          <div class="v">10 <small>items</small></div>
+          <div class="arrow">·</div>
+        </div>
+        <div class="fstep cost">
+          <div class="k">Cost</div>
+          <div class="v">$0.0422</div>
+        </div>
+      </div>
+      <p class="funnel-note" id="note-b">The full deduped candidate pool is sent to the LLM ranker; it returns the top 10. 37 items were considered but not surfaced.</p>
+
+      <!-- MODE B columns -->
+      <div class="cols" id="cols-b">
+        <div class="rcol previous">
+          <div class="rcol-head"><h3>Previous ranking</h3><span class="sub">12 items</span></div>
+          <div class="rlist scroll-hidden">
+            <div class="ritem"><div class="rank">1</div><div><div class="rtitle">Anthropic Pays SpaceX $1.25B Monthly for Compute</div><div class="rtags"><span class="rtag">twitter</span><span class="rtag score">score 72.60</span><span class="rtag"><a href="#">x.com</a></span></div></div></div>
+            <div class="ritem"><div class="rank">2</div><div><div class="rtitle">Claude Code ships native sub-agent orchestration</div><div class="rtags"><span class="rtag">hn</span><span class="rtag score">score 68.10</span><span class="rtag"><a href="#">github.com</a></span></div></div></div>
+            <div class="ritem"><div class="rank">3</div><div><div class="rtitle">OpenAI structured outputs now GA across all models</div><div class="rtags"><span class="rtag">rss</span><span class="rtag score">score 64.30</span></div></div></div>
+            <div class="ritem"><div class="rank">4</div><div><div class="rtitle">vLLM 0.7 lands speculative decoding by default</div><div class="rtags"><span class="rtag">hn</span><span class="rtag score">score 59.80</span></div></div></div>
+          </div>
+        </div>
+        <div class="rcol draft">
+          <div class="rcol-head"><h3>Draft ranking</h3><span class="sub">10 items</span></div>
+          <div class="rlist scroll-hidden">
+            <div class="ritem"><div class="rank">1</div><div><div class="rtitle">Anthropic commits $15B annually to SpaceX compute <span class="delta up">↑</span></div><div class="rtags"><span class="rtag">twitter</span><span class="rtag score">score 43.75</span><span class="rtag"><a href="#">x.com</a></span></div></div></div>
+            <div class="ritem"><div class="rank">2</div><div><div class="rtitle">Claude Code ships native sub-agent orchestration</div><div class="rtags"><span class="rtag">hn</span><span class="rtag score">score 41.20</span></div></div></div>
+            <div class="ritem"><div class="rank">3</div><div><div class="rtitle">Local eval harness for ranking prompts <span class="delta new">NEW</span></div><div class="rtags"><span class="rtag">github</span><span class="rtag score">score 38.90</span></div></div></div>
+            <div class="ritem"><div class="rank">4</div><div><div class="rtitle">OpenAI structured outputs now GA <span class="delta down">↓1</span></div><div class="rtags"><span class="rtag">rss</span><span class="rtag score">score 35.10</span></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODE B prompt panes -->
+      <div class="prompts2" id="prompts-b">
+        <div class="ppane"><div class="ppane-head"><span class="lbl">Saved prompt</span><code>644ea463</code></div><pre class="scroll-hidden">## Audience
+The reader is a developer, tech lead, or founder working with AI tooling.
+## Editorial Priorities
+Favor primary-source releases…</pre></div>
+        <div class="ppane"><div class="ppane-head"><span class="lbl">Draft prompt</span><code>9b1c08af</code></div><pre class="scroll-hidden">## Audience
+The reader is a senior engineer shipping AI features in production.
+## Editorial Priorities
+Favor coding agents, evals, runtime controls…</pre></div>
+      </div>
+
+      <!-- MODE A content (hidden by default) -->
+      <div class="scorestrip" id="strip-a" style="display:none">
+        <div class="scard"><div class="k">nDCG@10</div><div class="v">0.842</div></div>
+        <div class="scard"><div class="k">nDCG@5</div><div class="v">0.791</div></div>
+        <div class="scard"><div class="k">P@10</div><div class="v">0.700</div></div>
+        <div class="scard"><div class="k">Must-recall</div><div class="v">0.857</div></div>
+      </div>
+      <div class="cols" id="cols-a" style="display:none">
+        <div class="rcol previous">
+          <div class="rcol-head"><h3>Expected (graded)</h3><span class="sub">14 items</span></div>
+          <div class="rlist scroll-hidden">
+            <div class="ritem"><div class="rank">1</div><div><div class="rtitle">Claude Code ships native sub-agent orchestration</div><div class="rtags"><span class="rtag">must</span><span class="rtag">hn</span></div></div></div>
+            <div class="ritem"><div class="rank">2</div><div><div class="rtitle">Local eval harness for ranking prompts</div><div class="rtags"><span class="rtag">must</span><span class="rtag">github</span></div></div></div>
+            <div class="ritem"><div class="rank">3</div><div><div class="rtitle">OpenAI structured outputs now GA</div><div class="rtags"><span class="rtag">nice</span><span class="rtag">rss</span></div></div></div>
+          </div>
+        </div>
+        <div class="rcol draft">
+          <div class="rcol-head"><h3>Actual (ranker)</h3><span class="sub">10 items</span></div>
+          <div class="rlist scroll-hidden">
+            <div class="ritem"><div class="rank">1</div><div><div class="rtitle">Claude Code ships native sub-agent orchestration</div><div class="rtags"><span class="rtag score">score 71.4</span><span class="rtag">hn</span></div></div></div>
+            <div class="ritem"><div class="rank">2</div><div><div class="rtitle">OpenAI structured outputs now GA <span class="delta up">↑1</span></div><div class="rtags"><span class="rtag score">score 64.2</span><span class="rtag">rss</span></div></div></div>
+            <div class="ritem"><div class="rank">3</div><div><div class="rtitle">Local eval harness for ranking prompts <span class="delta down">↓1</span></div><div class="rtags"><span class="rtag score">score 60.0</span><span class="rtag">github</span></div></div></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="switch">
+  <span class="lbl">Mock preview:</span>
+  <button class="on" id="sw-b" onclick="setMode('b')">Mode B · Calendar</button>
+  <button id="sw-a" onclick="setMode('a')">Mode A · Scored</button>
+</div>
+
+<script>
+  function showTab(which) {
+    document.getElementById('tab-pc').setAttribute('aria-selected', which === 'pc');
+    document.getElementById('tab-rep').setAttribute('aria-selected', which === 'rep');
+    document.getElementById('panel-pc').classList.toggle('active', which === 'pc');
+    document.getElementById('panel-rep').classList.toggle('active', which === 'rep');
+  }
+  function setMode(m) {
+    const b = m === 'b';
+    document.getElementById('sw-b').classList.toggle('on', b);
+    document.getElementById('sw-a').classList.toggle('on', !b);
+    document.getElementById('m-mode').textContent = b ? 'Mode B' : 'Mode A';
+    document.getElementById('m-runid').textContent = b ? 'r/ce6c9d' : 'r/a91f02';
+    // funnel + note + columns
+    document.getElementById('funnel-b').style.display = b ? '' : '';
+    document.getElementById('cols-b').style.display = b ? '' : 'none';
+    document.getElementById('prompts-b').style.display = b ? '' : 'none';
+    document.getElementById('strip-a').style.display = b ? 'none' : '';
+    document.getElementById('cols-a').style.display = b ? 'none' : '';
+    // Mode A funnel reads "fixture pool → sent → ranked"
+    const k0 = document.querySelector('#funnel-b .fstep:first-child .k');
+    const v0 = document.querySelector('#funnel-b .fstep:first-child .v');
+    if (b) { k0.textContent = 'Candidate pool'; v0.innerHTML = '47 <small>deduped</small>';
+             document.querySelectorAll('#funnel-b .fstep')[1].querySelector('.v').innerHTML = '47 <small>items</small>';
+             document.getElementById('note-b').textContent = 'The full deduped candidate pool is sent to the LLM ranker; it returns the top 10. 37 items were considered but not surfaced.';
+             document.getElementById('rep-count').textContent = '47 → 10'; }
+    else  { k0.textContent = 'Fixture pool'; v0.innerHTML = '32 <small>items</small>';
+             document.querySelectorAll('#funnel-b .fstep')[1].querySelector('.v').innerHTML = '32 <small>items</small>';
+             document.getElementById('note-b').textContent = 'All 32 fixture items were sent to the ranker; it returned the top 10, scored against the graded ground truth.';
+             document.getElementById('rep-count').textContent = '32 → 10'; }
+  }
+</script>
+</body>
+</html>
