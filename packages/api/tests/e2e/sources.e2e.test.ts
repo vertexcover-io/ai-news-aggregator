@@ -87,6 +87,11 @@ function buildApp(): Hono {
 
 const summarySchema = z.object({
   generatedAt: z.string(),
+  range: z.object({
+    from: z.string(),
+    to: z.string(),
+    runsInRange: z.number(),
+  }),
   sections: z.array(
     z.object({
       sourceType: z.string(),
@@ -95,13 +100,34 @@ const summarySchema = z.object({
           identifier: z.string(),
           displayName: z.string(),
           url: z.string().nullable(),
-          todayCount: z.number(),
-          weekCount: z.number(),
-          inDigestCount: z.number(),
-          status: z.enum(["healthy", "idle", "failing"]),
-          lastFetchedAt: z.string().nullable(),
+          fetchedCount: z.number(),
+          usedCount: z.number(),
+          failureCount: z.number(),
+          lastFailureMessage: z.string().nullable(),
         }),
       ),
+    }),
+  ),
+  configured: z.array(
+    z.object({
+      sourceType: z.string(),
+      rows: z.array(
+        z.object({
+          identifier: z.string(),
+          displayName: z.string(),
+          url: z.string().nullable(),
+        }),
+      ),
+    }),
+  ),
+  failures: z.array(
+    z.object({
+      sourceType: z.string(),
+      identifier: z.string(),
+      displayName: z.string(),
+      runsAffected: z.number(),
+      lastErrorMessage: z.string(),
+      lastFailedAt: z.string(),
     }),
   ),
   rankingPrompt: z.string(),
@@ -323,6 +349,70 @@ async function seedSources(): Promise<SeededIds> {
   };
 }
 
+async function seedSettings(rankingPrompt: string): Promise<UserSettings> {
+  const existing = await settingsRepo.get();
+  const base: UserSettings = existing ?? ({
+    id: "settings",
+    topN: 12,
+    halfLifeHours: 24,
+    hnEnabled: true,
+    hnConfig: null,
+    redditEnabled: true,
+    redditConfig: null,
+    webEnabled: true,
+    webConfig: null,
+    twitterEnabled: true,
+    twitterConfig: null,
+    webSearchEnabled: false,
+    webSearchConfig: null,
+    posthogEnabled: false,
+    posthogProjectToken: null,
+    posthogHost: null,
+    scheduleTime: "07:00",
+    pipelineTime: "07:00",
+    emailTime: "07:30",
+    linkedinTime: "07:45",
+    twitterTime: "08:00",
+    scheduleTimezone: "UTC",
+    scheduleEnabled: false,
+    emailEnabled: true,
+    linkedinEnabled: true,
+    twitterPostEnabled: true,
+    autoReview: false,
+    rankingPrompt,
+    updatedAt: new Date().toISOString(),
+  } as UserSettings);
+  const next: UserSettings = {
+    ...base,
+    hnEnabled: true,
+    redditEnabled: true,
+    redditConfig: {
+      subreddits: ["LocalLLaMA", "MachineLearning"],
+      sort: "hot",
+      limit: 25,
+      sinceDays: 1,
+    },
+    webEnabled: true,
+    webConfig: {
+      sources: [
+        { name: "Anthropic", listingUrl: "https://anthropic.com/news" },
+      ],
+      maxItems: 10,
+      sinceDays: 7,
+    },
+    twitterEnabled: true,
+    twitterConfig: {
+      listIds: [],
+      users: [{ handle: "karpathy", userId: "u-karpathy" }],
+      maxTweetsPerSource: 50,
+      sinceHours: 24,
+    },
+    rankingPrompt,
+  };
+  await settingsRepo.upsert(next);
+  return next;
+}
+
 async function cleanupSeeds(): Promise<void> {
   if (seededRunIds.size > 0) {
     await db
@@ -411,8 +501,9 @@ function findRow(
 
 describe("GET /api/sources/summary (e2e)", () => {
   it(
-    "VS-1: returns sections in SOURCE_TYPE_ORDER, filtered to types with data",
-    record("VS-1", "section order", async () => {
+    "VS-1: sections filtered to configured sources only, in SOURCE_TYPE_ORDER",
+    record("VS-1", "section order configured-only", async () => {
+      await seedSettings("the prompt");
       await seedSources();
       const body = await getSummary();
       const order = body.sections.map((s) => s.sourceType);
@@ -421,52 +512,52 @@ describe("GET /api/sources/summary (e2e)", () => {
       );
       const sorted = [...orderInExpected].sort((a, b) => a - b);
       expect(orderInExpected).toEqual(sorted);
-      expect(order).toContain("hn");
-      expect(order).toContain("reddit");
-      expect(order).toContain("twitter");
-      expect(order).toContain("blog");
-      expect(order).not.toContain("github");
-      expect(order).not.toContain("rss");
-      expect(order).not.toContain("newsletter");
-      expect(order).not.toContain("web_search");
+      // Configured-only filter: outbound link hosts on Reddit and the
+      // 'noname.example.com' blog are dropped, only the explicitly
+      // configured identifiers remain.
+      const redditSection = body.sections.find((s) => s.sourceType === "reddit");
+      const redditIds = redditSection?.rows.map((r) => r.identifier) ?? [];
+      expect(redditIds).toContain("r/LocalLLaMA");
+      expect(redditIds).toContain("r/MachineLearning");
+      const blogSection = body.sections.find((s) => s.sourceType === "blog");
+      const blogIds = blogSection?.rows.map((r) => r.identifier) ?? [];
+      expect(blogIds).toContain("anthropic.com");
+      expect(blogIds).not.toContain("noname.example.com");
     }),
   );
 
   it(
-    "VS-3: today/week/inDigest counts are accurate",
+    "VS-3: fetchedCount and usedCount counts are accurate",
     record("VS-3", "counts accurate", async () => {
+      await seedSettings("the prompt");
       await seedSources();
       const body = await getSummary();
       const reddit = findRow(body, "reddit", "r/LocalLLaMA");
       expect(reddit).toBeDefined();
-      expect(reddit?.todayCount).toBe(5);
-      expect(reddit?.weekCount).toBe(8);
-      expect(reddit?.inDigestCount).toBe(2);
+      expect(reddit?.fetchedCount).toBe(8); // 5 today + 3 from 5 days ago, all in 7d window
+      expect(reddit?.usedCount).toBe(2);
       const hn = findRow(body, "hn", "news.ycombinator.com");
-      expect(hn?.inDigestCount).toBe(1);
+      expect(hn?.usedCount).toBe(1);
     }),
   );
 
   it(
-    "VS-4: telemetry.status=failed surfaces as failing",
-    record("VS-4", "status failing from telemetry", async () => {
+    "VS-4: telemetry.status=failed surfaces as failureCount > 0",
+    record("VS-4", "failureCount from telemetry", async () => {
+      await seedSettings("the prompt");
       await seedSources();
       const body = await getSummary();
       const ml = findRow(body, "reddit", "r/MachineLearning");
       expect(ml).toBeDefined();
-      expect(ml?.status).toBe("failing");
+      expect(ml?.failureCount).toBeGreaterThanOrEqual(1);
+      expect(ml?.lastFailureMessage).toBeTruthy();
     }),
   );
 
   it(
     "VS-6: rankingPrompt is the live user_settings value",
     record("VS-6", "rankingPrompt live value", async () => {
-      const before = await settingsRepo.get();
-      if (!before) {
-        throw new Error(
-          "user_settings row missing — seed settings before running this scenario",
-        );
-      }
+      const before = await seedSettings("baseline-prompt");
       const initial = await getSummary();
       expect(initial.rankingPrompt).toBe(before.rankingPrompt);
 
@@ -482,40 +573,47 @@ describe("GET /api/sources/summary (e2e)", () => {
   );
 
   it(
-    "VS-8: rows sorted by todayCount desc, displayName asc",
+    "VS-8: rows sorted alphabetically (case-insensitive) by displayName",
     record("VS-8", "row sort order", async () => {
+      await seedSettings("the prompt");
       await seedSources();
       const body = await getSummary();
       const reddit = body.sections.find((s) => s.sourceType === "reddit");
       expect(reddit).toBeDefined();
-      const ids = reddit?.rows.map((r) => r.identifier) ?? [];
-      const localIdx = ids.indexOf("r/LocalLLaMA");
-      const mlIdx = ids.indexOf("r/MachineLearning");
-      expect(localIdx).toBeGreaterThanOrEqual(0);
-      expect(mlIdx).toBeGreaterThanOrEqual(0);
-      expect(localIdx).toBeLessThan(mlIdx);
+      const names = reddit?.rows.map((r) => r.displayName.toLowerCase()) ?? [];
+      const sorted = [...names].sort((a, b) => a.localeCompare(b));
+      expect(names).toEqual(sorted);
     }),
   );
 
   it(
-    "VS-9: displayName falls back to identifier when telemetry missing",
-    record("VS-9", "displayName fallback", async () => {
-      await seedSources();
+    "VS-9: configured field reflects user_settings",
+    record("VS-9", "configured reflects settings", async () => {
+      await seedSettings("the prompt");
       const body = await getSummary();
-      const blog = findRow(body, "blog", "noname.example.com");
-      expect(blog).toBeDefined();
-      expect(blog?.displayName).toBe("noname.example.com");
+      const byType = new Map(
+        body.configured.map((s) => [s.sourceType, s] as const),
+      );
+      expect(byType.get("hn")?.rows[0]?.displayName).toBe("Hacker News");
+      expect(
+        byType.get("reddit")?.rows.map((r) => r.displayName),
+      ).toContain("r/LocalLLaMA");
+      expect(byType.get("blog")?.rows[0]?.displayName).toBe("Anthropic");
+      expect(byType.get("twitter")?.rows[0]?.displayName).toBe("@karpathy");
     }),
   );
 
   it(
     "VS-10: public access without admin cookie returns 200 with valid shape",
     record("VS-10", "public access", async () => {
+      await seedSettings("the prompt");
       await seedSources();
       const res = await buildApp().request("/api/sources/summary");
       expect(res.status).toBe(200);
       const body = summarySchema.parse(await res.json());
       expect(body.generatedAt).toMatch(/T\d{2}:\d{2}:\d{2}/);
+      expect(typeof body.range.from).toBe("string");
+      expect(typeof body.range.to).toBe("string");
     }),
   );
 });
