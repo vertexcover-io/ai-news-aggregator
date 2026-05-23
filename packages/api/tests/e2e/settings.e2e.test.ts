@@ -67,6 +67,7 @@ const validBody = {
   linkedinEnabled: true,
   twitterPostEnabled: true,
   autoReview: false,
+  rankingPrompt: "Rank items by novelty, signal, and actionability.",
 };
 
 describe("Settings routes (e2e)", () => {
@@ -121,7 +122,7 @@ describe("Settings routes (e2e)", () => {
       .from(userSettings)
       .where(eq(userSettings.singleton, true));
     expect(rows).toHaveLength(1);
-    expect(rows[0].scheduleTime).toBe("07:00");
+    expect(rows[0].pipelineTime).toBe("07:00");
     expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(10);
   });
 

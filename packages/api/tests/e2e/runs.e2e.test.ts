@@ -119,22 +119,6 @@ describe("POST /api/runs (e2e)", () => {
     expect(res.status).toBe(400);
   });
 
-  it("Web deferral: rejects when body.web is present", async () => {
-    const app = buildApp({ q: makeQueue() });
-    const res = await app.request("/api/runs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        topN: 10,
-        hn: { sinceDays: 1 },
-        web: { urls: ["https://example.com"] },
-      }),
-    });
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("web sources not yet supported");
-  });
-
   it("REQ-004: seeds Redis run-state with status running, stage queued, TTL ~3600", async () => {
     const q = makeQueue();
     const app = buildApp({ q });
@@ -252,6 +236,9 @@ describe("GET /api/runs/:runId (e2e)", () => {
         author: "bob",
         publishedAt: new Date("2026-04-01T00:00:00Z"),
         engagement: { points: 12, commentCount: 3 },
+        content: null,
+        imageUrl: null,
+        metadata: { comments: [] },
       },
     ]);
 
