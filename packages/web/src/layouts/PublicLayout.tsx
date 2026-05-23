@@ -7,26 +7,24 @@ export function PublicLayout(): ReactElement {
   const { pathname, hash } = useLocation();
 
   useEffect(() => {
-    if (pathname === "/" && hash === "#subscribe") {
-      let cancelled = false;
-      const start = Date.now();
-      const tick = (): void => {
-        if (cancelled) return;
-        const target = document.getElementById("subscribe");
-        if (target) {
-          target.scrollIntoView({ behavior: "smooth", block: "start" });
-          return;
-        }
-        if (Date.now() - start < 5000) {
-          requestAnimationFrame(tick);
-        }
-      };
-      tick();
-      return (): void => {
-        cancelled = true;
-      };
-    }
-    return undefined;
+    if (hash !== "#subscribe") return undefined;
+    let cancelled = false;
+    const start = Date.now();
+    const tick = (): void => {
+      if (cancelled) return;
+      const target = document.getElementById("subscribe");
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (Date.now() - start < 5000) {
+        requestAnimationFrame(tick);
+      }
+    };
+    tick();
+    return (): void => {
+      cancelled = true;
+    };
   }, [pathname, hash]);
 
   return (
