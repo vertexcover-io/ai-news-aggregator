@@ -24,7 +24,7 @@ export default defineConfig({
       // return 404. The Hono API binds to IPv4. Discovered debugging
       // Stage-5 VS-6 (login POST returned 404 from the wrong host).
       "/api": {
-        target: "http://127.0.0.1:3000",
+        target: process.env.VITE_API_TARGET ?? "http://127.0.0.1:3000",
         changeOrigin: true,
       },
     },
