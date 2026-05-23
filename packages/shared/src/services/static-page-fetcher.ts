@@ -86,7 +86,7 @@ export async function fetchPageStatic(
     const html = new TextDecoder("utf-8").decode(concatChunks(chunks, received));
     return { html, finalUrl: finalCanonical };
   } catch (err) {
-    if ((err as Error).name === "AbortError") return { error: "timeout" };
+    if (err instanceof Error && err.name === "AbortError") return { error: "timeout" };
     return { error: "network" };
   } finally {
     clearTimeout(timer);

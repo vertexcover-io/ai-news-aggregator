@@ -3,6 +3,7 @@ import { createLogger, getDb as defaultGetDb } from "@newsletter/shared";
 import type { PublicMustReadEntry } from "@newsletter/shared";
 import {
   createMustReadRepo,
+  toPublicWire,
   type MustReadRepo,
 } from "@api/repositories/must-read.js";
 
@@ -20,15 +21,7 @@ export function createPublicMustReadRouter(
   app.get("/", async (c) => {
     try {
       const rows = await deps.getMustReadRepo().listPublic();
-      const body: PublicMustReadEntry[] = rows.map((r) => ({
-        id: r.id,
-        url: r.url,
-        title: r.title,
-        author: r.author,
-        year: r.year,
-        annotation: r.annotation,
-        addedAt: r.addedAt.toISOString(),
-      }));
+      const body: PublicMustReadEntry[] = rows.map(toPublicWire);
       return c.json(body);
     } catch (err) {
       logger.error({ err }, "must-read.list_failed");

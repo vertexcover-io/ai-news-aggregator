@@ -48,6 +48,43 @@ export interface AdminMustReadRouterDeps {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+async function previewUrl(
+  url: string,
+  fetchPage: FetchPageStaticFn,
+  timeoutMs: number,
+): Promise<PreviewResponse> {
+  try {
+    const fetched = await fetchPage(url, { timeoutMs });
+    if ("error" in fetched) {
+      return { status: "extraction_failed", error: fetchErrorMessage(fetched.error) };
+    }
+    const meta = safeExtractMetadata(fetched.html, fetched.finalUrl);
+    if (meta === null) {
+      return { status: "extraction_failed", error: "Could not parse the page HTML." };
+    }
+    if (!meta.title) {
+      return { status: "extraction_failed", error: "Could not extract a title from the page." };
+    }
+    return {
+      status: "extracted",
+      suggested: { title: meta.title, author: meta.author, year: meta.year },
+    };
+  } catch {
+    return { status: "extraction_failed", error: "Unexpected error while fetching the URL." };
+  }
+}
+
+function safeExtractMetadata(
+  html: string,
+  finalUrl: string,
+): ReturnType<typeof extractPageMetadata> | null {
+  try {
+    return extractPageMetadata(html, finalUrl);
+  } catch {
+    return null;
+  }
+}
+
 function fetchErrorMessage(err: StaticFetchError): string {
   switch (err) {
     case "ssrf":
@@ -84,50 +121,8 @@ export function createAdminMustReadRouter(
         400,
       );
     }
-    try {
-      const fetched = await fetchPage(parsed.data.url, {
-        timeoutMs: previewTimeoutMs,
-      });
-      if ("error" in fetched) {
-        const response: PreviewResponse = {
-          status: "extraction_failed",
-          error: fetchErrorMessage(fetched.error),
-        };
-        return c.json(response, 200);
-      }
-      let meta: ReturnType<typeof extractPageMetadata>;
-      try {
-        meta = extractPageMetadata(fetched.html, fetched.finalUrl);
-      } catch {
-        const response: PreviewResponse = {
-          status: "extraction_failed",
-          error: "Could not parse the page HTML.",
-        };
-        return c.json(response, 200);
-      }
-      if (!meta.title) {
-        const response: PreviewResponse = {
-          status: "extraction_failed",
-          error: "Could not extract a title from the page.",
-        };
-        return c.json(response, 200);
-      }
-      const response: PreviewResponse = {
-        status: "extracted",
-        suggested: {
-          title: meta.title,
-          author: meta.author,
-          year: meta.year,
-        },
-      };
-      return c.json(response, 200);
-    } catch {
-      const response: PreviewResponse = {
-        status: "extraction_failed",
-        error: "Unexpected error while fetching the URL.",
-      };
-      return c.json(response, 200);
-    }
+    const response = await previewUrl(parsed.data.url, fetchPage, previewTimeoutMs);
+    return c.json(response, 200);
   });
 
   app.post("/", async (c) => {

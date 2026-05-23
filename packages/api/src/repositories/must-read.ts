@@ -1,11 +1,34 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { mustReadEntries } from "@newsletter/shared/db";
 import type { AppDb, MustReadEntry } from "@newsletter/shared/db";
+import type {
+  PublicMustReadEntry,
+  AdminMustReadEntry,
+} from "@newsletter/shared/types";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type MustReadPublicEntry = Omit<MustReadEntry, "updatedAt">;
+
+export function toPublicWire(row: MustReadPublicEntry): PublicMustReadEntry {
+  return {
+    id: row.id,
+    url: row.url,
+    title: row.title,
+    author: row.author,
+    year: row.year,
+    annotation: row.annotation,
+    addedAt: row.addedAt.toISOString(),
+  };
+}
+
+export function toAdminWire(row: MustReadEntry): AdminMustReadEntry {
+  return {
+    ...toPublicWire(row),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
 
 export interface MustReadCreateInput {
   url: string;
@@ -101,12 +124,14 @@ export function createMustReadRepo(
 
     async update(id: string, patch: MustReadPatch): Promise<MustReadEntry | null> {
       if (!UUID_RE.test(id)) return null;
-      const setObj: Record<string, unknown> = { updatedAt: sql`now()` };
-      if (patch.url !== undefined) setObj.url = patch.url;
-      if (patch.title !== undefined) setObj.title = patch.title;
-      if (patch.author !== undefined) setObj.author = patch.author;
-      if (patch.year !== undefined) setObj.year = patch.year;
-      if (patch.annotation !== undefined) setObj.annotation = patch.annotation;
+      const setObj = {
+        ...(patch.url !== undefined && { url: patch.url }),
+        ...(patch.title !== undefined && { title: patch.title }),
+        ...(patch.author !== undefined && { author: patch.author }),
+        ...(patch.year !== undefined && { year: patch.year }),
+        ...(patch.annotation !== undefined && { annotation: patch.annotation }),
+        updatedAt: sql`now()`,
+      };
       const rows = await db
         .update(mustReadEntries)
         .set(setObj)

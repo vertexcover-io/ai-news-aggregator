@@ -6,19 +6,7 @@ export interface PageMetadata {
   year: number | null;
 }
 
-interface JsonLdPerson {
-  name?: unknown;
-}
-
-interface JsonLdNode {
-  "@type"?: unknown;
-  "@graph"?: unknown;
-  headline?: unknown;
-  name?: unknown;
-  author?: unknown;
-  datePublished?: unknown;
-  dateCreated?: unknown;
-}
+type JsonLdNode = Record<string, unknown>;
 
 const ARTICLE_TYPES = new Set([
   "Article",
@@ -61,8 +49,7 @@ function extractAuthorFromJsonLd(value: unknown): string | null {
     return null;
   }
   if (isRecord(value)) {
-    const person = value as JsonLdPerson;
-    return asString(person.name);
+    return asString(value.name);
   }
   return null;
 }
@@ -82,10 +69,9 @@ function flattenJsonLd(raw: unknown): JsonLdNode[] {
       return;
     }
     if (!isRecord(v)) return;
-    out.push(v as JsonLdNode);
-    if (Array.isArray((v as JsonLdNode)["@graph"])) {
-      visit((v as JsonLdNode)["@graph"]);
-    }
+    out.push(v);
+    const graph = v["@graph"];
+    if (Array.isArray(graph)) visit(graph);
   };
   visit(raw);
   return out;

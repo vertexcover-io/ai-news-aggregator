@@ -12,6 +12,7 @@ import {
 } from "@api/repositories/run-archives.js";
 import {
   createMustReadRepo,
+  toPublicWire,
   type MustReadRepo,
 } from "@api/repositories/must-read.js";
 
@@ -58,15 +59,7 @@ export function createPublicHomeRouter(deps: PublicHomeRouterDeps): Hono {
       ).slice(0, RECENT_LIMIT);
 
       const featuredCanon: PublicMustReadEntry | null = featuredRow
-        ? {
-            id: featuredRow.id,
-            url: featuredRow.url,
-            title: featuredRow.title,
-            author: featuredRow.author,
-            year: featuredRow.year,
-            annotation: featuredRow.annotation,
-            addedAt: featuredRow.addedAt.toISOString(),
-          }
+        ? toPublicWire(featuredRow)
         : null;
 
       const body: HomePagePayload = {
