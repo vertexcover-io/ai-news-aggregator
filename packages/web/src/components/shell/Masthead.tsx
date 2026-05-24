@@ -95,7 +95,7 @@ export function Masthead(): ReactElement {
           ·
         </span>
         <NavLink to="/built" active={active === "built"} hideOnMobile>
-          Built
+          How it&apos;s built
         </NavLink>
         <span
           aria-hidden="true"

@@ -47,7 +47,7 @@ export function ElsewhereStrip(): ReactElement {
           className="px-0 md:pl-8 md:pr-0 md:py-1 py-7 border-t md:border-t-0 md:border-l border-[#e7e2d6] last:pb-0"
         >
           <h4 className="m-0 mb-3.5 font-serif font-medium text-[23px] leading-[1.15] tracking-[-0.012em] text-[#14110d]">
-            Built
+            How it&apos;s built
           </h4>
           <p className="m-0 mb-4.5 font-serif italic font-normal text-[15.5px] leading-[1.55] text-[#6b6557]">
             How AgentLoop itself is built — using the same harness engineering practices it covers.

@@ -59,6 +59,50 @@ describe("BuiltPage", () => {
     }
   });
 
+  it("REQ-018: section eyebrows render in order", () => {
+    const { container } = renderBuilt();
+    const text = container.textContent ?? "";
+    const expectedOrder = [
+      "THE ARGUMENT",
+      "WHAT IT TAKES",
+      "THE SPEC → SHIP LOOP",
+      "THE COMPOUNDING LOOPS",
+      "HOW THE NEWSLETTER WORKS",
+      "INSIDE THE HARNESS",
+      "VERTEXCOVER LABS",
+      "TRY IT YOURSELF",
+    ];
+    let lastIdx = -1;
+    for (const eyebrow of expectedOrder) {
+      const idx = text.indexOf(eyebrow, lastIdx + 1);
+      expect(idx).toBeGreaterThan(lastIdx);
+      lastIdx = idx;
+    }
+  });
+
+  it("REQ-018: three pillars render", () => {
+    const { container } = renderBuilt();
+    const pillars = container.querySelector('[data-section="three-pillars"]');
+    expect(pillars).not.toBeNull();
+    expect(pillars?.querySelectorAll("h3").length).toBe(3);
+  });
+
+  it("REQ-018: five compounding-loop entries render", () => {
+    const { container } = renderBuilt();
+    expect(container.querySelectorAll('[data-section="compounding"] h4').length).toBe(5);
+  });
+
+  it("REQ-018: newsletter pipeline has 7 dt rows", () => {
+    const { container } = renderBuilt();
+    expect(container.querySelectorAll('[data-section="newsletter"] dt').length).toBe(7);
+  });
+
+  it("REQ-018: inside-the-harness disclosure exists", () => {
+    const { container } = renderBuilt();
+    const disclosure = container.querySelector('[data-section="inside-harness"] details');
+    expect(disclosure).not.toBeNull();
+  });
+
   it("REQ-018: skills table has 9 rows", () => {
     const { container } = renderBuilt();
     const skills = container.querySelector('[data-section="skills"] table tbody');
@@ -80,11 +124,18 @@ describe("BuiltPage", () => {
     expect(arts?.querySelectorAll("tr").length).toBe(6);
   });
 
-  it("REQ-018: renders THE ARGUMENT, THE GUARDRAILS, TRY IT YOURSELF eyebrows", () => {
-    renderBuilt();
-    expect(screen.getByText("THE ARGUMENT")).toBeTruthy();
-    expect(screen.getByText("THE GUARDRAILS")).toBeTruthy();
-    expect(screen.getByText("TRY IT YOURSELF")).toBeTruthy();
+  it("REQ-018: try-it CTAs link to repos + mailto in order", () => {
+    const { container } = renderBuilt();
+    const tryIt = container.querySelector('[data-section="try-it"]');
+    expect(tryIt).not.toBeNull();
+    const hrefs = Array.from(tryIt?.querySelectorAll("a") ?? []).map((a) =>
+      a.getAttribute("href"),
+    );
+    expect(hrefs).toEqual([
+      "https://github.com/vertexcover-io/ai-news-aggregator",
+      "https://github.com/vertexcover-io/harness-engineering",
+      "mailto:hello@agentloop.vertexcover.io",
+    ]);
   });
 
   it("REQ-019: LAST_REVIEWED export matches ISO-8601 date string", () => {
@@ -92,10 +143,7 @@ describe("BuiltPage", () => {
   });
 
   it("REQ-019: BuiltPage.tsx source file contains the LAST_REVIEWED export literal", () => {
-    const filePath = resolve(
-      process.cwd(),
-      "src/pages/BuiltPage.tsx",
-    );
+    const filePath = resolve(process.cwd(), "src/pages/BuiltPage.tsx");
     const source = readFileSync(filePath, "utf8");
     expect(source).toMatch(/^export const LAST_REVIEWED = "\d{4}-\d{2}-\d{2}";/m);
   });

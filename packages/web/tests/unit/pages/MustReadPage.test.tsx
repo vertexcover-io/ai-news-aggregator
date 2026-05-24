@@ -78,7 +78,7 @@ describe("MustReadPage", () => {
     const nav = document.querySelector('nav[aria-label="Primary"]');
     expect(nav).not.toBeNull();
     const text = nav?.textContent ?? "";
-    for (const label of ["Must Read", "Sources", "Built", "Subscribe"]) {
+    for (const label of ["Must Read", "Sources", "How it's built", "Subscribe"]) {
       expect(text).toContain(label);
     }
     expect(text).not.toContain("RSS");
