@@ -3,11 +3,11 @@
 # - Everything else is served from the static React build at /var/www/newsletter/web.
 # - TLS is obtained automatically from Let's Encrypt on first startup.
 
-news.vertexcover.io {
+agentloop.vertexcover.io {
 	encode zstd gzip
 
 	log {
-		output file /var/log/caddy/newsletter.log {
+		output file /var/log/caddy/agentloop.log {
 			roll_size 10mb
 			roll_keep 5
 		}

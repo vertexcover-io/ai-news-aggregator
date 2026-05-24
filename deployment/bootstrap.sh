@@ -155,7 +155,7 @@ Next steps:
 
   1. Create the production GitHub Environment secrets listed in deployment/README.md.
 
-  2. Point DNS: news.vertexcover.io  A  \$(curl -s https://ipv4.icanhazip.com)
+  2. Point DNS: agentloop.vertexcover.io  A  \$(curl -s https://ipv4.icanhazip.com)
 
   3. Trigger the first deploy from GitHub:
        gh workflow run deploy.yml

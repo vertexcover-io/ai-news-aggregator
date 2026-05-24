@@ -37,7 +37,7 @@ Production secrets live in GitHub Environment secrets under the `production` env
 3. **Add deploy-control secrets** to the `production` environment:
 
    - `DEPLOY_SSH_KEY`
-   - `DEPLOY_HOST` — server hostname or IP, for example `news.vertexcover.io`
+   - `DEPLOY_HOST` — server hostname or IP, for example `agentloop.vertexcover.io`
    - `DEPLOY_USER` — usually `deploy`
 
 4. **Add runtime secrets** to the `production` environment.
@@ -82,7 +82,7 @@ Production secrets live in GitHub Environment secrets under the `production` env
 - Ubuntu 24.04 LTS, 2 GB RAM minimum.
 - Firewall/security group allowing inbound 22, 80, and 443.
 - Attach an initial SSH key you control.
-- Point `news.vertexcover.io` at the server IP before the first real deploy.
+- Point `agentloop.vertexcover.io` at the server IP before the first real deploy.
 
 ### 2. Run bootstrap.sh on the server
 
@@ -113,14 +113,14 @@ First deploy is usually a few minutes. Subsequent deploys are faster because ima
 ### 4. Verify
 
 ```bash
-curl -sI https://news.vertexcover.io/api/health
-curl -s  https://news.vertexcover.io/ | head
+curl -sI https://agentloop.vertexcover.io/api/health
+curl -s  https://agentloop.vertexcover.io/ | head
 ```
 
 On the server:
 
 ```bash
-ssh deploy@news.vertexcover.io
+ssh deploy@agentloop.vertexcover.io
 docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/compose.prod.yml ps
 ```
 
@@ -151,7 +151,7 @@ gh workflow run deploy.yml --ref <PREVIOUS_SHA>
 Or SSH in and run:
 
 ```bash
-ssh deploy@news.vertexcover.io
+ssh deploy@agentloop.vertexcover.io
 /opt/newsletter/deployment/deploy.sh <PREVIOUS_SHA>
 ```
 
@@ -160,7 +160,7 @@ Manual rollback requires `/etc/newsletter/.env` to already exist. Migrations are
 ### Check container state
 
 ```bash
-ssh deploy@news.vertexcover.io
+ssh deploy@agentloop.vertexcover.io
 docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/compose.prod.yml ps
 docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/compose.prod.yml logs -f api
 ```
@@ -168,7 +168,7 @@ docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/com
 ### Tail Caddy access log
 
 ```bash
-ssh deploy@news.vertexcover.io 'tail -f /var/log/caddy/newsletter.log'
+ssh deploy@agentloop.vertexcover.io 'tail -f /var/log/caddy/agentloop.log'
 ```
 
 ### Edit the Caddyfile
@@ -178,7 +178,7 @@ Edit `deployment/Caddyfile` and push. Every deploy runs `install + systemctl rel
 ### Postgres: manual one-off dump
 
 ```bash
-ssh deploy@news.vertexcover.io
+ssh deploy@agentloop.vertexcover.io
 docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/compose.prod.yml exec -T postgres \
   pg_dump -U newsletter newsletter | gzip > ~/backup-$(date +%F).sql.gz
 ```
@@ -196,7 +196,7 @@ LinkedIn auto-posting reads user tokens from the `social_tokens` table. X auto-p
 2. Insert or update the printed LinkedIn tokens in production Postgres:
 
    ```bash
-   ssh deploy@news.vertexcover.io
+   ssh deploy@agentloop.vertexcover.io
    docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/compose.prod.yml exec postgres \
      psql -U newsletter newsletter
    ```
