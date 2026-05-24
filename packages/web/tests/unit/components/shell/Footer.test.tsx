@@ -59,11 +59,11 @@ describe("Footer", () => {
     }
   });
 
-  it("renders the MUST READ / SOURCES / BUILT links", () => {
+  it("renders the MUST READ / SOURCES / HOW IT'S BUILT links", () => {
     renderFooter();
     const mustRead = screen.getByRole("link", { name: /^must read$/i });
     const sources = screen.getByRole("link", { name: /^sources$/i });
-    const built = screen.getByRole("link", { name: /^built$/i });
+    const built = screen.getByRole("link", { name: /^how it's built$/i });
     expect(mustRead.getAttribute("href")).toBe("/must-read");
     expect(sources.getAttribute("href")).toBe("/sources");
     expect(built.getAttribute("href")).toBe("/built");

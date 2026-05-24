@@ -127,7 +127,7 @@ export function Footer(): ReactElement {
           </Link>
           <span className="mx-2 text-[#e7e2d6]">·</span>
           <Link to="/built" className="text-[#6b6557] hover:text-[#8c3a1e]">
-            BUILT
+            HOW IT&apos;S BUILT
           </Link>
         </div>
       </div>

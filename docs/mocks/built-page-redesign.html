@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>How AgentLoop is built — AgentLoop (preview)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500&family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #FAFAF7;
+    --ink: #1A1A19;
+    --ink-dim: #5C5C58;
+    --ink-mute: #8A8A85;
+    --rule: #E7E5DD;
+    --rust: #8C3A1E;
+    --rust-dim: #B5694B;
+    --serif: "Newsreader", Georgia, "Times New Roman", serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --measure: 720px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 18px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  a { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { color: var(--rust); }
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 0; }
+
+  /* Header */
+  .masthead {
+    border-bottom: 1px solid var(--rule);
+    padding: 28px 32px 22px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: end;
+    gap: 24px;
+    font-family: var(--mono);
+  }
+  .masthead .brand { font-weight: 700; font-size: 18px; letter-spacing: 0.04em; }
+  .masthead .pub { font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.12em; }
+  .masthead .pub a { text-decoration: underline; }
+  .masthead nav { justify-self: end; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; display: flex; gap: 22px; align-items: center; }
+  .masthead nav a { text-decoration: none; color: var(--ink-dim); }
+  .masthead nav a.active { color: var(--rust); text-decoration: underline; text-underline-offset: 5px; }
+  .masthead .left { display: flex; flex-direction: column; gap: 4px; }
+
+  .directory {
+    border-bottom: 1px solid var(--rule);
+    padding: 14px 32px;
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ink-mute);
+    display: flex;
+    gap: 18px;
+    justify-content: center;
+  }
+  .directory a { text-decoration: none; }
+  .directory a.active { color: var(--rust); text-decoration: underline; text-underline-offset: 4px; }
+  .directory span.sep { color: var(--rule); }
+
+  /* Main */
+  main { padding: 0 32px 96px; }
+  .wrap { max-width: var(--measure); margin: 0 auto; }
+  .wide { max-width: 980px; margin: 0 auto; }
+
+  /* Hero */
+  .hero { padding: 72px 0 24px; }
+  .hero h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 84px;
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+  .hero .dek {
+    margin-top: 28px;
+    font-style: italic;
+    font-size: 22px;
+    color: var(--ink-dim);
+  }
+
+  /* Section */
+  section { padding: 56px 0 16px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--rust);
+    margin-bottom: 22px;
+  }
+  .lede {
+    font-family: var(--serif);
+    font-size: 22px;
+    line-height: 1.5;
+    color: var(--ink);
+    margin: 0 0 18px;
+    font-weight: 500;
+  }
+  p { margin: 0 0 18px; }
+  p .accent { color: var(--rust); font-style: italic; }
+  strong { font-weight: 600; }
+  em { font-style: italic; }
+
+  .attribution {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-mute);
+    border-left: 2px solid var(--rust);
+    padding: 6px 0 6px 16px;
+    margin: 28px 0 24px;
+    line-height: 1.55;
+  }
+
+  /* Three things */
+  .three-pillars { display: grid; gap: 32px; margin-top: 8px; }
+  .pillar { display: grid; grid-template-columns: 56px 1fr; gap: 20px; align-items: start; }
+  .pillar .num {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--rust);
+    letter-spacing: 0.1em;
+    padding-top: 6px;
+    border-top: 2px solid var(--rust);
+  }
+  .pillar h3 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 26px;
+    margin: 0 0 8px;
+    line-height: 1.2;
+  }
+  .pillar p { color: var(--ink-dim); margin: 0; }
+
+  /* Pipeline */
+  .pipeline {
+    margin: 32px 0 8px;
+    padding: 28px 0;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .pipeline-row {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    text-align: center;
+  }
+  .pipeline-stage {
+    padding: 14px 6px;
+    border: 1px solid var(--rule);
+    background: #fff;
+    color: var(--ink);
+    position: relative;
+  }
+  .pipeline-stage.featured { border-color: var(--rust); color: var(--rust); }
+  .pipeline-arrow { color: var(--ink-mute); font-size: 14px; }
+  .pipeline-captions {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+    margin-top: 14px;
+    font-family: var(--serif);
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--ink-dim);
+    text-align: center;
+    font-style: italic;
+  }
+
+  /* Compounding loops */
+  .loops { display: grid; gap: 22px; }
+  .loop {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 24px;
+    padding: 22px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .loop:last-child { border-bottom: 1px solid var(--rule); }
+  .loop .tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--rust);
+  }
+  .loop h4 {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0 0 6px;
+  }
+  .loop p { color: var(--ink-dim); margin: 0; font-size: 17px; }
+  .loop .stat {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-mute);
+    margin-top: 6px;
+    letter-spacing: 0.02em;
+  }
+  .loop .stat strong { color: var(--rust); font-weight: 600; }
+
+  /* Newsletter pipeline (compact list) */
+  .nl-pipeline { display: grid; grid-template-columns: 120px 1fr; gap: 12px 24px; align-items: baseline; }
+  .nl-pipeline dt {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--rust);
+  }
+  .nl-pipeline dd {
+    margin: 0 0 6px;
+    color: var(--ink-dim);
+    font-size: 16px;
+  }
+  .nl-pipeline dd strong { color: var(--ink); }
+
+  /* Notes from the loop */
+  .notes { display: grid; gap: 0; margin-top: 8px; border-top: 1px solid var(--rule); }
+  .note {
+    display: grid;
+    grid-template-columns: 140px 1fr 90px;
+    gap: 24px;
+    align-items: baseline;
+    padding: 22px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .note .date {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-mute);
+  }
+  .note h4 {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0 0 6px;
+    line-height: 1.25;
+  }
+  .note p { color: var(--ink-dim); margin: 0; font-size: 16px; }
+  .note .read {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--rust);
+    text-align: right;
+  }
+
+  /* Inventory disclosure */
+  .inventory {
+    margin-top: 12px;
+    padding: 20px 22px;
+    border: 1px solid var(--rule);
+    background: #fff;
+  }
+  .inventory summary {
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--rust);
+    list-style: none;
+  }
+  .inventory summary::-webkit-details-marker { display: none; }
+  .inventory summary::after { content: " →"; }
+  .inventory[open] summary::after { content: " ↓"; }
+  .inv-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 32px; margin-top: 24px; }
+  .inv-grid h5 {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ink-mute);
+    margin: 0 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .inv-grid ul { list-style: none; padding: 0; margin: 0; font-size: 14px; line-height: 1.5; }
+  .inv-grid li { padding: 6px 0; border-bottom: 1px dotted var(--rule); }
+  .inv-grid li:last-child { border-bottom: 0; }
+  .inv-grid code {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--rust);
+    background: transparent;
+  }
+  .inv-grid .desc { color: var(--ink-dim); font-size: 13px; display: block; margin-top: 2px; }
+
+  /* Vertexcover block */
+  .vc {
+    margin-top: 56px;
+    padding: 32px 0;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .vc .eyebrow { color: var(--rust); }
+  .vc p { color: var(--ink-dim); font-size: 17px; max-width: 600px; }
+
+  /* Try-it CTA */
+  .cta { margin-top: 56px; padding: 40px 0; }
+  .cta .eyebrow { color: var(--rust); }
+  .cta-links { display: grid; gap: 12px; margin-top: 18px; }
+  .cta-links a {
+    font-family: var(--mono);
+    font-size: 14px;
+    text-decoration: none;
+    color: var(--ink);
+    border-bottom: 1px solid var(--rule);
+    padding: 12px 0;
+  }
+  .cta-links a:hover { color: var(--rust); border-color: var(--rust); }
+  .cta-links a::before { content: "→ "; color: var(--rust); }
+
+  /* Footer */
+  footer.site {
+    border-top: 1px solid var(--rule);
+    padding: 40px 32px;
+    margin-top: 80px;
+    background: #F4F2EB;
+  }
+  .footer-wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 32px;
+    align-items: start;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-dim);
+  }
+  .footer-wrap .brand-mark { font-weight: 700; font-size: 16px; letter-spacing: 0.06em; color: var(--ink); }
+  .footer-wrap nav { display: flex; gap: 18px; }
+  .footer-wrap nav a { text-decoration: none; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.12em; }
+  .footer-form { display: flex; gap: 8px; }
+  .footer-form input {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--ink-dim);
+    padding: 8px 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    outline: none;
+  }
+  .footer-form button {
+    background: transparent;
+    border: 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--rust);
+    cursor: pointer;
+  }
+
+  /* Preview banner */
+  .preview-banner {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    background: var(--rust);
+    color: #fff;
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    padding: 6px 16px;
+    text-align: center;
+    z-index: 100;
+  }
+  body { padding-top: 28px; }
+
+  @media (max-width: 780px) {
+    .hero h1 { font-size: 56px; }
+    .pipeline-row, .pipeline-captions { grid-template-columns: 1fr; }
+    .pipeline-captions { display: none; }
+    .loop, .note { grid-template-columns: 1fr; gap: 8px; }
+    .note .read { text-align: left; }
+    .nl-pipeline { grid-template-columns: 1fr; gap: 4px; }
+    .inv-grid { grid-template-columns: 1fr; gap: 24px; }
+    .footer-wrap { grid-template-columns: 1fr; }
+    .masthead { grid-template-columns: 1fr; text-align: left; }
+    .masthead nav { justify-self: start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="preview-banner">Preview — proposed redesign of /built (mock, not live)</div>
+
+<!-- Masthead -->
+<header class="masthead">
+  <div class="left">
+    <span class="brand">AGENTLOOP</span>
+    <span class="pub">A <a href="#">Vertexcover Labs</a> publication</span>
+  </div>
+  <div></div>
+  <nav>
+    <a href="#">Must Read</a>
+    <a href="#" class="active">How it's built</a>
+    <a href="#">Admin →</a>
+    <a href="#">Subscribe →</a>
+  </nav>
+</header>
+
+<div class="directory">
+  <a href="#">Today</a> <span class="sep">·</span>
+  <a href="#">Must Read</a> <span class="sep">·</span>
+  <a href="#" class="active">How it's built</a> <span class="sep">·</span>
+  <a href="#">RSS</a>
+</div>
+
+<main>
+  <!-- Hero -->
+  <div class="wrap hero">
+    <h1>How AgentLoop is built</h1>
+    <p class="dek">This newsletter writes itself. The harness that wrote it does too.</p>
+  </div>
+
+  <!-- The argument -->
+  <div class="wrap">
+    <section>
+      <div class="eyebrow">The Argument</div>
+      <p class="lede">The interesting work in AI right now isn't writing prompts. It's building the <em>harness</em> around the model — the loops, the tools, the evals, the context, the gates.</p>
+      <p>OpenAI named this <em>harness engineering</em> on their blog earlier this year. The phrase stuck because it pointed at something practitioners already knew: the model is the engine, but the harness is the car. Most of the engineering is in the car.</p>
+      <p>AgentLoop is our attempt to build a real product — this newsletter — while building the harness it runs on. The two efforts feed each other. Every issue we ship is a stress test for the harness; every bug the harness lets through is a lesson we capture and codify so it can't ship again.</p>
+      <div class="attribution">Inspired by OpenAI's <em>harness engineering</em> framing. This is one team's attempt to put it into practice in public.</div>
+    </section>
+
+    <!-- The three things -->
+    <section>
+      <div class="eyebrow">What it takes to trust AI you don't review</div>
+      <p class="lede">The honest goal of a harness is to ship code humans don't read. That's a strong claim. It only holds if three things hold first.</p>
+
+      <div class="three-pillars">
+        <div class="pillar">
+          <div class="num">01</div>
+          <div>
+            <h3>A spec sharp enough to fail against</h3>
+            <p>If "done" is a vibe, the only way to check the work is to read it. We write specs in EARS-format acceptance criteria so the verification step has something concrete to grade. No spec, no shipping.</p>
+          </div>
+        </div>
+
+        <div class="pillar">
+          <div class="num">02</div>
+          <div>
+            <h3>A verification gate that proves it works</h3>
+            <p>Tests and typecheck are necessary, not sufficient. The harness boots the app, runs the feature end-to-end, captures payloads and screenshots, and writes a proof report before any commit. If the gate is weak, the code review you skipped comes back as a bug.</p>
+          </div>
+        </div>
+
+        <div class="pillar">
+          <div class="num">03</div>
+          <div>
+            <h3>Compounding</h3>
+            <p>Every run has to leave the harness sharper than it found it — new tests, new lint rules, new learnings, retired skills. Without compounding, you're not running a harness. You're running a prompt twice.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pipeline -->
+    <section>
+      <div class="eyebrow">The spec → ship loop</div>
+      <p>One feature, one pipeline. Each stage produces an artifact the next stage depends on. The whole thing runs unattended; a human reads the proof report at the end, not the diff.</p>
+
+      <div class="pipeline">
+        <div class="pipeline-row">
+          <div class="pipeline-stage">Brainstorm</div>
+          <div class="pipeline-stage">Spec</div>
+          <div class="pipeline-stage">Plan</div>
+          <div class="pipeline-stage featured">TDD</div>
+          <div class="pipeline-stage">Review ×2</div>
+          <div class="pipeline-stage featured">Verify</div>
+          <div class="pipeline-stage">Ship</div>
+        </div>
+        <div class="pipeline-captions">
+          <div>Argue with itself about the design.</div>
+          <div>EARS-format acceptance criteria.</div>
+          <div>Ordered steps with rollback notes.</div>
+          <div>RED → GREEN → REFACTOR.</div>
+          <div>Two independent passes over the diff.</div>
+          <div>Boot the app, run it end-to-end.</div>
+          <div>PR with every artifact attached.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Compounding loops -->
+    <section>
+      <div class="eyebrow">The compounding loops</div>
+      <p class="lede">The pipeline ships a feature. These loops keep the harness alive.</p>
+
+      <div class="loops">
+        <div class="loop">
+          <div class="tag">Weekly</div>
+          <div>
+            <h4>Tech-debt sweep</h4>
+            <p>Every Friday the harness audits the repo for smells it's learned about — N+1 queries, untyped boundaries, missing repository indirection — and opens fix PRs.</p>
+            <div class="stat"><strong>Last week:</strong> 14 fix PRs · 3 categories · 0 manual triage</div>
+          </div>
+        </div>
+
+        <div class="loop">
+          <div class="tag">Per PR</div>
+          <div>
+            <h4>Doc-sync loop</h4>
+            <p>Before any PR closes, a skill diffs the code against CLAUDE.md and the docs it claims to govern. Stale docs are a known failure mode of AI-authored code; we make the harness pay the cost of keeping them honest.</p>
+            <div class="stat"><strong>Coverage:</strong> CLAUDE.md · architecture rules · learnings index</div>
+          </div>
+        </div>
+
+        <div class="loop">
+          <div class="tag">Continuous</div>
+          <div>
+            <h4>Skill eval suite</h4>
+            <p>Every skill has a fixture suite it must pass. When a skill misfires in production, the failing case becomes a new fixture and the skill gets updated until it passes. The eval suite is the regression test for the harness itself.</p>
+            <div class="stat"><strong>Skills under eval:</strong> brainstorm · planning · tdd · code-review · verify · learn</div>
+          </div>
+        </div>
+
+        <div class="loop">
+          <div class="tag">Per repo</div>
+          <div>
+            <h4>Custom linters</h4>
+            <p>Project-specific rules — repository pattern, no relative cross-package imports, collector return shape, dotenv bootstrap order — each one captured the moment a bug taught us we needed it.</p>
+            <div class="stat"><strong>Rules in @newsletter/eslint-plugin:</strong> 6 · each one is a bug that won't recur</div>
+          </div>
+        </div>
+
+        <div class="loop">
+          <div class="tag">Per bug</div>
+          <div>
+            <h4>Learnings capture</h4>
+            <p>When a review catches something subtle, the lesson becomes a rule file under <code style="font-family:var(--mono);font-size:14px;color:var(--rust);">.claude/rules/learnings/</code> and ships with every subsequent task. The cache-vs-spec-promise rule, the JS↔SQL alignment rule, the partial-update precondition rule — all came from real bugs and now prevent their own recurrence.</p>
+            <div class="stat"><strong>Learnings persisted:</strong> 7 and growing</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- How the newsletter works -->
+    <section>
+      <div class="eyebrow">How the newsletter works</div>
+      <p class="lede">The harness is one half. The newsletter pipeline it runs is the other.</p>
+      <p>Once a day, an agent crawl runs across 34+ sources, dedups, ranks, summarises, and drafts an issue. A human spends a few minutes confirming nothing stupid is about to ship, and then it goes out.</p>
+
+      <dl class="nl-pipeline">
+        <dt>Sources</dt>
+        <dd><strong>34+ feeds</strong> — HN, Reddit, Twitter, RSS, GitHub, company blogs. See the <a href="#">live reading list →</a></dd>
+
+        <dt>Collect</dt>
+        <dd>Each source has a collector. The harness wrote most of them.</dd>
+
+        <dt>Enrich + dedup</dt>
+        <dd>Links are fetched, summarised, and collapsed to one row per story.</dd>
+
+        <dt>Shortlist</dt>
+        <dd>A cheap LLM pass picks ~30 candidates from a few hundred.</dd>
+
+        <dt>Rank + recap</dt>
+        <dd>A second pass scores the shortlist on <em>novelty</em>, <em>signal-vs-hype</em>, <em>actionability</em>, and writes the recap you read.</dd>
+
+        <dt>Review</dt>
+        <dd>A human spends <strong>~4 minutes</strong> per issue confirming the agent didn't ship something stupid.</dd>
+
+        <dt>Ship</dt>
+        <dd>Archive page, email, LinkedIn, X — all from one run.</dd>
+      </dl>
+    </section>
+
+    <!-- Notes from the loop -->
+    <section>
+      <div class="eyebrow">Notes from the loop</div>
+      <p>Short field reports from building AgentLoop and the harness around it. New entries land as they're written, not on a schedule.</p>
+
+      <div class="notes">
+        <a class="note" href="#" style="text-decoration:none;color:inherit;">
+          <div class="date">Week of May 17, 2026</div>
+          <div>
+            <h4>The cache-vs-spec-promise bug we almost shipped</h4>
+            <p>A worker resolving credentials once at startup quietly violated the design doc's "no restart required" promise. Pass-1 review missed it. Pass-2 caught it because it started from the user-visible promise and walked forward.</p>
+          </div>
+          <div class="read">Read →</div>
+        </a>
+
+        <a class="note" href="#" style="text-decoration:none;color:inherit;">
+          <div class="date">Week of May 10, 2026</div>
+          <div>
+            <h4>Why our JS↔SQL alignment test passed while the implementations disagreed</h4>
+            <p>A cross-language equivalence test with three canonical URLs green-lit two regexes that disagreed on every edge case. The lesson: test the boundary, not the centre.</p>
+          </div>
+          <div class="read">Read →</div>
+        </a>
+      </div>
+    </section>
+
+    <!-- Inventory (collapsed) -->
+    <section>
+      <div class="eyebrow">Inside the harness</div>
+      <p>If you want the inventory — every skill, agent, and artifact the pipeline uses — it's all here. Most readers don't need it on the first pass.</p>
+
+      <details class="inventory">
+        <summary>Show the full inventory</summary>
+        <div class="inv-grid">
+          <div>
+            <h5>Skills</h5>
+            <ul>
+              <li><code>brainstorm</code><span class="desc">Structured problem exploration before any code.</span></li>
+              <li><code>spec-generation</code><span class="desc">Design docs → testable SPECs in EARS format.</span></li>
+              <li><code>planning</code><span class="desc">Ordered, reviewable implementation steps.</span></li>
+              <li><code>tdd</code><span class="desc">Enforces RED → GREEN → REFACTOR.</span></li>
+              <li><code>code-review</code><span class="desc">Two independent passes per diff.</span></li>
+              <li><code>verify</code><span class="desc">Live functional verification end-to-end.</span></li>
+              <li><code>quality-gate</code><span class="desc">Hard pass/fail on coverage, lint, typecheck.</span></li>
+              <li><code>sync-docs</code><span class="desc">Updates docs to match implementation.</span></li>
+              <li><code>learn</code><span class="desc">Persists hard-won insights to learnings files.</span></li>
+            </ul>
+          </div>
+          <div>
+            <h5>Agents</h5>
+            <ul>
+              <li><code>orchestrate</code><span class="desc">Drives the full pipeline from spec to PR.</span></li>
+              <li><code>coder</code><span class="desc">Writes code under TDD discipline.</span></li>
+              <li><code>reviewer</code><span class="desc">Reviews the diff. Runs twice, independently.</span></li>
+              <li><code>verifier</code><span class="desc">Boots the app and proves features work.</span></li>
+            </ul>
+          </div>
+          <div>
+            <h5>Artifacts</h5>
+            <ul>
+              <li><code>spec.md</code><span class="desc">EARS-format acceptance criteria.</span></li>
+              <li><code>plan.md</code><span class="desc">Ordered steps with rollback notes.</span></li>
+              <li><code>baseline.json</code><span class="desc">Pre-change metrics snapshot.</span></li>
+              <li><code>REVIEW-*.md</code><span class="desc">Per-pass review reports.</span></li>
+              <li><code>quality-gate.md</code><span class="desc">Pass/fail with verbatim output.</span></li>
+              <li><code>proof-report.md</code><span class="desc">Functional verification with screenshots.</span></li>
+            </ul>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- Vertexcover Labs -->
+    <section class="vc">
+      <div class="eyebrow">Vertexcover Labs</div>
+      <p><strong>Vertexcover Labs</strong> is the R&amp;D arm of <a href="#">Vertexcover</a>. We build production systems for clients and publish what we learn here. AgentLoop is one such system — built in the open, with the same harness we use on client work. <a href="#">More from the Labs →</a></p>
+    </section>
+
+    <!-- Try it -->
+    <section class="cta">
+      <div class="eyebrow">Try it yourself</div>
+      <p>The repo is open. The skills are open. Copy what's useful.</p>
+      <div class="cta-links">
+        <a href="https://github.com/vertexcover/agentloop">github.com/vertexcover/agentloop</a>
+        <a href="mailto:hello@agentloop.vertexcover.io">hello@agentloop.vertexcover.io</a>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- Footer -->
+<footer class="site">
+  <div class="footer-wrap">
+    <div>
+      <div class="brand-mark">AGENTLOOP</div>
+      <div style="margin-top:8px;">A <a href="#">Vertexcover Labs</a> publication. © 2026</div>
+    </div>
+    <form class="footer-form" onsubmit="event.preventDefault()">
+      <input type="email" placeholder="Your email, every morning" />
+      <button type="submit">Subscribe →</button>
+    </form>
+    <nav>
+      <a href="#">Must Read</a>
+      <a href="#">How it's built</a>
+      <a href="#">RSS</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>
