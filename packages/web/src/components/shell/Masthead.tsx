@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAdminSession } from "../../hooks/useAdminSession";
+import { BrandMark } from "./BrandMark";
 
 type ActiveNavItem = "must-read" | "sources" | "built" | null;
 
@@ -53,7 +54,15 @@ export function Masthead(): ReactElement {
       className="flex items-end justify-between gap-4 pb-9"
     >
       <div className="block leading-none">
-        <Link to="/" aria-label="AGENTLOOP — home">
+        <Link
+          to="/"
+          aria-label="AGENTLOOP — home"
+          className="flex items-center gap-2.5 sm:gap-3"
+        >
+          <BrandMark
+            size={30}
+            className="shrink-0 text-[#8c3a1e] sm:h-9 sm:w-9"
+          />
           <div className="font-mono text-[22px] sm:text-[30px] font-semibold tracking-[0.12em] text-[#14110d] uppercase">
             AGENTLOOP
           </div>

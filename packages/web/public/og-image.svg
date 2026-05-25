@@ -1,0 +1,33 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AGENTLOOP — a Vertexcover Labs publication">
+  <rect width="1200" height="630" fill="#FAFAF7" />
+  <!-- hairline frame, editorial -->
+  <rect x="40" y="40" width="1120" height="550" stroke="#e7e2d6" stroke-width="2" fill="none" />
+
+  <!-- The loop mark -->
+  <g transform="translate(600 232)">
+    <circle
+      cx="0" cy="0" r="78"
+      stroke="#8C3A1E" stroke-width="8" stroke-linecap="round"
+      pathLength="360" stroke-dasharray="328 32" stroke-dashoffset="-20"
+    />
+    <circle cx="0" cy="0" r="21" fill="#8C3A1E" />
+  </g>
+
+  <!-- Wordmark -->
+  <text
+    x="600" y="430"
+    text-anchor="middle"
+    font-family="'Geist Mono', ui-monospace, Menlo, monospace"
+    font-size="84" font-weight="600" letter-spacing="14"
+    fill="#14110D"
+  >AGENTLOOP</text>
+
+  <!-- Tagline -->
+  <text
+    x="600" y="490"
+    text-anchor="middle"
+    font-family="'Geist Mono', ui-monospace, Menlo, monospace"
+    font-size="22" font-weight="400" letter-spacing="8"
+    fill="#6B6557"
+  >A VERTEXCOVER LABS PUBLICATION</text>
+</svg>
