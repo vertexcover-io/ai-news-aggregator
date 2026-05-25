@@ -17,7 +17,7 @@ import type {
 } from "@api/repositories/raw-items.js";
 import type { RunArchivesRepo, RunArchiveRow } from "@api/repositories/run-archives.js";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
-import type { GenerateDigestFn, GenerateRecapFn } from "@api/services/review.js";
+import type { GenerateRecapFn } from "@api/services/review.js";
 import type { Queue } from "bullmq";
 
 function makeRepo(rows: RawItemRow[] = []): RawItemsRepo {
@@ -58,7 +58,6 @@ function makeApp(opts: {
   repo?: RawItemsRepo;
   archiveRepo: RunArchivesRepo;
   generateRecapFn?: GenerateRecapFn;
-  generateDigestFn?: GenerateDigestFn;
   processingQueue?: Pick<Queue, "add">;
   settingsRepo?: Pick<UserSettingsRepo, "get">;
 }): Hono {
@@ -67,9 +66,6 @@ function makeApp(opts: {
     getRawItemsRepo: () => opts.repo ?? makeRepo(),
     getArchiveRepo: () => opts.archiveRepo,
     generateRecapFn: opts.generateRecapFn,
-    generateDigestFn:
-      opts.generateDigestFn ??
-      (() => Promise.resolve({ headline: "Generated", summary: "Generated summary" })),
     processingQueue: opts.processingQueue,
     ...(opts.settingsRepo === undefined
       ? {}
