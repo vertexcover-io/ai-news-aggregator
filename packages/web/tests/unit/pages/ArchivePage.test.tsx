@@ -139,7 +139,7 @@ describe("ArchivePage — share metadata + share row (REQ-002, REQ-005, REQ-010,
     });
   });
 
-  it("uses the first story title as heading and digestSummary as the header dek", async () => {
+  it("uses digestHeadline as heading and digestSummary as the header dek", async () => {
     vi.mocked(useArchive).mockReturnValue(
       makeResult({
         ...completedData,
@@ -153,7 +153,7 @@ describe("ArchivePage — share metadata + share row (REQ-002, REQ-005, REQ-010,
       await findByText("Plus: Recursive Self-Improvement launches in London."),
     ).toBeTruthy();
     expect(container.querySelector("h1")?.textContent).toBe(
-      "Recursive Self-Improvement Launches in London and SF",
+      "Cactus Distills Gemini Tool Calling into 26M Model",
     );
     expect(
       await findAllByText(

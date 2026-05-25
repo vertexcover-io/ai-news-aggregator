@@ -41,10 +41,10 @@ export function pickHeadline(
   topStoryTitle: string | null,
   digestHeadline?: string | null,
 ): string {
-  if (topStoryTitle !== null && topStoryTitle !== "") return topStoryTitle;
   if (digestHeadline !== null && digestHeadline !== undefined && digestHeadline !== "") {
     return digestHeadline;
   }
+  if (topStoryTitle !== null && topStoryTitle !== "") return topStoryTitle;
   return "An archived issue";
 }
 
