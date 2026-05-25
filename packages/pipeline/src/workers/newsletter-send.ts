@@ -8,6 +8,7 @@ import type { RawItemsRepo, RawItemRow } from "@pipeline/repositories/raw-items.
 import type { LinkedInNotifier } from "@pipeline/social/linkedin/index.js";
 import type { TwitterNotifier } from "@pipeline/social/twitter/index.js";
 import type { SocialResult } from "@pipeline/social/types.js";
+import { delay } from "@pipeline/lib/delay.js";
 
 const logger = createLogger("worker:newsletter-send");
 
@@ -39,12 +40,7 @@ interface PacerClock {
  */
 export function createSendPacer(rate: number, deps: PacerClock = {}): SendPacer {
   const now = deps.now ?? (() => Date.now());
-  const sleep =
-    deps.sleep ??
-    ((ms: number) =>
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, ms);
-      }));
+  const sleep = deps.sleep ?? delay;
   const minIntervalMs = Math.ceil(1000 / rate);
   let nextAvailableAt = 0;
   let chain: Promise<void> = Promise.resolve();

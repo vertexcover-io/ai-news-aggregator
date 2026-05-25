@@ -2,9 +2,9 @@ import { postToWebhook } from "@newsletter/shared";
 import { createLogger, type Logger } from "@newsletter/shared/logger";
 
 import type { TwitterApiClient } from "@pipeline/social/twitter/types.js";
+import { truncate } from "@pipeline/social/utils.js";
 
 const logger = createLogger("worker:social-health");
-const FAILURE_BODY_MAX = 500;
 
 export interface SocialHealthJobLike {
   name: string;
@@ -17,11 +17,6 @@ export interface SocialHealthDeps {
   logger?: Logger;
   slackWebhookUrl?: string;
   fetchFn?: typeof fetch;
-}
-
-function truncate(value: string): string {
-  if (value.length <= FAILURE_BODY_MAX) return value;
-  return `${value.slice(0, FAILURE_BODY_MAX)}…`;
 }
 
 function buildSlackBlocks(status: number, body: string): unknown[] {

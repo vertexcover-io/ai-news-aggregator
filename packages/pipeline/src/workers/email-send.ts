@@ -5,6 +5,7 @@ import type { PipelineSubscribersRepo } from "@pipeline/repositories/subscribers
 import type { PipelineEmailSendsRepo } from "@pipeline/repositories/email-sends.js";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { RawItemsRepo, RawItemRow } from "@pipeline/repositories/raw-items.js";
+import { delay } from "@pipeline/lib/delay.js";
 import { resolvePublishTarget } from "./publish-target.js";
 
 const logger = createLogger("worker:email-send");
@@ -37,12 +38,7 @@ interface PacerClock {
  */
 export function createSendPacer(rate: number, deps: PacerClock = {}): SendPacer {
   const now = deps.now ?? (() => Date.now());
-  const sleep =
-    deps.sleep ??
-    ((ms: number) =>
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, ms);
-      }));
+  const sleep = deps.sleep ?? delay;
   const minIntervalMs = Math.ceil(1000 / rate);
   let nextAvailableAt = 0;
   let chain: Promise<void> = Promise.resolve();

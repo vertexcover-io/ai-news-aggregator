@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import type { EvalRunSummary } from "@newsletter/shared/types/eval-ranking";
+import { formatTimestamp } from "../../lib/formatTimestamp";
 
 export interface RunsTableProps {
   runs: readonly EvalRunSummary[];
@@ -16,14 +17,6 @@ function shortId(id: string): string {
 function shortHash(hash: string | null): string {
   if (hash === null) return "—";
   return hash.slice(0, 8);
-}
-
-function formatTimestamp(iso: string): string {
-  // Mock format: 2026-05-21 19:14:08
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const pad = (n: number): string => String(n).padStart(2, "0");
-  return `${String(d.getFullYear())}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 /**

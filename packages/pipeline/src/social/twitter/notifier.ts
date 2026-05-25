@@ -5,9 +5,9 @@ import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 
 import { composePosts, type RankedStory } from "../compose.js";
 import type { SocialResult } from "../types.js";
+import { truncate } from "../utils.js";
 import type { TwitterApiClient } from "./types.js";
 
-const FAILURE_BODY_MAX = 500;
 const AUTH_RETRY_STATUSES = new Set([401, 403]);
 
 export interface TwitterNotifierConfig {
@@ -33,11 +33,6 @@ export interface NotifyArchiveReadyInput {
 
 export interface TwitterNotifier {
   notifyArchiveReady(input: NotifyArchiveReadyInput): Promise<SocialResult>;
-}
-
-function truncate(value: string): string {
-  if (value.length <= FAILURE_BODY_MAX) return value;
-  return `${value.slice(0, FAILURE_BODY_MAX)}…`;
 }
 
 function postFailureReason(status: number): string {

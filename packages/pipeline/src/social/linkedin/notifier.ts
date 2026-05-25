@@ -6,11 +6,11 @@ import type { SocialTokensRepo } from "@pipeline/repositories/social-tokens.js";
 
 import { composePosts, type RankedStory } from "../compose.js";
 import type { SocialResult } from "../types.js";
+import { truncate } from "../utils.js";
 import type { LinkedInApiClient } from "./types.js";
 import { refreshLinkedInToken } from "./oauth.js";
 
 const REFRESH_SKEW_MS = 60_000;
-const FAILURE_BODY_MAX = 500;
 const AUTH_RETRY_STATUSES = new Set([401, 403]);
 
 export interface LinkedInNotifierConfig {
@@ -75,11 +75,6 @@ interface AcquiredToken {
 type AcquireResult =
   | { ok: true; token: AcquiredToken }
   | { ok: false; result: SocialResult };
-
-function truncate(value: string): string {
-  if (value.length <= FAILURE_BODY_MAX) return value;
-  return `${value.slice(0, FAILURE_BODY_MAX)}…`;
-}
 
 function stripTrailingSlash(value: string): string {
   if (value.endsWith("/")) return value.slice(0, -1);
