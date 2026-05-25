@@ -91,7 +91,6 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
       const archive = await deps.getArchiveRepo().findById(runId);
       if (!archive) return c.json({ error: "not found" }, 404);
       if (!archive.reviewed) return c.json({ error: "not found" }, 404);
-      if (archive.isDryRun) return c.json({ error: "not found" }, 404);
       const timezone = await getConfiguredTimezone(deps);
 
       const state: RunState & {

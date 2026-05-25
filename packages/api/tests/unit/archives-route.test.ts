@@ -4,6 +4,8 @@ import type {
   RunState,
   PoolResponse,
   RankedItem,
+  ArchiveListItem,
+  ArchiveListResponse,
 } from "@newsletter/shared";
 import {
   createArchivesRouter,
@@ -151,7 +153,7 @@ describe("GET /api/archives/:runId", () => {
     expect(body).toEqual({ error: "not found" });
   });
 
-  it("R-14: returns 404 { error: 'not found' } for a dry-run archive (avoids leaking existence)", async () => {
+  it("REQ-001: returns 200 with the archive body for a reviewed dry-run archive (now publicly viewable by direct link)", async () => {
     const completedAt = new Date("2026-04-12T10:00:00Z");
     const archiveRepo = makeArchiveRepo({
       id: "dry-run-archive",
@@ -165,8 +167,69 @@ describe("GET /api/archives/:runId", () => {
       sourceTypes: null,
       isDryRun: true,
     });
-    const app = makeApp({ archiveRepo });
+    const repo = makeRepo([
+      {
+        id: 42,
+        sourceType: "hn",
+        title: "Dry Run Article",
+        url: "https://example.com/dry",
+        author: null,
+        publishedAt: null,
+        engagement: { points: 0, commentCount: 0 },
+        content: null,
+        imageUrl: null,
+        metadata: { comments: [] },
+      },
+    ]);
+    const app = makeApp({ repo, archiveRepo });
     const res = await app.request("/api/archives/dry-run-archive");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as RunState & {
+      rankedItems: { id: number }[];
+    };
+    expect(body.id).toBe("dry-run-archive");
+    expect(body.status).toBe("completed");
+    expect(body.rankedItems).toHaveLength(1);
+    expect(body.rankedItems[0].id).toBe(42);
+  });
+
+  it("REQ-002/EDGE-005: returns 404 { error: 'not found' } for an un-reviewed dry-run archive", async () => {
+    const completedAt = new Date("2026-04-12T10:00:00Z");
+    const archiveRepo = makeArchiveRepo({
+      id: "unreviewed-dry-run",
+      status: "completed",
+      rankedItems: [{ rawItemId: 42, score: 0.85, rationale: "x" }],
+      topN: 5,
+      reviewed: false,
+      completedAt,
+      createdAt: completedAt,
+      startedAt: null,
+      sourceTypes: null,
+      isDryRun: true,
+    });
+    const app = makeApp({ archiveRepo });
+    const res = await app.request("/api/archives/unreviewed-dry-run");
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: string };
+    expect(body).toEqual({ error: "not found" });
+  });
+
+  it("EDGE-005: returns 404 { error: 'not found' } for an un-reviewed live archive (reviewed gate applies to all)", async () => {
+    const completedAt = new Date("2026-04-12T10:00:00Z");
+    const archiveRepo = makeArchiveRepo({
+      id: "unreviewed-live",
+      status: "completed",
+      rankedItems: [],
+      topN: 5,
+      reviewed: false,
+      completedAt,
+      createdAt: completedAt,
+      startedAt: null,
+      sourceTypes: null,
+      isDryRun: false,
+    });
+    const app = makeApp({ archiveRepo });
+    const res = await app.request("/api/archives/unreviewed-live");
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: string };
     expect(body).toEqual({ error: "not found" });
@@ -308,6 +371,29 @@ describe("GET /api/archives/:runId", () => {
     const body = (await res.json()) as { rankedItems: { id: number }[] };
     expect(body.rankedItems).toHaveLength(1);
     expect(body.rankedItems[0].id).toBe(1);
+  });
+});
+
+describe("GET /api/archives (listing)", () => {
+  it("REQ-003/EDGE-003: surfaces exactly what listReviewed returns and never re-includes a dry run", async () => {
+    const liveItem: ArchiveListItem = {
+      runId: "live-archive",
+      runDate: "2026-04-12",
+      storyCount: 3,
+      topItems: [],
+      leadSummary: null,
+      digestHeadline: "Live issue",
+      digestSummary: null,
+      isDryRun: false,
+    };
+    const archiveRepo = makeArchiveRepo(null);
+    archiveRepo.listReviewed = vi.fn(() => Promise.resolve([liveItem]));
+    const app = makeApp({ archiveRepo });
+    const res = await app.request("/api/archives");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ArchiveListResponse;
+    expect(body.archives).toEqual([liveItem]);
+    expect(body.archives.some((a) => a.isDryRun)).toBe(false);
   });
 });
 
