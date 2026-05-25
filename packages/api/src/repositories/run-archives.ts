@@ -11,6 +11,7 @@ import {
   type PoolItem,
   type RankedItemRef,
   type RunCostBreakdown,
+  type RunFunnel,
   type RunSourceTelemetry,
   type SocialMetadata,
 } from "@newsletter/shared";
@@ -46,6 +47,7 @@ export interface RunArchiveRow {
   notificationState: NotificationState | null;
   isDryRun: boolean;
   costBreakdown: RunCostBreakdown | null;
+  runFunnel: RunFunnel | null;
 }
 
 export interface FindPoolItemsOpts {
@@ -203,6 +205,7 @@ export function createRunArchivesRepo(
           notificationState: runArchives.notificationState,
           isDryRun: runArchives.isDryRun,
           costBreakdown: runArchives.costBreakdown,
+          runFunnel: runArchives.runFunnel,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
@@ -321,6 +324,7 @@ export function createRunArchivesRepo(
           notificationState: runArchives.notificationState,
           isDryRun: runArchives.isDryRun,
           costBreakdown: runArchives.costBreakdown,
+          runFunnel: runArchives.runFunnel,
         })
         .from(runArchives)
         .where(
@@ -458,6 +462,7 @@ export function createRunArchivesRepo(
           notificationState: runArchives.notificationState,
           isDryRun: runArchives.isDryRun,
           costBreakdown: runArchives.costBreakdown,
+          runFunnel: runArchives.runFunnel,
         })
         .from(runArchives)
         .orderBy(desc(runArchives.completedAt))
@@ -504,6 +509,7 @@ export function createRunArchivesRepo(
           notificationState: runArchives.notificationState,
           isDryRun: runArchives.isDryRun,
           costBreakdown: runArchives.costBreakdown,
+          runFunnel: runArchives.runFunnel,
         });
       return row;
     },
