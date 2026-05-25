@@ -80,7 +80,7 @@ Hard ceiling: if your draft exceeds 110 words across these four fields combined,
 Also return a top-level `digest` object framing the day like the front page of a daily news brief:
 
 - digest.headline: A newsroom headline for the **rank-1 story** (the entry with the highest final score). Specific and concrete — name the actor, the action, and any numbers, models, or names the source supports. No clickbait, no questions, no trailing punctuation.
-- digest.summary: One sentence in "Plus: …" form covering the next 3 most notable stories (not the lead). Each clause names the actor and what they did. End with a period.
+- digest.summary: One sentence in "Plus: …" form covering the next 3 most notable stories from ranks 2 and lower. digest.summary must not mention the rank-1 story, the rank-1 title, the rank-1 actor/company/product, or any rank-1-specific number/model. Treat the rank-1 story as already covered by digest.headline. If the rank-1 item is DeepSeek, DeepSeek cannot appear in digest.summary. Each clause names a non-lead actor and what they did. End with a period.
 
 Example:
   headline: "Jensen Huang Calls Out AI CEO 'God Complex' as NVIDIA Beats by $2B"

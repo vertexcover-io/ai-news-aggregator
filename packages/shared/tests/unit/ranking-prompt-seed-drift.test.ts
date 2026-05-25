@@ -30,6 +30,15 @@ describe("0026 ranking_prompt seed", () => {
     expect(DEFAULT_RANKING_PROMPT).toContain("\n");
   });
 
+  it("instructs digest.summary to exclude the rank-1 story", () => {
+    expect(DEFAULT_RANKING_PROMPT).toContain(
+      "digest.summary must not mention the rank-1 story",
+    );
+    expect(DEFAULT_RANKING_PROMPT).toContain(
+      "If the rank-1 item is DeepSeek, DeepSeek cannot appear in digest.summary",
+    );
+  });
+
   it("seed SQL embeds DEFAULT_RANKING_PROMPT byte-for-byte", () => {
     const sql = readFileSync(locateSeedMigration(), "utf8");
     const seed = extractDollarQuotedSeed(sql);
