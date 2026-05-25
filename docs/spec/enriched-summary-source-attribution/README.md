@@ -21,7 +21,7 @@ For HN, Reddit, and Twitter items, the rerank LLM and recap LLM now prioritise t
 
 ## PR
 
-<!-- PR_URL_PLACEHOLDER -->
+https://github.com/vertexcover-io/ai-news-aggregator/pull/205
 
 ## Files touched
 
