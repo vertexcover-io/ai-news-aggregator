@@ -5,6 +5,7 @@ import {
   type SyntheticEvent,
 } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { BrandMark } from "./BrandMark";
 import { postSubscribe } from "../../api/subscribe";
 import { captureBrowserEvent } from "../../lib/analytics";
 import { markSubscribed } from "../../lib/subscriptionStorage";
@@ -100,10 +101,13 @@ export function Footer(): ReactElement {
       <hr className="border-0 border-t border-[#e7e2d6] m-0" />
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_1.2fr_1fr] gap-4 sm:gap-8 items-center pt-6 pb-2">
         <div className="font-mono uppercase text-[10.5px] tracking-[0.22em] text-[#6b6557]">
-          <strong className="text-[#14110d] font-semibold tracking-[0.16em]">
-            AGENTLOOP
-          </strong>
-          <br />A{" "}
+          <span className="flex items-center gap-2">
+            <BrandMark size={18} className="shrink-0 text-[#8c3a1e]" />
+            <strong className="text-[#14110d] font-semibold tracking-[0.16em]">
+              AGENTLOOP
+            </strong>
+          </span>
+          A{" "}
           <a
             href="https://blog.vertexcover.io"
             target="_blank"
