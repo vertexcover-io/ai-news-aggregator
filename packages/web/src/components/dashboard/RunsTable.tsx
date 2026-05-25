@@ -96,6 +96,19 @@ function formatStartedAt(value: string): { date: string; time: string } {
   };
 }
 
+function formatIssueDate(value?: string): string {
+  if (value === undefined) return "";
+  const iso = value.includes("T") ? value : `${value}T00:00:00Z`;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 function renderPrimaryAction({
   run,
   derived,
@@ -340,6 +353,7 @@ export function RunsTable({
           <TableHeader>
             <TableRow>
               <TableHead className="px-6 py-3">Date</TableHead>
+              <TableHead className="px-6 py-3">Publish date</TableHead>
               <TableHead className="px-6 py-3">Status</TableHead>
               <TableHead className="px-6 py-3">Items</TableHead>
               <TableHead className="px-6 py-3">Sources</TableHead>
@@ -351,11 +365,18 @@ export function RunsTable({
             {runs.map((run) => {
               const derived = deriveStatus(run);
               const { date, time } = formatStartedAt(run.startedAt);
+              const publishDate = formatIssueDate(run.issueDate);
               return (
                 <TableRow key={run.runId} data-run-id={run.runId}>
                   <TableCell className="px-6 py-4 align-middle">
                     <div className="font-medium">{date}</div>
                     <div className="text-xs text-muted-foreground">{time}</div>
+                  </TableCell>
+                  <TableCell
+                    className="px-6 py-4 align-middle font-medium"
+                    data-testid="publish-date-cell"
+                  >
+                    {publishDate === "" ? "—" : publishDate}
                   </TableCell>
                   <TableCell className="px-6 py-4 align-middle">
                     <div className="flex items-center gap-2">

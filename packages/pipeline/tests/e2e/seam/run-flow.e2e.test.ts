@@ -28,7 +28,8 @@ import { Queue, QueueEvents, Worker } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import { rawItems, runArchives, runLogs } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
-import type { CollectorResult, RunState } from "@newsletter/shared/types";
+import { resolveScheduledPublishAt } from "@newsletter/shared/scheduling";
+import type { CollectorResult, RunState, UserSettings } from "@newsletter/shared/types";
 import {
   handleRunProcessJob,
   type CollectFns,
@@ -48,6 +49,7 @@ import {
   closeTestRedis,
 } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { CancelSubscriberFactory } from "@pipeline/services/cancel-subscriber.js";
+import type { UserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 
 config({ path: resolve(import.meta.dirname, "../../../../.env.test") });
 
@@ -93,6 +95,9 @@ describe("run flow end-to-end (single-job)", () => {
   }>;
   // Mutable scenario so each test selects collector behavior.
   let scenario: ScenarioState;
+  // Mutable settings returned by the injected fake userSettingsRepo so each
+  // test can drive the published_at compute (schedule timezone / times).
+  let settingsImpl: UserSettings | null;
 
   const defaultRankFn: typeof rankFnImpl = (candidates, options) =>
     Promise.resolve({
@@ -113,6 +118,11 @@ describe("run flow end-to-end (single-job)", () => {
 
     rankFnImpl = defaultRankFn;
     scenario = { hnMode: "seed", redditMode: "seed" };
+    settingsImpl = null;
+
+    const fakeUserSettingsRepo: UserSettingsRepo = {
+      get: () => Promise.resolve(settingsImpl),
+    };
 
     processQueue = new Queue<RunProcessJobData, RunProcessResult>(
       PROCESS_QUEUE,
@@ -237,6 +247,7 @@ describe("run flow end-to-end (single-job)", () => {
               Promise.resolve({ shortlist: candidates, breakdowns: [] }),
             rankFn: (candidates, options) => rankFnImpl(candidates, options),
             collectFns: { hn: fakeHn, reddit: fakeReddit, web: fakeWeb },
+            userSettingsRepo: fakeUserSettingsRepo,
             cancelSubscriber: noopCancelSubscriber,
           },
           job as unknown as RunProcessJobLike,
@@ -255,14 +266,91 @@ describe("run flow end-to-end (single-job)", () => {
   beforeEach(async () => {
     rankFnImpl = defaultRankFn;
     scenario = { hnMode: "seed", redditMode: "seed" };
+    settingsImpl = null;
     await truncateAll();
     await db.execute(sql`TRUNCATE TABLE run_archives RESTART IDENTITY CASCADE`);
     await db.execute(sql`TRUNCATE TABLE run_logs RESTART IDENTITY CASCADE`);
+    // Wait for the worker to finish any in-flight job before obliterating.
+    // obliterate({ force: true }) while a job is mid-`moveToFinished` triggers
+    // a BullMQ lock error under the singleFork serial run — drain first.
+    const drainStart = Date.now();
+    for (;;) {
+      const active = await processQueue.getActiveCount();
+      if (active === 0) break;
+      if (Date.now() - drainStart > 10000) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
     await processQueue.obliterate({ force: true });
     const connection = getTestRedis();
     const keys = await connection.keys("run:run-flow-e2e-*");
     if (keys.length > 0) await connection.del(...keys);
   });
+
+  function makeSettings(overrides: Partial<UserSettings>): UserSettings {
+    return {
+      id: "settings-singleton",
+      topN: 3,
+      halfLifeHours: null,
+      hnEnabled: true,
+      hnConfig: null,
+      redditEnabled: true,
+      redditConfig: null,
+      webEnabled: false,
+      webConfig: null,
+      twitterEnabled: false,
+      twitterConfig: null,
+      webSearchEnabled: false,
+      webSearchConfig: null,
+      posthogEnabled: false,
+      posthogProjectToken: null,
+      posthogHost: null,
+      scheduleTime: "23:00",
+      pipelineTime: "23:00",
+      emailTime: "06:00",
+      linkedinTime: "07:00",
+      twitterTime: "07:00",
+      scheduleTimezone: "America/New_York",
+      scheduleEnabled: true,
+      emailEnabled: true,
+      linkedinEnabled: false,
+      twitterPostEnabled: false,
+      autoReview: false,
+      rankingPrompt: "rank",
+      shortlistPrompt: "shortlist",
+      shortlistSize: 30,
+      updatedAt: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  // The worker flips Redis run-state to "completed"/"failed" BEFORE it writes
+  // the run_archives row, so reading the DB the instant the poll returns
+  // terminal would race the upsert. Poll until the archive row exists.
+  async function pollForArchiveRow(
+    runId: string,
+    timeoutMs: number,
+  ): Promise<{ publishedAt: Date | null; completedAt: Date }> {
+    const start = Date.now();
+    for (;;) {
+      const rows = await db
+        .select({
+          publishedAt: runArchives.publishedAt,
+          completedAt: runArchives.completedAt,
+        })
+        .from(runArchives)
+        .where(eq(runArchives.id, runId));
+      if (rows.length > 0) {
+        return {
+          publishedAt: rows[0].publishedAt ?? null,
+          completedAt: rows[0].completedAt,
+        };
+      }
+      if (Date.now() - start > timeoutMs) {
+        throw new Error(`timed out waiting for run_archives row id=${runId}`);
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
 
   async function seedRunState(runId: string, topN: number): Promise<void> {
     const connection = getTestRedis();
@@ -492,6 +580,168 @@ describe("run flow end-to-end (single-job)", () => {
       expect([...ids].sort((a, b) => a - b)).toEqual(ids);
 
       await connection.del(`run:${runId}`);
+    },
+  );
+
+  it(
+    "REQ-002: success finalize with settings present sets published_at to next-day emailTime instant",
+    { timeout: 60000 },
+    async () => {
+      const runId = "f7c8124c-2cc3-4eee-9cec-1eb13e1c46a2";
+      await seedRunState(runId, 3);
+      settingsImpl = makeSettings({
+        pipelineTime: "23:00",
+        emailTime: "06:00",
+        scheduleTimezone: "America/New_York",
+      });
+
+      await processQueue.add(
+        "run-process",
+        {
+          runId,
+          topN: 3,
+          sourceTypes: ["hn", "reddit"],
+          collectors: {
+            hn: { sinceDays: 1 },
+            reddit: { subreddits: ["LocalLLaMA"], sinceDays: 1 },
+          },
+        },
+        { jobId: runId },
+      );
+
+      const connection = getTestRedis();
+      const runStateService = createRunStateService(connection);
+      const final = await pollUntilTerminal(
+        () => runStateService.get(runId),
+        45000,
+      );
+      expect(final.status).toBe("completed");
+
+      const { publishedAt, completedAt } = await pollForArchiveRow(runId, 5000);
+      expect(publishedAt).not.toBeNull();
+
+      // The stored value must equal the helper's computed instant for the
+      // archive's own completedAt.
+      const expected = resolveScheduledPublishAt({
+        scheduleTimezone: "America/New_York",
+        pipelineTime: "23:00",
+        emailTime: "06:00",
+        completedAt,
+      });
+      expect(expected).not.toBeNull();
+      expect(publishedAt?.getTime()).toBe(expected?.getTime());
+    },
+  );
+
+  it(
+    "REQ-003: success finalize with absent settings leaves published_at NULL",
+    { timeout: 60000 },
+    async () => {
+      const runId = "9aa60e69-b6ea-4ede-ae0f-302b747ab14c";
+      await seedRunState(runId, 3);
+      settingsImpl = null;
+
+      await processQueue.add(
+        "run-process",
+        {
+          runId,
+          topN: 3,
+          sourceTypes: ["hn", "reddit"],
+          collectors: {
+            hn: { sinceDays: 1 },
+            reddit: { subreddits: ["LocalLLaMA"], sinceDays: 1 },
+          },
+        },
+        { jobId: runId },
+      );
+
+      const connection = getTestRedis();
+      const runStateService = createRunStateService(connection);
+      const final = await pollUntilTerminal(
+        () => runStateService.get(runId),
+        45000,
+      );
+      expect(final.status).toBe("completed");
+      const row = await pollForArchiveRow(runId, 5000);
+      expect(row.publishedAt).toBeNull();
+    },
+  );
+
+  it(
+    "REQ-004: success finalize with emailTime === pipelineTime leaves published_at NULL and run still completes",
+    { timeout: 60000 },
+    async () => {
+      const runId = "36cab5ce-128e-4928-8ae3-83d0f628d501";
+      await seedRunState(runId, 3);
+      settingsImpl = makeSettings({
+        pipelineTime: "06:00",
+        emailTime: "06:00",
+        scheduleTimezone: "America/New_York",
+      });
+
+      await processQueue.add(
+        "run-process",
+        {
+          runId,
+          topN: 3,
+          sourceTypes: ["hn", "reddit"],
+          collectors: {
+            hn: { sinceDays: 1 },
+            reddit: { subreddits: ["LocalLLaMA"], sinceDays: 1 },
+          },
+        },
+        { jobId: runId },
+      );
+
+      const connection = getTestRedis();
+      const runStateService = createRunStateService(connection);
+      const final = await pollUntilTerminal(
+        () => runStateService.get(runId),
+        45000,
+      );
+      expect(final.status).toBe("completed");
+      const row = await pollForArchiveRow(runId, 5000);
+      expect(row.publishedAt).toBeNull();
+    },
+  );
+
+  it(
+    "REQ-005: failed run leaves published_at NULL",
+    { timeout: 60000 },
+    async () => {
+      const runId = "c599e0cc-95b6-44b8-ba17-c81b6e7f274a";
+      await seedRunState(runId, 3);
+      scenario = { hnMode: "fail", redditMode: "fail" };
+      // Even with valid schedule settings, the failed path must not set it.
+      settingsImpl = makeSettings({
+        pipelineTime: "23:00",
+        emailTime: "06:00",
+        scheduleTimezone: "America/New_York",
+      });
+
+      await processQueue.add(
+        "run-process",
+        {
+          runId,
+          topN: 3,
+          sourceTypes: ["hn", "reddit"],
+          collectors: {
+            hn: { sinceDays: 1 },
+            reddit: { subreddits: ["LocalLLaMA"], sinceDays: 1 },
+          },
+        },
+        { jobId: runId },
+      );
+
+      const connection = getTestRedis();
+      const runStateService = createRunStateService(connection);
+      const final = await pollUntilTerminal(
+        () => runStateService.get(runId),
+        45000,
+      );
+      expect(final.status).toBe("failed");
+      const row = await pollForArchiveRow(runId, 5000);
+      expect(row.publishedAt).toBeNull();
     },
   );
 });

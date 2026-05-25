@@ -62,8 +62,57 @@ describe("run-archives repository", () => {
       searchText: null,
       isDryRun: false,
       runFunnel: null,
+      publishedAt: null,
     });
     expect(mockOnConflictDoUpdate).toHaveBeenCalledOnce();
+  });
+
+  // Phase 2 (REQ-002): upsert writes publishedAt when provided
+  it("writes publishedAt to the row when input.publishedAt is provided", async () => {
+    resetMocks();
+    const db = makeMockDb();
+    const { createRunArchivesRepo } = await import(
+      "@pipeline/repositories/run-archives.js"
+    );
+    const repo = createRunArchivesRepo(db as never);
+
+    const publishedAt = new Date("2026-05-26T10:00:00Z");
+    await repo.upsert({
+      id: "run-pub",
+      status: "completed",
+      rankedItems: [],
+      topN: 3,
+      completedAt: new Date("2026-05-25T03:00:00Z"),
+      publishedAt,
+    });
+
+    const insertedValues = mockValues.mock.calls[0]?.[0] as {
+      publishedAt: Date | null;
+    };
+    expect(insertedValues.publishedAt).toEqual(publishedAt);
+  });
+
+  // Phase 2 (REQ-003/005): publishedAt defaults to null when omitted
+  it("defaults publishedAt to null when omitted", async () => {
+    resetMocks();
+    const db = makeMockDb();
+    const { createRunArchivesRepo } = await import(
+      "@pipeline/repositories/run-archives.js"
+    );
+    const repo = createRunArchivesRepo(db as never);
+
+    await repo.upsert({
+      id: "run-nopub",
+      status: "failed",
+      rankedItems: [],
+      topN: 3,
+      completedAt: new Date("2026-05-25T03:00:00Z"),
+    });
+
+    const insertedValues = mockValues.mock.calls[0]?.[0] as {
+      publishedAt: Date | null;
+    };
+    expect(insertedValues.publishedAt).toBeNull();
   });
 
   // Phase 2: upsert writes isDryRun when provided

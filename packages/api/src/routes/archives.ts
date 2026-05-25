@@ -69,10 +69,13 @@ async function getConfiguredTimezone(
 }
 
 function getIssueDate(
-  archive: Pick<RunArchiveRow, "startedAt" | "completedAt">,
+  archive: Pick<RunArchiveRow, "publishedAt" | "startedAt" | "completedAt">,
   timezone: string,
 ): string {
-  return formatDateInTimezone(archive.startedAt ?? archive.completedAt, timezone);
+  return formatDateInTimezone(
+    archive.publishedAt ?? archive.startedAt ?? archive.completedAt,
+    timezone,
+  );
 }
 
 export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {

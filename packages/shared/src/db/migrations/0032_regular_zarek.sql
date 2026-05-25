@@ -1,0 +1,1 @@
+ALTER TABLE "run_archives" ADD COLUMN "published_at" timestamp with time zone;

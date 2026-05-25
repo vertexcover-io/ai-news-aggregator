@@ -22,6 +22,78 @@ function makeRun(overrides: Partial<RunSummary>): RunSummary {
   };
 }
 
+describe("RunsCardList publish date (REQ-011)", () => {
+  it("REQ-011: renders the effective publish date from issueDate", () => {
+    render(
+      <MemoryRouter>
+        <RunsCardList
+          runs={[
+            makeRun({
+              runId: "r-pub",
+              status: "completed",
+              reviewed: true,
+              issueDate: "2026-05-26",
+            }),
+          ]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Publish date")).toBeTruthy();
+    expect(screen.getByText("May 26, 2026")).toBeTruthy();
+  });
+
+  it("REQ-011/EDGE-003: omits the publish date value when issueDate is undefined (old runs)", () => {
+    render(
+      <MemoryRouter>
+        <RunsCardList
+          runs={[
+            makeRun({
+              runId: "r-old",
+              status: "completed",
+              reviewed: true,
+              issueDate: undefined,
+            }),
+          ]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    // No crash; the publish date line is omitted entirely when absent.
+    expect(screen.queryByText("Publish date")).toBeNull();
+  });
+
+  it("keeps the Started line rendering unchanged alongside the publish date", () => {
+    render(
+      <MemoryRouter>
+        <RunsCardList
+          runs={[
+            makeRun({
+              runId: "r-both",
+              status: "completed",
+              reviewed: true,
+              startedAt: "2026-04-14T00:00:00Z",
+              issueDate: "2026-05-26",
+            }),
+          ]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Started")).toBeTruthy();
+    expect(screen.getByText("Publish date")).toBeTruthy();
+  });
+});
+
 describe("RunsCardList cost button (REQ-060)", () => {
   it("REQ-060: every card has a data-testid=cost-button regardless of costBreakdown value", () => {
     render(

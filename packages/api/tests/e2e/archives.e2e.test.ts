@@ -29,6 +29,7 @@ import {
   createAdminArchivesRouter,
   createPublicArchivesRouter,
 } from "@api/routes/archives.js";
+import { createArchivesSearchRouter } from "@api/routes/archives-search.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
@@ -105,6 +106,18 @@ function buildPublicApp(repo: RunArchivesRepo = archiveRepo): Hono {
   return app;
 }
 
+function buildSearchApp(repo: RunArchivesRepo = archiveRepo): Hono {
+  const app = new Hono();
+  app.route(
+    "/api/archives/search",
+    createArchivesSearchRouter({
+      getArchiveRepo: () => repo,
+      getRawItemsRepo: () => rawItemsRepo,
+    }),
+  );
+  return app;
+}
+
 function buildAdminApp(): Hono {
   const app = new Hono();
   app.route(
@@ -155,6 +168,8 @@ async function insertArchive(opts: {
   readonly digestHeadline: string;
   readonly digestSummary: string;
   readonly rawItemIds: readonly number[];
+  readonly publishedAt?: Date;
+  readonly searchText?: string;
 }): Promise<SeededArchive> {
   const runId = randomUUID();
   const rankedItems: RankedItemRef[] = opts.rawItemIds.map((rawItemId, index) => ({
@@ -170,10 +185,12 @@ async function insertArchive(opts: {
     topN: rankedItems.length,
     reviewed: opts.reviewed,
     completedAt: opts.completedAt,
+    publishedAt: opts.publishedAt ?? null,
     startedAt: new Date(opts.completedAt.getTime() - 60_000),
     sourceTypes: ["hn"],
     digestHeadline: opts.digestHeadline,
     digestSummary: opts.digestSummary,
+    searchText: opts.searchText ?? null,
   });
   seededRunIds.add(runId);
   return { runId, rawItemIds: opts.rawItemIds };
@@ -346,6 +363,234 @@ describe("GET /api/archives/:runId (e2e)", () => {
     const res = await buildPublicApp().request(`/api/archives/${archive.runId}`);
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe("publish-aware date + ordering (e2e)", () => {
+  it("REQ-006: GET /api/archives runDate uses published_at when set (distinct from completed_at)", async () => {
+    const rawId = await insertRawItem({
+      externalId: "pub-list-set",
+      title: "Publish list title",
+      recapTitle: "Publish list recap",
+      recapSummary: "Publish list summary.",
+    });
+    const archive = await insertArchive({
+      reviewed: true,
+      completedAt: new Date("2099-05-25T12:00:00Z"),
+      publishedAt: new Date("2099-05-26T12:00:00Z"),
+      digestHeadline: "Publish list headline",
+      digestSummary: "Publish list digest summary",
+      rawItemIds: [rawId],
+    });
+
+    const res = await buildPublicApp().request("/api/archives");
+    expect(res.status).toBe(200);
+    const body = archiveListResponseSchema.parse(await res.json());
+    const row = body.archives.find((a) => a.runId === archive.runId);
+    expect(row).toBeDefined();
+    expect(row?.runDate).toBe("2099-05-26");
+  });
+
+  it("REQ-007: GET /api/archives/:runId issueDate uses published_at when set", async () => {
+    const rawId = await insertRawItem({
+      externalId: "pub-detail-set",
+      title: "Publish detail title",
+      recapTitle: "Publish detail recap",
+      recapSummary: "Publish detail summary.",
+    });
+    const archive = await insertArchive({
+      reviewed: true,
+      completedAt: new Date("2099-05-25T12:00:00Z"),
+      publishedAt: new Date("2099-05-26T12:00:00Z"),
+      digestHeadline: "Publish detail headline",
+      digestSummary: "Publish detail digest summary",
+      rawItemIds: [rawId],
+    });
+
+    const res = await buildPublicApp().request(`/api/archives/${archive.runId}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { issueDate?: string };
+    expect(body.issueDate).toBe("2099-05-26");
+  });
+
+  it("EDGE-003: NULL published_at falls back to completed_at (list) / startedAt (detail)", async () => {
+    const rawId = await insertRawItem({
+      externalId: "pub-null-fallback",
+      title: "Null fallback title",
+      recapTitle: "Null fallback recap",
+      recapSummary: "Null fallback summary.",
+    });
+    const archive = await insertArchive({
+      reviewed: true,
+      completedAt: new Date("2099-04-10T12:00:00Z"),
+      digestHeadline: "Null fallback headline",
+      digestSummary: "Null fallback digest summary",
+      rawItemIds: [rawId],
+    });
+
+    const listRes = await buildPublicApp().request("/api/archives");
+    const listBody = archiveListResponseSchema.parse(await listRes.json());
+    const listRow = listBody.archives.find((a) => a.runId === archive.runId);
+    expect(listRow?.runDate).toBe("2099-04-10");
+
+    const detailRes = await buildPublicApp().request(
+      `/api/archives/${archive.runId}`,
+    );
+    const detailBody = (await detailRes.json()) as { issueDate?: string };
+    // startedAt = completedAt - 60s, still the same UTC day at noon.
+    expect(detailBody.issueDate).toBe("2099-04-10");
+  });
+
+  it("REQ-008/EDGE-005: listing orders by coalesce(published_at, completed_at) desc", async () => {
+    const rawX = await insertRawItem({
+      externalId: "order-x",
+      title: "Order X title",
+      recapTitle: "Order X recap",
+      recapSummary: "Order X summary.",
+    });
+    const rawY = await insertRawItem({
+      externalId: "order-y",
+      title: "Order Y title",
+      recapTitle: "Order Y recap",
+      recapSummary: "Order Y summary.",
+    });
+    // X: published_at = 2099-05-26 (later effective), but completed_at = 2099-03-01
+    //    (older than Y's completed_at). Under completed_at-only ordering X loses;
+    //    under coalesce(published_at, completed_at) X wins.
+    const x = await insertArchive({
+      reviewed: true,
+      completedAt: new Date("2099-03-01T12:00:00Z"),
+      publishedAt: new Date("2099-05-26T12:00:00Z"),
+      digestHeadline: "Order X headline",
+      digestSummary: "Order X digest summary",
+      rawItemIds: [rawX],
+    });
+    // Y: published_at NULL, completed_at = 2099-05-01 (effective 05-01 < 05-26).
+    const y = await insertArchive({
+      reviewed: true,
+      completedAt: new Date("2099-05-01T12:00:00Z"),
+      digestHeadline: "Order Y headline",
+      digestSummary: "Order Y digest summary",
+      rawItemIds: [rawY],
+    });
+
+    const res = await buildPublicApp().request("/api/archives");
+    const body = archiveListResponseSchema.parse(await res.json());
+    const seeded = body.archives
+      .filter((a) => [x.runId, y.runId].includes(a.runId))
+      .map((a) => a.runId);
+    expect(seeded).toEqual([x.runId, y.runId]);
+  });
+
+  it("REQ-008: search with no q orders by coalesce(published_at, completed_at) desc", async () => {
+    const rawX = await insertRawItem({
+      externalId: "search-noq-x",
+      title: "Search noq X title",
+      recapTitle: "Search noq X recap",
+      recapSummary: "Search noq X summary.",
+    });
+    const rawY = await insertRawItem({
+      externalId: "search-noq-y",
+      title: "Search noq Y title",
+      recapTitle: "Search noq Y recap",
+      recapSummary: "Search noq Y summary.",
+    });
+    // X effective 05-26 but completed_at 03-01; Y effective 05-01 (NULL pub).
+    const x = await insertArchive({
+      reviewed: true,
+      completedAt: new Date("2099-03-01T12:00:00Z"),
+      publishedAt: new Date("2099-05-26T12:00:00Z"),
+      digestHeadline: "Search noq X headline",
+      digestSummary: "Search noq X digest summary",
+      rawItemIds: [rawX],
+    });
+    const y = await insertArchive({
+      reviewed: true,
+      completedAt: new Date("2099-05-01T12:00:00Z"),
+      digestHeadline: "Search noq Y headline",
+      digestSummary: "Search noq Y digest summary",
+      rawItemIds: [rawY],
+    });
+
+    const res = await buildSearchApp().request("/api/archives/search");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      archives: { runId: string }[];
+    };
+    const seeded = body.archives
+      .filter((a) => [x.runId, y.runId].includes(a.runId))
+      .map((a) => a.runId);
+    expect(seeded).toEqual([x.runId, y.runId]);
+  });
+
+  it("REQ-008: search with q ranks first then coalesce tiebreak (no throw)", async () => {
+    const term = `zylpwq${String(Date.now())}`;
+    const rawX = await insertRawItem({
+      externalId: "search-q-x",
+      title: "Search q X title",
+      recapTitle: "Search q X recap",
+      recapSummary: "Search q X summary.",
+    });
+    const rawY = await insertRawItem({
+      externalId: "search-q-y",
+      title: "Search q Y title",
+      recapTitle: "Search q Y recap",
+      recapSummary: "Search q Y summary.",
+    });
+    // Both rows share the same search term so rank ties; the coalesce tiebreak
+    // must put the later effective date first. X effective 05-26 (completed 03-01),
+    // Y effective 05-01 (NULL pub) — disagrees with a completed_at-only tiebreak.
+    const x = await insertArchive({
+      reviewed: true,
+      completedAt: new Date("2099-03-01T12:00:00Z"),
+      publishedAt: new Date("2099-05-26T12:00:00Z"),
+      digestHeadline: "Search q X headline",
+      digestSummary: "Search q X digest summary",
+      rawItemIds: [rawX],
+      searchText: term,
+    });
+    const y = await insertArchive({
+      reviewed: true,
+      completedAt: new Date("2099-05-01T12:00:00Z"),
+      digestHeadline: "Search q Y headline",
+      digestSummary: "Search q Y digest summary",
+      rawItemIds: [rawY],
+      searchText: term,
+    });
+
+    const res = await buildSearchApp().request(
+      `/api/archives/search?q=${term}`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      archives: { runId: string }[];
+    };
+    const seeded = body.archives
+      .filter((a) => [x.runId, y.runId].includes(a.runId))
+      .map((a) => a.runId);
+    expect(seeded).toEqual([x.runId, y.runId]);
+  });
+
+  it("REQ-007: single-archive response does not expose a raw publishedAt field", async () => {
+    const rawId = await insertRawItem({
+      externalId: "pub-no-leak",
+      title: "No leak title",
+      recapTitle: "No leak recap",
+      recapSummary: "No leak summary.",
+    });
+    const archive = await insertArchive({
+      reviewed: true,
+      completedAt: new Date("2099-05-25T12:00:00Z"),
+      publishedAt: new Date("2099-05-26T12:00:00Z"),
+      digestHeadline: "No leak headline",
+      digestSummary: "No leak digest summary",
+      rawItemIds: [rawId],
+    });
+
+    const res = await buildPublicApp().request(`/api/archives/${archive.runId}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(body, "publishedAt")).toBe(false);
   });
 });
 

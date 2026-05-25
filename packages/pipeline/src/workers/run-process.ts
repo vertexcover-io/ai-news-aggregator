@@ -9,6 +9,7 @@ import {
 import type { SlackNotifier } from "@newsletter/shared";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
+import { resolveScheduledPublishAt } from "@newsletter/shared/scheduling";
 import { dedupCandidates } from "@pipeline/processors/dedup.js";
 import {
   createCandidatesRepo,
@@ -944,6 +945,13 @@ export async function handleRunProcessJob(
       rankedItems: rankResult.rankedItems,
       rawItemsById,
     });
+    const completedAt = new Date();
+    const publishedAt = resolveScheduledPublishAt({
+      scheduleTimezone: settings?.scheduleTimezone,
+      pipelineTime: settings?.pipelineTime,
+      emailTime: settings?.emailTime,
+      completedAt,
+    });
     let archiveWritten = false;
     try {
       await deps.archiveRepo.upsert({
@@ -951,7 +959,7 @@ export async function handleRunProcessJob(
         status: "completed",
         rankedItems: rankResult.rankedItems,
         topN,
-        completedAt: new Date(),
+        completedAt,
         startedAt: runStartedAt,
         sourceTypes,
         reviewed: autoReviewed,
@@ -963,6 +971,7 @@ export async function handleRunProcessJob(
         searchText,
         isDryRun: dryRun,
         runFunnel: { ...funnel },
+        publishedAt: publishedAt ?? undefined,
       });
       archiveWritten = true;
     } catch (err) {

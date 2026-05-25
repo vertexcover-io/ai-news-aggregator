@@ -30,6 +30,7 @@ export interface RunArchiveUpsertInput {
   searchText?: string | null;
   isDryRun?: boolean;
   runFunnel?: RunFunnel | null;
+  publishedAt?: Date;
 }
 
 export interface PipelineRunArchiveRow {
@@ -250,6 +251,7 @@ export function createRunArchivesRepo(
           searchText: input.searchText ?? null,
           isDryRun: input.isDryRun ?? false,
           runFunnel: input.runFunnel ?? null,
+          publishedAt: input.publishedAt ?? null,
         })
         .onConflictDoUpdate({
           target: runArchives.id,
@@ -267,6 +269,7 @@ export function createRunArchivesRepo(
             searchText: sql.raw(`excluded.${runArchives.searchText.name}`),
             isDryRun: sql.raw(`excluded.${runArchives.isDryRun.name}`),
             runFunnel: sql.raw(`excluded.${runArchives.runFunnel.name}`),
+            publishedAt: sql.raw(`excluded.${runArchives.publishedAt.name}`),
           },
         });
     },
