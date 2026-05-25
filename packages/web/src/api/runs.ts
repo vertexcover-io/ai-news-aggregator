@@ -5,6 +5,7 @@ import type {
   RunSubmitPayload,
   RunSummary,
 } from "@newsletter/shared";
+import type { RunObservability } from "@newsletter/shared/types";
 import { apiFetch, apiFetchAdmin } from "./client";
 
 export interface SubmitRunResponse {
@@ -54,6 +55,15 @@ export async function getRun(runId: string): Promise<RunStateResponse | null> {
   if (res.status === 404) return null;
   if (!res.ok) throw new Error("Failed to fetch run");
   return (await res.json()) as RunStateResponse;
+}
+
+export async function getRunObservability(
+  runId: string,
+): Promise<RunObservability | null> {
+  const res = await apiFetchAdmin(`/api/admin/runs/${runId}/observability`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Failed to fetch run observability");
+  return (await res.json()) as RunObservability;
 }
 
 export async function getArchive(runId: string): Promise<RunStateResponse | null> {

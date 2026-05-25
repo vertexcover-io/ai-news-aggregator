@@ -376,13 +376,16 @@ export function RunsTable({
                       : `${String(run.itemCount)} posts`}
                   </TableCell>
                   <TableCell className="px-6 py-4 align-middle">
-                    {canViewSources(run) ? (
+                    <div className="flex items-center gap-2">
                       <Button asChild variant="outline" size="sm">
-                        <Link to={`/admin/sources/${run.runId}`}>Sources</Link>
+                        <Link to={`/admin/runs/${run.runId}`}>Details</Link>
                       </Button>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">—</span>
-                    )}
+                      {canViewSources(run) ? (
+                        <Button asChild variant="outline" size="sm">
+                          <Link to={`/admin/sources/${run.runId}`}>Sources</Link>
+                        </Button>
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell className="px-6 py-4 align-middle">
                     <CostButton

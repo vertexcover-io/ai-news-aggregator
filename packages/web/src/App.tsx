@@ -3,6 +3,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ArchivePage } from "./pages/ArchivePage";
 import { ReviewPage } from "./pages/ReviewPage";
+import { RunObservabilityPage } from "./pages/RunObservabilityPage";
 import { SourcesPreviewPage } from "./pages/SourcesPreviewPage";
 import { HomePage } from "./pages/HomePage";
 import { MustReadPage } from "./pages/MustReadPage";
@@ -50,6 +51,7 @@ export const routes: RouteObject[] = [
         element: <AdminLayout />,
         children: [
           { index: true, element: <DashboardPage /> },
+          { path: "runs/:runId", element: <RunObservabilityPage /> },
           { path: "review/:runId", element: <ReviewPage /> },
           { path: "sources/:runId", element: <SourcesPreviewPage /> },
           { path: "settings", element: <SettingsPage /> },
