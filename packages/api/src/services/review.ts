@@ -4,7 +4,7 @@ import {
   type RankedItem,
   type RankedItemRef,
 } from "@newsletter/shared";
-import type { RawItemsRepo } from "@api/repositories/raw-items.js";
+import type { RawItemRow, RawItemsRepo } from "@api/repositories/raw-items.js";
 import type {
   RunArchiveRow,
   RunArchivesRepo,
@@ -16,6 +16,25 @@ export type GenerateRecapFn = (
   item: RecapInputItem,
   opts?: GenerateRecapOptions,
 ) => Promise<RecapContent>;
+
+export interface ReviewDigestItem {
+  readonly id: number;
+  readonly title: string;
+  readonly url: string;
+  readonly sourceType: string;
+  readonly summary: string | null;
+  readonly bullets: readonly string[];
+  readonly bottomLine: string | null;
+}
+
+export interface ReviewDigestContent {
+  readonly headline: string | null;
+  readonly summary: string | null;
+}
+
+export type GenerateDigestFn = (
+  items: readonly ReviewDigestItem[],
+) => Promise<ReviewDigestContent>;
 
 // These types are inlined to avoid a hard import (real fn is dynamically loaded)
 interface RecapContent {
@@ -68,6 +87,7 @@ export interface ReviewDeps {
   archiveRepo: RunArchivesRepo;
   rawItemsRepo: RawItemsRepo;
   hydrateAddedPost?: HydrateAddedPostFn;
+  generateDigestFn?: GenerateDigestFn;
 }
 
 export interface PatchArchiveInput {
@@ -111,17 +131,65 @@ export async function patchArchive(
     return ref;
   });
   const rawItemsById = new Map(found.map((r) => [r.id, r]));
-  const digest = deriveReviewedArchiveDigest({
-    rankedItems: refs,
-    rawItemsById,
-    fallbackDigestHeadline: archive.digestHeadline,
-    fallbackDigestSummary: archive.digestSummary,
-  });
+  const digestContent =
+    refs.length > 0 && deps.generateDigestFn !== undefined
+      ? await deps.generateDigestFn(buildReviewDigestItems(refs, rawItemsById))
+      : normalizeReviewedArchiveDigest(
+          deriveReviewedArchiveDigest({
+            rankedItems: refs,
+            rawItemsById,
+            fallbackDigestHeadline: archive.digestHeadline,
+            fallbackDigestSummary: archive.digestSummary,
+          }),
+        );
   return deps.archiveRepo.updateRankedItems(runId, refs, {
     rawItemsById,
-    digestHeadline: digest.digestHeadline,
-    digestSummary: digest.digestSummary,
+    digestHeadline: digestContent.headline,
+    digestSummary: digestContent.summary,
   });
+}
+
+function normalizeReviewedArchiveDigest(digest: {
+  readonly digestHeadline: string | null;
+  readonly digestSummary: string | null;
+}): ReviewDigestContent {
+  return {
+    headline: digest.digestHeadline,
+    summary: digest.digestSummary,
+  };
+}
+
+function buildReviewDigestItems(
+  refs: readonly RankedItemRef[],
+  rawItemsById: ReadonlyMap<number, RawItemRow>,
+): ReviewDigestItem[] {
+  return refs.map((ref) => {
+    const raw = rawItemsById.get(ref.rawItemId);
+    const recap = raw?.metadata.recap;
+    return {
+      id: ref.rawItemId,
+      title:
+        nonEmptyText(ref.title) ??
+        nonEmptyText(recap?.title) ??
+        nonEmptyText(raw?.title) ??
+        "Untitled",
+      url: raw?.url ?? "",
+      sourceType: raw?.sourceType ?? "web",
+      summary:
+        nonEmptyText(ref.summary) ??
+        nonEmptyText(recap?.summary) ??
+        nonEmptyText(raw?.content),
+      bullets: ref.bullets ?? recap?.bullets ?? [],
+      bottomLine:
+        nonEmptyText(ref.bottomLine) ?? nonEmptyText(recap?.bottomLine),
+    };
+  });
+}
+
+function nonEmptyText(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export interface AddPostInput {

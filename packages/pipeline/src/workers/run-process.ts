@@ -111,7 +111,7 @@ function pickArchiveDigest(rankResult: RankResult): {
   const firstRankedItem = rankResult.rankedItems[0];
   return {
     digestHeadline:
-      nonEmptyText(firstRankedItem.title) ?? nonEmptyText(rankResult.digestHeadline),
+      nonEmptyText(rankResult.digestHeadline) ?? nonEmptyText(firstRankedItem.title),
     digestSummary: nonEmptyText(rankResult.digestSummary),
   };
 }

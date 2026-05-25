@@ -95,7 +95,7 @@ describe("patchArchive (REQ-160, REQ-161, REQ-163)", () => {
     }
   });
 
-  it("REQ-160: writes via repo.updateRankedItems with the provided refs", async () => {
+  it("REQ-160/REQ-001/REQ-002: writes refs with generated digest copy", async () => {
     const archiveRow = makeArchiveRow([]);
     const updated: RunArchiveRow = {
       ...archiveRow,
@@ -115,10 +115,17 @@ describe("patchArchive (REQ-160, REQ-161, REQ-163)", () => {
       imageUrl: null,
       metadata: { comments: [] },
     };
-    const deps: ReviewDeps = {
+    const generateDigestFn = vi.fn(() =>
+      Promise.resolve({
+        headline: "Generated issue headline",
+        summary: "Generated issue summary",
+      }),
+    );
+    const deps = {
       archiveRepo,
       rawItemsRepo: makeRawRepo([rawRow]),
-    };
+      generateDigestFn,
+    } as ReviewDeps;
     const result = await patchArchive(
       "run-1",
       { rankedItems: [{ id: 1, sourceType: "hn" }] },
@@ -130,13 +137,19 @@ describe("patchArchive (REQ-160, REQ-161, REQ-163)", () => {
       [{ rawItemId: 1, score: 0, rationale: "" }],
       expect.objectContaining({
         rawItemsById: expect.any(Map),
-        digestHeadline: "t",
-        digestSummary: null,
+        digestHeadline: "Generated issue headline",
+        digestSummary: "Generated issue summary",
       }),
     );
+    expect(generateDigestFn).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: 1,
+        title: "t",
+      }),
+    ]);
   });
 
-  it("REQ-001/EDGE-001: derives digest fields from the new rank-one item when the original first item is removed", async () => {
+  it("REQ-001/REQ-008/EDGE-001: generates digest from final reviewed items when the original first item is removed", async () => {
     const archiveRow = makeArchiveRow(
       [
         { rawItemId: 1, score: 0.9, rationale: "old lead" },
@@ -145,7 +158,13 @@ describe("patchArchive (REQ-160, REQ-161, REQ-163)", () => {
       {},
     );
     const archiveRepo = makeArchiveRepo(archiveRow);
-    const deps: ReviewDeps = {
+    const generateDigestFn = vi.fn(() =>
+      Promise.resolve({
+        headline: "Generated digest after removing old lead",
+        summary: "Generated summary after removing old lead",
+      }),
+    );
+    const deps = {
       archiveRepo,
       rawItemsRepo: makeRawRepo([
         {
@@ -169,7 +188,8 @@ describe("patchArchive (REQ-160, REQ-161, REQ-163)", () => {
           },
         },
       ]),
-    };
+      generateDigestFn,
+    } as ReviewDeps;
 
     await patchArchive(
       "run-1",
@@ -181,16 +201,26 @@ describe("patchArchive (REQ-160, REQ-161, REQ-163)", () => {
       "run-1",
       [{ rawItemId: 2, score: 0, rationale: "" }],
       expect.objectContaining({
-        digestHeadline: "Second recap headline",
-        digestSummary: "Second recap summary",
+        digestHeadline: "Generated digest after removing old lead",
+        digestSummary: "Generated summary after removing old lead",
       }),
     );
+    expect(generateDigestFn).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 2, title: "Second recap headline" }),
+    ]);
+    expect(JSON.stringify(generateDigestFn.mock.calls)).not.toContain("old lead");
   });
 
-  it("REQ-003/EDGE-003: derives digest fields from inline rank-one edits before raw recap metadata", async () => {
+  it("REQ-003/EDGE-003: generated issue digest wins over inline rank-one edits", async () => {
     const archiveRow = makeArchiveRow([]);
     const archiveRepo = makeArchiveRepo(archiveRow);
-    const deps: ReviewDeps = {
+    const generateDigestFn = vi.fn(() =>
+      Promise.resolve({
+        headline: "Generated issue-level headline",
+        summary: "Generated issue-level summary",
+      }),
+    );
+    const deps = {
       archiveRepo,
       rawItemsRepo: makeRawRepo([
         {
@@ -214,7 +244,8 @@ describe("patchArchive (REQ-160, REQ-161, REQ-163)", () => {
           },
         },
       ]),
-    };
+      generateDigestFn,
+    } as ReviewDeps;
 
     await patchArchive(
       "run-1",
@@ -243,8 +274,76 @@ describe("patchArchive (REQ-160, REQ-161, REQ-163)", () => {
         },
       ],
       expect.objectContaining({
-        digestHeadline: "Operator headline",
-        digestSummary: "Operator summary",
+        digestHeadline: "Generated issue-level headline",
+        digestSummary: "Generated issue-level summary",
+      }),
+    );
+  });
+
+  it("REQ-004/EDGE-004: rejects save and does not update archive when digest generation fails", async () => {
+    const archiveRow = makeArchiveRow([]);
+    const archiveRepo = makeArchiveRepo(archiveRow);
+    const generateDigestFn = vi.fn(() =>
+      Promise.reject(new Error("digest generation failed")),
+    );
+    const deps = {
+      archiveRepo,
+      rawItemsRepo: makeRawRepo([
+        {
+          id: 1,
+          sourceType: "hn",
+          title: "Raw title",
+          url: "https://x/1",
+          author: null,
+          publishedAt: null,
+          engagement: { points: 0, commentCount: 0 },
+          content: null,
+          imageUrl: null,
+          metadata: { comments: [] },
+        },
+      ]),
+      generateDigestFn,
+    } as ReviewDeps;
+
+    await expect(
+      patchArchive(
+        "run-1",
+        { rankedItems: [{ id: 1, sourceType: "hn" }] },
+        deps,
+      ),
+    ).rejects.toThrow("digest generation failed");
+
+    expect(archiveRepo.updateRankedItems).not.toHaveBeenCalled();
+  });
+
+  it("REQ-009/EDGE-007: skips digest generation for an empty reviewed list", async () => {
+    const archiveRow = {
+      ...makeArchiveRow([]),
+      digestHeadline: null,
+      digestSummary: null,
+    } as RunArchiveRow;
+    const archiveRepo = makeArchiveRepo(archiveRow);
+    const generateDigestFn = vi.fn(() =>
+      Promise.resolve({
+        headline: "Should not be generated",
+        summary: "Should not be generated.",
+      }),
+    );
+    const deps = {
+      archiveRepo,
+      rawItemsRepo: makeRawRepo([]),
+      generateDigestFn,
+    } as ReviewDeps;
+
+    await patchArchive("run-1", { rankedItems: [] }, deps);
+
+    expect(generateDigestFn).not.toHaveBeenCalled();
+    expect(archiveRepo.updateRankedItems).toHaveBeenCalledWith(
+      "run-1",
+      [],
+      expect.objectContaining({
+        digestHeadline: null,
+        digestSummary: null,
       }),
     );
   });

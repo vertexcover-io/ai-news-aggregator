@@ -1252,10 +1252,12 @@ describe("run-process worker", () => {
 
     expect(archiveUpsert).toHaveBeenCalledOnce();
     const arg = archiveUpsert.mock.calls[0]?.[0] as {
+      digestHeadline: string | null;
       searchText: string;
     };
+    expect(arg.digestHeadline).toBe("Pipeline digest head");
     const expected = serializeArchiveSearchText({
-      digestHeadline: "Pipeline Story Title",
+      digestHeadline: "Pipeline digest head",
       digestSummary: "Pipeline digest summary",
       rankedItems,
       rawItemsById: new Map([[101, rawRow]]),

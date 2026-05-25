@@ -42,14 +42,17 @@ describe("ArchivePageHeader", () => {
     cleanup();
   });
 
-  it("renders topStoryTitle as h1 and digestSummary as dek", () => {
+  it("REQ-006/EDGE-003: renders digestHeadline as h1 and digestSummary as dek", () => {
     renderHeader({
       issueDate: "2026-04-18",
       storyCount: 5,
       topStoryTitle: "Top Story Title",
+      digestHeadline: "Issue-level digest headline",
       digestSummary: "Plus: OpenAI launches GPT-5 with multimodal reasoning.",
     });
-    expect(screen.getByRole("heading", { name: "Top Story Title" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Issue-level digest headline" }),
+    ).toBeTruthy();
     expect(
       screen.getByText("Plus: OpenAI launches GPT-5 with multimodal reasoning."),
     ).toBeTruthy();
@@ -73,6 +76,18 @@ describe("ArchivePageHeader", () => {
       storyCount: 5,
       topStoryTitle: "Top Story Title",
       digestSummary: "",
+    });
+    expect(
+      screen.getByRole("heading", { name: "Top Story Title" }),
+    ).toBeTruthy();
+  });
+
+  it("falls back to topStoryTitle when digestHeadline is whitespace", () => {
+    renderHeader({
+      issueDate: "2026-04-18",
+      storyCount: 5,
+      topStoryTitle: "Top Story Title",
+      digestHeadline: "   ",
     });
     expect(
       screen.getByRole("heading", { name: "Top Story Title" }),
