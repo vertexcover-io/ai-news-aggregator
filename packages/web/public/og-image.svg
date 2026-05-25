@@ -8,7 +8,7 @@
     <circle
       cx="0" cy="0" r="78"
       stroke="#8C3A1E" stroke-width="8" stroke-linecap="round"
-      pathLength="360" stroke-dasharray="328 32" stroke-dashoffset="-20"
+      pathLength="360" stroke-dasharray="344 360" stroke-dashoffset="-55"
     />
     <circle cx="0" cy="0" r="21" fill="#8C3A1E" />
   </g>
