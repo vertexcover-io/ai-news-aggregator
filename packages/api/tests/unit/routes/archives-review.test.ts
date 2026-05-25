@@ -10,6 +10,7 @@ import type {
   RunArchiveRow,
   RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
+import type { GenerateDigestFn } from "@api/services/review.js";
 
 const date = new Date("2026-04-10T00:00:00Z");
 
@@ -65,6 +66,7 @@ interface MakeAppOpts {
   archiveRepo: RunArchivesRepo;
   rawRepo?: RawItemsRepo;
   hydrateAddedPost?: ReturnType<typeof vi.fn>;
+  generateDigestFn?: GenerateDigestFn;
 }
 
 function makeApp(opts: MakeAppOpts): Hono {
@@ -73,6 +75,9 @@ function makeApp(opts: MakeAppOpts): Hono {
     getArchiveRepo: () => opts.archiveRepo,
     getRawItemsRepo: () => opts.rawRepo ?? makeRawRepo([]),
     hydrateAddedPost: opts.hydrateAddedPost ?? vi.fn(),
+    generateDigestFn:
+      opts.generateDigestFn ??
+      (() => Promise.resolve({ headline: "Generated", summary: "Generated summary" })),
   });
   app.route("/api/archives", router);
   return app;

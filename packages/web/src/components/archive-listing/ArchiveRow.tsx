@@ -68,7 +68,10 @@ export function ArchiveRow({
     );
   } else {
     const firstTopTitle = topItems.length > 0 ? topItems[0].title : "—";
-    const headlineText = firstTopTitle !== "—" ? firstTopTitle : (digestHeadline ?? firstTopTitle);
+    const headlineText =
+      typeof digestHeadline === "string" && digestHeadline.trim().length > 0
+        ? digestHeadline
+        : firstTopTitle;
     headlineNode = (
       <h3
         className={`font-serif font-medium leading-[1.22] tracking-[-0.005em] text-[#14110d] ${featured ? "text-[26px] md:text-[28px]" : "text-[22px]"}`}
@@ -79,7 +82,7 @@ export function ArchiveRow({
   }
 
   const dek = digestSummary ?? (featured ? leadSummary : null);
-  const showDek = typeof dek === "string" && dek.length > 0;
+  const showDek = typeof dek === "string" && dek.trim().length > 0;
 
   const rowBody = (
     <div className="grid grid-cols-1 md:grid-cols-[110px_1fr_92px] gap-3 md:gap-7 items-start md:items-center py-6 md:py-[26px] px-3 md:px-4 border-b border-[#e7e2d6] transition-colors duration-150 hover:bg-[rgba(20,17,13,0.025)] rounded-md">

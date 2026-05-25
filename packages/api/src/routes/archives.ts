@@ -43,8 +43,10 @@ import {
   ConflictError,
   type HydrateAddedPostFn,
   type GenerateRecapFn,
+  type GenerateDigestFn,
 } from "@api/services/review.js";
 import { captureAnalytics } from "@api/lib/posthog.js";
+import { generateReviewDigest } from "@api/services/review-digest.js";
 
 export interface ArchivesRouterDeps {
   getRawItemsRepo: () => RawItemsRepo;
@@ -52,6 +54,7 @@ export interface ArchivesRouterDeps {
   getSettingsRepo?: () => Pick<UserSettingsRepo, "get">;
   hydrateAddedPost?: HydrateAddedPostFn;
   generateRecapFn?: GenerateRecapFn;
+  generateDigestFn?: GenerateDigestFn;
   logger?: ReturnType<typeof createLogger>;
   processingQueue?: Pick<Queue, "add">;
   redis?: Pick<IORedis, "del">;
@@ -203,6 +206,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
       const updated = await patchArchive(runId, parsed.data, {
         archiveRepo: deps.getArchiveRepo(),
         rawItemsRepo: deps.getRawItemsRepo(),
+        generateDigestFn: deps.generateDigestFn ?? createDefaultGenerateDigestFn(),
       });
       logger.info(
         { event: "archive.patched", runId, count: parsed.data.rankedItems.length },
@@ -398,6 +402,10 @@ function createDefaultGenerateRecapFn(): GenerateRecapFn {
   };
 }
 
+function createDefaultGenerateDigestFn(): GenerateDigestFn {
+  return generateReviewDigest;
+}
+
 /**
  * Backward-compat: returns a single Hono app with BOTH public and admin archive
  * routes mounted. Kept for existing tests/callers that don't split the gate.
@@ -440,6 +448,7 @@ function createDefaultArchivesDeps(): ArchivesRouterDeps {
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
     hydrateAddedPost: createDefaultHydrateAddedPost(),
     generateRecapFn: createDefaultGenerateRecapFn(),
+    generateDigestFn: createDefaultGenerateDigestFn(),
     processingQueue: getDefaultProcessingQueue(),
     redis: createRedisConnection(),
   };
