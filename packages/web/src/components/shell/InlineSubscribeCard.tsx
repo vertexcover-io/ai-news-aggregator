@@ -79,7 +79,7 @@ export function InlineSubscribeCard(): ReactElement | null {
               value={email}
               onChange={onEmail}
               disabled={state === "loading"}
-              className="flex-1 bg-transparent border-0 px-[14px] py-4 font-serif text-[17px] text-[#14110d] outline-none placeholder:text-[#6b6557] placeholder:italic"
+              className="flex-1 min-w-0 bg-transparent border-0 px-[14px] py-4 font-serif text-[17px] text-[#14110d] outline-none placeholder:text-[#6b6557] placeholder:italic"
             />
             <button
               type="submit"

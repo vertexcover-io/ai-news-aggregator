@@ -26,7 +26,7 @@ function NavLink({
   children,
 }: NavLinkProps): ReactElement {
   const base =
-    "font-mono text-[12px] uppercase tracking-[0.18em] font-medium transition-colors";
+    "font-mono text-[11px] sm:text-[12px] uppercase tracking-[0.14em] sm:tracking-[0.18em] font-medium transition-colors";
   const visibility = hideOnMobile ? "hidden sm:inline-block" : "inline-block";
   const colour = active
     ? "text-[#8c3a1e] border-b border-[#8c3a1e] pb-[2px]"
@@ -51,7 +51,7 @@ export function Masthead(): ReactElement {
   return (
     <header
       data-nav="top-right"
-      className="flex items-end justify-between gap-4 pb-9"
+      className="flex items-end justify-between flex-wrap gap-x-4 gap-y-3 pb-9"
     >
       <div className="block leading-none">
         <Link
@@ -116,21 +116,18 @@ export function Masthead(): ReactElement {
           <>
             <Link
               to="/admin"
-              className="font-mono text-[12px] uppercase tracking-[0.18em] font-medium text-[#14110d] transition-colors hover:text-[#8c3a1e]"
+              className="font-mono text-[11px] sm:text-[12px] uppercase tracking-[0.14em] sm:tracking-[0.18em] font-medium text-[#14110d] transition-colors hover:text-[#8c3a1e]"
             >
               Admin&nbsp;→
             </Link>
-            <span
-              aria-hidden="true"
-              className="hidden sm:inline mx-3 text-[#6b6557]"
-            >
+            <span aria-hidden="true" className="mx-1.5 sm:mx-3 text-[#6b6557]">
               ·
             </span>
           </>
         ) : null}
         <Link
           to={{ hash: "#subscribe" }}
-          className="font-mono text-[12px] uppercase tracking-[0.18em] font-medium text-[#14110d] transition-colors hover:text-[#8c3a1e]"
+          className="font-mono text-[11px] sm:text-[12px] uppercase tracking-[0.14em] sm:tracking-[0.18em] font-medium text-[#14110d] transition-colors hover:text-[#8c3a1e]"
         >
           Subscribe&nbsp;→
         </Link>

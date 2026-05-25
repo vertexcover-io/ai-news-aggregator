@@ -63,7 +63,7 @@ function FooterSubscribeField(): ReactElement {
         value={email}
         onChange={onEmail}
         disabled={state === "loading"}
-        className="flex-1 bg-transparent border-0 px-[4px] py-2 font-serif italic text-[14px] text-[#14110d] outline-none placeholder:text-[#6b6557]"
+        className="flex-1 min-w-0 bg-transparent border-0 px-[4px] py-2 font-serif italic text-[14px] text-[#14110d] outline-none placeholder:text-[#6b6557]"
       />
       <button
         type="submit"
