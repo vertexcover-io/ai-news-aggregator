@@ -16,9 +16,6 @@ interface StoredArchive {
   updatedAt: Date;
   startedAt: Date | null;
   sourceTypes: SourceType[] | null;
-  digestHeadline: string | null;
-  digestSummary: string | null;
-  searchText: string | null;
 }
 
 function makeFakeDb(initial: StoredArchive): {
@@ -62,9 +59,6 @@ function makeDefaultArchive(overrides: Partial<StoredArchive> = {}): StoredArchi
     updatedAt: completedAt,
     startedAt: null,
     sourceTypes: null,
-    digestHeadline: null,
-    digestSummary: null,
-    searchText: null,
     ...overrides,
   };
 }
@@ -195,41 +189,6 @@ describe("RunArchivesRepo.updateRankedItems (REQ-160)", () => {
     expect(store.row.rankedItems).toEqual(newItems);
     expect(store.row.reviewed).toBe(true);
     expect(store.row.updatedAt.getTime()).toBe(expectedUpdatedAt.getTime());
-  });
-
-  it("REQ-004/REQ-005: persists reviewed digest fields and search text with rankedItems", async () => {
-    const before = new Date("2026-04-10T00:00:00Z");
-    const { db, store } = makeFakeDb(
-      makeDefaultArchive({
-        id: "run-1",
-        digestHeadline: "Old digest headline",
-        digestSummary: "Old digest summary",
-      }),
-    );
-    const repo = createRunArchivesRepo(db);
-    const newItems: RankedItemRef[] = [
-      {
-        rawItemId: 7,
-        score: 0,
-        rationale: "",
-        title: "Reviewed lead headline",
-        summary: "Reviewed lead summary",
-      },
-    ];
-
-    await repo.updateRankedItems("run-1", newItems, {
-      rawItemsById: new Map(),
-      digestHeadline: "Reviewed lead headline",
-      digestSummary: "Reviewed lead summary",
-    });
-
-    expect(store.row.rankedItems).toEqual(newItems);
-    expect(store.row.digestHeadline).toBe("Reviewed lead headline");
-    expect(store.row.digestSummary).toBe("Reviewed lead summary");
-    expect(store.row.searchText).toContain("Reviewed lead headline");
-    expect(store.row.searchText).toContain("Reviewed lead summary");
-    expect(store.row.searchText).not.toContain("Old digest headline");
-    expect(store.row.updatedAt.getTime()).not.toBe(before.getTime());
   });
 });
 

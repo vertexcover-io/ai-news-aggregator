@@ -1,9 +1,4 @@
-import {
-  deriveReviewedArchiveDigest,
-  type PoolResponse,
-  type RankedItem,
-  type RankedItemRef,
-} from "@newsletter/shared";
+import type { PoolResponse, RankedItem, RankedItemRef } from "@newsletter/shared";
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
 import type {
   RunArchiveRow,
@@ -111,16 +106,10 @@ export async function patchArchive(
     return ref;
   });
   const rawItemsById = new Map(found.map((r) => [r.id, r]));
-  const digest = deriveReviewedArchiveDigest({
-    rankedItems: refs,
-    rawItemsById,
-    fallbackDigestHeadline: archive.digestHeadline,
-    fallbackDigestSummary: archive.digestSummary,
-  });
   return deps.archiveRepo.updateRankedItems(runId, refs, {
     rawItemsById,
-    digestHeadline: digest.digestHeadline,
-    digestSummary: digest.digestSummary,
+    digestHeadline: archive.digestHeadline,
+    digestSummary: archive.digestSummary,
   });
 }
 

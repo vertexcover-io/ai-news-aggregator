@@ -500,8 +500,6 @@ export function createRunArchivesRepo(
         .update(runArchives)
         .set({
           rankedItems: items,
-          digestHeadline: ctx.digestHeadline,
-          digestSummary: ctx.digestSummary,
           reviewed: true,
           searchText,
           updatedAt: new Date(),
