@@ -143,3 +143,6 @@ evals/ranking/cache/
 
 !docs/spec/dry-run-archive-access/design.md
 !docs/spec/dry-run-archive-access/library-probe.md
+
+!docs/spec/publishedat-newsletter-date/design.md
+!docs/spec/publishedat-newsletter-date/library-probe.md
