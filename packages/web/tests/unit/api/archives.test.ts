@@ -27,6 +27,7 @@ const sampleItem: RankedItem = {
   content: null,
   imageUrl: null,
   recap: null,
+  enrichedSource: null,
 };
 
 describe("patchArchive", () => {

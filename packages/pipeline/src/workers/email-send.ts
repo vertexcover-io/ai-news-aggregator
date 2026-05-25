@@ -7,6 +7,8 @@ import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { RawItemsRepo, RawItemRow } from "@pipeline/repositories/raw-items.js";
 import { delay } from "@pipeline/lib/delay.js";
 import { resolvePublishTarget } from "./publish-target.js";
+import { pickSummarySource, getPlatformLabel } from "@newsletter/shared/services";
+import { ENRICHED_SUMMARY_LAUNCHED_AT } from "@newsletter/shared/constants";
 
 const logger = createLogger("worker:email-send");
 
@@ -67,6 +69,9 @@ export interface NewsletterStory {
   bullets?: string[];
   bottomLine?: string;
   imageUrl?: string;
+  sourceLabel: string;
+  sourceUrl: string;
+  readVerb: string;
 }
 
 export interface NewsletterRenderProps {
@@ -165,7 +170,8 @@ function classifyDeliveryFailure(message: string): string {
     : firstSentence;
 }
 
-function hydrateItems(refs: RankedItemRef[], rows: RawItemRow[]): NewsletterStory[] {
+function hydrateItems(refs: RankedItemRef[], rows: RawItemRow[], archiveCompletedAt: Date): NewsletterStory[] {
+  const isLegacy = archiveCompletedAt < ENRICHED_SUMMARY_LAUNCHED_AT;
   const byId = new Map(rows.map((r) => [r.id, r]));
   const stories: NewsletterStory[] = [];
   for (const ref of refs) {
@@ -189,6 +195,27 @@ function hydrateItems(refs: RankedItemRef[], rows: RawItemRow[]): NewsletterStor
       recap = rawRecap;
     }
     const displayTitle = ref.title ?? rawRecap?.title ?? row.title;
+
+    let sourceLabel: string;
+    let sourceUrl: string;
+    let readVerb: string;
+    if (!isLegacy) {
+      const summarySource = pickSummarySource(row.content, row.metadata.enrichedLink);
+      if (summarySource.kind === "enriched") {
+        sourceLabel = summarySource.hostname;
+        sourceUrl = summarySource.url;
+        readVerb = `Read on ${summarySource.hostname}`;
+      } else {
+        sourceLabel = getPlatformLabel(row.sourceType);
+        sourceUrl = row.url;
+        readVerb = row.sourceType === "github" ? "Read repo" : "Read source";
+      }
+    } else {
+      sourceLabel = getPlatformLabel(row.sourceType);
+      sourceUrl = row.url;
+      readVerb = row.sourceType === "github" ? "Read repo" : "Read source";
+    }
+
     stories.push({
       title: displayTitle,
       url: row.url,
@@ -196,6 +223,9 @@ function hydrateItems(refs: RankedItemRef[], rows: RawItemRow[]): NewsletterStor
       bullets: recap?.bullets,
       bottomLine: recap?.bottomLine,
       imageUrl: ref.imageUrl !== undefined ? (ref.imageUrl ?? undefined) : (row.imageUrl ?? undefined),
+      sourceLabel,
+      sourceUrl,
+      readVerb,
     });
   }
   return stories;
@@ -225,7 +255,7 @@ export async function handleEmailSendJob(
 
   const rawIds = archive.rankedItems.map((r) => r.rawItemId);
   const rawRows = await deps.rawItemsRepo.findByIds(rawIds);
-  const stories = hydrateItems(archive.rankedItems, rawRows);
+  const stories = hydrateItems(archive.rankedItems, rawRows, archive.completedAt);
 
   const candidates =
     subscriberIds === "all"

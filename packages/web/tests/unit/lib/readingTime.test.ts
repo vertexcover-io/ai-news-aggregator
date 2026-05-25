@@ -24,6 +24,7 @@ const mk = (over: Partial<RankedItem> = {}): RankedItem => ({
   content: null,
   imageUrl: null,
   recap: null,
+  enrichedSource: null,
   ...over,
 });
 

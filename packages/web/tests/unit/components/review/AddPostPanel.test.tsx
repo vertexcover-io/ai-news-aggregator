@@ -30,6 +30,7 @@ function makeItem(): RankedItem {
     content: null,
     imageUrl: null,
     recap: null,
+    enrichedSource: null,
   };
 }
 

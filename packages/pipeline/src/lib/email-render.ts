@@ -13,7 +13,7 @@ import {
   Img,
   Preview,
 } from "@react-email/components";
-import type { NewsletterRenderProps, NewsletterStory } from "@pipeline/workers/newsletter-send.js";
+import type { NewsletterRenderProps, NewsletterStory } from "@pipeline/workers/email-send.js";
 import { readingTimeMinutes } from "@newsletter/shared/utils";
 
 // No render-time cap on stories — the curator picks the count during review.
@@ -141,26 +141,11 @@ const sourceLineStyle: React.CSSProperties = {
   margin: "18px 0 0",
 };
 
-function sourceLabelFor(url: string): string {
-  try {
-    const u = new URL(url);
-    const host = u.hostname.replace(/^www\./, "");
-    if (host === "news.ycombinator.com") return "Hacker News";
-    if (host === "github.com") return "GitHub";
-    if (host === "arxiv.org") return "arXiv";
-    if (host === "reddit.com" || host.endsWith(".reddit.com")) return "Reddit";
-    return host;
-  } catch {
-    return "Source";
-  }
-}
-
 function StoryBlock({
   story,
 }: {
   story: NewsletterStory;
 }): React.ReactElement {
-  const sourceLabel = sourceLabelFor(story.url);
   const children: React.ReactNode[] = [
     React.createElement(
       Link,
@@ -272,11 +257,11 @@ function StoryBlock({
     React.createElement(
       Text,
       { key: "src-line", className: "src-line", style: sourceLineStyle },
-      "Source · ",
+      `${story.sourceLabel} · `,
       React.createElement(
         Link,
         {
-          href: story.url,
+          href: story.sourceUrl,
           target: "_blank",
           style: {
             color: COLORS.ink,
@@ -285,7 +270,7 @@ function StoryBlock({
             textDecoration: "none",
           },
         },
-        `Read on ${sourceLabel} ↗`,
+        `${story.readVerb} ↗`,
       ),
     ),
   );

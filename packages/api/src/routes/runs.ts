@@ -173,6 +173,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       const hydrated = await hydrateRankedItems(
         deps.getRawItemsRepo(),
         state.rankedItems,
+        null,
       );
       return c.json({ ...state, rankedItems: hydrated });
     }

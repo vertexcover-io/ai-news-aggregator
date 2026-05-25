@@ -1,14 +1,19 @@
 import type { RankedItem, RankedItemRef, RecapContent } from "@newsletter/shared";
+import { ENRICHED_SUMMARY_LAUNCHED_AT } from "@newsletter/shared/constants";
+import { pickSummarySource } from "@newsletter/shared/services";
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
 
 export async function hydrateRankedItems(
   repo: RawItemsRepo,
   refs: RankedItemRef[],
+  archiveCompletedAt: Date | null = null,
 ): Promise<RankedItem[]> {
   if (refs.length === 0) return [];
   const ids = refs.map((r) => r.rawItemId);
   const rows = await repo.findByIds(ids);
   const byId = new Map(rows.map((r) => [r.id, r]));
+  const isLegacyArchive =
+    archiveCompletedAt !== null && archiveCompletedAt < ENRICHED_SUMMARY_LAUNCHED_AT;
   const hydrated: RankedItem[] = [];
   for (const ref of refs) {
     const row = byId.get(ref.rawItemId);
@@ -31,6 +36,13 @@ export async function hydrateRankedItems(
       recap = rawRecap;
     }
     const displayTitle = ref.title ?? rawRecap?.title ?? row.title;
+    let enrichedSource: { hostname: string; url: string } | null = null;
+    if (!isLegacyArchive) {
+      const source = pickSummarySource(row.content, row.metadata.enrichedLink);
+      if (source.kind === "enriched") {
+        enrichedSource = { hostname: source.hostname, url: source.url };
+      }
+    }
     hydrated.push({
       id: row.id,
       rawItemId: row.id,
@@ -45,6 +57,7 @@ export async function hydrateRankedItems(
       content: row.content ?? null,
       imageUrl: ref.imageUrl !== undefined ? ref.imageUrl : row.imageUrl,
       recap,
+      enrichedSource,
     });
   }
   return hydrated;

@@ -1,7 +1,7 @@
 import { describe, expect, it, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { ArchiveStoryCard } from "../../src/components/ArchiveStoryCard";
-import type { RankedItem } from "@newsletter/shared";
+import type { RankedItem } from "@newsletter/shared/types";
 
 const baseItem: RankedItem = {
   id: 1,
@@ -17,6 +17,7 @@ const baseItem: RankedItem = {
   content: "Full article body text here.",
   imageUrl: null,
   recap: null,
+  enrichedSource: null,
 };
 
 const itemWithRecap: RankedItem = {
@@ -139,5 +140,38 @@ describe("ArchiveStoryCard (Mock-A layout)", () => {
   it("does not render a 'READ THE ORIGINAL' button (replaced by source line link)", () => {
     render(<ArchiveStoryCard item={baseItem} rank={1} />);
     expect(screen.queryByText(/READ THE ORIGINAL/i)).toBeNull();
+  });
+
+  // VS-6: enriched source — chip shows hostname, link targets enriched URL, verb is "Read on <hostname>"
+  it("VS-6: enrichedSource non-null: chip shows hostname, link href is enriched URL, verb is 'Read on <hostname>'", () => {
+    const enrichedItem: RankedItem = {
+      ...baseItem,
+      sourceType: "twitter",
+      url: "https://twitter.com/user/status/123",
+      enrichedSource: { hostname: "theverge.com", url: "https://theverge.com/x" },
+    };
+    render(<ArchiveStoryCard item={enrichedItem} rank={1} />);
+    expect(screen.getByText("theverge.com")).toBeTruthy();
+    const sourceLink = screen.getByRole("link", { name: /Read on theverge\.com/i });
+    expect(sourceLink.getAttribute("href")).toBe("https://theverge.com/x");
+  });
+
+  // VS-7: native — chip shows platform label, link href is item.url, verb is "Read source"
+  it("VS-7: enrichedSource null + sourceType hn: chip shows 'Hacker News', link href is item.url, verb is 'Read source'", () => {
+    render(<ArchiveStoryCard item={baseItem} rank={1} />);
+    expect(screen.getByText("Hacker News")).toBeTruthy();
+    const sourceLink = screen.getByRole("link", { name: /Read source/i });
+    expect(sourceLink.getAttribute("href")).toBe("https://example.com/article");
+  });
+
+  // VS-7b: github native — verb is "Read repo"
+  it("VS-7b: enrichedSource null + sourceType github: verb is 'Read repo'", () => {
+    const githubItem: RankedItem = {
+      ...baseItem,
+      sourceType: "github",
+      enrichedSource: null,
+    };
+    render(<ArchiveStoryCard item={githubItem} rank={1} />);
+    expect(screen.getByRole("link", { name: /Read repo/i })).toBeTruthy();
   });
 });

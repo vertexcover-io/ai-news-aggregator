@@ -285,6 +285,40 @@ describe("hydrateAddedPost", () => {
     expect(fetchWebPost).toHaveBeenCalledOnce();
   });
 
+  it("VS-4: Twitter add-post passes enriched markdown (not tweet text) to generateRecap", async () => {
+    const enrichedMarkdown = "# Full article from theverge.com\n\nLong enriched body text";
+    const raw = makeInsert({
+      sourceType: "twitter",
+      externalId: "20",
+      content: "tweet text here",
+      metadata: {
+        comments: [],
+        enrichedLink: {
+          url: "https://theverge.com/article",
+          fetchedAt: "2026-05-25T00:00:00Z",
+          status: "ok",
+          markdown: enrichedMarkdown,
+        },
+      },
+    });
+    const saved = { id: 13, ...raw, imageUrl: null };
+    const generateRecap = vi.fn().mockResolvedValue(validRecap());
+    const deps: AddPostDeps = {
+      rawItemsRepo: makeRepo(saved),
+      fetchHnPost: vi.fn(),
+      fetchRedditPost: vi.fn(),
+      fetchWebPost: vi.fn(),
+      fetchTwitterPost: vi.fn().mockResolvedValue(raw),
+      generateRecap,
+    };
+
+    await hydrateAddedPost("https://x.com/jack/status/20", "twitter", deps);
+
+    expect(generateRecap).toHaveBeenCalledOnce();
+    const recapInput = generateRecap.mock.calls[0]?.[0] as { content: string | null };
+    expect(recapInput.content).toBe(enrichedMarkdown);
+  });
+
   describe("dispatchFetch forwards both signal and fetchFn (REQ-145 / EDGE-107)", () => {
     const cases: {
       sourceType: "hn" | "reddit" | "web";

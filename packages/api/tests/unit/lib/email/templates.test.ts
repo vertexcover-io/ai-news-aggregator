@@ -130,10 +130,16 @@ describe("renderNewsletter", () => {
       summary: "OpenAI announces GPT-5 with major improvements.",
       bullets: ["10x faster than GPT-4", "New reasoning mode"],
       bottomLine: "The biggest AI leap since GPT-4.",
+      sourceLabel: "theverge.com",
+      sourceUrl: "https://theverge.com/x",
+      readVerb: "Read on theverge.com",
     },
     {
       title: "Google Gemini 2.0 Tops All Benchmarks",
       url: "https://google.com/gemini",
+      sourceLabel: "Hacker News",
+      sourceUrl: "https://news.ycombinator.com/item?id=1",
+      readVerb: "Read source",
     },
   ];
 
@@ -179,6 +185,9 @@ describe("renderNewsletter", () => {
     const manyStories: NewsletterStory[] = Array.from({ length: 10 }, (_, i) => ({
       title: `Story ${i + 1}`,
       url: `https://example.com/story-${i + 1}`,
+      sourceLabel: "Example",
+      sourceUrl: `https://example.com/story-${i + 1}`,
+      readVerb: "Read source",
     }));
     const html = await renderNewsletter({ ...baseProps, stories: manyStories });
     // Only first 5 stories should appear — check story 6 is absent
@@ -196,5 +205,23 @@ describe("renderNewsletter", () => {
     const html = await renderNewsletter(baseProps);
     expect(html).toContain("<html");
     expect(html).toContain("</html>");
+  });
+
+  // VS-9: enriched chip renders hostname and enriched URL as a link
+  it("VS-9: renders source chip with enriched hostname and enriched URL", async () => {
+    const html = await renderNewsletter(baseProps);
+    // story[0] has sourceLabel="theverge.com", sourceUrl="https://theverge.com/x", readVerb="Read on theverge.com"
+    expect(html).toContain("theverge.com");
+    expect(html).toContain("https://theverge.com/x");
+    expect(html).toContain("Read on theverge.com");
+  });
+
+  // VS-10: native chip renders platform label and item.url as a link
+  it("VS-10: renders source chip with platform label and item URL", async () => {
+    const html = await renderNewsletter(baseProps);
+    // story[1] has sourceLabel="Hacker News", sourceUrl="https://news.ycombinator.com/item?id=1", readVerb="Read source"
+    expect(html).toContain("Hacker News");
+    expect(html).toContain("https://news.ycombinator.com/item?id=1");
+    expect(html).toContain("Read source");
   });
 });

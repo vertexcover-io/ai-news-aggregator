@@ -54,6 +54,7 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
         content: "Full article body text here",
         imageUrl: null,
         recap: null,
+        enrichedSource: null,
       },
     ]);
   });

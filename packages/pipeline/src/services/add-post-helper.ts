@@ -1,5 +1,6 @@
 import type { RawItemInsert } from "@newsletter/shared/db";
 import type { RankedItem } from "@newsletter/shared";
+import { pickCandidateContent } from "@pipeline/services/candidate-loader.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type {
   RawItemsRepo,
@@ -64,6 +65,7 @@ function toRankedItem(row: RawItemRow, score: number): RankedItem {
     content: row.content,
     imageUrl: row.imageUrl,
     recap: row.metadata.recap ?? null,
+    enrichedSource: null,
   };
 }
 
@@ -123,7 +125,7 @@ export async function hydrateAddedPost(
       sourceType: saved.sourceType,
       author: saved.author,
       publishedAt: saved.publishedAt,
-      content: saved.content,
+      content: pickCandidateContent(saved.content, saved.metadata),
     },
     recapOptions,
   );

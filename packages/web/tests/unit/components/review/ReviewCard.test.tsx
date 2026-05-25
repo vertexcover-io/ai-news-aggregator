@@ -32,6 +32,7 @@ const baseItem: RankedItem = {
   content: null,
   imageUrl: null,
   recap: null,
+  enrichedSource: null,
 };
 
 afterEach(() => {
