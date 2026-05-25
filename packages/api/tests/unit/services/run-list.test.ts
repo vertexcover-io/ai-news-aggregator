@@ -323,6 +323,73 @@ describe("listRuns", () => {
     expect(result[0].costBreakdown).toBeNull();
   });
 
+  it("REQ-011: archive rows carry issueDate = publishedAt-effective date in the timezone", async () => {
+    const archiveRows: RunArchiveRow[] = [
+      {
+        id: "published",
+        status: "completed",
+        rankedItems: [],
+        topN: 10,
+        reviewed: true,
+        completedAt: new Date("2026-05-25T23:30:00.000Z"),
+        publishedAt: new Date("2026-05-26T06:00:00.000Z"),
+        createdAt: new Date("2026-05-25T23:30:00.000Z"),
+        isDryRun: false,
+        costBreakdown: null,
+      } as unknown as RunArchiveRow,
+    ];
+    const result = await listRuns(10, {
+      redis: makeRedis(new Map()) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo(archiveRows),
+      timezone: "UTC",
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].runId).toBe("published");
+    expect(result[0].issueDate).toBe("2026-05-26");
+  });
+
+  it("REQ-011/EDGE-003: archive rows with publishedAt=null fall back to completedAt for issueDate", async () => {
+    const archiveRows: RunArchiveRow[] = [
+      {
+        id: "no-publish",
+        status: "completed",
+        rankedItems: [],
+        topN: 10,
+        reviewed: true,
+        completedAt: new Date("2026-04-10T12:00:00.000Z"),
+        publishedAt: null,
+        createdAt: new Date("2026-04-10T12:00:00.000Z"),
+        isDryRun: false,
+        costBreakdown: null,
+      } as unknown as RunArchiveRow,
+    ];
+    const result = await listRuns(10, {
+      redis: makeRedis(new Map()) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo(archiveRows),
+      timezone: "UTC",
+    });
+    expect(result[0].issueDate).toBe("2026-04-10");
+  });
+
+  it("REQ-011: redis-only running entries carry no issueDate", async () => {
+    const redisEntries = new Map<string, RedisEntry>([
+      [
+        "run:live2",
+        {
+          value: JSON.stringify(
+            runState({ id: "live2", startedAt: "2026-04-16T10:00:00.000Z" }),
+          ),
+        },
+      ],
+    ]);
+    const result = await listRuns(10, {
+      redis: makeRedis(redisEntries) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo([]),
+      timezone: "UTC",
+    });
+    expect(result[0].issueDate).toBeUndefined();
+  });
+
   it("REQ-051: redis-only running entries carry costBreakdown=null", async () => {
     const redisEntries = new Map<string, RedisEntry>([
       [

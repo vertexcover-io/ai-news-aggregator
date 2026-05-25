@@ -69,6 +69,7 @@ export const runArchives = pgTable("run_archives", {
   linkedinPostedAt: timestamp("linkedin_posted_at", { withTimezone: true }),
   twitterPostedAt: timestamp("twitter_posted_at", { withTimezone: true }),
   emailSentAt: timestamp("email_sent_at", { withTimezone: true }),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
   notificationState: jsonb("notification_state").$type<NotificationState | null>(),
   socialMetadata: jsonb("social_metadata").$type<SocialMetadata | null>(),
   costBreakdown: jsonb("cost_breakdown").$type<RunCostBreakdown | null>(),

@@ -53,4 +53,5 @@ export interface RunSummary {
   reviewed: boolean;
   isDryRun: boolean;
   costBreakdown: RunCostBreakdown | null;
+  issueDate?: string;
 }

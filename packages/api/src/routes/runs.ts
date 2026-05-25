@@ -5,6 +5,7 @@ import {
   createLogger,
   createRedisConnection,
   getDb as defaultGetDb,
+  safeTimezone,
   startRun,
   runKey,
 } from "@newsletter/shared";
@@ -151,9 +152,12 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     if (!archiveRepo) {
       return c.json({ error: "archive repository not configured" }, 500);
     }
+    const settings = await deps.getSettingsRepo?.().get();
+    const timezone = safeTimezone(settings?.scheduleTimezone);
     const runsList = await listRuns(limit, {
       redis: deps.redis,
       archiveRepo,
+      timezone,
     });
     return c.json({ runs: runsList });
   });

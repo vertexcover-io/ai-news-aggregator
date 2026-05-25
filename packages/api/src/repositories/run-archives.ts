@@ -33,6 +33,7 @@ export interface RunArchiveRow {
   topN: number;
   reviewed: boolean;
   completedAt: Date;
+  publishedAt: Date | null;
   createdAt: Date;
   startedAt: Date | null;
   sourceTypes: SourceType[] | null;
@@ -191,6 +192,7 @@ export function createRunArchivesRepo(
           topN: runArchives.topN,
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
+          publishedAt: runArchives.publishedAt,
           createdAt: runArchives.createdAt,
           startedAt: runArchives.startedAt,
           sourceTypes: runArchives.sourceTypes,
@@ -310,6 +312,7 @@ export function createRunArchivesRepo(
           topN: runArchives.topN,
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
+          publishedAt: runArchives.publishedAt,
           createdAt: runArchives.createdAt,
           startedAt: runArchives.startedAt,
           sourceTypes: runArchives.sourceTypes,
@@ -343,6 +346,7 @@ export function createRunArchivesRepo(
         .select({
           runId: runArchives.id,
           completedAt: runArchives.completedAt,
+          publishedAt: runArchives.publishedAt,
           rankedItems: runArchives.rankedItems,
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
@@ -350,7 +354,9 @@ export function createRunArchivesRepo(
         })
         .from(runArchives)
         .where(and(eq(runArchives.reviewed, true), eq(runArchives.isDryRun, false)))
-        .orderBy(desc(runArchives.completedAt));
+        .orderBy(
+          sql`coalesce(${runArchives.publishedAt}, ${runArchives.completedAt}) desc`,
+        );
 
       const rows =
         deps.limit !== undefined ? await baseQuery.limit(deps.limit) : await baseQuery;
@@ -376,6 +382,7 @@ export function createRunArchivesRepo(
           .select({
             runId: runArchives.id,
             completedAt: runArchives.completedAt,
+            publishedAt: runArchives.publishedAt,
             rankedItems: runArchives.rankedItems,
             digestHeadline: runArchives.digestHeadline,
             digestSummary: runArchives.digestSummary,
@@ -383,7 +390,9 @@ export function createRunArchivesRepo(
           })
           .from(runArchives)
           .where(where)
-          .orderBy(desc(runArchives.completedAt))
+          .orderBy(
+            sql`coalesce(${runArchives.publishedAt}, ${runArchives.completedAt}) desc`,
+          )
           .limit(cappedLimit);
 
         const [countRow] = await db
@@ -401,19 +410,20 @@ export function createRunArchivesRepo(
       const matchedRows = await db.execute<{
         id: string;
         completed_at: Date | string;
+        published_at: Date | string | null;
         ranked_items: RankedItemRef[];
         digest_headline: string | null;
         digest_summary: string | null;
         is_dry_run: boolean;
       }>(sql`
-        SELECT id, completed_at, ranked_items, digest_headline, digest_summary, is_dry_run,
+        SELECT id, completed_at, published_at, ranked_items, digest_headline, digest_summary, is_dry_run,
                ts_rank_cd(search_tsv, ${tsq}) AS rank
         FROM run_archives
         WHERE reviewed = true
           AND is_dry_run = false
           AND completed_at BETWEEN ${fromIso}::timestamptz AND ${toIso}::timestamptz
           AND search_tsv @@ ${tsq}
-        ORDER BY rank DESC, completed_at DESC
+        ORDER BY rank DESC, coalesce(published_at, completed_at) DESC
         LIMIT ${cappedLimit}
       `);
 
@@ -430,6 +440,12 @@ export function createRunArchivesRepo(
         runId: r.id,
         completedAt:
           r.completed_at instanceof Date ? r.completed_at : new Date(r.completed_at),
+        publishedAt:
+          r.published_at === null
+            ? null
+            : r.published_at instanceof Date
+              ? r.published_at
+              : new Date(r.published_at),
         rankedItems: Array.isArray(r.ranked_items) ? r.ranked_items : [],
         digestHeadline: r.digest_headline,
         digestSummary: r.digest_summary,
@@ -448,6 +464,7 @@ export function createRunArchivesRepo(
           topN: runArchives.topN,
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
+          publishedAt: runArchives.publishedAt,
           createdAt: runArchives.createdAt,
           startedAt: runArchives.startedAt,
           sourceTypes: runArchives.sourceTypes,
@@ -497,6 +514,7 @@ export function createRunArchivesRepo(
           topN: runArchives.topN,
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
+          publishedAt: runArchives.publishedAt,
           createdAt: runArchives.createdAt,
           startedAt: runArchives.startedAt,
           sourceTypes: runArchives.sourceTypes,
@@ -739,6 +757,7 @@ export function createRunArchivesRepo(
 interface ArchiveListSourceRow {
   runId: string;
   completedAt: Date;
+  publishedAt: Date | null;
   rankedItems: RankedItemRef[];
   digestHeadline: string | null;
   digestSummary: string | null;
@@ -752,6 +771,7 @@ export async function hydrateAsArchiveListItem(
   const source: ArchiveListSourceRow = {
     runId: row.id,
     completedAt: row.completedAt,
+    publishedAt: row.publishedAt,
     rankedItems: row.rankedItems,
     digestHeadline: row.digestHeadline,
     digestSummary: row.digestSummary,
@@ -785,7 +805,7 @@ function toArchiveListItem(
 ): ArchiveListItem {
   return {
     runId: r.runId,
-    runDate: formatDateInTimezone(r.completedAt, timezone),
+    runDate: formatDateInTimezone(r.publishedAt ?? r.completedAt, timezone),
     storyCount: Array.isArray(r.rankedItems) ? r.rankedItems.length : 0,
     topItems: buildTopItems(r.rankedItems, byId),
     leadSummary: computeLeadSummary(r.rankedItems, byId),

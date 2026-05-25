@@ -1,11 +1,12 @@
 import type IORedis from "ioredis";
 import type { RunState, RunSummary } from "@newsletter/shared";
-import { parseRunCostBreakdown } from "@newsletter/shared";
+import { formatDateInTimezone, parseRunCostBreakdown } from "@newsletter/shared";
 import type { RunArchivesRepo } from "@api/repositories/run-archives.js";
 
 export interface RunListDeps {
   redis: Pick<IORedis, "scanStream" | "get" | "mget">;
   archiveRepo: RunArchivesRepo;
+  timezone?: string;
 }
 
 async function scanRunKeys(
@@ -72,6 +73,10 @@ export async function listRuns(
       reviewed: row.reviewed,
       isDryRun: row.isDryRun,
       costBreakdown,
+      issueDate: formatDateInTimezone(
+        row.publishedAt ?? row.completedAt,
+        deps.timezone,
+      ),
     };
   });
 

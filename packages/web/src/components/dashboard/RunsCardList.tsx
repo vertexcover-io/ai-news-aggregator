@@ -88,6 +88,19 @@ function formatStartedAt(value: string): { date: string; time: string } {
   };
 }
 
+function formatIssueDate(value?: string): string {
+  if (value === undefined) return "";
+  const iso = value.includes("T") ? value : `${value}T00:00:00Z`;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 function RunCardActions({
   run,
   derived,
@@ -291,6 +304,7 @@ export function RunsCardList({
         {runs.map((run) => {
           const derived = deriveStatus(run);
           const { date, time } = formatStartedAt(run.startedAt);
+          const publishDate = formatIssueDate(run.issueDate);
           return (
             <li
               key={run.runId}
@@ -318,6 +332,15 @@ export function RunsCardList({
                     <span className="ml-1 text-xs text-muted-foreground">{time}</span>
                   ) : null}
                 </span>
+
+                {publishDate ? (
+                  <>
+                    <span className="text-muted-foreground font-medium">
+                      Publish date
+                    </span>
+                    <span className="font-medium">{publishDate}</span>
+                  </>
+                ) : null}
 
                 <span className="text-muted-foreground font-medium">Posts</span>
                 <span className="text-muted-foreground">

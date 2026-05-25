@@ -22,6 +22,67 @@ function makeRun(overrides: Partial<RunSummary>): RunSummary {
   };
 }
 
+describe("RunsTable publish date (REQ-011)", () => {
+  it("REQ-011: renders the effective publish date from issueDate in the row", () => {
+    render(
+      <MemoryRouter>
+        <RunsTable
+          runs={[
+            makeRun({
+              runId: "run-pub",
+              status: "completed",
+              reviewed: true,
+              issueDate: "2026-05-26",
+            }),
+          ]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("May 26, 2026")).toBeTruthy();
+  });
+
+  it("REQ-011: exposes a 'Publish date' column header", () => {
+    render(
+      <MemoryRouter>
+        <RunsTable
+          runs={[makeRun({ runId: "run-1", status: "completed", reviewed: true })]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Publish date")).toBeTruthy();
+  });
+
+  it("REQ-011/EDGE-003: renders an em-dash placeholder when issueDate is undefined", () => {
+    render(
+      <MemoryRouter>
+        <RunsTable
+          runs={[
+            makeRun({
+              runId: "run-old",
+              status: "completed",
+              reviewed: true,
+              issueDate: undefined,
+            }),
+          ]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("publish-date-cell").textContent).toBe("—");
+  });
+});
+
 describe("RunsTable running state (REQ-001..REQ-005)", () => {
   it("REQ-001: running row renders Cancel button, not Open button (REQ-11)", () => {
     render(
