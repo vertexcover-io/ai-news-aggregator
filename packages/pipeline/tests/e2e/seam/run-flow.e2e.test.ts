@@ -23,8 +23,10 @@ import {
 } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import { Queue, QueueEvents, Worker } from "bullmq";
-import { rawItems } from "@newsletter/shared/db";
+import { eq, sql } from "drizzle-orm";
+import { rawItems, runArchives, runLogs } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { CollectorResult, RunState } from "@newsletter/shared/types";
 import {
@@ -39,6 +41,7 @@ import { createRunStateService } from "@pipeline/services/run-state.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { createCandidatesRepo } from "@pipeline/repositories/candidates.js";
 import { createRunArchivesRepo } from "@pipeline/repositories/run-archives.js";
+import { createRunLogRepo } from "@pipeline/repositories/run-logs.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import {
   getTestRedis,
@@ -228,6 +231,7 @@ describe("run flow end-to-end (single-job)", () => {
             rawItemsRepo: createRawItemsRepo(db),
             candidatesRepo: createCandidatesRepo(db),
             archiveRepo: createRunArchivesRepo(db),
+            runLogRepo: createRunLogRepo(db),
             loadFn: loadCandidatesSince,
             shortlistFn: (candidates) =>
               Promise.resolve({ shortlist: candidates, breakdowns: [] }),
@@ -252,6 +256,8 @@ describe("run flow end-to-end (single-job)", () => {
     rankFnImpl = defaultRankFn;
     scenario = { hnMode: "seed", redditMode: "seed" };
     await truncateAll();
+    await db.execute(sql`TRUNCATE TABLE run_archives RESTART IDENTITY CASCADE`);
+    await db.execute(sql`TRUNCATE TABLE run_logs RESTART IDENTITY CASCADE`);
     await processQueue.obliterate({ force: true });
     const connection = getTestRedis();
     const keys = await connection.keys("run:run-flow-e2e-*");
@@ -409,6 +415,83 @@ describe("run flow end-to-end (single-job)", () => {
       const [candidatesArg] = rankSpy.mock.calls[0];
       // 3 HN raw_items but two collapse via canonical URL → 2 deduped candidates.
       expect(candidatesArg.length).toBe(2);
+    },
+  );
+
+  // REQ-015 / REQ-010: a processed run persists run_archives.run_funnel with the
+  // four counts AND writes run_logs rows for the run.
+  it(
+    "REQ-015/REQ-010: persists run_funnel and run_logs for a completed run",
+    { timeout: 60000 },
+    async () => {
+      const runId = randomUUID();
+      await seedRunState(runId, 3);
+
+      await processQueue.add(
+        "run-process",
+        {
+          runId,
+          topN: 3,
+          sourceTypes: ["hn", "reddit"],
+          collectors: {
+            hn: { sinceDays: 1 },
+            reddit: { subreddits: ["LocalLLaMA"], sinceDays: 1 },
+          },
+        },
+        { jobId: runId },
+      );
+
+      const connection = getTestRedis();
+      const runStateService = createRunStateService(connection);
+      const final = await pollUntilTerminal(
+        () => runStateService.get(runId),
+        45000,
+      );
+      expect(final.status).toBe("completed");
+
+      // run_archives.run_funnel populated with the four counts (REQ-015).
+      // Collected: 3 HN + 1 reddit = 4 itemsStored; deduped: HN dup collapses
+      // → 3 survivors; passthrough shortlist → 3; ranked topN=3 → 3.
+      const archiveRows = await db
+        .select({ runFunnel: runArchives.runFunnel, status: runArchives.status })
+        .from(runArchives)
+        .where(eq(runArchives.id, runId));
+      expect(archiveRows).toHaveLength(1);
+      expect(archiveRows[0].status).toBe("completed");
+      expect(archiveRows[0].runFunnel).toEqual({
+        collected: 4,
+        deduped: 3,
+        shortlisted: 3,
+        ranked: 3,
+      });
+
+      // run_logs rows exist for the run (REQ-010) ordered by id ascending.
+      const logRows = await db
+        .select({
+          id: runLogs.id,
+          event: runLogs.event,
+          level: runLogs.level,
+          stage: runLogs.stage,
+        })
+        .from(runLogs)
+        .where(eq(runLogs.runId, runId))
+        .orderBy(runLogs.id);
+      expect(logRows.length).toBeGreaterThan(0);
+      const events = logRows.map((r) => r.event);
+      expect(events).toContain("run.started");
+      expect(events).toContain("source.completed");
+      expect(events).toContain("stage.result");
+      expect(events).toContain("enrichment.summary");
+      expect(events).toContain("run.completed");
+      // Three stage.result rows (dedup, shortlist, rank).
+      expect(events.filter((e) => e === "stage.result")).toHaveLength(3);
+      // Two source.completed rows (hn + reddit) — EDGE-006.
+      expect(events.filter((e) => e === "source.completed")).toHaveLength(2);
+      // Monotonically non-decreasing ids (REQ-026).
+      const ids = logRows.map((r) => r.id);
+      expect([...ids].sort((a, b) => a - b)).toEqual(ids);
+
+      await connection.del(`run:${runId}`);
     },
   );
 });

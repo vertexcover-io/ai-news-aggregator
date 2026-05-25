@@ -337,6 +337,14 @@ export function RunsCardList({
                   costBreakdown={run.costBreakdown}
                   onClick={() => { setCostRun(run); }}
                 />
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="min-h-[44px] px-3"
+                >
+                  <Link to={`/admin/runs/${run.runId}`}>Details</Link>
+                </Button>
                 {canViewSources(run) ? (
                   <Button
                     asChild

@@ -1,10 +1,14 @@
 import { desc } from "drizzle-orm";
-import { boolean, index, integer, jsonb, pgTable, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigserial, boolean, index, integer, jsonb, pgTable, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type {
   NotificationState,
   RawItemEngagement,
   RawItemMetadata,
   RankedItemRef,
+  RunFunnel,
+  RunLogContext,
+  RunLogEvent,
+  RunLogLevel,
   RunSourceTelemetry,
   RunSubmitHnConfig,
   RunSubmitRedditConfig,
@@ -68,7 +72,27 @@ export const runArchives = pgTable("run_archives", {
   notificationState: jsonb("notification_state").$type<NotificationState | null>(),
   socialMetadata: jsonb("social_metadata").$type<SocialMetadata | null>(),
   costBreakdown: jsonb("cost_breakdown").$type<RunCostBreakdown | null>(),
+  runFunnel: jsonb("run_funnel").$type<RunFunnel | null>(),
 });
+
+export const runLogs = pgTable(
+  "run_logs",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    runId: uuid("run_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    level: text("level").$type<RunLogLevel>().notNull(),
+    stage: text("stage").notNull(),
+    source: text("source"),
+    event: text("event").$type<RunLogEvent>().notNull(),
+    message: text("message").notNull(),
+    context: jsonb("context").$type<RunLogContext | null>(),
+  },
+  (t) => [index("run_logs_run_id_id_idx").on(t.runId, t.id)],
+);
+
+export type RunLogRow = typeof runLogs.$inferSelect;
+export type RunLogInsertRow = typeof runLogs.$inferInsert;
 
 export const socialTokens = pgTable("social_tokens", {
   platform: text("platform").primaryKey().$type<"linkedin" | "twitter">(),

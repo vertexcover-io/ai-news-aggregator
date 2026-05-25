@@ -61,6 +61,7 @@ describe("run-archives repository", () => {
       sourceTelemetry: null,
       searchText: null,
       isDryRun: false,
+      runFunnel: null,
     });
     expect(mockOnConflictDoUpdate).toHaveBeenCalledOnce();
   });

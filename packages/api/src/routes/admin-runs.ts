@@ -6,7 +6,7 @@ import {
   createRedisConnection,
   getDb as defaultGetDb,
 } from "@newsletter/shared";
-import type { RunSourcesResponse } from "@newsletter/shared";
+import type { RunObservability, RunSourcesResponse } from "@newsletter/shared";
 import {
   createRawItemsRepo,
   type RawItemsRepo,
@@ -15,6 +15,11 @@ import {
   createRunArchivesRepo,
   type RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
+import {
+  createRunLogRepo,
+  type RunLogRepo,
+} from "@api/repositories/run-logs.js";
+import { buildRunObservability } from "@api/services/run-observability.js";
 import { NotFoundError } from "@api/lib/errors.js";
 
 const UUID_RE =
@@ -25,6 +30,7 @@ export interface AdminRunsRouterDeps {
   redis: IORedis;
   getRawItemsRepo: () => RawItemsRepo;
   getArchiveRepo: () => RunArchivesRepo;
+  getRunLogRepo: () => RunLogRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -54,6 +60,27 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
     }
   });
 
+  app.get("/:runId/observability", async (c) => {
+    const parsed = runIdSchema.safeParse(c.req.param("runId"));
+    if (!parsed.success) {
+      return c.json({ error: "invalid runId" }, 400);
+    }
+    try {
+      const body: RunObservability = await buildRunObservability(parsed.data, {
+        redis: deps.redis,
+        archiveRepo: deps.getArchiveRepo(),
+        runLogRepo: deps.getRunLogRepo(),
+      });
+      return c.json(body);
+    } catch (err) {
+      if (err instanceof NotFoundError) {
+        return c.json({ error: "Run not found" }, 404);
+      }
+      logger.error({ err, runId: parsed.data }, "admin-runs.observability.failed");
+      throw err;
+    }
+  });
+
   return app;
 }
 
@@ -62,5 +89,6 @@ export function createDefaultAdminRunsRouter(): Hono {
     redis: createRedisConnection(),
     getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
     getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
+    getRunLogRepo: () => createRunLogRepo(defaultGetDb()),
   });
 }

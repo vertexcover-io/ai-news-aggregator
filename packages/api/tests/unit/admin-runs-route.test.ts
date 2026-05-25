@@ -65,6 +65,7 @@ function makeApp(opts: {
     redis: makeRedis(),
     getRawItemsRepo: () => opts.repo,
     getArchiveRepo: () => makeArchiveRepo(null),
+    getRunLogRepo: () => ({ listForRun: vi.fn(() => Promise.resolve([])) }),
   });
   app.route("/api/admin/runs", router);
   return app;
