@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TodaysIssueBlock — Concept C, simplified</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --paper:#fafaf7; --ink:#14110d; --rust:#8c3a1e; --muted:#6b6557; --hair:#e7e2d6;
+    --serif:"Newsreader",Georgia,serif; --mono:"Geist Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--serif);-webkit-font-smoothing:antialiased;}
+  .frame{max-width:980px;margin:0 auto;padding:0 80px;}
+  .rule-strong{border:0;border-top:2px solid var(--ink);margin:0;}
+  .rule-hair{border:0;border-top:1px solid var(--hair);margin:0;}
+
+  a.todays{display:block;text-decoration:none;color:inherit;padding:56px 0;}
+
+  .eyebrow{
+    font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--rust);
+    margin-bottom:24px;
+  }
+  .eyebrow .sep{color:var(--ink);opacity:.4;margin:0 6px;}
+
+  h2{
+    font-family:var(--serif);font-weight:500;font-size:clamp(34px,4.6vw,54px);line-height:1.04;letter-spacing:-.016em;
+    color:var(--ink);margin:0 0 22px;max-width:20ch;transition:color .25s ease;
+  }
+  a.todays:hover h2{color:var(--rust);}
+
+  .dek{
+    font-family:var(--serif);font-style:italic;font-size:20px;line-height:1.5;color:var(--muted);
+    margin:0 0 36px;max-width:56ch;
+  }
+
+  ol.running{list-style:none;margin:0 0 28px;padding:0;counter-reset:n;border-top:1px solid var(--hair);}
+  ol.running li{
+    display:grid;grid-template-columns:28px 1fr auto;align-items:baseline;gap:18px;
+    padding:14px 0;border-bottom:1px solid var(--hair);counter-increment:n;
+  }
+  ol.running li .num{font-family:var(--mono);font-size:12px;color:var(--rust);}
+  ol.running li .num::before{content:counter(n,decimal-leading-zero);}
+  ol.running li .title{font-family:var(--serif);font-size:21px;line-height:1.25;color:var(--ink);transition:color .2s ease;}
+  ol.running li .src{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);white-space:nowrap;}
+  a.todays:hover ol.running li .title{color:var(--ink);}
+
+  .readmore{
+    display:inline-flex;align-items:center;gap:10px;
+    font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--rust);font-weight:500;
+  }
+  .readmore .arrow{transition:transform .25s ease;}
+  a.todays:hover .readmore .arrow{transform:translateX(6px);}
+</style>
+</head>
+<body>
+  <div class="frame">
+    <hr class="rule-strong" />
+    <a class="todays" href="#">
+      <div class="eyebrow">Today&rsquo;s Issue <span class="sep">·</span> Monday, May 25</div>
+      <h2>Agents learn to recover from their own mistakes</h2>
+      <p class="dek">A week of self-healing loops, cheaper context windows, and the quiet death of the &ldquo;prompt engineer&rdquo; job title.</p>
+      <ol class="running">
+        <li><span class="num"></span><span class="title">Claude Code ships first-class sub-agents</span><span class="src">Hacker News</span></li>
+        <li><span class="num"></span><span class="title">The case against RAG, revisited</span><span class="src">Reddit</span></li>
+        <li><span class="num"></span><span class="title">Cursor closes a $9B round at a fresh valuation</span><span class="src">X</span></li>
+      </ol>
+      <span class="readmore">+ 4 more inside <span class="arrow">&rarr;</span></span>
+    </a>
+    <hr class="rule-hair" />
+  </div>
+</body>
+</html>
