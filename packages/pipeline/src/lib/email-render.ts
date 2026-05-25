@@ -49,7 +49,6 @@ const MOBILE_STYLES = `
   .hero-dek { font-size: 16px !important; line-height: 1.45 !important; }
   .date-eyebrow { font-size: 10px !important; letter-spacing: 0.18em !important; }
   .meta-line { font-size: 9.5px !important; letter-spacing: 0.16em !important; }
-  .src-eyebrow { font-size: 9.5px !important; letter-spacing: 0.18em !important; }
   .story-title { font-size: 21px !important; line-height: 1.22 !important; }
   .story-lede { font-size: 15.5px !important; line-height: 1.5 !important; }
   .story-bullet { font-size: 14.5px !important; line-height: 1.5 !important; }
@@ -95,11 +94,6 @@ const eyebrowStyle: React.CSSProperties = {
   textTransform: "uppercase",
   color: COLORS.rust,
   margin: "0 0 14px",
-};
-
-const sourceEyebrowStyle: React.CSSProperties = {
-  ...eyebrowStyle,
-  margin: "0 0 12px",
 };
 
 const titleLinkStyle: React.CSSProperties = {
@@ -168,11 +162,6 @@ function StoryBlock({
 }): React.ReactElement {
   const sourceLabel = sourceLabelFor(story.url);
   const children: React.ReactNode[] = [
-    React.createElement(
-      Text,
-      { key: "src", className: "src-eyebrow", style: sourceEyebrowStyle },
-      sourceLabel,
-    ),
     React.createElement(
       Link,
       {

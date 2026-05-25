@@ -82,6 +82,30 @@ describe("renderNewsletter (editorial layout)", () => {
     expect(idxStory3).toBeGreaterThan(idxRibbon);
   });
 
+  it("renders a divider before every story after the first", async () => {
+    const many: NewsletterStory[] = Array.from({ length: 4 }, (_, i) => ({
+      title: `Story ${i + 1}`,
+      url: `https://example.com/${i + 1}`,
+    }));
+    const html = await renderNewsletter({ ...baseProps, stories: many });
+    const dividerCount = (html.match(/\bstory-divider\b/g) ?? []).length;
+    expect(dividerCount).toBe(many.length - 1);
+  });
+
+  it("keeps a divider before the story that follows the archive ribbon", async () => {
+    const many: NewsletterStory[] = Array.from({ length: 4 }, (_, i) => ({
+      title: `Story ${i + 1}`,
+      url: `https://example.com/${i + 1}`,
+    }));
+    const html = await renderNewsletter({ ...baseProps, stories: many });
+    const idxRibbon = html.indexOf("READING THE ARCHIVE");
+    const idxDividerAfterRibbon = html.indexOf("story-divider", idxRibbon);
+    const idxStory3 = html.indexOf("Story 3");
+    expect(idxRibbon).toBeGreaterThan(0);
+    expect(idxDividerAfterRibbon).toBeGreaterThan(idxRibbon);
+    expect(idxStory3).toBeGreaterThan(idxDividerAfterRibbon);
+  });
+
   it("renders the ribbon even when there are exactly 2 stories (fallback: after last)", async () => {
     // baseProps already has 2 stories. Ribbon should still appear so users
     // see the archive CTA even on tiny digests.
@@ -143,10 +167,12 @@ describe("renderNewsletter (editorial layout)", () => {
     expect(html.toUpperCase()).toContain("UNPACKED");
   });
 
-  it("renders the source name in the per-story eyebrow without an N° prefix", async () => {
-    // We don't have explicit source metadata in NewsletterStory yet — the
-    // editorial design uses just the source/host. For now, ensure the title
-    // links to the source URL (the host serves as the implicit source).
+  it("does not render source-domain eyebrows above story titles", async () => {
+    const html = await renderNewsletter(baseProps);
+    expect(html).not.toMatch(/class="[^"]*\bsrc-eyebrow\b[^"]*"/);
+  });
+
+  it("keeps story titles linked to their source URLs", async () => {
     const html = await renderNewsletter(baseProps);
     expect(html).toContain("https://openai.com/gpt5");
     expect(html).toContain("https://google.com/gemini");
@@ -213,7 +239,6 @@ describe("renderNewsletter (mobile responsiveness)", () => {
       "story-title",
       "story-lede",
       "story-bullet",
-      "src-eyebrow",
       "meta-line",
       "date-eyebrow",
       "ribbon-eyebrow",
@@ -276,4 +301,3 @@ describe("renderNewsletter (mobile responsiveness)", () => {
     expect(html).toMatch(/Open archive[\s\S]{0,200}white-space:\s*nowrap|white-space:\s*nowrap[\s\S]{0,400}Open archive/i);
   });
 });
-
