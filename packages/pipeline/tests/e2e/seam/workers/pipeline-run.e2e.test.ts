@@ -5,9 +5,9 @@ import { randomUUID } from "node:crypto";
 import { Queue, Worker, type Job } from "bullmq";
 import { userSettings } from "@newsletter/shared/db";
 import {
-  DAILY_RUN_SCHEDULER_KEY,
+  PIPELINE_RUN_SCHEDULER_KEY,
   SOCIAL_HEALTH_SCHEDULER_KEY,
-  reconcileDailyRunSchedule,
+  reconcilePipelineSchedule,
 } from "../../../../../api/src/services/scheduler.js";
 import { handleDailyRunJob, type DailyRunJobLike } from "@pipeline/workers/daily-run.js";
 import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
@@ -118,10 +118,13 @@ async function seedUserSettings(db: AppDb): Promise<void> {
     linkedinEnabled: false,
     twitterPostEnabled: false,
     autoReview: false,
+    rankingPrompt: "test ranking prompt",
+    shortlistSize: 1,
+    shortlistPrompt: "test shortlist prompt",
   });
 }
 
-describe("daily-run worker scheduler e2e", () => {
+describe("pipeline-run worker scheduler e2e", () => {
   let db: AppDb;
   let dailyQueue: Queue;
   let runQueue: Queue<RunProcessJobPayload>;
@@ -135,7 +138,7 @@ describe("daily-run worker scheduler e2e", () => {
   });
 
   beforeEach(async () => {
-    queueName = `daily-run-e2e-${randomUUID()}`;
+    queueName = `pipeline-run-e2e-${randomUUID()}`;
     runQueueName = `run-process-e2e-${randomUUID()}`;
     createdRunIds = [];
     const connection = getTestRedis();
@@ -159,7 +162,7 @@ describe("daily-run worker scheduler e2e", () => {
 
   afterEach(async () => {
     await worker.close();
-    await dailyQueue.removeJobScheduler(DAILY_RUN_SCHEDULER_KEY);
+    await dailyQueue.removeJobScheduler(PIPELINE_RUN_SCHEDULER_KEY);
     await dailyQueue.removeJobScheduler(SOCIAL_HEALTH_SCHEDULER_KEY);
     await dailyQueue.obliterate({ force: true });
     await runQueue.obliterate({ force: true });
@@ -173,12 +176,12 @@ describe("daily-run worker scheduler e2e", () => {
     await closeTestRedis();
   });
 
-  it("REQ-WK-5 handles a scheduled daily-run job within 5 seconds and enqueues one run-process job", async () => {
+  it("REQ-WK-5 handles a scheduled pipeline-run job within 5 seconds and enqueues one run-process job", async () => {
     await seedUserSettings(db);
     await dailyQueue.upsertJobScheduler(
-      DAILY_RUN_SCHEDULER_KEY,
+      PIPELINE_RUN_SCHEDULER_KEY,
       { every: 1000 },
-      { name: "daily-run", data: {} },
+      { name: "pipeline-run", data: {} },
     );
 
     const payload = await waitForRunProcessJob(runQueue, 5000);
@@ -195,14 +198,14 @@ describe("daily-run worker scheduler e2e", () => {
     });
   });
 
-  it("REQ-WK-6 removes the daily-run scheduler when scheduling is disabled", async () => {
+  it("REQ-WK-6 removes the pipeline-run scheduler when scheduling is disabled", async () => {
     await dailyQueue.upsertJobScheduler(
-      DAILY_RUN_SCHEDULER_KEY,
+      PIPELINE_RUN_SCHEDULER_KEY,
       { every: 1000 },
-      { name: "daily-run", data: {} },
+      { name: "pipeline-run", data: {} },
     );
 
-    await reconcileDailyRunSchedule(dailyQueue, makeScheduleSettings(false));
+    await reconcilePipelineSchedule(dailyQueue, makeScheduleSettings(false));
 
     const schedulers = await dailyQueue.getJobSchedulers();
     expect(schedulers).toEqual([]);

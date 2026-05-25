@@ -173,10 +173,10 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
     expect(result).toEqual({ rankedCount: 5 });
   });
 
-  it("routes job.name === 'daily-run' to handleDailyRunJob", async () => {
+  it("routes job.name === 'pipeline-run' to handleDailyRunJob", async () => {
     mockHandleDailyRunJob.mockResolvedValue(undefined);
     const worker = makeWorker();
-    const job = { name: "daily-run", id: "j2", data: {} };
+    const job = { name: "pipeline-run", id: "j2", data: {} };
     await worker.handler(job);
     expect(mockHandleDailyRunJob).toHaveBeenCalledOnce();
     expect(mockHandleRunProcessJob).not.toHaveBeenCalled();

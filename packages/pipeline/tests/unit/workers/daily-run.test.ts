@@ -73,14 +73,14 @@ interface JobLike {
   data: Record<string, unknown>;
 }
 
-const baseJob: JobLike = { name: "daily-run", id: "job-1", data: {} };
+const baseJob: JobLike = { name: "pipeline-run", id: "job-1", data: {} };
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
 describe("createDailyRunWorker", () => {
-  it("calls startRun with settings when a daily-run job fires and sources are enabled", async () => {
+  it("calls startRun with settings when a pipeline-run job fires and sources are enabled", async () => {
     const settings = makeSettings();
     const userSettingsRepo = { get: vi.fn(() => Promise.resolve(settings)) };
     mockStartRun.mockResolvedValueOnce({ runId: "new-run" });
@@ -119,7 +119,7 @@ describe("createDailyRunWorker", () => {
     expect(mockLoggerWarn).toHaveBeenCalled();
     const call = mockLoggerWarn.mock.calls.find((c) => {
       const msg = c[1] as string | undefined;
-      return typeof msg === "string" && msg.startsWith("daily-run skipped");
+      return typeof msg === "string" && msg.startsWith("pipeline-run skipped");
     });
     expect(call).toBeDefined();
   });
@@ -145,12 +145,12 @@ describe("createDailyRunWorker", () => {
     expect(mockLoggerWarn).toHaveBeenCalled();
     const call = mockLoggerWarn.mock.calls.find((c) => {
       const msg = c[1] as string | undefined;
-      return typeof msg === "string" && msg.startsWith("daily-run skipped");
+      return typeof msg === "string" && msg.startsWith("pipeline-run skipped");
     });
     expect(call).toBeDefined();
   });
 
-  it("noops when job.name is not 'daily-run'", async () => {
+  it("noops when job.name is not 'pipeline-run'", async () => {
     const userSettingsRepo = { get: vi.fn(() => Promise.resolve(makeSettings())) };
     const worker = createDailyRunWorker({
       userSettingsRepo,
@@ -159,6 +159,20 @@ describe("createDailyRunWorker", () => {
     });
 
     await worker.handler({ name: "run-process", id: "x", data: {} });
+
+    expect(userSettingsRepo.get).not.toHaveBeenCalled();
+    expect(mockStartRun).not.toHaveBeenCalled();
+  });
+
+  it("noops on the retired 'daily-run' job name", async () => {
+    const userSettingsRepo = { get: vi.fn(() => Promise.resolve(makeSettings())) };
+    const worker = createDailyRunWorker({
+      userSettingsRepo,
+      redis: { fake: "redis" } as never,
+      queue: { add: vi.fn() } as never,
+    });
+
+    await worker.handler({ name: "daily-run", id: "legacy", data: {} });
 
     expect(userSettingsRepo.get).not.toHaveBeenCalled();
     expect(mockStartRun).not.toHaveBeenCalled();

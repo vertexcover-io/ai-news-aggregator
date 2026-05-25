@@ -100,38 +100,3 @@ export {
   PIPELINE_RUN_SCHEDULER_KEY,
   TWITTER_POST_SCHEDULER_KEY,
 };
-
-export const DAILY_RUN_SCHEDULER_KEY = LEGACY_DAILY_RUN_SCHEDULER_KEY;
-
-type LegacyScheduleSettings = Omit<UserSettings, "pipelineTime" | "scheduleTime"> & {
-  readonly pipelineTime?: string;
-  readonly scheduleTime?: string;
-};
-
-export async function reconcileDailyRunSchedule(
-  queue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">,
-  settings: LegacyScheduleSettings,
-): Promise<void> {
-  const scheduleTime = settings.pipelineTime ?? settings.scheduleTime;
-  if (scheduleTime === undefined) {
-    throw new Error("pipelineTime or scheduleTime is required");
-  }
-  if (!settings.scheduleEnabled) {
-    await queue.removeJobScheduler(DAILY_RUN_SCHEDULER_KEY);
-    await queue.removeJobScheduler(SOCIAL_HEALTH_SCHEDULER_KEY);
-    return;
-  }
-  await queue.upsertJobScheduler(
-    DAILY_RUN_SCHEDULER_KEY,
-    { pattern: toCron(scheduleTime), tz: settings.scheduleTimezone },
-    { name: "daily-run", data: {} },
-  );
-  await queue.upsertJobScheduler(
-    SOCIAL_HEALTH_SCHEDULER_KEY,
-    {
-      pattern: toCronMinusMinutes(scheduleTime, SOCIAL_HEALTH_LEAD_MINUTES),
-      tz: settings.scheduleTimezone,
-    },
-    { name: "social-health", data: {} },
-  );
-}

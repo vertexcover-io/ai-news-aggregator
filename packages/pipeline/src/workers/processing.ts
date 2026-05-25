@@ -152,7 +152,6 @@ export function createProcessingWorker(
           };
           return handleRunProcessJob(runProcessDeps, typed);
         }
-        case "daily-run":
         case "pipeline-run": {
           const typed: DailyRunJobLike = {
             name: job.name,

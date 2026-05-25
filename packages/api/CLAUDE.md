@@ -19,7 +19,7 @@ Hono REST API for job enqueueing and email delivery.
 - `src/services/` — business logic invoked by routes:
   - `runs.ts` — seeds Redis run-state and enqueues the single run-process job
   - `rank-hydration.ts` — joins ranked IDs to `raw_items`
-  - `scheduler.ts` — `reconcileDailyRunSchedule()` calls BullMQ `upsertJobScheduler` to add/update/remove the daily-run repeatable job whenever settings change
+  - `scheduler.ts` — `reconcilePipelineSchedule()` calls BullMQ `upsertJobScheduler` to add/update/remove the `pipeline-run` repeatable job (plus the social-health and publish-window schedulers) whenever settings change; `removeLegacySchedulers()` deletes the retired `daily-run:default` scheduler key from Redis on startup
   - `review.ts` — `patchArchive()` and `addPostToArchive()` implement the curation mutations
 - `src/repositories/` — Drizzle wrappers including `user-settings.ts` (`get()` and `upsert()` for the singleton settings row)
 - `src/lib/` — package-private helpers (`validate.ts` is the zod request-schema layer; `flow.ts` is a legacy `FlowProducer` helper kept in place for rollback and no longer used by `runs.ts`)

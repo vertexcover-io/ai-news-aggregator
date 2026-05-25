@@ -38,20 +38,20 @@ export async function handleDailyRunJob(
   deps: DailyRunDeps,
   job: DailyRunJobLike,
 ): Promise<void> {
-  if (job.name !== "daily-run") return;
+  if (job.name !== "pipeline-run") return;
 
   const settings = await deps.userSettingsRepo.get();
   if (!settings) {
     logger.warn(
-      { event: "daily-run.skipped", reason: "no-settings", jobId: job.id },
-      "daily-run skipped: no-settings",
+      { event: "pipeline-run.skipped", reason: "no-settings", jobId: job.id },
+      "pipeline-run skipped: no-settings",
     );
     return;
   }
   if (!sourcesEnabled(settings)) {
     logger.warn(
-      { event: "daily-run.skipped", reason: "no-sources", jobId: job.id },
-      "daily-run skipped: no-sources",
+      { event: "pipeline-run.skipped", reason: "no-sources", jobId: job.id },
+      "pipeline-run skipped: no-sources",
     );
     return;
   }
@@ -61,8 +61,8 @@ export async function handleDailyRunJob(
     queue: deps.queue,
   });
   logger.info(
-    { event: "daily-run.started", jobId: job.id, runId },
-    "daily-run started",
+    { event: "pipeline-run.started", jobId: job.id, runId },
+    "pipeline-run started",
   );
 }
 

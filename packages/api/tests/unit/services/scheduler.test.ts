@@ -1,14 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import type { UserSettings } from "@newsletter/shared";
 import {
-  DAILY_RUN_SCHEDULER_KEY,
   EMAIL_SEND_SCHEDULER_KEY,
   LINKEDIN_POST_SCHEDULER_KEY,
   PIPELINE_RUN_SCHEDULER_KEY,
   SOCIAL_HEALTH_SCHEDULER_KEY,
   TWITTER_POST_SCHEDULER_KEY,
   reconcilePipelineSchedule,
-  reconcileDailyRunSchedule,
   toCronMinusMinutes,
   toCron,
 } from "@api/services/scheduler.js";
@@ -139,53 +137,7 @@ describe("reconcilePipelineSchedule", () => {
   });
 });
 
-describe("reconcileDailyRunSchedule", () => {
-  it("REQ-014/REQ-021: enabled -> upsertJobScheduler with correct pattern + tz", async () => {
-    const queue = makeQueue();
-    await reconcileDailyRunSchedule(queue, baseSettings());
-    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      DAILY_RUN_SCHEDULER_KEY,
-      { pattern: "30 9 * * *", tz: "America/New_York" },
-      { name: "daily-run", data: {} },
-    );
-    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      SOCIAL_HEALTH_SCHEDULER_KEY,
-      { pattern: "15 9 * * *", tz: "America/New_York" },
-      { name: "social-health", data: {} },
-    );
-    expect(queue.removeJobScheduler).not.toHaveBeenCalled();
-  });
-
-  it("REQ-022: disabled -> removeJobScheduler called", async () => {
-    const queue = makeQueue();
-    await reconcileDailyRunSchedule(
-      queue,
-      baseSettings({ scheduleEnabled: false }),
-    );
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(
-      DAILY_RUN_SCHEDULER_KEY,
-    );
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(
-      SOCIAL_HEALTH_SCHEDULER_KEY,
-    );
-    expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
-  });
-
-  it("REQ-020/REQ-021: enabled-then-disabled is idempotent", async () => {
-    const queue = makeQueue();
-    await reconcileDailyRunSchedule(queue, baseSettings());
-    await reconcileDailyRunSchedule(
-      queue,
-      baseSettings({ scheduleEnabled: false }),
-    );
-    await reconcileDailyRunSchedule(
-      queue,
-      baseSettings({ scheduleEnabled: false }),
-    );
-    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(2);
-    expect(queue.removeJobScheduler).toHaveBeenCalledTimes(4);
-  });
-
+describe("schedule timezone handling", () => {
   it("REQ-023/EDGE-002: DST — 09:30 America/New_York produces consistent local fire times across spring-forward", () => {
     // Spring-forward in US 2026 is on March 8. Verify that a cron "30 9 * * *"
     // interpreted in America/New_York fires at 09:30 local on both sides.
