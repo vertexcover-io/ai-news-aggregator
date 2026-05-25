@@ -18,13 +18,10 @@ function Hero(): ReactElement {
         <span className="text-[#8c3a1e] italic font-medium">agents.</span>
       </h1>
       <div className="mt-9 mx-auto font-mono text-[11px] tracking-[0.22em] uppercase text-[#14110d] max-w-[820px] leading-[2]">
-        AGENTIC&nbsp;CODING
-        <span className="text-[#8c3a1e] mx-2.5">·</span>
-        HARNESS&nbsp;ENGINEERING
-        <span className="text-[#8c3a1e] mx-2.5">·</span>
-        CONTEXT&nbsp;ENGINEERING
-        <span className="text-[#8c3a1e] mx-2.5">·</span>
-        THE&nbsp;SOFTWARE&nbsp;FACTORY
+        AGENTIC&nbsp;CODING{" "}
+        <span className="text-[#8c3a1e] mx-2.5">·</span> HARNESS&nbsp;ENGINEERING{" "}
+        <span className="text-[#8c3a1e] mx-2.5">·</span> CONTEXT&nbsp;ENGINEERING{" "}
+        <span className="text-[#8c3a1e] mx-2.5">·</span> THE&nbsp;SOFTWARE&nbsp;FACTORY
       </div>
       <div className="mt-5 mx-auto font-mono text-[10.5px] tracking-[0.16em] uppercase text-[#6b6557] max-w-[760px]">
         No model releases. No benchmarks. No discourse. Just the craft.
