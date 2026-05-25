@@ -1,33 +1,24 @@
 import { useState, type ReactElement } from "react";
-import type { RankedItem } from "@newsletter/shared";
+import type { RankedItem } from "@newsletter/shared/types";
+import { getPlatformLabel } from "@newsletter/shared/services";
 
 interface Props {
   item: RankedItem;
   rank: number;
 }
 
-const SOURCE_LABEL: Record<RankedItem["sourceType"], string> = {
-  hn: "Hacker News",
-  reddit: "Reddit",
-  rss: "RSS",
-  blog: "Blog",
-  twitter: "X / Twitter",
-  github: "GitHub",
-  newsletter: "Newsletter",
-  web_search: "Web Search",
-};
-
-function sourceLabel(item: RankedItem): string {
-  return SOURCE_LABEL[item.sourceType];
-}
-
-function readVerb(sourceType: RankedItem["sourceType"]): string {
-  if (sourceType === "github") return "Read repo";
-  return "Read source";
-}
-
 export function ArchiveStoryCard({ item, rank }: Props): ReactElement {
   const [imgError, setImgError] = useState(false);
+
+  const enriched = item.enrichedSource;
+  const sourceLabel = enriched !== null ? enriched.hostname : getPlatformLabel(item.sourceType);
+  const sourceUrl = enriched !== null ? enriched.url : item.url;
+  const readVerb =
+    enriched !== null
+      ? `Read on ${enriched.hostname}`
+      : item.sourceType === "github"
+        ? "Read repo"
+        : "Read source";
   const showImage = Boolean(item.imageUrl) && !imgError;
   const headlineId = `story-${String(rank)}-${String(item.id)}`;
 
@@ -112,15 +103,15 @@ export function ArchiveStoryCard({ item, rank }: Props): ReactElement {
       ) : null}
 
       <div className="mt-2 inline-flex items-center gap-3 font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#6b6557]">
-        <span>{sourceLabel(item)}</span>
+        <span>{sourceLabel}</span>
         <span aria-hidden="true" className="h-[3px] w-[3px] rounded-full bg-[#8a8472]" />
         <a
-          href={item.url}
+          href={sourceUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="border-b border-[#14110d] pb-px text-[#14110d] hover:border-[#8c3a1e] hover:text-[#8c3a1e]"
         >
-          {readVerb(item.sourceType)} ↗
+          {readVerb} ↗
         </a>
       </div>
     </article>

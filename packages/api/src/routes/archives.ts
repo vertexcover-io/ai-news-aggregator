@@ -124,6 +124,7 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
         const hydrated = await hydrateRankedItems(
           deps.getRawItemsRepo(),
           archive.rankedItems,
+          archive.completedAt,
         );
         return c.json({ ...state, rankedItems: hydrated });
       }
@@ -179,6 +180,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         const hydrated = await hydrateRankedItems(
           deps.getRawItemsRepo(),
           archive.rankedItems,
+          archive.completedAt,
         );
         return c.json({ ...state, rankedItems: hydrated });
       }

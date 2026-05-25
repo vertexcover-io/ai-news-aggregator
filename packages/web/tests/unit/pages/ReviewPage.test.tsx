@@ -31,6 +31,7 @@ function makeItem(id: number, title: string): RankedItem {
     content: null,
     imageUrl: null,
     recap: null,
+    enrichedSource: null,
   };
 }
 

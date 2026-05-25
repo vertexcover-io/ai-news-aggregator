@@ -234,5 +234,6 @@ export async function promoteItem(
     content: rawItem.content,
     imageUrl: rawItem.imageUrl,
     recap,
+    enrichedSource: null,
   };
 }

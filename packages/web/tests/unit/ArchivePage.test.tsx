@@ -52,6 +52,7 @@ const baseCompletedRun: RunStateResponse = {
       rationale: "This is very relevant",
       imageUrl: null,
       recap: null,
+      enrichedSource: null,
     },
     {
       id: 2,
@@ -67,6 +68,7 @@ const baseCompletedRun: RunStateResponse = {
       rationale: "Also relevant",
       imageUrl: null,
       recap: null,
+      enrichedSource: null,
     },
   ],
   warnings: [],

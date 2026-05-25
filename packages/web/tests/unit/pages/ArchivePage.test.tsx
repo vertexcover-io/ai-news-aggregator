@@ -85,6 +85,7 @@ function makeRankedItem(overrides: Partial<RankedItem> = {}): RankedItem {
       bullets: ["The team is split between London and San Francisco."],
       bottomLine: "This is the issue's lead story.",
     },
+    enrichedSource: null,
     ...overrides,
   };
 }

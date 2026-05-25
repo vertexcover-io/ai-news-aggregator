@@ -19,6 +19,9 @@ export interface NewsletterStory {
   bullets?: string[];
   bottomLine?: string;
   imageUrl?: string;
+  sourceLabel: string;
+  sourceUrl: string;
+  readVerb: string;
 }
 
 export interface NewsletterEmailProps {
@@ -197,6 +200,30 @@ export function NewsletterEmail({
                   </Text>
                 </Section>
               )}
+
+              <Text
+                style={{
+                  fontSize: "11px",
+                  fontFamily: "monospace",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.15em",
+                  color: "#6b6557",
+                  margin: "16px 0 0",
+                }}
+              >
+                {story.sourceLabel}{" "}
+                <span aria-hidden="true">·</span>{" "}
+                <Link
+                  href={story.sourceUrl}
+                  style={{
+                    color: "#171717",
+                    borderBottom: "1px solid #171717",
+                    textDecoration: "none",
+                  }}
+                >
+                  {story.readVerb} ↗
+                </Link>
+              </Text>
 
               <Hr style={{ borderColor: "#E5E5E5", margin: "32px 0 0" }} />
             </Section>

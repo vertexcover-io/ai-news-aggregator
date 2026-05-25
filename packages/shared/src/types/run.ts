@@ -45,6 +45,7 @@ export interface RankedItem {
   content: string | null;
   imageUrl: string | null;
   recap: RecapContent | null;
+  enrichedSource: { hostname: string; url: string } | null;
 }
 
 export interface RankedItemRef {

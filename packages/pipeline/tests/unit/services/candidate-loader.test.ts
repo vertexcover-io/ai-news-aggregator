@@ -46,10 +46,11 @@ describe("pickCandidateContent", () => {
     markdown: "MARKDOWN_BODY",
   };
 
-  it("prefers raw content over enriched markdown", () => {
+  it("VS-1: enriched markdown wins over raw content (Twitter link-tweet priority flip)", () => {
+    // REQ-001: enriched wins regardless of whether content is non-empty
     expect(
-      pickCandidateContent("raw-body", { comments: [], enrichedLink: okEnriched }),
-    ).toBe("raw-body");
+      pickCandidateContent("tweet text", { comments: [], enrichedLink: okEnriched }),
+    ).toBe("MARKDOWN_BODY");
   });
 
   it("returns enriched markdown when raw content is null", () => {
@@ -173,7 +174,7 @@ describe("loadCandidatesSince", () => {
     expect(result[0].content).toBe("# enriched article body");
   });
 
-  it("prefers raw content over enriched markdown when both are present", async () => {
+  it("enriched markdown wins over raw content when both are present (REQ-001)", async () => {
     const enrichedLink: EnrichedLinkContent = {
       url: "https://example.com",
       fetchedAt: "2026-04-01T00:00:00Z",
@@ -193,7 +194,7 @@ describe("loadCandidatesSince", () => {
       ["hn"],
     );
 
-    expect(result[0].content).toBe("RAW");
+    expect(result[0].content).toBe("ENRICHED");
   });
 
   it("returns null when enrichedLink status is not ok (skipped or failed)", async () => {

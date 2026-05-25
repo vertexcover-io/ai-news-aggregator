@@ -40,6 +40,7 @@ function makeItem(id: number, url: string): RankedItem {
     content: null,
     imageUrl: null,
     recap: null,
+    enrichedSource: null,
   };
 }
 

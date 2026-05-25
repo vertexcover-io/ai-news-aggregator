@@ -100,7 +100,7 @@ describe("fixtureToCandidates", () => {
     );
   });
 
-  it("prefers item.content over enrichedLink.markdown when both present", () => {
+  it("enrichedLink.markdown wins over item.content when both present (REQ-001 priority flip)", () => {
     const enrichedLink: EnrichedLinkContent = {
       url: "https://example.com/1",
       fetchedAt: "2026-05-22T00:00:00.000Z",
@@ -111,7 +111,7 @@ describe("fixtureToCandidates", () => {
       pool: [makeItem(1, { content: "FROM CONTENT", enrichedLink })],
     });
     const c = fixtureToCandidates(fixture)[0];
-    expect(c.content).toBe("FROM CONTENT");
+    expect(c.content).toBe("FROM ENRICHED");
   });
 
   it("falls through to null when enrichment failed and content is null", () => {

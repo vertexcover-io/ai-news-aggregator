@@ -5,18 +5,18 @@ import type {
   EnrichedLinkContent,
   RawItemMetadata,
 } from "@newsletter/shared";
+import { pickSummarySource } from "@newsletter/shared/services";
 
 export type { Candidate };
 
 /**
  * Pick the best available body text for a candidate.
  *
- * Priority:
- *   1. `raw_items.content` — populated by web/web-search collectors at scrape
+ * Priority (delegated to pickSummarySource):
+ *   1. `metadata.enrichedLink.markdown` (status=ok, non-empty) — enriched
+ *      content wins because it is richer than raw tweet/post text.
+ *   2. `raw_items.content` — populated by web/web-search collectors at scrape
  *      time; null for native HN/Reddit/Twitter items.
- *   2. `metadata.enrichedLink.markdown` — populated by the link-enrichment
- *      service for every item whose external URL was successfully fetched.
- *      Reusing it here avoids a second live fetch in the ranker.
  *   3. null — the rank-body-loader will fall back to a live fetch.
  *
  * Single source of truth, called from both the production candidate loader
@@ -27,11 +27,10 @@ export function pickCandidateContent(
   metadata: RawItemMetadata | null | undefined,
   enrichedLink?: EnrichedLinkContent | null,
 ): string | null {
-  if (content !== null && content.length > 0) return content;
   const enriched = enrichedLink ?? metadata?.enrichedLink ?? null;
-  if (enriched?.status === "ok" && enriched.markdown && enriched.markdown.length > 0) {
-    return enriched.markdown;
-  }
+  const source = pickSummarySource(content, enriched);
+  if (source.kind === "enriched") return source.markdown;
+  if (source.kind === "native") return source.content;
   return null;
 }
 
