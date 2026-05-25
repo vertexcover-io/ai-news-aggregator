@@ -1,4 +1,5 @@
 export { hashPrompt } from "./prompt-hash.js";
+export { readingTimeMinutes, type ReadingTimeStory } from "./reading-time.js";
 export {
   endOfDateInTimezone,
   formatDateInTimezone,

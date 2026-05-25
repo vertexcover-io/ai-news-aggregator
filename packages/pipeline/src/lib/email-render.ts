@@ -14,6 +14,7 @@ import {
   Preview,
 } from "@react-email/components";
 import type { NewsletterRenderProps, NewsletterStory } from "@pipeline/workers/newsletter-send.js";
+import { readingTimeMinutes } from "@newsletter/shared/utils";
 
 // No render-time cap on stories — the curator picks the count during review.
 // The archive ribbon stays at index RIBBON_AFTER_INDEX (after story 2) for
@@ -162,10 +163,8 @@ function sourceLabelFor(url: string): string {
 
 function StoryBlock({
   story,
-  isLast,
 }: {
   story: NewsletterStory;
-  isLast: boolean;
 }): React.ReactElement {
   const sourceLabel = sourceLabelFor(story.url);
   const children: React.ReactNode[] = [
@@ -302,22 +301,20 @@ function StoryBlock({
     ),
   );
 
-  if (!isLast) {
-    children.push(
-      React.createElement(Section, {
-        key: "divider",
-        style: {
-          borderTop: `1px solid ${COLORS.line}`,
-          margin: "44px 0 44px",
-          padding: 0,
-          lineHeight: "1px",
-          fontSize: "1px",
-        },
-      }),
-    );
-  }
-
   return React.createElement(Section, { style: { padding: 0 } }, ...children);
+}
+
+function StoryDivider(): React.ReactElement {
+  return React.createElement(Section, {
+    className: "story-divider",
+    style: {
+      borderTop: `1px solid ${COLORS.line}`,
+      margin: "44px 0 44px",
+      padding: 0,
+      lineHeight: "1px",
+      fontSize: "1px",
+    },
+  });
 }
 
 function ArchiveRibbon({ archiveUrl }: { archiveUrl: string }): React.ReactElement {
@@ -430,7 +427,7 @@ function NewsletterEmail({
     digestSummary !== null && digestSummary !== undefined && digestSummary !== ""
       ? digestSummary
       : null;
-  const minRead = Math.max(2, totalCount * 2 - 1);
+  const minRead = readingTimeMinutes(displayStories);
   const RIBBON_AFTER_INDEX = 1;
 
   const sansFooter = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
@@ -570,22 +567,29 @@ function NewsletterEmail({
               ? RIBBON_AFTER_INDEX
               : displayStories.length - 1;
           return displayStories.flatMap((story, index) => {
-            const isLast = index === displayStories.length - 1;
             const block = React.createElement(StoryBlock, {
               key: `story-${String(index)}`,
               story,
-              isLast,
             });
+            const storyNodes =
+              index === 0
+                ? [block]
+                : [
+                    React.createElement(StoryDivider, {
+                      key: `story-divider-${String(index)}`,
+                    }),
+                    block,
+                  ];
             if (index === ribbonAt) {
               return [
-                block,
+                ...storyNodes,
                 React.createElement(ArchiveRibbon, {
                   key: "archive-ribbon",
                   archiveUrl,
                 }),
               ];
             }
-            return [block];
+            return storyNodes;
           });
         })(),
         // End-of-issue archive link
