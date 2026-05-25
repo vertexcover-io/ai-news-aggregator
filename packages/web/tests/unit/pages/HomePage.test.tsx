@@ -102,6 +102,7 @@ describe("HomePage", () => {
 
   it("REQ-003: when todaysIssue present, [data-section='todays-issue'] is present and links to /archive/<runId>", () => {
     const today = makeArchive("run-today", "2026-05-23", {
+      topItems: [],
       digestHeadline: "The OpenAI Codex sandbox just redrew the cost curve.",
     });
     renderHome({ todaysIssue: today, featuredCanon: null, recentIssues: [] });

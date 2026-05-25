@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { Link } from "react-router-dom";
 import type { ArchiveListItem } from "@newsletter/shared/types";
+import { pickHeadline } from "../ArchivePageHeader";
 
 export interface TodaysIssueBlockProps {
   issue: ArchiveListItem;
@@ -20,8 +21,7 @@ export function TodaysIssueBlock({ issue }: TodaysIssueBlockProps): ReactElement
   const date = parseLocalDate(issue.runDate);
   const dow = dayFormatter.format(date).toUpperCase();
   const md = dateFormatter.format(date).toUpperCase();
-  const headline =
-    issue.digestHeadline ?? (issue.topItems[0]?.title ?? "Today’s issue");
+  const headline = pickHeadline(issue.topItems[0]?.title ?? null, issue.digestHeadline);
   const dek = issue.digestSummary;
 
   return (
