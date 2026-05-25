@@ -130,6 +130,7 @@ export interface SocialTokenMetadata {
 }
 
 export * from "./run.js";
+export * from "./observability.js";
 export * from "./archive.js";
 export * from "./notifications.js";
 export * from "./cost-breakdown.js";
