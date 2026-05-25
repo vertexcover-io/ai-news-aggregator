@@ -85,7 +85,7 @@ describe("ArchiveRow", () => {
     expect(screen.queryByText(/\+ \d+ more/)).toBeNull();
   });
 
-  it("REQ-006/EDGE-003: headline prefers digestHeadline when it differs from first story title", () => {
+  it("headline equals the first story title when digestHeadline differs", () => {
     renderRow(
       makeItem({
         digestHeadline: "AI safety, regulation, and open models",
@@ -94,7 +94,7 @@ describe("ArchiveRow", () => {
       false,
     );
     const h3 = screen.getByRole("heading", { level: 3 });
-    expect(h3.textContent).toBe("AI safety, regulation, and open models");
+    expect(h3.textContent).toBe("Top story title");
   });
 
   // VER-96: headline falls back to topItems[0].title when digestHeadline null
@@ -110,19 +110,6 @@ describe("ArchiveRow", () => {
     );
     const h3 = screen.getByRole("heading", { level: 3 });
     expect(h3.textContent).toBe(longTitle);
-  });
-
-  it("headline falls back to topItems[0].title when digestHeadline is whitespace", () => {
-    renderRow(
-      makeItem({
-        digestHeadline: "   ",
-        topItems: [{ id: 1, title: "Top story fallback", sourceType: "hn" }],
-      }),
-      1,
-      false,
-    );
-    const h3 = screen.getByRole("heading", { level: 3 });
-    expect(h3.textContent).toBe("Top story fallback");
   });
 
   // REQ-016: Read link href = /archive/{runId}
@@ -255,13 +242,13 @@ describe("ArchiveRow", () => {
     expect(container.querySelector("[data-slot='dek']")).toBeNull();
   });
 
-  it("highlights terms in the displayed digest headline", () => {
+  it("highlights terms in the first story headline", () => {
     const { container } = render(
       <MemoryRouter>
         <ul>
           <ArchiveRow
             item={makeItem({
-              digestHeadline: "Agentic systems break out",
+              digestHeadline: "Different digest headline",
               topItems: [{ id: 1, title: "Agentic systems break out", sourceType: "hn" }],
             })}
             issueNumber={1}

@@ -81,11 +81,7 @@ export function ArchivePage(): ReactElement {
   const issueDateValue = data?.issueDate ?? data?.startedAt ?? "";
   const issueDate = issueDateValue.length > 0 ? formatIssueDate(issueDateValue) : "";
   const fallbackTitle = `AI news - ${issueDate}`;
-  const digestHeadlineText =
-    digestHeadline !== null && digestHeadline.trim() !== "" ? digestHeadline : null;
-  const topStoryTitleText =
-    topStoryTitle !== null && topStoryTitle.trim() !== "" ? topStoryTitle : null;
-  const shareTitle = digestHeadlineText ?? topStoryTitleText ?? fallbackTitle;
+  const shareTitle = topStoryTitle ?? digestHeadline ?? fallbackTitle;
   const readingMin = readingTimeMinutes(items);
 
   useEffect(() => {

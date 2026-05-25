@@ -41,14 +41,10 @@ export function pickHeadline(
   topStoryTitle: string | null,
   digestHeadline?: string | null,
 ): string {
-  if (
-    digestHeadline !== null &&
-    digestHeadline !== undefined &&
-    digestHeadline.trim() !== ""
-  ) {
+  if (topStoryTitle !== null && topStoryTitle !== "") return topStoryTitle;
+  if (digestHeadline !== null && digestHeadline !== undefined && digestHeadline !== "") {
     return digestHeadline;
   }
-  if (topStoryTitle !== null && topStoryTitle.trim() !== "") return topStoryTitle;
   return "An archived issue";
 }
 
@@ -61,9 +57,7 @@ export function ArchivePageHeader({
   readingTimeMin,
 }: ArchivePageHeaderProps): ReactElement {
   const dek =
-    digestSummary !== null &&
-    digestSummary !== undefined &&
-    digestSummary.trim() !== ""
+    digestSummary !== null && digestSummary !== undefined && digestSummary !== ""
       ? digestSummary
       : null;
   const storyLabel = storyCount === 1 ? "1 story" : `${String(storyCount)} stories`;

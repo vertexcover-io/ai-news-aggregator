@@ -10,7 +10,6 @@ export * from "./send-newsletter.js";
 export * from "./slack/index.js";
 export * from "./scheduling/index.js";
 export * from "./services/archive-search-text.js";
-export * from "./services/archive-digest.js";
 export * from "./services/credential-cipher.js";
 export * from "./pricing.js";
 export * from "./cost.js";

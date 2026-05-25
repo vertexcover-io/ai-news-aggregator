@@ -4,7 +4,6 @@ import type { RankedItemRef } from "@newsletter/shared";
 import { createAdminArchivesRouter } from "@api/routes/archives.js";
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
 import type { RunArchiveRow, RunArchivesRepo } from "@api/repositories/run-archives.js";
-import type { GenerateDigestFn } from "@api/services/review.js";
 import type { Queue } from "bullmq";
 
 const date = new Date("2026-04-10T00:00:00Z");
@@ -75,16 +74,12 @@ function buildApp(opts: {
   archiveRepo: RunArchivesRepo;
   rawRepo?: RawItemsRepo;
   processingQueue?: Pick<Queue, "add">;
-  generateDigestFn?: GenerateDigestFn;
 }): Hono {
   const app = new Hono();
   const router = createAdminArchivesRouter({
     getArchiveRepo: () => opts.archiveRepo,
     getRawItemsRepo: () => opts.rawRepo ?? makeRawRepo(),
     processingQueue: opts.processingQueue ?? makeProcessingQueue().queue,
-    generateDigestFn:
-      opts.generateDigestFn ??
-      (() => Promise.resolve({ headline: "Generated", summary: "Generated summary" })),
   });
   app.route("/api/admin/archives", router);
   return app;

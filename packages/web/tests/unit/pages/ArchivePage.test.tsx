@@ -100,7 +100,7 @@ describe("ArchivePage — share metadata + share row (REQ-002, REQ-005, REQ-010,
     expect(og?.getAttribute("content")).toBe("AI news - May 6, 2026");
   });
 
-  it("uses digestHeadline for document.title and og:title when it differs from first story title", async () => {
+  it("uses the first story title for document.title and og:title when digestHeadline differs", async () => {
     vi.mocked(useArchive).mockReturnValue(
       makeResult({
         ...completedData,
@@ -110,15 +110,15 @@ describe("ArchivePage — share metadata + share row (REQ-002, REQ-005, REQ-010,
     );
     renderPage();
     await waitFor(() => {
-      expect(document.title).toBe("Cactus Distills Gemini Tool Calling into 26M Model");
+      expect(document.title).toBe("Recursive Self-Improvement Launches in London and SF");
     });
     const og = document.head.querySelector('meta[property="og:title"]');
     expect(og?.getAttribute("content")).toBe(
-      "Cactus Distills Gemini Tool Calling into 26M Model",
+      "Recursive Self-Improvement Launches in London and SF",
     );
   });
 
-  it("passes digestHeadline as shareText so X composer prefills the issue heading", async () => {
+  it("passes the first story title as shareText so X composer prefills the heading", async () => {
     vi.mocked(useArchive).mockReturnValue(
       makeResult({
         ...completedData,
@@ -134,12 +134,12 @@ describe("ArchivePage — share metadata + share row (REQ-002, REQ-005, REQ-010,
       const m = /text=([^&]+)/.exec(href);
       expect(m).not.toBeNull();
       expect(decodeURIComponent(m?.[1] ?? "")).toBe(
-        "Cactus Distills Gemini Tool Calling into 26M Model",
+        "Recursive Self-Improvement Launches in London and SF",
       );
     });
   });
 
-  it("uses digestHeadline as heading and digestSummary as the header dek", async () => {
+  it("uses the first story title as heading and digestSummary as the header dek", async () => {
     vi.mocked(useArchive).mockReturnValue(
       makeResult({
         ...completedData,
@@ -153,7 +153,7 @@ describe("ArchivePage — share metadata + share row (REQ-002, REQ-005, REQ-010,
       await findByText("Plus: Recursive Self-Improvement launches in London."),
     ).toBeTruthy();
     expect(container.querySelector("h1")?.textContent).toBe(
-      "Cactus Distills Gemini Tool Calling into 26M Model",
+      "Recursive Self-Improvement Launches in London and SF",
     );
     expect(
       await findAllByText(
@@ -172,22 +172,6 @@ describe("ArchivePage — share metadata + share row (REQ-002, REQ-005, REQ-010,
       const href = xLink?.getAttribute("href") ?? "";
       const m = /text=([^&]+)/.exec(href);
       expect(decodeURIComponent(m?.[1] ?? "")).toBe("AI news - May 6, 2026");
-    });
-  });
-
-  it("falls back to top story shareText when digestHeadline is blank", async () => {
-    vi.mocked(useArchive).mockReturnValue(
-      makeResult({
-        ...completedData,
-        rankedItems: [makeRankedItem()],
-        digestHeadline: "   ",
-      }),
-    );
-    renderPage();
-    await waitFor(() => {
-      expect(document.title).toBe(
-        "Recursive Self-Improvement Launches in London and SF",
-      );
     });
   });
 
