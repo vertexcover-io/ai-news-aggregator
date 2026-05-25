@@ -34,8 +34,8 @@ export function BrandMark({
         strokeWidth="5"
         strokeLinecap="round"
         pathLength="360"
-        strokeDasharray="328 32"
-        strokeDashoffset="-20"
+        strokeDasharray="344 360"
+        strokeDashoffset="-55"
       />
       <circle cx="50" cy="50" r="12" fill="currentColor" />
     </svg>

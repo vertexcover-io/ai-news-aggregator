@@ -8,8 +8,8 @@
     stroke-width="5"
     stroke-linecap="round"
     pathLength="360"
-    stroke-dasharray="328 32"
-    stroke-dashoffset="-20"
+    stroke-dasharray="344 360"
+    stroke-dashoffset="-55"
   />
   <!-- The curated digest: many sources converge to one focal point -->
   <circle cx="50" cy="50" r="12" fill="#8C3A1E" />
