@@ -6,6 +6,7 @@ import type {
   NotificationState,
   RankedItemRef,
   RunCostBreakdown,
+  RunFunnel,
   RunSourceTelemetry,
   SocialMetadata,
   SourceType,
@@ -28,6 +29,7 @@ export interface RunArchiveUpsertInput {
   sourceTelemetry?: RunSourceTelemetry | null;
   searchText?: string | null;
   isDryRun?: boolean;
+  runFunnel?: RunFunnel | null;
 }
 
 export interface PipelineRunArchiveRow {
@@ -247,6 +249,7 @@ export function createRunArchivesRepo(
           sourceTelemetry: input.sourceTelemetry ?? null,
           searchText: input.searchText ?? null,
           isDryRun: input.isDryRun ?? false,
+          runFunnel: input.runFunnel ?? null,
         })
         .onConflictDoUpdate({
           target: runArchives.id,
@@ -263,6 +266,7 @@ export function createRunArchivesRepo(
             sourceTelemetry: sql.raw(`excluded.${runArchives.sourceTelemetry.name}`),
             searchText: sql.raw(`excluded.${runArchives.searchText.name}`),
             isDryRun: sql.raw(`excluded.${runArchives.isDryRun.name}`),
+            runFunnel: sql.raw(`excluded.${runArchives.runFunnel.name}`),
           },
         });
     },

@@ -76,6 +76,7 @@ import {
   createRunArchivesRepo,
   type RunArchivesRepo,
 } from "@pipeline/repositories/run-archives.js";
+import { createRunLogRepo } from "@pipeline/repositories/run-logs.js";
 import {
   createPipelineSubscribersRepo,
 } from "@pipeline/repositories/subscribers.js";
@@ -220,6 +221,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db);
   const candidatesRepo: CandidatesRepo = createCandidatesRepo(db);
   const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db);
+  const runLogRepo = createRunLogRepo(db);
   const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db);
   const loadFn: LoadCandidatesFn = loadCandidatesSince;
   // TAVILY_API_KEY resolved at worker startup. Env-driven only (no DB equivalent),
@@ -283,6 +285,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     rankFn: (candidates, opts) => rankCandidates(candidates, opts),
     collectFns,
     archiveRepo,
+    runLogRepo,
     userSettingsRepo,
     cancelSubscriber: createCancelSubscriber(connection),
     twitterClient,

@@ -80,7 +80,15 @@ import {
   createCostTracker,
   type CostTracker,
 } from "@pipeline/services/cost-tracker.js";
-import type { RunCostBreakdown } from "@newsletter/shared";
+import {
+  createRunLogRepo,
+  type RunLogRepo,
+} from "@pipeline/repositories/run-logs.js";
+import {
+  createRunLogger,
+  type RunLogger,
+} from "@pipeline/services/run-logger.js";
+import type { RunCostBreakdown, RunFunnel } from "@newsletter/shared";
 
 const logger = createLogger("worker:run-process");
 
@@ -125,6 +133,7 @@ async function writeFailedArchive(input: {
   readonly sourceTypes: readonly SourceType[];
   readonly isDryRun: boolean;
   readonly costBreakdown: RunCostBreakdown | null;
+  readonly runFunnel: RunFunnel | null;
   readonly logger: ReturnType<typeof createLogger>;
 }): Promise<boolean> {
   try {
@@ -138,6 +147,7 @@ async function writeFailedArchive(input: {
       sourceTypes: [...input.sourceTypes],
       reviewed: false,
       isDryRun: input.isDryRun,
+      runFunnel: input.runFunnel,
     });
     if (input.costBreakdown !== null) {
       await input.archiveRepo.setCostBreakdown(input.runId, input.costBreakdown);
@@ -257,6 +267,7 @@ export interface RunProcessDeps {
   rankFn: RankFn;
   collectFns: CollectFns;
   archiveRepo: RunArchivesRepo;
+  runLogRepo: RunLogRepo;
   userSettingsRepo?: UserSettingsRepo;
   cancelSubscriber: CancelSubscriberFactory;
   /**
@@ -285,6 +296,7 @@ async function runCollecting(
   signal: AbortSignal,
   enrichmentCtx: EnrichmentContext,
   tracker: CostTracker,
+  runLog: RunLogger,
 ): Promise<CollectingOutcome> {
   // In-process serializer for state writes: replicates the old
   // `concurrency: 1` invariant from the collection worker. Without this,
@@ -413,6 +425,16 @@ async function runCollecting(
         },
         "run.source.completed",
       );
+      await runLog.info(
+        {
+          stage: "collecting",
+          source: task.sourceKey,
+          event: "source.completed",
+          itemsFetched: result.itemsStored,
+          durationMs,
+        },
+        `source.completed: ${task.sourceKey}`,
+      );
       outcomes.push({
         sourceType: task.sourceKey,
         result,
@@ -444,6 +466,17 @@ async function runCollecting(
           durationMs,
         },
         "run.source.failed",
+      );
+      await runLog.error(
+        {
+          stage: "collecting",
+          source: task.sourceKey,
+          event: "source.failed",
+          errors: [message],
+          durationMs,
+          stack: err instanceof Error ? err.stack : undefined,
+        },
+        `source.failed: ${task.sourceKey}`,
       );
       errors.push(`${task.sourceKey}: ${message}`);
       outcomes.push({
@@ -478,6 +511,37 @@ export async function handleRunProcessJob(
   const dryRun = job.data.dryRun ?? false;
   const started = Date.now();
   let runStartedAt: Date = new Date(started);
+
+  const runLog = createRunLogger(runId, { repo: deps.runLogRepo, logger });
+
+  // Funnel counts accumulate as the run progresses; unreached stages stay null
+  // so a failed-mid-stage archive records a partial funnel (EDGE-002).
+  const funnel: RunFunnel = {
+    collected: null,
+    deduped: null,
+    shortlisted: null,
+    ranked: null,
+  };
+
+  // Stage timing: each stage opens a start log and, on close, a paired end log
+  // carrying durationMs. `currentStage` tracks the active stage for run.failed.
+  let currentStage = "queued";
+  let stageStartedAt = Date.now();
+  const beginStage = async (stage: string): Promise<void> => {
+    currentStage = stage;
+    stageStartedAt = Date.now();
+    await runLog.info({ stage, event: "stage.start" }, `stage.start: ${stage}`);
+  };
+  const endStage = async (): Promise<void> => {
+    await runLog.info(
+      {
+        stage: currentStage,
+        event: "stage.end",
+        durationMs: Date.now() - stageStartedAt,
+      },
+      `stage.end: ${currentStage}`,
+    );
+  };
 
   const tracker = createCostTracker(runId);
 
@@ -518,6 +582,17 @@ export async function handleRunProcessJob(
 
   // REQ-09: always close subscriber in a finally block
   try {
+    await runLog.info(
+      {
+        stage: "queued",
+        event: "run.started",
+        topN,
+        sourceTypes,
+        dryRun,
+      },
+      "run.started",
+    );
+
     // EDGE-04: re-check Redis run-state after subscribing — if already cancelling, abort immediately
     const currentState = await deps.runState.get(runId);
     if (currentState?.status === "cancelling") {
@@ -527,7 +602,21 @@ export async function handleRunProcessJob(
     // Stage 1: collecting
     throwIfAborted(signal);
     await deps.runState.setStage(runId, "collecting");
-    const collecting = await runCollecting(deps, runId, collectors, signal, enrichmentCtx, tracker);
+    await beginStage("collecting");
+    const collecting = await runCollecting(
+      deps,
+      runId,
+      collectors,
+      signal,
+      enrichmentCtx,
+      tracker,
+      runLog,
+    );
+    funnel.collected = collecting.outcomes.reduce(
+      (sum, o) => sum + (o.result?.itemsStored ?? 0),
+      0,
+    );
+    await endStage();
 
     // All collectors failed → terminal failure, skip dedup/rank
     if (collecting.failureCount > 0 && collecting.successCount === 0) {
@@ -548,6 +637,7 @@ export async function handleRunProcessJob(
         sourceTypes,
         isDryRun: dryRun,
         costBreakdown: snapshotCost(),
+        runFunnel: { ...funnel },
         logger,
       });
       logger.error(
@@ -558,6 +648,15 @@ export async function handleRunProcessJob(
           error: errorMessage,
         },
         "run.failed",
+      );
+      await runLog.error(
+        {
+          stage: "collecting",
+          event: "run.failed",
+          fatal: true,
+          errors: collecting.errors,
+        },
+        `run.failed: ${errorMessage}`,
       );
       // Ensure archive row exists before setCostBreakdown (REQ-040 / EDGE-002):
       // setCostBreakdown is a plain UPDATE that silently no-ops without a row.
@@ -571,6 +670,7 @@ export async function handleRunProcessJob(
           startedAt: runStartedAt,
           sourceTypes,
           isDryRun: dryRun,
+          runFunnel: { ...funnel },
         });
       } catch (archiveErr) {
         logger.error(
@@ -589,6 +689,7 @@ export async function handleRunProcessJob(
     // Stage 2: processing (dedup)
     throwIfAborted(signal);
     await deps.runState.setStage(runId, "processing");
+    await beginStage("processing");
 
     const state = await deps.runState.get(runId);
     let since: Date;
@@ -611,6 +712,10 @@ export async function handleRunProcessJob(
     );
 
     if (raw.length === 0) {
+      funnel.deduped = 0;
+      funnel.shortlisted = 0;
+      funnel.ranked = 0;
+      await endStage();
       await deps.runState.update(runId, (prev) => ({
         ...prev,
         stage: "completed",
@@ -628,11 +733,16 @@ export async function handleRunProcessJob(
         },
         "run.completed",
       );
+      await runLog.info(
+        { stage: "completed", event: "run.completed", rankedItemCount: 0 },
+        "run.completed",
+      );
       await persistCost();
       return { rankedCount: 0 };
     }
 
     const deduped = dedupCandidates(raw);
+    funnel.deduped = deduped.length;
     logger.info(
       {
         event: "run.dedup",
@@ -642,10 +752,21 @@ export async function handleRunProcessJob(
       },
       "run.dedup",
     );
+    await runLog.info(
+      {
+        stage: "processing",
+        event: "stage.result",
+        inputCount: raw.length,
+        outputCount: deduped.length,
+      },
+      "stage.result: dedup",
+    );
+    await endStage();
 
     // Stage 3: shortlisting
     throwIfAborted(signal);
     await deps.runState.setStage(runId, "shortlisting");
+    await beginStage("shortlisting");
 
     // Load settings INSIDE the job (not at worker startup) so admin edits to
     // the shortlist / ranking prompts take effect on the next pipeline job
@@ -662,8 +783,20 @@ export async function handleRunProcessJob(
       tracker,
       abortSignal: signal,
     });
+    funnel.shortlisted = shortlist.length;
+    await runLog.info(
+      {
+        stage: "shortlisting",
+        event: "stage.result",
+        inputCount: deduped.length,
+        outputCount: shortlist.length,
+      },
+      "stage.result: shortlist",
+    );
+    await endStage();
 
     if (shortlist.length === 0) {
+      funnel.ranked = 0;
       logger.info(
         { event: "empty_shortlist", runId },
         "shortlist empty — skipping rank stage",
@@ -684,6 +817,10 @@ export async function handleRunProcessJob(
         },
         "run.completed",
       );
+      await runLog.info(
+        { stage: "completed", event: "run.completed", rankedItemCount: 0 },
+        "run.completed",
+      );
       await persistCost();
       return { rankedCount: 0 };
     }
@@ -691,6 +828,7 @@ export async function handleRunProcessJob(
     // Stage 4: ranking
     throwIfAborted(signal);
     await deps.runState.setStage(runId, "ranking");
+    await beginStage("ranking");
 
     let rankResult: RankResult;
     try {
@@ -714,6 +852,8 @@ export async function handleRunProcessJob(
         error: message,
         completedAt: new Date().toISOString(),
       }));
+      // The fatal run.failed run_log is emitted once by the outer catch, which
+      // observes currentStage="ranking" (set by beginStage above) and the stack.
       // Ensure archive row exists before setCostBreakdown (REQ-040 / EDGE-002):
       // setCostBreakdown is a plain UPDATE that silently no-ops without a row.
       try {
@@ -726,6 +866,7 @@ export async function handleRunProcessJob(
           startedAt: runStartedAt,
           sourceTypes,
           isDryRun: dryRun,
+          runFunnel: { ...funnel },
         });
       } catch (archiveErr) {
         logger.error(
@@ -740,6 +881,18 @@ export async function handleRunProcessJob(
       await persistCost();
       throw err;
     }
+
+    funnel.ranked = rankResult.rankedItems.length;
+    await runLog.info(
+      {
+        stage: "ranking",
+        event: "stage.result",
+        inputCount: shortlist.length,
+        outputCount: rankResult.rankedItems.length,
+      },
+      "stage.result: rank",
+    );
+    await endStage();
 
     const recapUpdates = rankResult.rankedItems
       .filter(
@@ -769,7 +922,16 @@ export async function handleRunProcessJob(
 
     const autoReviewed = settings?.autoReview === true;
     const sourceTelemetry = buildSourceTelemetry(collecting.outcomes);
-    sourceTelemetry.enrichment = toEnrichmentTelemetry(enrichmentCtx.counters);
+    const enrichmentTelemetry = toEnrichmentTelemetry(enrichmentCtx.counters);
+    sourceTelemetry.enrichment = enrichmentTelemetry;
+    await runLog.info(
+      {
+        stage: "processing",
+        event: "enrichment.summary",
+        enrichment: enrichmentTelemetry,
+      },
+      "enrichment.summary",
+    );
     const { digestHeadline, digestSummary } = pickArchiveDigest(rankResult);
     const hook = nonEmptyText(rankResult.hook);
     const twitterSummary = nonEmptyText(rankResult.twitterSummary);
@@ -800,6 +962,7 @@ export async function handleRunProcessJob(
         sourceTelemetry,
         searchText,
         isDryRun: dryRun,
+        runFunnel: { ...funnel },
       });
       archiveWritten = true;
     } catch (err) {
@@ -846,6 +1009,15 @@ export async function handleRunProcessJob(
       },
       "run.completed",
     );
+    await runLog.info(
+      {
+        stage: "completed",
+        event: "run.completed",
+        rankedItemCount: rankResult.rankedItems.length,
+        durationMs: Date.now() - started,
+      },
+      "run.completed",
+    );
 
     return { rankedCount: rankResult.rankedItems.length };
   } catch (err) {
@@ -881,8 +1053,22 @@ export async function handleRunProcessJob(
       }
       await persistCost();
       logger.info({ event: "run.cancelled", runId, dryRun }, "run.cancelled");
+      await runLog.warn(
+        { stage: currentStage, event: "run.cancelled" },
+        "run.cancelled",
+      );
       return { rankedCount: 0 };
     }
+    const message = err instanceof Error ? err.message : String(err);
+    await runLog.error(
+      {
+        stage: currentStage,
+        event: "run.failed",
+        fatal: true,
+        stack: err instanceof Error ? err.stack : undefined,
+      },
+      `run.failed: ${message}`,
+    );
     await writeFailedArchive({
       archiveRepo: deps.archiveRepo,
       runId,
@@ -892,6 +1078,7 @@ export async function handleRunProcessJob(
       sourceTypes,
       isDryRun: dryRun,
       costBreakdown: snapshotCost(),
+      runFunnel: { ...funnel },
       logger,
     });
     throw err;
@@ -910,6 +1097,7 @@ export interface CreateRunProcessWorkerOptions {
   rankFn?: RankFn;
   collectFns?: Partial<CollectFns>;
   archiveRepo?: RunArchivesRepo;
+  runLogRepo?: RunLogRepo;
   userSettingsRepo?: UserSettingsRepo;
   cancelSubscriber?: CancelSubscriberFactory;
   twitterClient?: () => Promise<TwitterClient>;
@@ -922,7 +1110,11 @@ export function createRunProcessWorker(
 ): Worker<RunProcessJobData, RunProcessResult> {
   const connection = options.connection ?? createRedisConnection();
   const runState = options.runState ?? createRunStateService(connection);
-  const needsDb = !options.rawItemsRepo || !options.candidatesRepo || !options.archiveRepo;
+  const needsDb =
+    !options.rawItemsRepo ||
+    !options.candidatesRepo ||
+    !options.archiveRepo ||
+    !options.runLogRepo;
   const db: AppDb | undefined = needsDb ? getDb() : undefined;
   const rawItemsRepo =
     options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db));
@@ -972,6 +1164,7 @@ export function createRunProcessWorker(
 
   const archiveRepo =
     options.archiveRepo ?? createRunArchivesRepo(ensureDb(db));
+  const runLogRepo = options.runLogRepo ?? createRunLogRepo(ensureDb(db));
   const userSettingsRepo = options.userSettingsRepo;
 
   const cancelSubscriber =
@@ -986,6 +1179,7 @@ export function createRunProcessWorker(
     rankFn,
     collectFns,
     archiveRepo,
+    runLogRepo,
     userSettingsRepo,
     cancelSubscriber,
     twitterClient,
