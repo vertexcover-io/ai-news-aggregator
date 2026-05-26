@@ -7,9 +7,10 @@
 ## Summary
 
 Five operator-facing improvements to the admin review page (`/admin/review/:runId`),
-plus two supporting backend changes. The review toolbar gains a **"Shortlisted only"**
+plus two supporting backend changes. The **Item Pool** section gains a **"Shortlisted only"**
 toggle and a grouped **"Source ▾"** filter (by derived identifier — subreddit, X handle,
-hostname, owner/repo) that both apply to the ranked list and the pool. Pool (non-ranked)
+hostname, owner/repo). Both filters are **scoped to the pool only** — the ranked list is
+never filtered and drag-to-reorder stays enabled regardless of toggle state. Pool (non-ranked)
 items gain a **collapsible inline preview** (collapsed by default) — a tweet card or a
 sanitized-markdown link card built from already-stored data. Every card now shows its
 **real source identifier** next to the type badge. Behind the scenes the pipeline
