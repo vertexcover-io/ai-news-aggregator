@@ -40,12 +40,22 @@ export function ReviewToolbar({
     ? facets.map((g) => ({
         ...g,
         facets: g.facets.filter((f) =>
-          f.sourceIdentifier
+          `${f.displayName} ${f.sourceIdentifier}`
             .toLowerCase()
             .includes(facetSearch.toLowerCase()),
         ),
       })).filter((g) => g.facets.length > 0)
     : facets;
+
+  // Map an active identifier back to its human label for the chips row.
+  const displayNameFor = (identifier: string): string => {
+    for (const g of facets) {
+      for (const f of g.facets) {
+        if (f.sourceIdentifier === identifier) return f.displayName;
+      }
+    }
+    return identifier;
+  };
 
   return (
     <div className="flex flex-wrap items-start gap-3">
@@ -128,7 +138,7 @@ export function ReviewToolbar({
                           "bg-blue-50 text-blue-700 font-medium",
                       )}
                     >
-                      <span>{facet.sourceIdentifier}</span>
+                      <span>{facet.displayName}</span>
                       <span className="text-gray-400">{facet.count}</span>
                     </button>
                   ))}
@@ -146,10 +156,10 @@ export function ReviewToolbar({
             key={identifier}
             className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700"
           >
-            {identifier}
+            {displayNameFor(identifier)}
             <button
               type="button"
-              aria-label={`Remove ${identifier}`}
+              aria-label={`Remove ${displayNameFor(identifier)}`}
               onClick={() => {
                 toggleSource(identifier);
               }}

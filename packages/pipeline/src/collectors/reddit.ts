@@ -165,7 +165,10 @@ function parsePostEntry(entry: Element, subreddit: string, now: Date): ParsedPos
       publishedAt,
       collectedAt: now,
       engagement: { ...ZERO_ENGAGEMENT },
-      metadata: { comments: [] },
+      metadata: {
+        comments: [],
+        sourceUnit: { identifier: `r/${subreddit}`, displayName: `r/${subreddit}` },
+      },
       imageUrl: extractEntryImageUrl(entry, contentDoc),
       updatedAt: now,
     },

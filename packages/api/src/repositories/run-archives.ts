@@ -58,6 +58,7 @@ export interface RunArchiveRow {
 export interface SourceFacet {
   sourceType: SourceType;
   identifier: string;
+  displayName: string;
   count: number;
 }
 
@@ -567,7 +568,6 @@ export function createRunArchivesRepo(
       _archiveId: string,
       opts: FindPoolItemsOpts,
     ): Promise<{ items: PoolItem[]; total: number }> {
-      const IDENTIFIER_SQL = deriveRawItemIdentifierSql();
       const conditions = [
         gte(rawItems.collectedAt, opts.startedAt),
         inArray(rawItems.sourceType, opts.sourceTypes),
@@ -583,7 +583,14 @@ export function createRunArchivesRepo(
         conditions.push(ilike(rawItems.title, `%${escaped}%`));
       }
       if (opts.selectedSources && opts.selectedSources.length > 0) {
-        conditions.push(inArray(IDENTIFIER_SQL, opts.selectedSources));
+        // Match on the stamped collection unit — the same identity the source
+        // facets are built from. Items without a unit never match a selection.
+        conditions.push(
+          inArray(
+            sql<string>`${rawItems.metadata} #>> '{sourceUnit,identifier}'`,
+            opts.selectedSources,
+          ),
+        );
       }
       if (opts.shortlistedOnly && opts.shortlistedIds && opts.shortlistedIds.length > 0) {
         conditions.push(inArray(rawItems.id, opts.shortlistedIds));
@@ -623,7 +630,14 @@ export function createRunArchivesRepo(
       return { items: rows.map(toPoolItem), total: countRow.count };
     },
     async getSourceFacets(runId: string): Promise<SourceFacet[]> {
-      const IDENTIFIER_SQL = deriveRawItemIdentifierSql();
+      // One filter option per collection UNIT — the same identity Source
+      // Telemetry shows (r/OpenAI, "Twitter list 158…", @sama, each blog, …).
+      // We group by the per-item stamped `metadata.sourceUnit`, which is the
+      // only per-row link back to the unit it was collected from. Items with
+      // no stamped unit (collected before this feature) are intentionally
+      // excluded — old runs simply show no source filter. Counts reflect the
+      // pool-eligible window (collectedAt within the run), and only non-empty
+      // units appear, so the dropdown never lists a unit you can't filter to.
       const archive = await db
         .select({
           startedAt: runArchives.startedAt,
@@ -636,10 +650,13 @@ export function createRunArchivesRepo(
       if (!row.startedAt || !row.sourceTypes || row.sourceTypes.length === 0) {
         return [];
       }
+      const UNIT_ID_SQL = sql<string>`${rawItems.metadata} #>> '{sourceUnit,identifier}'`;
+      const UNIT_NAME_SQL = sql<string>`${rawItems.metadata} #>> '{sourceUnit,displayName}'`;
       const rows = await db
         .select({
           sourceType: rawItems.sourceType,
-          identifier: sql<string>`${IDENTIFIER_SQL}`,
+          identifier: UNIT_ID_SQL,
+          displayName: UNIT_NAME_SQL,
           count: sql<number>`count(*)::int`,
         })
         .from(rawItems)
@@ -647,12 +664,14 @@ export function createRunArchivesRepo(
           and(
             gte(rawItems.collectedAt, row.startedAt),
             inArray(rawItems.sourceType, row.sourceTypes),
+            sql`${rawItems.metadata} #>> '{sourceUnit,identifier}' IS NOT NULL`,
           ),
         )
-        .groupBy(rawItems.sourceType, IDENTIFIER_SQL);
+        .groupBy(rawItems.sourceType, UNIT_ID_SQL, UNIT_NAME_SQL);
       return rows.map((r) => ({
         sourceType: r.sourceType,
         identifier: r.identifier,
+        displayName: r.displayName,
         count: r.count,
       }));
     },

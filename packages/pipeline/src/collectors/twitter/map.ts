@@ -1,4 +1,5 @@
 import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemMetadata, RawItemSourceUnit } from "@newsletter/shared/types";
 import type { NormalizedTweet } from "@pipeline/collectors/twitter/types.js";
 
 const TITLE_MAX = 80;
@@ -9,15 +10,18 @@ function makeTitle(fullText: string): string {
   return `${collapsed.slice(0, TITLE_MAX - 1)}…`;
 }
 
-export function tweetToRawItem(t: NormalizedTweet): RawItemInsert {
+export function tweetToRawItem(
+  t: NormalizedTweet,
+  sourceUnit?: RawItemSourceUnit,
+): RawItemInsert {
   const external =
     typeof t.externalUrl === "string" && t.externalUrl.length > 0 ? t.externalUrl : undefined;
   const content = t.quotedTweet
     ? `${t.fullText}\n\nQuoting @${t.quotedTweet.authorHandle}: ${t.quotedTweet.fullText}`
     : t.fullText;
-  const metadata = t.quotedTweet
-    ? { comments: [], quotedTweet: t.quotedTweet }
-    : { comments: [] };
+  const metadata: RawItemMetadata = { comments: [] };
+  if (t.quotedTweet) metadata.quotedTweet = t.quotedTweet;
+  if (sourceUnit) metadata.sourceUnit = sourceUnit;
   return {
     sourceType: "twitter",
     externalId: t.id,

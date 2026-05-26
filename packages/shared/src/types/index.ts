@@ -50,12 +50,25 @@ export interface QuotedTweetMetadata {
   photoUrls: string[];
 }
 
+/**
+ * The collection unit an item came from — the same identity Source Telemetry
+ * reports per `unitResults` entry (e.g. `r/OpenAI`, `Twitter list 158…`, `@sama`).
+ * Stamped at collect time so review-page facets can group/filter by it exactly
+ * as the observability table does. Absent on items collected before this field
+ * existed; callers fall back to URL-derived identifiers for those.
+ */
+export interface RawItemSourceUnit {
+  identifier: string;
+  displayName: string;
+}
+
 export interface RawItemMetadata {
   comments: RawItemComment[];
   recap?: RecapContent;
   addedInReview?: boolean;
   enrichedLink?: EnrichedLinkContent;
   quotedTweet?: QuotedTweetMetadata;
+  sourceUnit?: RawItemSourceUnit;
   // web-search collector fields
   provider?: string;
   query?: string;

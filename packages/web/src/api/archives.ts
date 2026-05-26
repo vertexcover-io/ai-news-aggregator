@@ -145,6 +145,7 @@ export async function promoteItem(
 
 export interface SourceFacetEntry {
   sourceIdentifier: string;
+  displayName: string;
   count: number;
 }
 
@@ -156,6 +157,7 @@ export interface SourceFacetGroupRaw {
 interface SourceFacetFlat {
   sourceType: string;
   identifier: string;
+  displayName: string;
   count: number;
 }
 
@@ -170,11 +172,15 @@ export async function getSourceFacets(
     throw new Error(data.error ?? "Failed to fetch source facets");
   }
   const body = (await res.json()) as { facets: SourceFacetFlat[] };
-  // Group flat {sourceType, identifier, count} records into SourceFacetGroupRaw[]
+  // Group flat {sourceType, identifier, displayName, count} into SourceFacetGroupRaw[]
   const grouped = new Map<string, SourceFacetEntry[]>();
   for (const f of body.facets) {
     const entries = grouped.get(f.sourceType) ?? [];
-    entries.push({ sourceIdentifier: f.identifier, count: f.count });
+    entries.push({
+      sourceIdentifier: f.identifier,
+      displayName: f.displayName,
+      count: f.count,
+    });
     grouped.set(f.sourceType, entries);
   }
   return Array.from(grouped.entries()).map(([sourceType, facets]) => ({

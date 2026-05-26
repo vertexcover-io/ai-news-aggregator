@@ -62,6 +62,13 @@ export interface RawItemsRepo {
 // inline flag makes every POSIX regex case-insensitive, mirroring the
 // JS `/i` flag — without it, `https://X.com/foo/status/1` would miss
 // the twitter branch and fall through to the hostname fallback.
+//
+// This derivation yields the natural per-item identity shown on cards and the
+// /sources page. The review-page source FILTER does NOT use it — that filter
+// groups by the stamped metadata.sourceUnit (see getSourceFacets /
+// findPoolItems) so it is unit-accurate (subreddit / Twitter list) even for
+// link posts. Keep this aligned with the JS deriveRawItemIdentifier (the e2e
+// cross-check enforces parity).
 const DERIVED_IDENTIFIER_SQL = sql`CASE
   WHEN source_type = 'hn' THEN 'news.ycombinator.com'
   WHEN source_type = 'reddit' THEN
