@@ -27,6 +27,7 @@ const HEALTHY_RESULT: ConvertResult = {
   imageUrl: null,
   textLength: 300,
   publishedAt: null,
+  structuredData: null,
 };
 
 const UNHEALTHY_RESULT: ConvertResult = {
@@ -36,6 +37,7 @@ const UNHEALTHY_RESULT: ConvertResult = {
   imageUrl: null,
   textLength: 5,
   publishedAt: null,
+  structuredData: null,
 };
 
 const BROWSER_RESULT: ConvertResult = {
@@ -45,6 +47,7 @@ const BROWSER_RESULT: ConvertResult = {
   imageUrl: null,
   textLength: 400,
   publishedAt: null,
+  structuredData: null,
 };
 
 beforeEach(() => {

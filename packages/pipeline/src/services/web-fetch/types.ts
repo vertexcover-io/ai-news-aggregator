@@ -13,4 +13,5 @@ export interface ConvertResult {
   imageUrl: string | null;
   textLength: number;
   publishedAt: Date | null;
+  structuredData: string | null;
 }
