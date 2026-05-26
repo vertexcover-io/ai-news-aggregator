@@ -49,6 +49,7 @@ export interface RunArchiveRow {
   isDryRun: boolean;
   costBreakdown: RunCostBreakdown | null;
   runFunnel: RunFunnel | null;
+  socialMetadata: SocialMetadata | null;
 }
 
 export interface FindPoolItemsOpts {
@@ -208,6 +209,7 @@ export function createRunArchivesRepo(
           isDryRun: runArchives.isDryRun,
           costBreakdown: runArchives.costBreakdown,
           runFunnel: runArchives.runFunnel,
+          socialMetadata: runArchives.socialMetadata,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
@@ -328,6 +330,7 @@ export function createRunArchivesRepo(
           isDryRun: runArchives.isDryRun,
           costBreakdown: runArchives.costBreakdown,
           runFunnel: runArchives.runFunnel,
+          socialMetadata: runArchives.socialMetadata,
         })
         .from(runArchives)
         .where(
@@ -480,6 +483,7 @@ export function createRunArchivesRepo(
           isDryRun: runArchives.isDryRun,
           costBreakdown: runArchives.costBreakdown,
           runFunnel: runArchives.runFunnel,
+          socialMetadata: runArchives.socialMetadata,
         })
         .from(runArchives)
         .orderBy(desc(runArchives.completedAt))
@@ -528,6 +532,7 @@ export function createRunArchivesRepo(
           isDryRun: runArchives.isDryRun,
           costBreakdown: runArchives.costBreakdown,
           runFunnel: runArchives.runFunnel,
+          socialMetadata: runArchives.socialMetadata,
         });
       return row;
     },

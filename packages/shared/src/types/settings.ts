@@ -54,4 +54,8 @@ export interface RunSummary {
   isDryRun: boolean;
   costBreakdown: RunCostBreakdown | null;
   issueDate?: string;
+  linkedinPostedAt?: string | null;
+  twitterPostedAt?: string | null;
+  linkedinPermalink?: string | null;
+  twitterPermalink?: string | null;
 }

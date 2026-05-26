@@ -8,6 +8,7 @@ import type {
   RawItemRow,
   RawItemsRepo,
 } from "@api/repositories/raw-items.js";
+import type { RunArchivesRepo, RunArchiveRow } from "@api/repositories/run-archives.js";
 
 interface MockRedis {
   store: Map<string, { value: string; ttl: number }>;
@@ -385,4 +386,182 @@ describe("GET /api/runs/:runId", () => {
     expect(res.status).toBe(404);
   });
 
+});
+
+// POST /api/runs/:runId/post/:channel
+function makeEligibleArchive(overrides: Partial<RunArchiveRow> = {}): RunArchiveRow {
+  return {
+    id: "11111111-2222-3333-4444-555555555555",
+    status: "completed",
+    rankedItems: [],
+    topN: 10,
+    reviewed: true,
+    isDryRun: false,
+    linkedinPostedAt: null,
+    twitterPostedAt: null,
+    socialMetadata: null,
+    completedAt: new Date("2026-05-26T09:00:00.000Z"),
+    publishedAt: null,
+    createdAt: new Date("2026-05-26T09:00:00.000Z"),
+    startedAt: null,
+    sourceTypes: null,
+    digestHeadline: null,
+    digestSummary: null,
+    hook: null,
+    sourceTelemetry: null,
+    slackNotifiedAt: null,
+    emailSentAt: null,
+    notificationState: null,
+    costBreakdown: null,
+    runFunnel: null,
+    ...overrides,
+  } as unknown as RunArchiveRow;
+}
+
+function makeArchiveRepo(archive: RunArchiveRow | null = null): RunArchivesRepo {
+  return {
+    findById: vi.fn(() => Promise.resolve(archive)),
+    list: vi.fn(() => Promise.resolve([])),
+  } as unknown as RunArchivesRepo;
+}
+
+function makePostApp(opts: {
+  q: ReturnType<typeof makeQueue>;
+  archive: RunArchiveRow | null;
+}): Hono {
+  const app = new Hono();
+  const router = createRunsRouter({
+    redis: makeRedis() as unknown as IORedis,
+    processingQueue: opts.q.queue as unknown as Queue,
+    getRawItemsRepo: () => makeRepo(),
+    getArchiveRepo: () => makeArchiveRepo(opts.archive),
+  });
+  app.route("/api/runs", router);
+  return app;
+}
+
+const VALID_RUN_ID = "11111111-2222-3333-4444-555555555555";
+
+describe("POST /api/runs/:runId/post/:channel", () => {
+  it("REQ-001: eligible reviewed completed archive → 202 + add('linkedin-post', { runId })", async () => {
+    const q = makeQueue();
+    const app = makePostApp({ q, archive: makeEligibleArchive() });
+    const res = await app.request(`/api/runs/${VALID_RUN_ID}/post/linkedin`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { runId: string };
+    expect(body.runId).toBe(VALID_RUN_ID);
+    expect(q.calls).toHaveLength(1);
+    expect(q.calls[0].name).toBe("linkedin-post");
+    expect((q.calls[0].data as { runId: string }).runId).toBe(VALID_RUN_ID);
+  });
+
+  it("REQ-001: twitter channel → add('twitter-post', { runId })", async () => {
+    const q = makeQueue();
+    const app = makePostApp({ q, archive: makeEligibleArchive() });
+    const res = await app.request(`/api/runs/${VALID_RUN_ID}/post/twitter`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(202);
+    expect(q.calls).toHaveLength(1);
+    expect(q.calls[0].name).toBe("twitter-post");
+    expect((q.calls[0].data as { runId: string }).runId).toBe(VALID_RUN_ID);
+  });
+
+  it("REQ-002: archive not found → 404, no add", async () => {
+    const q = makeQueue();
+    const app = makePostApp({ q, archive: null });
+    const res = await app.request(`/api/runs/${VALID_RUN_ID}/post/linkedin`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(404);
+    expect(q.calls).toHaveLength(0);
+  });
+
+  it("REQ-004: invalid channel 'facebook' → 400, no add", async () => {
+    const q = makeQueue();
+    const app = makePostApp({ q, archive: makeEligibleArchive() });
+    const res = await app.request(`/api/runs/${VALID_RUN_ID}/post/facebook`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(400);
+    expect(q.calls).toHaveLength(0);
+  });
+
+  it("EDGE-006: non-UUID runId → 400, no add", async () => {
+    const q = makeQueue();
+    const app = makePostApp({ q, archive: makeEligibleArchive() });
+    const res = await app.request("/api/runs/not-a-uuid/post/linkedin", {
+      method: "POST",
+    });
+    expect(res.status).toBe(400);
+    expect(q.calls).toHaveLength(0);
+  });
+
+  it("EDGE-004: dry-run archive → 409 with reason 'dry_run', no add", async () => {
+    const q = makeQueue();
+    const app = makePostApp({ q, archive: makeEligibleArchive({ isDryRun: true }) });
+    const res = await app.request(`/api/runs/${VALID_RUN_ID}/post/linkedin`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; reason: string };
+    expect(body.reason).toBe("dry_run");
+    expect(q.calls).toHaveLength(0);
+  });
+
+  it("EDGE-005: unreviewed archive → 409 with reason 'not_reviewed', no add", async () => {
+    const q = makeQueue();
+    const app = makePostApp({ q, archive: makeEligibleArchive({ reviewed: false }) });
+    const res = await app.request(`/api/runs/${VALID_RUN_ID}/post/linkedin`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; reason: string };
+    expect(body.reason).toBe("not_reviewed");
+    expect(q.calls).toHaveLength(0);
+  });
+
+  it("REQ-003: not-completed status → 409 with reason 'not_completed', no add", async () => {
+    const q = makeQueue();
+    const app = makePostApp({ q, archive: makeEligibleArchive({ status: "failed" }) });
+    const res = await app.request(`/api/runs/${VALID_RUN_ID}/post/linkedin`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; reason: string };
+    expect(body.reason).toBe("not_completed");
+    expect(q.calls).toHaveLength(0);
+  });
+
+  it("REQ-003: already posted on linkedin → 409 with reason 'already_posted', no add", async () => {
+    const q = makeQueue();
+    const app = makePostApp({
+      q,
+      archive: makeEligibleArchive({ linkedinPostedAt: new Date("2026-05-26T10:00:00.000Z") }),
+    });
+    const res = await app.request(`/api/runs/${VALID_RUN_ID}/post/linkedin`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; reason: string };
+    expect(body.reason).toBe("already_posted");
+    expect(q.calls).toHaveLength(0);
+  });
+
+  it("REQ-003: already posted on twitter → 409 with reason 'already_posted', no add", async () => {
+    const q = makeQueue();
+    const app = makePostApp({
+      q,
+      archive: makeEligibleArchive({ twitterPostedAt: new Date("2026-05-26T10:00:00.000Z") }),
+    });
+    const res = await app.request(`/api/runs/${VALID_RUN_ID}/post/twitter`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; reason: string };
+    expect(body.reason).toBe("already_posted");
+    expect(q.calls).toHaveLength(0);
+  });
 });

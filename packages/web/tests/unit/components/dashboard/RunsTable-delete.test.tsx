@@ -12,6 +12,14 @@ import type { RunSummary } from "@newsletter/shared";
 import { RunsTable } from "../../../../src/components/dashboard/RunsTable";
 import { RunsCardList } from "../../../../src/components/dashboard/RunsCardList";
 
+// useTriggerSocialPost needs a QueryClient; mock it for these non-social tests
+vi.mock("../../../../src/hooks/useTriggerSocialPost", () => ({
+  useTriggerSocialPost: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 afterEach(() => {
   cleanup();
 });

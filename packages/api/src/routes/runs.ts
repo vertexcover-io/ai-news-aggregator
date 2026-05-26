@@ -13,7 +13,7 @@ import type {
   RunProcessJobPayload,
   RunState,
 } from "@newsletter/shared";
-import { runNowBodySchema, runSubmitSchema } from "@api/lib/validate.js";
+import { runNowBodySchema, runSubmitSchema, socialChannelSchema } from "@api/lib/validate.js";
 import { createRun } from "@api/services/runs.js";
 import {
   cancelRun,
@@ -211,6 +211,60 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       }
       throw err;
     }
+  });
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  runs.post("/:runId/post/:channel", async (c) => {
+    const rawChannel = c.req.param("channel");
+    const channelResult = socialChannelSchema.safeParse(rawChannel);
+    if (!channelResult.success) {
+      return c.json({ error: `invalid channel: must be 'linkedin' or 'twitter'` }, 400);
+    }
+    const channel = channelResult.data;
+
+    const runId = c.req.param("runId");
+    if (!UUID_RE.test(runId)) {
+      return c.json({ error: "invalid runId: must be a UUID" }, 400);
+    }
+
+    const archiveRepo = deps.getArchiveRepo?.();
+    if (!archiveRepo) {
+      return c.json({ error: "archive repository not configured" }, 500);
+    }
+
+    const archive = await archiveRepo.findById(runId);
+    if (!archive) {
+      return c.json({ error: "not found" }, 404);
+    }
+
+    if (archive.isDryRun) {
+      return c.json({ error: "archive is not eligible for posting", reason: "dry_run" }, 409);
+    }
+    if (!archive.reviewed) {
+      return c.json({ error: "archive is not eligible for posting", reason: "not_reviewed" }, 409);
+    }
+    if (archive.status !== "completed") {
+      return c.json({ error: "archive is not eligible for posting", reason: "not_completed" }, 409);
+    }
+    const alreadyPosted =
+      channel === "linkedin" ? archive.linkedinPostedAt !== null : archive.twitterPostedAt !== null;
+    if (alreadyPosted) {
+      return c.json({ error: "archive is already posted on this channel", reason: "already_posted" }, 409);
+    }
+
+    const jobName = channel === "linkedin" ? "linkedin-post" : "twitter-post";
+    // Cast to Queue<{ runId: string }> — social post jobs only carry runId, not the full
+    // RunProcessJobPayload that the processing queue is typed for.
+    await (deps.processingQueue as Queue<{ runId: string }>).add(jobName, { runId });
+
+    logger.info({ event: "run.post.manual", runId, channel }, "run.post.manual");
+    void captureAnalytics({
+      distinctId: "admin",
+      event: "run_post_manual_triggered",
+      properties: { run_id: runId, channel },
+    });
+    return c.json({ runId }, 202);
   });
 
   return runs;

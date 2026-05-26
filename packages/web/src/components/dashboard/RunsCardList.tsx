@@ -2,6 +2,7 @@ import { useState, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 import type { RunSummary } from "@newsletter/shared";
 import { ArrowRight, ExternalLink, RotateCw, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +16,9 @@ import {
 import { cn } from "@/lib/utils";
 import { CostButton } from "./CostButton";
 import { CostDialog } from "./CostDialog";
+import { useTriggerSocialPost } from "@/hooks/useTriggerSocialPost";
+import { SocialOverflowMenu } from "./SocialOverflowMenu";
+import type { SocialChannel } from "./SocialOverflowMenu";
 
 interface RunsCardListProps {
   runs: RunSummary[];
@@ -169,6 +173,96 @@ function canViewSources(run: RunSummary): boolean {
   return run.status === "completed";
 }
 
+function showDeleteFor(status: DerivedStatus): boolean {
+  return (
+    status === "ready-to-review" ||
+    status === "reviewed" ||
+    status === "failed" ||
+    status === "cancelled"
+  );
+}
+
+// Sub-component that owns the social mutation (needs hook)
+function RunCardFooter({
+  run,
+  derived,
+  onRetry,
+  retrying,
+  onCancelClick,
+  onDeleteClick,
+  onCostClick,
+}: {
+  run: RunSummary;
+  derived: DerivedStatus;
+  onRetry: () => void;
+  retrying: boolean;
+  onCancelClick: () => void;
+  onDeleteClick: () => void;
+  onCostClick: () => void;
+}): ReactElement {
+  const mutation = useTriggerSocialPost(run.runId);
+  const runDate = formatStartedAt(run.startedAt).date;
+
+  function handlePostConfirm(channel: SocialChannel): void {
+    mutation.mutate(channel, {
+      onError: (err) => {
+        toast.error(err.message);
+      },
+    });
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      <CostButton
+        costBreakdown={run.costBreakdown}
+        onClick={onCostClick}
+      />
+      <SocialOverflowMenu
+        run={run}
+        runDate={runDate}
+        onPostConfirm={handlePostConfirm}
+        isPending={mutation.isPending}
+      />
+      <Button
+        asChild
+        variant="outline"
+        size="sm"
+        className="min-h-[44px] px-3"
+      >
+        <Link to={`/admin/runs/${run.runId}`}>Details</Link>
+      </Button>
+      {canViewSources(run) ? (
+        <Button
+          asChild
+          variant="outline"
+          size="sm"
+          className="min-h-[44px] px-3"
+        >
+          <Link to={`/admin/sources/${run.runId}`}>Sources</Link>
+        </Button>
+      ) : null}
+      <RunCardActions
+        run={run}
+        derived={derived}
+        onRetry={onRetry}
+        retrying={retrying}
+        onCancelClick={onCancelClick}
+      />
+      {showDeleteFor(derived) ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Delete newsletter"
+          onClick={onDeleteClick}
+          className="min-h-[44px] min-w-[44px]"
+        >
+          <Trash2 />
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export function RunsCardList({
   runs,
   onRetry,
@@ -210,15 +304,6 @@ export function RunsCardList({
       setDeleting(false);
       setDeleteRunId(null);
     }
-  }
-
-  function showDeleteFor(status: DerivedStatus): boolean {
-    return (
-      status === "ready-to-review" ||
-      status === "reviewed" ||
-      status === "failed" ||
-      status === "cancelled"
-    );
   }
 
   return (
@@ -355,48 +440,15 @@ export function RunsCardList({
                 </span>
               </div>
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                <CostButton
-                  costBreakdown={run.costBreakdown}
-                  onClick={() => { setCostRun(run); }}
-                />
-                <Button
-                  asChild
-                  variant="outline"
-                  size="sm"
-                  className="min-h-[44px] px-3"
-                >
-                  <Link to={`/admin/runs/${run.runId}`}>Details</Link>
-                </Button>
-                {canViewSources(run) ? (
-                  <Button
-                    asChild
-                    variant="outline"
-                    size="sm"
-                    className="min-h-[44px] px-3"
-                  >
-                    <Link to={`/admin/sources/${run.runId}`}>Sources</Link>
-                  </Button>
-                ) : null}
-                <RunCardActions
-                  run={run}
-                  derived={derived}
-                  onRetry={onRetry}
-                  retrying={retrying}
-                  onCancelClick={() => { setConfirmRunId(run.runId); }}
-                />
-                {showDeleteFor(derived) ? (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Delete newsletter"
-                    onClick={() => { setDeleteRunId(run.runId); }}
-                    className="min-h-[44px] min-w-[44px]"
-                  >
-                    <Trash2 />
-                  </Button>
-                ) : null}
-              </div>
+              <RunCardFooter
+                run={run}
+                derived={derived}
+                onRetry={onRetry}
+                retrying={retrying}
+                onCancelClick={() => { setConfirmRunId(run.runId); }}
+                onDeleteClick={() => { setDeleteRunId(run.runId); }}
+                onCostClick={() => { setCostRun(run); }}
+              />
             </li>
           );
         })}
