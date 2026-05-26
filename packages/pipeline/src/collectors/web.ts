@@ -26,6 +26,8 @@ const MAX_ERROR_LENGTH = 200;
 
 export const WEB_COLLECTOR_MODEL_ID = "claude-haiku-4-5-20251001";
 
+export const COMBINED_DISCOVERY_CAP = 120_000;
+
 export type UsageReporter = (
   usage: LanguageModelUsage,
   providerMetadata?: ProviderMetadata,
@@ -54,10 +56,15 @@ export type ExtractedFields = z.infer<typeof DetailSchema>;
 export async function discoverPostUrls(
   listingUrl: string,
   listingMarkdown: string,
+  structuredData: string | null,
   model: LanguageModel,
   reportUsage?: UsageReporter,
 ): Promise<DiscoveredPost[]> {
   const today = new Date().toISOString().slice(0, 10);
+  const combined = structuredData
+    ? `${listingMarkdown}\n\n--- STRUCTURED DATA ---\n${structuredData}`
+    : listingMarkdown;
+  const promptBody = combined.slice(0, COMBINED_DISCOVERY_CAP);
   const result = await generateObject({
     model,
     schema: DiscoverySchema,
@@ -71,7 +78,7 @@ export async function discoverPostUrls(
       `relative date like "2 hours ago", "yesterday", or "3 days ago", compute ` +
       `the absolute date from today. Use empty strings for fields that are not ` +
       `stated on the page. Never invent data.\n\n` +
-      `--- BEGIN LISTING MARKDOWN ---\n${listingMarkdown}\n--- END LISTING MARKDOWN ---`,
+      `--- BEGIN LISTING MARKDOWN ---\n${promptBody}\n--- END LISTING MARKDOWN ---`,
   });
   reportUsage?.(result.usage, result.providerMetadata);
   return result.object.posts;
@@ -102,16 +109,14 @@ export async function extractPostFields(
 
 export function validateDiscoveredUrls(
   posts: DiscoveredPost[],
-  listingMarkdown: string,
   listingUrl: string,
 ): DiscoveredPost[] {
   const out: DiscoveredPost[] = [];
   for (const p of posts) {
     const raw = p.url.trim();
     // Empty or fragment-only hrefs are never real posts — and "" resolves back
-    // to the listing page itself, so reject before the substring/resolve step.
+    // to the listing page itself, so reject before the resolve step.
     if (raw === "" || raw.startsWith("#")) continue;
-    if (!listingMarkdown.includes(p.url)) continue;
     // The discovery LLM commonly emits relative hrefs (e.g. "/blog/post") as
     // they appear in the page markdown. Resolve against the listing URL so they
     // reach the detail crawl as absolute URLs, and drop anything that isn't a
@@ -282,10 +287,11 @@ export async function collectWeb(
         const discovered = await discoverPostUrls(
           source.listingUrl,
           r.result.markdown,
+          r.result.structuredData,
           llmModel,
           reportDiscovery,
         );
-        const validated = validateDiscoveredUrls(discovered, r.result.markdown, source.listingUrl);
+        const validated = validateDiscoveredUrls(discovered, source.listingUrl);
         const sorted = sortPostsByPublishedAtDesc(validated);
         const filtered = applySinceDays(sorted, config.sinceDays);
         const capped = filtered.slice(0, config.maxItems);

@@ -14,6 +14,7 @@ import {
   applySinceDays,
   sortPostsByPublishedAtDesc,
   parseDateOrNull,
+  COMBINED_DISCOVERY_CAP,
   type DiscoveredPost,
 } from "@pipeline/collectors/web.js";
 import type { BlogSource } from "@pipeline/types.js";
@@ -81,7 +82,7 @@ describe("LLM extraction helpers", () => {
       ];
       const model = makeDiscoveryMockModel({ posts: fakePosts });
 
-      const result = await discoverPostUrls(listing.listingUrl, listing.markdown, model);
+      const result = await discoverPostUrls(listing.listingUrl, listing.markdown, null, model);
 
       expect(result).toEqual(fakePosts);
     });
@@ -89,7 +90,7 @@ describe("LLM extraction helpers", () => {
     it("passes temperature 0 to generateText", async () => {
       const model = makeDiscoveryMockModel({ posts: [] });
 
-      await discoverPostUrls(listing.listingUrl, listing.markdown, model);
+      await discoverPostUrls(listing.listingUrl, listing.markdown, null, model);
 
       expect(model.doGenerateCalls).toHaveLength(1);
       const call = getCallOrThrow(model.doGenerateCalls, 0);
@@ -99,7 +100,7 @@ describe("LLM extraction helpers", () => {
     it("passes DiscoverySchema to generateText", async () => {
       const model = makeDiscoveryMockModel({ posts: [] });
 
-      await discoverPostUrls(listing.listingUrl, listing.markdown, model);
+      await discoverPostUrls(listing.listingUrl, listing.markdown, null, model);
 
       const call = getCallOrThrow(model.doGenerateCalls, 0);
       const responseFormat = call.responseFormat;
@@ -114,7 +115,7 @@ describe("LLM extraction helpers", () => {
       const model = makeThrowingModel("upstream LLM failure");
 
       await expect(
-        discoverPostUrls(listing.listingUrl, listing.markdown, model),
+        discoverPostUrls(listing.listingUrl, listing.markdown, null, model),
       ).rejects.toThrow();
     });
   });
@@ -163,29 +164,30 @@ describe("LLM extraction helpers", () => {
   });
 
   describe("validateDiscoveredUrls", () => {
-    it("drops URLs not present in the listing markdown", () => {
+    // REQ-008: URLs absent from the listing markdown are now KEPT (substring gate removed)
+    it("keeps a valid http(s) URL even when it is NOT a substring of the listing markdown (REQ-008)", () => {
       const posts: DiscoveredPost[] = [
         {
           url: "https://example.com/blog/scaling-events",
-          title: "Real post",
+          title: "Real post in markdown",
           published_at: "2026-03-30",
         },
         {
-          url: "https://example.com/blog/hallucinated-post",
-          title: "Made up by the LLM",
+          url: "https://example.com/blog/only-in-structured-data",
+          title: "URL only in JSON-LD blob, not in markdown",
           published_at: "2026-03-25",
         },
       ];
 
-      const result = validateDiscoveredUrls(posts, listing.markdown, listing.listingUrl);
+      const result = validateDiscoveredUrls(posts, listing.listingUrl);
 
-      expect(result).toHaveLength(1);
-      expect(result.map((p) => p.url)).toEqual([
-        "https://example.com/blog/scaling-events",
-      ]);
+      // Both URLs are valid http(s) — both must survive without the substring gate
+      expect(result).toHaveLength(2);
+      expect(result.map((p) => p.url)).toContain("https://example.com/blog/only-in-structured-data");
     });
 
-    it("keeps URLs that appear as substrings", () => {
+    // REQ-009: valid URLs still kept (no regression from gate removal)
+    it("keeps URLs that appear as substrings (still valid after gate removal, REQ-009)", () => {
       const posts: DiscoveredPost[] = [
         {
           url: "https://example.com/blog/scaling-events",
@@ -204,13 +206,13 @@ describe("LLM extraction helpers", () => {
         },
       ];
 
-      const result = validateDiscoveredUrls(posts, listing.markdown, listing.listingUrl);
+      const result = validateDiscoveredUrls(posts, listing.listingUrl);
 
       expect(result).toHaveLength(3);
     });
 
     it("handles empty input gracefully", () => {
-      const result = validateDiscoveredUrls([], listing.markdown, listing.listingUrl);
+      const result = validateDiscoveredUrls([], listing.listingUrl);
       expect(result).toEqual([]);
     });
 
@@ -225,13 +227,14 @@ describe("LLM extraction helpers", () => {
         },
       ];
 
-      const result = validateDiscoveredUrls(posts, listing.markdown, listing.listingUrl);
+      const result = validateDiscoveredUrls(posts, listing.listingUrl);
 
       expect(result).toHaveLength(1);
       expect(result[0]?.url).toBe("https://example.com/blog/scaling-events");
     });
 
-    it("drops empty, fragment, and non-http(s) URLs", () => {
+    // REQ-009: invalid URLs still dropped
+    it("drops empty, fragment, and non-http(s) URLs (REQ-009)", () => {
       const posts: DiscoveredPost[] = [
         { url: "", title: "empty", published_at: "" },
         { url: "#", title: "fragment", published_at: "" },
@@ -239,7 +242,7 @@ describe("LLM extraction helpers", () => {
         { url: "javascript:void(0)", title: "js", published_at: "" },
       ];
 
-      const result = validateDiscoveredUrls(posts, listing.markdown, listing.listingUrl);
+      const result = validateDiscoveredUrls(posts, listing.listingUrl);
 
       expect(result).toEqual([]);
     });
@@ -250,11 +253,96 @@ describe("LLM extraction helpers", () => {
         { url: "", title: "bad", published_at: "" },
       ];
 
-      const result = validateDiscoveredUrls(posts, listing.markdown, listing.listingUrl);
+      const result = validateDiscoveredUrls(posts, listing.listingUrl);
 
       expect(result.map((p) => p.url)).toEqual([
         "https://example.com/blog/scaling-events",
       ]);
+    });
+
+    // EDGE-003: a hallucinated URL (not in markdown or structured data) passes validation
+    it("passes validation for a hallucinated URL not present in markdown (EDGE-003)", () => {
+      const posts: DiscoveredPost[] = [
+        {
+          url: "https://example.com/blog/hallucinated-post",
+          title: "Hallucinated by LLM",
+          published_at: "2026-03-25",
+        },
+      ];
+
+      // Should pass validation (substring gate is gone); it will fail/404 in Pass-2
+      const result = validateDiscoveredUrls(posts, listing.listingUrl);
+      expect(result).toHaveLength(1);
+      expect(result[0]?.url).toBe("https://example.com/blog/hallucinated-post");
+    });
+  });
+
+  describe("discoverPostUrls — structured data prompt injection (REQ-005, REQ-006, REQ-007, EDGE-002)", () => {
+    it("COMBINED_DISCOVERY_CAP is 120_000 (REQ-006)", () => {
+      expect(COMBINED_DISCOVERY_CAP).toBe(120_000);
+    });
+
+    // REQ-005: non-null structuredData → prompt contains markdown, then delimiter, then blob
+    it("appends structured data after a delimiter when structuredData is non-null (REQ-005)", async () => {
+      const model = makeDiscoveryMockModel({ posts: [] });
+      const sd = '{"@type":"NewsArticle","headline":"Test"}';
+
+      await discoverPostUrls(listing.listingUrl, listing.markdown, sd, model);
+
+      const call = getCallOrThrow(model.doGenerateCalls, 0);
+      // prompt is LanguageModelV2Prompt: Array<{ role, content: Array<{ type, text }> }>
+      const promptMessages = call.prompt as { role: string; content: { type: string; text?: string }[] }[];
+      const text = promptMessages.flatMap((m) => m.content).find((c) => c.type === "text")?.text ?? "";
+
+      // Markdown appears before the delimiter
+      const mdIdx = text.indexOf(listing.markdown);
+      const delimIdx = text.indexOf("--- STRUCTURED DATA ---");
+      const sdIdx = text.indexOf(sd);
+
+      expect(mdIdx).toBeGreaterThanOrEqual(0);
+      expect(delimIdx).toBeGreaterThan(mdIdx);
+      expect(sdIdx).toBeGreaterThan(delimIdx);
+    });
+
+    // REQ-007: null structuredData → no STRUCTURED DATA section
+    it("sends markdown-only prompt when structuredData is null (REQ-007)", async () => {
+      const model = makeDiscoveryMockModel({ posts: [] });
+
+      await discoverPostUrls(listing.listingUrl, listing.markdown, null, model);
+
+      const call = getCallOrThrow(model.doGenerateCalls, 0);
+      const promptMessages = call.prompt as { role: string; content: { type: string; text?: string }[] }[];
+      const text = promptMessages.flatMap((m) => m.content).find((c) => c.type === "text")?.text ?? "";
+
+      expect(text).not.toContain("--- STRUCTURED DATA ---");
+      expect(text).toContain(listing.markdown);
+    });
+
+    // REQ-006 + EDGE-002: oversized combined body is capped; markdown prefix is preserved
+    it("truncates combined body to COMBINED_DISCOVERY_CAP and preserves markdown prefix (REQ-006, EDGE-002)", async () => {
+      const model = makeDiscoveryMockModel({ posts: [] });
+      // Build a structuredData that, combined with the markdown, exceeds the cap
+      const mdPart = "A".repeat(80_000);
+      const sdPart = "B".repeat(80_000);
+
+      await discoverPostUrls(listing.listingUrl, mdPart, sdPart, model);
+
+      const call = getCallOrThrow(model.doGenerateCalls, 0);
+      const promptMessages = call.prompt as { role: string; content: { type: string; text?: string }[] }[];
+      const text = promptMessages.flatMap((m) => m.content).find((c) => c.type === "text")?.text ?? "";
+
+      // Find the embedded body between the BEGIN and END markers
+      const beginMarker = "--- BEGIN LISTING MARKDOWN ---\n";
+      const endMarker = "\n--- END LISTING MARKDOWN ---";
+      const beginIdx = text.indexOf(beginMarker);
+      const endIdx = text.indexOf(endMarker);
+      expect(beginIdx).toBeGreaterThanOrEqual(0);
+      expect(endIdx).toBeGreaterThan(beginIdx);
+
+      const body = text.slice(beginIdx + beginMarker.length, endIdx);
+      expect(body.length).toBe(COMBINED_DISCOVERY_CAP);
+      // Markdown goes first, so the body starts with the markdown prefix
+      expect(body.startsWith(mdPart.slice(0, 100))).toBe(true);
     });
   });
 
@@ -550,10 +638,11 @@ function makeSuccessResult(
   markdown: string,
   imageUrl: string | null = null,
   publishedAt: Date | null = null,
+  structuredData: string | null = null,
 ): CrawlResult {
   return {
     ok: true,
-    result: { markdown, title: null, byline: null, imageUrl, textLength: markdown.length, publishedAt },
+    result: { markdown, title: null, byline: null, imageUrl, textLength: markdown.length, publishedAt, structuredData },
     renderedWith: "static",
   };
 }
