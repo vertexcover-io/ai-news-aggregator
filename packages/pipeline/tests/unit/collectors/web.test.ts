@@ -14,6 +14,7 @@ import {
   applySinceDays,
   sortPostsByPublishedAtDesc,
   parseDateOrNull,
+  resolvesToListing,
   COMBINED_DISCOVERY_CAP,
   type DiscoveredPost,
 } from "@pipeline/collectors/web.js";
@@ -1192,6 +1193,321 @@ describe("collectWeb (mocked at runWebCrawl boundary)", () => {
     expect(repo.upsertItems).toHaveBeenCalledTimes(1);
     const items = (repo.upsertItems as ReturnType<typeof vi.fn>).mock.calls[0][0] as { publishedAt: Date | null }[];
     expect(items[0].publishedAt).toEqual(structured);
+  });
+});
+
+// ── resolvesToListing (REQ-010, EDGE-008) ────────────────────────────────────
+
+describe("resolvesToListing", () => {
+  // REQ-010: llm-stats style — fragment URL whose pre-fragment == listing URL → true
+  it("returns true for a fragment URL whose pre-fragment equals the listing URL (REQ-010)", () => {
+    expect(
+      resolvesToListing(
+        "https://llm-stats.com/ai-news#item-https://www.techmeme.com/some-article",
+        "https://llm-stats.com/ai-news",
+      ),
+    ).toBe(true);
+  });
+
+  // REQ-010: same URL with no fragment → still true
+  it("returns true for the same URL with no fragment", () => {
+    expect(
+      resolvesToListing("https://llm-stats.com/ai-news", "https://llm-stats.com/ai-news"),
+    ).toBe(true);
+  });
+
+  // REQ-010: trailing-slash variant is treated as same path
+  it("returns true when post URL has trailing slash but listing does not", () => {
+    expect(
+      resolvesToListing("https://llm-stats.com/ai-news/", "https://llm-stats.com/ai-news"),
+    ).toBe(true);
+  });
+
+  // EDGE-008: external article with fragment → false (pre-fragment is a different origin)
+  it("returns false for a real external article with a fragment (EDGE-008)", () => {
+    expect(
+      resolvesToListing(
+        "https://techmeme.com/p1#frag",
+        "https://llm-stats.com/ai-news",
+      ),
+    ).toBe(false);
+  });
+
+  // REQ-010: unparseable postUrl → false (never throws)
+  it("returns false for an unparseable postUrl", () => {
+    expect(resolvesToListing("not a url !!!", "https://llm-stats.com/ai-news")).toBe(false);
+  });
+
+  // REQ-010: same origin but different path → false
+  it("returns false when same origin but different pathname", () => {
+    expect(
+      resolvesToListing(
+        "https://llm-stats.com/other-page#item-foo",
+        "https://llm-stats.com/ai-news",
+      ),
+    ).toBe(false);
+  });
+});
+
+// ── collectWeb self-referential post tests (REQ-010, REQ-011, EDGE-005, EDGE-008) ─
+
+describe("collectWeb self-referential listing posts", () => {
+  const listingUrl = "https://llm-stats.com/ai-news";
+  const selfRefSource: BlogSource = { name: "llm-stats", listingUrl };
+
+  const selfRefPost1 = {
+    url: "https://llm-stats.com/ai-news#item-https://techmeme.com/article-one",
+    title: "Techmeme Story One",
+    published_at: "2026-05-26",
+  };
+  const selfRefPost2 = {
+    url: "https://llm-stats.com/ai-news#item-https://arxiv.org/abs/2405.00001",
+    title: "Arxiv Paper One",
+    published_at: "2026-05-25",
+  };
+  const externalPost = {
+    url: "https://some-blog.com/real-article",
+    title: "A Real External Article",
+    published_at: "2026-05-24",
+  };
+
+  function makeListingCrawlResult(): CrawlResult {
+    return makeSuccessResult("# LLM Stats\nToday's AI news", null, null, null);
+  }
+
+  function makeDetailCrawlResult(): CrawlResult {
+    return makeSuccessResult("# Real External Article\n\nContent here.");
+  }
+
+  // REQ-010: self-referential posts do NOT produce detail crawl jobs
+  it("does not enqueue a detail job for self-referential #item- posts (REQ-010)", async () => {
+    const repo = makeRepo();
+
+    const listingMap = new Map<string, CrawlResult>([
+      [listingUrl, makeListingCrawlResult()],
+    ]);
+    const detailMap = new Map<string, CrawlResult>([
+      [externalPost.url, makeDetailCrawlResult()],
+    ]);
+
+    let detailJobUrls: string[] = [];
+    const runWebCrawlMock = vi.fn().mockImplementation(
+      (jobs: { url: string; kind: string }[]) => {
+        if (jobs.length > 0 && jobs[0]?.kind === "detail") {
+          detailJobUrls = jobs.map((j) => j.url);
+          return Promise.resolve(detailMap);
+        }
+        return Promise.resolve(listingMap);
+      },
+    );
+
+    // For the external post, we need extraction to succeed
+    let llmCalls = 0;
+    const mixedModel = new MockLanguageModelV2({
+      doGenerate: () => {
+        const callIdx = llmCalls++;
+        if (callIdx === 0) {
+          // Discovery call
+          return Promise.resolve({
+            content: [{ type: "text", text: JSON.stringify({ posts: [selfRefPost1, externalPost] }) }],
+            finishReason: "stop" as const,
+            usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            warnings: [],
+          });
+        }
+        // Extraction call for external post
+        return Promise.resolve({
+          content: [{ type: "text", text: JSON.stringify({ title: externalPost.title, author: "", published_at: externalPost.published_at, image_url: "" }) }],
+          finishReason: "stop" as const,
+          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+          warnings: [],
+        });
+      },
+    });
+
+    await collectWeb(
+      { rawItemsRepo: repo, llmModel: mixedModel, runWebCrawl: runWebCrawlMock },
+      { sources: [selfRefSource], maxItems: 10 },
+    );
+
+    // The self-referential post's URL must NOT appear in any detail job
+    expect(detailJobUrls).not.toContain(selfRefPost1.url);
+    // The external post DOES appear in detail jobs (EDGE-008)
+    expect(detailJobUrls).toContain(externalPost.url);
+  });
+
+  // REQ-011: stored self-referential item has title/publishedAt from discovery, url===externalId===full URL, content===""
+  it("builds self-referential item from discovery fields: url===externalId, content=empty (REQ-011)", async () => {
+    const repo = makeRepo();
+
+    const listingMap = new Map<string, CrawlResult>([
+      [listingUrl, makeListingCrawlResult()],
+    ]);
+
+    // Only self-ref post, no external post → Pass-2 never called
+    const runWebCrawlMock = vi.fn().mockImplementation(
+      (jobs: { url: string; kind: string }[]) => {
+        if (jobs.length > 0 && jobs[0]?.kind === "detail") {
+          return Promise.resolve(new Map());
+        }
+        return Promise.resolve(listingMap);
+      },
+    );
+
+    const discoveryModel = makeDiscoveryModel([selfRefPost1]);
+
+    await collectWeb(
+      { rawItemsRepo: repo, llmModel: discoveryModel, runWebCrawl: runWebCrawlMock },
+      { sources: [selfRefSource], maxItems: 10 },
+    );
+
+    expect(repo.upsertItems).toHaveBeenCalledTimes(1);
+    const stored = (repo.upsertItems as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      url: string;
+      externalId: string;
+      title: string;
+      content: string;
+      publishedAt: Date | null;
+    }[];
+
+    expect(stored).toHaveLength(1);
+    const item = stored[0];
+    expect(item.url).toBe(selfRefPost1.url);
+    expect(item.externalId).toBe(selfRefPost1.url);
+    expect(item.title).toBe(selfRefPost1.title);
+    expect(item.content).toBe("");
+    // publishedAt resolved from discovery date "2026-05-26"
+    expect(item.publishedAt).toBeInstanceOf(Date);
+    if (!(item.publishedAt instanceof Date)) throw new Error("expected publishedAt to be a Date");
+    expect(item.publishedAt.toISOString().slice(0, 10)).toBe("2026-05-26");
+  });
+
+  // EDGE-005: two self-referential posts sharing same pre-fragment base but different fragments → two distinct items
+  it("stores two distinct items for two self-referential posts with different fragments (EDGE-005)", async () => {
+    const repo = makeRepo();
+
+    const listingMap = new Map<string, CrawlResult>([
+      [listingUrl, makeListingCrawlResult()],
+    ]);
+
+    const runWebCrawlMock = vi.fn().mockImplementation(
+      (jobs: { url: string; kind: string }[]) => {
+        if (jobs.length > 0 && jobs[0]?.kind === "detail") {
+          return Promise.resolve(new Map());
+        }
+        return Promise.resolve(listingMap);
+      },
+    );
+
+    const discoveryModel = makeDiscoveryModel([selfRefPost1, selfRefPost2]);
+
+    await collectWeb(
+      { rawItemsRepo: repo, llmModel: discoveryModel, runWebCrawl: runWebCrawlMock },
+      { sources: [selfRefSource], maxItems: 10 },
+    );
+
+    expect(repo.upsertItems).toHaveBeenCalledTimes(1);
+    const stored = (repo.upsertItems as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      externalId: string;
+    }[];
+
+    expect(stored).toHaveLength(2);
+    const ids = stored.map((i) => i.externalId);
+    expect(ids).toContain(selfRefPost1.url);
+    expect(ids).toContain(selfRefPost2.url);
+    // They must be distinct
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  // EDGE-008: external post with a fragment (but pre-fragment != listing URL) → normal Pass-2
+  it("still enqueues Pass-2 for an external article that has a fragment (EDGE-008)", async () => {
+    const externalWithFragment = {
+      url: "https://some-blog.com/real-article#section-2",
+      title: "External With Fragment",
+      published_at: "2026-05-24",
+    };
+    const repo = makeRepo();
+
+    const listingMap = new Map<string, CrawlResult>([
+      [listingUrl, makeListingCrawlResult()],
+    ]);
+    const detailMap = new Map<string, CrawlResult>([
+      [externalWithFragment.url, makeDetailCrawlResult()],
+    ]);
+
+    let detailJobUrls: string[] = [];
+    const runWebCrawlMock = vi.fn().mockImplementation(
+      (jobs: { url: string; kind: string }[]) => {
+        if (jobs.length > 0 && jobs[0]?.kind === "detail") {
+          detailJobUrls = jobs.map((j) => j.url);
+          return Promise.resolve(detailMap);
+        }
+        return Promise.resolve(listingMap);
+      },
+    );
+
+    let llmCalls = 0;
+    const mixedModel = new MockLanguageModelV2({
+      doGenerate: () => {
+        const callIdx = llmCalls++;
+        if (callIdx === 0) {
+          return Promise.resolve({
+            content: [{ type: "text", text: JSON.stringify({ posts: [externalWithFragment] }) }],
+            finishReason: "stop" as const,
+            usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            warnings: [],
+          });
+        }
+        return Promise.resolve({
+          content: [{ type: "text", text: JSON.stringify({ title: externalWithFragment.title, author: "", published_at: externalWithFragment.published_at, image_url: "" }) }],
+          finishReason: "stop" as const,
+          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+          warnings: [],
+        });
+      },
+    });
+
+    await collectWeb(
+      { rawItemsRepo: repo, llmModel: mixedModel, runWebCrawl: runWebCrawlMock },
+      { sources: [selfRefSource], maxItems: 10 },
+    );
+
+    // The external-with-fragment URL MUST appear in detail jobs (normal Pass-2)
+    expect(detailJobUrls).toContain(externalWithFragment.url);
+  });
+
+  // Empty title in self-referential post → failure recorded, item not stored
+  it("records empty-title failure for a self-referential post with no title", async () => {
+    const emptyTitleSelfRef = {
+      url: "https://llm-stats.com/ai-news#item-https://example.com/foo",
+      title: "   ",
+      published_at: "2026-05-26",
+    };
+    const repo = makeRepo();
+
+    const listingMap = new Map<string, CrawlResult>([
+      [listingUrl, makeListingCrawlResult()],
+    ]);
+
+    const runWebCrawlMock = vi.fn().mockImplementation(
+      (jobs: { url: string; kind: string }[]) => {
+        if (jobs.length > 0 && jobs[0]?.kind === "detail") {
+          return Promise.resolve(new Map());
+        }
+        return Promise.resolve(listingMap);
+      },
+    );
+
+    const discoveryModel = makeDiscoveryModel([emptyTitleSelfRef]);
+
+    const result = await collectWeb(
+      { rawItemsRepo: repo, llmModel: discoveryModel, runWebCrawl: runWebCrawlMock },
+      { sources: [selfRefSource], maxItems: 10 },
+    );
+
+    expect(repo.upsertItems).not.toHaveBeenCalled();
+    expect(result.failures).toBeDefined();
+    expect(result.failures?.some((f) => f.error === "empty title")).toBe(true);
   });
 });
 

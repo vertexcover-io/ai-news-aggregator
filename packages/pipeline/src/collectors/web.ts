@@ -134,6 +134,16 @@ export function validateDiscoveredUrls(
   return out;
 }
 
+export function resolvesToListing(postUrl: string, listingUrl: string): boolean {
+  try {
+    const p = new URL(postUrl);
+    const l = new URL(listingUrl);
+    return p.origin === l.origin && p.pathname.replace(/\/$/, "") === l.pathname.replace(/\/$/, "");
+  } catch {
+    return false;
+  }
+}
+
 export function sortPostsByPublishedAtDesc(
   posts: DiscoveredPost[],
   referenceDate: Date = new Date(),
@@ -333,12 +343,21 @@ export async function collectWeb(
 
   const detailJobs: CrawlJob[] = [];
   const postBySource = new Map<string, DiscoveredPost[]>();
+  const selfReferentialBySource = new Map<string, DiscoveredPost[]>();
   for (const ps of perSource) {
     const newPosts = ps.capped.filter((p) => !existing.has(p.url));
-    postBySource.set(ps.source.name, newPosts);
+    const selfRef: DiscoveredPost[] = [];
+    const needsDetail: DiscoveredPost[] = [];
     for (const p of newPosts) {
-      detailJobs.push({ kind: "detail" as const, sourceName: ps.source.name, postUrl: p.url, url: p.url });
+      if (resolvesToListing(p.url, ps.source.listingUrl)) {
+        selfRef.push(p);
+      } else {
+        needsDetail.push(p);
+        detailJobs.push({ kind: "detail" as const, sourceName: ps.source.name, postUrl: p.url, url: p.url });
+      }
     }
+    postBySource.set(ps.source.name, needsDetail);
+    selfReferentialBySource.set(ps.source.name, selfRef);
   }
 
   // Pass 2: details (only when there is work)
@@ -445,6 +464,26 @@ export async function collectWeb(
     },
     "post field extraction complete",
   );
+
+  // Build self-referential items (no Pass-2 detail fetch)
+  for (const ps of perSource) {
+    if (ps.sourceFailed) continue;
+    const selfRefs = selfReferentialBySource.get(ps.source.name) ?? [];
+    for (const post of selfRefs) {
+      const fields: ExtractedFields = {
+        title: post.title.trim(),
+        author: "",
+        published_at: post.published_at,
+        image_url: "",
+      };
+      if (!fields.title) {
+        allFailures.push({ source: ps.source.name, postUrl: post.url, error: "empty title" });
+        continue;
+      }
+      allItems.push(buildRawItem(post.url, "", fields, null));
+      itemsBySource.set(ps.source.name, (itemsBySource.get(ps.source.name) ?? 0) + 1);
+    }
+  }
 
   if (config.sources.length > 0 && perSource.every((ps) => ps.sourceFailed)) {
     logger.error(
