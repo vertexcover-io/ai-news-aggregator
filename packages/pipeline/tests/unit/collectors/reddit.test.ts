@@ -200,8 +200,16 @@ describe("collectReddit RSS", () => {
       author: "ml_researcher",
       content: "",
       engagement: { points: 0, commentCount: 0 },
-      metadata: { comments: [] },
       imageUrl: "https://external-preview.redd.it/hero.jpg?width=640&crop=smart",
+    });
+    // A LINK post: url is the external article, but sourceUnit must be the
+    // subreddit it was posted to — never the article's domain.
+    expect(rows[0].metadata).toEqual({
+      comments: [],
+      sourceUnit: {
+        identifier: "r/MachineLearning",
+        displayName: "r/MachineLearning",
+      },
     });
     expect(rows[0].publishedAt).toEqual(new Date(RECENT_PUBLISHED_ISO));
   });
@@ -253,7 +261,10 @@ describe("collectReddit RSS", () => {
     expect(result.commentsFetched).toBe(0);
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    expect(rows[0].metadata).toEqual({ comments: [] });
+    expect(rows[0].metadata).toEqual({
+      comments: [],
+      sourceUnit: { identifier: "r/MachineLearning", displayName: "r/MachineLearning" },
+    });
   });
 
   it("ignores stale commentsPerItem config and avoids comment request failures", async () => {
@@ -272,7 +283,10 @@ describe("collectReddit RSS", () => {
     expect(result.commentsFetched).toBe(0);
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    expect(rows[0].metadata).toEqual({ comments: [] });
+    expect(rows[0].metadata).toEqual({
+      comments: [],
+      sourceUnit: { identifier: "r/MachineLearning", displayName: "r/MachineLearning" },
+    });
   });
 
   it("applies sinceDays, deduplicates posts, and reports per-subreddit unit results", async () => {

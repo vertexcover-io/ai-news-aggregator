@@ -32,6 +32,47 @@ describe("tweetToRawItem", () => {
     });
   });
 
+  describe("sourceUnit stamping", () => {
+    it("stamps the provided collection unit onto metadata", () => {
+      const t = makeTweet();
+      const item = tweetToRawItem(t, {
+        identifier: "list:158",
+        displayName: "Twitter list 158",
+      });
+      expect(item.metadata?.sourceUnit).toEqual({
+        identifier: "list:158",
+        displayName: "Twitter list 158",
+      });
+    });
+
+    it("omits sourceUnit when none is provided", () => {
+      const item = tweetToRawItem(makeTweet());
+      expect(item.metadata?.sourceUnit).toBeUndefined();
+    });
+
+    it("keeps both quotedTweet and sourceUnit when both apply", () => {
+      const t = makeTweet({
+        quotedTweet: {
+          id: "q1",
+          authorHandle: "dwarkesh_sp",
+          fullText: "quoted",
+          url: "https://x.com/dwarkesh_sp/status/q1",
+          createdAt: "2026-05-01T11:00:00.000Z",
+          photoUrls: [],
+        },
+      });
+      const item = tweetToRawItem(t, {
+        identifier: "user:sama",
+        displayName: "@sama",
+      });
+      expect(item.metadata?.sourceUnit).toEqual({
+        identifier: "user:sama",
+        displayName: "@sama",
+      });
+      expect(item.metadata?.quotedTweet?.id).toBe("q1");
+    });
+  });
+
   describe("REQ-006 — engagement", () => {
     it("sums retweet + reply + quote into commentCount; points = likeCount", () => {
       const t = makeTweet({ likeCount: 10, retweetCount: 3, replyCount: 5, quoteCount: 7 });

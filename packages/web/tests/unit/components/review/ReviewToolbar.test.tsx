@@ -11,13 +11,25 @@ const mockFacets: SourceFacetGroup[] = [
   {
     sourceType: "blog",
     facets: [
-      { sourceIdentifier: "openai.com", count: 5 },
-      { sourceIdentifier: "anthropic.com", count: 3 },
+      { sourceIdentifier: "openai.com", displayName: "openai.com", count: 5 },
+      { sourceIdentifier: "anthropic.com", displayName: "anthropic.com", count: 3 },
     ],
   },
   {
     sourceType: "reddit",
-    facets: [{ sourceIdentifier: "r/LocalLLaMA", count: 8 }],
+    facets: [
+      { sourceIdentifier: "r/LocalLLaMA", displayName: "r/LocalLLaMA", count: 8 },
+    ],
+  },
+  {
+    sourceType: "twitter",
+    facets: [
+      {
+        sourceIdentifier: "list:158",
+        displayName: "Twitter list 158",
+        count: 100,
+      },
+    ],
   },
 ];
 
@@ -76,6 +88,26 @@ describe("ReviewToolbar", () => {
       />,
     );
     expect(screen.getByText("openai.com")).toBeTruthy();
+  });
+
+  it("renders the unit displayName (not the raw identifier) for a Twitter list", () => {
+    render(<ReviewToolbar {...makeProps({ selectedSources: new Set(["list:158"]) })} />);
+    // Active chip shows the human label, not "list:158"
+    expect(screen.getByText("Twitter list 158")).toBeTruthy();
+    expect(screen.queryByText("list:158")).toBeNull();
+  });
+
+  it("removing a Twitter-list chip still toggles by identifier", () => {
+    const toggleSource = vi.fn();
+    render(
+      <ReviewToolbar
+        {...makeProps({ selectedSources: new Set(["list:158"]), toggleSource })}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /remove twitter list 158/i }),
+    );
+    expect(toggleSource).toHaveBeenCalledWith("list:158");
   });
 
   it("removing a chip calls toggleSource with the identifier", () => {

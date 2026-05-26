@@ -283,14 +283,18 @@ export async function collectTwitter(
 
     try {
       const outcome = await fetchSource(source, deps, config, sleep, now);
-      const rows = outcome.tweets.map(tweetToRawItem);
-      batch.push(...rows);
       const displayName =
         source.kind === "list"
           ? `Twitter list ${source.id}`
           : `@${userIdToHandle.get(source.id) ?? source.id}`;
+      const identifier =
+        source.kind === "list" ? `list:${source.id}` : `user:${source.id}`;
+      const rows = outcome.tweets.map((t) =>
+        tweetToRawItem(t, { identifier, displayName }),
+      );
+      batch.push(...rows);
       unitResults.push({
-        identifier: source.kind === "list" ? `list:${source.id}` : `user:${source.id}`,
+        identifier,
         displayName,
         itemsFetched: outcome.tweets.length,
         status: "completed",

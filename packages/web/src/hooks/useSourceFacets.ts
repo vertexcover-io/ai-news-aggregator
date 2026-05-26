@@ -3,6 +3,7 @@ import { getSourceFacets } from "../api/archives";
 
 export interface SourceFacetEntry {
   sourceIdentifier: string;
+  displayName: string;
   count: number;
 }
 

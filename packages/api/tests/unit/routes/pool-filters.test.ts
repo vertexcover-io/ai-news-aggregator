@@ -194,8 +194,8 @@ describe("GET /api/admin/archives/:runId/pool — source + shortlist filters (RE
 describe("GET /api/admin/archives/:runId/source-facets (REQ-016)", () => {
   it("returns facets array from repo", async () => {
     const facets: SourceFacet[] = [
-      { sourceType: "blog", identifier: "openai.com", count: 5 },
-      { sourceType: "reddit", identifier: "r/LocalLLaMA", count: 3 },
+      { sourceType: "blog", identifier: "openai.com", displayName: "OpenAI", count: 5 },
+      { sourceType: "reddit", identifier: "r/LocalLLaMA", displayName: "r/LocalLLaMA", count: 3 },
     ];
     const archiveRepo = makeArchiveRepo(makeRow(), undefined, facets);
     const app = makeAdminApp(archiveRepo);
@@ -203,10 +203,16 @@ describe("GET /api/admin/archives/:runId/source-facets (REQ-016)", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { facets: SourceFacet[] };
     expect(body.facets).toHaveLength(2);
-    expect(body.facets[0]).toEqual({ sourceType: "blog", identifier: "openai.com", count: 5 });
+    expect(body.facets[0]).toEqual({
+      sourceType: "blog",
+      identifier: "openai.com",
+      displayName: "OpenAI",
+      count: 5,
+    });
     expect(body.facets[1]).toEqual({
       sourceType: "reddit",
       identifier: "r/LocalLLaMA",
+      displayName: "r/LocalLLaMA",
       count: 3,
     });
   });
@@ -214,8 +220,8 @@ describe("GET /api/admin/archives/:runId/source-facets (REQ-016)", () => {
   it("EDGE-002: blog hostname and twitter handle with same string are distinct facets keyed by (sourceType,identifier)", async () => {
     // e.g. blog identifier "x.com" vs twitter "@x.com" — different sourceType, no merge
     const facets: SourceFacet[] = [
-      { sourceType: "blog", identifier: "x.com", count: 2 },
-      { sourceType: "twitter", identifier: "@x.com", count: 1 },
+      { sourceType: "blog", identifier: "x.com", displayName: "x.com", count: 2 },
+      { sourceType: "twitter", identifier: "@x.com", displayName: "@x.com", count: 1 },
     ];
     const archiveRepo = makeArchiveRepo(makeRow(), undefined, facets);
     const app = makeAdminApp(archiveRepo);
@@ -232,6 +238,7 @@ describe("GET /api/admin/archives/:runId/source-facets (REQ-016)", () => {
     const facets: SourceFacet[] = Array.from({ length: 35 }, (_, i) => ({
       sourceType: "blog" as const,
       identifier: `blog${i}.com`,
+      displayName: `blog${i}.com`,
       count: i + 1,
     }));
     const archiveRepo = makeArchiveRepo(makeRow(), undefined, facets);
