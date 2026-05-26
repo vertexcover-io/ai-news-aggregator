@@ -30,17 +30,17 @@ describe("HEALTHY_TEXT_LENGTH constant", () => {
 
 describe("isHealthyResult", () => {
   it("returns false when textLength is 199", () => {
-    const r: ConvertResult = { markdown: "", title: null, byline: null, imageUrl: null, textLength: 199 };
+    const r: ConvertResult = { markdown: "", title: null, byline: null, imageUrl: null, textLength: 199, publishedAt: null };
     expect(isHealthyResult(r)).toBe(false);
   });
 
   it("returns true when textLength is exactly 200", () => {
-    const r: ConvertResult = { markdown: "", title: null, byline: null, imageUrl: null, textLength: 200 };
+    const r: ConvertResult = { markdown: "", title: null, byline: null, imageUrl: null, textLength: 200, publishedAt: null };
     expect(isHealthyResult(r)).toBe(true);
   });
 
   it("returns true when textLength is 201", () => {
-    const r: ConvertResult = { markdown: "", title: null, byline: null, imageUrl: null, textLength: 201 };
+    const r: ConvertResult = { markdown: "", title: null, byline: null, imageUrl: null, textLength: 201, publishedAt: null };
     expect(isHealthyResult(r)).toBe(true);
   });
 });
@@ -316,5 +316,66 @@ describe("convert resolves relative URLs to absolute against baseUrl", () => {
     });
     expect(result.markdown).toContain("https://example.com/related/post-a");
     expect(result.markdown).toContain("https://example.com/related/post-b");
+  });
+});
+
+// REQ-004: ConvertResult.publishedAt is populated by convert()
+describe("convert — REQ-004: publishedAt in ConvertResult", () => {
+  it("returns publishedAt with the JSON-LD date for dated-jsonld.html (article mode)", () => {
+    const html = fixture("dated-jsonld.html");
+    const result = convert({ html, baseUrl: "https://example.com/", mode: "article" });
+    expect(result.publishedAt).not.toBeNull();
+    expect(result.publishedAt?.toISOString()).toBe("2026-05-25T09:00:00.000Z");
+  });
+
+  it("returns publishedAt: null for dated-none.html (article mode)", () => {
+    const html = fixture("dated-none.html");
+    const result = convert({ html, baseUrl: "https://example.com/", mode: "article" });
+    expect(result.publishedAt).toBeNull();
+  });
+
+  it("returns publishedAt for dated-jsonld.html even when Readability fails (early return path)", () => {
+    // Use a minimal page that would fail Readability but has JSON-LD
+    const html = `<!DOCTYPE html><html><head>
+      <script type="application/ld+json">{"@type":"Article","datePublished":"2026-05-25T09:00:00.000Z"}</script>
+    </head><body><p>x</p></body></html>`;
+    const result = convert({ html, baseUrl: "https://example.com/", mode: "article" });
+    // publishedAt should still be set even if Readability returns null
+    expect(result.publishedAt).not.toBeNull();
+    expect(result.publishedAt?.toISOString()).toBe("2026-05-25T09:00:00.000Z");
+  });
+});
+
+// REQ-010: listing mode also extracts publishedAt from original DOM (before stripping)
+describe("convert — REQ-010: publishedAt in listing mode", () => {
+  it("returns publishedAt from JSON-LD in listing mode", () => {
+    const html = fixture("dated-jsonld.html");
+    const result = convert({ html, baseUrl: "https://example.com/", mode: "listing" });
+    expect(result.publishedAt).not.toBeNull();
+    expect(result.publishedAt?.toISOString()).toBe("2026-05-25T09:00:00.000Z");
+  });
+
+  it("returns publishedAt: null for page with no date in listing mode", () => {
+    const html = fixture("dated-none.html");
+    const result = convert({ html, baseUrl: "https://example.com/", mode: "listing" });
+    expect(result.publishedAt).toBeNull();
+  });
+
+  it("extracts publishedAt from head JSON-LD before script tags are stripped in listing mode", () => {
+    // In listing mode, <script> tags are stripped — but extraction runs BEFORE stripping
+    const html = `<!DOCTYPE html><html><head>
+      <script type="application/ld+json">{"@type":"Article","datePublished":"2026-04-01T00:00:00Z"}</script>
+    </head><body>
+      <main>
+        <a href="https://example.com/post-1">Post one</a>
+        <a href="https://example.com/post-2">Post two</a>
+        <a href="https://example.com/post-3">Post three</a>
+      </main>
+    </body></html>`;
+    const result = convert({ html, baseUrl: "https://example.com/", mode: "listing" });
+    // publishedAt should be captured before stripping removed the script
+    expect(result.publishedAt).not.toBeNull();
+    expect(result.publishedAt?.getFullYear()).toBe(2026);
+    expect(result.publishedAt?.getMonth()).toBe(3); // April = index 3
   });
 });

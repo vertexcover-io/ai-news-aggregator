@@ -12,6 +12,7 @@ import {
   collectWeb,
   buildRawItem,
   applySinceDays,
+  sortPostsByPublishedAtDesc,
   parseDateOrNull,
   type DiscoveredPost,
 } from "@pipeline/collectors/web.js";
@@ -367,6 +368,59 @@ describe("filters and row assembly", () => {
     expect(applySinceDaysFn(posts, 7)).toEqual(posts);
   });
 
+  // REQ-011: applySinceDays resolves relative LLM strings via the resolver
+  it("applySinceDays keeps a '1 day ago' post and drops a '40 days ago' post (sinceDays=7)", () => {
+    const posts: DiscoveredPostShape[] = [
+      { url: "https://x/recent", title: "Recent", published_at: "1 day ago" },
+      { url: "https://x/stale", title: "Stale", published_at: "40 days ago" },
+    ];
+    expect(applySinceDaysFn(posts, 7)).toEqual([
+      { url: "https://x/recent", title: "Recent", published_at: "1 day ago" },
+    ]);
+  });
+
+  // REQ-011: sort mixes ISO and relative strings, newest-first
+  it("sortPostsByPublishedAtDesc orders a mix of ISO and relative dates newest-first", () => {
+    const posts = [
+      { url: "https://x/iso-old", title: "ISO old", published_at: "2026-01-01T00:00:00Z" },
+      { url: "https://x/rel-new", title: "Rel new", published_at: "2 hours ago" },
+      { url: "https://x/rel-mid", title: "Rel mid", published_at: "5 days ago" },
+    ];
+    const sorted = sortPostsByPublishedAtDesc(posts);
+    expect(sorted.map((p) => p.url)).toEqual([
+      "https://x/rel-new",
+      "https://x/rel-mid",
+      "https://x/iso-old",
+    ]);
+  });
+
+  // REQ-007: structured date wins over the LLM body-text date
+  it("buildRawItem prefers the structured publishedAt over the LLM published_at", () => {
+    const structured = new Date("2026-05-25T09:00:00Z");
+    const item = buildRawItem(
+      "https://example.com/post-structured",
+      "body",
+      { title: "T", author: "A", published_at: "2026-05-21", image_url: "" },
+      structured,
+    );
+    expect(item.publishedAt).toEqual(structured);
+  });
+
+  // REQ-007 / EDGE-005: no structured date → resolve the LLM relative string
+  it("buildRawItem resolves a relative LLM published_at when no structured date is given", () => {
+    const item = buildRawItem(
+      "https://example.com/post-relative",
+      "body",
+      { title: "T", author: "A", published_at: "4 hours ago", image_url: "" },
+      null,
+    );
+    if (!(item.publishedAt instanceof Date)) {
+      throw new Error("expected publishedAt to be a Date");
+    }
+    // system time is 2026-04-07T00:00:00Z (fake timers), 4h earlier
+    expect(item.publishedAt.toISOString()).toBe("2026-04-06T20:00:00.000Z");
+  });
+
   it("parseDateOrNull returns null for empty string", () => {
     expect(parseDateOrNullFn("")).toBeNull();
   });
@@ -492,10 +546,14 @@ const LISTING_MARKDOWN = `
 
 const DETAIL_MARKDOWN = "# Post Title\n\nThis is the post content about something interesting.";
 
-function makeSuccessResult(markdown: string, imageUrl: string | null = null): CrawlResult {
+function makeSuccessResult(
+  markdown: string,
+  imageUrl: string | null = null,
+  publishedAt: Date | null = null,
+): CrawlResult {
   return {
     ok: true,
-    result: { markdown, title: null, byline: null, imageUrl, textLength: markdown.length },
+    result: { markdown, title: null, byline: null, imageUrl, textLength: markdown.length, publishedAt },
     renderedWith: "static",
   };
 }
@@ -1016,6 +1074,36 @@ describe("collectWeb (mocked at runWebCrawl boundary)", () => {
     const items = (repo.upsertItems as ReturnType<typeof vi.fn>).mock.calls[0][0] as { imageUrl: string | null }[];
     expect(items[0].imageUrl).toBe("https://example.com/og.jpg");
   });
+
+  // REQ-007: structured date from the detail CrawlResult overrides the LLM date
+  it("uses the structured publishedAt from the detail CrawlResult over the LLM published_at", async () => {
+    const repo = makeRepo();
+    const model = makeDiscoveryThenExtractModel(
+      [DISCOVERY_POSTS[0]],
+      { title: "Post Title", author: "Author", published_at: "2026-05-21", image_url: "" },
+    );
+
+    const structured = new Date("2026-05-25T09:00:00Z");
+    const listingMap = new Map<string, CrawlResult>([
+      [sourceA.listingUrl, makeSuccessResult(LISTING_MARKDOWN)],
+    ]);
+    const detailMap = new Map<string, CrawlResult>([
+      [DISCOVERY_POSTS[0].url, makeSuccessResult(DETAIL_MARKDOWN, null, structured)],
+    ]);
+
+    const runWebCrawl = vi.fn()
+      .mockResolvedValueOnce(listingMap)
+      .mockResolvedValueOnce(detailMap);
+
+    await collectWeb(
+      { rawItemsRepo: repo, llmModel: model, runWebCrawl },
+      { sources: [sourceA], maxItems: 10 },
+    );
+
+    expect(repo.upsertItems).toHaveBeenCalledTimes(1);
+    const items = (repo.upsertItems as ReturnType<typeof vi.fn>).mock.calls[0][0] as { publishedAt: Date | null }[];
+    expect(items[0].publishedAt).toEqual(structured);
+  });
 });
 
 // ── fetchWebPost tests ─────────────────────────────────────────────────────────
@@ -1048,6 +1136,33 @@ describe("fetchWebPost", () => {
     expect(result.publishedAt).toBeNull();
     expect(result.collectedAt).toBeInstanceOf(Date);
     expect(result.updatedAt).toBeInstanceOf(Date);
+  });
+
+  // REQ-009: fetchWebPost sets publishedAt from the structured DOM signal
+  it("sets publishedAt from a JSON-LD datePublished signal in the page", async () => {
+    const { fetchWebPost } = await import("@pipeline/collectors/web.js");
+
+    const jsonLd = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Article",
+      datePublished: "2026-05-25T09:00:00Z",
+    });
+    const html = `<html><head><title>Dated Post</title><script type="application/ld+json">${jsonLd}</script></head><body><article><h1>Dated Post</h1><p>${LONG_TEXT}</p></article></body></html>`;
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(html),
+      headers: { get: () => "text/html" },
+    });
+
+    const result = await fetchWebPost("https://example.com/dated", {
+      fetchFn: mockFetch as unknown as typeof fetch,
+    });
+
+    if (!(result.publishedAt instanceof Date)) {
+      throw new Error("expected publishedAt to be a Date");
+    }
+    expect(result.publishedAt.toISOString()).toBe("2026-05-25T09:00:00.000Z");
   });
 
   it("uses title from fetchAdaptive result when available", async () => {

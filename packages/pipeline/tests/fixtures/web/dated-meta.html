@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>AI Blog Post - May 10</title>
+  <meta property="article:published_time" content="2026-05-10T00:00:00Z">
+</head>
+<body>
+  <article>
+    <h1>AI Blog Post</h1>
+    <p>This is a blog post that only has a publish date in the meta article:published_time tag.
+    There is no JSON-LD structured data on this page and no time element with a datetime attribute.
+    The only structured date signal available is in the meta property tag in the document head.</p>
+    <p>This tests the second tier of our date extraction precedence chain: when JSON-LD is absent
+    we should fall back to meta tags before falling back to time elements or returning null.</p>
+  </article>
+</body>
+</html>

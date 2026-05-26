@@ -18,6 +18,7 @@ import {
   type CrawlResult,
 } from "@pipeline/services/web-crawler.js";
 import type { CostTracker } from "@pipeline/services/cost-tracker.js";
+import { resolvePublishedDate } from "@pipeline/collectors/web-date.js";
 
 const logger = createLogger("collector:web");
 
@@ -128,10 +129,13 @@ export function validateDiscoveredUrls(
   return out;
 }
 
-export function sortPostsByPublishedAtDesc(posts: DiscoveredPost[]): DiscoveredPost[] {
+export function sortPostsByPublishedAtDesc(
+  posts: DiscoveredPost[],
+  referenceDate: Date = new Date(),
+): DiscoveredPost[] {
   return [...posts].sort((a, b) => {
-    const ta = parseDateOrNull(a.published_at)?.getTime() ?? -Infinity;
-    const tb = parseDateOrNull(b.published_at)?.getTime() ?? -Infinity;
+    const ta = resolvePublishedDate(a.published_at, referenceDate)?.getTime() ?? -Infinity;
+    const tb = resolvePublishedDate(b.published_at, referenceDate)?.getTime() ?? -Infinity;
     return tb - ta;
   });
 }
@@ -141,14 +145,14 @@ const MS_PER_DAY = 86_400_000;
 export function applySinceDays(
   posts: DiscoveredPost[],
   sinceDays: number | undefined,
+  referenceDate: Date = new Date(),
 ): DiscoveredPost[] {
   if (sinceDays === undefined) return posts;
-  const cutoff = Date.now() - sinceDays * MS_PER_DAY;
+  const cutoff = referenceDate.getTime() - sinceDays * MS_PER_DAY;
   return posts.filter((p) => {
-    if (!p.published_at) return true;
-    const t = Date.parse(p.published_at);
-    if (Number.isNaN(t)) return true;
-    return t >= cutoff;
+    const resolved = resolvePublishedDate(p.published_at, referenceDate);
+    if (resolved === null) return true;
+    return resolved.getTime() >= cutoff;
   });
 }
 
@@ -409,7 +413,7 @@ export async function collectWeb(
           allFailures.push({ source: ps.source.name, postUrl: post.url, error: "empty title" });
           continue;
         }
-        allItems.push(buildRawItem(post.url, dr.result.markdown, merged));
+        allItems.push(buildRawItem(post.url, dr.result.markdown, merged, dr.result.publishedAt));
         itemsBySource.set(ps.source.name, (itemsBySource.get(ps.source.name) ?? 0) + 1);
       } catch (err) {
         logger.warn(
@@ -483,6 +487,7 @@ export function buildRawItem(
   postUrl: string,
   markdownBody: string,
   fields: ExtractedFields,
+  structuredPublishedAt: Date | null = null,
 ): RawItemInsert {
   const now = new Date();
   const author = fields.author.trim();
@@ -494,7 +499,7 @@ export function buildRawItem(
     sourceUrl: postUrl,
     author: author.length > 0 ? author : null,
     content: markdownBody,
-    publishedAt: parseDateOrNull(fields.published_at),
+    publishedAt: structuredPublishedAt ?? resolvePublishedDate(fields.published_at, now),
     collectedAt: now,
     engagement: { points: 0, commentCount: 0 },
     metadata: { comments: [] },
@@ -541,7 +546,7 @@ export async function fetchWebPost(
     sourceUrl: url,
     author: r.byline?.trim() !== "" ? r.byline?.trim() ?? null : null,
     content: r.markdown,
-    publishedAt: null,
+    publishedAt: r.publishedAt,
     collectedAt: now,
     engagement: { points: 0, commentCount: 0 },
     metadata: { comments: [] },
