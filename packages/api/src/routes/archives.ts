@@ -13,6 +13,12 @@ import type {
   ArchiveListResponse,
   RunState,
 } from "@newsletter/shared";
+import {
+  selectImmediatePublishChannels,
+  jobIdFor,
+  PUBLISH_CHANNELS,
+  type PublishChannel,
+} from "@newsletter/shared/scheduling";
 import { Queue as BullQueue } from "bullmq";
 import { hydrateRankedItems } from "@api/services/rank-hydration.js";
 import {
@@ -218,6 +224,39 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         event: "archive_reviewed",
         properties: { run_id: runId, item_count: parsed.data.rankedItems.length },
       });
+      if (deps.processingQueue && deps.getSettingsRepo) {
+        const settings = await deps.getSettingsRepo().get();
+        if (settings) {
+          const channels = selectImmediatePublishChannels({
+            settings,
+            completedAt: updated.completedAt,
+            now: new Date(),
+          });
+          const sentAt: Record<PublishChannel, Date | null> = {
+            "email-send": updated.emailSentAt,
+            "linkedin-post": updated.linkedinPostedAt,
+            "twitter-post": updated.twitterPostedAt,
+          };
+          const enqueued: PublishChannel[] = [];
+          for (const channel of channels) {
+            if (sentAt[channel] != null) continue;
+            await deps.processingQueue.add(channel, { runId }, { jobId: jobIdFor(channel, runId), delay: 0 });
+            enqueued.push(channel);
+          }
+          const pastDue = new Set<PublishChannel>(channels);
+          const deferred = PUBLISH_CHANNELS.filter((c) => !pastDue.has(c));
+          logger.info(
+            {
+              event: "archive.immediate_publish_enqueued",
+              runId,
+              enqueued,
+              evaluated: channels,
+              deferred,
+            },
+            "archive: immediate publish channels enqueued after late review",
+          );
+        }
+      }
       return c.json(updated);
     } catch (err) {
       if (err instanceof NotFoundError) {
