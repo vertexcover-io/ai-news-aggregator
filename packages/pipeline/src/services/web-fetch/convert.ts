@@ -130,10 +130,10 @@ export function convert(input: ConvertInput): ConvertResult {
     const dom = new JSDOM(html, { url: baseUrl, virtualConsole: silentVirtualConsole() });
     const doc = dom.window.document;
 
-    // Extract image, publish date, and structured data from ORIGINAL doc before Readability mutates it
+    // Extract image and publish date from ORIGINAL doc before Readability mutates it.
+    // Structured data is listing-mode only (REQ-001); article results never consume it.
     const imageUrl = extractImageUrl(doc, baseUrl);
     const publishedAt = extractPublishedAt(doc);
-    const structuredData = extractStructuredData(doc);
 
     // Clone for Readability (Readability.parse() is destructive), then
     // resolve relative href/src on the clone so Turndown emits absolute URLs.
@@ -142,7 +142,7 @@ export function convert(input: ConvertInput): ConvertResult {
     const parsed = new Readability(docClone).parse();
 
     if (!parsed) {
-      return { markdown: "", title: null, byline: null, imageUrl, textLength: 0, publishedAt, structuredData };
+      return { markdown: "", title: null, byline: null, imageUrl, textLength: 0, publishedAt, structuredData: null };
     }
 
     const markdown = td.turndown(parsed.content ?? "");
@@ -154,7 +154,7 @@ export function convert(input: ConvertInput): ConvertResult {
       imageUrl,
       textLength,
       publishedAt,
-      structuredData,
+      structuredData: null,
     };
   }
 

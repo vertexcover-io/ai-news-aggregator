@@ -315,6 +315,7 @@ export async function collectWeb(
             validated: validated.length,
             afterSinceDays: filtered.length,
             capped: capped.length,
+            structuredDataBytes: r.result.structuredData?.length ?? 0,
           },
           "web listing processed",
         );
