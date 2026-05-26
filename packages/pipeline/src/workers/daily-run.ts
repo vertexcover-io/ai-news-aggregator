@@ -38,7 +38,7 @@ export async function handleDailyRunJob(
   deps: DailyRunDeps,
   job: DailyRunJobLike,
 ): Promise<void> {
-  if (job.name !== "daily-run") return;
+  if (job.name !== "daily-run" && job.name !== "pipeline-run") return;
 
   const settings = await deps.userSettingsRepo.get();
   if (!settings) {

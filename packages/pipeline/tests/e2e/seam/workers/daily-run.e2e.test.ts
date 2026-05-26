@@ -6,6 +6,7 @@ import { Queue, Worker, type Job } from "bullmq";
 import { userSettings } from "@newsletter/shared/db";
 import {
   DAILY_RUN_SCHEDULER_KEY,
+  PIPELINE_RUN_SCHEDULER_KEY,
   SOCIAL_HEALTH_SCHEDULER_KEY,
   reconcileDailyRunSchedule,
 } from "../../../../../api/src/services/scheduler.js";
@@ -82,6 +83,9 @@ function makeScheduleSettings(enabled: boolean): UserSettings {
     linkedinEnabled: false,
     twitterPostEnabled: false,
     autoReview: false,
+    rankingPrompt: "test ranking prompt",
+    shortlistPrompt: "test shortlist prompt {{N}}",
+    shortlistSize: 30,
     updatedAt: new Date("2026-05-21T00:00:00.000Z").toISOString(),
   };
 }
@@ -118,6 +122,9 @@ async function seedUserSettings(db: AppDb): Promise<void> {
     linkedinEnabled: false,
     twitterPostEnabled: false,
     autoReview: false,
+    rankingPrompt: "test ranking prompt",
+    shortlistPrompt: "test shortlist prompt {{N}}",
+    shortlistSize: 30,
   });
 }
 
@@ -160,6 +167,7 @@ describe("daily-run worker scheduler e2e", () => {
   afterEach(async () => {
     await worker.close();
     await dailyQueue.removeJobScheduler(DAILY_RUN_SCHEDULER_KEY);
+    await dailyQueue.removeJobScheduler(PIPELINE_RUN_SCHEDULER_KEY);
     await dailyQueue.removeJobScheduler(SOCIAL_HEALTH_SCHEDULER_KEY);
     await dailyQueue.obliterate({ force: true });
     await runQueue.obliterate({ force: true });
@@ -193,6 +201,22 @@ describe("daily-run worker scheduler e2e", () => {
       feeds: ["newest"],
       commentsPerItem: 0,
     });
+  });
+
+  it("handles a scheduled pipeline-run job and enqueues one run-process job", async () => {
+    await seedUserSettings(db);
+    await dailyQueue.upsertJobScheduler(
+      PIPELINE_RUN_SCHEDULER_KEY,
+      { every: 1000 },
+      { name: "pipeline-run", data: {} },
+    );
+
+    const payload = await waitForRunProcessJob(runQueue, 5000);
+    createdRunIds = [payload.runId];
+    const jobs = await runQueue.getJobs(["waiting", "delayed", "paused"]);
+
+    expect(jobs.filter((job) => job.name === "run-process")).toHaveLength(1);
+    expect(payload.sourceTypes).toEqual(["hn"]);
   });
 
   it("REQ-WK-6 removes the daily-run scheduler when scheduling is disabled", async () => {

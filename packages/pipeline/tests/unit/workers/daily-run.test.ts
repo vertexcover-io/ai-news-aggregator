@@ -104,6 +104,25 @@ describe("createDailyRunWorker", () => {
     expect(depsArg.queue).toBeDefined();
   });
 
+  it("calls startRun when a pipeline-run job fires and sources are enabled", async () => {
+    const settings = makeSettings();
+    const userSettingsRepo = { get: vi.fn(() => Promise.resolve(settings)) };
+    mockStartRun.mockResolvedValueOnce({ runId: "new-run" });
+
+    const worker = createDailyRunWorker({
+      userSettingsRepo,
+      redis: { fake: "redis" } as never,
+      queue: { add: vi.fn() } as never,
+    });
+
+    await worker.handler({ name: "pipeline-run", id: "job-2", data: {} });
+
+    expect(userSettingsRepo.get).toHaveBeenCalledOnce();
+    expect(mockStartRun).toHaveBeenCalledOnce();
+    const [settingsArg] = mockStartRun.mock.calls[0] as [UserSettings];
+    expect(settingsArg).toBe(settings);
+  });
+
   it("logs a warning and skips when user_settings is missing", async () => {
     const userSettingsRepo = { get: vi.fn(() => Promise.resolve(null)) };
 
