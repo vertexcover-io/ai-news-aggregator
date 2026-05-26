@@ -45,7 +45,14 @@ async function loadArchiveTwitterState(
   return row;
 }
 
-async function seedReviewedArchive(db: AppDb): Promise<string> {
+async function seedReviewedArchive(
+  db: AppDb,
+  options: {
+    readonly twitterPostedAt?: Date | null;
+    readonly completedAt?: Date;
+    readonly reviewed?: boolean;
+  } = {},
+): Promise<string> {
   const runId = randomUUID();
   const raw: RawItemInsert = {
     sourceType: "hn",
@@ -81,12 +88,13 @@ async function seedReviewedArchive(db: AppDb): Promise<string> {
       },
     ],
     topN: 1,
-    reviewed: true,
-    completedAt: new Date(),
+    reviewed: options.reviewed ?? true,
+    completedAt: options.completedAt ?? new Date(),
     digestHeadline: "Small models find enterprise traction",
     digestSummary: "Specialised models are becoming a practical deployment option.",
     hook: "Small models are finding their production lane.",
     twitterSummary: "Small models are becoming the pragmatic enterprise AI bet.",
+    twitterPostedAt: options.twitterPostedAt ?? null,
   });
 
   return runId;
@@ -190,5 +198,72 @@ describe("twitter-post worker e2e", () => {
     expect(state.twitterPostedAt).not.toBeNull();
     expect(state.socialMetadata?.twitterThreadIds).toEqual(["1800000000000000100"]);
     expect(state.socialMetadata?.twitterError).toBeUndefined();
+  });
+
+  it("REQ-006 posts the targeted (older) archive, not the newer/latest one", async () => {
+    // Seed an OLDER archive (earlier completedAt so findLatestTerminal would skip it)
+    const olderRunId = await seedReviewedArchive(db, {
+      completedAt: new Date("2026-05-19T00:00:00.000Z"),
+    });
+    // Seed a NEWER archive (later completedAt — this is what findLatestTerminal would return)
+    await seedReviewedArchive(db, {
+      completedAt: new Date("2026-05-20T00:00:00.000Z"),
+    });
+
+    server.use(
+      http.post(TWITTER_TWEETS_URL, ({ request }) => {
+        const tweetId = twitterRequests.length === 0 ? "1900000000000000001" : "1900000000000000002";
+        twitterRequests = [...twitterRequests, request.url];
+        return HttpResponse.json({ data: { id: tweetId, text: "posted" } }, { status: 201 });
+      }),
+    );
+
+    const { archiveRepo, notifier } = createNotifier(db);
+
+    await handleTwitterPostJob(
+      { archiveRepo, twitterNotifier: notifier },
+      { name: "twitter-post", data: { runId: olderRunId } },
+    );
+
+    // The older archive must be marked as posted
+    const olderState = await loadArchiveTwitterState(db, olderRunId);
+    expect(olderState.twitterPostedAt).not.toBeNull();
+    expect(olderState.socialMetadata?.twitterThreadIds).toContain("1900000000000000001");
+    // Exactly two Twitter API calls (head + reply)
+    expect(twitterRequests).toEqual([TWITTER_TWEETS_URL, TWITTER_TWEETS_URL]);
+  });
+
+  it("EDGE-002 is idempotent: second job with same runId no-ops once twitterPostedAt is set", async () => {
+    const runId = await seedReviewedArchive(db);
+
+    server.use(
+      http.post(TWITTER_TWEETS_URL, ({ request }) => {
+        const tweetId = twitterRequests.length === 0 ? "1900000000000000010" : "1900000000000000011";
+        twitterRequests = [...twitterRequests, request.url];
+        return HttpResponse.json({ data: { id: tweetId, text: "posted" } }, { status: 201 });
+      }),
+    );
+
+    const { archiveRepo, notifier: firstNotifier } = createNotifier(db);
+
+    // First job — should post and set twitterPostedAt
+    await handleTwitterPostJob(
+      { archiveRepo, twitterNotifier: firstNotifier },
+      { name: "twitter-post", data: { runId } },
+    );
+
+    const afterFirstJob = await loadArchiveTwitterState(db, runId);
+    expect(afterFirstJob.twitterPostedAt).not.toBeNull();
+    const requestsAfterFirst = twitterRequests.length;
+    expect(requestsAfterFirst).toBeGreaterThan(0);
+
+    // Second job with same runId — twitterPostedAt is now set; notifier must NOT be called
+    const { archiveRepo: archiveRepo2, notifier: secondNotifier } = createNotifier(db);
+    await handleTwitterPostJob(
+      { archiveRepo: archiveRepo2, twitterNotifier: secondNotifier },
+      { name: "twitter-post", data: { runId } },
+    );
+
+    expect(twitterRequests.length).toBe(requestsAfterFirst);
   });
 });

@@ -409,6 +409,114 @@ describe("listRuns", () => {
     expect(result[0].runId).toBe("live");
     expect(result[0].costBreakdown).toBeNull();
   });
+
+  // REQ-007: posted-state on RunSummary
+  it("REQ-007: posted archive maps to non-null linkedinPostedAt + linkedinPermalink", async () => {
+    const postedAt = new Date("2026-05-26T10:00:00.000Z");
+    const archiveRows: RunArchiveRow[] = [
+      {
+        id: "posted-1",
+        status: "completed",
+        rankedItems: [],
+        topN: 10,
+        reviewed: true,
+        completedAt: new Date("2026-05-26T09:00:00.000Z"),
+        publishedAt: null,
+        createdAt: new Date("2026-05-26T09:00:00.000Z"),
+        isDryRun: false,
+        costBreakdown: null,
+        linkedinPostedAt: postedAt,
+        twitterPostedAt: null,
+        socialMetadata: { linkedinPermalink: "https://linkedin.com/posts/abc" },
+      } as unknown as RunArchiveRow,
+    ];
+    const result = await listRuns(10, {
+      redis: makeRedis(new Map()) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo(archiveRows),
+    });
+    expect(result[0].linkedinPostedAt).toBe(postedAt.toISOString());
+    expect(result[0].linkedinPermalink).toBe("https://linkedin.com/posts/abc");
+    expect(result[0].twitterPostedAt).toBeNull();
+    expect(result[0].twitterPermalink).toBeNull();
+  });
+
+  it("REQ-007: unposted archive maps all four social fields to null", async () => {
+    const archiveRows: RunArchiveRow[] = [
+      {
+        id: "unposted-1",
+        status: "completed",
+        rankedItems: [],
+        topN: 10,
+        reviewed: false,
+        completedAt: new Date("2026-05-26T09:00:00.000Z"),
+        publishedAt: null,
+        createdAt: new Date("2026-05-26T09:00:00.000Z"),
+        isDryRun: false,
+        costBreakdown: null,
+        linkedinPostedAt: null,
+        twitterPostedAt: null,
+        socialMetadata: null,
+      } as unknown as RunArchiveRow,
+    ];
+    const result = await listRuns(10, {
+      redis: makeRedis(new Map()) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo(archiveRows),
+    });
+    expect(result[0].linkedinPostedAt).toBeNull();
+    expect(result[0].linkedinPermalink).toBeNull();
+    expect(result[0].twitterPostedAt).toBeNull();
+    expect(result[0].twitterPermalink).toBeNull();
+  });
+
+  it("EDGE-009: socialMetadata=null but linkedinPostedAt set → non-null timestamp + null permalink", async () => {
+    const postedAt = new Date("2026-05-26T10:00:00.000Z");
+    const archiveRows: RunArchiveRow[] = [
+      {
+        id: "edge-009",
+        status: "completed",
+        rankedItems: [],
+        topN: 10,
+        reviewed: true,
+        completedAt: new Date("2026-05-26T09:00:00.000Z"),
+        publishedAt: null,
+        createdAt: new Date("2026-05-26T09:00:00.000Z"),
+        isDryRun: false,
+        costBreakdown: null,
+        linkedinPostedAt: postedAt,
+        twitterPostedAt: null,
+        socialMetadata: null,
+      } as unknown as RunArchiveRow,
+    ];
+    const result = await listRuns(10, {
+      redis: makeRedis(new Map()) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo(archiveRows),
+    });
+    expect(result[0].linkedinPostedAt).toBe(postedAt.toISOString());
+    expect(result[0].linkedinPermalink).toBeNull();
+    expect(result[0].twitterPostedAt).toBeNull();
+    expect(result[0].twitterPermalink).toBeNull();
+  });
+
+  it("REQ-007: redis-only live summary carries all four social fields as null", async () => {
+    const redisEntries = new Map<string, RedisEntry>([
+      [
+        "run:live-social",
+        {
+          value: JSON.stringify(
+            runState({ id: "live-social", startedAt: "2026-05-26T09:00:00.000Z" }),
+          ),
+        },
+      ],
+    ]);
+    const result = await listRuns(10, {
+      redis: makeRedis(redisEntries) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo([]),
+    });
+    expect(result[0].linkedinPostedAt).toBeNull();
+    expect(result[0].linkedinPermalink).toBeNull();
+    expect(result[0].twitterPostedAt).toBeNull();
+    expect(result[0].twitterPermalink).toBeNull();
+  });
 });
 
 function makeRawItems(): RawItemsRepo {

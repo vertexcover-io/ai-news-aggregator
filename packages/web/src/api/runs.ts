@@ -118,6 +118,19 @@ export async function triggerRunNow(
   return (await res.json()) as TriggerRunNowResponse;
 }
 
+export async function triggerSocialPost(
+  runId: string,
+  channel: "linkedin" | "twitter",
+): Promise<void> {
+  const res = await apiFetchAdmin(`/api/runs/${runId}/post/${channel}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(body.error ?? "Failed to trigger social post");
+  }
+}
+
 export type CancelRunResult =
   | { status: "ok"; run: RunState }
   | { status: "already-terminal" };

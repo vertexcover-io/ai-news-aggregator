@@ -2,6 +2,7 @@ import { useState, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 import type { RunSummary } from "@newsletter/shared";
 import { ArrowRight, ExternalLink, RotateCw, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +24,9 @@ import {
 import { cn } from "@/lib/utils";
 import { CostButton } from "./CostButton";
 import { CostDialog } from "./CostDialog";
+import { useTriggerSocialPost } from "@/hooks/useTriggerSocialPost";
+import { SocialOverflowMenu } from "./SocialOverflowMenu";
+import type { SocialChannel } from "./SocialOverflowMenu";
 
 interface RunsTableProps {
   runs: RunSummary[];
@@ -188,6 +192,17 @@ function RunActionCell({
   onCancelClick: () => void;
   onDeleteClick: (runId: string) => void;
 }): ReactElement | null {
+  const mutation = useTriggerSocialPost(run.runId);
+  const runDate = formatStartedAt(run.startedAt).date;
+
+  function handlePostConfirm(channel: SocialChannel): void {
+    mutation.mutate(channel, {
+      onError: (err) => {
+        toast.error(err.message);
+      },
+    });
+  }
+
   const primary = renderPrimaryAction({
     run,
     derived,
@@ -201,11 +216,15 @@ function RunActionCell({
     derived === "failed" ||
     derived === "cancelled";
 
-  if (primary === null && !showDelete) return null;
-
   return (
     <div className="flex items-center justify-end gap-2">
       {primary}
+      <SocialOverflowMenu
+        run={run}
+        runDate={runDate}
+        onPostConfirm={handlePostConfirm}
+        isPending={mutation.isPending}
+      />
       {showDelete ? (
         <Button
           variant="ghost"

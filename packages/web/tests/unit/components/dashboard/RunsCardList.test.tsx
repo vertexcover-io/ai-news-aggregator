@@ -4,6 +4,14 @@ import { MemoryRouter } from "react-router-dom";
 import type { RunSummary } from "@newsletter/shared";
 import { RunsCardList } from "../../../../src/components/dashboard/RunsCardList";
 
+// useTriggerSocialPost needs a QueryClient; mock it for these tests
+vi.mock("../../../../src/hooks/useTriggerSocialPost", () => ({
+  useTriggerSocialPost: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 afterEach(() => {
   cleanup();
 });
@@ -91,6 +99,56 @@ describe("RunsCardList publish date (REQ-011)", () => {
     );
     expect(screen.getByText("Started")).toBeTruthy();
     expect(screen.getByText("Publish date")).toBeTruthy();
+  });
+});
+
+describe("RunsCardList social overflow menu (REQ-008)", () => {
+  it("renders ⋮ More actions button per card", () => {
+    render(
+      <MemoryRouter>
+        <RunsCardList
+          runs={[
+            makeRun({
+              runId: "run-eligible",
+              status: "completed",
+              reviewed: true,
+              isDryRun: false,
+              linkedinPostedAt: null,
+              twitterPostedAt: null,
+            }),
+          ]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("button", { name: /more actions/i })).toBeTruthy();
+  });
+
+  it("opening ⋮ shows LinkedIn and X items", () => {
+    render(
+      <MemoryRouter>
+        <RunsCardList
+          runs={[
+            makeRun({
+              runId: "run-eligible",
+              status: "completed",
+              reviewed: true,
+              isDryRun: false,
+            }),
+          ]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    expect(screen.getByRole("menuitem", { name: /linkedin/i })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /\bx\b/i })).toBeTruthy();
   });
 });
 

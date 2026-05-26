@@ -407,6 +407,10 @@ export const addPostSchema = z.object({
   url: z.url(),
 });
 
+export const socialChannelSchema = z.enum(["linkedin", "twitter"]);
+
+export type SocialChannel = z.infer<typeof socialChannelSchema>;
+
 export type AddPostBody = z.infer<typeof addPostSchema>;
 
 export const promoteSchema = z.object({

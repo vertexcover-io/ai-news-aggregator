@@ -54,7 +54,11 @@ async function loadArchiveSocialState(
 
 async function seedReviewedArchive(
   db: AppDb,
-  options: { readonly linkedinPostedAt?: Date | null } = {},
+  options: {
+    readonly linkedinPostedAt?: Date | null;
+    readonly completedAt?: Date;
+    readonly reviewed?: boolean;
+  } = {},
 ): Promise<string> {
   const runId = randomUUID();
   const raw: RawItemInsert = {
@@ -91,8 +95,8 @@ async function seedReviewedArchive(
       },
     ],
     topN: 1,
-    reviewed: true,
-    completedAt: new Date(),
+    reviewed: options.reviewed ?? true,
+    completedAt: options.completedAt ?? new Date(),
     digestHeadline: "Agent benchmarks shift buying decisions",
     digestSummary: "Teams are standardising how they evaluate production agents.",
     hook: "Agent benchmarks are becoming the new buying checklist.",
@@ -225,5 +229,153 @@ describe("linkedin-post worker e2e", () => {
     );
 
     expect(linkedInRequests).toHaveLength(0);
+  });
+
+  it("REQ-006 posts the targeted (older) archive, not the newer/latest one", async () => {
+    // Seed an OLDER archive first (earlier completedAt so findLatestTerminal returns the newer one)
+    const olderRunId = await seedReviewedArchive(db, {
+      completedAt: new Date("2026-05-19T00:00:00.000Z"),
+    });
+    // Seed a NEWER archive (later completedAt — this is what findLatestTerminal would return)
+    await seedReviewedArchive(db, {
+      completedAt: new Date("2026-05-20T00:00:00.000Z"),
+    });
+
+    server.use(
+      http.post(LINKEDIN_POSTS_URL, ({ request }) => {
+        linkedInRequests = [...linkedInRequests, request.url];
+        return new HttpResponse(null, {
+          status: 201,
+          headers: { "x-restli-id": "urn:li:share:targeted-older-post" },
+        });
+      }),
+      http.post(LINKEDIN_COMMENTS_URL, ({ request }) => {
+        if (!isLinkedInCommentRequest(request.url)) {
+          throw new Error(`Unexpected LinkedIn comment URL: ${request.url}`);
+        }
+        linkedInRequests = [...linkedInRequests, request.url];
+        return new HttpResponse(null, { status: 201 });
+      }),
+    );
+
+    const archiveRepo = createRunArchivesRepo(db);
+    const notifier = createLinkedInNotifier({
+      apiClient: createLinkedInApiClient(),
+      archives: archiveRepo,
+      rawItems: createRawItemsRepo(db),
+      tokens: createSocialTokensRepo(db),
+      config: {
+        clientId: "linkedin-client-id",
+        clientSecret: "linkedin-client-secret",
+        apiVersion: "202405",
+        publicArchiveBaseUrl: "https://newsletter.example.com",
+      },
+      logger: createLogger("linkedin-post-e2e"),
+      now: () => new Date("2026-05-21T00:00:00.000Z"),
+    });
+
+    await handleLinkedInPostJob(
+      { archiveRepo, linkedinNotifier: notifier },
+      { name: "linkedin-post", data: { runId: olderRunId } },
+    );
+
+    // The older archive must be marked as posted
+    const olderState = await loadArchiveSocialState(db, olderRunId);
+    expect(olderState.linkedinPostedAt).not.toBeNull();
+    expect(olderState.socialMetadata?.linkedinPermalink).toBe("urn:li:share:targeted-older-post");
+    // The post API was called exactly once (for the older archive, not the newer one)
+    expect(linkedInRequests.some((url) => url === LINKEDIN_POSTS_URL)).toBe(true);
+  });
+
+  it("EDGE-002 is idempotent: second job with same runId no-ops once linkedinPostedAt is set", async () => {
+    const runId = await seedReviewedArchive(db);
+
+    server.use(
+      http.post(LINKEDIN_POSTS_URL, ({ request }) => {
+        linkedInRequests = [...linkedInRequests, request.url];
+        return new HttpResponse(null, {
+          status: 201,
+          headers: { "x-restli-id": "urn:li:share:idempotency-test" },
+        });
+      }),
+      http.post(LINKEDIN_COMMENTS_URL, ({ request }) => {
+        if (!isLinkedInCommentRequest(request.url)) {
+          throw new Error(`Unexpected LinkedIn comment URL: ${request.url}`);
+        }
+        linkedInRequests = [...linkedInRequests, request.url];
+        return new HttpResponse(null, { status: 201 });
+      }),
+    );
+
+    const archiveRepo = createRunArchivesRepo(db);
+    const makeNotifier = () =>
+      createLinkedInNotifier({
+        apiClient: createLinkedInApiClient(),
+        archives: archiveRepo,
+        rawItems: createRawItemsRepo(db),
+        tokens: createSocialTokensRepo(db),
+        config: {
+          clientId: "linkedin-client-id",
+          clientSecret: "linkedin-client-secret",
+          apiVersion: "202405",
+          publicArchiveBaseUrl: "https://newsletter.example.com",
+        },
+        logger: createLogger("linkedin-post-e2e"),
+        now: () => new Date("2026-05-21T00:00:00.000Z"),
+      });
+
+    // First job — should post and set linkedinPostedAt
+    await handleLinkedInPostJob(
+      { archiveRepo, linkedinNotifier: makeNotifier() },
+      { name: "linkedin-post", data: { runId } },
+    );
+
+    const afterFirstJob = await loadArchiveSocialState(db, runId);
+    expect(afterFirstJob.linkedinPostedAt).not.toBeNull();
+    const requestsAfterFirst = linkedInRequests.length;
+    expect(requestsAfterFirst).toBeGreaterThan(0);
+
+    // Second job with the same runId — linkedinPostedAt is now set; notifier must NOT be called
+    await handleLinkedInPostJob(
+      { archiveRepo, linkedinNotifier: makeNotifier() },
+      { name: "linkedin-post", data: { runId } },
+    );
+
+    expect(linkedInRequests.length).toBe(requestsAfterFirst);
+  });
+
+  it("REQ-006 (negative) unreviewed archive with runId: resolvePublishTarget returns null, notifier not called", async () => {
+    const runId = await seedReviewedArchive(db, { reviewed: false });
+
+    server.use(
+      http.post(LINKEDIN_POSTS_URL, ({ request }) => {
+        linkedInRequests = [...linkedInRequests, request.url];
+        return new HttpResponse(null, { status: 201 });
+      }),
+    );
+
+    const archiveRepo = createRunArchivesRepo(db);
+    const notifier = createLinkedInNotifier({
+      apiClient: createLinkedInApiClient(),
+      archives: archiveRepo,
+      rawItems: createRawItemsRepo(db),
+      tokens: createSocialTokensRepo(db),
+      config: {
+        clientId: "linkedin-client-id",
+        clientSecret: "linkedin-client-secret",
+        apiVersion: "202405",
+        publicArchiveBaseUrl: "https://newsletter.example.com",
+      },
+      logger: createLogger("linkedin-post-e2e"),
+    });
+
+    await handleLinkedInPostJob(
+      { archiveRepo, linkedinNotifier: notifier },
+      { name: "linkedin-post", data: { runId } },
+    );
+
+    expect(linkedInRequests).toHaveLength(0);
+    const state = await loadArchiveSocialState(db, runId);
+    expect(state.linkedinPostedAt).toBeNull();
   });
 });

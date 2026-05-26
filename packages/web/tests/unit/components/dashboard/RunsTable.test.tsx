@@ -4,6 +4,14 @@ import { MemoryRouter } from "react-router-dom";
 import type { RunSummary } from "@newsletter/shared";
 import { RunsTable } from "../../../../src/components/dashboard/RunsTable";
 
+// useTriggerSocialPost needs a QueryClient; mock it for these non-social tests
+vi.mock("../../../../src/hooks/useTriggerSocialPost", () => ({
+  useTriggerSocialPost: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 afterEach(() => {
   cleanup();
 });

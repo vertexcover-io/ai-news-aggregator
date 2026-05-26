@@ -54,6 +54,10 @@ export async function listRuns(
       reviewed: false,
       isDryRun: false,
       costBreakdown: null,
+      linkedinPostedAt: null,
+      twitterPostedAt: null,
+      linkedinPermalink: null,
+      twitterPermalink: null,
     });
   }
 
@@ -77,6 +81,10 @@ export async function listRuns(
         row.publishedAt ?? row.completedAt,
         deps.timezone,
       ),
+      linkedinPostedAt: row.linkedinPostedAt?.toISOString() ?? null,
+      twitterPostedAt: row.twitterPostedAt?.toISOString() ?? null,
+      linkedinPermalink: row.socialMetadata?.linkedinPermalink ?? null,
+      twitterPermalink: row.socialMetadata?.twitterPermalink ?? null,
     };
   });
 
