@@ -13,6 +13,7 @@
     "./utils": "./dist/utils/index.js",
     "./utils/prompt-hash": "./dist/utils/prompt-hash.js",
     "./utils/timezone-date": "./dist/utils/timezone-date.js",
+    "./utils/reading-time": "./dist/utils/reading-time.js",
     "./logger": "./dist/logger.js",
     "./services": "./dist/services/index.js",
     "./services/credential-cipher": "./dist/services/credential-cipher.js",
@@ -21,7 +22,8 @@
     "./constants/eval-ranking": "./dist/constants/eval-ranking.js",
     "./services/url-safety": "./dist/services/url-safety.js",
     "./services/static-page-fetcher": "./dist/services/static-page-fetcher.js",
-    "./services/page-metadata": "./dist/services/page-metadata.js"
+    "./services/page-metadata": "./dist/services/page-metadata.js",
+    "./services/summary-source": "./dist/services/summary-source.js"
   },
   "scripts": {
     "build": "tsup",
