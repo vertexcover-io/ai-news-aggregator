@@ -1,7 +1,8 @@
 import type { RankedItem, RankedItemRef, RecapContent } from "@newsletter/shared";
 import { ENRICHED_SUMMARY_LAUNCHED_AT } from "@newsletter/shared/constants";
-import { pickSummarySource } from "@newsletter/shared/services";
+import { pickSummarySource, deriveRawItemIdentifier } from "@newsletter/shared/services";
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
+import { buildItemPreview } from "./item-preview.js";
 
 export async function hydrateRankedItems(
   repo: RawItemsRepo,
@@ -58,6 +59,12 @@ export async function hydrateRankedItems(
       imageUrl: ref.imageUrl !== undefined ? ref.imageUrl : row.imageUrl,
       recap,
       enrichedSource,
+      sourceIdentifier: deriveRawItemIdentifier({
+        sourceType: row.sourceType,
+        url: row.url,
+        sourceUrl: row.sourceUrl,
+      }),
+      preview: buildItemPreview(row),
     });
   }
   return hydrated;

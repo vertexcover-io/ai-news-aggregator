@@ -15,8 +15,10 @@ import {
   type RunSourceTelemetry,
   type SocialMetadata,
 } from "@newsletter/shared";
+import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import { deriveRawItemIdentifierSql } from "./raw-items.js";
 import type { RawItemRow, RawItemsRepo } from "./raw-items.js";
+import { buildItemPreview } from "../services/item-preview.js";
 
 const DERIVED_IDENTIFIER_SQL = deriveRawItemIdentifierSql();
 
@@ -50,6 +52,13 @@ export interface RunArchiveRow {
   costBreakdown: RunCostBreakdown | null;
   runFunnel: RunFunnel | null;
   socialMetadata: SocialMetadata | null;
+  shortlistedItemIds: number[] | null;
+}
+
+export interface SourceFacet {
+  sourceType: SourceType;
+  identifier: string;
+  count: number;
 }
 
 export interface FindPoolItemsOpts {
@@ -61,6 +70,9 @@ export interface FindPoolItemsOpts {
   q?: string;
   offset: number;
   limit: number;
+  selectedSources?: string[];
+  shortlistedOnly?: boolean;
+  shortlistedIds?: number[] | null;
 }
 
 export interface ListReviewedDeps {
@@ -108,6 +120,7 @@ export interface RunArchivesRepo {
     archiveId: string,
     opts: FindPoolItemsOpts,
   ): Promise<{ items: PoolItem[]; total: number }>;
+  getSourceFacets(runId: string): Promise<SourceFacet[]>;
   markSlackNotified(runId: string, at: Date): Promise<void>;
   markEmailSent(runId: string, at: Date): Promise<void>;
   markNotification(
@@ -161,11 +174,14 @@ export function createRunArchivesRepo(
     id: number;
     title: string;
     url: string;
+    sourceUrl: string | null;
     sourceType: SourceType;
     author: string | null;
     publishedAt: Date | null;
     engagement: { points: number; commentCount: number };
     imageUrl: string | null;
+    content: string | null;
+    metadata: import("@newsletter/shared").RawItemMetadata;
   }): PoolItem {
     return {
       id: row.id,
@@ -176,6 +192,13 @@ export function createRunArchivesRepo(
       publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
       engagement: row.engagement,
       imageUrl: row.imageUrl,
+      sourceIdentifier: deriveRawItemIdentifier({
+        sourceType: row.sourceType,
+        url: row.url,
+        sourceUrl: row.sourceUrl,
+      }),
+      preview: buildItemPreview(row),
+      recapSummary: row.metadata.recap?.summary ?? null,
     };
   }
   return {
@@ -210,6 +233,7 @@ export function createRunArchivesRepo(
           costBreakdown: runArchives.costBreakdown,
           runFunnel: runArchives.runFunnel,
           socialMetadata: runArchives.socialMetadata,
+          shortlistedItemIds: runArchives.shortlistedItemIds,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
@@ -331,6 +355,7 @@ export function createRunArchivesRepo(
           costBreakdown: runArchives.costBreakdown,
           runFunnel: runArchives.runFunnel,
           socialMetadata: runArchives.socialMetadata,
+          shortlistedItemIds: runArchives.shortlistedItemIds,
         })
         .from(runArchives)
         .where(
@@ -484,6 +509,7 @@ export function createRunArchivesRepo(
           costBreakdown: runArchives.costBreakdown,
           runFunnel: runArchives.runFunnel,
           socialMetadata: runArchives.socialMetadata,
+          shortlistedItemIds: runArchives.shortlistedItemIds,
         })
         .from(runArchives)
         .orderBy(desc(runArchives.completedAt))
@@ -533,6 +559,7 @@ export function createRunArchivesRepo(
           costBreakdown: runArchives.costBreakdown,
           runFunnel: runArchives.runFunnel,
           socialMetadata: runArchives.socialMetadata,
+          shortlistedItemIds: runArchives.shortlistedItemIds,
         });
       return row;
     },
@@ -540,6 +567,7 @@ export function createRunArchivesRepo(
       _archiveId: string,
       opts: FindPoolItemsOpts,
     ): Promise<{ items: PoolItem[]; total: number }> {
+      const IDENTIFIER_SQL = deriveRawItemIdentifierSql();
       const conditions = [
         gte(rawItems.collectedAt, opts.startedAt),
         inArray(rawItems.sourceType, opts.sourceTypes),
@@ -553,6 +581,12 @@ export function createRunArchivesRepo(
       if (opts.q) {
         const escaped = opts.q.replace(/[%_\\]/g, "\\$&");
         conditions.push(ilike(rawItems.title, `%${escaped}%`));
+      }
+      if (opts.selectedSources && opts.selectedSources.length > 0) {
+        conditions.push(inArray(IDENTIFIER_SQL, opts.selectedSources));
+      }
+      if (opts.shortlistedOnly && opts.shortlistedIds && opts.shortlistedIds.length > 0) {
+        conditions.push(inArray(rawItems.id, opts.shortlistedIds));
       }
       const where = and(...conditions);
 
@@ -571,11 +605,14 @@ export function createRunArchivesRepo(
           id: rawItems.id,
           title: rawItems.title,
           url: rawItems.url,
+          sourceUrl: rawItems.sourceUrl,
           sourceType: rawItems.sourceType,
           author: rawItems.author,
           publishedAt: rawItems.publishedAt,
           engagement: rawItems.engagement,
           imageUrl: rawItems.imageUrl,
+          content: rawItems.content,
+          metadata: rawItems.metadata,
         })
         .from(rawItems)
         .where(where)
@@ -584,6 +621,40 @@ export function createRunArchivesRepo(
         .offset(opts.offset);
 
       return { items: rows.map(toPoolItem), total: countRow.count };
+    },
+    async getSourceFacets(runId: string): Promise<SourceFacet[]> {
+      const IDENTIFIER_SQL = deriveRawItemIdentifierSql();
+      const archive = await db
+        .select({
+          startedAt: runArchives.startedAt,
+          sourceTypes: runArchives.sourceTypes,
+        })
+        .from(runArchives)
+        .where(eq(runArchives.id, runId));
+      if (archive.length === 0) return [];
+      const row = archive[0];
+      if (!row.startedAt || !row.sourceTypes || row.sourceTypes.length === 0) {
+        return [];
+      }
+      const rows = await db
+        .select({
+          sourceType: rawItems.sourceType,
+          identifier: sql<string>`${IDENTIFIER_SQL}`,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(rawItems)
+        .where(
+          and(
+            gte(rawItems.collectedAt, row.startedAt),
+            inArray(rawItems.sourceType, row.sourceTypes),
+          ),
+        )
+        .groupBy(rawItems.sourceType, IDENTIFIER_SQL);
+      return rows.map((r) => ({
+        sourceType: r.sourceType,
+        identifier: r.identifier,
+        count: r.count,
+      }));
     },
     async delete(
       id: string,
