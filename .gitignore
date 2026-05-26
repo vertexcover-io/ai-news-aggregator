@@ -146,3 +146,7 @@ evals/ranking/cache/
 
 !docs/spec/publishedat-newsletter-date/design.md
 !docs/spec/publishedat-newsletter-date/library-probe.md
+
+# web-collector-date-fix: ship design + library-probe alongside spec
+!docs/spec/web-collector-date-fix/design.md
+!docs/spec/web-collector-date-fix/library-probe.md
