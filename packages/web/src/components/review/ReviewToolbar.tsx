@@ -12,8 +12,6 @@ interface ReviewToolbarProps {
   clearAll: () => void;
   facets: SourceFacetGroup[];
   facetsLoading: boolean;
-  rankedVisibleCount: number;
-  rankedTotalCount: number;
   poolTotalCount: number;
   isFiltered: boolean;
 }
@@ -27,8 +25,6 @@ export function ReviewToolbar({
   clearAll,
   facets,
   facetsLoading,
-  rankedVisibleCount,
-  rankedTotalCount,
   poolTotalCount,
   isFiltered,
 }: ReviewToolbarProps): ReactElement {
@@ -50,9 +46,6 @@ export function ReviewToolbar({
         ),
       })).filter((g) => g.facets.length > 0)
     : facets;
-
-  const totalCount = rankedTotalCount + poolTotalCount;
-  const visibleCount = rankedVisibleCount + poolTotalCount;
 
   return (
     <div className="flex flex-wrap items-start gap-3">
@@ -181,7 +174,7 @@ export function ReviewToolbar({
 
       {/* Count */}
       <div className="ml-auto text-xs text-gray-500 self-center">
-        Showing {visibleCount} of {totalCount}
+        {poolTotalCount} {isFiltered ? "matching" : "items"}
       </div>
     </div>
   );
