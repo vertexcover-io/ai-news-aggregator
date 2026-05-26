@@ -232,6 +232,13 @@
       "when": 1779702601215,
       "tag": "0032_regular_zarek",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1779797847756,
+      "tag": "0033_freezing_skin",
+      "breakpoints": true
     }
   ]
 }

@@ -56,6 +56,8 @@ function makeRankedItem(overrides: Partial<RankedItem> = {}): RankedItem {
     imageUrl: null,
     recap: null,
     enrichedSource: null,
+    sourceIdentifier: "news.ycombinator.com",
+    preview: { kind: "none" },
     ...overrides,
   };
 }
@@ -70,6 +72,9 @@ function makePoolItem(overrides: Partial<PoolItem> = {}): PoolItem {
     publishedAt: "2026-05-12T00:00:00Z",
     engagement: { points: 12, commentCount: 3 },
     imageUrl: null,
+    sourceIdentifier: "r/LocalLLaMA",
+    preview: { kind: "none" },
+    recapSummary: null,
     ...overrides,
   };
 }
@@ -87,6 +92,7 @@ function makeRun(
     completedAt: "2026-05-12T00:02:00Z",
     sources: {},
     rankedItems: [makeRankedItem()],
+    shortlistedItemIds: null,
     warnings: [],
     error: null,
     sourceTypes: ["hn", "reddit", "blog"],

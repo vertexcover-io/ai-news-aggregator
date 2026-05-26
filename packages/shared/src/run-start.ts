@@ -78,6 +78,7 @@ export async function startRun(
     completedAt: null,
     sources,
     rankedItems: null,
+    shortlistedItemIds: null,
     warnings: [],
     error: null,
   };

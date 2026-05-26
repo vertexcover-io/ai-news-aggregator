@@ -102,12 +102,8 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
       if (!archive.reviewed) return c.json({ error: "not found" }, 404);
       const timezone = await getConfiguredTimezone(deps);
 
-      const state: RunState & {
-        sourceTypes: string[] | null;
-        digestHeadline: string | null;
-        digestSummary: string | null;
-        hook: string | null;
-      } = {
+      // REQ-011: public route never serializes shortlistedItemIds
+      const state = {
         id: runId,
         status: archive.status,
         stage: archive.status === "completed" ? "completed" : "failed",
@@ -116,10 +112,10 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
         issueDate: getIssueDate(archive, timezone),
         updatedAt: archive.completedAt.toISOString(),
         completedAt: archive.completedAt.toISOString(),
-        sources: {},
+        sources: {} as RunState["sources"],
         rankedItems: archive.rankedItems,
-        warnings: [],
-        error: null,
+        warnings: [] as string[],
+        error: null as string | null,
         sourceTypes: archive.sourceTypes,
         digestHeadline: archive.digestHeadline,
         digestSummary: archive.digestSummary,
@@ -156,12 +152,14 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
       if (!archive) return c.json({ error: "not found" }, 404);
       const timezone = await getConfiguredTimezone(deps);
 
+      // REQ-010: admin route includes shortlistedItemIds (admin-only, never public)
       const state: RunState & {
         sourceTypes: string[] | null;
         digestHeadline: string | null;
         digestSummary: string | null;
         hook: string | null;
         isDryRun: boolean;
+        shortlistedItemIds: number[] | null;
       } = {
         id: runId,
         status: archive.status,
@@ -173,6 +171,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         completedAt: archive.completedAt.toISOString(),
         sources: {},
         rankedItems: archive.rankedItems,
+        shortlistedItemIds: archive.shortlistedItemIds ?? null,
         warnings: [],
         error: null,
         sourceTypes: archive.sourceTypes,
@@ -354,15 +353,28 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     const q = c.req.query("q") ?? undefined;
     const offset = parseInt(c.req.query("offset") ?? "0", 10);
     const limit = Math.min(parseInt(c.req.query("limit") ?? "20", 10), 100);
+    // Parse repeated ?sources= params as selectedSources (derived identifier filter, distinct from ?source= SourceType filter)
+    const selectedSources = c.req.queries("sources") ?? undefined;
+    const shortlistedOnly = c.req.query("shortlisted") === "true";
     try {
-      const result = await getPool(runId, { sort, source, q, offset, limit }, {
-        archiveRepo: deps.getArchiveRepo(),
-      });
+      const result = await getPool(
+        runId,
+        { sort, source, q, offset, limit, selectedSources, shortlistedOnly },
+        { archiveRepo: deps.getArchiveRepo() },
+      );
       return c.json(result);
     } catch (err) {
       if (err instanceof NotFoundError) return c.json({ error: err.message }, 404);
       throw err;
     }
+  });
+
+  archives.get("/:runId/source-facets", async (c) => {
+    const runId = c.req.param("runId");
+    const archive = await deps.getArchiveRepo().findById(runId);
+    if (!archive) return c.json({ error: "not found" }, 404);
+    const facets = await deps.getArchiveRepo().getSourceFacets(runId);
+    return c.json({ facets });
   });
 
   archives.post("/:runId/promote", async (c) => {

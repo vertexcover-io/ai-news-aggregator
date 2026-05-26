@@ -1,6 +1,6 @@
 import { useState, type ReactElement } from "react";
 import type { RankedItem } from "@newsletter/shared/types";
-import { getPlatformLabel } from "@newsletter/shared/services";
+import { getPlatformLabel } from "@newsletter/shared/services/summary-source";
 
 interface Props {
   item: RankedItem;

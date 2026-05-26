@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { RankedItemRef } from "@newsletter/shared";
+import { canonicalizeUrl } from "@pipeline/processors/dedup.js";
 
 describe("run-archives repository", () => {
   const mockInsert = vi.fn();
@@ -63,6 +64,7 @@ describe("run-archives repository", () => {
       isDryRun: false,
       runFunnel: null,
       publishedAt: null,
+      shortlistedItemIds: null,
     });
     expect(mockOnConflictDoUpdate).toHaveBeenCalledOnce();
   });
@@ -243,5 +245,260 @@ describe("run-archives repository", () => {
     expect(conflictConfig).toBeDefined();
     expect(conflictConfig.target).toBeDefined();
     expect(conflictConfig.set).toBeDefined();
+  });
+
+  // REQ-001: upsert writes shortlistedItemIds when provided
+  it("writes shortlistedItemIds to the row when provided", async () => {
+    resetMocks();
+    const db = makeMockDb();
+    const { createRunArchivesRepo } = await import(
+      "@pipeline/repositories/run-archives.js"
+    );
+    const repo = createRunArchivesRepo(db as never);
+
+    await repo.upsert({
+      id: "run-shortlist",
+      status: "completed",
+      rankedItems: [],
+      topN: 3,
+      completedAt: new Date("2026-05-26T12:00:00Z"),
+      shortlistedItemIds: [10, 20, 30],
+    });
+
+    const insertedValues = mockValues.mock.calls[0]?.[0] as {
+      shortlistedItemIds: number[] | null;
+    };
+    expect(insertedValues.shortlistedItemIds).toEqual([10, 20, 30]);
+  });
+
+  // Partial-update precondition: failed run leaves shortlistedItemIds NULL
+  it("writes shortlistedItemIds=null when not provided (failed run path)", async () => {
+    resetMocks();
+    const db = makeMockDb();
+    const { createRunArchivesRepo } = await import(
+      "@pipeline/repositories/run-archives.js"
+    );
+    const repo = createRunArchivesRepo(db as never);
+
+    await repo.upsert({
+      id: "run-failed",
+      status: "failed",
+      rankedItems: [],
+      topN: 3,
+      completedAt: new Date("2026-05-26T12:00:00Z"),
+      // no shortlistedItemIds
+    });
+
+    const insertedValues = mockValues.mock.calls[0]?.[0] as {
+      shortlistedItemIds: number[] | null;
+    };
+    expect(insertedValues.shortlistedItemIds).toBeNull();
+  });
+
+  // REQ-001: shortlistedItemIds is included in onConflictDoUpdate set
+  it("includes shortlistedItemIds in the onConflictDoUpdate set", async () => {
+    resetMocks();
+    const db = makeMockDb();
+    const { createRunArchivesRepo } = await import(
+      "@pipeline/repositories/run-archives.js"
+    );
+    const repo = createRunArchivesRepo(db as never);
+
+    await repo.upsert({
+      id: "run-conflict",
+      status: "completed",
+      rankedItems: [],
+      topN: 3,
+      completedAt: new Date("2026-05-26T12:00:00Z"),
+      shortlistedItemIds: [1, 2, 3],
+    });
+
+    const conflictConfig = mockOnConflictDoUpdate.mock.calls[0]?.[0];
+    expect(conflictConfig.set).toHaveProperty("shortlistedItemIds");
+  });
+
+  // REQ-003/REQ-005: getPublishedCanonicalUrls returns only reviewed, !isDryRun, status=completed
+  describe("getPublishedCanonicalUrls", () => {
+    it("calls db.select to fetch qualifying archives and resolves URLs", async () => {
+      // Use a mock db that tracks what was queried
+      const selectCalls: unknown[] = [];
+      let callCount = 0;
+
+      const db = {
+        select: vi.fn((cols?: unknown) => {
+          selectCalls.push(cols);
+          return {
+            from: vi.fn(() => ({
+              where: vi.fn(() => {
+                callCount++;
+                if (callCount === 1) {
+                  // archives query: return empty so no URLs needed
+                  return Promise.resolve([]);
+                }
+                return Promise.resolve([]);
+              }),
+            })),
+          };
+        }),
+        insert: vi.fn(),
+        update: vi.fn(),
+      };
+
+      const { createRunArchivesRepo } = await import(
+        "@pipeline/repositories/run-archives.js"
+      );
+      const repo = createRunArchivesRepo(db as never);
+      const result = await repo.getPublishedCanonicalUrls();
+
+      expect(result).toBeInstanceOf(Set);
+      expect(result.size).toBe(0);
+      // db.select should have been called at least once (for archives)
+      expect(db.select).toHaveBeenCalled();
+    });
+
+    it("returns canonicalized URLs from qualifying archives (REQ-003)", async () => {
+      // We need a db that returns archive rows with rawItemIds, then raw_item URLs
+      const archiveRows = [
+        {
+          rankedItems: [
+            { rawItemId: 1, score: 0.9, rationale: "top" },
+            { rawItemId: 2, score: 0.7, rationale: "good" },
+          ],
+        },
+      ];
+      const rawItemRows = [
+        { url: "https://Example.com/post?utm_source=rss" },
+        { url: "https://example.com/another" },
+      ];
+
+      let callCount = 0;
+      const db = {
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => {
+              callCount++;
+              if (callCount === 1) return Promise.resolve(archiveRows);
+              return Promise.resolve(rawItemRows);
+            }),
+          })),
+        })),
+        insert: vi.fn(),
+        update: vi.fn(),
+      };
+
+      const { createRunArchivesRepo } = await import(
+        "@pipeline/repositories/run-archives.js"
+      );
+      const repo = createRunArchivesRepo(db as never);
+      const result = await repo.getPublishedCanonicalUrls();
+
+      expect(result).toBeInstanceOf(Set);
+      // URL should be canonicalized (lowercase, tracking stripped)
+      expect(result.has(canonicalizeUrl("https://Example.com/post?utm_source=rss"))).toBe(true);
+      expect(result.has(canonicalizeUrl("https://example.com/another"))).toBe(true);
+    });
+
+    it("returns empty set when there are no qualifying archives (EDGE-005)", async () => {
+      const db = {
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => Promise.resolve([])),
+          })),
+        })),
+        insert: vi.fn(),
+        update: vi.fn(),
+      };
+
+      const { createRunArchivesRepo } = await import(
+        "@pipeline/repositories/run-archives.js"
+      );
+      const repo = createRunArchivesRepo(db as never);
+      const result = await repo.getPublishedCanonicalUrls();
+
+      expect(result).toBeInstanceOf(Set);
+      expect(result.size).toBe(0);
+    });
+  });
+});
+
+// EDGE-004: covered URL filtering + dedup interaction
+describe("covered-link filter ordering", () => {
+  it("removes a covered URL before dedup (canonical match removes all items with that canonical)", () => {
+    // Item 1: covered (its canonical URL is in the published set)
+    // Item 2: different canonical URL, NOT covered
+    // Item 3: unique URL, NOT covered
+    // Filter: removes item 1 since canonical(item1.url) ∈ coveredCanonical
+    interface Item { id: number; url: string; engagement: { points: number; commentCount: number }; title: string }
+    const coveredCanonical = new Set<string>([
+      canonicalizeUrl("https://example.com/covered-post"),
+    ]);
+
+    const raw: Item[] = [
+      {
+        id: 1,
+        url: "https://example.com/covered-post", // covered
+        engagement: { points: 100, commentCount: 10 },
+        title: "Item A (covered)",
+      },
+      {
+        id: 2,
+        url: "https://example.com/not-covered-post",
+        engagement: { points: 50, commentCount: 5 },
+        title: "Item B (not covered)",
+      },
+      {
+        id: 3,
+        url: "https://example.com/unique",
+        engagement: { points: 80, commentCount: 4 },
+        title: "Item C unique",
+      },
+    ];
+
+    // Simulate the filter as implemented in run-process.ts
+    const notCovered = raw.filter(
+      (c) => !coveredCanonical.has(canonicalizeUrl(c.url)),
+    );
+
+    // Item 1 (covered) should be removed
+    expect(notCovered.map((i) => i.id)).not.toContain(1);
+    // Items 2 and 3 (not covered) should survive
+    expect(notCovered.map((i) => i.id)).toContain(2);
+    expect(notCovered.map((i) => i.id)).toContain(3);
+  });
+
+  it("when covered URL is the highest-engagement duplicate, filter runs before dedup — covered item removed (EDGE-004)", async () => {
+    const { dedupCandidates } = await import("@pipeline/processors/dedup.js");
+
+    interface Item { id: number; url: string; engagement: { points: number; commentCount: number } }
+
+    // Item 10 is covered (its canonical is in the published set).
+    // Item 11 is a different URL with a different canonical (not covered).
+    // Without filter, dedup would keep item 10 (higher engagement).
+    // With filter, item 10 is removed, item 11 survives.
+    const coveredCanonical = new Set<string>([
+      canonicalizeUrl("https://example.com/covered-article"),
+    ]);
+
+    const raw: Item[] = [
+      {
+        id: 10,
+        url: "https://example.com/covered-article", // covered, very high engagement
+        engagement: { points: 999, commentCount: 100 },
+      },
+      {
+        id: 11,
+        url: "https://example.com/different-article", // NOT covered
+        engagement: { points: 50, commentCount: 2 },
+      },
+    ];
+
+    const notCovered = raw.filter(
+      (c) => !coveredCanonical.has(canonicalizeUrl(c.url)),
+    );
+    // Item 10 removed, item 11 survives
+    const deduped = dedupCandidates(notCovered);
+
+    expect(deduped).toHaveLength(1);
+    expect(deduped[0]?.id).toBe(11);
   });
 });

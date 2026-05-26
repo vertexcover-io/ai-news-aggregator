@@ -16,6 +16,7 @@ export interface RawItemRow {
   sourceType: SourceType;
   title: string;
   url: string;
+  sourceUrl: string | null;
   author: string | null;
   publishedAt: Date | null;
   engagement: { points: number; commentCount: number };
@@ -106,6 +107,7 @@ export function createRawItemsRepo(
           sourceType: rawItems.sourceType,
           title: rawItems.title,
           url: rawItems.url,
+          sourceUrl: rawItems.sourceUrl,
           author: rawItems.author,
           publishedAt: rawItems.publishedAt,
           engagement: rawItems.engagement,

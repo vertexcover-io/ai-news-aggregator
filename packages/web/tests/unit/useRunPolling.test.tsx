@@ -32,6 +32,7 @@ const baseRunState: RunStateResponse = {
   completedAt: "2026-04-07T00:00:10Z",
   sources: { hn: { status: "completed", itemsFetched: 5, errors: [] } },
   rankedItems: [],
+  shortlistedItemIds: null,
   warnings: [],
   error: null,
 };

@@ -27,6 +27,7 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
         sourceType: "hn",
         title: "GPT-5 launch",
         url: "https://news.ycombinator.com/item?id=42",
+        sourceUrl: null,
         author: "sama",
         publishedAt,
         engagement: { points: 1000, commentCount: 250 },
@@ -39,24 +40,24 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
       { rawItemId: 42, score: 0.95, rationale: "high engagement & relevance" },
     ];
     const result = await hydrateRankedItems(repo, refs);
-    expect(result).toEqual([
-      {
-        id: 42,
-        rawItemId: 42,
-        title: "GPT-5 launch",
-        url: "https://news.ycombinator.com/item?id=42",
-        sourceType: "hn",
-        author: "sama",
-        publishedAt: "2026-04-01T12:00:00.000Z",
-        engagement: { points: 1000, commentCount: 250 },
-        score: 0.95,
-        rationale: "high engagement & relevance",
-        content: "Full article body text here",
-        imageUrl: null,
-        recap: null,
-        enrichedSource: null,
-      },
-    ]);
+    expect(result[0]).toMatchObject({
+      id: 42,
+      rawItemId: 42,
+      title: "GPT-5 launch",
+      url: "https://news.ycombinator.com/item?id=42",
+      sourceType: "hn",
+      author: "sama",
+      publishedAt: "2026-04-01T12:00:00.000Z",
+      engagement: { points: 1000, commentCount: 250 },
+      score: 0.95,
+      rationale: "high engagement & relevance",
+      content: "Full article body text here",
+      imageUrl: null,
+      recap: null,
+      enrichedSource: null,
+      sourceIdentifier: "news.ycombinator.com",
+    });
+    expect(result[0].preview).toBeDefined();
   });
 
   it("skips refs whose raw item rows are missing", async () => {

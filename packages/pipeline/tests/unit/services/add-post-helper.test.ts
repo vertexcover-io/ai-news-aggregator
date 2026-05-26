@@ -183,6 +183,10 @@ describe("hydrateAddedPost", () => {
     expect(result.rawItemId).toBe(99);
     expect(result.sourceType).toBe("hn");
     expect(result.recap).toEqual(recap);
+    // Phase 1/2: added items carry a derived source identifier + a preview.
+    expect(result.sourceIdentifier).toBe("news.ycombinator.com");
+    // HN item with no enrichedLink → no preview payload.
+    expect(result.preview.kind).toBe("none");
   });
 
   it("sets metadata.addedInReview = true on the upserted row", async () => {

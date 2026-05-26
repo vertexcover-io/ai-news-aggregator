@@ -1,5 +1,7 @@
 import type { PoolResponse, RankedItem, RankedItemRef } from "@newsletter/shared";
+import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
+import { buildItemPreview } from "./item-preview.js";
 import type {
   RunArchiveRow,
   RunArchivesRepo,
@@ -159,6 +161,8 @@ export interface GetPoolQuery {
   q?: string;
   offset: number;
   limit: number;
+  selectedSources?: string[];
+  shortlistedOnly?: boolean;
 }
 
 export async function getPool(
@@ -181,6 +185,9 @@ export async function getPool(
     q: query.q,
     offset: query.offset,
     limit: query.limit,
+    selectedSources: query.selectedSources,
+    shortlistedOnly: query.shortlistedOnly,
+    shortlistedIds: query.shortlistedOnly ? (archive.shortlistedItemIds ?? null) : undefined,
   });
 }
 
@@ -235,5 +242,11 @@ export async function promoteItem(
     imageUrl: rawItem.imageUrl,
     recap,
     enrichedSource: null,
+    sourceIdentifier: deriveRawItemIdentifier({
+      sourceType: rawItem.sourceType,
+      url: rawItem.url,
+      sourceUrl: rawItem.sourceUrl,
+    }),
+    preview: buildItemPreview(rawItem),
   };
 }

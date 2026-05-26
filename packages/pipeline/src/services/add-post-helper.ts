@@ -1,5 +1,7 @@
 import type { RawItemInsert } from "@newsletter/shared/db";
-import type { RankedItem } from "@newsletter/shared";
+import type { ItemPreview, RankedItem } from "@newsletter/shared";
+import { deriveRawItemIdentifier } from "@newsletter/shared/services";
+import { MARKDOWN_EXCERPT_MAX } from "@newsletter/shared/constants";
 import { pickCandidateContent } from "@pipeline/services/candidate-loader.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type {
@@ -50,6 +52,37 @@ export interface AddPostDeps {
   runId?: string;
 }
 
+function buildAddedPreview(row: RawItemRow): ItemPreview {
+  if (row.sourceType === "twitter") {
+    const quoted = row.metadata.quotedTweet;
+    return {
+      kind: "tweet",
+      handle: row.author ?? "",
+      text: row.content ?? "",
+      createdAt: row.publishedAt ? row.publishedAt.toISOString() : null,
+      photoUrls: quoted?.photoUrls ?? [],
+      url: row.sourceUrl ?? row.url,
+      quoted: quoted ? { handle: quoted.authorHandle, text: quoted.fullText } : null,
+    };
+  }
+  const enriched = row.metadata.enrichedLink;
+  if (enriched?.status === "ok") {
+    return {
+      kind: "link",
+      title: enriched.title ?? null,
+      byline: enriched.byline ?? null,
+      description: enriched.description ?? null,
+      imageUrl: enriched.imageUrl ?? null,
+      domain: enriched.domain ?? null,
+      markdownExcerpt: enriched.markdown
+        ? enriched.markdown.slice(0, MARKDOWN_EXCERPT_MAX)
+        : null,
+      url: enriched.url,
+    };
+  }
+  return { kind: "none" };
+}
+
 function toRankedItem(row: RawItemRow, score: number): RankedItem {
   return {
     id: row.id,
@@ -57,6 +90,11 @@ function toRankedItem(row: RawItemRow, score: number): RankedItem {
     title: row.metadata.recap?.title ?? row.title,
     url: row.url,
     sourceType: row.sourceType,
+    sourceIdentifier: deriveRawItemIdentifier({
+      sourceType: row.sourceType,
+      url: row.url,
+      sourceUrl: row.sourceUrl,
+    }),
     author: row.author,
     publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
     engagement: row.engagement,
@@ -66,6 +104,7 @@ function toRankedItem(row: RawItemRow, score: number): RankedItem {
     imageUrl: row.imageUrl,
     recap: row.metadata.recap ?? null,
     enrichedSource: null,
+    preview: buildAddedPreview(row),
   };
 }
 
