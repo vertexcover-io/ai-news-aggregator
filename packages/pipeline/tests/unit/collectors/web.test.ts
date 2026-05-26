@@ -176,7 +176,7 @@ describe("LLM extraction helpers", () => {
         },
       ];
 
-      const result = validateDiscoveredUrls(posts, listing.markdown);
+      const result = validateDiscoveredUrls(posts, listing.markdown, listing.listingUrl);
 
       expect(result).toHaveLength(1);
       expect(result.map((p) => p.url)).toEqual([
@@ -203,14 +203,57 @@ describe("LLM extraction helpers", () => {
         },
       ];
 
-      const result = validateDiscoveredUrls(posts, listing.markdown);
+      const result = validateDiscoveredUrls(posts, listing.markdown, listing.listingUrl);
 
       expect(result).toHaveLength(3);
     });
 
     it("handles empty input gracefully", () => {
-      const result = validateDiscoveredUrls([], listing.markdown);
+      const result = validateDiscoveredUrls([], listing.markdown, listing.listingUrl);
       expect(result).toEqual([]);
+    });
+
+    it("resolves a relative URL against the listing URL and keeps it", () => {
+      // The discovery LLM commonly emits relative hrefs as they appear in the
+      // page markdown — these must be resolved to absolute, not dropped.
+      const posts: DiscoveredPost[] = [
+        {
+          url: "/blog/scaling-events",
+          title: "Relative post",
+          published_at: "2026-03-30",
+        },
+      ];
+
+      const result = validateDiscoveredUrls(posts, listing.markdown, listing.listingUrl);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]?.url).toBe("https://example.com/blog/scaling-events");
+    });
+
+    it("drops empty, fragment, and non-http(s) URLs", () => {
+      const posts: DiscoveredPost[] = [
+        { url: "", title: "empty", published_at: "" },
+        { url: "#", title: "fragment", published_at: "" },
+        { url: "mailto:hi@example.com", title: "mailto", published_at: "" },
+        { url: "javascript:void(0)", title: "js", published_at: "" },
+      ];
+
+      const result = validateDiscoveredUrls(posts, listing.markdown, listing.listingUrl);
+
+      expect(result).toEqual([]);
+    });
+
+    it("keeps a valid absolute URL even when one sibling is malformed", () => {
+      const posts: DiscoveredPost[] = [
+        { url: "/blog/scaling-events", title: "good", published_at: "" },
+        { url: "", title: "bad", published_at: "" },
+      ];
+
+      const result = validateDiscoveredUrls(posts, listing.markdown, listing.listingUrl);
+
+      expect(result.map((p) => p.url)).toEqual([
+        "https://example.com/blog/scaling-events",
+      ]);
     });
   });
 

@@ -102,8 +102,30 @@ export async function extractPostFields(
 export function validateDiscoveredUrls(
   posts: DiscoveredPost[],
   listingMarkdown: string,
+  listingUrl: string,
 ): DiscoveredPost[] {
-  return posts.filter((p) => listingMarkdown.includes(p.url));
+  const out: DiscoveredPost[] = [];
+  for (const p of posts) {
+    const raw = p.url.trim();
+    // Empty or fragment-only hrefs are never real posts — and "" resolves back
+    // to the listing page itself, so reject before the substring/resolve step.
+    if (raw === "" || raw.startsWith("#")) continue;
+    if (!listingMarkdown.includes(p.url)) continue;
+    // The discovery LLM commonly emits relative hrefs (e.g. "/blog/post") as
+    // they appear in the page markdown. Resolve against the listing URL so they
+    // reach the detail crawl as absolute URLs, and drop anything that isn't a
+    // parseable http(s) URL — Crawlee rejects non-absolute URLs and a single bad
+    // one aborts the whole batch.
+    let resolved: URL;
+    try {
+      resolved = new URL(raw, listingUrl);
+    } catch {
+      continue;
+    }
+    if (resolved.protocol !== "http:" && resolved.protocol !== "https:") continue;
+    out.push({ ...p, url: resolved.href });
+  }
+  return out;
 }
 
 export function sortPostsByPublishedAtDesc(posts: DiscoveredPost[]): DiscoveredPost[] {
@@ -259,7 +281,7 @@ export async function collectWeb(
           llmModel,
           reportDiscovery,
         );
-        const validated = validateDiscoveredUrls(discovered, r.result.markdown);
+        const validated = validateDiscoveredUrls(discovered, r.result.markdown, source.listingUrl);
         const sorted = sortPostsByPublishedAtDesc(validated);
         const filtered = applySinceDays(sorted, config.sinceDays);
         const capped = filtered.slice(0, config.maxItems);

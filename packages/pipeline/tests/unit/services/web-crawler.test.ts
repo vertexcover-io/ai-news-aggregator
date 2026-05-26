@@ -134,6 +134,43 @@ describe("runWebCrawl", () => {
   });
 
   // -------------------------------------------------------------------------
+  // Defensive guard: a malformed URL must never reach crawler.run() — Crawlee's
+  // addRequests validates the whole batch atomically, so one bad URL would abort
+  // the entire crawl. We filter invalid URLs out and mark them as failures.
+  // -------------------------------------------------------------------------
+  it("drops invalid URLs from the batch and never passes them to crawler.run()", async () => {
+    const jobs: CrawlJob[] = [
+      { kind: "detail", sourceName: "s", postUrl: "/blog/relative", url: "/blog/relative" },
+      { kind: "detail", sourceName: "s", postUrl: "https://ok.com/p", url: "https://ok.com/p" },
+      { kind: "listing", sourceName: "s", url: "" },
+    ];
+
+    const result = await runWebCrawl(jobs);
+
+    const passed = getInstance().runRequests.map((r) => r.url);
+    expect(passed).toEqual(["https://ok.com/p"]);
+
+    const relative = result.get("/blog/relative");
+    expect(relative?.ok).toBe(false);
+    if (relative && !relative.ok) expect(relative.error).toBe("invalid-url");
+    const empty = result.get("");
+    expect(empty?.ok).toBe(false);
+  });
+
+  it("returns an empty Map without constructing a crawler when all URLs are invalid", async () => {
+    const jobs: CrawlJob[] = [
+      { kind: "detail", sourceName: "s", postUrl: "/a", url: "/a" },
+      { kind: "listing", sourceName: "s", url: "mailto:x@y.com" },
+    ];
+
+    const result = await runWebCrawl(jobs);
+
+    expect(lastMockInstance).toBeNull();
+    expect(result.get("/a")?.ok).toBe(false);
+    expect(result.get("mailto:x@y.com")?.ok).toBe(false);
+  });
+
+  // -------------------------------------------------------------------------
   // REQ-08: crawler config options
   // -------------------------------------------------------------------------
   it("constructs crawler with required config options", async () => {
