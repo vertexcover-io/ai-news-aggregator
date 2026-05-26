@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Article With No Date</title>
+</head>
+<body>
+  <article>
+    <h1>Article With No Date</h1>
+    <p>This article has no structured date signal anywhere in the document. There is no JSON-LD
+    script block, no meta published_time or date tags, and no time element with a datetime
+    attribute. The extractor should return null for this page.</p>
+    <p>This tests that our extractor gracefully handles pages with no date signal and returns
+    null rather than throwing an error or returning an invalid date value. The absence of a
+    structured date is a common case and must be handled without any side effects or errors.</p>
+  </article>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Graph Article - May 15</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "name": "AI News Site",
+        "url": "https://example.com"
+      },
+      {
+        "@type": "Article",
+        "headline": "Graph Article",
+        "datePublished": "2026-05-15T08:00:00.000Z",
+        "author": {"@type": "Person", "name": "Author Name"}
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <article>
+    <h1>Graph Article</h1>
+    <p>This article uses a JSON-LD @graph array structure where the article node is the second
+    entry in the graph. The first entry is a WebSite node without a datePublished field.
+    The extractor must iterate through graph nodes to find the one with datePublished.</p>
+    <p>This tests REQ-003 and EDGE-007: when multiple JSON-LD article nodes exist only some
+    have datePublished, the first node with a parseable datePublished wins regardless of position
+    in the array. The WebSite node should be skipped and the Article node should match.</p>
+  </article>
+</body>
+</html>

@@ -18,6 +18,7 @@ const MOCK_RESULT: ConvertResult = {
   byline: null,
   imageUrl: null,
   textLength: 300,
+  publishedAt: null,
 };
 
 beforeEach(() => {

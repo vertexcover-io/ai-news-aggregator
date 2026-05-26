@@ -12,4 +12,5 @@ export interface ConvertResult {
   byline: string | null;
   imageUrl: string | null;
   textLength: number;
+  publishedAt: Date | null;
 }

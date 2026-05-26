@@ -4,6 +4,7 @@ import TurndownService from "turndown";
 // turndown-plugin-gfm ships no types; see src/types/turndown-plugin-gfm.d.ts
 import { gfm } from "turndown-plugin-gfm";
 import type { ConvertInput, ConvertResult } from "@pipeline/services/web-fetch/types.js";
+import { extractPublishedAt } from "@pipeline/services/web-fetch/published-date.js";
 
 export const HEALTHY_TEXT_LENGTH = 200;
 
@@ -109,8 +110,9 @@ export function convert(input: ConvertInput): ConvertResult {
     const dom = new JSDOM(html, { url: baseUrl, virtualConsole: silentVirtualConsole() });
     const doc = dom.window.document;
 
-    // Extract image from ORIGINAL doc before Readability mutates it
+    // Extract image and publish date from ORIGINAL doc before Readability mutates it
     const imageUrl = extractImageUrl(doc, baseUrl);
+    const publishedAt = extractPublishedAt(doc);
 
     // Clone for Readability (Readability.parse() is destructive), then
     // resolve relative href/src on the clone so Turndown emits absolute URLs.
@@ -119,7 +121,7 @@ export function convert(input: ConvertInput): ConvertResult {
     const parsed = new Readability(docClone).parse();
 
     if (!parsed) {
-      return { markdown: "", title: null, byline: null, imageUrl, textLength: 0 };
+      return { markdown: "", title: null, byline: null, imageUrl, textLength: 0, publishedAt };
     }
 
     const markdown = td.turndown(parsed.content ?? "");
@@ -130,6 +132,7 @@ export function convert(input: ConvertInput): ConvertResult {
       byline: parsed.byline ?? null,
       imageUrl,
       textLength,
+      publishedAt,
     };
   }
 
@@ -137,8 +140,9 @@ export function convert(input: ConvertInput): ConvertResult {
   const dom = new JSDOM(html, { url: baseUrl, virtualConsole: silentVirtualConsole() });
   const doc = dom.window.document;
 
-  // Extract image from original DOM (before stripping)
+  // Extract image and publish date from original DOM (before stripping)
   const imageUrl = extractImageUrl(doc, baseUrl);
+  const publishedAt = extractPublishedAt(doc);
 
   // Strip layout noise
   const stripTags = ["script", "style", "nav", "footer", "aside"];
@@ -162,6 +166,7 @@ export function convert(input: ConvertInput): ConvertResult {
     byline: null,
     imageUrl,
     textLength,
+    publishedAt,
   };
 }
 

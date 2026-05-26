@@ -17,6 +17,7 @@ const MOCK_RESULT: ConvertResult = {
   byline: "Jane Doe",
   imageUrl: "https://example.com/image.png",
   textLength: 400,
+  publishedAt: null,
 };
 
 beforeEach(() => {
