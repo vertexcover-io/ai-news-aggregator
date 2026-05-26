@@ -18,6 +18,7 @@ const MOCK_RESULT: ConvertResult = {
   imageUrl: "https://example.com/image.png",
   textLength: 400,
   publishedAt: null,
+  structuredData: null,
 };
 
 beforeEach(() => {

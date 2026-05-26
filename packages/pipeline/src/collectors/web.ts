@@ -26,6 +26,8 @@ const MAX_ERROR_LENGTH = 200;
 
 export const WEB_COLLECTOR_MODEL_ID = "claude-haiku-4-5-20251001";
 
+export const COMBINED_DISCOVERY_CAP = 120_000;
+
 export type UsageReporter = (
   usage: LanguageModelUsage,
   providerMetadata?: ProviderMetadata,
@@ -54,10 +56,15 @@ export type ExtractedFields = z.infer<typeof DetailSchema>;
 export async function discoverPostUrls(
   listingUrl: string,
   listingMarkdown: string,
+  structuredData: string | null,
   model: LanguageModel,
   reportUsage?: UsageReporter,
 ): Promise<DiscoveredPost[]> {
   const today = new Date().toISOString().slice(0, 10);
+  const combined = structuredData
+    ? `${listingMarkdown}\n\n--- STRUCTURED DATA ---\n${structuredData}`
+    : listingMarkdown;
+  const promptBody = combined.slice(0, COMBINED_DISCOVERY_CAP);
   const result = await generateObject({
     model,
     schema: DiscoverySchema,
@@ -71,7 +78,7 @@ export async function discoverPostUrls(
       `relative date like "2 hours ago", "yesterday", or "3 days ago", compute ` +
       `the absolute date from today. Use empty strings for fields that are not ` +
       `stated on the page. Never invent data.\n\n` +
-      `--- BEGIN LISTING MARKDOWN ---\n${listingMarkdown}\n--- END LISTING MARKDOWN ---`,
+      `--- BEGIN LISTING MARKDOWN ---\n${promptBody}\n--- END LISTING MARKDOWN ---`,
   });
   reportUsage?.(result.usage, result.providerMetadata);
   return result.object.posts;
@@ -102,16 +109,14 @@ export async function extractPostFields(
 
 export function validateDiscoveredUrls(
   posts: DiscoveredPost[],
-  listingMarkdown: string,
   listingUrl: string,
 ): DiscoveredPost[] {
   const out: DiscoveredPost[] = [];
   for (const p of posts) {
     const raw = p.url.trim();
     // Empty or fragment-only hrefs are never real posts — and "" resolves back
-    // to the listing page itself, so reject before the substring/resolve step.
+    // to the listing page itself, so reject before the resolve step.
     if (raw === "" || raw.startsWith("#")) continue;
-    if (!listingMarkdown.includes(p.url)) continue;
     // The discovery LLM commonly emits relative hrefs (e.g. "/blog/post") as
     // they appear in the page markdown. Resolve against the listing URL so they
     // reach the detail crawl as absolute URLs, and drop anything that isn't a
@@ -127,6 +132,16 @@ export function validateDiscoveredUrls(
     out.push({ ...p, url: resolved.href });
   }
   return out;
+}
+
+export function resolvesToListing(postUrl: string, listingUrl: string): boolean {
+  try {
+    const p = new URL(postUrl);
+    const l = new URL(listingUrl);
+    return p.origin === l.origin && p.pathname.replace(/\/$/, "") === l.pathname.replace(/\/$/, "");
+  } catch {
+    return false;
+  }
 }
 
 export function sortPostsByPublishedAtDesc(
@@ -282,10 +297,11 @@ export async function collectWeb(
         const discovered = await discoverPostUrls(
           source.listingUrl,
           r.result.markdown,
+          r.result.structuredData,
           llmModel,
           reportDiscovery,
         );
-        const validated = validateDiscoveredUrls(discovered, r.result.markdown, source.listingUrl);
+        const validated = validateDiscoveredUrls(discovered, source.listingUrl);
         const sorted = sortPostsByPublishedAtDesc(validated);
         const filtered = applySinceDays(sorted, config.sinceDays);
         const capped = filtered.slice(0, config.maxItems);
@@ -299,6 +315,7 @@ export async function collectWeb(
             validated: validated.length,
             afterSinceDays: filtered.length,
             capped: capped.length,
+            structuredDataBytes: r.result.structuredData?.length ?? 0,
           },
           "web listing processed",
         );
@@ -327,12 +344,21 @@ export async function collectWeb(
 
   const detailJobs: CrawlJob[] = [];
   const postBySource = new Map<string, DiscoveredPost[]>();
+  const selfReferentialBySource = new Map<string, DiscoveredPost[]>();
   for (const ps of perSource) {
     const newPosts = ps.capped.filter((p) => !existing.has(p.url));
-    postBySource.set(ps.source.name, newPosts);
+    const selfRef: DiscoveredPost[] = [];
+    const needsDetail: DiscoveredPost[] = [];
     for (const p of newPosts) {
-      detailJobs.push({ kind: "detail" as const, sourceName: ps.source.name, postUrl: p.url, url: p.url });
+      if (resolvesToListing(p.url, ps.source.listingUrl)) {
+        selfRef.push(p);
+      } else {
+        needsDetail.push(p);
+        detailJobs.push({ kind: "detail" as const, sourceName: ps.source.name, postUrl: p.url, url: p.url });
+      }
     }
+    postBySource.set(ps.source.name, needsDetail);
+    selfReferentialBySource.set(ps.source.name, selfRef);
   }
 
   // Pass 2: details (only when there is work)
@@ -439,6 +465,26 @@ export async function collectWeb(
     },
     "post field extraction complete",
   );
+
+  // Build self-referential items (no Pass-2 detail fetch)
+  for (const ps of perSource) {
+    if (ps.sourceFailed) continue;
+    const selfRefs = selfReferentialBySource.get(ps.source.name) ?? [];
+    for (const post of selfRefs) {
+      const fields: ExtractedFields = {
+        title: post.title.trim(),
+        author: "",
+        published_at: post.published_at,
+        image_url: "",
+      };
+      if (!fields.title) {
+        allFailures.push({ source: ps.source.name, postUrl: post.url, error: "empty title" });
+        continue;
+      }
+      allItems.push(buildRawItem(post.url, "", fields, null));
+      itemsBySource.set(ps.source.name, (itemsBySource.get(ps.source.name) ?? 0) + 1);
+    }
+  }
 
   if (config.sources.length > 0 && perSource.every((ps) => ps.sourceFailed)) {
     logger.error(

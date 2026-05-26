@@ -44,7 +44,7 @@ describe("discoverPostUrls reportUsage wiring (REQ-030, REQ-034)", () => {
     vi.resetModules();
     const reimported = await import("@pipeline/collectors/web.js");
     const reportUsage = vi.fn();
-    await reimported.discoverPostUrls("https://x", "md", DUMMY_MODEL, reportUsage);
+    await reimported.discoverPostUrls("https://x", "md", null, DUMMY_MODEL, reportUsage);
     expect(reportUsage).toHaveBeenCalledTimes(1);
     expect(reportUsage).toHaveBeenCalledWith(STUB_USAGE, STUB_META);
     vi.doUnmock("ai");
@@ -59,7 +59,7 @@ describe("discoverPostUrls reportUsage wiring (REQ-030, REQ-034)", () => {
     const { discoverPostUrls } = await import("@pipeline/collectors/web.js");
     const reportUsage = vi.fn();
     await expect(
-      discoverPostUrls("https://x", "md", DUMMY_MODEL, reportUsage),
+      discoverPostUrls("https://x", "md", null, DUMMY_MODEL, reportUsage),
     ).rejects.toThrow("boom");
     expect(reportUsage).not.toHaveBeenCalled();
     vi.doUnmock("ai");

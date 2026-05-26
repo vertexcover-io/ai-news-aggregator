@@ -101,6 +101,26 @@ function extractImageUrl(doc: Document, baseUrl: string): string | null {
   return null;
 }
 
+function extractStructuredData(doc: Document): string | null {
+  const parts: string[] = [];
+  for (const s of Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))) {
+    const t = s.textContent?.trim();
+    if (t) parts.push(t);
+  }
+  const nextData = doc.querySelector('script#__NEXT_DATA__');
+  if (nextData?.textContent?.trim()) parts.push(nextData.textContent.trim());
+  for (const s of Array.from(doc.querySelectorAll("script:not([src])"))) {
+    const t = s.textContent ?? "";
+    if (s.getAttribute("type") === "application/ld+json") continue;
+    if (s.id === "__NEXT_DATA__") continue;
+    if (t.includes("self.__next_f.push") || t.includes("__NEXT_DATA__")) {
+      const trimmed = t.trim();
+      if (trimmed) parts.push(trimmed);
+    }
+  }
+  return parts.length > 0 ? parts.join("\n\n") : null;
+}
+
 export function convert(input: ConvertInput): ConvertResult {
   const { html, baseUrl, mode } = input;
   const td = makeTurndown();
@@ -110,7 +130,8 @@ export function convert(input: ConvertInput): ConvertResult {
     const dom = new JSDOM(html, { url: baseUrl, virtualConsole: silentVirtualConsole() });
     const doc = dom.window.document;
 
-    // Extract image and publish date from ORIGINAL doc before Readability mutates it
+    // Extract image and publish date from ORIGINAL doc before Readability mutates it.
+    // Structured data is listing-mode only (REQ-001); article results never consume it.
     const imageUrl = extractImageUrl(doc, baseUrl);
     const publishedAt = extractPublishedAt(doc);
 
@@ -121,7 +142,7 @@ export function convert(input: ConvertInput): ConvertResult {
     const parsed = new Readability(docClone).parse();
 
     if (!parsed) {
-      return { markdown: "", title: null, byline: null, imageUrl, textLength: 0, publishedAt };
+      return { markdown: "", title: null, byline: null, imageUrl, textLength: 0, publishedAt, structuredData: null };
     }
 
     const markdown = td.turndown(parsed.content ?? "");
@@ -133,6 +154,7 @@ export function convert(input: ConvertInput): ConvertResult {
       imageUrl,
       textLength,
       publishedAt,
+      structuredData: null,
     };
   }
 
@@ -140,9 +162,10 @@ export function convert(input: ConvertInput): ConvertResult {
   const dom = new JSDOM(html, { url: baseUrl, virtualConsole: silentVirtualConsole() });
   const doc = dom.window.document;
 
-  // Extract image and publish date from original DOM (before stripping)
+  // Extract image, publish date, and structured data from original DOM (before stripping)
   const imageUrl = extractImageUrl(doc, baseUrl);
   const publishedAt = extractPublishedAt(doc);
+  const structuredData = extractStructuredData(doc);
 
   // Strip layout noise
   const stripTags = ["script", "style", "nav", "footer", "aside"];
@@ -167,6 +190,7 @@ export function convert(input: ConvertInput): ConvertResult {
     imageUrl,
     textLength,
     publishedAt,
+    structuredData,
   };
 }
 
