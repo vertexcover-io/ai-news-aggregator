@@ -74,6 +74,7 @@ export const runArchives = pgTable("run_archives", {
   socialMetadata: jsonb("social_metadata").$type<SocialMetadata | null>(),
   costBreakdown: jsonb("cost_breakdown").$type<RunCostBreakdown | null>(),
   runFunnel: jsonb("run_funnel").$type<RunFunnel | null>(),
+  shortlistedItemIds: jsonb("shortlisted_item_ids").$type<number[] | null>(),
 });
 
 export const runLogs = pgTable(

@@ -1,6 +1,33 @@
 import type { SourceType } from "../db/schema.js";
 import type { EnrichmentSkipReason, RawItemEngagement, RecapContent } from "./index.js";
 
+export interface TweetPreview {
+  kind: "tweet";
+  handle: string;
+  text: string;
+  createdAt: string | null;
+  photoUrls: string[];
+  url: string;
+  quoted: { handle: string; text: string } | null;
+}
+
+export interface LinkPreview {
+  kind: "link";
+  title: string | null;
+  byline: string | null;
+  description: string | null;
+  imageUrl: string | null;
+  domain: string | null;
+  markdownExcerpt: string | null;
+  url: string;
+}
+
+export interface NoPreview {
+  kind: "none";
+}
+
+export type ItemPreview = TweetPreview | LinkPreview | NoPreview;
+
 export interface EnrichmentTelemetry {
   attempted: number;
   ok: number;
@@ -46,6 +73,8 @@ export interface RankedItem {
   imageUrl: string | null;
   recap: RecapContent | null;
   enrichedSource: { hostname: string; url: string } | null;
+  sourceIdentifier: string;
+  preview: ItemPreview;
 }
 
 export interface RankedItemRef {
@@ -76,6 +105,7 @@ export interface RunState {
     web_search?: SourceRunState;
   };
   rankedItems: RankedItemRef[] | null;
+  shortlistedItemIds: number[] | null;
   warnings: string[];
   error: string | null;
 }
@@ -166,6 +196,9 @@ export interface PoolItem {
   publishedAt: string | null;
   engagement: { points: number; commentCount: number };
   imageUrl: string | null;
+  sourceIdentifier: string;
+  preview: ItemPreview;
+  recapSummary: string | null;
 }
 
 export interface PoolResponse {
