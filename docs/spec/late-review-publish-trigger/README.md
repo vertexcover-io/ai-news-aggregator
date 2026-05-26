@@ -25,12 +25,16 @@ redundant route-level pre-check.
 
 | Artifact | Purpose |
 |----------|---------|
-| [design.md](design.md) | Problem, approaches considered, chosen approach, edge cases |
 | [spec.md](spec.md) | EARS requirements (REQ-001..011), edge cases (EDGE-001..011), verification matrix |
 | [plan.md](plan.md) | Two-phase implementation plan + phase graph + codebase context |
-| [library-probe.md](library-probe.md) | Dependency trust gate — NOT_APPLICABLE (pure-internal) |
 | [verification/proof-report.md](verification/proof-report.md) | Functional-verify gate output (the verdict) |
 | [verification/adversarial-findings.md](verification/adversarial-findings.md) | Step-5 try-to-break pass: 8 scenarios attempted, all held |
+
+> The `design.md` and `library-probe.md` working artifacts are produced by the pipeline
+> but kept out of git by the repo's `.gitignore` spec-allowlist policy (only `spec.md`,
+> `plan.md`, `README.md`, `verification/`, and `learnings.md` are committed under
+> `docs/spec/`). The design's chosen approach and the NOT_APPLICABLE library-probe verdict
+> are summarized above and in `spec.md`.
 
 ## What changed (production code)
 
