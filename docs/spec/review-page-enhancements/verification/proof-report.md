@@ -33,30 +33,39 @@
 
 ---
 
-## VS-1: Shortlist toggle filter (UI)
+## VS-1: Shortlist toggle filter — POOL-SCOPED (UI)
 
-**Claims proven:** PHASE4-C1 (toggle filters ranked list), PHASE4-C2 (disabled on legacy run), REQ-013, REQ-014, EDGE-001
+> **Re-verified 2026-05-26 after user correction:** the "Shortlisted only" toggle lives
+> **inside the Item Pool** and filters the **pool only**. The ranked list is never filtered
+> and drag-to-reorder stays enabled.
+
+**Claims proven:** REQ-013 (pool-only shortlist filter), REQ-014/EDGE-001 (disabled on legacy run)
 
 **Screenshots:**
-- `screenshots/VS1-shortlist-toggle-on.png` — shortlist active, showing 3 of 3 ranked items (all shortlisted), pool hidden, "Drag-to-reorder disabled while filters active" note
-- `screenshots/VS1-shortlist-toggle-disabled-legacy.png` — legacy run (aaaaaaaa-…-0001) with `shortlisted_item_ids=NULL`: checkbox is `disabled=true`, "Pool unavailable for this run"
+- `screenshots/VS1a-pool-toolbar-default.png` — toolbar (shortlist toggle + Source ▾) rendered inside "Item Pool (3 items)", above the search box; ranked list shows "2 posts · Drag to reorder".
+- `screenshots/VS1b-pool-shortlist-on-ranked-unaffected.png` — shortlist ON: Item Pool narrows to "(1 items)" / "1 matching" (only the shortlisted `@karpathy` item); **ranked list still "2 posts" with both drag handles intact**; "Clear filters" appears.
+- `screenshots/VS1-shortlist-toggle-disabled-legacy.png` — legacy run with `shortlisted_item_ids=NULL`: checkbox is `disabled=true`.
 
-**Playwright observations:**
-1. On seeded run `e2e00001-…`: toggle `disabled=false`, toggling on shows "Showing 3 of 3" (all ranked items are shortlisted), pool items (non-shortlisted) hidden; toggle off restores "Item Pool (2/3 items)".
-2. On legacy run `aaaaaaaa-…-0001`: `checkbox.disabled === true`, cannot be clicked.
+**Playwright observations (seeded run `e2e00001-…`, shortlist `{29384,29385,29386}`):**
+1. Toolbar renders inside the pool section, not above the ranked list. No "Drag-to-reorder disabled" banner exists anymore.
+2. Toggling "Shortlisted only" ON: Item Pool "(3 items)" → "(1 items)", count "3 items" → "1 matching". Ranked list unchanged at "2 posts", both "Drag to reorder" handles present (`onReorder` always = `reorder`).
+3. Toggling OFF: pool restores to "(3 items)".
+4. Legacy run: `checkbox.disabled === true`, cannot be clicked.
 
 ---
 
-## VS-2: Source filter (UI)
+## VS-2: Source filter — POOL-SCOPED (UI)
 
-**Claims proven:** PHASE4-C3 (source filter hides non-matching), REQ-015, REQ-016, REQ-017
+> **Re-verified 2026-05-26 after user correction:** the Source filter is **pool-only**.
 
-**Screenshot:** `screenshots/VS2-source-filter-reddit.png`
+**Claims proven:** REQ-015 (pool-only source filter), REQ-016 (grouped facets), REQ-017 (AND-compose, pool)
+
+**Screenshot:** `screenshots/VS2b-pool-source-filter-ranked-unaffected.png`
 
 **Playwright observations:**
-- Clicking "Source ▾" opens grouped dropdown: `blog` (huggingface.co 1, openai.com 1), `reddit` (r/LocalLLaMA 1), `twitter` (@karpathy 1), `web_search` (web search 1).
-- Selecting `r/LocalLLaMA`: ranked list shows "0 posts (filtered from 3)", pool shows "ITEM POOL (1 ITEMS)" with only the reddit item. Chip "r/LocalLLaMA" appears. Count shows "Showing 1 of 4".
-- "Clear filters" removes chip and restores all items.
+- Clicking "Source ▾" (inside the pool) opens grouped dropdown: `blog` (huggingface.co 1, openai.com 1), `reddit` (r/LocalLLaMA 1), `twitter` (@karpathy 1), `web_search` (web search 1) — facets keyed by `(sourceType, identifier)`.
+- Selecting `r/LocalLLaMA`: **ranked list stays "2 posts"** (unaffected, drag handles intact); Item Pool narrows to "(1 items)" / "1 matching" with only the reddit item. "Source 1" badge + `r/LocalLLaMA` chip + "Clear filters" appear.
+- "Clear filters" removes the chip and restores all pool items.
 
 ---
 

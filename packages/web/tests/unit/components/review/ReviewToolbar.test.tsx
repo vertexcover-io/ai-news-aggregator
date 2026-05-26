@@ -31,8 +31,6 @@ function makeProps(overrides: Partial<Parameters<typeof ReviewToolbar>[0]> = {})
     clearAll: vi.fn(),
     facets: mockFacets,
     facetsLoading: false,
-    rankedVisibleCount: 5,
-    rankedTotalCount: 10,
     poolTotalCount: 20,
     isFiltered: false,
     ...overrides,
@@ -119,12 +117,25 @@ describe("ReviewToolbar", () => {
     expect(screen.queryByRole("button", { name: /clear filters/i })).toBeNull();
   });
 
-  it("shows 'Showing N of M' count text", () => {
-    render(
+  it("shows the pool item count when not filtered", () => {
+    const { container } = render(
+      <ReviewToolbar {...makeProps({ poolTotalCount: 20, isFiltered: false })} />,
+    );
+    expect(container.textContent).toContain("20");
+    expect(container.textContent).toContain("items");
+  });
+
+  it("shows the matching count when filtered", () => {
+    const { container } = render(
       <ReviewToolbar
-        {...makeProps({ rankedVisibleCount: 3, rankedTotalCount: 10 })}
+        {...makeProps({
+          poolTotalCount: 7,
+          isFiltered: true,
+          selectedSources: new Set(["openai.com"]),
+        })}
       />,
     );
-    expect(screen.getByText(/showing/i)).toBeTruthy();
+    expect(container.textContent).toContain("7");
+    expect(container.textContent).toContain("matching");
   });
 });

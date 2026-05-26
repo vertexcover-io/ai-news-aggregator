@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState, useCallback, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import { usePool, type UsePoolReturn } from "../../hooks/usePool";
 import { PoolCard } from "./PoolCard";
+import { ReviewToolbar } from "./ReviewToolbar";
+import type { SourceFacetGroup } from "../../hooks/useSourceFacets";
 import { cn } from "@/lib/utils";
 
 interface PoolSectionProps {
@@ -10,10 +12,15 @@ interface PoolSectionProps {
   promotingIds: Set<number>;
   startedAt: string | null;
   sourceTypes: string[] | null;
-  selectedSources: Set<string>;
   shortlistedOnly: boolean;
+  toggleShortlisted: () => void;
+  selectedSources: Set<string>;
+  toggleSource: (identifier: string) => void;
+  clearAll: () => void;
+  isFiltered: boolean;
   shortlistedItemIds: number[] | null;
-  onPoolTotalChange?: (total: number) => void;
+  facets: SourceFacetGroup[];
+  facetsLoading: boolean;
 }
 
 export function PoolSection({
@@ -23,10 +30,15 @@ export function PoolSection({
   promotingIds,
   startedAt,
   sourceTypes,
-  selectedSources,
   shortlistedOnly,
+  toggleShortlisted,
+  selectedSources,
+  toggleSource,
+  clearAll,
+  isFiltered,
   shortlistedItemIds,
-  onPoolTotalChange,
+  facets,
+  facetsLoading,
 }: PoolSectionProps): ReactElement | null {
   const isUnavailable = !startedAt || !sourceTypes;
 
@@ -57,16 +69,6 @@ export function PoolSection({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shortlistedOnly, shortlistedItemIds !== null]);
-
-  const stableOnPoolTotalChange = useCallback(
-    (t: number) => onPoolTotalChange?.(t),
-     
-    [onPoolTotalChange],
-  );
-
-  useEffect(() => {
-    stableOnPoolTotalChange(pool.total);
-  }, [pool.total, stableOnPoolTotalChange]);
 
   function handleSearchChange(value: string): void {
     setSearchInput(value);
@@ -108,6 +110,20 @@ export function PoolSection({
           </span>
         </h2>
       </div>
+
+      {/* Filter toolbar — scoped to the pool only */}
+      <ReviewToolbar
+        shortlistedOnly={shortlistedOnly}
+        toggleShortlisted={toggleShortlisted}
+        shortlistedItemIds={shortlistedItemIds}
+        selectedSources={selectedSources}
+        toggleSource={toggleSource}
+        clearAll={clearAll}
+        facets={facets}
+        facetsLoading={facetsLoading}
+        poolTotalCount={pool.total}
+        isFiltered={isFiltered}
+      />
 
       {/* Search */}
       <input

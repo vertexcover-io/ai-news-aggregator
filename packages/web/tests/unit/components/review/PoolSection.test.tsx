@@ -75,9 +75,15 @@ const baseProps = {
   promotingIds: new Set<number>(),
   startedAt: "2026-04-15T10:00:00Z",
   sourceTypes: ["hn", "reddit"] as string[],
-  selectedSources: new Set<string>(),
   shortlistedOnly: false,
+  toggleShortlisted: vi.fn(),
+  selectedSources: new Set<string>(),
+  toggleSource: vi.fn(),
+  clearAll: vi.fn(),
+  isFiltered: false,
   shortlistedItemIds: null as number[] | null,
+  facets: [],
+  facetsLoading: false,
 };
 
 beforeEach(() => {
@@ -144,6 +150,27 @@ describe("PoolSection", () => {
     render(<PoolSection {...baseProps} />);
     const input = screen.getByPlaceholderText("Search pool items...");
     expect(input).toBeDefined();
+  });
+
+  it("renders the filter toolbar inside the pool (shortlist toggle + source dropdown)", () => {
+    poolReturnOverride = { items: sampleItems, total: 2 };
+    render(<PoolSection {...baseProps} />);
+    expect(screen.getByLabelText("Shortlisted only")).toBeDefined();
+    expect(screen.getByText("Source")).toBeDefined();
+  });
+
+  it("toggling 'Shortlisted only' calls toggleShortlisted (pool-scoped)", () => {
+    poolReturnOverride = { items: sampleItems, total: 2 };
+    const toggleShortlisted = vi.fn();
+    render(
+      <PoolSection
+        {...baseProps}
+        shortlistedItemIds={[1]}
+        toggleShortlisted={toggleShortlisted}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Shortlisted only"));
+    expect(toggleShortlisted).toHaveBeenCalled();
   });
 
   it("REQ-008: Show more button visible when hasMore is true, shows remaining count", () => {

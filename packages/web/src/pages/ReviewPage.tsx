@@ -9,7 +9,6 @@ import { ReviewList } from "../components/review/ReviewList";
 import { AddPostPanel } from "../components/review/AddPostPanel";
 import { SaveBar } from "../components/review/SaveBar";
 import { PoolSection } from "../components/review/PoolSection";
-import { ReviewToolbar } from "../components/review/ReviewToolbar";
 
 function formatHeading(startedAt: string | null | undefined): string {
   if (!startedAt) return "Review";
@@ -54,7 +53,6 @@ export function ReviewPage(): ReactElement {
 
   const filters = useReviewFilters();
   const { facets, isLoading: facetsLoading } = useSourceFacets(runId);
-  const [poolTotal, setPoolTotal] = useState(0);
 
   const shortlistedItemIds = query.data?.shortlistedItemIds ?? null;
 
@@ -154,21 +152,6 @@ export function ReviewPage(): ReactElement {
     return added + removed + reordered + state.pending.length + state.pendingPromotes.length + fieldEdits;
   }, [state]);
 
-  // Apply client-side filters to ranked items
-  const filteredRanked = useMemo(() => {
-    let items = state.current;
-    if (filters.shortlistedOnly && shortlistedItemIds !== null) {
-      const idSet = new Set(shortlistedItemIds);
-      items = items.filter((item) => idSet.has(item.id));
-    }
-    if (filters.selectedSources.size > 0) {
-      items = items.filter((item) =>
-        filters.selectedSources.has(item.sourceIdentifier),
-      );
-    }
-    return items;
-  }, [state.current, filters.shortlistedOnly, filters.selectedSources, shortlistedItemIds]);
-
   if (query.isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
@@ -239,8 +222,6 @@ export function ReviewPage(): ReactElement {
     }
   }
 
-  const isFilterActive = filters.isFiltered;
-
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="border-b bg-white px-4 sm:px-6 md:px-8 py-4 flex items-center justify-between">
@@ -281,37 +262,14 @@ export function ReviewPage(): ReactElement {
           onFailed={failPending}
         />
 
-        {/* Filter toolbar */}
-        <ReviewToolbar
-          shortlistedOnly={filters.shortlistedOnly}
-          toggleShortlisted={filters.toggleShortlisted}
-          shortlistedItemIds={shortlistedItemIds}
-          selectedSources={filters.selectedSources}
-          toggleSource={filters.toggleSource}
-          clearAll={filters.clearAll}
-          facets={facets}
-          facetsLoading={facetsLoading}
-          rankedVisibleCount={filteredRanked.length}
-          rankedTotalCount={state.current.length}
-          poolTotalCount={poolTotal}
-          isFiltered={isFilterActive}
-        />
-
-        {isFilterActive && (
-          <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-1.5">
-            Drag-to-reorder is disabled while filters are active.
-          </p>
-        )}
-
         <div className="text-xs text-muted-foreground">
-          {filteredRanked.length} posts
-          {isFilterActive ? ` (filtered from ${String(state.current.length)})` : ""} · Drag to reorder · Top to bottom = most
+          {state.current.length} posts · Drag to reorder · Top to bottom = most
           important first
         </div>
         <ReviewList
-          items={filteredRanked}
+          items={state.current}
           addedIds={state.addedIds}
-          onReorder={isFilterActive ? () => undefined : reorder}
+          onReorder={reorder}
           onDelete={remove}
           onUpdateField={updateItemField}
           pendingCount={state.pending.length}
@@ -326,10 +284,15 @@ export function ReviewPage(): ReactElement {
           promotingIds={promotingIds}
           startedAt={query.data.startedAt}
           sourceTypes={query.data.sourceTypes ?? null}
-          selectedSources={filters.selectedSources}
           shortlistedOnly={filters.shortlistedOnly}
+          toggleShortlisted={filters.toggleShortlisted}
+          selectedSources={filters.selectedSources}
+          toggleSource={filters.toggleSource}
+          clearAll={filters.clearAll}
+          isFiltered={filters.isFiltered}
           shortlistedItemIds={shortlistedItemIds}
-          onPoolTotalChange={setPoolTotal}
+          facets={facets}
+          facetsLoading={facetsLoading}
         />
       </main>
       <SaveBar
