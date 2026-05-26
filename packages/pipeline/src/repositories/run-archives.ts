@@ -1,5 +1,5 @@
-import { desc, eq, sql } from "drizzle-orm";
-import { runArchives } from "@newsletter/shared/db";
+import { desc, eq, inArray, sql } from "drizzle-orm";
+import { runArchives, rawItems } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type {
   NotificationKey,
@@ -12,6 +12,7 @@ import type {
   SourceType,
 } from "@newsletter/shared";
 import { parseRunCostBreakdown } from "@newsletter/shared";
+import { canonicalizeUrl } from "../processors/dedup.js";
 
 export interface RunArchiveUpsertInput {
   id: string;
@@ -31,6 +32,7 @@ export interface RunArchiveUpsertInput {
   isDryRun?: boolean;
   runFunnel?: RunFunnel | null;
   publishedAt?: Date;
+  shortlistedItemIds?: number[] | null;
 }
 
 export interface PipelineRunArchiveRow {
@@ -74,6 +76,7 @@ export interface RunArchivesRepo {
   ): Promise<void>;
   setCostBreakdown(runId: string, breakdown: RunCostBreakdown): Promise<void>;
   getCostBreakdown(runId: string): Promise<RunCostBreakdown | null>;
+  getPublishedCanonicalUrls(): Promise<Set<string>>;
 }
 
 export function createRunArchivesRepo(
@@ -252,6 +255,7 @@ export function createRunArchivesRepo(
           isDryRun: input.isDryRun ?? false,
           runFunnel: input.runFunnel ?? null,
           publishedAt: input.publishedAt ?? null,
+          shortlistedItemIds: input.shortlistedItemIds ?? null,
         })
         .onConflictDoUpdate({
           target: runArchives.id,
@@ -270,8 +274,37 @@ export function createRunArchivesRepo(
             isDryRun: sql.raw(`excluded.${runArchives.isDryRun.name}`),
             runFunnel: sql.raw(`excluded.${runArchives.runFunnel.name}`),
             publishedAt: sql.raw(`excluded.${runArchives.publishedAt.name}`),
+            shortlistedItemIds: sql.raw(`excluded.${runArchives.shortlistedItemIds.name}`),
           },
         });
+    },
+
+    async getPublishedCanonicalUrls(): Promise<Set<string>> {
+      // Step 1: load rankedItems from all reviewed, non-dry-run, completed archives
+      const archiveRows = await db
+        .select({ rankedItems: runArchives.rankedItems })
+        .from(runArchives)
+        .where(
+          sql`${runArchives.reviewed} = true AND ${runArchives.isDryRun} = false AND ${runArchives.status} = 'completed'`,
+        );
+
+      if (archiveRows.length === 0) return new Set<string>();
+
+      // Step 2: collect all rawItemIds from the ranked items
+      const rawItemIds: number[] = archiveRows.flatMap((row) =>
+        row.rankedItems.map((ref) => ref.rawItemId),
+      );
+
+      if (rawItemIds.length === 0) return new Set<string>();
+
+      // Step 3: load URLs for those raw_items
+      const urlRows = await db
+        .select({ url: rawItems.url })
+        .from(rawItems)
+        .where(inArray(rawItems.id, rawItemIds));
+
+      // Step 4: canonicalize and return
+      return new Set(urlRows.map((row) => canonicalizeUrl(row.url)));
     },
   };
 }

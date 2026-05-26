@@ -10,7 +10,7 @@ import type { SlackNotifier } from "@newsletter/shared";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
 import { resolveScheduledPublishAt } from "@newsletter/shared/scheduling";
-import { dedupCandidates } from "@pipeline/processors/dedup.js";
+import { canonicalizeUrl, dedupCandidates } from "@pipeline/processors/dedup.js";
 import {
   createCandidatesRepo,
   type CandidatesRepo,
@@ -742,7 +742,27 @@ export async function handleRunProcessJob(
       return { rankedCount: 0 };
     }
 
-    const deduped = dedupCandidates(raw);
+    // Drop already-published links before dedup (best-effort; failure → empty set, run continues)
+    let coveredCanonical = new Set<string>();
+    try {
+      coveredCanonical = await deps.archiveRepo.getPublishedCanonicalUrls();
+    } catch (err) {
+      logger.error({ event: "dedup.covered_links_query_failed", runId, err }, "dedup.covered_links_query_failed");
+    }
+    const beforeCovered = raw.length;
+    const notCovered =
+      coveredCanonical.size === 0
+        ? raw
+        : raw.filter((c) => !coveredCanonical.has(canonicalizeUrl(c.url)));
+    const coveredRemoved = beforeCovered - notCovered.length;
+    if (coveredRemoved > 0) {
+      logger.info(
+        { event: "dedup.covered_links_removed", runId, coveredRemoved, beforeCovered },
+        "dedup.covered_links_removed",
+      );
+    }
+
+    const deduped = dedupCandidates(notCovered);
     funnel.deduped = deduped.length;
     logger.info(
       {
@@ -785,6 +805,7 @@ export async function handleRunProcessJob(
       abortSignal: signal,
     });
     funnel.shortlisted = shortlist.length;
+    const shortlistIds: number[] = shortlist.map((c) => c.id);
     await runLog.info(
       {
         stage: "shortlisting",
@@ -972,6 +993,7 @@ export async function handleRunProcessJob(
         isDryRun: dryRun,
         runFunnel: { ...funnel },
         publishedAt: publishedAt ?? undefined,
+        shortlistedItemIds: shortlistIds,
       });
       archiveWritten = true;
     } catch (err) {
