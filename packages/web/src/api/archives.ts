@@ -93,6 +93,8 @@ export async function addPost(
 export interface PoolQuery {
   sort?: "engagement" | "recency";
   source?: string;
+  sources?: string[];
+  shortlisted?: boolean;
   q?: string;
   offset?: number;
   limit?: number;
@@ -105,6 +107,10 @@ export async function getPool(
   const params = new URLSearchParams();
   if (query.sort) params.set("sort", query.sort);
   if (query.source) params.set("source", query.source);
+  if (query.sources && query.sources.length > 0) {
+    for (const s of query.sources) params.append("sources", s);
+  }
+  if (query.shortlisted) params.set("shortlisted", "true");
   if (query.q) params.set("q", query.q);
   if (query.offset !== undefined) params.set("offset", String(query.offset));
   if (query.limit !== undefined) params.set("limit", String(query.limit));
@@ -135,4 +141,44 @@ export async function promoteItem(
     throw new Error(data.error ?? "Failed to promote item");
   }
   return (await res.json()) as RankedItem;
+}
+
+export interface SourceFacetEntry {
+  sourceIdentifier: string;
+  count: number;
+}
+
+export interface SourceFacetGroupRaw {
+  sourceType: string;
+  facets: SourceFacetEntry[];
+}
+
+interface SourceFacetFlat {
+  sourceType: string;
+  identifier: string;
+  count: number;
+}
+
+export async function getSourceFacets(
+  runId: string,
+): Promise<SourceFacetGroupRaw[]> {
+  const res = await apiFetchAdmin(
+    `/api/admin/archives/${runId}/source-facets`,
+  );
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(data.error ?? "Failed to fetch source facets");
+  }
+  const body = (await res.json()) as { facets: SourceFacetFlat[] };
+  // Group flat {sourceType, identifier, count} records into SourceFacetGroupRaw[]
+  const grouped = new Map<string, SourceFacetEntry[]>();
+  for (const f of body.facets) {
+    const entries = grouped.get(f.sourceType) ?? [];
+    entries.push({ sourceIdentifier: f.identifier, count: f.count });
+    grouped.set(f.sourceType, entries);
+  }
+  return Array.from(grouped.entries()).map(([sourceType, facets]) => ({
+    sourceType,
+    facets,
+  }));
 }

@@ -6,6 +6,8 @@ import type { UsePoolReturn } from "../../../../src/hooks/usePool";
 
 const mockSetSort = vi.fn();
 const mockSetSource = vi.fn();
+const mockSetSources = vi.fn();
+const mockSetShortlisted = vi.fn();
 const mockSetQ = vi.fn();
 const mockLoadMore = vi.fn();
 const mockAddPromotedId = vi.fn();
@@ -15,6 +17,8 @@ const defaultPoolReturn: UsePoolReturn = {
   total: 0,
   sort: "engagement",
   source: undefined,
+  sources: [],
+  shortlisted: false,
   q: "",
   offset: 0,
   isLoading: false,
@@ -22,6 +26,8 @@ const defaultPoolReturn: UsePoolReturn = {
   promotedIds: new Set(),
   setSort: mockSetSort,
   setSource: mockSetSource,
+  setSources: mockSetSources,
+  setShortlisted: mockSetShortlisted,
   setQ: mockSetQ,
   loadMore: mockLoadMore,
   addPromotedId: mockAddPromotedId,
@@ -43,6 +49,9 @@ const sampleItems: PoolItem[] = [
     publishedAt: "2026-04-15T12:00:00Z",
     engagement: { points: 100, commentCount: 10 },
     imageUrl: null,
+    sourceIdentifier: "news.ycombinator.com",
+    preview: { kind: "none" },
+    recapSummary: null,
   },
   {
     id: 2,
@@ -53,6 +62,9 @@ const sampleItems: PoolItem[] = [
     publishedAt: null,
     engagement: { points: 50, commentCount: 5 },
     imageUrl: null,
+    sourceIdentifier: "r/LocalLLaMA",
+    preview: { kind: "none" },
+    recapSummary: null,
   },
 ];
 
@@ -63,6 +75,9 @@ const baseProps = {
   promotingIds: new Set<number>(),
   startedAt: "2026-04-15T10:00:00Z",
   sourceTypes: ["hn", "reddit"] as string[],
+  selectedSources: new Set<string>(),
+  shortlistedOnly: false,
+  shortlistedItemIds: null as number[] | null,
 };
 
 beforeEach(() => {
@@ -124,18 +139,11 @@ describe("PoolSection", () => {
     expect(mockSetSort).toHaveBeenCalledWith("recency");
   });
 
-  it("REQ-007: clicking HN chip calls setSource('hn')", () => {
+  it("REQ-007: search input renders", () => {
     poolReturnOverride = { items: sampleItems, total: 2 };
     render(<PoolSection {...baseProps} />);
-    fireEvent.click(screen.getByText("HN"));
-    expect(mockSetSource).toHaveBeenCalledWith("hn");
-  });
-
-  it("REQ-007: clicking All chip calls setSource(undefined)", () => {
-    poolReturnOverride = { items: sampleItems, total: 2, source: "hn" };
-    render(<PoolSection {...baseProps} />);
-    fireEvent.click(screen.getByText("All"));
-    expect(mockSetSource).toHaveBeenCalledWith(undefined);
+    const input = screen.getByPlaceholderText("Search pool items...");
+    expect(input).toBeDefined();
   });
 
   it("REQ-008: Show more button visible when hasMore is true, shows remaining count", () => {

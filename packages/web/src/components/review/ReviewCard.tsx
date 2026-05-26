@@ -136,6 +136,9 @@ export function ReviewCard({
           >
             {item.sourceType}
           </span>
+          {item.sourceIdentifier && (
+            <span className="font-medium text-gray-600">{item.sourceIdentifier}</span>
+          )}
           {item.engagement.points > 0 && (
             <span>{item.engagement.points} points</span>
           )}

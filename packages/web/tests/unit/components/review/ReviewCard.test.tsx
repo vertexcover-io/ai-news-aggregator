@@ -33,6 +33,8 @@ const baseItem: RankedItem = {
   imageUrl: null,
   recap: null,
   enrichedSource: null,
+  sourceIdentifier: "reddit.com",
+  preview: { kind: "none" },
 };
 
 afterEach(() => {

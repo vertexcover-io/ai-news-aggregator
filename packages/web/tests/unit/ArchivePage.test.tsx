@@ -36,6 +36,7 @@ const baseCompletedRun: RunStateResponse = {
   startedAt: "2026-04-13T10:00:00Z",
   updatedAt: "2026-04-13T10:00:10Z",
   completedAt: "2026-04-13T10:00:10Z",
+  shortlistedItemIds: null,
   sources: { hn: { status: "completed", itemsFetched: 5, errors: [] } },
   rankedItems: [
     {
@@ -53,6 +54,8 @@ const baseCompletedRun: RunStateResponse = {
       imageUrl: null,
       recap: null,
       enrichedSource: null,
+      sourceIdentifier: "news.ycombinator.com",
+      preview: { kind: "none" },
     },
     {
       id: 2,
@@ -69,6 +72,8 @@ const baseCompletedRun: RunStateResponse = {
       imageUrl: null,
       recap: null,
       enrichedSource: null,
+      sourceIdentifier: "r/MachineLearning",
+      preview: { kind: "none" },
     },
   ],
   warnings: [],

@@ -18,6 +18,8 @@ const baseItem: RankedItem = {
   imageUrl: null,
   recap: null,
   enrichedSource: null,
+  sourceIdentifier: "news.ycombinator.com",
+  preview: { kind: "none" },
 };
 
 const itemWithRecap: RankedItem = {

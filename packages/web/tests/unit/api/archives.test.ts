@@ -28,6 +28,8 @@ const sampleItem: RankedItem = {
   imageUrl: null,
   recap: null,
   enrichedSource: null,
+  sourceIdentifier: "news.ycombinator.com",
+  preview: { kind: "none" },
 };
 
 describe("patchArchive", () => {

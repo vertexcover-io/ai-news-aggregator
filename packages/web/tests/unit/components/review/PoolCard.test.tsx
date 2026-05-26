@@ -12,6 +12,9 @@ const baseItem: PoolItem = {
   publishedAt: "2026-04-15T12:00:00Z",
   engagement: { points: 150, commentCount: 30 },
   imageUrl: "https://example.com/thumb.png",
+  sourceIdentifier: "news.ycombinator.com",
+  preview: { kind: "none" },
+  recapSummary: null,
 };
 
 afterEach(() => {

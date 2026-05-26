@@ -61,6 +61,7 @@ const completedData: RunStateResponse = {
   completedAt: "2026-05-06T12:00:00.000Z",
   sources: {},
   rankedItems: [],
+  shortlistedItemIds: null,
   warnings: [],
   error: null,
 };
@@ -86,6 +87,8 @@ function makeRankedItem(overrides: Partial<RankedItem> = {}): RankedItem {
       bottomLine: "This is the issue's lead story.",
     },
     enrichedSource: null,
+    sourceIdentifier: "news.ycombinator.com",
+    preview: { kind: "none" },
     ...overrides,
   };
 }

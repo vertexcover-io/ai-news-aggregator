@@ -41,6 +41,8 @@ function makeItem(id: number, url: string): RankedItem {
     imageUrl: null,
     recap: null,
     enrichedSource: null,
+    sourceIdentifier: "news.ycombinator.com",
+    preview: { kind: "none" },
   };
 }
 
@@ -71,6 +73,7 @@ const completedResponse: RunStateResponse = {
   completedAt: "2026-04-14T00:00:00Z",
   sources: {},
   rankedItems: items,
+  shortlistedItemIds: null,
   warnings: [],
   error: null,
 };

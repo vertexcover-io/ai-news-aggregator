@@ -25,6 +25,8 @@ const mk = (over: Partial<RankedItem> = {}): RankedItem => ({
   imageUrl: null,
   recap: null,
   enrichedSource: null,
+  sourceIdentifier: "news.ycombinator.com",
+  preview: { kind: "none" },
   ...over,
 });
 

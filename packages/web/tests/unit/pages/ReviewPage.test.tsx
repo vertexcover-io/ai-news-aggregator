@@ -32,6 +32,8 @@ function makeItem(id: number, title: string): RankedItem {
     imageUrl: null,
     recap: null,
     enrichedSource: null,
+    sourceIdentifier: "news.ycombinator.com",
+    preview: { kind: "none" },
   };
 }
 
@@ -80,6 +82,7 @@ describe("ReviewPage", () => {
       completedAt: null,
       sources: {},
       rankedItems: null,
+      shortlistedItemIds: null,
       warnings: [],
       error: null,
     };
@@ -107,6 +110,7 @@ describe("ReviewPage", () => {
           makeItem(2, "Second"),
           makeItem(3, "Third"),
         ],
+        shortlistedItemIds: null,
         warnings: [],
         error: null,
       };
@@ -218,6 +222,7 @@ describe("ReviewPage", () => {
         makeItem(2, "Second Story"),
         makeItem(3, "Third Story"),
       ],
+      shortlistedItemIds: null,
       warnings: [],
       error: null,
     };
@@ -243,6 +248,7 @@ describe("ReviewPage", () => {
       completedAt: "2026-04-14T00:00:00Z",
       sources: {},
       rankedItems: [makeItem(1, "T1")],
+      shortlistedItemIds: null,
       warnings: [],
       error: null,
       isDryRun: true,
@@ -264,6 +270,7 @@ describe("ReviewPage", () => {
       completedAt: "2026-04-14T00:00:00Z",
       sources: {},
       rankedItems: [makeItem(1, "T1")],
+      shortlistedItemIds: null,
       warnings: [],
       error: null,
       isDryRun: false,

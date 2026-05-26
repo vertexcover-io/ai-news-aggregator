@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, useCallback, type ReactElement } from "react";
 import { usePool, type UsePoolReturn } from "../../hooks/usePool";
 import { PoolCard } from "./PoolCard";
 import { cn } from "@/lib/utils";
@@ -10,14 +10,11 @@ interface PoolSectionProps {
   promotingIds: Set<number>;
   startedAt: string | null;
   sourceTypes: string[] | null;
+  selectedSources: Set<string>;
+  shortlistedOnly: boolean;
+  shortlistedItemIds: number[] | null;
+  onPoolTotalChange?: (total: number) => void;
 }
-
-const SOURCE_FILTER_OPTIONS = [
-  { label: "All", value: undefined },
-  { label: "HN", value: "hn" },
-  { label: "Reddit", value: "reddit" },
-  { label: "Blog", value: "blog" },
-] as const;
 
 export function PoolSection({
   runId,
@@ -26,6 +23,10 @@ export function PoolSection({
   promotingIds,
   startedAt,
   sourceTypes,
+  selectedSources,
+  shortlistedOnly,
+  shortlistedItemIds,
+  onPoolTotalChange,
 }: PoolSectionProps): ReactElement | null {
   const isUnavailable = !startedAt || !sourceTypes;
 
@@ -42,6 +43,30 @@ export function PoolSection({
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
+
+  // Sync selectedSources to pool server-side filter
+  useEffect(() => {
+    pool.setSources(Array.from(selectedSources));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Array.from(selectedSources).join(",")]);
+
+  // Sync shortlistedOnly to pool
+  useEffect(() => {
+    if (shortlistedItemIds !== null) {
+      pool.setShortlisted(shortlistedOnly);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shortlistedOnly, shortlistedItemIds !== null]);
+
+  const stableOnPoolTotalChange = useCallback(
+    (t: number) => onPoolTotalChange?.(t),
+     
+    [onPoolTotalChange],
+  );
+
+  useEffect(() => {
+    stableOnPoolTotalChange(pool.total);
+  }, [pool.total, stableOnPoolTotalChange]);
 
   function handleSearchChange(value: string): void {
     setSearchInput(value);
@@ -66,7 +91,9 @@ export function PoolSection({
   }
 
   // Filter out promoted items
-  const visibleItems = pool.items.filter((i) => !pool.promotedIds.has(i.id) && !promotingIds.has(i.id));
+  const visibleItems = pool.items.filter(
+    (i) => !pool.promotedIds.has(i.id) && !promotingIds.has(i.id),
+  );
 
   // EDGE-001: all items ranked
   const showEmptyState = visibleItems.length === 0 && !pool.isLoading;
@@ -93,62 +120,37 @@ export function PoolSection({
         className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 min-h-[44px]"
       />
 
-      {/* Sort + Filter */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1">
-          <span className="text-xs text-gray-500 mr-1">Sort:</span>
-          <button
-            type="button"
-            onClick={() => {
-              pool.setSort("engagement");
-            }}
-            className={cn(
-              "inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] min-w-[44px]",
-              pool.sort === "engagement"
-                ? "bg-gray-900 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200",
-            )}
-          >
-            Engagement
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              pool.setSort("recency");
-            }}
-            className={cn(
-              "inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] min-w-[44px]",
-              pool.sort === "recency"
-                ? "bg-gray-900 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200",
-            )}
-          >
-            Recent
-          </button>
-        </div>
-
-        <div className="h-4 w-px bg-gray-300" />
-
-        <div className="flex items-center gap-1">
-          <span className="text-xs text-gray-500 mr-1">Source:</span>
-          {SOURCE_FILTER_OPTIONS.map((opt) => (
-            <button
-              key={opt.label}
-              type="button"
-              onClick={() => {
-                pool.setSource(opt.value);
-              }}
-              className={cn(
-                "inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] min-w-[44px]",
-                pool.source === opt.value
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200",
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+      {/* Sort */}
+      <div className="flex items-center gap-1">
+        <span className="text-xs text-gray-500 mr-1">Sort:</span>
+        <button
+          type="button"
+          onClick={() => {
+            pool.setSort("engagement");
+          }}
+          className={cn(
+            "inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] min-w-[44px]",
+            pool.sort === "engagement"
+              ? "bg-gray-900 text-white"
+              : "bg-gray-100 text-gray-600 hover:bg-gray-200",
+          )}
+        >
+          Engagement
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            pool.setSort("recency");
+          }}
+          className={cn(
+            "inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] min-w-[44px]",
+            pool.sort === "recency"
+              ? "bg-gray-900 text-white"
+              : "bg-gray-100 text-gray-600 hover:bg-gray-200",
+          )}
+        >
+          Recent
+        </button>
       </div>
 
       {/* Items */}

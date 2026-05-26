@@ -102,6 +102,7 @@ const cancelledRunState: RunState = {
   completedAt: null,
   sources: {},
   rankedItems: null,
+  shortlistedItemIds: null,
   warnings: [],
   error: null,
 };
