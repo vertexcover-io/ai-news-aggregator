@@ -3,7 +3,7 @@
  *
  * Requires Postgres + Redis from `pnpm infra:up`.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
@@ -18,6 +18,7 @@ import {
   rawItems,
   runArchives,
   subscribers,
+  userSettings,
 } from "@newsletter/shared/db";
 import type { RankedItemRef } from "@newsletter/shared";
 import { createRawItemsRepo } from "@api/repositories/raw-items.js";
@@ -25,6 +26,7 @@ import {
   createRunArchivesRepo,
   type RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
+import { createUserSettingsRepo } from "@api/repositories/user-settings.js";
 import {
   createAdminArchivesRouter,
   createPublicArchivesRouter,
@@ -655,4 +657,206 @@ describe("DELETE /api/admin/archives/:runId (e2e)", () => {
 
     expect(res.status).toBe(404);
   });
+});
+
+// ── immediate-publish e2e (Phase 2) ──────────────────────────────────────────
+
+const settingsRepo = createUserSettingsRepo(db);
+
+/**
+ * Seed a singleton user_settings row with all three publish channels enabled
+ * and their times set in the past relative to the given completedAt.
+ * Pipeline time is "06:00 UTC"; channel times "07:00", "08:00", "09:00".
+ * After completedAt=06:00 UTC, reviewing at "now" > 09:00 makes all past-due.
+ */
+async function seedSettings(): Promise<void> {
+  // upsert — handles both fresh and already-existing singleton
+  await settingsRepo.upsert({
+    topN: 10,
+    shortlistSize: 20,
+    halfLifeHours: 24,
+    hnEnabled: false,
+    hnConfig: null,
+    redditEnabled: false,
+    redditConfig: null,
+    webEnabled: false,
+    webConfig: null,
+    twitterEnabled: false,
+    twitterConfig: null,
+    webSearchEnabled: false,
+    webSearchConfig: null,
+    posthogEnabled: false,
+    posthogProjectToken: null,
+    posthogHost: null,
+    pipelineTime: "06:00",
+    emailTime: "07:00",
+    linkedinTime: "08:00",
+    twitterTime: "09:00",
+    scheduleTimezone: "UTC",
+    scheduleEnabled: true,
+    emailEnabled: true,
+    linkedinEnabled: true,
+    twitterPostEnabled: true,
+    autoReview: false,
+    rankingPrompt: "rank these items",
+    shortlistPrompt: "shortlist these items",
+  });
+}
+
+async function cleanupSettings(): Promise<void> {
+  // Reset singleton to a no-op state so other e2e tests aren't affected
+  await db.delete(userSettings);
+}
+
+describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
+  afterEach(async () => {
+    await cleanupSettings();
+    await cleanupSeeds();
+    vi.useRealTimers();
+  });
+
+  it(
+    "VS-1 / EDGE-006: late review triggers immediate enqueue for all past-due enabled channels",
+    async () => {
+      // Seed: archive completedAt 06:00 UTC, channels 07:00/08:00/09:00 past-due
+      // because "now" is the next day.
+      const completedAt = new Date("2026-01-15T06:00:00Z");
+      // "now" is midnight next day so all channel moments are past-due
+      const nowPastDue = new Date("2026-01-16T00:00:00Z");
+      vi.setSystemTime(nowPastDue);
+
+      await seedSettings();
+
+      const rawId = await insertRawItem({
+        externalId: "imm-vs1",
+        title: "Immediate VS1 title",
+        recapTitle: "Immediate VS1 recap",
+        recapSummary: "Immediate VS1 summary.",
+      });
+      const archive = await insertArchive({
+        reviewed: false, // unreviewed → PATCH will mark it reviewed
+        completedAt,
+        digestHeadline: "Immediate VS1 digest",
+        digestSummary: "Immediate VS1 digest summary",
+        rawItemIds: [rawId],
+      });
+
+      // Use a spy queue to capture enqueue calls without real Redis queue
+      const addSpy = vi.fn(() => Promise.resolve({ id: "spy-job" }));
+      const spyQueue = { add: addSpy };
+
+      const app = new Hono();
+      app.route(
+        "/api/admin/archives",
+        createAdminArchivesRouter({
+          getArchiveRepo: () => archiveRepo,
+          getRawItemsRepo: () => rawItemsRepo,
+          getSettingsRepo: () => settingsRepo,
+          processingQueue: spyQueue,
+          redis,
+        }),
+      );
+
+      const res = await app.request(`/api/admin/archives/${archive.runId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rankedItems: [{ id: rawId, sourceType: "hn" }],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+
+      // All three channels should be enqueued
+      expect(addSpy).toHaveBeenCalledTimes(3);
+      expect(addSpy).toHaveBeenCalledWith(
+        "email-send",
+        { runId: archive.runId },
+        { jobId: `email-send:${archive.runId}`, delay: 0 },
+      );
+      expect(addSpy).toHaveBeenCalledWith(
+        "linkedin-post",
+        { runId: archive.runId },
+        { jobId: `linkedin-post:${archive.runId}`, delay: 0 },
+      );
+      expect(addSpy).toHaveBeenCalledWith(
+        "twitter-post",
+        { runId: archive.runId },
+        { jobId: `twitter-post:${archive.runId}`, delay: 0 },
+      );
+    },
+  );
+
+  it(
+    "VS-2 / REQ-011 / EDGE-004: channel already marked sent → PATCH does NOT re-enqueue that channel",
+    async () => {
+      const completedAt = new Date("2026-01-15T06:00:00Z");
+      const nowPastDue = new Date("2026-01-16T00:00:00Z");
+      vi.setSystemTime(nowPastDue);
+
+      await seedSettings();
+
+      const rawId = await insertRawItem({
+        externalId: "imm-vs2",
+        title: "Immediate VS2 title",
+        recapTitle: "Immediate VS2 recap",
+        recapSummary: "Immediate VS2 summary.",
+      });
+      const archive = await insertArchive({
+        reviewed: false,
+        completedAt,
+        digestHeadline: "Immediate VS2 digest",
+        digestSummary: "Immediate VS2 digest summary",
+        rawItemIds: [rawId],
+      });
+
+      // Mark emailSentAt as already sent in the DB
+      await db
+        .update(runArchives)
+        .set({ emailSentAt: new Date("2026-01-15T07:05:00Z") })
+        .where(eq(runArchives.id, archive.runId));
+
+      const addSpy = vi.fn(() => Promise.resolve({ id: "spy-job" }));
+      const spyQueue = { add: addSpy };
+
+      const app = new Hono();
+      app.route(
+        "/api/admin/archives",
+        createAdminArchivesRouter({
+          getArchiveRepo: () => archiveRepo,
+          getRawItemsRepo: () => rawItemsRepo,
+          getSettingsRepo: () => settingsRepo,
+          processingQueue: spyQueue,
+          redis,
+        }),
+      );
+
+      const res = await app.request(`/api/admin/archives/${archive.runId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rankedItems: [{ id: rawId, sourceType: "hn" }],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+
+      // email-send must NOT be re-enqueued (already sent); linkedin and twitter still enqueued
+      expect(addSpy).not.toHaveBeenCalledWith(
+        "email-send",
+        expect.anything(),
+        expect.anything(),
+      );
+      expect(addSpy).toHaveBeenCalledWith(
+        "linkedin-post",
+        { runId: archive.runId },
+        { jobId: `linkedin-post:${archive.runId}`, delay: 0 },
+      );
+      expect(addSpy).toHaveBeenCalledWith(
+        "twitter-post",
+        { runId: archive.runId },
+        { jobId: `twitter-post:${archive.runId}`, delay: 0 },
+      );
+    },
+  );
 });
