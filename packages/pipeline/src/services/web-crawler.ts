@@ -44,6 +44,15 @@ function truncate(s: string, maxLen: number): string {
   return `${s.slice(0, maxLen - 3)}...`;
 }
 
+function isCrawlableUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export async function runWebCrawl(
   jobs: CrawlJob[],
   opts: RunWebCrawlOptions = {},
@@ -51,8 +60,23 @@ export async function runWebCrawl(
   if (jobs.length === 0) return new Map();
 
   const results = new Map<string, CrawlResult>();
+
+  // Drop URLs Crawlee can't enqueue (relative paths, empty strings, mailto:,
+  // etc.). addRequests validates the whole batch atomically via shapeshift, so
+  // a single invalid URL would abort the entire crawl and zero out every blog
+  // source. Mark dropped URLs as failures so the caller treats them as such.
+  const crawlableJobs: CrawlJob[] = [];
+  for (const j of jobs) {
+    if (isCrawlableUrl(j.url)) {
+      crawlableJobs.push(j);
+    } else {
+      results.set(j.url, { ok: false, error: "invalid-url" });
+    }
+  }
+  if (crawlableJobs.length === 0) return results;
+
   // Pre-fill with sentinel; overwritten as work completes
-  for (const j of jobs) results.set(j.url, { ok: false, error: "not-completed" });
+  for (const j of crawlableJobs) results.set(j.url, { ok: false, error: "not-completed" });
 
   const maxConcurrency =
     opts.maxConcurrency ?? Number(process.env.WEB_CRAWLER_CONCURRENCY ?? "4");
@@ -180,7 +204,7 @@ export async function runWebCrawl(
 
   try {
     await crawler.run(
-      jobs.map((j) => ({
+      crawlableJobs.map((j) => ({
         url: j.url,
         userData: {
           kind: j.kind,
@@ -208,6 +232,8 @@ export async function runWebCrawl(
     {
       event: "crawler.stats",
       jobs: jobs.length,
+      crawlableJobs: crawlableJobs.length,
+      droppedInvalidUrls: jobs.length - crawlableJobs.length,
       requestsFinished: statsState.requestsFinished,
       requestsFailed: statsState.requestsFailed,
       requestsRetries: statsState.requestsRetries,
