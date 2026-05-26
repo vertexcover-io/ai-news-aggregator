@@ -41,7 +41,7 @@ function normalize(value: string | null): string | null {
 }
 
 function buildLinkedinStoryLine(index: number, story: RankedStory): string {
-  return `${String(index)}) ${story.title}\n   ${story.summary ?? ""}`;
+  return `${String(index)}) ${story.summary ?? ""}`;
 }
 
 function buildLinkedin(hook: string, stories: RankedStory[]): string {

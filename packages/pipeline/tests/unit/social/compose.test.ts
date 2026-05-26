@@ -39,7 +39,7 @@ describe("composePosts", () => {
       stories: stories(3),
     });
     expect(result).not.toBeNull();
-    expect(result?.linkedinText?.startsWith("Hook line.\n\n1) Story 1 title\n   Summary 1 body.")).toBe(true);
+    expect(result?.linkedinText?.startsWith("Hook line.\n\n1) Summary 1 body.")).toBe(true);
   });
 
   it("REQ-032 LinkedIn body lists numbered stories, ends with teaser, and does not embed the archive URL", () => {
@@ -49,9 +49,9 @@ describe("composePosts", () => {
     });
     expect(result).not.toBeNull();
     const text = result?.linkedinText ?? "";
-    expect(text).toContain("1) Story 1 title\n   Summary 1 body.");
-    expect(text).toContain("2) Story 2 title\n   Summary 2 body.");
-    expect(text).toContain("3) Story 3 title\n   Summary 3 body.");
+    expect(text).toContain("1) Summary 1 body.");
+    expect(text).toContain("2) Summary 2 body.");
+    expect(text).toContain("3) Summary 3 body.");
     // The archive URL is posted as a comment by the notifier, not embedded here.
     expect(text).not.toContain("Full breakdown:");
     expect(text).not.toContain("https://");
@@ -65,8 +65,8 @@ describe("composePosts", () => {
       stories: stories(12),
     });
     expect(result).not.toBeNull();
-    expect(result?.linkedinText).toContain("1) Story 1 title");
-    expect(result?.linkedinText).toContain("12) Story 12 title");
+    expect(result?.linkedinText).toContain("1) Summary 1 body.");
+    expect(result?.linkedinText).toContain("12) Summary 12 body.");
   });
 
   it("REQ-034 non-premium X post is twitterSummary followed by teaser (no URL — link is the reply)", () => {
