@@ -1,11 +1,13 @@
 /**
- * Filter integration tests for ReviewPage/PoolSection:
- * - REQ-013: shortlist toggle filters ranked list
- * - REQ-015: source filter applies to both lists
- * - REQ-017: AND composition (shortlist + source)
- * - EDGE-001: shortlist disabled when shortlistedItemIds is null
- * - EDGE-010: item satisfying only one filter is hidden
- * - REQ-020: ranked cards have no expand control
+ * Filter integration tests for ReviewPage/PoolSection.
+ *
+ * Corrected contract (per user feedback 2026-05-26):
+ * - The "Shortlisted only" toggle and "Source" filter live INSIDE the Item Pool
+ *   section and apply to the POOL ONLY (server-side, via usePool).
+ * - The ranked list is NEVER filtered by these controls, and drag-to-reorder is
+ *   always enabled regardless of toggle state.
+ * - EDGE-001: shortlist toggle disabled when shortlistedItemIds is null.
+ * - REQ-019/020: pool cards expand inline; ranked cards have no expand control.
  */
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
@@ -168,57 +170,86 @@ function makeCompletedResponse(
   };
 }
 
-describe("ReviewPage filter integration", () => {
-  it("REQ-013: shortlist toggle hides non-shortlisted items from ranked list", async () => {
+/** A completed response that also carries sourceTypes so the pool renders. */
+function makeCompletedResponseWithPool(
+  items: RankedItem[],
+  shortlistedItemIds: number[] | null = null,
+): RunStateResponse {
+  const base = makeCompletedResponse(items, shortlistedItemIds);
+  return { ...base, sourceTypes: ["hn", "blog"] } as RunStateResponse;
+}
+
+describe("ReviewPage — toolbar is pool-scoped, ranked list is never filtered", () => {
+  it("toggling 'Shortlisted only' leaves the ranked list untouched", async () => {
     const items = [
       makeRankedItem(1, "Shortlisted Item"),
       makeRankedItem(2, "Non-shortlisted Item"),
     ];
+    poolReturnOverride = {
+      items: [makePoolItem(99, "Pool Item")],
+      total: 1,
+      isLoading: false,
+    };
     vi.mocked(getAdminArchive).mockResolvedValue(
-      makeCompletedResponse(items, [1]),
+      makeCompletedResponseWithPool(items, [1]),
     );
     renderAt("run-1");
 
     await screen.findByText("Shortlisted Item");
     expect(screen.getByText("Non-shortlisted Item")).toBeTruthy();
 
-    // Toggle shortlisted only
     const toggle = screen.getByRole("checkbox", { name: /shortlisted/i });
     fireEvent.click(toggle);
 
+    // BOTH ranked items remain visible — the toggle does not filter the ranked list.
     expect(screen.getByText("Shortlisted Item")).toBeTruthy();
-    expect(screen.queryByText("Non-shortlisted Item")).toBeNull();
+    expect(screen.getByText("Non-shortlisted Item")).toBeTruthy();
   });
 
-  it("REQ-013: toggling shortlist off restores all ranked items", async () => {
-    const items = [
-      makeRankedItem(1, "Shortlisted Item"),
-      makeRankedItem(2, "Non-shortlisted Item"),
-    ];
+  it("toggling 'Shortlisted only' drives the pool's server-side filter", async () => {
+    poolReturnOverride = {
+      items: [makePoolItem(99, "Pool Item")],
+      total: 1,
+      isLoading: false,
+    };
     vi.mocked(getAdminArchive).mockResolvedValue(
-      makeCompletedResponse(items, [1]),
+      makeCompletedResponseWithPool([makeRankedItem(1, "Ranked Item")], [1]),
     );
     renderAt("run-1");
+    await screen.findByText("Pool Item");
 
-    await screen.findByText("Shortlisted Item");
     const toggle = screen.getByRole("checkbox", { name: /shortlisted/i });
     fireEvent.click(toggle);
-    expect(screen.queryByText("Non-shortlisted Item")).toBeNull();
 
-    // Toggle off
-    fireEvent.click(toggle);
-    expect(screen.getByText("Non-shortlisted Item")).toBeTruthy();
+    expect(mockSetShortlisted).toHaveBeenCalledWith(true);
   });
 
   it("EDGE-001: shortlist toggle disabled when shortlistedItemIds is null", async () => {
+    poolReturnOverride = {
+      items: [makePoolItem(99, "Pool Item")],
+      total: 1,
+      isLoading: false,
+    };
     vi.mocked(getAdminArchive).mockResolvedValue(
-      makeCompletedResponse([makeRankedItem(1, "Item")], null),
+      makeCompletedResponseWithPool([makeRankedItem(1, "Item")], null),
     );
     renderAt("run-1");
-    await screen.findByText("Item");
+    await screen.findByText("Pool Item");
 
     const toggle = screen.getByRole("checkbox", { name: /shortlisted/i });
     expect(toggle.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("the toolbar is not rendered when the pool is empty", async () => {
+    poolReturnOverride = { items: [], total: 0, isLoading: false };
+    vi.mocked(getAdminArchive).mockResolvedValue(
+      makeCompletedResponseWithPool([makeRankedItem(1, "Ranked Item")], [1]),
+    );
+    renderAt("run-1");
+    await screen.findByText("Ranked Item");
+
+    // Pool collapses to null when empty, so its toolbar (shortlist toggle) is gone.
+    expect(screen.queryByRole("checkbox", { name: /shortlisted/i })).toBeNull();
   });
 
   it("REQ-020: ranked cards have no expand button", async () => {
@@ -228,37 +259,7 @@ describe("ReviewPage filter integration", () => {
     renderAt("run-1");
     await screen.findByText("Ranked Item");
 
-    // No expand button should be present near ranked items
-    // (Pool cards have expand; ranked cards don't)
-    // Pool is empty so no expand buttons at all
     expect(screen.queryByRole("button", { name: /expand/i })).toBeNull();
-  });
-
-  it("REQ-015: source filter hides non-matching ranked items", async () => {
-    const items = [
-      makeRankedItem(1, "OpenAI Item", "openai.com"),
-      makeRankedItem(2, "Anthropic Item", "anthropic.com"),
-    ];
-    vi.mocked(getAdminArchive).mockResolvedValue(
-      makeCompletedResponse(items, null),
-    );
-    renderAt("run-1");
-    await screen.findByText("OpenAI Item");
-  });
-
-  it("EDGE-010: AND composition — item satisfying only shortlist filter is hidden when source also selected", async () => {
-    const items = [
-      makeRankedItem(1, "Shortlisted OpenAI", "openai.com"),
-      makeRankedItem(2, "Shortlisted Anthropic", "anthropic.com"),
-    ];
-    vi.mocked(getAdminArchive).mockResolvedValue(
-      makeCompletedResponse(items, [1, 2]),
-    );
-    renderAt("run-1");
-    await screen.findByText("Shortlisted OpenAI");
-
-    // Both are shortlisted; the items render
-    expect(screen.getByText("Shortlisted Anthropic")).toBeTruthy();
   });
 });
 
