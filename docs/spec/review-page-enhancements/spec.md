@@ -40,11 +40,11 @@ two supporting pipeline/persistence changes:
 
 | ID | Type | Requirement | Acceptance Criterion | Priority |
 |----|------|-------------|----------------------|----------|
-| REQ-013 | Event-driven | When the operator enables "Shortlisted only", the review list and pool shall show only items whose id is in `shortlistedItemIds`. | Toggling on hides non-shortlisted items in both lists; toggling off restores them. | Must |
+| REQ-013 | Event-driven | When the operator enables "Shortlisted only", the **Item Pool** shall show only items whose id is in `shortlistedItemIds`. The ranked list is unaffected. | Toggling on hides non-shortlisted pool items; toggling off restores them; the ranked list is never filtered. | Must |
 | REQ-014 | State-driven | While the run has no `shortlistedItemIds` (legacy), the "Shortlisted only" toggle shall be disabled. | Toggle is `disabled` with a tooltip; no error. | Must |
-| REQ-015 | Event-driven | When the operator selects one or more sources in the Source dropdown, the review list and pool shall show only items whose `sourceIdentifier` matches a selected source. | Selecting `r/LocalLLaMA` hides all non-`r/LocalLLaMA` items; multiple selections OR together. | Must |
+| REQ-015 | Event-driven | When the operator selects one or more sources in the Source dropdown, the **Item Pool** shall show only items whose `sourceIdentifier` matches a selected source. The ranked list is unaffected. | Selecting `r/LocalLLaMA` hides all non-`r/LocalLLaMA` pool items; multiple selections OR together; the ranked list is never filtered. | Must |
 | REQ-016 | Ubiquitous | The Source dropdown shall list every distinct `(sourceType, sourceIdentifier)` present in the run, grouped by type, with a per-source count. | Each facet shows its exact count; facets keyed by `(sourceType, identifier)` (no cross-type merge). | Must |
-| REQ-017 | Ubiquitous | The shortlist and source filters shall compose with logical AND. | An item shows only if it satisfies both the shortlist toggle and the source selection. | Must |
+| REQ-017 | Ubiquitous | The shortlist and source filters (both pool-scoped) shall compose with logical AND. | A pool item shows only if it satisfies both the shortlist toggle and the source selection. | Must |
 | REQ-018 | Ubiquitous | Each ranked card and pool card shall display its `sourceIdentifier` alongside the source-type badge. | `BLOG · openai.com`, `TWITTER · @karpathy`, etc., rendered on every card. | Must |
 | REQ-019 | Event-driven | When the operator clicks a pool card's expand control, the card shall reveal an in-page preview built from `preview`. | Clicking expand shows the tweet/link preview; clicking again collapses it. | Must |
 | REQ-020 | State-driven | While a pool card has not been expanded, its preview shall remain collapsed. | Pool cards render collapsed by default; ranked cards have no expand control. | Must |
@@ -64,7 +64,7 @@ two supporting pipeline/persistence changes:
 | EDGE-007 | `markdownExcerpt` from 100KB stored markdown | Excerpt truncated to ≤4096 chars; "open source ↗" links to full article. | REQ-009 |
 | EDGE-008 | Hostile HTML inside enriched markdown | Sanitized away (dompurify) and escaped (react-markdown default); no script executes. | REQ-021 |
 | EDGE-009 | Published-URL query throws | Empty set fallback; run completes; error logged. | REQ-004 |
-| EDGE-010 | Shortlist filter on + a source selected, item satisfies only one | Item hidden (AND semantics). | REQ-017 |
+| EDGE-010 | Shortlist filter on + a source selected, pool item satisfies only one | Pool item hidden (AND semantics); ranked list still unfiltered. | REQ-017 |
 | EDGE-011 | Tweet item in pool (preview.kind="tweet") with quoted tweet | Preview shows main text + photos + quoted-tweet block + "view on X". | REQ-008, REQ-019 |
 | EDGE-012 | Source dropdown when run has 30+ distinct sources | Dropdown scrolls; filter-search box narrows the facet list. | REQ-016 |
 
@@ -117,12 +117,12 @@ heading/bold/link/list; raw HTML in markdown is escaped (not injected).
 
 ### VS-1: Shortlist filter (UI)
 **Type:** ui
-**Journey:** Open `/admin/review/:runId` for a run with shortlist data → toggle "Shortlisted only" → only shortlisted items remain in ranked list + pool → toggle off → all return.
+**Journey:** Open `/admin/review/:runId` for a run with shortlist data → toggle "Shortlisted only" (inside the Item Pool) → only shortlisted **pool** items remain, ranked list unchanged → toggle off → all return.
 **Infra:** API + web dev servers, seeded run with `shortlisted_item_ids`.
 
 ### VS-2: Source filter (UI)
 **Type:** ui
-**Journey:** Open review page → open "Source ▾" → select `r/LocalLLaMA` → only that subreddit's items remain → chip appears → remove chip → all return.
+**Journey:** Open review page → open "Source ▾" (inside the Item Pool) → select `r/LocalLLaMA` → only that subreddit's **pool** items remain (ranked list unchanged) → chip appears → remove chip → all return.
 
 ### VS-3: Pool inline expansion (UI)
 **Type:** ui

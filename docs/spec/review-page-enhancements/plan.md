@@ -20,8 +20,10 @@ shortlist set, and drop already-published links during the pipeline dedup stage.
 - [ ] Ranked items + pool items carry `sourceIdentifier`; pool items carry a bounded `preview`.
 - [ ] New `GET /api/admin/archives/:runId/source-facets` returns `{sourceType,identifier,count}[]`.
 - [ ] Pool query honors `selectedSources` (derived identifiers) + `shortlistedOnly`.
-- [ ] Review toolbar: "Shortlisted only" toggle (disabled on legacy) + grouped Source
-      dropdown w/ counts + active chips; filters apply to ranked list AND pool (AND).
+- [ ] Pool toolbar (rendered inside the Item Pool section): "Shortlisted only" toggle
+      (disabled on legacy) + grouped Source dropdown w/ counts + active chips; both filters
+      apply to the **pool only** (AND-composed). The ranked list is never filtered and
+      drag-to-reorder stays enabled regardless of toggle state.
 - [ ] Pool cards expand/collapse (collapsed by default) into a sanitized inline preview.
 - [ ] Every card shows `sourceIdentifier` next to its type badge.
 - [ ] `pnpm --filter @newsletter/web build` succeeds; no Node/DB leak; subpath imports only.
