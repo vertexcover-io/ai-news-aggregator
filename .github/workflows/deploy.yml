@@ -44,6 +44,13 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/ai-news-aggregator-${{ matrix.service }}:latest
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          # buildx defaults to attaching a provenance attestation, which is pushed
+          # to GHCR as an extra manifest. That extra push intermittently fails with
+          # "failed to fetch oauth token: denied: denied" (the image layers/manifest
+          # push fine; only the attestation referrer is rejected). We don't consume
+          # attestations, so disable them — this removes the denied push entirely.
+          provenance: false
+          sbom: false
 
   build-web:
     runs-on: ubuntu-latest
