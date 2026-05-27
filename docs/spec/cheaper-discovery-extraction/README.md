@@ -2,7 +2,7 @@
 
 **Final verification verdict:** ✅ **PASS** — see [verification/proof-report.md](verification/proof-report.md)
 **Quality gate:** PASS · **Code review:** APPROVE (2-pass)
-**PR:** _(to be filled in)_
+**PR:** https://github.com/vertexcover-io/ai-news-aggregator/pull/217
 
 ## Summary
 
