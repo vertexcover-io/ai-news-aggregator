@@ -8,8 +8,36 @@ describe("MODEL_PRICING (REQ-001)", () => {
         "claude-haiku-4-5-20251001",
         "claude-sonnet-4-5-20250929",
         "claude-sonnet-4-6",
+        "gemini-3.1-flash-lite",
       ].sort(),
     );
+  });
+
+  it("gemini-3.1-flash-lite rates match design values (REQ-005)", () => {
+    expect(MODEL_PRICING["gemini-3.1-flash-lite"]).toEqual({
+      inputPerMTok: 0.25,
+      outputPerMTok: 1.5,
+      cacheReadPerMTok: 0.025,
+      cacheWrite5mPerMTok: 0,
+      cacheWrite1hPerMTok: 0,
+    });
+  });
+
+  it("existing Anthropic entries remain present and unchanged (REQ-005/EDGE-004)", () => {
+    expect(MODEL_PRICING["claude-haiku-4-5-20251001"]).toEqual({
+      inputPerMTok: 1.0,
+      outputPerMTok: 5.0,
+      cacheReadPerMTok: 0.1,
+      cacheWrite5mPerMTok: 1.25,
+      cacheWrite1hPerMTok: 2.0,
+    });
+    expect(MODEL_PRICING["claude-sonnet-4-6"]).toEqual({
+      inputPerMTok: 3.0,
+      outputPerMTok: 15.0,
+      cacheReadPerMTok: 0.3,
+      cacheWrite5mPerMTok: 3.75,
+      cacheWrite1hPerMTok: 6.0,
+    });
   });
 
   it("sonnet 4.5 rates match published values", () => {
