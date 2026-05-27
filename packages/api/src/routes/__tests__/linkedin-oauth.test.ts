@@ -58,7 +58,11 @@ function makeCredRepo(
   record: LinkedInCredentialRecord | null,
 ): SocialCredentialsRepo {
   return {
-    getStatus: vi.fn().mockResolvedValue({ linkedin: {}, twitter: {}, twitterCollector: {} }),
+    getStatus: vi.fn().mockResolvedValue({
+      linkedin: { configured: record !== null, apiVersion: null, updatedAt: null },
+      twitter: { configured: false, updatedAt: null },
+      twitterCollector: { configured: false, updatedAt: null },
+    }),
     getLinkedIn: vi.fn().mockResolvedValue(record),
     upsertLinkedIn: vi.fn().mockResolvedValue({ updatedAt: new Date().toISOString() }),
     upsertTwitter: vi.fn().mockResolvedValue({ updatedAt: new Date().toISOString() }),
@@ -75,7 +79,12 @@ interface SavedToken {
 }
 
 /** In-memory social-tokens repo that records saveToken calls. */
-function makeTokenRepo(): { repo: SocialTokensRepo; saved: SavedToken[] } {
+function makeTokenRepo(existingRow?: {
+  accessToken: string;
+  refreshToken: string | null;
+  expiresAt: Date;
+  metadata?: { personUrn?: string; name?: string } | null;
+}): { repo: SocialTokensRepo; saved: SavedToken[] } {
   const saved: SavedToken[] = [];
   const repo: SocialTokensRepo = {
     saveToken(_platform: string, input: SaveSocialTokenInput): Promise<void> {
@@ -86,6 +95,20 @@ function makeTokenRepo(): { repo: SocialTokensRepo; saved: SavedToken[] } {
         personUrn: input.metadata?.personUrn,
       });
       return Promise.resolve();
+    },
+    getLinkedIn(): Promise<{
+      accessToken: string;
+      refreshToken: string | null;
+      expiresAt: Date;
+      metadata: { personUrn?: string; name?: string } | null;
+    } | null> {
+      if (!existingRow) return Promise.resolve(null);
+      return Promise.resolve({
+        accessToken: existingRow.accessToken,
+        refreshToken: existingRow.refreshToken,
+        expiresAt: existingRow.expiresAt,
+        metadata: existingRow.metadata ?? null,
+      });
     },
   };
   return { repo, saved };
@@ -510,5 +533,189 @@ describe("GET /callback", () => {
     // Must be 302 (any redirect), never 401.
     expect(res.status).toBe(302);
     expect(res.status).not.toBe(401);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REQ-011, REQ-014: GET /status → full connection-status shape
+// ─────────────────────────────────────────────────────────────────────────────
+describe("GET /status", () => {
+  const expiresAt = new Date("2026-12-31T00:00:00.000Z");
+
+  it("REQ-011: connected row → full shape { connected, connectedAs, expiresAt, hasRefreshToken }", async () => {
+    const { redis } = makeRedis();
+    const credRepo = makeCredRepo(linkedInRecord);
+    const { repo: tokenRepo } = makeTokenRepo({
+      accessToken: "at-value",
+      refreshToken: "rt-value",
+      expiresAt,
+      metadata: { personUrn: "urn:li:person:123", name: "Alice Smith" },
+    });
+    const deps: LinkedInOAuthRouterDeps = {
+      getCredRepo: () => credRepo,
+      getTokenRepo: () => tokenRepo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+    };
+
+    const app = buildTestApp(deps);
+    const res = await app.request(
+      "/api/admin/social-credentials/linkedin/oauth/status",
+      { headers: { cookie: authCookie() } },
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      clientConfigured: boolean;
+      connected: boolean;
+      connectedAs: string | null;
+      expiresAt: string | null;
+      hasRefreshToken: boolean;
+    };
+    expect(body.clientConfigured).toBe(true);
+    expect(body.connected).toBe(true);
+    expect(body.connectedAs).toBe("Alice Smith");
+    expect(body.expiresAt).toBe(expiresAt.toISOString());
+    expect(body.hasRefreshToken).toBe(true);
+  });
+
+  it("REQ-011: no social_tokens row → connected: false", async () => {
+    const { redis } = makeRedis();
+    const credRepo = makeCredRepo(linkedInRecord);
+    const { repo: tokenRepo } = makeTokenRepo(); // no row
+    const deps: LinkedInOAuthRouterDeps = {
+      getCredRepo: () => credRepo,
+      getTokenRepo: () => tokenRepo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+    };
+
+    const app = buildTestApp(deps);
+    const res = await app.request(
+      "/api/admin/social-credentials/linkedin/oauth/status",
+      { headers: { cookie: authCookie() } },
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      connected: boolean;
+      connectedAs: string | null;
+      expiresAt: string | null;
+      hasRefreshToken: boolean;
+    };
+    expect(body.connected).toBe(false);
+    expect(body.connectedAs).toBeNull();
+    expect(body.expiresAt).toBeNull();
+    expect(body.hasRefreshToken).toBe(false);
+  });
+
+  it("REQ-014: empty refreshToken sentinel → hasRefreshToken: false", async () => {
+    const { redis } = makeRedis();
+    const credRepo = makeCredRepo(linkedInRecord);
+    const { repo: tokenRepo } = makeTokenRepo({
+      accessToken: "at-value",
+      refreshToken: "", // sentinel: encrypted empty string
+      expiresAt,
+      metadata: null,
+    });
+    const deps: LinkedInOAuthRouterDeps = {
+      getCredRepo: () => credRepo,
+      getTokenRepo: () => tokenRepo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+    };
+
+    const app = buildTestApp(deps);
+    const res = await app.request(
+      "/api/admin/social-credentials/linkedin/oauth/status",
+      { headers: { cookie: authCookie() } },
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { hasRefreshToken: boolean; connected: boolean };
+    expect(body.connected).toBe(true);
+    expect(body.hasRefreshToken).toBe(false);
+  });
+
+  it("status route is admin-gated (no cookie → 401)", async () => {
+    const { redis } = makeRedis();
+    const credRepo = makeCredRepo(linkedInRecord);
+    const { repo: tokenRepo } = makeTokenRepo();
+    const deps: LinkedInOAuthRouterDeps = {
+      getCredRepo: () => credRepo,
+      getTokenRepo: () => tokenRepo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+    };
+
+    const app = buildTestApp(deps);
+    const res = await app.request(
+      "/api/admin/social-credentials/linkedin/oauth/status",
+    );
+    expect(res.status).toBe(401);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REQ-003/name: callback persists name from userinfo into metadata
+// ─────────────────────────────────────────────────────────────────────────────
+describe("GET /callback — name persistence", () => {
+  async function startAndGetStateLocal(app: Hono): Promise<string> {
+    const res = await app.request(
+      "/api/admin/social-credentials/linkedin/oauth/start",
+      { method: "POST", headers: { cookie: authCookie() } },
+    );
+    const body = (await res.json()) as { authorizeUrl: string };
+    return new URL(body.authorizeUrl).searchParams.get("state") ?? "";
+  }
+
+  it("REQ-003/name: callback persists name from userinfo into metadata", async () => {
+    const { redis } = makeRedis();
+    const credRepo = makeCredRepo(linkedInRecord);
+    const savedTokens: { platform: string; input: SaveSocialTokenInput }[] = [];
+    const tokenRepo: SocialTokensRepo = {
+      saveToken(platform, input) {
+        savedTokens.push({ platform, input });
+        return Promise.resolve();
+      },
+      getLinkedIn() {
+        return Promise.resolve(null);
+      },
+    };
+    let callCount = 0;
+    const fetchFn = vi.fn((): Promise<Response> => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ access_token: "at", refresh_token: "rt", expires_in: 3600 }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ sub: "person-xyz", name: "Jane Doe" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }) as typeof fetch;
+
+    const deps: LinkedInOAuthRouterDeps = {
+      getCredRepo: () => credRepo,
+      getTokenRepo: () => tokenRepo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+      fetchFn,
+    };
+
+    const app = buildTestApp(deps);
+    const state = await startAndGetStateLocal(app);
+    await app.request(
+      `/api/admin/social-credentials/linkedin/oauth/callback?code=code-abc&state=${state}`,
+    );
+
+    expect(savedTokens.length).toBe(1);
+    expect(savedTokens[0].input.metadata?.name).toBe("Jane Doe");
   });
 });

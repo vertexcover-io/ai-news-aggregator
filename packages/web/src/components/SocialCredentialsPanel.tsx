@@ -1,5 +1,6 @@
-import { useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { useForm } from "react-hook-form";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Card,
@@ -14,10 +15,12 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
   useDeleteSocialCredentials,
+  useLinkedInOAuthStatus,
   useSaveLinkedInCredentials,
   useSaveTwitterCollectorCookie,
   useSaveTwitterCredentials,
   useSocialCredentialsStatus,
+  startLinkedInOAuth,
   SocialCredentialsApiError,
   type LinkedInStatus,
   type TwitterCollectorStatus,
@@ -45,6 +48,19 @@ function formatUpdatedAt(iso: string | null): string {
   if (!iso) return "";
   try {
     return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
+function formatExpiresAt(iso: string | null): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
   } catch {
     return iso;
   }
@@ -83,6 +99,96 @@ function StatusPill({
     >
       Configured{detail ? ` (${detail})` : ""}
     </span>
+  );
+}
+
+interface LinkedInConnectionSectionProps {
+  clientConfigured: boolean;
+}
+
+function LinkedInConnectionSection({
+  clientConfigured,
+}: LinkedInConnectionSectionProps): ReactElement {
+  const oauthStatus = useLinkedInOAuthStatus();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Handle ?linkedin=connected / ?linkedin=error on mount (REQ-012).
+  useEffect(() => {
+    const param = searchParams.get("linkedin");
+    if (!param) return;
+
+    if (param === "connected") {
+      toast.success("LinkedIn connected successfully");
+      void oauthStatus.refetch();
+    } else if (param === "error") {
+      const reason = searchParams.get("reason") ?? "unknown";
+      toast.error(`LinkedIn connection failed: ${reason}`);
+    }
+
+    // Strip the param from the URL.
+    const next = new URLSearchParams(searchParams);
+    next.delete("linkedin");
+    next.delete("reason");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleConnect(): Promise<void> {
+    try {
+      const result = await startLinkedInOAuth();
+      window.location.assign(result.authorizeUrl);
+    } catch {
+      toast.error("Failed to start LinkedIn OAuth");
+    }
+  }
+
+  const data = oauthStatus.data;
+  const connected = data?.connected ?? false;
+  const isConnectDisabled = !clientConfigured;
+
+  const statusText = (): string => {
+    if (!data || !connected) return "Not connected";
+    const parts: string[] = [];
+    if (data.connectedAs) parts.push(`Connected as ${data.connectedAs}`);
+    if (data.expiresAt) parts.push(`expires ${formatExpiresAt(data.expiresAt)}`);
+    if (data.hasRefreshToken) {
+      parts.push("refresh token ✓");
+    } else {
+      parts.push("refresh token ✗ (reconnect to enable)");
+    }
+    return parts.join(" · ");
+  };
+
+  return (
+    <div data-testid="linkedin-connection" className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-sm font-medium text-muted-foreground">
+          OAuth Connection
+        </h4>
+      </div>
+      <p data-testid="linkedin-conn-status" className="text-sm">
+        {oauthStatus.isLoading ? "Loading…" : statusText()}
+      </p>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid="linkedin-connect-btn"
+          disabled={isConnectDisabled}
+          onClick={() => {
+            void handleConnect();
+          }}
+        >
+          {connected ? "Reconnect LinkedIn" : "Connect LinkedIn"}
+        </Button>
+        {isConnectDisabled ? (
+          <p className="text-xs text-muted-foreground">
+            Save Client ID &amp; Secret first
+          </p>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -158,6 +264,7 @@ function LinkedInSection({ status }: LinkedInSectionProps): ReactElement {
           extra={status.apiVersion ? `apiVersion ${status.apiVersion}` : null}
         />
       </div>
+      <LinkedInConnectionSection clientConfigured={status.configured} />
       <form
         onSubmit={(e) => {
           e.preventDefault();

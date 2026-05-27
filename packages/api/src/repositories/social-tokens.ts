@@ -1,6 +1,7 @@
+import { eq } from "drizzle-orm";
 import { socialTokens } from "@newsletter/shared/db";
 import type { AppDb, SocialTokenEncryptedFields } from "@newsletter/shared/db";
-import type { SocialTokenMetadata } from "@newsletter/shared";
+import type { SocialTokenMetadata } from "@newsletter/shared/types";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
 
 export type SocialPlatform = "linkedin" | "twitter";
@@ -13,8 +14,19 @@ export interface SaveSocialTokenInput {
   metadata?: SocialTokenMetadata | null;
 }
 
+/** Decrypted read of a social_tokens row. */
+export interface SocialTokenRecord {
+  accessToken: string;
+  /** Empty string sentinel ("") when no refresh token was issued (REQ-014). */
+  refreshToken: string | null;
+  expiresAt: Date;
+  metadata: SocialTokenMetadata | null;
+}
+
 export interface SocialTokensRepo {
   saveToken(platform: SocialPlatform, input: SaveSocialTokenInput): Promise<void>;
+  /** Returns the decrypted LinkedIn token row, or null when no row exists. Decrypt failures return null. */
+  getLinkedIn(): Promise<SocialTokenRecord | null>;
 }
 
 export function createSocialTokensRepo(
@@ -51,6 +63,29 @@ export function createSocialTokensRepo(
             updatedAt: new Date(),
           },
         });
+    },
+
+    async getLinkedIn(): Promise<SocialTokenRecord | null> {
+      try {
+        const rows = await db
+          .select()
+          .from(socialTokens)
+          .where(eq(socialTokens.platform, "linkedin"))
+          .limit(1);
+        if (rows.length === 0) return null;
+        const row = rows[0];
+        // encryptedFields is typed as SocialTokenEncryptedFields via the column .$type<>()
+        const encFields = row.encryptedFields;
+        return {
+          accessToken: cipher.decrypt(encFields.accessToken),
+          refreshToken: cipher.decrypt(encFields.refreshToken),
+          expiresAt: row.expiresAt,
+          metadata: row.metadata ?? null,
+        };
+      } catch {
+        // Decrypt failure → treat as not connected (REQ-011)
+        return null;
+      }
     },
   };
 }

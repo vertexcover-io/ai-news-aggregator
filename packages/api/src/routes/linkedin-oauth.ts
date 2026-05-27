@@ -114,13 +114,27 @@ export function createLinkedInOAuthRouter(
     return c.json({ authorizeUrl });
   });
 
-  // GET /status → reports whether a LinkedIn token is currently stored.
+  // GET /status → reports full LinkedIn connection status (REQ-011).
   app.get("/status", async (c) => {
     const credRepo = deps.getCredRepo();
     const status = await credRepo.getStatus();
+
+    const tokenRepo = deps.getTokenRepo();
+    const tokenRow = await tokenRepo.getLinkedIn().catch(() => null);
+
+    const connected = tokenRow !== null;
+    const connectedAs = tokenRow?.metadata?.name ?? null;
+    const expiresAt = tokenRow ? tokenRow.expiresAt.toISOString() : null;
+    // refreshToken is empty string sentinel when no refresh token was issued (REQ-014).
+    const rt = tokenRow?.refreshToken;
+    const hasRefreshToken = connected && rt !== "" && rt !== null;
+
     return c.json({
       clientConfigured: status.linkedin.configured,
-      tokenConfigured: false, // token check is not required by Phase 3
+      connected,
+      connectedAs,
+      expiresAt,
+      hasRefreshToken,
     });
   });
 
@@ -200,6 +214,7 @@ export function createLinkedInOAuthCallbackRouter(
     }
 
     const personUrn = `urn:li:person:${userInfoResult.userInfo.sub}`;
+    const displayName = userInfoResult.userInfo.name ?? null;
 
     // Persist encrypted token. The cipher is baked into the repo factory
     // (injected via deps.getTokenRepo); this route does not handle encryption directly.
@@ -208,7 +223,10 @@ export function createLinkedInOAuthCallbackRouter(
       accessToken: exchangeResult.parsed.accessToken,
       refreshToken: exchangeResult.parsed.refreshToken,
       expiresAt: exchangeResult.parsed.expiresAt,
-      metadata: { personUrn },
+      metadata: {
+        personUrn,
+        ...(displayName !== null ? { name: displayName } : {}),
+      },
     });
 
     return c.redirect(settingsRedirectUrl(env, { linkedin: "connected" }));
