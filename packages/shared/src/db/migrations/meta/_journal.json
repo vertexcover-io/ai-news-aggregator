@@ -239,6 +239,13 @@
       "when": 1779797847756,
       "tag": "0033_freezing_skin",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1779856590644,
+      "tag": "0034_encrypt_social_tokens",
+      "breakpoints": true
     }
   ]
 }

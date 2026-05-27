@@ -7,6 +7,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { rawItems, runArchives, socialTokens } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
+import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createRunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { createSocialTokensRepo } from "@pipeline/repositories/social-tokens.js";
@@ -108,7 +109,7 @@ async function seedReviewedArchive(
 }
 
 async function seedLinkedInToken(db: AppDb): Promise<void> {
-  await createSocialTokensRepo(db).saveToken("linkedin", {
+  await createSocialTokensRepo(db, getCredentialCipher()).saveToken("linkedin", {
     accessToken: "linkedin-access-token",
     refreshToken: "",
     expiresAt: new Date(Date.now() + 60 * 60 * 1000),
@@ -166,7 +167,7 @@ describe("linkedin-post worker e2e", () => {
       apiClient: createLinkedInApiClient(),
       archives: archiveRepo,
       rawItems: createRawItemsRepo(db),
-      tokens: createSocialTokensRepo(db),
+      tokens: createSocialTokensRepo(db, getCredentialCipher()),
       config: {
         clientId: "linkedin-client-id",
         clientSecret: "linkedin-client-secret",
@@ -213,7 +214,7 @@ describe("linkedin-post worker e2e", () => {
       apiClient: createLinkedInApiClient(),
       archives: archiveRepo,
       rawItems: createRawItemsRepo(db),
-      tokens: createSocialTokensRepo(db),
+      tokens: createSocialTokensRepo(db, getCredentialCipher()),
       config: {
         clientId: "linkedin-client-id",
         clientSecret: "linkedin-client-secret",
@@ -263,7 +264,7 @@ describe("linkedin-post worker e2e", () => {
       apiClient: createLinkedInApiClient(),
       archives: archiveRepo,
       rawItems: createRawItemsRepo(db),
-      tokens: createSocialTokensRepo(db),
+      tokens: createSocialTokensRepo(db, getCredentialCipher()),
       config: {
         clientId: "linkedin-client-id",
         clientSecret: "linkedin-client-secret",
@@ -313,7 +314,7 @@ describe("linkedin-post worker e2e", () => {
         apiClient: createLinkedInApiClient(),
         archives: archiveRepo,
         rawItems: createRawItemsRepo(db),
-        tokens: createSocialTokensRepo(db),
+        tokens: createSocialTokensRepo(db, getCredentialCipher()),
         config: {
           clientId: "linkedin-client-id",
           clientSecret: "linkedin-client-secret",
@@ -359,7 +360,7 @@ describe("linkedin-post worker e2e", () => {
       apiClient: createLinkedInApiClient(),
       archives: archiveRepo,
       rawItems: createRawItemsRepo(db),
-      tokens: createSocialTokensRepo(db),
+      tokens: createSocialTokensRepo(db, getCredentialCipher()),
       config: {
         clientId: "linkedin-client-id",
         clientSecret: "linkedin-client-secret",

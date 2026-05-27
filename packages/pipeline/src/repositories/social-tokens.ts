@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { socialTokens } from "@newsletter/shared/db";
-import type { AppDb } from "@newsletter/shared/db";
+import type { AppDb, SocialTokenEncryptedFields } from "@newsletter/shared/db";
 import type { SocialTokenMetadata } from "@newsletter/shared";
+import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
 
 export type SocialPlatform = "linkedin" | "twitter";
 
@@ -36,21 +37,23 @@ export interface SocialTokensRepo {
 
 type TxLike = Pick<AppDb, "select" | "insert">;
 
-function toRow(row: {
-  platform: string;
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: Date;
-  metadata: SocialTokenMetadata | null;
-  updatedAt: Date;
-}): SocialTokenRow {
+function toRow(
+  raw: {
+    platform: string;
+    encryptedFields: SocialTokenEncryptedFields;
+    expiresAt: Date;
+    metadata: SocialTokenMetadata | null;
+    updatedAt: Date;
+  },
+  cipher: CredentialCipher,
+): SocialTokenRow {
   return {
-    platform: row.platform as SocialPlatform,
-    accessToken: row.accessToken,
-    refreshToken: row.refreshToken,
-    expiresAt: row.expiresAt,
-    metadata: row.metadata,
-    updatedAt: row.updatedAt,
+    platform: raw.platform as SocialPlatform,
+    accessToken: cipher.decrypt(raw.encryptedFields.accessToken),
+    refreshToken: cipher.decrypt(raw.encryptedFields.refreshToken),
+    expiresAt: raw.expiresAt,
+    metadata: raw.metadata,
+    updatedAt: raw.updatedAt,
   };
 }
 
@@ -58,13 +61,17 @@ async function upsertToken(
   db: TxLike,
   platform: SocialPlatform,
   input: SaveSocialTokenInput,
+  cipher: CredentialCipher,
 ): Promise<void> {
+  const encryptedFields: SocialTokenEncryptedFields = {
+    accessToken: cipher.encrypt(input.accessToken),
+    refreshToken: cipher.encrypt(input.refreshToken),
+  };
   await db
     .insert(socialTokens)
     .values({
       platform,
-      accessToken: input.accessToken,
-      refreshToken: input.refreshToken,
+      encryptedFields,
       expiresAt: input.expiresAt,
       metadata: input.metadata ?? null,
       updatedAt: new Date(),
@@ -72,8 +79,7 @@ async function upsertToken(
     .onConflictDoUpdate({
       target: socialTokens.platform,
       set: {
-        accessToken: input.accessToken,
-        refreshToken: input.refreshToken,
+        encryptedFields,
         expiresAt: input.expiresAt,
         metadata: input.metadata ?? null,
         updatedAt: new Date(),
@@ -83,6 +89,7 @@ async function upsertToken(
 
 export function createSocialTokensRepo(
   db: Pick<AppDb, "select" | "insert" | "transaction">,
+  cipher: CredentialCipher,
 ): SocialTokensRepo {
   return {
     async getToken(platform: SocialPlatform): Promise<SocialTokenRow | null> {
@@ -92,14 +99,14 @@ export function createSocialTokensRepo(
         .where(eq(socialTokens.platform, platform))
         .limit(1);
       if (rows.length === 0) return null;
-      return toRow(rows[0]);
+      return toRow(rows[0], cipher);
     },
 
     async saveToken(
       platform: SocialPlatform,
       input: SaveSocialTokenInput,
     ): Promise<void> {
-      await upsertToken(db, platform, input);
+      await upsertToken(db, platform, input, cipher);
     },
 
     async withTokenLock<T>(
@@ -113,10 +120,10 @@ export function createSocialTokensRepo(
           .where(eq(socialTokens.platform, platform))
           .limit(1)
           .for("update");
-        const row = rows.length === 0 ? null : toRow(rows[0]);
+        const row = rows.length === 0 ? null : toRow(rows[0], cipher);
         const txApi: SocialTokensTx = {
-          async saveToken(p, input) {
-            await upsertToken(tx, p, input);
+          async saveToken(p, inp) {
+            await upsertToken(tx, p, inp, cipher);
           },
         };
         return fn(row, txApi);
