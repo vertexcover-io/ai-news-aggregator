@@ -23,6 +23,12 @@ export {
 } from "@pipeline/processors/recap.js";
 
 export {
+  generateDigestMeta,
+  type DigestMetaInputItem,
+  type GenerateDigestMetaOptions,
+} from "@pipeline/processors/digest-meta.js";
+
+export {
   parseTweetIdFromUrl,
   fetchTwitterPost,
   type FetchTwitterPostDeps,

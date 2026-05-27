@@ -10,6 +10,7 @@ import type {
 import {
   createArchivesRouter,
   createAdminArchivesRouter,
+  createPublicArchivesRouter,
 } from "@api/routes/archives.js";
 import type {
   RawItemRow,
@@ -18,6 +19,8 @@ import type {
 import type { RunArchivesRepo, RunArchiveRow } from "@api/repositories/run-archives.js";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
 import type { GenerateRecapFn } from "@api/services/review.js";
+import type { GenerateDigestMetaFn } from "@api/services/review.js";
+import type { DigestMeta } from "@newsletter/shared/constants";
 import type { Queue } from "bullmq";
 
 function makeRepo(rows: RawItemRow[] = []): RawItemsRepo {
@@ -58,6 +61,7 @@ function makeApp(opts: {
   repo?: RawItemsRepo;
   archiveRepo: RunArchivesRepo;
   generateRecapFn?: GenerateRecapFn;
+  generateDigestMeta?: GenerateDigestMetaFn;
   processingQueue?: Pick<Queue, "add">;
   settingsRepo?: Pick<UserSettingsRepo, "get">;
 }): Hono {
@@ -66,6 +70,7 @@ function makeApp(opts: {
     getRawItemsRepo: () => opts.repo ?? makeRepo(),
     getArchiveRepo: () => opts.archiveRepo,
     generateRecapFn: opts.generateRecapFn,
+    generateDigestMeta: opts.generateDigestMeta,
     processingQueue: opts.processingQueue,
     ...(opts.settingsRepo === undefined
       ? {}
@@ -764,5 +769,217 @@ describe("PATCH /api/archives/:runId", () => {
 
     expect(res.status).toBe(200);
     expect(processingQueue.add).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/archives/:runId/regenerate-digest-meta", () => {
+  const date = new Date("2026-04-10T00:00:00Z");
+
+  function makeRow(overrides: Partial<RunArchiveRow> = {}): RunArchiveRow {
+    return {
+      id: "run-1",
+      status: "completed",
+      rankedItems: [
+        { rawItemId: 1, score: 0, rationale: "" },
+        { rawItemId: 2, score: 0, rationale: "" },
+      ],
+      topN: 5,
+      reviewed: true,
+      completedAt: date,
+      createdAt: date,
+      startedAt: null,
+      sourceTypes: null,
+      digestHeadline: "old headline",
+      digestSummary: "old summary",
+      hook: "old hook",
+      emailSentAt: null,
+      linkedinPostedAt: null,
+      twitterPostedAt: null,
+      notificationState: {},
+      isDryRun: false,
+      ...overrides,
+    } as RunArchiveRow;
+  }
+
+  const sampleMeta: DigestMeta = {
+    headline: "Fresh headline",
+    summary: "Fresh summary",
+    hook: "Fresh hook",
+    twitterSummary: "Fresh twitter summary",
+  };
+
+  function body(items: { id: number; title: string; summary: string; bottomLine: string }[]): string {
+    return JSON.stringify({ items });
+  }
+
+  it("REQ-005: returns 200 with four string fields and does NOT persist", async () => {
+    const archiveRepo = makeArchiveRepo(makeRow());
+    const generateDigestMeta: GenerateDigestMetaFn = vi.fn(() => Promise.resolve(sampleMeta));
+    const app = makeApp({ archiveRepo, generateDigestMeta });
+
+    const res = await app.request("/api/archives/run-1/regenerate-digest-meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body([{ id: 1, title: "T1", summary: "S1", bottomLine: "B1" }]),
+    });
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as DigestMeta;
+    expect(json).toEqual(sampleMeta);
+    expect(typeof json.headline).toBe("string");
+    expect(typeof json.summary).toBe("string");
+    expect(typeof json.hook).toBe("string");
+    expect(typeof json.twitterSummary).toBe("string");
+    // No persistence: updateRankedItems is the only write path on the repo
+    expect(archiveRepo.updateRankedItems).not.toHaveBeenCalled();
+  });
+
+  it("REQ-006: returns 404 for a non-existent runId", async () => {
+    const archiveRepo = makeArchiveRepo(null);
+    const generateDigestMeta: GenerateDigestMetaFn = vi.fn(() => Promise.resolve(sampleMeta));
+    const app = makeApp({ archiveRepo, generateDigestMeta });
+
+    const res = await app.request("/api/archives/missing/regenerate-digest-meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body([{ id: 1, title: "T1", summary: "S1", bottomLine: "B1" }]),
+    });
+
+    expect(res.status).toBe(404);
+    const json = (await res.json()) as { error: string };
+    expect(typeof json.error).toBe("string");
+    expect(generateDigestMeta).not.toHaveBeenCalled();
+  });
+
+  it("REQ-007: returns 409 with a reason for a dry-run archive", async () => {
+    const archiveRepo = makeArchiveRepo(makeRow({ isDryRun: true }));
+    const generateDigestMeta: GenerateDigestMetaFn = vi.fn(() => Promise.resolve(sampleMeta));
+    const app = makeApp({ archiveRepo, generateDigestMeta });
+
+    const res = await app.request("/api/archives/run-1/regenerate-digest-meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body([{ id: 1, title: "T1", summary: "S1", bottomLine: "B1" }]),
+    });
+
+    expect(res.status).toBe(409);
+    const json = (await res.json()) as { reason: string };
+    expect(typeof json.reason).toBe("string");
+    expect(generateDigestMeta).not.toHaveBeenCalled();
+  });
+
+  it("REQ-008: returns 502 with an error when the LLM call rejects", async () => {
+    const archiveRepo = makeArchiveRepo(makeRow());
+    const generateDigestMeta: GenerateDigestMetaFn = vi.fn(() =>
+      Promise.reject(new Error("anthropic exploded")),
+    );
+    const app = makeApp({ archiveRepo, generateDigestMeta });
+
+    const res = await app.request("/api/archives/run-1/regenerate-digest-meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body([{ id: 1, title: "T1", summary: "S1", bottomLine: "B1" }]),
+    });
+
+    expect(res.status).toBe(502);
+    const json = (await res.json()) as { error: string };
+    expect(typeof json.error).toBe("string");
+    expect(json.error).toContain("anthropic exploded");
+  });
+
+  it("returns 400 for an empty items array", async () => {
+    const archiveRepo = makeArchiveRepo(makeRow());
+    const generateDigestMeta: GenerateDigestMetaFn = vi.fn(() => Promise.resolve(sampleMeta));
+    const app = makeApp({ archiveRepo, generateDigestMeta });
+
+    const res = await app.request("/api/archives/run-1/regenerate-digest-meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body([]),
+    });
+
+    expect(res.status).toBe(400);
+    expect(generateDigestMeta).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when an item id is not in the archive's ranked set", async () => {
+    const archiveRepo = makeArchiveRepo(makeRow());
+    const generateDigestMeta: GenerateDigestMetaFn = vi.fn(() => Promise.resolve(sampleMeta));
+    const app = makeApp({ archiveRepo, generateDigestMeta });
+
+    const res = await app.request("/api/archives/run-1/regenerate-digest-meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body([{ id: 999, title: "T", summary: "S", bottomLine: "B" }]),
+    });
+
+    expect(res.status).toBe(400);
+    expect(generateDigestMeta).not.toHaveBeenCalled();
+  });
+
+  it("EDGE-006: passes items to generateDigestMeta in body order with rank = index+1", async () => {
+    const archiveRepo = makeArchiveRepo(makeRow());
+    const captured: { rank: number; title: string; summary: string; bottomLine: string }[][] = [];
+    const generateDigestMeta: GenerateDigestMetaFn = vi.fn((items) => {
+      captured.push(items);
+      return Promise.resolve(sampleMeta);
+    });
+    const app = makeApp({ archiveRepo, generateDigestMeta });
+
+    // body order is item 2 first, then item 1 — opposite of DB rankedItems order
+    const res = await app.request("/api/archives/run-1/regenerate-digest-meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body([
+        { id: 2, title: "Second", summary: "S2", bottomLine: "B2" },
+        { id: 1, title: "First", summary: "S1", bottomLine: "B1" },
+      ]),
+    });
+
+    expect(res.status).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toEqual([
+      { rank: 1, title: "Second", summary: "S2", bottomLine: "B2" },
+      { rank: 2, title: "First", summary: "S1", bottomLine: "B1" },
+    ]);
+  });
+
+  it("REQ-009: route is registered on the admin router, not the public router", async () => {
+    const archiveRepo = makeArchiveRepo(makeRow());
+    const generateDigestMeta: GenerateDigestMetaFn = vi.fn(() => Promise.resolve(sampleMeta));
+
+    const publicApp = new Hono();
+    publicApp.route(
+      "/api/archives",
+      createPublicArchivesRouter({
+        getRawItemsRepo: () => makeRepo(),
+        getArchiveRepo: () => archiveRepo,
+        generateDigestMeta,
+      }),
+    );
+    const publicRes = await publicApp.request("/api/archives/run-1/regenerate-digest-meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body([{ id: 1, title: "T1", summary: "S1", bottomLine: "B1" }]),
+    });
+    expect(publicRes.status).toBe(404);
+    expect(generateDigestMeta).not.toHaveBeenCalled();
+
+    const adminApp = new Hono();
+    adminApp.route(
+      "/api/archives",
+      createAdminArchivesRouter({
+        getRawItemsRepo: () => makeRepo(),
+        getArchiveRepo: () => archiveRepo,
+        generateDigestMeta,
+      }),
+    );
+    const adminRes = await adminApp.request("/api/archives/run-1/regenerate-digest-meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body([{ id: 1, title: "T1", summary: "S1", bottomLine: "B1" }]),
+    });
+    expect(adminRes.status).toBe(200);
+    expect(generateDigestMeta).toHaveBeenCalledTimes(1);
   });
 });

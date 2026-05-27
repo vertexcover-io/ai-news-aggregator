@@ -3,6 +3,7 @@ import type {
   PoolResponse,
   ArchiveListResponse,
 } from "@newsletter/shared";
+import type { DigestMeta } from "@newsletter/shared/constants";
 import { apiFetch, apiFetchAdmin } from "./client";
 
 export interface PatchArchiveBody {
@@ -15,6 +16,17 @@ export interface PatchArchiveBody {
     bottomLine?: string;
     imageUrl?: string | null;
   }[];
+  digestHeadline?: string | null;
+  digestSummary?: string | null;
+  hook?: string | null;
+  twitterSummary?: string | null;
+}
+
+export interface RegenerateDigestMetaItem {
+  id: number;
+  title: string;
+  summary: string;
+  bottomLine: string;
 }
 
 export interface AddPostBody {
@@ -73,6 +85,28 @@ export async function patchArchive(
     const data = (await res.json().catch(() => ({}))) as ApiErrorBody;
     throw new Error(data.error ?? "Failed to save archive");
   }
+}
+
+export async function regenerateDigestMeta(
+  runId: string,
+  items: RegenerateDigestMetaItem[],
+): Promise<DigestMeta> {
+  const res = await apiFetchAdmin(
+    `/api/admin/archives/${runId}/regenerate-digest-meta`,
+    {
+      method: "POST",
+      body: JSON.stringify({ items }),
+    },
+  );
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as ApiErrorBody & {
+      reason?: string;
+    };
+    throw new Error(
+      data.error ?? data.reason ?? "Failed to regenerate digest meta",
+    );
+  }
+  return (await res.json()) as DigestMeta;
 }
 
 export async function addPost(

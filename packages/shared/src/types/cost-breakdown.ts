@@ -1,4 +1,10 @@
-export type CostStage = "web-discovery" | "web-extraction" | "shortlist" | "rank" | "recap";
+export type CostStage =
+  | "web-discovery"
+  | "web-extraction"
+  | "shortlist"
+  | "rank"
+  | "recap"
+  | "digest";
 
 export type StageCostStatus = "ok" | "partial-unknown-model" | "all-unknown-model";
 

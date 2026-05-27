@@ -7,6 +7,7 @@ import type {
 import type {
   RunArchiveRow,
   RunArchivesRepo,
+  UpdateRankedItemsContext,
 } from "@api/repositories/run-archives.js";
 import {
   patchArchive,
@@ -231,6 +232,124 @@ describe("patchArchive — optional editable fields (REQ-004, REQ-005, EDGE-007)
     expect(callArg[0]).not.toHaveProperty("bullets");
     expect(callArg[0]).not.toHaveProperty("bottomLine");
     expect(callArg[0]).not.toHaveProperty("imageUrl");
+  });
+});
+
+describe("patchArchive — digest meta threading (REQ-010, REQ-011, EDGE-004, EDGE-009)", () => {
+  function makeRawRow(id: number): RawItemRow {
+    return {
+      id,
+      sourceType: "hn",
+      title: `t${id}`,
+      url: `https://x/${id}`,
+      author: null,
+      publishedAt: null,
+      engagement: { points: 0, commentCount: 0 },
+      content: null,
+      imageUrl: null,
+      metadata: { comments: [] },
+    };
+  }
+
+  function ctxArg(archiveRepo: RunArchivesRepo): UpdateRankedItemsContext {
+    return (archiveRepo.updateRankedItems as ReturnType<typeof vi.fn>).mock
+      .calls[0][2] as UpdateRankedItemsContext;
+  }
+
+  it("REQ-010: passes all four provided digest fields as a digestMeta patch", async () => {
+    const archiveRow: RunArchiveRow = {
+      ...makeArchiveRow([]),
+      digestHeadline: "old headline",
+      digestSummary: "old summary",
+    };
+    const archiveRepo = makeArchiveRepo(archiveRow);
+    const deps: ReviewDeps = {
+      archiveRepo,
+      rawItemsRepo: makeRawRepo([makeRawRow(1)]),
+    };
+    await patchArchive(
+      "run-1",
+      {
+        rankedItems: [{ id: 1, sourceType: "hn" }],
+        digestHeadline: "new headline",
+        digestSummary: "new summary",
+        hook: "new hook",
+        twitterSummary: "new tweet",
+      },
+      deps,
+    );
+    const ctx = ctxArg(archiveRepo);
+    expect(ctx.digestMeta).toEqual({
+      digestHeadline: "new headline",
+      digestSummary: "new summary",
+      hook: "new hook",
+      twitterSummary: "new tweet",
+    });
+    // searchText is recomputed from the effective (new) headline/summary
+    expect(ctx.digestHeadline).toBe("new headline");
+    expect(ctx.digestSummary).toBe("new summary");
+  });
+
+  it("REQ-011: omitting digest fields sends NO digestMeta (preserve), keeps existing headline/summary for searchText", async () => {
+    const archiveRow: RunArchiveRow = {
+      ...makeArchiveRow([]),
+      digestHeadline: "existing headline",
+      digestSummary: "existing summary",
+    };
+    const archiveRepo = makeArchiveRepo(archiveRow);
+    const deps: ReviewDeps = {
+      archiveRepo,
+      rawItemsRepo: makeRawRepo([makeRawRow(1)]),
+    };
+    await patchArchive(
+      "run-1",
+      { rankedItems: [{ id: 1, sourceType: "hn" }] },
+      deps,
+    );
+    const ctx = ctxArg(archiveRepo);
+    expect(ctx.digestMeta).toBeUndefined();
+    expect(ctx.digestHeadline).toBe("existing headline");
+    expect(ctx.digestSummary).toBe("existing summary");
+  });
+
+  it("EDGE-004: an empty-string hook is sent as a digestMeta key (distinct from omit)", async () => {
+    const archiveRow = makeArchiveRow([]);
+    const archiveRepo = makeArchiveRepo(archiveRow);
+    const deps: ReviewDeps = {
+      archiveRepo,
+      rawItemsRepo: makeRawRepo([makeRawRow(1)]),
+    };
+    await patchArchive(
+      "run-1",
+      { rankedItems: [{ id: 1, sourceType: "hn" }], hook: "" },
+      deps,
+    );
+    const ctx = ctxArg(archiveRepo);
+    expect(ctx.digestMeta).toEqual({ hook: "" });
+  });
+
+  it("EDGE-009: a null digestHeadline is sent as a digestMeta key and clears the effective headline", async () => {
+    const archiveRow: RunArchiveRow = {
+      ...makeArchiveRow([]),
+      digestHeadline: "existing headline",
+      digestSummary: "existing summary",
+    };
+    const archiveRepo = makeArchiveRepo(archiveRow);
+    const deps: ReviewDeps = {
+      archiveRepo,
+      rawItemsRepo: makeRawRepo([makeRawRow(1)]),
+    };
+    await patchArchive(
+      "run-1",
+      { rankedItems: [{ id: 1, sourceType: "hn" }], digestHeadline: null },
+      deps,
+    );
+    const ctx = ctxArg(archiveRepo);
+    expect(ctx.digestMeta).toEqual({ digestHeadline: null });
+    // effective headline cleared → searchText recompute uses null
+    expect(ctx.digestHeadline).toBeNull();
+    // summary untouched (omitted) → preserve existing for searchText
+    expect(ctx.digestSummary).toBe("existing summary");
   });
 });
 
