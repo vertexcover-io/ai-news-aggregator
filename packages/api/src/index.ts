@@ -25,6 +25,13 @@ import { createDefaultPublicMustReadRouter } from "@api/routes/must-read.js";
 import { createDefaultPublicSourcesRouter } from "@api/routes/sources.js";
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
 import { createDefaultAdminSocialCredentialsRouter } from "@api/routes/admin-social-credentials.js";
+import {
+  createLinkedInOAuthRouter,
+  createLinkedInOAuthCallbackRouter,
+} from "@api/routes/linkedin-oauth.js";
+import { createSocialCredentialsRepo } from "@api/repositories/social-credentials.js";
+import { createSocialTokensRepo } from "@api/repositories/social-tokens.js";
+import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createDefaultAdminMustReadRouter } from "@api/routes/admin-must-read.js";
 import { createAdminRouter } from "@api/routes/admin.js";
 import { requireAdmin } from "@api/auth/middleware.js";
@@ -78,6 +85,8 @@ const { baseUrl: apiBaseUrl, webBaseUrl: newsletterBaseUrl } = resolveBaseUrls(p
 const { Queue: BullQueue } = await import("bullmq");
 const { createRedisConnection } = await import("@newsletter/shared/redis");
 const processingQueue = new BullQueue("processing", { connection: createRedisConnection() });
+// Shared Redis connection for OAuth state storage (SET/GET/DEL — not a BullMQ queue).
+const oauthRedis = createRedisConnection();
 
 const settingsRepoForBootstrap = createUserSettingsRepo(getDb());
 await removeLegacySchedulers(processingQueue);
@@ -126,6 +135,15 @@ const webhooksRouter = createWebhooksRouter({
   logger,
 });
 
+const linkedInOAuthDeps = {
+  getCredRepo: () =>
+    createSocialCredentialsRepo(getDb(), getCredentialCipher()),
+  getTokenRepo: () =>
+    createSocialTokensRepo(getDb(), getCredentialCipher()),
+  redis: oauthRedis,
+  env: process.env,
+};
+
 const app = buildApp({
   sessionSecret,
   publicArchivesRouter: createDefaultPublicArchivesRouter(),
@@ -157,6 +175,8 @@ const app = buildApp({
   webhooksRouter,
   analyticsRouter: createDefaultAnalyticsRouter(),
   analyticsConfigRouter: createDefaultAnalyticsConfigRouter(),
+  linkedInOAuthRouter: createLinkedInOAuthRouter(linkedInOAuthDeps),
+  linkedInOAuthCallbackRouter: createLinkedInOAuthCallbackRouter(linkedInOAuthDeps),
 });
 
 const port = Number(process.env.API_PORT ?? 3000);

@@ -482,7 +482,7 @@ export function buildDefaultSocialHealthDeps(): SocialHealthDeps {
 
 let cachedSocialTokensRepo: SocialTokensRepo | undefined;
 function getSharedSocialTokensRepo(): SocialTokensRepo {
-  cachedSocialTokensRepo ??= createSocialTokensRepo(getDb());
+  cachedSocialTokensRepo ??= createSocialTokensRepo(getDb(), getCredentialCipher());
   return cachedSocialTokensRepo;
 }
 

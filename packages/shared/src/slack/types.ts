@@ -20,6 +20,8 @@ export interface SlackNotifier {
   notifyPublishFailed(input: {
     runId: string;
     channel: PublishChannel;
+    /** Failure reason from the notifier; drives the alert's explanatory text. */
+    reason?: string;
   }): Promise<void>;
   notifyPublishUnavailable?(input: {
     channel: PublishChannel;

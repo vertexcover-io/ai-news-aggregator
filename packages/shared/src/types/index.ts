@@ -140,6 +140,8 @@ export interface SocialMetadata {
 
 export interface SocialTokenMetadata {
   personUrn?: string;
+  /** Display name from LinkedIn /v2/userinfo (persisted during OAuth callback). */
+  name?: string;
 }
 
 export * from "./run.js";

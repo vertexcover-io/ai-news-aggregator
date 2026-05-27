@@ -96,10 +96,16 @@ export const runLogs = pgTable(
 export type RunLogRow = typeof runLogs.$inferSelect;
 export type RunLogInsertRow = typeof runLogs.$inferInsert;
 
+export interface SocialTokenEncryptedFields {
+  accessToken: EncryptedBlob;
+  refreshToken: EncryptedBlob;
+}
+
 export const socialTokens = pgTable("social_tokens", {
   platform: text("platform").primaryKey().$type<"linkedin" | "twitter">(),
-  accessToken: text("access_token").notNull(),
-  refreshToken: text("refresh_token").notNull(),
+  encryptedFields: jsonb("encrypted_fields")
+    .notNull()
+    .$type<SocialTokenEncryptedFields>(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   metadata: jsonb("metadata").$type<SocialTokenMetadata | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -51,6 +51,17 @@ function makeInMemoryRepo(cipher: CredentialCipher): {
 } {
   const rows = new Map<SocialCredentialPlatform, InMemoryRow>();
   const repo: SocialCredentialsRepo = {
+    getLinkedIn(): Promise<import("../../repositories/social-credentials.js").LinkedInCredentialRecord | null> {
+      const row = rows.get("linkedin");
+      if (!row) return Promise.resolve(null);
+      const fields = row.encryptedFields as LinkedInEncryptedFields;
+      return Promise.resolve({
+        clientId: cipher.decrypt(fields.clientId),
+        clientSecret: cipher.decrypt(fields.clientSecret),
+        apiVersion: row.metadata?.apiVersion ?? null,
+        updatedAt: row.updatedAt,
+      });
+    },
     getStatus(): Promise<SocialCredentialsStatus> {
       const linkedin = rows.get("linkedin");
       const twitter = rows.get("twitter");
@@ -373,6 +384,70 @@ describe("admin-social-credentials router — VS-10: DELETE", () => {
       headers: { cookie: authCookie() },
     });
     expect(res.status).toBe(400);
+  });
+
+  it("DELETE /linkedin also clears the OAuth token row (not just client creds)", async () => {
+    const { repo } = makeInMemoryRepo(cipher);
+    // Minimal in-memory token repo tracking deleteToken calls.
+    let linkedinTokenExists = true;
+    const deletedPlatforms: string[] = [];
+    const tokenRepo = {
+      saveToken: (): Promise<void> => Promise.resolve(),
+      getLinkedIn: (): Promise<null> => Promise.resolve(null),
+      deleteToken: (platform: "linkedin" | "twitter"): Promise<boolean> => {
+        deletedPlatforms.push(platform);
+        const existed = platform === "linkedin" && linkedinTokenExists;
+        if (platform === "linkedin") linkedinTokenExists = false;
+        return Promise.resolve(existed);
+      },
+    };
+    const app = new Hono();
+    app.use("/api/admin/social-credentials/*", requireAdmin(SESSION_SECRET));
+    app.route(
+      "/api/admin/social-credentials",
+      createAdminSocialCredentialsRouter({
+        getRepo: () => repo,
+        getTokenRepo: () => tokenRepo,
+      }),
+    );
+
+    const res = await app.request("/api/admin/social-credentials/linkedin", {
+      method: "DELETE",
+      headers: { cookie: authCookie() },
+    });
+    expect(res.status).toBe(200);
+    // The token deletion was invoked for linkedin.
+    expect(deletedPlatforms).toEqual(["linkedin"]);
+    expect(linkedinTokenExists).toBe(false);
+  });
+
+  it("DELETE /twitter does NOT clear the linkedin OAuth token", async () => {
+    const { repo } = makeInMemoryRepo(cipher);
+    const deletedPlatforms: string[] = [];
+    const tokenRepo = {
+      saveToken: (): Promise<void> => Promise.resolve(),
+      getLinkedIn: (): Promise<null> => Promise.resolve(null),
+      deleteToken: (platform: "linkedin" | "twitter"): Promise<boolean> => {
+        deletedPlatforms.push(platform);
+        return Promise.resolve(false);
+      },
+    };
+    const app = new Hono();
+    app.use("/api/admin/social-credentials/*", requireAdmin(SESSION_SECRET));
+    app.route(
+      "/api/admin/social-credentials",
+      createAdminSocialCredentialsRouter({
+        getRepo: () => repo,
+        getTokenRepo: () => tokenRepo,
+      }),
+    );
+
+    await app.request("/api/admin/social-credentials/twitter", {
+      method: "DELETE",
+      headers: { cookie: authCookie() },
+    });
+    // Twitter has no OAuth token row in this feature; deleteToken must not fire.
+    expect(deletedPlatforms).toEqual([]);
   });
 });
 

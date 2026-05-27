@@ -33,6 +33,7 @@ export async function resolvePublishTarget(
       await deps.slackNotifier?.notifyPublishFailed({
         runId: input.runId,
         channel: input.channel,
+        reason: "not_reviewed",
       });
       return null;
     }

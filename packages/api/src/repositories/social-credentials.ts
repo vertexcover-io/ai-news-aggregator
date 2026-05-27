@@ -8,6 +8,13 @@ import type {
 } from "@newsletter/shared/db";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
 
+export interface LinkedInCredentialRecord {
+  clientId: string;
+  clientSecret: string;
+  apiVersion: string | null;
+  updatedAt: Date;
+}
+
 export type SocialCredentialPlatform = "linkedin" | "twitter" | "twitter_collector";
 
 export interface LinkedInUpsertInput {
@@ -51,6 +58,12 @@ export interface SocialCredentialsStatus {
 
 export interface SocialCredentialsRepo {
   getStatus(): Promise<SocialCredentialsStatus>;
+  /**
+   * Returns the decrypted LinkedIn client credentials, or null when no row
+   * exists. Uses the cipher to decrypt encryptedFields. Mirror of the
+   * pipeline's social-credentials repo getLinkedIn() — do NOT import pipeline.
+   */
+  getLinkedIn(): Promise<LinkedInCredentialRecord | null>;
   upsertLinkedIn(input: LinkedInUpsertInput): Promise<{ updatedAt: string }>;
   upsertTwitter(input: TwitterUpsertInput): Promise<{ updatedAt: string }>;
   upsertTwitterCollector(
@@ -66,6 +79,23 @@ export function createSocialCredentialsRepo(
   cipher: CredentialCipher,
 ): SocialCredentialsRepo {
   return {
+    async getLinkedIn(): Promise<LinkedInCredentialRecord | null> {
+      const rows = await db
+        .select()
+        .from(socialCredentials)
+        .where(eq(socialCredentials.platform, "linkedin"))
+        .limit(1);
+      if (rows.length === 0) return null;
+      const row = rows[0];
+      const fields = row.encryptedFields as LinkedInEncryptedFields;
+      return {
+        clientId: cipher.decrypt(fields.clientId),
+        clientSecret: cipher.decrypt(fields.clientSecret),
+        apiVersion: row.metadata?.apiVersion ?? null,
+        updatedAt: row.updatedAt,
+      };
+    },
+
     async getStatus(): Promise<SocialCredentialsStatus> {
       const rows = await db.select().from(socialCredentials);
       let linkedin: LinkedInStatus = {

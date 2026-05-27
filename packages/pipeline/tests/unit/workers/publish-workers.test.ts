@@ -336,3 +336,217 @@ describe("twitter-post notifyTwitterPosted (Phase 2 VS-8, VS-9)", () => {
     expect(notifyTwitterPosted).not.toHaveBeenCalled();
   });
 });
+
+// ---- Phase 2 REQ-008/REQ-009/REQ-010/EDGE-006/EDGE-007: failed-post Slack alerts ----
+
+describe("REQ-008: linkedin-post calls notifyPublishFailed on failed status", () => {
+  it("REQ-008: calls notifyPublishFailed once with channel linkedin-post when notifier returns failed", async () => {
+    const archive = makeArchive();
+    const archiveRepo = makeRepo(archive);
+    const notifyPublishFailed = vi.fn(() => Promise.resolve());
+    const slackNotifier: SlackNotifier = { ...makeSlack(), notifyPublishFailed };
+    const linkedinNotifier = {
+      notifyArchiveReady: vi.fn(() =>
+        Promise.resolve({ status: "failed" as const, reason: "API error" }),
+      ),
+    };
+
+    await handleLinkedInPostJob(
+      { archiveRepo, linkedinNotifier, slackNotifier },
+      { name: "linkedin-post", id: "job-1", data: {} },
+    );
+
+    expect(notifyPublishFailed).toHaveBeenCalledOnce();
+    expect(notifyPublishFailed).toHaveBeenCalledWith({
+      runId: archive.id,
+      channel: "linkedin-post",
+      reason: "API error",
+    });
+  });
+
+  it("REQ-010: does NOT call notifyPublishFailed when result is skipped", async () => {
+    const archive = makeArchive();
+    const archiveRepo = makeRepo(archive);
+    const notifyPublishFailed = vi.fn(() => Promise.resolve());
+    const slackNotifier: SlackNotifier = { ...makeSlack(), notifyPublishFailed };
+    const linkedinNotifier = {
+      notifyArchiveReady: vi.fn(() =>
+        Promise.resolve({ status: "skipped" as const, reason: "already_posted" as const }),
+      ),
+    };
+
+    await handleLinkedInPostJob(
+      { archiveRepo, linkedinNotifier, slackNotifier },
+      { name: "linkedin-post", id: "job-1", data: {} },
+    );
+
+    expect(notifyPublishFailed).not.toHaveBeenCalled();
+  });
+
+  it("REQ-010: does NOT call notifyPublishFailed when result is posted with permalink", async () => {
+    const archive = makeArchive();
+    const archiveRepo = makeRepo(archive);
+    const notifyPublishFailed = vi.fn(() => Promise.resolve());
+    const notifyLinkedinPosted = vi.fn(() => Promise.resolve());
+    const slackNotifier: SlackNotifier = {
+      ...makeSlack(),
+      notifyPublishFailed,
+      notifyLinkedinPosted,
+    };
+    const linkedinNotifier = {
+      notifyArchiveReady: vi.fn(() =>
+        Promise.resolve({ status: "posted" as const, permalink: "urn:li:share:999" }),
+      ),
+    };
+
+    await handleLinkedInPostJob(
+      { archiveRepo, linkedinNotifier, slackNotifier },
+      { name: "linkedin-post", id: "job-1", data: {} },
+    );
+
+    expect(notifyPublishFailed).not.toHaveBeenCalled();
+    expect(notifyLinkedinPosted).toHaveBeenCalledOnce();
+  });
+
+  it("EDGE-006: job still completes (does not throw) when notifyPublishFailed throws", async () => {
+    const archive = makeArchive();
+    const archiveRepo = makeRepo(archive);
+    const notifyPublishFailed = vi.fn(() => Promise.reject(new Error("Slack down")));
+    const slackNotifier: SlackNotifier = { ...makeSlack(), notifyPublishFailed };
+    const linkedinNotifier = {
+      notifyArchiveReady: vi.fn(() =>
+        Promise.resolve({ status: "failed" as const, reason: "API error" }),
+      ),
+    };
+
+    await expect(
+      handleLinkedInPostJob(
+        { archiveRepo, linkedinNotifier, slackNotifier },
+        { name: "linkedin-post", id: "job-1", data: {} },
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("EDGE-007: no throw when slackNotifier is undefined and result is failed", async () => {
+    const archive = makeArchive();
+    const archiveRepo = makeRepo(archive);
+    const linkedinNotifier = {
+      notifyArchiveReady: vi.fn(() =>
+        Promise.resolve({ status: "failed" as const, reason: "API error" }),
+      ),
+    };
+
+    await expect(
+      handleLinkedInPostJob(
+        { archiveRepo, linkedinNotifier },
+        { name: "linkedin-post", id: "job-1", data: {} },
+      ),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("REQ-009: twitter-post calls notifyPublishFailed on failed status", () => {
+  it("REQ-009: calls notifyPublishFailed once with channel twitter-post when notifier returns failed", async () => {
+    const archive = makeArchive();
+    const archiveRepo = makeRepo(archive);
+    const notifyPublishFailed = vi.fn(() => Promise.resolve());
+    const slackNotifier: SlackNotifier = { ...makeSlack(), notifyPublishFailed };
+    const twitterNotifier = {
+      notifyArchiveReady: vi.fn(() =>
+        Promise.resolve({ status: "failed" as const, reason: "API error" }),
+      ),
+    };
+
+    await handleTwitterPostJob(
+      { archiveRepo, twitterNotifier, slackNotifier },
+      { name: "twitter-post", id: "job-1", data: {} },
+    );
+
+    expect(notifyPublishFailed).toHaveBeenCalledOnce();
+    expect(notifyPublishFailed).toHaveBeenCalledWith({
+      runId: archive.id,
+      channel: "twitter-post",
+      reason: "API error",
+    });
+  });
+
+  it("REQ-010: does NOT call notifyPublishFailed when result is skipped", async () => {
+    const archive = makeArchive();
+    const archiveRepo = makeRepo(archive);
+    const notifyPublishFailed = vi.fn(() => Promise.resolve());
+    const slackNotifier: SlackNotifier = { ...makeSlack(), notifyPublishFailed };
+    const twitterNotifier = {
+      notifyArchiveReady: vi.fn(() =>
+        Promise.resolve({ status: "skipped" as const, reason: "already_posted" as const }),
+      ),
+    };
+
+    await handleTwitterPostJob(
+      { archiveRepo, twitterNotifier, slackNotifier },
+      { name: "twitter-post", id: "job-1", data: {} },
+    );
+
+    expect(notifyPublishFailed).not.toHaveBeenCalled();
+  });
+
+  it("REQ-010: does NOT call notifyPublishFailed when result is posted with permalink", async () => {
+    const archive = makeArchive();
+    const archiveRepo = makeRepo(archive);
+    const notifyPublishFailed = vi.fn(() => Promise.resolve());
+    const notifyTwitterPosted = vi.fn(() => Promise.resolve());
+    const slackNotifier: SlackNotifier = {
+      ...makeSlack(),
+      notifyPublishFailed,
+      notifyTwitterPosted,
+    };
+    const twitterNotifier = {
+      notifyArchiveReady: vi.fn(() =>
+        Promise.resolve({ status: "posted" as const, permalink: "https://x.com/user/status/999" }),
+      ),
+    };
+
+    await handleTwitterPostJob(
+      { archiveRepo, twitterNotifier, slackNotifier },
+      { name: "twitter-post", id: "job-1", data: {} },
+    );
+
+    expect(notifyPublishFailed).not.toHaveBeenCalled();
+    expect(notifyTwitterPosted).toHaveBeenCalledOnce();
+  });
+
+  it("EDGE-006: job still completes (does not throw) when notifyPublishFailed throws", async () => {
+    const archive = makeArchive();
+    const archiveRepo = makeRepo(archive);
+    const notifyPublishFailed = vi.fn(() => Promise.reject(new Error("Slack down")));
+    const slackNotifier: SlackNotifier = { ...makeSlack(), notifyPublishFailed };
+    const twitterNotifier = {
+      notifyArchiveReady: vi.fn(() =>
+        Promise.resolve({ status: "failed" as const, reason: "API error" }),
+      ),
+    };
+
+    await expect(
+      handleTwitterPostJob(
+        { archiveRepo, twitterNotifier, slackNotifier },
+        { name: "twitter-post", id: "job-1", data: {} },
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("EDGE-007: no throw when slackNotifier is undefined and result is failed", async () => {
+    const archive = makeArchive();
+    const archiveRepo = makeRepo(archive);
+    const twitterNotifier = {
+      notifyArchiveReady: vi.fn(() =>
+        Promise.resolve({ status: "failed" as const, reason: "API error" }),
+      ),
+    };
+
+    await expect(
+      handleTwitterPostJob(
+        { archiveRepo, twitterNotifier },
+        { name: "twitter-post", id: "job-1", data: {} },
+      ),
+    ).resolves.toBeUndefined();
+  });
+});

@@ -11,9 +11,19 @@ import {
   type SocialCredentialPlatform,
   type SocialCredentialsRepo,
 } from "@api/repositories/social-credentials.js";
+import {
+  createSocialTokensRepo,
+  type SocialTokensRepo,
+} from "@api/repositories/social-tokens.js";
 
 export interface AdminSocialCredentialsRouterDeps {
   getRepo: () => SocialCredentialsRepo;
+  /**
+   * Token repo, used to also clear the OAuth access/refresh token when LinkedIn
+   * credentials are cleared. Optional so existing callers/tests that only set
+   * getRepo keep working (the token clear is then skipped).
+   */
+  getTokenRepo?: () => SocialTokensRepo;
 }
 
 // Public URL slug → internal storage key. The slug stays kebab-case in the URL
@@ -83,6 +93,12 @@ export function createAdminSocialCredentialsRouter(
       return c.json({ error: "invalid_platform" }, 400);
     }
     const removed = await deps.getRepo().delete(key);
+    // Clearing LinkedIn credentials must also clear the OAuth access/refresh
+    // token — otherwise the connection still shows "Connected" with an orphaned
+    // social_tokens row after the client creds are gone.
+    if (key === "linkedin" && deps.getTokenRepo) {
+      await deps.getTokenRepo().deleteToken("linkedin");
+    }
     return c.json({ ok: true, removed });
   });
 
@@ -93,5 +109,7 @@ export function createDefaultAdminSocialCredentialsRouter(): Hono {
   return createAdminSocialCredentialsRouter({
     getRepo: () =>
       createSocialCredentialsRepo(defaultGetDb(), getCredentialCipher()),
+    getTokenRepo: () =>
+      createSocialTokensRepo(defaultGetDb(), getCredentialCipher()),
   });
 }

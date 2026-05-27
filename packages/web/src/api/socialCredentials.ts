@@ -208,3 +208,44 @@ export function useDeleteSocialCredentials(): UseMutationResult<
     },
   });
 }
+
+// ── LinkedIn OAuth status + start ─────────────────────────────────────────────
+
+export interface LinkedInOAuthStatus {
+  clientConfigured: boolean;
+  connected: boolean;
+  connectedAs: string | null;
+  expiresAt: string | null;
+  hasRefreshToken: boolean;
+}
+
+const LINKEDIN_OAUTH_STATUS_KEY = ["linkedin-oauth-status"] as const;
+
+export async function fetchLinkedInOAuthStatus(): Promise<LinkedInOAuthStatus> {
+  const res = await apiFetchAdmin(
+    "/api/admin/social-credentials/linkedin/oauth/status",
+  );
+  if (!res.ok) {
+    await readError(res, "Failed to fetch LinkedIn OAuth status");
+  }
+  return (await res.json()) as LinkedInOAuthStatus;
+}
+
+export async function startLinkedInOAuth(): Promise<{ authorizeUrl: string }> {
+  const res = await apiFetchAdmin(
+    "/api/admin/social-credentials/linkedin/oauth/start",
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    await readError(res, "Failed to start LinkedIn OAuth");
+  }
+  return (await res.json()) as { authorizeUrl: string };
+}
+
+export function useLinkedInOAuthStatus(): UseQueryResult<LinkedInOAuthStatus> {
+  return useQuery<LinkedInOAuthStatus>({
+    queryKey: LINKEDIN_OAUTH_STATUS_KEY,
+    queryFn: fetchLinkedInOAuthStatus,
+    refetchOnWindowFocus: false,
+  });
+}

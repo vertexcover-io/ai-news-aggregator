@@ -15,6 +15,7 @@ import { resolve } from "node:path";
 import { config as dotenv } from "dotenv";
 
 import { getDb } from "@newsletter/shared";
+import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createSocialTokensRepo } from "../packages/pipeline/src/repositories/social-tokens.js";
 import {
   buildLinkedInAuthorizeUrl,
@@ -155,7 +156,7 @@ const server = createServer(async (req, res) => {
       "<h1>✓ Done</h1><p>You can close this tab. Check your terminal.</p>",
     );
 
-    const repo = createSocialTokensRepo(getDb());
+    const repo = createSocialTokensRepo(getDb(), getCredentialCipher());
     const missingRefresh = parsed.refreshToken === null;
 
     await repo.saveToken("linkedin", {
