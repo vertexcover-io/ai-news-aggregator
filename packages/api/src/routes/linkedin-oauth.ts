@@ -28,6 +28,7 @@
 
 import { randomBytes } from "node:crypto";
 import { Hono } from "hono";
+import { createLogger } from "@newsletter/shared/logger";
 import type { SocialCredentialsRepo } from "@api/repositories/social-credentials.js";
 import type { SocialTokensRepo } from "@api/repositories/social-tokens.js";
 import { resolveLinkedInClient } from "@api/services/linkedin-credential-resolver.js";
@@ -56,6 +57,8 @@ export interface LinkedInOAuthRouterDeps {
 
 const STATE_TTL_SECONDS = 600; // 10 minutes
 const STATE_KEY_PREFIX = "linkedin:oauth:state:";
+
+const oauthLog = createLogger("linkedin-oauth");
 
 function stateKey(state: string): string {
   return `${STATE_KEY_PREFIX}${state}`;
@@ -158,9 +161,32 @@ export function createLinkedInOAuthCallbackRouter(
     const env = deps.env as Record<string, string | undefined>;
     const code = c.req.query("code");
     const state = c.req.query("state");
+    const linkedinError = c.req.query("error");
 
-    const errorRedirect = (reason: string): Response =>
-      c.redirect(settingsRedirectUrl(env, { linkedin: "error", reason }));
+    oauthLog.info(
+      {
+        event: "linkedin.callback.hit",
+        hasCode: code !== undefined,
+        hasState: state !== undefined,
+        linkedinError: linkedinError ?? null,
+        linkedinErrorDescription: c.req.query("error_description") ?? null,
+      },
+      "linkedin oauth callback hit",
+    );
+
+    const errorRedirect = (reason: string): Response => {
+      oauthLog.warn(
+        { event: "linkedin.callback.error_redirect", reason },
+        "linkedin oauth callback redirecting with error",
+      );
+      return c.redirect(settingsRedirectUrl(env, { linkedin: "error", reason }));
+    };
+
+    // LinkedIn rejected the authorize request (e.g. unregistered redirect_uri,
+    // user denied). It redirects back with ?error= and no code.
+    if (linkedinError !== undefined) {
+      return errorRedirect("linkedin_denied");
+    }
 
     // Validate CSRF state — consume once.
     if (!state) {
@@ -201,8 +227,21 @@ export function createLinkedInOAuthCallbackRouter(
       fetchFn,
     );
     if (!exchangeResult.ok) {
+      oauthLog.error(
+        { event: "linkedin.callback.exchange_failed" },
+        "linkedin token exchange failed",
+      );
       return errorRedirect("exchange");
     }
+
+    oauthLog.info(
+      {
+        event: "linkedin.callback.exchange_ok",
+        hasRefreshToken: exchangeResult.parsed.refreshToken !== "",
+        expiresAt: exchangeResult.parsed.expiresAt.toISOString(),
+      },
+      "linkedin token exchange succeeded",
+    );
 
     // Fetch userinfo to get personUrn.
     const userInfoResult = await fetchUserInfo(
@@ -228,6 +267,16 @@ export function createLinkedInOAuthCallbackRouter(
         ...(displayName !== null ? { name: displayName } : {}),
       },
     });
+
+    oauthLog.info(
+      {
+        event: "linkedin.callback.connected",
+        personUrn,
+        name: displayName,
+        hasRefreshToken: exchangeResult.parsed.refreshToken !== "",
+      },
+      "linkedin oauth connected; token saved",
+    );
 
     return c.redirect(settingsRedirectUrl(env, { linkedin: "connected" }));
   });

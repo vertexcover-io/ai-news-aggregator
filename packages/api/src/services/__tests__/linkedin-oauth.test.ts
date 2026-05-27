@@ -65,6 +65,17 @@ describe("buildAuthorizeUrl", () => {
     expect(url.searchParams.get("state")).toBe("csrf-token-abc123");
   });
 
+  it("sets prompt=login so Reconnect re-runs login/consent (account switch)", () => {
+    const url = new URL(
+      buildAuthorizeUrl({
+        clientId: "cid",
+        redirectUri: "https://example.com/cb",
+        state: "s1",
+      }),
+    );
+    expect(url.searchParams.get("prompt")).toBe("login");
+  });
+
   it("uses the LinkedIn authorization endpoint as the base URL", () => {
     const url = new URL(
       buildAuthorizeUrl({

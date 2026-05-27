@@ -57,6 +57,17 @@ export function buildAuthorizeUrl(input: BuildAuthorizeUrlInput): string {
     redirect_uri: input.redirectUri,
     state: input.state,
     scope: LINKEDIN_SCOPE,
+    // Request that LinkedIn re-prompt for login rather than silently reusing the
+    // browser's existing LinkedIn SSO session. Intent: a "Reconnect" click should
+    // give the admin a chance to authenticate (or switch accounts) instead of an
+    // invisible bounce back to settings.
+    //
+    // CAVEAT: LinkedIn's honoring of `prompt` is inconsistent — when the browser
+    // already has an active LinkedIn session it often still auto-completes the
+    // flow. Reliable account switching requires logging out of LinkedIn itself,
+    // which this app cannot force. We send `prompt=login` as a best-effort hint;
+    // it is harmless when ignored.
+    prompt: "login",
   });
   return `${LINKEDIN_AUTHORIZE_ENDPOINT}?${params.toString()}`;
 }
