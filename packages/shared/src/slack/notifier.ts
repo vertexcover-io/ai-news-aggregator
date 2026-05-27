@@ -254,6 +254,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
     notifyPublishFailed(input: {
       runId: string;
       channel: "email-send" | "linkedin-post" | "twitter-post";
+      reason?: string;
     }): Promise<void> {
       const keyByChannel = {
         "email-send": "emailFailure",
@@ -268,6 +269,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
           buildPublishFailedMessage({
             runId: input.runId,
             channel: input.channel,
+            reason: input.reason,
             publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
           }).blocks as unknown[],
       });

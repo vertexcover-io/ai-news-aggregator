@@ -45,7 +45,11 @@ export async function handleTwitterPostJob(
     }
   } else if (result?.status === "failed") {
     try {
-      await deps.slackNotifier?.notifyPublishFailed({ runId: archive.id, channel: "twitter-post" });
+      await deps.slackNotifier?.notifyPublishFailed({
+        runId: archive.id,
+        channel: "twitter-post",
+        reason: result.reason,
+      });
     } catch (err) {
       logger.warn(
         {

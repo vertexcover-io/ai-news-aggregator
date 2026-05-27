@@ -360,6 +360,7 @@ describe("REQ-008: linkedin-post calls notifyPublishFailed on failed status", ()
     expect(notifyPublishFailed).toHaveBeenCalledWith({
       runId: archive.id,
       channel: "linkedin-post",
+      reason: "API error",
     });
   });
 
@@ -465,6 +466,7 @@ describe("REQ-009: twitter-post calls notifyPublishFailed on failed status", () 
     expect(notifyPublishFailed).toHaveBeenCalledWith({
       runId: archive.id,
       channel: "twitter-post",
+      reason: "API error",
     });
   });
 
