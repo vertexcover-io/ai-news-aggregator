@@ -1,10 +1,12 @@
 import type { PoolResponse, RankedItem, RankedItemRef } from "@newsletter/shared";
+import type { DigestMeta } from "@newsletter/shared/constants";
 import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
 import { buildItemPreview } from "./item-preview.js";
 import type {
   RunArchiveRow,
   RunArchivesRepo,
+  UpdateRankedItemsContext,
 } from "@api/repositories/run-archives.js";
 import { detectAddPostSourceType, type AddPostSourceType } from "@newsletter/pipeline/add-post";
 export type { AddPostSourceType };
@@ -61,6 +63,17 @@ export type HydrateAddedPostFn = (
   options?: { signal?: AbortSignal },
 ) => Promise<RankedItem>;
 
+export interface DigestMetaInputItem {
+  rank: number;
+  title: string;
+  summary: string;
+  bottomLine: string;
+}
+
+export type GenerateDigestMetaFn = (
+  items: DigestMetaInputItem[],
+) => Promise<DigestMeta>;
+
 export interface ReviewDeps {
   archiveRepo: RunArchivesRepo;
   rawItemsRepo: RawItemsRepo;
@@ -77,6 +90,12 @@ export interface PatchArchiveInput {
     bottomLine?: string;
     imageUrl?: string | null;
   }[];
+  // Optional digest-meta fields. An omitted key (absent from the parsed body)
+  // preserves the existing column; a present `null`/string is written verbatim.
+  digestHeadline?: string | null;
+  digestSummary?: string | null;
+  hook?: string | null;
+  twitterSummary?: string | null;
 }
 
 export async function patchArchive(
@@ -108,10 +127,28 @@ export async function patchArchive(
     return ref;
   });
   const rawItemsById = new Map(found.map((r) => [r.id, r]));
+
+  // Only include keys actually present in `input` so the repo can distinguish
+  // "not provided → preserve" from "set to null/empty" (EDGE-004 / EDGE-009).
+  // The zod parse drops absent optional keys, so `"k" in input` is a faithful
+  // presence check.
+  const digestMeta: NonNullable<UpdateRankedItemsContext["digestMeta"]> = {};
+  if ("digestHeadline" in input) digestMeta.digestHeadline = input.digestHeadline;
+  if ("digestSummary" in input) digestMeta.digestSummary = input.digestSummary;
+  if ("hook" in input) digestMeta.hook = input.hook;
+  if ("twitterSummary" in input) digestMeta.twitterSummary = input.twitterSummary;
+
+  // Effective post-patch headline/summary so searchText reflects the new copy.
+  const effectiveHeadline =
+    "digestHeadline" in input ? input.digestHeadline ?? null : archive.digestHeadline;
+  const effectiveSummary =
+    "digestSummary" in input ? input.digestSummary ?? null : archive.digestSummary;
+
   return deps.archiveRepo.updateRankedItems(runId, refs, {
     rawItemsById,
-    digestHeadline: archive.digestHeadline,
-    digestSummary: archive.digestSummary,
+    digestHeadline: effectiveHeadline,
+    digestSummary: effectiveSummary,
+    digestMeta: Object.keys(digestMeta).length > 0 ? digestMeta : undefined,
   });
 }
 
@@ -153,6 +190,45 @@ export async function addPostToArchive(
   } finally {
     clearTimeout(timer);
   }
+}
+
+export interface RegenerateDigestMetaInput {
+  items: { id: number; title: string; summary: string; bottomLine: string }[];
+}
+
+export interface RegenerateDigestMetaDeps {
+  archiveRepo: RunArchivesRepo;
+  generateDigestMeta: GenerateDigestMetaFn;
+}
+
+export async function regenerateDigestMeta(
+  runId: string,
+  input: RegenerateDigestMetaInput,
+  deps: RegenerateDigestMetaDeps,
+): Promise<DigestMeta> {
+  const archive = await deps.archiveRepo.findById(runId);
+  if (!archive) throw new NotFoundError(`archive not found: ${runId}`);
+  if (archive.isDryRun) {
+    throw new ConflictError("cannot regenerate digest for a dry-run archive");
+  }
+
+  const rankedIds = new Set(archive.rankedItems.map((r) => r.rawItemId));
+  const missing = input.items.map((i) => i.id).filter((id) => !rankedIds.has(id));
+  if (missing.length > 0) {
+    throw new ValidationError(
+      `unknown ranked item ids: ${missing.join(", ")}`,
+      missing,
+    );
+  }
+
+  const items: DigestMetaInputItem[] = input.items.map((i, index) => ({
+    rank: index + 1,
+    title: i.title,
+    summary: i.summary,
+    bottomLine: i.bottomLine,
+  }));
+
+  return deps.generateDigestMeta(items);
 }
 
 export interface GetPoolQuery {

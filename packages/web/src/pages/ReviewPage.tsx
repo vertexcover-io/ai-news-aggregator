@@ -7,6 +7,7 @@ import { useSourceFacets } from "../hooks/useSourceFacets";
 import { patchArchive, promoteItem } from "../api/archives";
 import { ReviewList } from "../components/review/ReviewList";
 import { AddPostPanel } from "../components/review/AddPostPanel";
+import { DigestMetaPanel } from "../components/review/DigestMetaPanel";
 import { SaveBar } from "../components/review/SaveBar";
 import { PoolSection } from "../components/review/PoolSection";
 
@@ -43,6 +44,13 @@ export function ReviewPage(): ReactElement {
     updateItemField,
   } = useReview(runId);
   const [saving, setSaving] = useState(false);
+  const [digestMeta, setDigestMeta] = useState({
+    headline: "",
+    summary: "",
+    hook: "",
+    twitterSummary: "",
+  });
+  const [digestHydratedId, setDigestHydratedId] = useState<string | null>(null);
   const [promotingIds, setPromotingIds] = useState<Set<number>>(
     () => new Set(),
   );
@@ -55,6 +63,20 @@ export function ReviewPage(): ReactElement {
   const { facets, isLoading: facetsLoading } = useSourceFacets(runId);
 
   const shortlistedItemIds = query.data?.shortlistedItemIds ?? null;
+
+  // Render-time hydration of the digest-meta fields when the completed archive
+  // arrives (mirrors useReview's ranked-items hydration pattern).
+  const digestCompletedKey =
+    query.data?.status === "completed" ? query.data.id : null;
+  if (digestCompletedKey !== null && digestCompletedKey !== digestHydratedId) {
+    setDigestMeta({
+      headline: query.data?.digestHeadline ?? "",
+      summary: query.data?.digestSummary ?? "",
+      hook: query.data?.hook ?? "",
+      twitterSummary: query.data?.twitterSummary ?? "",
+    });
+    setDigestHydratedId(digestCompletedKey);
+  }
 
   async function handlePromote(
     rawItemId: number,
@@ -209,6 +231,10 @@ export function ReviewPage(): ReactElement {
           }),
           imageUrl: it.imageUrl,
         })),
+        digestHeadline: digestMeta.headline,
+        digestSummary: digestMeta.summary,
+        hook: digestMeta.hook,
+        twitterSummary: digestMeta.twitterSummary,
       });
       allowSaveNavigation.current = true;
       reset(state.current);
@@ -260,6 +286,17 @@ export function ReviewPage(): ReactElement {
           onPending={addPending}
           onResolved={resolvePending}
           onFailed={failPending}
+        />
+        <DigestMetaPanel
+          runId={runId}
+          items={state.current.map((it) => ({
+            id: it.id,
+            title: it.title,
+            summary: it.recap?.summary ?? "",
+            bottomLine: it.recap?.bottomLine ?? "",
+          }))}
+          values={digestMeta}
+          onChange={setDigestMeta}
         />
 
         <div className="text-xs text-muted-foreground">

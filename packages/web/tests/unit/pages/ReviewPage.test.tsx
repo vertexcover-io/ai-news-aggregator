@@ -16,6 +16,26 @@ vi.mock("../../../src/api/runs", async () => {
 
 import { getAdminArchive } from "../../../src/api/runs";
 
+vi.mock("../../../src/api/archives", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../../src/api/archives")
+  >("../../../src/api/archives");
+  return { ...actual, patchArchive: vi.fn(), regenerateDigestMeta: vi.fn() };
+});
+
+import { patchArchive } from "../../../src/api/archives";
+
+function fieldValue(label: string): string {
+  const el = screen.getByLabelText(label);
+  if (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement
+  ) {
+    return el.value;
+  }
+  throw new Error(`expected an input/textarea for "${label}"`);
+}
+
 function makeItem(id: number, title: string): RankedItem {
   return {
     id,
@@ -257,6 +277,90 @@ describe("ReviewPage", () => {
     renderAt("run-dry");
     const pill = await screen.findByTestId("dry-run-pill");
     expect(pill.textContent).toMatch(/dry run/i);
+  });
+
+  it("REQ-015: renders DigestMetaPanel below AddPostPanel, seeded from the archive digest fields", async () => {
+    const response: RunStateResponse = {
+      id: "run-1",
+      status: "completed",
+      stage: "completed",
+      topN: 10,
+      startedAt: "2026-04-14T00:00:00Z",
+      updatedAt: "2026-04-14T00:00:00Z",
+      completedAt: "2026-04-14T00:00:00Z",
+      sources: {},
+      rankedItems: [makeItem(1, "First")],
+      shortlistedItemIds: null,
+      warnings: [],
+      error: null,
+      digestHeadline: "Seeded headline",
+      digestSummary: "Seeded summary",
+      hook: "Seeded hook",
+      twitterSummary: "Seeded twitter",
+    };
+    vi.mocked(getAdminArchive).mockResolvedValue(response);
+    renderAt("run-1");
+    await screen.findByText("First");
+
+    const addPostLabel = screen.getByText("Add a post");
+    const digestLabel = screen.getByText("Digest meta");
+    // DOM order: Add a post precedes Digest meta
+    expect(
+      addPostLabel.compareDocumentPosition(digestLabel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    expect(fieldValue("Headline")).toBe("Seeded headline");
+    expect(fieldValue("Summary")).toBe("Seeded summary");
+    expect(fieldValue("Hook")).toBe("Seeded hook");
+    expect(fieldValue("Twitter Summary")).toBe("Seeded twitter");
+  });
+
+  it("REQ-019: Save includes the four digest fields with current panel values", async () => {
+    const response: RunStateResponse = {
+      id: "run-1",
+      status: "completed",
+      stage: "completed",
+      topN: 10,
+      startedAt: "2026-04-14T00:00:00Z",
+      updatedAt: "2026-04-14T00:00:00Z",
+      completedAt: "2026-04-14T00:00:00Z",
+      sources: {},
+      rankedItems: [makeItem(1, "First")],
+      shortlistedItemIds: null,
+      warnings: [],
+      error: null,
+      digestHeadline: "Seeded headline",
+      digestSummary: "Seeded summary",
+      hook: "Seeded hook",
+      twitterSummary: "Seeded twitter",
+    };
+    vi.mocked(getAdminArchive).mockResolvedValue(response);
+    vi.mocked(patchArchive).mockResolvedValue(undefined);
+    renderAt("run-1");
+    await screen.findByText("First");
+
+    act(() => {
+      fireEvent.change(screen.getByLabelText("Headline"), {
+        target: { value: "Edited headline" },
+      });
+    });
+
+    const saveButton = screen.getByRole("button", { name: /^save/i });
+    act(() => {
+      fireEvent.click(saveButton);
+    });
+
+    await vi.waitFor(() => {
+      expect(vi.mocked(patchArchive)).toHaveBeenCalledTimes(1);
+    });
+    const body = vi.mocked(patchArchive).mock.calls[0]?.[1];
+    expect(body).toMatchObject({
+      digestHeadline: "Edited headline",
+      digestSummary: "Seeded summary",
+      hook: "Seeded hook",
+      twitterSummary: "Seeded twitter",
+    });
   });
 
   it("does not render DRY RUN pill when archive.isDryRun is false/undefined", async () => {

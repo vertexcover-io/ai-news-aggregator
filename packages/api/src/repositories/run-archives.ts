@@ -26,6 +26,20 @@ export interface UpdateRankedItemsContext {
   rawItemsById: Map<number, RawItemRow>;
   digestHeadline: string | null;
   digestSummary: string | null;
+  /**
+   * Digest-meta fields to write. Only keys actually present are written; an
+   * absent key preserves the existing column value. A present key carrying
+   * `null` or a string is written verbatim (EDGE-004 empty string / EDGE-009
+   * explicit null). The effective post-patch headline/summary (new value if
+   * provided here, else `digestHeadline`/`digestSummary` above) is what
+   * `searchText` is recomputed from.
+   */
+  digestMeta?: {
+    digestHeadline?: string | null;
+    digestSummary?: string | null;
+    hook?: string | null;
+    twitterSummary?: string | null;
+  };
 }
 
 export interface RunArchiveRow {
@@ -42,6 +56,7 @@ export interface RunArchiveRow {
   digestHeadline: string | null;
   digestSummary: string | null;
   hook: string | null;
+  twitterSummary: string | null;
   sourceTelemetry: RunSourceTelemetry | null;
   slackNotifiedAt: Date | null;
   emailSentAt: Date | null;
@@ -224,6 +239,7 @@ export function createRunArchivesRepo(
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
           hook: runArchives.hook,
+          twitterSummary: runArchives.twitterSummary,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
           emailSentAt: runArchives.emailSentAt,
@@ -346,6 +362,7 @@ export function createRunArchivesRepo(
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
           hook: runArchives.hook,
+          twitterSummary: runArchives.twitterSummary,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
           emailSentAt: runArchives.emailSentAt,
@@ -500,6 +517,7 @@ export function createRunArchivesRepo(
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
           hook: runArchives.hook,
+          twitterSummary: runArchives.twitterSummary,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
           emailSentAt: runArchives.emailSentAt,
@@ -521,20 +539,35 @@ export function createRunArchivesRepo(
       items: RankedItemRef[],
       ctx: UpdateRankedItemsContext,
     ): Promise<RunArchiveRow> {
+      const meta = ctx.digestMeta;
+      // Effective post-patch headline/summary: a provided digestMeta key wins,
+      // otherwise the existing value carried on ctx. searchText MUST reflect the
+      // copy that will be displayed after this write, or public FTS drifts.
+      const effectiveHeadline =
+        meta && "digestHeadline" in meta ? meta.digestHeadline ?? null : ctx.digestHeadline;
+      const effectiveSummary =
+        meta && "digestSummary" in meta ? meta.digestSummary ?? null : ctx.digestSummary;
       const searchText = serializeArchiveSearchText({
-        digestHeadline: ctx.digestHeadline,
-        digestSummary: ctx.digestSummary,
+        digestHeadline: effectiveHeadline,
+        digestSummary: effectiveSummary,
         rankedItems: items,
         rawItemsById: ctx.rawItemsById,
       });
+      const setValues: Partial<typeof runArchives.$inferInsert> = {
+        rankedItems: items,
+        reviewed: true,
+        searchText,
+        updatedAt: new Date(),
+      };
+      if (meta) {
+        if ("digestHeadline" in meta) setValues.digestHeadline = meta.digestHeadline ?? null;
+        if ("digestSummary" in meta) setValues.digestSummary = meta.digestSummary ?? null;
+        if ("hook" in meta) setValues.hook = meta.hook ?? null;
+        if ("twitterSummary" in meta) setValues.twitterSummary = meta.twitterSummary ?? null;
+      }
       const [row] = await db
         .update(runArchives)
-        .set({
-          rankedItems: items,
-          reviewed: true,
-          searchText,
-          updatedAt: new Date(),
-        })
+        .set(setValues)
         .where(eq(runArchives.id, id))
         .returning({
           id: runArchives.id,
@@ -550,6 +583,7 @@ export function createRunArchivesRepo(
           digestHeadline: runArchives.digestHeadline,
           digestSummary: runArchives.digestSummary,
           hook: runArchives.hook,
+          twitterSummary: runArchives.twitterSummary,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
           emailSentAt: runArchives.emailSentAt,
