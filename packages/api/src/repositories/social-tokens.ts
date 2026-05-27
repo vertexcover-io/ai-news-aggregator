@@ -27,10 +27,12 @@ export interface SocialTokensRepo {
   saveToken(platform: SocialPlatform, input: SaveSocialTokenInput): Promise<void>;
   /** Returns the decrypted LinkedIn token row, or null when no row exists. Decrypt failures return null. */
   getLinkedIn(): Promise<SocialTokenRecord | null>;
+  /** Deletes the OAuth token row for a platform. Returns true if a row was removed. */
+  deleteToken(platform: SocialPlatform): Promise<boolean>;
 }
 
 export function createSocialTokensRepo(
-  db: Pick<AppDb, "select" | "insert">,
+  db: Pick<AppDb, "select" | "insert" | "delete">,
   cipher: CredentialCipher,
 ): SocialTokensRepo {
   return {
@@ -86,6 +88,14 @@ export function createSocialTokensRepo(
         // Decrypt failure → treat as not connected (REQ-011)
         return null;
       }
+    },
+
+    async deleteToken(platform: SocialPlatform): Promise<boolean> {
+      const result = await db
+        .delete(socialTokens)
+        .where(eq(socialTokens.platform, platform))
+        .returning({ platform: socialTokens.platform });
+      return result.length > 0;
     },
   };
 }

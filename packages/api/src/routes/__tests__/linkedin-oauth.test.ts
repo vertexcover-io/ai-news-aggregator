@@ -110,6 +110,9 @@ function makeTokenRepo(existingRow?: {
         metadata: existingRow.metadata ?? null,
       });
     },
+    deleteToken(): Promise<boolean> {
+      return Promise.resolve(existingRow !== undefined);
+    },
   };
   return { repo, saved };
 }
@@ -352,6 +355,31 @@ describe("GET /callback", () => {
     const location = res.headers.get("location") ?? "";
     expect(location).toContain("linkedin=error");
     expect(location).toContain("reason=state");
+    expect(saved.length).toBe(0);
+  });
+
+  it("LinkedIn ?error= → 302 ?linkedin=error&reason=linkedin_denied; no write", async () => {
+    const { redis } = makeRedis();
+    const credRepo = makeCredRepo(linkedInRecord);
+    const { repo: tokenRepo, saved } = makeTokenRepo();
+    const deps: LinkedInOAuthRouterDeps = {
+      getCredRepo: () => credRepo,
+      getTokenRepo: () => tokenRepo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+      fetchFn: makeFetchSuccess(),
+    };
+
+    const app = buildTestApp(deps);
+    // LinkedIn rejection: it redirects back with ?error= and no code.
+    const res = await app.request(
+      "/api/admin/social-credentials/linkedin/oauth/callback?error=user_cancelled_login&error_description=denied&state=anything",
+    );
+
+    expect(res.status).toBe(302);
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("linkedin=error");
+    expect(location).toContain("reason=linkedin_denied");
     expect(saved.length).toBe(0);
   });
 
@@ -680,6 +708,9 @@ describe("GET /callback — name persistence", () => {
       },
       getLinkedIn() {
         return Promise.resolve(null);
+      },
+      deleteToken() {
+        return Promise.resolve(false);
       },
     };
     let callCount = 0;
