@@ -10,7 +10,7 @@ Built for internal use by the [Vertexcover](https://vertexcover.io) team.
 
 1. **Collect** — collectors run concurrently, scraping Hacker News, Reddit, RSS feeds, GitHub trending, and company blogs into a `raw_items` table
 2. **Deduplicate** — near-duplicate items are collapsed before ranking
-3. **Shortlist (Stage 1)** — candidates are shortlisted by recency decay
+3. **Shortlist (Stage 1)** — Claude Haiku LLM picks the top-N candidates via a configurable prompt (default 30 items)
 4. **Rerank (Stage 2)** — Claude Haiku reranks the shortlist using a 3-axis prompt (Novelty, Signal-vs-hype, Actionability) and writes a structured recap (summary, bullets, bottom line) per item
 5. **Review** — you drag-to-reorder, remove, or add items on the review page, then save
 6. **Archive** — the curated run is stored and accessible as a beautiful recap-style archive
@@ -79,19 +79,32 @@ Open `.env` and fill in your values:
 DATABASE_URL=postgresql://newsletter:newsletter@localhost:5432/newsletter
 REDIS_URL=redis://localhost:6379
 
+# Admin auth (required — API and pipeline exit without these)
+ADMIN_PASSWORD=changeme
+SESSION_SECRET=change-me-to-a-random-32-plus-byte-string
+
 # AI services (required for a full pipeline run)
 ANTHROPIC_API_KEY=sk-ant-...
 
 # Web crawler
 WEB_CRAWLER_CONCURRENCY=4
 
-# Optional — override the ranking model (defaults to claude-haiku-4-5-20251001)
+# Optional — override the ranking/shortlist models
 # RANKING_MODEL=claude-haiku-4-5-20251001
+# SHORTLIST_MODEL=claude-haiku-4-5-20251001
 
-# Email delivery (optional for MVP — digest email not yet wired)
+# Email delivery (optional — disabled when RESEND_API_KEY is unset)
 # RESEND_API_KEY=re_...
-# FROM_EMAIL=newsletter@yourdomain.com
-# TO_EMAILS=you@example.com,teammate@example.com
+# FROM_MAIL=newsletter@yourdomain.com
+# NEWSLETTER_BASE_URL=https://newsletter.yourdomain.com
+# EMAIL_PROVIDER=resend
+
+# Slack notifications (optional — disabled when unset)
+# SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+# PUBLIC_BASE_URL=https://newsletter.yourdomain.com
+
+# Web search collector (optional — disabled when unset)
+# TAVILY_API_KEY=tvly-...
 
 # API server
 PORT=3000
@@ -216,7 +229,7 @@ packages/
   pipeline/
     src/
       collectors/    Source scrapers (HN, Reddit, RSS, web)
-      processors/    Dedup, shortlist (recency), rerank (Claude)
+      processors/    Dedup, shortlist (Claude Haiku), rerank (Claude)
       workers/       BullMQ worker dispatch
       services/      Scheduler reconciliation
   shared/
@@ -241,11 +254,20 @@ compose.yml          PostgreSQL + Redis via Podman
 |---|---|---|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `REDIS_URL` | Yes | Redis connection string |
-| `ANTHROPIC_API_KEY` | Yes | Used for stage-2 reranking (Claude Haiku) |
+| `ANTHROPIC_API_KEY` | Yes | Used for stage-1 shortlisting and stage-2 reranking (Claude Haiku) |
+| `ADMIN_PASSWORD` | Yes | Shared password for `/admin/*` routes |
+| `SESSION_SECRET` | Yes | HMAC secret for admin session cookie + AES-256-GCM cipher key (≥32 bytes) |
 | `WEB_CRAWLER_CONCURRENCY` | No | Max concurrent pages for web crawler (default: 4) |
-| `RANKING_MODEL` | No | Override ranking model (default: `claude-haiku-4-5-20251001`) |
+| `RANKING_MODEL` | No | Override reranking model (default: `claude-haiku-4-5-20251001`) |
+| `SHORTLIST_MODEL` | No | Override shortlist model (default: `claude-haiku-4-5-20251001`) |
 | `PORT` | No | API server port (default: `3000`) |
-| `RESEND_API_KEY` | No | Email delivery (not yet wired in MVP) |
+| `RESEND_API_KEY` | No | Email delivery via Resend (disabled when unset) |
+| `FROM_MAIL` | No | Sender address for newsletter emails (default: `newsletter@news.vertexcover.io`) |
+| `EMAIL_PROVIDER` | No | Email provider: `resend` (default) or `ses` |
+| `NEWSLETTER_BASE_URL` | No | Base URL used in newsletter email links |
+| `SLACK_WEBHOOK_URL` | No | Slack webhook for pipeline notifications (disabled when unset) |
+| `PUBLIC_BASE_URL` | No | Public base URL used in Slack message archive links |
+| `TAVILY_API_KEY` | No | Web-search collector API key (disabled when unset) |
 
 ---
 
