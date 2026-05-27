@@ -39,7 +39,7 @@ describe("CostStrip", () => {
 
 describe("SourceTelemetryTable (EDGE-009)", () => {
   it("renders a row per source with status badges and a failed error note", () => {
-    render(<SourceTelemetryTable sources={fullFixture.sources} />);
+    render(<SourceTelemetryTable runId="run-1" sources={fullFixture.sources} />);
     expect(screen.getByTestId("source-row-hacker_news")).toBeTruthy();
     expect(screen.getByTestId("source-badge-failed")).toBeTruthy();
     expect(screen.getByTestId("source-error-twitter").textContent).toContain(
@@ -50,6 +50,7 @@ describe("SourceTelemetryTable (EDGE-009)", () => {
   it("EDGE-009: a completed 0-item source shows 0 and no error note", () => {
     render(
       <SourceTelemetryTable
+        runId="run-1"
         sources={[
           {
             sourceType: "rss",
@@ -69,7 +70,7 @@ describe("SourceTelemetryTable (EDGE-009)", () => {
   });
 
   it("renders an empty state when there are no sources", () => {
-    render(<SourceTelemetryTable sources={[]} />);
+    render(<SourceTelemetryTable runId="run-1" sources={[]} />);
     expect(screen.getByTestId("sources-empty")).toBeTruthy();
   });
 });

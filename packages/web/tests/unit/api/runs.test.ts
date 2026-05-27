@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RunSummary, RunState } from "@newsletter/shared";
-import { cancelRun, listRuns, triggerRunNow } from "../../../src/api/runs";
+import {
+  cancelRun,
+  getRunSourceItems,
+  listRuns,
+  triggerRunNow,
+} from "../../../src/api/runs";
 
 const fetchMock = vi.fn();
 
@@ -47,6 +52,36 @@ describe("listRuns", () => {
       new Response(JSON.stringify({ error: "bad" }), { status: 400 }),
     );
     await expect(listRuns()).rejects.toThrow("bad");
+  });
+});
+
+describe("getRunSourceItems", () => {
+  it("REQ-003, EDGE-006: encodes source keys with special characters", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          runId: "run-1",
+          sourceKey: "reddit:r/AI_Agents",
+          live: false,
+          summary: {
+            ranked: 0,
+            shortlisted: 0,
+            dedupedSurvivors: 0,
+            dedupDropped: 0,
+            enrichFailed: 0,
+          },
+          items: [],
+          logs: [],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await getRunSourceItems("run-1", "reddit:r/AI_Agents");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/admin/runs/run-1/sources/reddit%3Ar%2FAI_Agents/items",
+    );
   });
 });
 

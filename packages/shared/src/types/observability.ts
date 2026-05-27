@@ -87,3 +87,56 @@ export interface RunObservability {
   failures: RunLogEntry[];
   live: boolean;
 }
+
+export type ItemEnrichStatus = "ok" | "skipped" | "failed" | "none";
+export type ItemDedupStatus = "survived" | "dropped";
+export type ItemFurthestStage =
+  | "ranked"
+  | "shortlisted"
+  | "deduped-survivor"
+  | "dedup-dropped"
+  | "enrich-failed"
+  | "fetched";
+
+export interface ItemLifecycle {
+  fetched: true;
+  enrich: { status: ItemEnrichStatus; reason: string | null };
+  dedup: {
+    status: ItemDedupStatus;
+    winnerTitle: string | null;
+    winnerId: number | null;
+    winnerPoints: number | null;
+  } | null;
+  shortlisted: boolean | null;
+  rank: number | null;
+}
+
+export interface RunSourceItem {
+  id: number;
+  title: string;
+  url: string | null;
+  author: string | null;
+  engagement: { points: number; commentCount: number };
+  publishedAt: string | null;
+  sourceIdentifier: string;
+  lifecycle: ItemLifecycle;
+  furthestStage: ItemFurthestStage;
+  dropReason: string | null;
+}
+
+export interface RunSourceItemsSummary {
+  ranked: number;
+  shortlisted: number;
+  dedupedSurvivors: number;
+  dedupDropped: number;
+  enrichFailed: number;
+}
+
+export interface RunSourceItemsResponse {
+  runId: string;
+  sourceKey: string;
+  live: boolean;
+  summary: RunSourceItemsSummary;
+  items: RunSourceItem[];
+  logs: RunLogEntry[];
+}
