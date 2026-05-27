@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
+import { createPortal } from "react-dom";
 import type { RunSummary } from "@newsletter/shared";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -57,13 +64,40 @@ export function SocialOverflowMenu({
   const [open, setOpen] = useState(false);
   const [confirmChannel, setConfirmChannel] = useState<SocialChannel | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    right: number;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !containerRef.current) return;
+    function updatePosition(): void {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.bottom + 4,
+        right: window.innerWidth - rect.right,
+      });
+    }
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent): void {
+      const target = e.target as Node;
       if (
         containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
+        !containerRef.current.contains(target) &&
+        menuRef.current &&
+        !menuRef.current.contains(target)
       ) {
         setOpen(false);
       }
@@ -197,15 +231,20 @@ export function SocialOverflowMenu({
         >
           <MoreHorizontal />
         </Button>
-        {open ? (
-          <div
-            role="menu"
-            className="absolute right-0 top-full z-50 mt-1 min-w-[12rem] rounded-md border bg-white shadow-md"
-          >
-            {renderChannelItem("linkedin")}
-            {renderChannelItem("twitter")}
-          </div>
-        ) : null}
+        {open && menuPosition
+          ? createPortal(
+              <div
+                ref={menuRef}
+                role="menu"
+                style={{ top: menuPosition.top, right: menuPosition.right }}
+                className="fixed z-50 min-w-[12rem] rounded-md border bg-white shadow-md"
+              >
+                {renderChannelItem("linkedin")}
+                {renderChannelItem("twitter")}
+              </div>,
+              document.body,
+            )
+          : null}
       </div>
     </>
   );
