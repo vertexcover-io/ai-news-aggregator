@@ -163,7 +163,7 @@ export function RunObservabilityPage(): ReactElement {
             title="Source Telemetry"
             note={`per-source · ${String(sources.length)} units`}
           />
-          <SourceTelemetryTable sources={sources} />
+          <SourceTelemetryTable runId={run.runId} sources={sources} />
         </section>
 
         <section className="mt-9">

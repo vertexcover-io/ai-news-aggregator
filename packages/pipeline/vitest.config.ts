@@ -14,7 +14,7 @@ export default defineConfig({
         resolve: { alias },
         test: {
           name: "unit",
-          include: ["tests/unit/**/*.test.ts"],
+          include: ["tests/unit/**/*.test.ts", "src/**/__tests__/**/*.test.ts"],
           setupFiles: ["tests/unit/setup.ts"],
           globals: false,
         },

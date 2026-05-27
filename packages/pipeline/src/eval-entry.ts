@@ -42,4 +42,16 @@ export {
   type EvalExportArchiveRow,
 } from "@pipeline/repositories/eval-exports.js";
 
+export {
+  computeDedupGroups,
+  type DedupGroupItem,
+  type DedupGroupResult,
+} from "@pipeline/processors/dedup-groups.js";
+
+export {
+  canonicalizeUrl,
+  dedupCandidates,
+  type DedupCandidate,
+} from "@pipeline/processors/dedup.js";
+
 export { sourcingReport, type FixtureWithGroundTruth } from "@pipeline/eval/scoring.js";

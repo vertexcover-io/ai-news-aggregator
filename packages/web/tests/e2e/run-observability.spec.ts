@@ -19,7 +19,7 @@ import { Client } from "pg";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
-const API_BASE = "http://localhost:3000";
+const API_BASE = process.env.E2E_API_BASE ?? "http://localhost:3000";
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "aman2005";
 const DATABASE_URL =
   process.env.DATABASE_URL ??
@@ -41,6 +41,7 @@ interface RunLogSeed {
 
 const seededRunIds = new Set<string>();
 const seededRedisKeys = new Set<string>();
+const seededRawExternalIds = new Set<string>();
 
 async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: DATABASE_URL });
@@ -98,6 +99,44 @@ async function insertRunLogs(
       ],
     );
   }
+}
+
+async function insertRawItem(
+  client: Client,
+  row: {
+    runId: string;
+    sourceType: "reddit" | "twitter";
+    externalId: string;
+    title: string;
+    url: string;
+    author: string;
+    points: number;
+    commentCount: number;
+    metadata?: unknown;
+  },
+): Promise<number> {
+  seededRawExternalIds.add(row.externalId);
+  const result = await client.query<{ id: number }>(
+    `INSERT INTO raw_items
+       (run_id, source_type, external_id, title, url, author, published_at,
+        collected_at, engagement, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6,
+             '2099-05-04T00:01:00Z'::timestamptz,
+             '2099-05-04T00:02:00Z'::timestamptz,
+             $7::jsonb, $8::jsonb)
+     RETURNING id`,
+    [
+      row.runId,
+      row.sourceType,
+      row.externalId,
+      row.title,
+      row.url,
+      row.author,
+      JSON.stringify({ points: row.points, commentCount: row.commentCount }),
+      JSON.stringify(row.metadata ?? { comments: [] }),
+    ],
+  );
+  return result.rows[0]?.id ?? 0;
 }
 
 const telemetry = {
@@ -374,6 +413,140 @@ async function seedLegacyRun(): Promise<string> {
   return runId;
 }
 
+/** Phase 4: completed run with per-item source payload plus a failed empty source. */
+async function seedPerItemObservabilityRun(): Promise<string> {
+  const runId = randomUUID();
+  await withClient(async (client) => {
+    await ensureUserSettings(client);
+    const rankedId = await insertRawItem(client, {
+      runId,
+      sourceType: "reddit",
+      externalId: `phase4-ranked-${runId}`,
+      title: "OpenAI ships agent SDK with built-in tool routing",
+      url: "https://reddit.com/r/AI_Agents/comments/agent_sdk",
+      author: "u/devshipper",
+      points: 412,
+      commentCount: 88,
+      metadata: {
+        comments: [],
+        enrichedLink: { url: "https://reddit.com/r/AI_Agents/comments/agent_sdk", status: "ok" },
+      },
+    });
+    await insertRawItem(client, {
+      runId,
+      sourceType: "reddit",
+      externalId: `phase4-dropped-${runId}`,
+      title: "Show HN: I built an open-source agent SDK clone",
+      url: "https://reddit.com/r/AI_Agents/comments/agent_sdk",
+      author: "u/clonemaker",
+      points: 47,
+      commentCount: 12,
+      metadata: {
+        comments: [],
+        enrichedLink: { url: "https://reddit.com/r/AI_Agents/comments/agent_sdk", status: "ok" },
+      },
+    });
+    await insertRawItem(client, {
+      runId,
+      sourceType: "reddit",
+      externalId: `phase4-failed-${runId}`,
+      title: "Agent benchmarks are misleading",
+      url: "https://reddit.com/r/AI_Agents/comments/benchmarks",
+      author: "u/skeptic_ai",
+      points: 203,
+      commentCount: 64,
+      metadata: {
+        comments: [],
+        enrichedLink: {
+          url: "https://reddit.com/r/AI_Agents/comments/benchmarks",
+          status: "failed",
+          failureReason: "fetch timeout after 15000ms",
+        },
+      },
+    });
+
+    await client.query(
+      `INSERT INTO run_archives
+         (id, status, ranked_items, top_n, reviewed, started_at, completed_at,
+          source_types, source_telemetry, run_funnel, shortlisted_item_ids)
+       VALUES ($1, 'completed', $2::jsonb, 10, true,
+               '2099-05-04T00:00:00Z'::timestamptz,
+               '2099-05-04T00:06:00Z'::timestamptz,
+               $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb)`,
+      [
+        runId,
+        JSON.stringify([{ rawItemId: rankedId, score: 98, rationale: "highest signal" }]),
+        JSON.stringify(["reddit", "twitter"]),
+        JSON.stringify({
+          sources: [
+            {
+              sourceType: "reddit",
+              identifier: "r/AI_Agents",
+              displayName: "r/AI_Agents",
+              itemsFetched: 3,
+              status: "completed",
+              errors: [],
+              retries: 0,
+              durationMs: 1700,
+            },
+            {
+              sourceType: "twitter",
+              identifier: "@karpathy",
+              displayName: "@karpathy",
+              itemsFetched: 0,
+              status: "failed",
+              errors: ["Twitter cookies not configured"],
+              retries: 1,
+              durationMs: 2100,
+            },
+          ],
+          totalItemsFetched: 3,
+          totalErrors: 1,
+          enrichment: {
+            attempted: 3,
+            ok: 2,
+            failed: 1,
+            skipped: 0,
+            cacheHits: 0,
+            avgFetchMs: 611,
+            skippedReasons: {},
+          },
+        }),
+        JSON.stringify({ collected: 3, deduped: 2, shortlisted: 1, ranked: 1 }),
+        JSON.stringify([rankedId]),
+      ],
+    );
+    await insertRunLogs(client, runId, [
+      {
+        level: "info",
+        stage: "collecting",
+        source: "r/AI_Agents",
+        event: "source.completed",
+        message: "collect.ok",
+        context: { fetched: 3, durationMs: 1700 },
+      },
+      {
+        level: "warn",
+        stage: "enriching",
+        source: "r/AI_Agents",
+        event: "enrichment.summary",
+        message: "enrich.failed",
+        context: { reason: "fetch timeout after 15000ms" },
+      },
+      {
+        level: "error",
+        stage: "collecting",
+        source: "@karpathy",
+        event: "source.failed",
+        message: "Twitter cookies not configured",
+        context: { errorClass: "auth", retries: 1 },
+      },
+    ]);
+  });
+  seededRunIds.add(runId);
+  return runId;
+}
+
 async function adminLogin(page: Page): Promise<void> {
   const res = await page.request.post(`${API_BASE}/api/admin/login`, {
     data: { password: ADMIN_PASSWORD },
@@ -391,6 +564,11 @@ test.describe("Run Observability page e2e", () => {
     }
     if (seededRunIds.size > 0) {
       await withClient(async (client) => {
+        if (seededRawExternalIds.size > 0) {
+          await client.query(`DELETE FROM raw_items WHERE external_id = ANY($1::text[])`, [
+            [...seededRawExternalIds],
+          ]);
+        }
         await client.query(`DELETE FROM run_logs WHERE run_id = ANY($1::uuid[])`, [
           [...seededRunIds],
         ]);
@@ -399,6 +577,7 @@ test.describe("Run Observability page e2e", () => {
         ]);
       });
       seededRunIds.clear();
+      seededRawExternalIds.clear();
     }
   });
 
@@ -586,5 +765,60 @@ test.describe("Run Observability page e2e", () => {
     await detailsLink.click();
     await expect(page).toHaveURL(new RegExp(`/admin/runs/${runId}$`));
     await expect(page.getByTestId("live-status-pill")).toBeVisible();
+  });
+
+  test("Phase 4 / REQ-001, REQ-003, REQ-004, REQ-005, REQ-007, REQ-010, REQ-011, REQ-012: source rows expand to per-item telemetry", async ({
+    page,
+  }) => {
+    const runId = await seedPerItemObservabilityRun();
+    const errors: string[] = [];
+    page.on("console", (m) => {
+      if (m.type() === "error") errors.push(m.text());
+    });
+
+    await adminLogin(page);
+    await page.goto(`/admin/runs/${runId}`);
+
+    const healthyRow = page.getByTestId("source-row-reddit").first();
+    await expect(healthyRow).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByTestId("source-items-panel")).toHaveCount(0);
+
+    await healthyRow.click();
+    await expect(healthyRow).toHaveAttribute("aria-expanded", "true");
+    const panel = page.getByTestId("source-items-panel");
+    await expect(panel).toContainText("1 ranked");
+    await expect(panel).not.toContainText("0 shortlisted");
+    await expect(panel).toContainText("dedup-dropped");
+    await expect(panel).toContainText("enrich-failed");
+    await expect(panel.getByRole("link", { name: /OpenAI ships agent SDK/i })).toHaveAttribute(
+      "href",
+      /reddit\.com\/r\/AI_Agents\/comments\/agent_sdk/,
+    );
+    await expect(panel).toContainText("Ranked #1");
+    await expect(panel).toContainText("lost to");
+    await expect(panel).toContainText("fetch timeout after 15000ms");
+    await expect(page.getByTestId("source-item-list")).toHaveClass(/scrollbar-none/);
+    await expect(page.getByTestId("source-log-strip")).toHaveClass(/scrollbar-none/);
+    await expect(page.getByTestId("source-log-strip")).toContainText("enrich.failed");
+
+    await page.screenshot({
+      path: "../../docs/spec/telemetry-per-item-observability/verification/screenshots/e2e-phase4-expanded.png",
+      fullPage: true,
+    });
+
+    await healthyRow.click();
+    await expect(healthyRow).toHaveAttribute("aria-expanded", "false");
+
+    const failedRow = page.getByTestId("source-row-twitter").first();
+    await failedRow.click();
+    await expect(page.getByTestId("source-items-panel")).toContainText("Source failed");
+    await expect(page.getByTestId("source-items-panel")).toContainText("source.failed");
+    await expect(page.getByTestId("source-item-list")).toHaveCount(0);
+
+    await page.screenshot({
+      path: "../../docs/spec/telemetry-per-item-observability/verification/screenshots/e2e-phase4-failed-source.png",
+      fullPage: true,
+    });
+    expect(errors).toEqual([]);
   });
 });

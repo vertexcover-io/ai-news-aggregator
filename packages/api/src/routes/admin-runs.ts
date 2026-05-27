@@ -7,6 +7,7 @@ import {
   getDb as defaultGetDb,
 } from "@newsletter/shared";
 import type { RunObservability, RunSourcesResponse } from "@newsletter/shared";
+import type { RunSourceItemsResponse } from "@newsletter/shared/types";
 import {
   createRawItemsRepo,
   type RawItemsRepo,
@@ -20,6 +21,10 @@ import {
   type RunLogRepo,
 } from "@api/repositories/run-logs.js";
 import { buildRunObservability } from "@api/services/run-observability.js";
+import {
+  buildRunSourceItems,
+  InvalidSourceKeyError,
+} from "@api/services/run-source-items.js";
 import { NotFoundError } from "@api/lib/errors.js";
 
 const UUID_RE =
@@ -37,6 +42,36 @@ export interface AdminRunsRouterDeps {
 export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
   const logger = deps.logger ?? createLogger("api:admin-runs");
   const app = new Hono();
+
+  app.get("/:runId/sources/:sourceKey/items", async (c) => {
+    const runId = c.req.param("runId");
+    const parsed = runIdSchema.safeParse(runId);
+    if (!parsed.success) {
+      return c.json({ error: "invalid runId" }, 400);
+    }
+    try {
+      const body: RunSourceItemsResponse = await buildRunSourceItems(
+        parsed.data,
+        c.req.param("sourceKey"),
+        {
+          redis: deps.redis,
+          archiveRepo: deps.getArchiveRepo(),
+          rawItemsRepo: deps.getRawItemsRepo(),
+          runLogRepo: deps.getRunLogRepo(),
+        },
+      );
+      return c.json(body);
+    } catch (err) {
+      if (err instanceof InvalidSourceKeyError) {
+        return c.json({ error: "invalid sourceKey" }, 400);
+      }
+      if (err instanceof NotFoundError) {
+        return c.json({ error: "Run not found" }, 404);
+      }
+      logger.error({ err, runId: parsed.data }, "admin-runs.source-items.failed");
+      throw err;
+    }
+  });
 
   app.get("/:runId/sources", async (c) => {
     const runId = c.req.param("runId");

@@ -1,9 +1,11 @@
-import { and, gte, inArray, sql } from "drizzle-orm";
+import { and, between, eq, gte, inArray, sql } from "drizzle-orm";
 import type IORedis from "ioredis";
 import { rawItems } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { runKey } from "@newsletter/shared";
+import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import type {
+  EnrichedLinkContent,
   RawItemMetadata,
   RawItemSummary,
   RunState,
@@ -26,7 +28,7 @@ export interface RawItemRow {
 }
 
 export interface ListForRunDeps {
-  archiveRepo: RunArchivesRepo;
+  archiveRepo: Pick<RunArchivesRepo, "findById">;
   redis: Pick<IORedis, "get">;
 }
 
@@ -38,6 +40,20 @@ export interface RawItemsAggregateRow {
   lastCollectedAt: Date | null;
 }
 
+export interface RawItemWithEnrichment {
+  id: number;
+  sourceType: SourceType;
+  title: string;
+  url: string;
+  sourceUrl: string | null;
+  author: string | null;
+  publishedAt: string | null;
+  collectedAt: string;
+  engagement: { points: number; commentCount: number };
+  enrichedLink: EnrichedLinkContent | undefined;
+  sourceIdentifier: string;
+}
+
 export interface AggregateBySourceAndIdentifierOpts {
   from: Date;
   to: Date;
@@ -46,6 +62,10 @@ export interface AggregateBySourceAndIdentifierOpts {
 export interface RawItemsRepo {
   findByIds(ids: number[]): Promise<RawItemRow[]>;
   listForRun(runId: string, deps: ListForRunDeps): Promise<RawItemSummary[]>;
+  listForRunWithEnrichment(
+    runId: string,
+    deps: ListForRunDeps,
+  ): Promise<RawItemWithEnrichment[]>;
   aggregateBySourceAndIdentifier(
     opts: AggregateBySourceAndIdentifierOpts,
   ): Promise<RawItemsAggregateRow[]>;
@@ -132,6 +152,12 @@ export function createRawItemsRepo(
     ): Promise<RawItemSummary[]> {
       return listRawItemsForRun(runId, { db, ...callDeps });
     },
+    async listForRunWithEnrichment(
+      runId: string,
+      callDeps: ListForRunDeps,
+    ): Promise<RawItemWithEnrichment[]> {
+      return listRawItemsForRunWithEnrichment(runId, { db, ...callDeps });
+    },
     async aggregateBySourceAndIdentifier(
       opts: AggregateBySourceAndIdentifierOpts,
     ): Promise<RawItemsAggregateRow[]> {
@@ -174,7 +200,7 @@ export function createRawItemsRepo(
 
 export interface ListRawItemsForRunDeps {
   db: Pick<AppDb, "select">;
-  archiveRepo: RunArchivesRepo;
+  archiveRepo: Pick<RunArchivesRepo, "findById">;
   redis: Pick<IORedis, "get">;
 }
 
@@ -190,6 +216,7 @@ const SOURCE_KEY_TO_TYPE: Partial<Record<string, SourceType>> = {
 
 interface RunWindow {
   startedAt: Date;
+  completedAt: Date | null;
   sourceTypes: SourceType[];
 }
 
@@ -201,6 +228,7 @@ async function resolveRunWindow(
   if (archive?.startedAt && archive.sourceTypes) {
     return {
       startedAt: archive.startedAt,
+      completedAt: archive.completedAt,
       sourceTypes: archive.sourceTypes,
     };
   }
@@ -214,6 +242,7 @@ async function resolveRunWindow(
     .filter((t): t is SourceType => t !== undefined);
   return {
     startedAt: new Date(state.startedAt),
+    completedAt: null,
     sourceTypes,
   };
 }
@@ -260,4 +289,88 @@ export async function listRawItemsForRun(
     collectedAt: r.collectedAt.toISOString(),
     engagement: r.engagement,
   }));
+}
+
+const RAW_ITEM_WITH_ENRICHMENT_SELECT = {
+  id: rawItems.id,
+  sourceType: rawItems.sourceType,
+  title: rawItems.title,
+  url: rawItems.url,
+  sourceUrl: rawItems.sourceUrl,
+  author: rawItems.author,
+  publishedAt: rawItems.publishedAt,
+  collectedAt: rawItems.collectedAt,
+  engagement: rawItems.engagement,
+  metadata: rawItems.metadata,
+} as const;
+
+interface RawItemWithEnrichmentRow {
+  readonly id: number;
+  readonly sourceType: SourceType;
+  readonly title: string;
+  readonly url: string;
+  readonly sourceUrl: string | null;
+  readonly author: string | null;
+  readonly publishedAt: Date | null;
+  readonly collectedAt: Date;
+  readonly engagement: { points: number; commentCount: number };
+  readonly metadata: RawItemMetadata;
+}
+
+export async function listRawItemsForRunWithEnrichment(
+  runId: string,
+  deps: ListRawItemsForRunDeps,
+): Promise<RawItemWithEnrichment[]> {
+  const window = await resolveRunWindow(runId, deps);
+
+  const byRunId = await deps.db
+    .select(RAW_ITEM_WITH_ENRICHMENT_SELECT)
+    .from(rawItems)
+    .where(eq(rawItems.runId, runId))
+    .orderBy(
+      sql`${rawItems.sourceType} ASC`,
+      sql`COALESCE(${rawItems.publishedAt}, ${rawItems.collectedAt}) DESC`,
+    );
+
+  if (byRunId.length > 0) {
+    return byRunId.map(toRawItemWithEnrichment);
+  }
+
+  if (window.sourceTypes.length === 0) return [];
+
+  const windowPredicate =
+    window.completedAt === null
+      ? gte(rawItems.collectedAt, window.startedAt)
+      : between(rawItems.collectedAt, window.startedAt, window.completedAt);
+
+  const fallbackRows = await deps.db
+    .select(RAW_ITEM_WITH_ENRICHMENT_SELECT)
+    .from(rawItems)
+    .where(and(windowPredicate, inArray(rawItems.sourceType, window.sourceTypes)))
+    .orderBy(
+      sql`${rawItems.sourceType} ASC`,
+      sql`COALESCE(${rawItems.publishedAt}, ${rawItems.collectedAt}) DESC`,
+    );
+
+  return fallbackRows.map(toRawItemWithEnrichment);
+}
+
+function toRawItemWithEnrichment(row: RawItemWithEnrichmentRow): RawItemWithEnrichment {
+  return {
+    id: row.id,
+    sourceType: row.sourceType,
+    title: row.title,
+    url: row.url,
+    sourceUrl: row.sourceUrl,
+    author: row.author,
+    publishedAt: row.publishedAt?.toISOString() ?? null,
+    collectedAt: row.collectedAt.toISOString(),
+    engagement: row.engagement,
+    enrichedLink: row.metadata.enrichedLink,
+    sourceIdentifier: deriveRawItemIdentifier({
+      sourceType: row.sourceType,
+      url: row.url,
+      sourceUrl: row.sourceUrl,
+    }),
+  };
 }
