@@ -4,7 +4,7 @@
  * Tests cover:
  *   - encrypt->saveToken->read round-trip yields original access/refresh tokens (REQ-006)
  *   - raw DB value (encrypted_fields jsonb) contains NO plaintext token substring (REQ-006)
- *   - decrypting with a different SESSION_SECRET throws (EDGE-005)
+ *   - decrypting with a different SESSION_SECRET returns null / skips gracefully (EDGE-005)
  *   - withTokenLock still passes decrypted tokens to the callback
  *   - null row handling unchanged
  */
@@ -226,11 +226,11 @@ describe("SocialTokensRepo (cipher-aware) -- raw DB value is ciphertext (REQ-006
 });
 
 // ---------------------------------------------------------------------------
-// EDGE-005: wrong SESSION_SECRET -> decrypt throws
+// EDGE-005: wrong SESSION_SECRET -> decrypt returns null (graceful skip)
 // ---------------------------------------------------------------------------
 
-describe("SocialTokensRepo (cipher-aware) -- wrong SESSION_SECRET throws on decrypt (EDGE-005)", () => {
-  it("getToken throws when trying to decrypt with a different SESSION_SECRET", async () => {
+describe("SocialTokensRepo (cipher-aware) -- wrong SESSION_SECRET returns null on decrypt (EDGE-005)", () => {
+  it("getToken returns null when trying to decrypt with a different SESSION_SECRET", async () => {
     const handle = makeFakeDb();
 
     const repoA = createSocialTokensRepo(handle.db, cipherA());
@@ -240,11 +240,13 @@ describe("SocialTokensRepo (cipher-aware) -- wrong SESSION_SECRET throws on decr
       expiresAt: new Date("2026-12-01T00:00:00Z"),
     });
 
+    // A rotated SESSION_SECRET should cause the pipeline to treat the token as
+    // missing (return null) so jobs skip gracefully rather than crashing.
     const repoB = createSocialTokensRepo(handle.db, cipherB());
-    await expect(repoB.getToken("linkedin")).rejects.toThrow();
+    await expect(repoB.getToken("linkedin")).resolves.toBeNull();
   });
 
-  it("withTokenLock throws when the stored token was encrypted with a different SESSION_SECRET", async () => {
+  it("withTokenLock passes null to callback when the stored token was encrypted with a different SESSION_SECRET", async () => {
     const handle = makeFakeDb();
 
     const repoA = createSocialTokensRepo(handle.db, cipherA());
@@ -254,10 +256,15 @@ describe("SocialTokensRepo (cipher-aware) -- wrong SESSION_SECRET throws on decr
       expiresAt: new Date("2026-12-01T00:00:00Z"),
     });
 
+    // A rotated SESSION_SECRET should cause the pipeline to treat the token as
+    // missing (null row) so the job skips gracefully.
     const repoB = createSocialTokensRepo(handle.db, cipherB());
-    await expect(
-      repoB.withTokenLock("twitter", (_row) => Promise.resolve(undefined)),
-    ).rejects.toThrow();
+    let observedRow: unknown = "untouched";
+    await repoB.withTokenLock("twitter", (row) => {
+      observedRow = row;
+      return Promise.resolve(undefined);
+    });
+    expect(observedRow).toBeNull();
   });
 });
 

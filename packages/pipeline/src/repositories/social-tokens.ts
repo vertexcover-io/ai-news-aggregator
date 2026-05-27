@@ -99,7 +99,13 @@ export function createSocialTokensRepo(
         .where(eq(socialTokens.platform, platform))
         .limit(1);
       if (rows.length === 0) return null;
-      return toRow(rows[0], cipher);
+      try {
+        return toRow(rows[0], cipher);
+      } catch {
+        // Decrypt failure (e.g. rotated SESSION_SECRET) — treat as no token so
+        // the job skips gracefully instead of crashing.
+        return null;
+      }
     },
 
     async saveToken(
@@ -120,7 +126,13 @@ export function createSocialTokensRepo(
           .where(eq(socialTokens.platform, platform))
           .limit(1)
           .for("update");
-        const row = rows.length === 0 ? null : toRow(rows[0], cipher);
+        let row: SocialTokenRow | null;
+        try {
+          row = rows.length === 0 ? null : toRow(rows[0], cipher);
+        } catch {
+          // Decrypt failure (e.g. rotated SESSION_SECRET) — treat as no token.
+          row = null;
+        }
         const txApi: SocialTokensTx = {
           async saveToken(p, inp) {
             await upsertToken(tx, p, inp, cipher);
