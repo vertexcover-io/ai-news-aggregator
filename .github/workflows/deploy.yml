@@ -115,6 +115,7 @@ jobs:
           POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
           RANKING_MODEL: ${{ secrets.RANKING_MODEL }}
           WEB_CRAWLER_CONCURRENCY: ${{ secrets.WEB_CRAWLER_CONCURRENCY }}
@@ -155,6 +156,7 @@ jobs:
               "POSTGRES_DB",
               "REDIS_URL",
               "ANTHROPIC_API_KEY",
+              "GEMINI_API_KEY",
               "JINA_API_KEY",
               "RANKING_MODEL",
               "RETTIWT_API_KEY",

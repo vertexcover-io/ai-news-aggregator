@@ -28,4 +28,11 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     cacheWrite5mPerMTok: 3.75,
     cacheWrite1hPerMTok: 6.0,
   },
+  "gemini-3.1-flash-lite": {
+    inputPerMTok: 0.25,
+    outputPerMTok: 1.5,
+    cacheReadPerMTok: 0.025,
+    cacheWrite5mPerMTok: 0,
+    cacheWrite1hPerMTok: 0,
+  },
 };

@@ -9,7 +9,7 @@ import type {
 import {
   MODEL_PRICING,
   computeCallCost,
-  extractAnthropicUsage,
+  extractUsage,
 } from "@newsletter/shared";
 
 export interface RecordInput {
@@ -165,7 +165,7 @@ export function createCostTracker(_runId: string): CostTracker {
 
   return {
     record(input: RecordInput): void {
-      const components = extractAnthropicUsage(input.usage, input.providerMetadata);
+      const components = extractUsage(input.modelId, input.usage, input.providerMetadata);
       const accum = ensure(input.stage, input.modelId);
       accum.calls += 1;
       accum.inputTokens += components.inputTokens;

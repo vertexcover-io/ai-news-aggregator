@@ -24,7 +24,7 @@ const logger = createLogger("collector:web");
 
 const MAX_ERROR_LENGTH = 200;
 
-export const WEB_COLLECTOR_MODEL_ID = "claude-haiku-4-5-20251001";
+export const WEB_COLLECTOR_MODEL_ID = "gemini-3.1-flash-lite";
 
 export const COMBINED_DISCOVERY_CAP = 120_000;
 
@@ -194,8 +194,9 @@ let cachedDefaultModel: LanguageModel | null = null;
 
 async function resolveDefaultModel(): Promise<LanguageModel> {
   if (cachedDefaultModel) return cachedDefaultModel;
-  const { anthropic } = await import("@ai-sdk/anthropic");
-  cachedDefaultModel = anthropic("claude-haiku-4-5-20251001");
+  const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+  const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
+  cachedDefaultModel = google(WEB_COLLECTOR_MODEL_ID);
   return cachedDefaultModel;
 }
 

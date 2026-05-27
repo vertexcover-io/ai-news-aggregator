@@ -61,6 +61,26 @@ export function extractAnthropicUsage(
   };
 }
 
+export function extractGeminiUsage(usage: UsageLike | undefined): CostComponents {
+  return {
+    inputTokens: usage?.inputTokens ?? 0,
+    outputTokens: usage?.outputTokens ?? 0,
+    cachedInputTokens: usage?.cachedInputTokens ?? 0,
+    cacheCreation5mTokens: 0,
+    cacheCreation1hTokens: 0,
+    reasoningTokens: usage?.reasoningTokens ?? 0,
+  };
+}
+
+export function extractUsage(
+  modelId: string,
+  usage: UsageLike | undefined,
+  providerMetadata: unknown,
+): CostComponents {
+  if (modelId.startsWith("gemini-")) return extractGeminiUsage(usage);
+  return extractAnthropicUsage(usage, providerMetadata);
+}
+
 export function parseRunCostBreakdown(value: unknown): RunCostBreakdown | null {
   const record = asRecord(value);
   if (!record) return null;

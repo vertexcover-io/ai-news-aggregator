@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   computeCallCost,
   extractAnthropicUsage,
+  extractGeminiUsage,
+  extractUsage,
   parseRunCostBreakdown,
 } from "@shared/cost.js";
 import type { CostComponents, RunCostBreakdown } from "@shared/types/cost-breakdown.js";
@@ -163,6 +165,103 @@ describe("computeCallCost edge cases", () => {
       "claude-haiku-4-5-20251001",
     );
     expect(result.costUsd).toBeCloseTo(0.1, 12);
+  });
+});
+
+describe("extractGeminiUsage + extractUsage dispatch (REQ-006, REQ-007, EDGE-001, EDGE-007)", () => {
+  it("maps the live Gemini usage shape exactly via extractUsage (REQ-006)", () => {
+    // Fixture mirrors .harness/cheaper-discovery-extraction/probes/ai-sdk-google/payload.sample.json
+    const usage = { inputTokens: 147, outputTokens: 191, totalTokens: 338 };
+    const providerMetadata = { google: { promptFeedback: null } };
+    expect(extractUsage("gemini-3.1-flash-lite", usage, providerMetadata)).toEqual({
+      inputTokens: 147,
+      outputTokens: 191,
+      cachedInputTokens: 0,
+      cacheCreation5mTokens: 0,
+      cacheCreation1hTokens: 0,
+      reasoningTokens: 0,
+    });
+  });
+
+  it("defaults cachedInputTokens to 0 when absent and never throws (EDGE-001)", () => {
+    expect(extractUsage("gemini-3.1-flash-lite", { inputTokens: 10, outputTokens: 5 }, undefined)).toEqual({
+      inputTokens: 10,
+      outputTokens: 5,
+      cachedInputTokens: 0,
+      cacheCreation5mTokens: 0,
+      cacheCreation1hTokens: 0,
+      reasoningTokens: 0,
+    });
+  });
+
+  it("carries cachedInputTokens through when present (EDGE-007)", () => {
+    const result = extractUsage(
+      "gemini-3.1-flash-lite",
+      { inputTokens: 10, outputTokens: 5, cachedInputTokens: 3 },
+      undefined,
+    );
+    expect(result.cachedInputTokens).toBe(3);
+  });
+
+  it("extractGeminiUsage forces cache-creation tiers to 0 regardless of input", () => {
+    expect(extractGeminiUsage({ inputTokens: 1, outputTokens: 2, reasoningTokens: 4 })).toEqual({
+      inputTokens: 1,
+      outputTokens: 2,
+      cachedInputTokens: 0,
+      cacheCreation5mTokens: 0,
+      cacheCreation1hTokens: 0,
+      reasoningTokens: 4,
+    });
+  });
+
+  it("routes Anthropic ids to the unchanged extractAnthropicUsage path (REQ-007)", () => {
+    const usage = { inputTokens: 5, outputTokens: 6, cachedInputTokens: 7 };
+    const anthropicMeta = {
+      anthropic: {
+        usage: {
+          cache_creation: {
+            ephemeral_5m_input_tokens: 11,
+            ephemeral_1h_input_tokens: 13,
+          },
+        },
+      },
+    };
+    expect(extractUsage("claude-haiku-4-5-20251001", usage, anthropicMeta)).toEqual(
+      extractAnthropicUsage(usage, anthropicMeta),
+    );
+  });
+});
+
+describe("computeCallCost for gemini-3.1-flash-lite (REQ-008)", () => {
+  it("prices 1M input + 1M output at $1.75", () => {
+    const result = computeCallCost(
+      {
+        inputTokens: 1_000_000,
+        outputTokens: 1_000_000,
+        cachedInputTokens: 0,
+        cacheCreation5mTokens: 0,
+        cacheCreation1hTokens: 0,
+        reasoningTokens: 0,
+      },
+      "gemini-3.1-flash-lite",
+    );
+    expect(result.costUsd).toBeCloseTo(1.75, 12);
+  });
+
+  it("prices the probe-derived {147,191} sample at ~0.0003204", () => {
+    const result = computeCallCost(
+      {
+        inputTokens: 147,
+        outputTokens: 191,
+        cachedInputTokens: 0,
+        cacheCreation5mTokens: 0,
+        cacheCreation1hTokens: 0,
+        reasoningTokens: 0,
+      },
+      "gemini-3.1-flash-lite",
+    );
+    // 147 * 0.25 / 1e6 + 191 * 1.5 / 1e6 = (36.75 + 286.5) / 1e6 = 0.00032325
+    expect(result.costUsd).toBeCloseTo(0.00032325, 9);
   });
 });
 
