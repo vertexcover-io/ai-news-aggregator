@@ -3,6 +3,12 @@
 # Build stage — uses the shared base image.
 FROM node:22-alpine AS build
 
+# Browser binaries belong in the runtime stage (which uses the official
+# Playwright image with browsers preinstalled). Alpine can't run them anyway.
+# The add-post web crawler launches Chromium inside the API process, so the
+# API runtime needs the browsers just like the pipeline does.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
 RUN corepack enable
 WORKDIR /app
 
@@ -27,13 +33,20 @@ RUN pnpm --filter @newsletter/shared build \
 # --legacy is required on pnpm 10+ for workspaces without inject-workspace-packages.
 RUN pnpm --filter @newsletter/api --prod --legacy deploy /out/api
 
-# Runtime stage — minimal image with Node + built artifacts.
-FROM node:22-alpine AS runtime
+# Runtime stage — Microsoft's official Playwright image. The add-post flow
+# runs fetchWebPost -> fetchBrowser -> chromium.launch() inside the API
+# process, so the API needs the preinstalled browsers. Pinned to match the
+# `playwright` npm package version (packages/pipeline/package.json) — bumping
+# Playwright requires bumping this tag in lockstep (same as pipeline.Dockerfile).
+FROM mcr.microsoft.com/playwright:v1.52.0-jammy AS runtime
 
 ENV NODE_ENV=production \
     PORT=3000
+# The official image installs browsers under /ms-playwright. Make sure the
+# Playwright package looks there at runtime instead of $HOME/.cache.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-RUN addgroup -S app && adduser -S -G app app
+RUN groupadd -r app && useradd -r -g app -m -d /home/app app
 
 WORKDIR /app
 
