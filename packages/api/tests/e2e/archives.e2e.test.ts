@@ -21,6 +21,8 @@ import {
   userSettings,
 } from "@newsletter/shared/db";
 import type { RankedItemRef } from "@newsletter/shared";
+import type { DigestMeta } from "@newsletter/shared/constants";
+import type { GenerateDigestMetaFn } from "@api/services/review.js";
 import { createRawItemsRepo } from "@api/repositories/raw-items.js";
 import {
   createRunArchivesRepo,
@@ -172,6 +174,9 @@ async function insertArchive(opts: {
   readonly rawItemIds: readonly number[];
   readonly publishedAt?: Date;
   readonly searchText?: string;
+  readonly hook?: string | null;
+  readonly twitterSummary?: string | null;
+  readonly isDryRun?: boolean;
 }): Promise<SeededArchive> {
   const runId = randomUUID();
   const rankedItems: RankedItemRef[] = opts.rawItemIds.map((rawItemId, index) => ({
@@ -192,6 +197,9 @@ async function insertArchive(opts: {
     sourceTypes: ["hn"],
     digestHeadline: opts.digestHeadline,
     digestSummary: opts.digestSummary,
+    hook: opts.hook ?? null,
+    twitterSummary: opts.twitterSummary ?? null,
+    isDryRun: opts.isDryRun ?? false,
     searchText: opts.searchText ?? null,
   });
   seededRunIds.add(runId);
@@ -859,4 +867,335 @@ describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
       );
     },
   );
+});
+
+describe("POST /api/admin/archives/:runId/regenerate-digest-meta (e2e)", () => {
+  const sampleMeta: DigestMeta = {
+    headline: "Regenerated headline",
+    summary: "Regenerated summary",
+    hook: "Regenerated hook",
+    twitterSummary: "Regenerated twitter summary",
+  };
+
+  function buildAdminAppWith(generateDigestMeta: GenerateDigestMetaFn): Hono {
+    const app = new Hono();
+    app.route(
+      "/api/admin/archives",
+      createAdminArchivesRouter({
+        getArchiveRepo: () => archiveRepo,
+        getRawItemsRepo: () => rawItemsRepo,
+        generateDigestMeta,
+      }),
+    );
+    return app;
+  }
+
+  async function seedReviewable(): Promise<SeededArchive> {
+    const rawId = await insertRawItem({
+      externalId: "regen-one",
+      title: "Regen source title",
+      recapTitle: "Regen recap title",
+      recapSummary: "Regen recap summary",
+    });
+    return insertArchive({
+      reviewed: true,
+      completedAt: new Date("2099-03-01T00:00:00Z"),
+      digestHeadline: "Original headline",
+      digestSummary: "Original summary",
+      rawItemIds: [rawId],
+    });
+  }
+
+  it("REQ-005: returns 200 with the regenerated blob and does NOT persist", async () => {
+    const archive = await seedReviewable();
+    const generateDigestMeta = vi.fn(() => Promise.resolve(sampleMeta));
+    const app = buildAdminAppWith(generateDigestMeta);
+
+    const res = await app.request(
+      `/api/admin/archives/${archive.runId}/regenerate-digest-meta`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [
+            {
+              id: archive.rawItemIds[0],
+              title: "Item title",
+              summary: "Item summary",
+              bottomLine: "Item bottom line",
+            },
+          ],
+        }),
+      },
+    );
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as DigestMeta;
+    expect(json).toEqual(sampleMeta);
+
+    // No persistence: the DB row's digest columns are unchanged
+    const [row] = await db
+      .select({
+        digestHeadline: runArchives.digestHeadline,
+        digestSummary: runArchives.digestSummary,
+        hook: runArchives.hook,
+        twitterSummary: runArchives.twitterSummary,
+      })
+      .from(runArchives)
+      .where(eq(runArchives.id, archive.runId));
+    expect(row.digestHeadline).toBe("Original headline");
+    expect(row.digestSummary).toBe("Original summary");
+    expect(row.hook).toBeNull();
+    expect(row.twitterSummary).toBeNull();
+  });
+
+  it("REQ-006: returns 404 for a non-existent run", async () => {
+    const generateDigestMeta = vi.fn(() => Promise.resolve(sampleMeta));
+    const app = buildAdminAppWith(generateDigestMeta);
+
+    const res = await app.request(
+      `/api/admin/archives/${randomUUID()}/regenerate-digest-meta`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [{ id: 1, title: "t", summary: "s", bottomLine: "b" }],
+        }),
+      },
+    );
+
+    expect(res.status).toBe(404);
+    const json = (await res.json()) as { error: string };
+    expect(typeof json.error).toBe("string");
+    expect(generateDigestMeta).not.toHaveBeenCalled();
+  });
+
+  it("REQ-008: returns 502 with an error when the digest call rejects", async () => {
+    const archive = await seedReviewable();
+    const generateDigestMeta = vi.fn(() =>
+      Promise.reject(new Error("llm boom")),
+    );
+    const app = buildAdminAppWith(generateDigestMeta);
+
+    const res = await app.request(
+      `/api/admin/archives/${archive.runId}/regenerate-digest-meta`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [
+            {
+              id: archive.rawItemIds[0],
+              title: "t",
+              summary: "s",
+              bottomLine: "b",
+            },
+          ],
+        }),
+      },
+    );
+
+    expect(res.status).toBe(502);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toContain("llm boom");
+  });
+});
+
+describe("PATCH /api/admin/archives/:runId — digest meta persistence (e2e)", () => {
+  function buildPatchApp(): Hono {
+    const app = new Hono();
+    app.route(
+      "/api/admin/archives",
+      createAdminArchivesRouter({
+        getArchiveRepo: () => archiveRepo,
+        getRawItemsRepo: () => rawItemsRepo,
+        redis,
+      }),
+    );
+    return app;
+  }
+
+  async function readDigestColumns(runId: string): Promise<{
+    digestHeadline: string | null;
+    digestSummary: string | null;
+    hook: string | null;
+    twitterSummary: string | null;
+    searchText: string | null;
+  }> {
+    const [row] = await db
+      .select({
+        digestHeadline: runArchives.digestHeadline,
+        digestSummary: runArchives.digestSummary,
+        hook: runArchives.hook,
+        twitterSummary: runArchives.twitterSummary,
+        searchText: runArchives.searchText,
+      })
+      .from(runArchives)
+      .where(eq(runArchives.id, runId));
+    return row;
+  }
+
+  async function seedPatchable(opts: {
+    hook?: string | null;
+    twitterSummary?: string | null;
+  } = {}): Promise<SeededArchive> {
+    const rawId = await insertRawItem({
+      externalId: `patch-${randomUUID()}`,
+      title: "Patch source title",
+      recapTitle: "Patch recap title",
+      recapSummary: "Patch recap summary",
+    });
+    return insertArchive({
+      reviewed: false,
+      completedAt: new Date("2099-03-01T00:00:00Z"),
+      digestHeadline: "Original headline",
+      digestSummary: "Original summary",
+      hook: opts.hook ?? null,
+      twitterSummary: opts.twitterSummary ?? null,
+      rawItemIds: [rawId],
+    });
+  }
+
+  async function patch(runId: string, body: Record<string, unknown>): Promise<Response> {
+    return buildPatchApp().request(`/api/admin/archives/${runId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("REQ-010: persists all four digest fields and recomputes searchText from the new headline/summary", async () => {
+    const archive = await seedPatchable();
+    const res = await patch(archive.runId, {
+      rankedItems: [{ id: archive.rawItemIds[0], sourceType: "hn" }],
+      digestHeadline: "Brand new headline copy",
+      digestSummary: "Brand new summary copy",
+      hook: "Brand new hook",
+      twitterSummary: "Brand new tweet",
+    });
+    expect(res.status).toBe(200);
+
+    const row = await readDigestColumns(archive.runId);
+    expect(row.digestHeadline).toBe("Brand new headline copy");
+    expect(row.digestSummary).toBe("Brand new summary copy");
+    expect(row.hook).toBe("Brand new hook");
+    expect(row.twitterSummary).toBe("Brand new tweet");
+    // searchText reflects the NEW headline + summary copy (FTS index in sync)
+    expect(row.searchText).toContain("Brand new headline copy");
+    expect(row.searchText).toContain("Brand new summary copy");
+  });
+
+  it("REQ-011: PATCH with only rankedItems preserves existing digest columns (not nulled)", async () => {
+    const archive = await seedPatchable({
+      hook: "Existing hook",
+      twitterSummary: "Existing tweet",
+    });
+    const res = await patch(archive.runId, {
+      rankedItems: [{ id: archive.rawItemIds[0], sourceType: "hn" }],
+    });
+    expect(res.status).toBe(200);
+
+    const row = await readDigestColumns(archive.runId);
+    expect(row.digestHeadline).toBe("Original headline");
+    expect(row.digestSummary).toBe("Original summary");
+    expect(row.hook).toBe("Existing hook");
+    expect(row.twitterSummary).toBe("Existing tweet");
+  });
+
+  it("EDGE-004: PATCH with hook:'' writes an empty string", async () => {
+    const archive = await seedPatchable({ hook: "Existing hook" });
+    const res = await patch(archive.runId, {
+      rankedItems: [{ id: archive.rawItemIds[0], sourceType: "hn" }],
+      hook: "",
+    });
+    expect(res.status).toBe(200);
+
+    const row = await readDigestColumns(archive.runId);
+    expect(row.hook).toBe("");
+  });
+
+  it("EDGE-009: PATCH with digestHeadline:null writes null and recomputes searchText without the headline", async () => {
+    const archive = await seedPatchable();
+    const res = await patch(archive.runId, {
+      rankedItems: [{ id: archive.rawItemIds[0], sourceType: "hn" }],
+      digestHeadline: null,
+    });
+    expect(res.status).toBe(200);
+
+    const row = await readDigestColumns(archive.runId);
+    expect(row.digestHeadline).toBeNull();
+    // summary preserved (omitted); searchText no longer carries the old headline
+    expect(row.digestSummary).toBe("Original summary");
+    expect(row.searchText).not.toContain("Original headline");
+    expect(row.searchText).toContain("Original summary");
+  });
+
+  it("searchText changes when the headline is regenerated", async () => {
+    const archive = await seedPatchable();
+
+    const first = await patch(archive.runId, {
+      rankedItems: [{ id: archive.rawItemIds[0], sourceType: "hn" }],
+      digestHeadline: "First saved headline",
+      digestSummary: "First saved summary",
+    });
+    expect(first.status).toBe(200);
+    const before = (await readDigestColumns(archive.runId)).searchText;
+
+    const second = await patch(archive.runId, {
+      rankedItems: [{ id: archive.rawItemIds[0], sourceType: "hn" }],
+      digestHeadline: "Regenerated headline copy",
+      digestSummary: "Regenerated summary copy",
+    });
+    expect(second.status).toBe(200);
+    const after = (await readDigestColumns(archive.runId)).searchText;
+
+    expect(after).not.toBe(before);
+    expect(after).toContain("Regenerated headline copy");
+    expect(before).toContain("First saved headline");
+  });
+});
+
+describe("admin vs public archive detail — twitterSummary exposure (e2e)", () => {
+  async function seedReviewedWithTwitter(): Promise<SeededArchive> {
+    const rawId = await insertRawItem({
+      externalId: `tw-expose-${randomUUID()}`,
+      title: "Twitter expose source",
+      recapTitle: "Twitter expose recap",
+      recapSummary: "Twitter expose summary",
+    });
+    return insertArchive({
+      reviewed: true,
+      completedAt: new Date("2099-03-05T00:00:00Z"),
+      digestHeadline: "Expose headline",
+      digestSummary: "Expose summary",
+      hook: "Expose hook",
+      twitterSummary: "Expose tweet body",
+      rawItemIds: [rawId],
+    });
+  }
+
+  it("REQ-013: admin GET detail returns twitterSummary", async () => {
+    const archive = await seedReviewedWithTwitter();
+    const app = new Hono();
+    app.route(
+      "/api/admin/archives",
+      createAdminArchivesRouter({
+        getArchiveRepo: () => archiveRepo,
+        getRawItemsRepo: () => rawItemsRepo,
+        redis,
+      }),
+    );
+    const res = await app.request(`/api/admin/archives/${archive.runId}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.twitterSummary).toBe("Expose tweet body");
+  });
+
+  it("REQ-014: public GET detail has NO twitterSummary key", async () => {
+    const archive = await seedReviewedWithTwitter();
+    const res = await buildPublicApp().request(`/api/archives/${archive.runId}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(body, "twitterSummary")).toBe(false);
+  });
 });

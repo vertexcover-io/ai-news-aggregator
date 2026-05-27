@@ -1,34 +1,4 @@
-import { z } from "zod";
-
-// This file is auto-managed alongside the user_settings.ranking_prompt seed.
-// If you edit this constant, you MUST update packages/shared/src/db/migrations/0026_*.sql
-// to match byte-for-byte. The drift test enforces this.
-
-// Standalone digest-field guidance (headline/summary/hook/twitterSummary).
-// Composed into DEFAULT_RANKING_PROMPT below AND reused on its own by the
-// pipeline's generateDigestMeta processor. The rank-specific trailing sentence
-// about the `ranked` array is intentionally NOT part of this block — it lives
-// only in the ranking prompt.
-export const DIGEST_META_INSTRUCTIONS = `Also return a top-level \`digest\` object framing the day like the front page of a daily news brief:
-
-- digest.headline: A newsroom headline for the **rank-1 story** (the entry with the highest final score). Specific and concrete — name the actor, the action, and any numbers, models, or names the source supports. No clickbait, no questions, no trailing punctuation.
-- digest.summary: One sentence in "Plus: …" form covering the next 3 most notable stories (not the lead). Each clause names the actor and what they did. End with a period.
-
-Example:
-  headline: "Jensen Huang Calls Out AI CEO 'God Complex' as NVIDIA Beats by $2B"
-  summary: "Plus: GPT-5.5 launches May 5, China bars AI-driven layoffs, and ARC-AGI-3 exposes frontier reasoning gaps."
-
-Also return a social-post hook on the same \`digest\` object, written for LinkedIn and X (Twitter). This is SEPARATE from \`headline\` and \`summary\` and serves a different surface — the social post — not the archive UI:
-
-- digest.hook: ONE sentence that opens the social post. Lead with the day's biggest shift, framed as a news hook the reader cannot ignore. ≤140 characters. No clickbait, no questions, no editorial filler words like "quietly", "finally", "doubles down", "shocks". End with a single period and nothing else. Distinct from \`headline\` — the hook frames the *meaning* of the lead story, not just restates it.
-  Good: "LangChain just turned agent debugging into an agent — and the rest of the AI stack is scrambling to keep up."
-  Good: "Anthropic's $5B raise puts it within striking distance of OpenAI's valuation for the first time."
-
-Also return a dedicated X/Twitter summary on the same \`digest\` object:
-
-- digest.twitterSummary: ONE standalone X-native post body for the non-premium format. It must fit within the user prompt's \`twitterSummaryMaxChars\`. No hashtags, no emojis, no markdown links, no URL, no "thread below", no "read more". Write it for AI builders on X: concrete, current, and conversational without hype. Do not truncate with ellipses; rewrite shorter until it fits.`;
-
-export const DEFAULT_RANKING_PROMPT = `The reader is a software developer, tech lead, engineering manager, or founder who works with developers. They care about AI-assisted software development, coding agents, agentic AI tooling, evaluations, observability, infrastructure, reliability, and practical engineering workflows. They open this digest to find stories they can use themselves or share with their teams.
+The reader is a software developer, tech lead, engineering manager, or founder who works with developers. They care about AI-assisted software development, coding agents, agentic AI tooling, evaluations, observability, infrastructure, reliability, and practical engineering workflows. They open this digest to find stories they can use themselves or share with their teams.
 
 This newsletter should feel opinionated. It should surface AI news that helps developers and engineering teams understand what to build, test, automate, deploy, manage, or watch next. Prefer stories with practical consequences for software teams over broad AI-world awareness. Direct developer-tool, coding-agent, AI infrastructure, eval, observability, reliability, and production workflow stories should beat broad governance, policy, market, or research-awareness stories unless those stories clearly change how engineering teams build, review, ship, or operate software.
 
@@ -58,9 +28,9 @@ Source neutrality rule: Blog posts have no comments by source design. Do not pen
 
 Each rationale must name the driving axis so the reader can see why the item was ranked where it was. Use the exact axis names above in rationales.
 
-The user prompt includes \`requestedTopN\`. Return exactly that many ranked entries when there are at least that many useful developer/team-relevant input items. Prefer a lower-confidence but clearly relevant developer-tooling, infra, eval, or production workflow item over stopping early. Only return fewer than \`requestedTopN\` when the remaining inputs are truly irrelevant, duplicate, invalid, or impossible to rank from the title/body/URL.
+The user prompt includes `requestedTopN`. Return exactly that many ranked entries when there are at least that many useful developer/team-relevant input items. Prefer a lower-confidence but clearly relevant developer-tooling, infra, eval, or production workflow item over stopping early. Only return fewer than `requestedTopN` when the remaining inputs are truly irrelevant, duplicate, invalid, or impossible to rank from the title/body/URL.
 
-Only return ranked entries for actual input items that you can rank. If an item is invalid, duplicate, unrankable, not worth including, or has a missing/unclear title, omit it entirely. Never emit placeholder ranked entries, "skipped" entries, empty-title entries, zero-score filler rows, or explanatory rows about invalid input. Never invent, merge, concatenate, or alter item ids; every returned \`id\` must exactly match one input item id. Every returned title must be non-empty.
+Only return ranked entries for actual input items that you can rank. If an item is invalid, duplicate, unrankable, not worth including, or has a missing/unclear title, omit it entirely. Never emit placeholder ranked entries, "skipped" entries, empty-title entries, zero-score filler rows, or explanatory rows about invalid input. Never invent, merge, concatenate, or alter item ids; every returned `id` must exactly match one input item id. Every returned title must be non-empty.
 
 Treat same-event coverage as duplicates even when the URLs, titles, or source types differ. If multiple items describe the same announcement, launch, benchmark, outage, funding round, policy change, paper, model release, or product update, they are one story. Return only the strongest representative and omit the rest. Prefer the primary-source item when it is available and sufficiently informative; otherwise choose the item with the clearest evidence, richest body text, and strongest engagement. Example duplicate pair: "OpenAI ships Codex in ChatGPT mobile" and "OpenAI launches Codex on ChatGPT mobile" are one story, not two rankable stories.
 
@@ -106,19 +76,23 @@ DO NOT:
 
 Hard ceiling: if your draft exceeds 110 words across these four fields combined, cut bullets first (drop the weakest), then trim the summary, then the bottomLine. Never pad to fill.
 
-${DIGEST_META_INSTRUCTIONS}
+Also return a top-level `digest` object framing the day like the front page of a daily news brief:
 
-Return a \`digest\` object (with \`headline\`, \`summary\`, \`hook\`, \`twitterSummary\`) and a \`ranked\` array. Use the \`id\` field from the input verbatim for each ranked entry.
-`;
+- digest.headline: A newsroom headline for the **rank-1 story** (the entry with the highest final score). Specific and concrete — name the actor, the action, and any numbers, models, or names the source supports. No clickbait, no questions, no trailing punctuation.
+- digest.summary: One sentence in "Plus: …" form covering the next 3 most notable stories (not the lead). Each clause names the actor and what they did. End with a period.
 
-// Single source of truth for the 4-field digest object produced by both the
-// rerank stage (`rankedResponseSchema`) and the standalone `generateDigestMeta`
-// processor. Defined here next to DIGEST_META_INSTRUCTIONS.
-export const digestSchema = z.object({
-  headline: z.string(),
-  summary: z.string(),
-  hook: z.string(),
-  twitterSummary: z.string(),
-});
+Example:
+  headline: "Jensen Huang Calls Out AI CEO 'God Complex' as NVIDIA Beats by $2B"
+  summary: "Plus: GPT-5.5 launches May 5, China bars AI-driven layoffs, and ARC-AGI-3 exposes frontier reasoning gaps."
 
-export type DigestMeta = z.infer<typeof digestSchema>;
+Also return a social-post hook on the same `digest` object, written for LinkedIn and X (Twitter). This is SEPARATE from `headline` and `summary` and serves a different surface — the social post — not the archive UI:
+
+- digest.hook: ONE sentence that opens the social post. Lead with the day's biggest shift, framed as a news hook the reader cannot ignore. ≤140 characters. No clickbait, no questions, no editorial filler words like "quietly", "finally", "doubles down", "shocks". End with a single period and nothing else. Distinct from `headline` — the hook frames the *meaning* of the lead story, not just restates it.
+  Good: "LangChain just turned agent debugging into an agent — and the rest of the AI stack is scrambling to keep up."
+  Good: "Anthropic's $5B raise puts it within striking distance of OpenAI's valuation for the first time."
+
+Also return a dedicated X/Twitter summary on the same `digest` object:
+
+- digest.twitterSummary: ONE standalone X-native post body for the non-premium format. It must fit within the user prompt's `twitterSummaryMaxChars`. No hashtags, no emojis, no markdown links, no URL, no "thread below", no "read more". Write it for AI builders on X: concrete, current, and conversational without hype. Do not truncate with ellipses; rewrite shorter until it fits.
+
+Return a `digest` object (with `headline`, `summary`, `hook`, `twitterSummary`) and a `ranked` array. Use the `id` field from the input verbatim for each ranked entry.

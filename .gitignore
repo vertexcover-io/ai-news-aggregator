@@ -150,3 +150,12 @@ evals/ranking/cache/
 # web-collector-date-fix: ship design + library-probe alongside spec
 !docs/spec/web-collector-date-fix/design.md
 !docs/spec/web-collector-date-fix/library-probe.md
+
+# regenerate-digest-meta: ship full audit trail (design + library-probe + README + learnings + verification)
+!docs/spec/regenerate-digest-meta/design.md
+!docs/spec/regenerate-digest-meta/library-probe.md
+!docs/spec/regenerate-digest-meta/README.md
+!docs/spec/regenerate-digest-meta/learnings.md
+!docs/spec/regenerate-digest-meta/verification/adversarial-findings.md
+!docs/spec/regenerate-digest-meta/verification/screenshots/
+!docs/spec/regenerate-digest-meta/verification/screenshots/*.png

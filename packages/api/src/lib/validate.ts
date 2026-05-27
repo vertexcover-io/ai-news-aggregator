@@ -399,9 +399,28 @@ export const archivePatchSchema = z
         (items) => new Set(items.map((i) => i.id)).size === items.length,
         { message: "rankedItems contains duplicate ids" },
       ),
+    digestHeadline: z.string().nullable().optional(),
+    digestSummary: z.string().nullable().optional(),
+    hook: z.string().nullable().optional(),
+    twitterSummary: z.string().nullable().optional(),
   });
 
 export type ArchivePatchBody = z.infer<typeof archivePatchSchema>;
+
+export const regenerateDigestMetaSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.number().int(),
+        title: z.string().min(1),
+        summary: z.string(),
+        bottomLine: z.string(),
+      }),
+    )
+    .min(1, { message: "items cannot be empty" }),
+});
+
+export type RegenerateDigestMetaBody = z.infer<typeof regenerateDigestMetaSchema>;
 
 export const addPostSchema = z.object({
   url: z.url(),

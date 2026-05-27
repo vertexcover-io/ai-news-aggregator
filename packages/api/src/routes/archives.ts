@@ -38,17 +38,20 @@ import {
   archivePatchSchema,
   addPostSchema,
   promoteSchema,
+  regenerateDigestMetaSchema,
 } from "@api/lib/validate.js";
 import {
   patchArchive,
   addPostToArchive,
   getPool,
   promoteItem,
+  regenerateDigestMeta,
   NotFoundError,
   ValidationError,
   ConflictError,
   type HydrateAddedPostFn,
   type GenerateRecapFn,
+  type GenerateDigestMetaFn,
 } from "@api/services/review.js";
 import { captureAnalytics } from "@api/lib/posthog.js";
 
@@ -58,6 +61,7 @@ export interface ArchivesRouterDeps {
   getSettingsRepo?: () => Pick<UserSettingsRepo, "get">;
   hydrateAddedPost?: HydrateAddedPostFn;
   generateRecapFn?: GenerateRecapFn;
+  generateDigestMeta?: GenerateDigestMetaFn;
   logger?: ReturnType<typeof createLogger>;
   processingQueue?: Pick<Queue, "add">;
   redis?: Pick<IORedis, "del">;
@@ -158,6 +162,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         digestHeadline: string | null;
         digestSummary: string | null;
         hook: string | null;
+        twitterSummary: string | null;
         isDryRun: boolean;
         shortlistedItemIds: number[] | null;
       } = {
@@ -178,6 +183,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         digestHeadline: archive.digestHeadline,
         digestSummary: archive.digestSummary,
         hook: archive.hook,
+        twitterSummary: archive.twitterSummary,
         isDryRun: archive.isDryRun,
       };
 
@@ -345,6 +351,50 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     }
   });
 
+  archives.post("/:runId/regenerate-digest-meta", async (c) => {
+    const runId = c.req.param("runId");
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid json" }, 400);
+    }
+    const parsed = regenerateDigestMetaSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.message }, 400);
+    }
+    if (!deps.generateDigestMeta) {
+      return c.json({ error: "generateDigestMeta dependency not configured" }, 502);
+    }
+    try {
+      const meta = await regenerateDigestMeta(runId, parsed.data, {
+        archiveRepo: deps.getArchiveRepo(),
+        generateDigestMeta: deps.generateDigestMeta,
+      });
+      logger.info(
+        { event: "archive.regenerate-digest-meta", runId, count: parsed.data.items.length },
+        "archive.regenerate-digest-meta",
+      );
+      return c.json(meta);
+    } catch (err) {
+      if (err instanceof NotFoundError) {
+        return c.json({ error: err.message }, 404);
+      }
+      if (err instanceof ConflictError) {
+        return c.json({ reason: err.message }, 409);
+      }
+      if (err instanceof ValidationError) {
+        return c.json({ error: err.message, missingIds: err.missingIds }, 400);
+      }
+      const message = err instanceof Error ? err.message : "upstream error";
+      logger.warn(
+        { event: "archive.regenerate-digest-meta.failed", runId, error: message },
+        "archive.regenerate-digest-meta.failed",
+      );
+      return c.json({ error: `digest regeneration failed: ${message}` }, 502);
+    }
+  });
+
   archives.get("/:runId/pool", async (c) => {
     const runId = c.req.param("runId");
     const sortRaw = c.req.query("sort");
@@ -454,6 +504,13 @@ function createDefaultGenerateRecapFn(): GenerateRecapFn {
   };
 }
 
+function createDefaultGenerateDigestMetaFn(): GenerateDigestMetaFn {
+  return async (items) => {
+    const { generateDigestMeta } = await import("@newsletter/pipeline/add-post");
+    return generateDigestMeta(items);
+  };
+}
+
 /**
  * Backward-compat: returns a single Hono app with BOTH public and admin archive
  * routes mounted. Kept for existing tests/callers that don't split the gate.
@@ -496,6 +553,7 @@ function createDefaultArchivesDeps(): ArchivesRouterDeps {
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
     hydrateAddedPost: createDefaultHydrateAddedPost(),
     generateRecapFn: createDefaultGenerateRecapFn(),
+    generateDigestMeta: createDefaultGenerateDigestMetaFn(),
     processingQueue: getDefaultProcessingQueue(),
     redis: createRedisConnection(),
   };

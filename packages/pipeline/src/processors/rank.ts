@@ -2,6 +2,7 @@ import { generateObject as defaultGenerateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { createLogger } from "@newsletter/shared";
+import { digestSchema } from "@newsletter/shared/constants";
 import type {
   Candidate,
   RankedItemRef,
@@ -73,13 +74,6 @@ const rankedEntrySchema = z.object({
   summary: z.string(),
   bullets: z.array(z.string()),
   bottomLine: z.string(),
-});
-
-const digestSchema = z.object({
-  headline: z.string(),
-  summary: z.string(),
-  hook: z.string(),
-  twitterSummary: z.string(),
 });
 
 export const rankedResponseSchema = z.object({

@@ -4,6 +4,7 @@ import {
   userSettingsUpsertSchema,
   archivePatchSchema,
   addPostSchema,
+  regenerateDigestMetaSchema,
 } from "@api/lib/validate.js";
 
 const validSettings = {
@@ -549,6 +550,51 @@ describe("archivePatchSchema (REQ-160 – REQ-162, EDGE-110)", () => {
     });
     expect(r.success).toBe(false);
   });
+
+  it("REQ-012: accepts the four digest fields as strings", () => {
+    const r = archivePatchSchema.safeParse({
+      rankedItems: [{ id: 1, sourceType: "hn" }],
+      digestHeadline: "A headline",
+      digestSummary: "A summary",
+      hook: "A hook",
+      twitterSummary: "A tweet",
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("EDGE-009: accepts the four digest fields as null", () => {
+    const r = archivePatchSchema.safeParse({
+      rankedItems: [{ id: 1, sourceType: "hn" }],
+      digestHeadline: null,
+      digestSummary: null,
+      hook: null,
+      twitterSummary: null,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("EDGE-004: accepts an empty-string digest field", () => {
+    const r = archivePatchSchema.safeParse({
+      rankedItems: [{ id: 1, sourceType: "hn" }],
+      hook: "",
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("accepts a body that omits all digest fields", () => {
+    const r = archivePatchSchema.safeParse({
+      rankedItems: [{ id: 1, sourceType: "hn" }],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("REQ-012: rejects a numeric digestHeadline", () => {
+    const r = archivePatchSchema.safeParse({
+      rankedItems: [{ id: 1, sourceType: "hn" }],
+      digestHeadline: 42,
+    });
+    expect(r.success).toBe(false);
+  });
 });
 
 describe("userSettingsUpsertSchema webSearchConfig (REQ-005/REQ-006)", () => {
@@ -813,5 +859,48 @@ describe("addPostSchema (REQ-024, REQ-144)", () => {
     if (r.success) {
       expect(r.data).not.toHaveProperty("sourceType");
     }
+  });
+});
+
+describe("regenerateDigestMetaSchema", () => {
+  const validItem = {
+    id: 1,
+    title: "A title",
+    summary: "A summary",
+    bottomLine: "The bottom line",
+  };
+
+  it("accepts a body with one or more valid items", () => {
+    const r = regenerateDigestMetaSchema.safeParse({ items: [validItem] });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects an empty items array", () => {
+    const r = regenerateDigestMetaSchema.safeParse({ items: [] });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues[0].message).toBe("items cannot be empty");
+    }
+  });
+
+  it("rejects an item with a non-integer id", () => {
+    const r = regenerateDigestMetaSchema.safeParse({
+      items: [{ ...validItem, id: 1.5 }],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects an item with an empty title", () => {
+    const r = regenerateDigestMetaSchema.safeParse({
+      items: [{ ...validItem, title: "" }],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("accepts empty-string summary and bottomLine", () => {
+    const r = regenerateDigestMetaSchema.safeParse({
+      items: [{ id: 1, title: "t", summary: "", bottomLine: "" }],
+    });
+    expect(r.success).toBe(true);
   });
 });

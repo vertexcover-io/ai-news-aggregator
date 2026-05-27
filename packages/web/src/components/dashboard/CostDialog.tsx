@@ -38,6 +38,7 @@ const STAGE_ORDER: CostStage[] = [
   "shortlist",
   "rank",
   "recap",
+  "digest",
 ];
 
 const STAGE_LABELS: Record<CostStage, string> = {
@@ -46,6 +47,7 @@ const STAGE_LABELS: Record<CostStage, string> = {
   shortlist: "Shortlist",
   rank: "Rank",
   recap: "Recap",
+  digest: "Digest",
 };
 
 function formatRunDate(value: string): string {
