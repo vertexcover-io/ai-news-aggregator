@@ -24,16 +24,17 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@tavily/core": "0.7.3",
-    "chrono-node": "2.9.1",
     "@ai-sdk/anthropic": "2.0.74",
+    "@ai-sdk/google": "2.0.74",
     "@aws-sdk/client-sesv2": "3.1042.0",
     "@mozilla/readability": "0.6.0",
     "@newsletter/shared": "workspace:*",
     "@react-email/components": "1.0.12",
+    "@tavily/core": "0.7.3",
     "@types/react": "19.2.14",
     "ai": "5.0.169",
     "bullmq": "5.51.0",
+    "chrono-node": "2.9.1",
     "crawlee": "3.13.3",
     "dotenv": "16.5.0",
     "drizzle-orm": "0.42.0",
@@ -45,9 +46,9 @@
     "react-email": "6.0.8",
     "resend": "6.12.2",
     "rettiwt-api": "7.0.3",
-    "twitter-api-v2": "1.29.0",
     "turndown": "7.2.0",
     "turndown-plugin-gfm": "1.0.2",
+    "twitter-api-v2": "1.29.0",
     "zod": "4.3.6"
   },
   "devDependencies": {

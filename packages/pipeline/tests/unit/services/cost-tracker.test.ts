@@ -4,6 +4,7 @@ import { createCostTracker } from "@pipeline/services/cost-tracker.js";
 
 const PRICED = "claude-haiku-4-5-20251001";
 const UNPRICED = "made-up-experimental";
+const GEMINI = "gemini-3.1-flash-lite";
 
 function usage(input: number, output: number) {
   return {
@@ -180,6 +181,61 @@ describe("createCostTracker", () => {
     const tracker = createCostTracker("run-1");
     tracker.merge(existing);
     expect(tracker.hasAnyCalls()).toBe(true);
+  });
+
+  it("REQ-004: web-discovery on gemini prices via the gemini path (input 0.25 / output 1.5 per MTok)", () => {
+    const tracker = createCostTracker("run-1");
+    tracker.record({
+      stage: "web-discovery",
+      modelId: GEMINI,
+      usage: { inputTokens: 147, outputTokens: 191, totalTokens: 338 },
+      providerMetadata: { google: {} },
+    });
+    const snap = tracker.snapshot();
+    const stage = snap.stages["web-discovery"];
+    expect(stage).toBeDefined();
+    expect(stage?.byModel.length).toBe(1);
+    expect(stage?.byModel[0].modelId).toBe(GEMINI);
+    expect(stage?.byModel[0].calls).toBe(1);
+    expect(stage?.calls).toBe(1);
+    expect(stage?.costStatus).toBe("ok");
+    // 147 * 0.25 + 191 * 1.5 = 323.25, / 1e6 = 0.00032325
+    expect(stage?.costUsd).toBeCloseTo(0.00032325, 9);
+    expect(stage?.byModel[0].costUsd).toBeCloseTo(0.00032325, 9);
+  });
+
+  it("REQ-006: gemini record with no providerMetadata.anthropic still yields zero cache-tier tokens", () => {
+    const tracker = createCostTracker("run-1");
+    tracker.record({
+      stage: "web-discovery",
+      modelId: GEMINI,
+      usage: { inputTokens: 147, outputTokens: 191, totalTokens: 338 },
+      providerMetadata: { google: {} },
+    });
+    const m = tracker.snapshot().stages["web-discovery"]?.byModel[0];
+    expect(m?.inputTokens).toBe(147);
+    expect(m?.outputTokens).toBe(191);
+    expect(m?.cachedInputTokens).toBe(0);
+    expect(m?.cacheCreation5mTokens).toBe(0);
+    expect(m?.cacheCreation1hTokens).toBe(0);
+    expect(m?.reasoningTokens).toBe(0);
+  });
+
+  it("EDGE-002: gemini web-discovery + anthropic rank in one tracker — totalCostUsd sums both, both ids present, unknownModels empty", () => {
+    const tracker = createCostTracker("run-1");
+    tracker.record({
+      stage: "web-discovery",
+      modelId: GEMINI,
+      usage: { inputTokens: 147, outputTokens: 191, totalTokens: 338 },
+      providerMetadata: { google: {} },
+    });
+    tracker.record({ stage: "rank", modelId: PRICED, usage: usage(1_000_000, 0) });
+    const snap = tracker.snapshot();
+    expect(snap.stages["web-discovery"]?.byModel[0].modelId).toBe(GEMINI);
+    expect(snap.stages.rank?.byModel[0].modelId).toBe(PRICED);
+    // gemini stage = 0.00032325, rank stage = 1.0
+    expect(snap.totalCostUsd).toBeCloseTo(1.0 + 0.00032325, 9);
+    expect(snap.unknownModels).toEqual([]);
   });
 
   it("EDGE-005: same stage with two different model ids tracked separately", () => {

@@ -16,8 +16,10 @@ import {
   parseDateOrNull,
   resolvesToListing,
   COMBINED_DISCOVERY_CAP,
+  WEB_COLLECTOR_MODEL_ID,
   type DiscoveredPost,
 } from "@pipeline/collectors/web.js";
+import type { RecordInput } from "@pipeline/services/cost-tracker.js";
 import type { BlogSource } from "@pipeline/types.js";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import type { CrawlResult } from "@pipeline/services/web-crawler.js";
@@ -1693,5 +1695,105 @@ describe("collectWeb (P2 telemetry)", () => {
     );
 
     expect(result.unitResults).toEqual([]);
+  });
+});
+
+// ── Phase 2: gemini model id recorded to tracker (REQ-001, REQ-002) ───────────
+describe("collectWeb cost-tracker model id", () => {
+  function makeRecordingTracker(): { records: RecordInput[]; tracker: CostTracker } {
+    const records: RecordInput[] = [];
+    const tracker: CostTracker = {
+      record: (input) => {
+        records.push(input);
+      },
+      snapshot: () => {
+        throw new Error("snapshot not expected");
+      },
+      merge: () => {
+        throw new Error("merge not expected");
+      },
+      hasAnyCalls: () => records.length > 0,
+    };
+    return { records, tracker };
+  }
+
+  it("records modelId gemini-3.1-flash-lite for both web-discovery and web-extraction stages", async () => {
+    const repo = makeRepo();
+    const model = makeDiscoveryThenExtractModel(
+      [DISCOVERY_POSTS[0]],
+      { title: "Post Title", author: "Author", published_at: "2026-03-30" },
+    );
+
+    const listingMap = new Map<string, CrawlResult>([
+      [sourceA.listingUrl, makeSuccessResult(LISTING_MARKDOWN)],
+    ]);
+    const detailMap = new Map<string, CrawlResult>([
+      [DISCOVERY_POSTS[0].url, makeSuccessResult(DETAIL_MARKDOWN)],
+    ]);
+    let crawlCallCount = 0;
+    const runWebCrawl = vi.fn().mockImplementation(() => {
+      crawlCallCount++;
+      return Promise.resolve(crawlCallCount === 1 ? listingMap : detailMap);
+    });
+
+    const { records, tracker } = makeRecordingTracker();
+
+    await collectWeb(
+      { rawItemsRepo: repo, llmModel: model, runWebCrawl, tracker },
+      { sources: [sourceA], maxItems: 10 },
+    );
+
+    const discovery = records.find((r) => r.stage === "web-discovery");
+    const extraction = records.find((r) => r.stage === "web-extraction");
+    expect(discovery?.modelId).toBe("gemini-3.1-flash-lite");
+    expect(extraction?.modelId).toBe("gemini-3.1-flash-lite");
+    expect(WEB_COLLECTOR_MODEL_ID).toBe("gemini-3.1-flash-lite");
+  });
+});
+
+// ── Phase 2: default provider built from @ai-sdk/google keyed by GEMINI_API_KEY (REQ-003) ─
+describe("resolveDefaultModel provider", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    vi.doUnmock("@ai-sdk/google");
+  });
+
+  it("builds the default model from @ai-sdk/google keyed by GEMINI_API_KEY", async () => {
+    vi.resetModules();
+    vi.stubEnv("GEMINI_API_KEY", "test-gemini-key-123");
+
+    const createGoogleGenerativeAI = vi.fn(() => {
+      const provider = vi.fn(() => new MockLanguageModelV2({
+        doGenerate: () => Promise.resolve({
+          content: [{ type: "text", text: JSON.stringify({ posts: [] }) }],
+          finishReason: "stop" as const,
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          warnings: [],
+        }),
+      }));
+      return provider;
+    });
+
+    vi.doMock("@ai-sdk/google", () => ({ createGoogleGenerativeAI }));
+
+    const { collectWeb: freshCollectWeb } = await import("@pipeline/collectors/web.js");
+
+    const repo = makeRepo();
+    const listingMap = new Map<string, CrawlResult>([
+      [sourceA.listingUrl, makeSuccessResult(LISTING_MARKDOWN)],
+    ]);
+    const runWebCrawl = vi.fn().mockResolvedValue(listingMap);
+
+    // No llmModel injected → resolveDefaultModel() runs and must use the Google provider.
+    await freshCollectWeb(
+      { rawItemsRepo: repo, runWebCrawl },
+      { sources: [sourceA], maxItems: 5 },
+    );
+
+    expect(createGoogleGenerativeAI).toHaveBeenCalledTimes(1);
+    expect(createGoogleGenerativeAI).toHaveBeenCalledWith({ apiKey: "test-gemini-key-123" });
+    const provider = createGoogleGenerativeAI.mock.results[0].value as ReturnType<typeof createGoogleGenerativeAI>;
+    expect(provider).toHaveBeenCalledWith("gemini-3.1-flash-lite");
   });
 });
