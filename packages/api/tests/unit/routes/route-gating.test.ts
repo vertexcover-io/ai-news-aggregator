@@ -120,6 +120,8 @@ function makeApp(
     webhooksRouter: makeStubWebhooksRouter(),
     analyticsRouter: makeStubAnalyticsRouter(),
     analyticsConfigRouter: makeStubAnalyticsConfigRouter(),
+    linkedInOAuthRouter: new Hono(),
+    linkedInOAuthCallbackRouter: new Hono(),
   });
 }
 

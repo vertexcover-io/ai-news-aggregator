@@ -26,6 +26,18 @@ export interface BuildAppDeps {
   webhooksRouter: Hono;
   analyticsRouter: Hono;
   analyticsConfigRouter: Hono;
+  /**
+   * Admin-gated LinkedIn OAuth routes (POST /start, GET /status).
+   * Mounted inside adminApp — behind requireAdmin.
+   */
+  linkedInOAuthRouter: Hono;
+  /**
+   * Public (ungated) LinkedIn OAuth callback router (GET /).
+   * LinkedIn redirects the browser here after authorization; no admin cookie
+   * is present on the redirect. Security is the Redis-stored CSRF state token.
+   * Mounted BEFORE adminApp so the gate does not intercept this path.
+   */
+  linkedInOAuthCallbackRouter: Hono;
 }
 
 const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
@@ -73,6 +85,15 @@ export function buildApp(deps: BuildAppDeps): Hono {
   // Public sources summary (no admin gate).
   app.route("/api/sources", deps.publicSourcesRouter);
 
+  // LinkedIn OAuth callback — mounted BEFORE adminApp so the gate does not
+  // intercept requests to this path. LinkedIn redirects the user's browser here
+  // after authorization; no admin_session cookie is present on the redirect.
+  // Security is provided by the unguessable Redis-stored CSRF state (consume-once).
+  app.route(
+    "/api/admin/social-credentials/linkedin/oauth/callback",
+    deps.linkedInOAuthCallbackRouter,
+  );
+
   // Path-aware admin gate: login/logout skip, everything else requires a
   // valid admin_session cookie.
   const gate = deps.requireAdminFactory(deps.sessionSecret);
@@ -92,6 +113,11 @@ export function buildApp(deps: BuildAppDeps): Hono {
   adminApp.route("/runs", deps.adminRunsRouter);
   adminApp.route("/eval", deps.adminEvalRouter);
   adminApp.route("/social-credentials", deps.adminSocialCredentialsRouter);
+  // Admin-gated LinkedIn OAuth start + status routes.
+  adminApp.route(
+    "/social-credentials/linkedin/oauth",
+    deps.linkedInOAuthRouter,
+  );
   adminApp.route("/must-read", deps.adminMustReadRouter);
   adminApp.route("/analytics", deps.analyticsRouter);
   app.route("/api/admin", adminApp);

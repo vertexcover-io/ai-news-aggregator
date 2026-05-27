@@ -51,6 +51,17 @@ function makeInMemoryRepo(cipher: CredentialCipher): {
 } {
   const rows = new Map<SocialCredentialPlatform, InMemoryRow>();
   const repo: SocialCredentialsRepo = {
+    getLinkedIn(): Promise<import("../../repositories/social-credentials.js").LinkedInCredentialRecord | null> {
+      const row = rows.get("linkedin");
+      if (!row) return Promise.resolve(null);
+      const fields = row.encryptedFields as LinkedInEncryptedFields;
+      return Promise.resolve({
+        clientId: cipher.decrypt(fields.clientId),
+        clientSecret: cipher.decrypt(fields.clientSecret),
+        apiVersion: row.metadata?.apiVersion ?? null,
+        updatedAt: row.updatedAt,
+      });
+    },
     getStatus(): Promise<SocialCredentialsStatus> {
       const linkedin = rows.get("linkedin");
       const twitter = rows.get("twitter");
