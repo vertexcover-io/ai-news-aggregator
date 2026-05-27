@@ -43,5 +43,18 @@ export async function handleLinkedInPostJob(
         "slack.linkedin_posted.unexpected_throw",
       );
     }
+  } else if (result?.status === "failed") {
+    try {
+      await deps.slackNotifier?.notifyPublishFailed({ runId: archive.id, channel: "linkedin-post" });
+    } catch (err) {
+      logger.warn(
+        {
+          event: "slack.linkedin_failed.unexpected_throw",
+          runId: archive.id,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "slack.linkedin_failed.unexpected_throw",
+      );
+    }
   }
 }
