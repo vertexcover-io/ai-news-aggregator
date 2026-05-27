@@ -1,3 +1,4 @@
+import { escapeLittleText } from "./little-text.js";
 import type {
   LinkedInApiClient,
   LinkedInCreateCommentInput,
@@ -43,7 +44,9 @@ export function createLinkedInApiClient(
     ): Promise<LinkedInCreatePostResult> {
       const body = {
         author: input.personUrn,
-        commentary: input.text,
+        // commentary is parsed as little Text Format; reserved chars must be
+        // escaped or LinkedIn silently truncates the post at the first one.
+        commentary: escapeLittleText(input.text),
         visibility: "PUBLIC",
         distribution: {
           feedDistribution: "MAIN_FEED",

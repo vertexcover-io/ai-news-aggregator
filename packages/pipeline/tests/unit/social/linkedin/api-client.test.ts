@@ -46,6 +46,24 @@ describe("createLinkedInApiClient", () => {
     expect(sentBody.lifecycleState).toBe("PUBLISHED");
   });
 
+  it("escapes reserved little-Text-Format chars in commentary so LinkedIn does not truncate the post", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      makeResponse({ status: 201, headers: { "x-restli-id": "12345" } }),
+    );
+    const client = createLinkedInApiClient({ fetchFn });
+
+    await client.createPost({
+      ...INPUT,
+      text: "Hook line.\n\n1) First summary\n\n2) Second summary\n\nFull breakdown ↓",
+    });
+
+    const [, init] = fetchFn.mock.calls[0] as [string, RequestInit];
+    const sentBody = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(sentBody.commentary).toBe(
+      "Hook line.\n\n1\\) First summary\n\n2\\) Second summary\n\nFull breakdown ↓",
+    );
+  });
+
   it("passes through full URN when x-restli-id already contains it", async () => {
     // Production LinkedIn now returns the full urn:li:share:<id> in the header.
     // Ensure we don't double-prefix it.
@@ -151,6 +169,24 @@ describe("createLinkedInApiClient", () => {
       expect(sentBody.actor).toBe("urn:li:person:abc");
       expect(sentBody.object).toBe(COMMENT_INPUT.postUrn);
       expect(sentBody.message).toEqual({ text: COMMENT_INPUT.text });
+    });
+
+    it("does NOT little-Text escape comment text (Comments API is plain text, not LTF)", async () => {
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValue(makeResponse({ status: 201 }));
+      const client = createLinkedInApiClient({ fetchFn });
+
+      await client.createComment({
+        ...COMMENT_INPUT,
+        text: "See (full) breakdown: https://news.example.com/archive/abc",
+      });
+
+      const [, init] = fetchFn.mock.calls[0] as [string, RequestInit];
+      const sentBody = JSON.parse(init.body as string) as Record<string, unknown>;
+      expect(sentBody.message).toEqual({
+        text: "See (full) breakdown: https://news.example.com/archive/abc",
+      });
     });
 
     it("returns ok:false with status and body on non-201", async () => {
