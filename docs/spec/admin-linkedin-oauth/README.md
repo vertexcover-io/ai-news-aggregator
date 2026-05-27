@@ -3,7 +3,7 @@
 **Verification verdict:** ✅ PASS — see [verification/proof-report.md](verification/proof-report.md)
 **Quality gate:** ✅ PASS (9/9 checks)
 **Library probe:** PASS — no new dependency; LinkedIn OAuth API (already in production use) verified reachable + pure-fn covered. See [library-probe.md](library-probe.md).
-**PR:** _(filled in below)_
+**PR:** https://github.com/vertexcover-io/ai-news-aggregator/pull/215
 
 ## Summary
 
