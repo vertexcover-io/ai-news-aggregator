@@ -312,7 +312,6 @@ describe("ReviewPage", () => {
 
     expect(fieldValue("Headline")).toBe("Seeded headline");
     expect(fieldValue("Summary")).toBe("Seeded summary");
-    expect(fieldValue("LinkedIn Header")).toBe("Seeded hook");
     expect(fieldValue("Twitter Summary")).toBe("Seeded twitter");
   });
 

@@ -403,6 +403,7 @@ export const archivePatchSchema = z
     digestSummary: z.string().nullable().optional(),
     hook: z.string().nullable().optional(),
     twitterSummary: z.string().nullable().optional(),
+    linkedinPostBody: z.string().nullable().optional(),
   });
 
 export type ArchivePatchBody = z.infer<typeof archivePatchSchema>;

@@ -64,6 +64,7 @@ export const runArchives = pgTable("run_archives", {
   digestSummary: text("digest_summary"),
   hook: text("hook"),
   twitterSummary: text("twitter_summary"),
+  linkedinPostBody: text("linkedin_post_body"),
   sourceTelemetry: jsonb("source_telemetry").$type<RunSourceTelemetry | null>(),
   slackNotifiedAt: timestamp("slack_notified_at", { withTimezone: true }),
   searchText: text("search_text"),

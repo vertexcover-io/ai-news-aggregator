@@ -19,6 +19,7 @@ export type RunStateResponse = Omit<RunState, "rankedItems"> & {
   digestSummary?: string | null;
   hook?: string | null;
   twitterSummary?: string | null;
+  linkedinPostBody?: string | null;
   isDryRun?: boolean;
 };
 

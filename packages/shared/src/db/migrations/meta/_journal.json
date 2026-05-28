@@ -253,6 +253,13 @@
       "when": 1748433600000,
       "tag": "0035_record_review_edits",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1779965918732,
+      "tag": "0036_vengeful_starfox",
+      "breakpoints": true
     }
   ]
 }

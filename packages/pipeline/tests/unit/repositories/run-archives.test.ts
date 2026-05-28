@@ -59,6 +59,7 @@ describe("run-archives repository", () => {
       digestSummary: null,
       hook: null,
       twitterSummary: null,
+      linkedinPostBody: null,
       sourceTelemetry: null,
       searchText: null,
       isDryRun: false,

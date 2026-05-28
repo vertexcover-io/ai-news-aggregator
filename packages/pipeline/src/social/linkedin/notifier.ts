@@ -116,8 +116,9 @@ export function createLinkedInNotifier(
         }
 
         const hook = archive.hook;
+        const linkedinPostBody = archive.linkedinPostBody;
         const stories = await buildStories(archive, deps.rawItems);
-        if (stories.length === 0) {
+        if (stories.length === 0 && (linkedinPostBody ?? "").trim() === "") {
           logger.warn(
             { event: "social.linkedin.skipped", reason: "no_headline", runId },
             "linkedin notification skipped (no stories)",
@@ -127,6 +128,7 @@ export function createLinkedInNotifier(
         const archiveUrl = `${stripTrailingSlash(config.publicArchiveBaseUrl)}/archive/${runId}`;
         const composed = composePosts({
           hook,
+          linkedinPostBody,
           stories,
         });
         if (composed === null) {

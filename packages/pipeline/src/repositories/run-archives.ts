@@ -28,6 +28,7 @@ export interface RunArchiveUpsertInput {
   digestSummary?: string | null;
   hook?: string | null;
   twitterSummary?: string | null;
+  linkedinPostBody?: string | null;
   sourceTelemetry?: RunSourceTelemetry | null;
   searchText?: string | null;
   isDryRun?: boolean;
@@ -48,6 +49,7 @@ export interface PipelineRunArchiveRow {
   digestSummary: string | null;
   hook: string | null;
   twitterSummary: string | null;
+  linkedinPostBody: string | null;
   sourceTelemetry: RunSourceTelemetry | null;
   slackNotifiedAt: Date | null;
   emailSentAt: Date | null;
@@ -95,6 +97,7 @@ export function createRunArchivesRepo(
     digestSummary: runArchives.digestSummary,
     hook: runArchives.hook,
     twitterSummary: runArchives.twitterSummary,
+    linkedinPostBody: runArchives.linkedinPostBody,
     sourceTelemetry: runArchives.sourceTelemetry,
     slackNotifiedAt: runArchives.slackNotifiedAt,
     emailSentAt: runArchives.emailSentAt,
@@ -252,6 +255,7 @@ export function createRunArchivesRepo(
           digestSummary: input.digestSummary ?? null,
           hook: input.hook ?? null,
           twitterSummary: input.twitterSummary ?? null,
+          linkedinPostBody: input.linkedinPostBody ?? null,
           sourceTelemetry: input.sourceTelemetry ?? null,
           searchText: input.searchText ?? null,
           isDryRun: input.isDryRun ?? false,
@@ -272,6 +276,7 @@ export function createRunArchivesRepo(
             digestSummary: sql.raw(`excluded.${runArchives.digestSummary.name}`),
             hook: sql.raw(`excluded.${runArchives.hook.name}`),
             twitterSummary: sql.raw(`excluded.${runArchives.twitterSummary.name}`),
+            linkedinPostBody: sql.raw(`excluded.${runArchives.linkedinPostBody.name}`),
             sourceTelemetry: sql.raw(`excluded.${runArchives.sourceTelemetry.name}`),
             searchText: sql.raw(`excluded.${runArchives.searchText.name}`),
             isDryRun: sql.raw(`excluded.${runArchives.isDryRun.name}`),

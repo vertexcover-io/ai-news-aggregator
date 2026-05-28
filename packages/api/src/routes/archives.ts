@@ -168,6 +168,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         digestSummary: string | null;
         hook: string | null;
         twitterSummary: string | null;
+        linkedinPostBody: string | null;
         isDryRun: boolean;
         shortlistedItemIds: number[] | null;
       } = {
@@ -189,6 +190,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         digestSummary: archive.digestSummary,
         hook: archive.hook,
         twitterSummary: archive.twitterSummary,
+        linkedinPostBody: archive.linkedinPostBody,
         isDryRun: archive.isDryRun,
       };
 

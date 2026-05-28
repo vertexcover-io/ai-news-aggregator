@@ -99,6 +99,7 @@ export interface PatchArchiveInput {
   digestSummary?: string | null;
   hook?: string | null;
   twitterSummary?: string | null;
+  linkedinPostBody?: string | null;
 }
 
 export async function patchArchive(
@@ -140,6 +141,7 @@ export async function patchArchive(
   if ("digestSummary" in input) digestMeta.digestSummary = input.digestSummary;
   if ("hook" in input) digestMeta.hook = input.hook;
   if ("twitterSummary" in input) digestMeta.twitterSummary = input.twitterSummary;
+  if ("linkedinPostBody" in input) digestMeta.linkedinPostBody = input.linkedinPostBody;
 
   // Effective post-patch headline/summary so searchText reflects the new copy.
   const effectiveHeadline =

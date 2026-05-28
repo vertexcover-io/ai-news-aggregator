@@ -1,6 +1,6 @@
 {
-  "id": "5095021a-5ee3-4ae3-beaf-8e6bea049e52",
-  "prevId": "f452fc99-0fbb-48ba-8379-12b116ae9b96",
+  "id": "3bbb3423-5812-45ce-af4e-37ce7217c50f",
+  "prevId": "5095021a-5ee3-4ae3-beaf-8e6bea049e52",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -661,6 +661,12 @@
         },
         "twitter_summary": {
           "name": "twitter_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "linkedin_post_body": {
+          "name": "linkedin_post_body",
           "type": "text",
           "primaryKey": false,
           "notNull": false

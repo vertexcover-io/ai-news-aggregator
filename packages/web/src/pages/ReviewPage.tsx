@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { buildLinkedinPostBody } from "@newsletter/shared/constants";
 import { useReview } from "../hooks/useReview";
 import { useReviewFilters } from "../hooks/useReviewFilters";
 import { useSourceFacets } from "../hooks/useSourceFacets";
@@ -49,6 +50,7 @@ export function ReviewPage(): ReactElement {
     summary: "",
     hook: "",
     twitterSummary: "",
+    linkedinPostBody: "",
   });
   const [digestHydratedId, setDigestHydratedId] = useState<string | null>(null);
   // Signature (ordered list of ranked-item ids) at the time the digest meta
@@ -74,11 +76,22 @@ export function ReviewPage(): ReactElement {
   const digestCompletedKey =
     query.data?.status === "completed" ? query.data.id : null;
   if (digestCompletedKey !== null && digestCompletedKey !== digestHydratedId) {
+    const storedBody = query.data?.linkedinPostBody ?? null;
+    const seededBody =
+      storedBody !== null && storedBody !== ""
+        ? storedBody
+        : buildLinkedinPostBody(
+            query.data?.hook ?? null,
+            (query.data?.rankedItems ?? []).map((it) => ({
+              summary: it.recap?.summary ?? "",
+            })),
+          );
     setDigestMeta({
       headline: query.data?.digestHeadline ?? "",
       summary: query.data?.digestSummary ?? "",
       hook: query.data?.hook ?? "",
       twitterSummary: query.data?.twitterSummary ?? "",
+      linkedinPostBody: seededBody,
     });
     setDigestHydratedId(digestCompletedKey);
     const initialIds = (query.data?.rankedItems ?? []).map((i) => i.id).join("|");
@@ -249,6 +262,7 @@ export function ReviewPage(): ReactElement {
         digestSummary: digestMeta.summary,
         hook: digestMeta.hook,
         twitterSummary: digestMeta.twitterSummary,
+        linkedinPostBody: digestMeta.linkedinPostBody,
       });
       allowSaveNavigation.current = true;
       reset(state.current);

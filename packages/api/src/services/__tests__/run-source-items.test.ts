@@ -39,6 +39,7 @@ function makeArchive(overrides: Partial<RunArchiveRow> = {}): RunArchiveRow {
     digestSummary: null,
     hook: null,
     twitterSummary: null,
+    linkedinPostBody: null,
     sourceTelemetry: null,
     slackNotifiedAt: null,
     emailSentAt: null,

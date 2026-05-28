@@ -40,6 +40,7 @@ export interface UpdateRankedItemsContext {
     digestSummary?: string | null;
     hook?: string | null;
     twitterSummary?: string | null;
+    linkedinPostBody?: string | null;
   };
 }
 
@@ -58,6 +59,7 @@ export interface RunArchiveRow {
   digestSummary: string | null;
   hook: string | null;
   twitterSummary: string | null;
+  linkedinPostBody: string | null;
   sourceTelemetry: RunSourceTelemetry | null;
   slackNotifiedAt: Date | null;
   emailSentAt: Date | null;
@@ -259,6 +261,7 @@ export function createRunArchivesRepo(
           digestSummary: runArchives.digestSummary,
           hook: runArchives.hook,
           twitterSummary: runArchives.twitterSummary,
+          linkedinPostBody: runArchives.linkedinPostBody,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
           emailSentAt: runArchives.emailSentAt,
@@ -383,6 +386,7 @@ export function createRunArchivesRepo(
           digestSummary: runArchives.digestSummary,
           hook: runArchives.hook,
           twitterSummary: runArchives.twitterSummary,
+          linkedinPostBody: runArchives.linkedinPostBody,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
           emailSentAt: runArchives.emailSentAt,
@@ -539,6 +543,7 @@ export function createRunArchivesRepo(
           digestSummary: runArchives.digestSummary,
           hook: runArchives.hook,
           twitterSummary: runArchives.twitterSummary,
+          linkedinPostBody: runArchives.linkedinPostBody,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
           emailSentAt: runArchives.emailSentAt,
@@ -586,6 +591,7 @@ export function createRunArchivesRepo(
         if ("digestSummary" in meta) setValues.digestSummary = meta.digestSummary ?? null;
         if ("hook" in meta) setValues.hook = meta.hook ?? null;
         if ("twitterSummary" in meta) setValues.twitterSummary = meta.twitterSummary ?? null;
+        if ("linkedinPostBody" in meta) setValues.linkedinPostBody = meta.linkedinPostBody ?? null;
       }
       const [row] = await db
         .update(runArchives)
@@ -606,6 +612,7 @@ export function createRunArchivesRepo(
           digestSummary: runArchives.digestSummary,
           hook: runArchives.hook,
           twitterSummary: runArchives.twitterSummary,
+          linkedinPostBody: runArchives.linkedinPostBody,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
           emailSentAt: runArchives.emailSentAt,
@@ -669,6 +676,7 @@ export function createRunArchivesRepo(
           digestSummary: runArchives.digestSummary,
           hook: runArchives.hook,
           twitterSummary: runArchives.twitterSummary,
+          linkedinPostBody: runArchives.linkedinPostBody,
           sourceTelemetry: runArchives.sourceTelemetry,
           slackNotifiedAt: runArchives.slackNotifiedAt,
           emailSentAt: runArchives.emailSentAt,
