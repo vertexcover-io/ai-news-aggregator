@@ -15,6 +15,7 @@ import {
   type RunSourceTelemetry,
   type SocialMetadata,
 } from "@newsletter/shared";
+import type { PreReviewSnapshot } from "@newsletter/shared/review-edits";
 import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import { deriveRawItemIdentifierSql } from "./raw-items.js";
 import type { RawItemRow, RawItemsRepo } from "./raw-items.js";
@@ -68,6 +69,7 @@ export interface RunArchiveRow {
   runFunnel: RunFunnel | null;
   socialMetadata: SocialMetadata | null;
   shortlistedItemIds: number[] | null;
+  preReviewSnapshot: PreReviewSnapshot | null;
 }
 
 export interface SourceFacet {
@@ -132,6 +134,22 @@ export interface RunArchivesRepo {
     items: RankedItemRef[],
     ctx: UpdateRankedItemsContext,
   ): Promise<RunArchiveRow>;
+  /**
+   * Update ranked items inside an already-open transaction.
+   * The caller is responsible for providing a Drizzle tx handle.
+   * Returns the updated RunArchiveRow (without a subsequent findById).
+   */
+  updateRankedItemsInTx(
+    id: string,
+    items: RankedItemRef[],
+    ctx: UpdateRankedItemsContext,
+    tx: Pick<AppDb, "update">,
+  ): Promise<RunArchiveRow>;
+  /**
+   * Run the provided function inside a single Drizzle transaction.
+   * Use this when you need to atomically update ranked items and other tables.
+   */
+  runTransaction<T>(fn: (tx: Pick<AppDb, "select" | "insert" | "update" | "delete">) => Promise<T>): Promise<T>;
   findPoolItems(
     archiveId: string,
     opts: FindPoolItemsOpts,
@@ -252,6 +270,7 @@ export function createRunArchivesRepo(
           runFunnel: runArchives.runFunnel,
           socialMetadata: runArchives.socialMetadata,
           shortlistedItemIds: runArchives.shortlistedItemIds,
+          preReviewSnapshot: runArchives.preReviewSnapshot,
         })
         .from(runArchives)
         .where(eq(runArchives.id, id));
@@ -375,6 +394,7 @@ export function createRunArchivesRepo(
           runFunnel: runArchives.runFunnel,
           socialMetadata: runArchives.socialMetadata,
           shortlistedItemIds: runArchives.shortlistedItemIds,
+          preReviewSnapshot: runArchives.preReviewSnapshot,
         })
         .from(runArchives)
         .where(
@@ -530,6 +550,7 @@ export function createRunArchivesRepo(
           runFunnel: runArchives.runFunnel,
           socialMetadata: runArchives.socialMetadata,
           shortlistedItemIds: runArchives.shortlistedItemIds,
+          preReviewSnapshot: runArchives.preReviewSnapshot,
         })
         .from(runArchives)
         .orderBy(desc(runArchives.completedAt))
@@ -596,8 +617,75 @@ export function createRunArchivesRepo(
           runFunnel: runArchives.runFunnel,
           socialMetadata: runArchives.socialMetadata,
           shortlistedItemIds: runArchives.shortlistedItemIds,
+          preReviewSnapshot: runArchives.preReviewSnapshot,
         });
       return row;
+    },
+    async updateRankedItemsInTx(
+      id: string,
+      items: RankedItemRef[],
+      ctx: UpdateRankedItemsContext,
+      tx: Pick<AppDb, "update">,
+    ): Promise<RunArchiveRow> {
+      const meta = ctx.digestMeta;
+      const effectiveHeadline =
+        meta && "digestHeadline" in meta ? meta.digestHeadline ?? null : ctx.digestHeadline;
+      const effectiveSummary =
+        meta && "digestSummary" in meta ? meta.digestSummary ?? null : ctx.digestSummary;
+      const searchText = serializeArchiveSearchText({
+        digestHeadline: effectiveHeadline,
+        digestSummary: effectiveSummary,
+        rankedItems: items,
+        rawItemsById: ctx.rawItemsById,
+      });
+      const setValues: Partial<typeof runArchives.$inferInsert> = {
+        rankedItems: items,
+        reviewed: true,
+        searchText,
+        updatedAt: new Date(),
+      };
+      if (meta) {
+        if ("digestHeadline" in meta) setValues.digestHeadline = meta.digestHeadline ?? null;
+        if ("digestSummary" in meta) setValues.digestSummary = meta.digestSummary ?? null;
+        if ("hook" in meta) setValues.hook = meta.hook ?? null;
+        if ("twitterSummary" in meta) setValues.twitterSummary = meta.twitterSummary ?? null;
+      }
+      const [row] = await tx
+        .update(runArchives)
+        .set(setValues)
+        .where(eq(runArchives.id, id))
+        .returning({
+          id: runArchives.id,
+          status: runArchives.status,
+          rankedItems: runArchives.rankedItems,
+          topN: runArchives.topN,
+          reviewed: runArchives.reviewed,
+          completedAt: runArchives.completedAt,
+          publishedAt: runArchives.publishedAt,
+          createdAt: runArchives.createdAt,
+          startedAt: runArchives.startedAt,
+          sourceTypes: runArchives.sourceTypes,
+          digestHeadline: runArchives.digestHeadline,
+          digestSummary: runArchives.digestSummary,
+          hook: runArchives.hook,
+          twitterSummary: runArchives.twitterSummary,
+          sourceTelemetry: runArchives.sourceTelemetry,
+          slackNotifiedAt: runArchives.slackNotifiedAt,
+          emailSentAt: runArchives.emailSentAt,
+          linkedinPostedAt: runArchives.linkedinPostedAt,
+          twitterPostedAt: runArchives.twitterPostedAt,
+          notificationState: runArchives.notificationState,
+          isDryRun: runArchives.isDryRun,
+          costBreakdown: runArchives.costBreakdown,
+          runFunnel: runArchives.runFunnel,
+          socialMetadata: runArchives.socialMetadata,
+          shortlistedItemIds: runArchives.shortlistedItemIds,
+          preReviewSnapshot: runArchives.preReviewSnapshot,
+        });
+      return row;
+    },
+    async runTransaction<T>(fn: (tx: Pick<AppDb, "select" | "insert" | "update" | "delete">) => Promise<T>): Promise<T> {
+      return db.transaction(fn as Parameters<typeof db.transaction>[0]) as Promise<T>;
     },
     async findPoolItems(
       _archiveId: string,
