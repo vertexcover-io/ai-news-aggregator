@@ -18,6 +18,37 @@ function bumpSkipReason(counters: EnrichmentCounters, reason: EnrichmentSkipReas
   counters.skippedReasons.set(reason, (counters.skippedReasons.get(reason) ?? 0) + 1);
 }
 
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+function logEnrichmentFailure(
+  ctx: EnrichmentContext,
+  item: RawItemInsert,
+  failureReason: string,
+): void {
+  if (!ctx.runLogger) return;
+  const hostname = hostnameOf(item.url);
+  void ctx.runLogger.error(
+    {
+      stage: "enrich",
+      source: item.sourceType,
+      event: "link_enrichment.failed",
+      url: item.url,
+      externalId: item.externalId,
+      step: "enrich",
+      error: failureReason,
+      failureReason,
+      originatingCollector: item.sourceType,
+    },
+    `link enrichment failed: ${hostname} — ${failureReason}`,
+  );
+}
+
 export async function enrichRawItems(
   items: RawItemInsert[],
   ctx: EnrichmentContext,
@@ -33,6 +64,7 @@ export async function enrichRawItems(
       attach(item, enriched);
       ctx.counters.attempted += 1;
       ctx.counters.failed += 1;
+      logEnrichmentFailure(ctx, item, "cancelled");
       continue;
     }
 
@@ -71,18 +103,21 @@ export async function enrichRawItems(
         ctx.cache.set(decision.canonical, result);
       } else {
         ctx.counters.failed += 1;
+        logEnrichmentFailure(ctx, item, result.failureReason ?? "unknown");
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      const failureReason = `exception: ${msg}`.slice(0, 200);
       const enriched: EnrichedLinkContent = {
         url: item.url,
         fetchedAt: new Date().toISOString(),
         status: "failed",
-        failureReason: `exception: ${msg}`.slice(0, 120),
+        failureReason: failureReason.slice(0, 120),
       };
       attach(item, enriched);
       ctx.counters.attempted += 1;
       ctx.counters.failed += 1;
+      logEnrichmentFailure(ctx, item, failureReason);
     }
   }
   return items;

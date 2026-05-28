@@ -227,6 +227,7 @@ export type WebCollectFn = (
     rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
     signal?: AbortSignal;
     tracker?: CostTracker;
+    runLogger?: RunLogger;
   },
   config: WebCollectConfig,
 ) => Promise<CollectorResult>;
@@ -348,7 +349,11 @@ async function runCollecting(
     const config = collectors.web;
     tasks.push({
       sourceKey: "blog",
-      run: () => deps.collectFns.web({ ...collectorDeps, tracker }, config),
+      run: () =>
+        deps.collectFns.web(
+          { ...collectorDeps, tracker, runLogger: runLog },
+          config,
+        ),
     });
   }
   if (collectors.twitter) {
@@ -579,6 +584,7 @@ export async function handleRunProcessJob(
     signal,
     cache: createEnrichmentCache(),
     counters: newCounters(),
+    runLogger: runLog,
   };
 
   // REQ-09: always close subscriber in a finally block

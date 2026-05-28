@@ -3,6 +3,7 @@ import type { LanguageModel, LanguageModelUsage, ProviderMetadata } from "ai";
 import { z } from "zod";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
+import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import type { SourceUnitResult } from "@newsletter/shared/types";
 import type {
   BlogSource,
@@ -18,6 +19,7 @@ import {
   type CrawlResult,
 } from "@pipeline/services/web-crawler.js";
 import type { CostTracker } from "@pipeline/services/cost-tracker.js";
+import type { RunLogger } from "@pipeline/services/run-logger.js";
 import { resolvePublishedDate } from "@pipeline/collectors/web-date.js";
 
 const logger = createLogger("collector:web");
@@ -188,6 +190,7 @@ export interface WebCollectorDeps {
   signal?: AbortSignal;
   runWebCrawl?: typeof runWebCrawl;
   tracker?: CostTracker;
+  runLogger?: RunLogger;
 }
 
 let cachedDefaultModel: LanguageModel | null = null;
@@ -229,16 +232,20 @@ export async function collectWeb(
       }
     : undefined;
 
+  const runLogger = deps.runLogger;
+
   if (config.sources.length === 0) {
     const durationMs = Date.now() - startTime;
-    logger.info(
-      {
-        event: "collector.web.completed",
-        itemsFetched: 0,
-        itemsStored: 0,
-        failures: 0,
-        durationMs,
-      },
+    const completedFields = {
+      event: "collector.web.completed" as const,
+      itemsFetched: 0,
+      itemsStored: 0,
+      failures: 0,
+      durationMs,
+    };
+    logger.info(completedFields, "collection completed");
+    void runLogger?.info(
+      { stage: "collect", source: "blog", ...completedFields },
       "collection completed",
     );
     return { itemsFetched: 0, itemsStored: 0, commentsFetched: 0, durationMs, failures: undefined, unitResults: [] };
@@ -263,7 +270,10 @@ export async function collectWeb(
     },
     "web collector started",
   );
-  const listingResults = await fetcher(listingJobs, { signal: deps.signal });
+  const listingResults = await fetcher(listingJobs, {
+    signal: deps.signal,
+    runLogger,
+  });
 
   // Per source: run discovery LLM + dedup + filter
   interface PerSource {
@@ -277,10 +287,22 @@ export async function collectWeb(
     config.sources.map(async (source) => {
       const r = listingResults.get(source.listingUrl);
       if (!r?.ok) {
-        logger.warn(
+        const listingFailedFields = {
+          event: "collector.web.listing_failed" as const,
+          source: source.name,
+          listingUrl: source.listingUrl,
+          sinceDays: config.sinceDays,
+          error: r?.error ?? "no result",
+        };
+        logger.warn(listingFailedFields, "web listing failed");
+        void runLogger?.warn(
           {
+            stage: "collect",
+            source: "blog",
             event: "collector.web.listing_failed",
-            source: source.name,
+            step: "listing",
+            url: source.listingUrl,
+            sourceName: source.name,
             listingUrl: source.listingUrl,
             sinceDays: config.sinceDays,
             error: r?.error ?? "no result",
@@ -306,10 +328,25 @@ export async function collectWeb(
         const sorted = sortPostsByPublishedAtDesc(validated);
         const filtered = applySinceDays(sorted, config.sinceDays);
         const capped = filtered.slice(0, config.maxItems);
-        logger.info(
+        const listingCompletedFields = {
+          event: "collector.web.listing_completed" as const,
+          source: source.name,
+          listingUrl: source.listingUrl,
+          sinceDays: config.sinceDays,
+          discovered: discovered.length,
+          validated: validated.length,
+          afterSinceDays: filtered.length,
+          capped: capped.length,
+          structuredDataBytes: r.result.structuredData?.length ?? 0,
+        };
+        logger.info(listingCompletedFields, "web listing processed");
+        void runLogger?.info(
           {
+            stage: "collect",
+            source: "blog",
             event: "collector.web.listing_completed",
-            source: source.name,
+            url: source.listingUrl,
+            sourceName: source.name,
             listingUrl: source.listingUrl,
             sinceDays: config.sinceDays,
             discovered: discovered.length,
@@ -322,10 +359,22 @@ export async function collectWeb(
         );
         return { source, capped, sourceFailed: false };
       } catch (err) {
-        logger.warn(
+        const discoveryFailedFields = {
+          event: "collector.web.discovery_failed" as const,
+          source: source.name,
+          listingUrl: source.listingUrl,
+          sinceDays: config.sinceDays,
+          error: truncateError(err),
+        };
+        logger.warn(discoveryFailedFields, "web listing discovery failed");
+        void runLogger?.warn(
           {
+            stage: "collect",
+            source: "blog",
             event: "collector.web.discovery_failed",
-            source: source.name,
+            step: "discovery",
+            url: source.listingUrl,
+            sourceName: source.name,
             listingUrl: source.listingUrl,
             sinceDays: config.sinceDays,
             error: truncateError(err),
@@ -364,7 +413,7 @@ export async function collectWeb(
 
   // Pass 2: details (only when there is work)
   const detailResults: Map<string, CrawlResult> = detailJobs.length > 0
-    ? await fetcher(detailJobs, { signal: deps.signal })
+    ? await fetcher(detailJobs, { signal: deps.signal, runLogger })
     : new Map<string, CrawlResult>();
 
   // Aggregate items and failures
@@ -385,8 +434,13 @@ export async function collectWeb(
     0,
   );
   const extractStart = Date.now();
-  logger.info(
-    { event: "web.extract.start", posts: totalToExtract },
+  const extractStartFields = {
+    event: "web.extract.start" as const,
+    posts: totalToExtract,
+  };
+  logger.info(extractStartFields, "extracting post fields via LLM");
+  void runLogger?.info(
+    { stage: "collect", source: "blog", ...extractStartFields },
     "extracting post fields via LLM",
   );
   let extracted = 0;
@@ -396,10 +450,21 @@ export async function collectWeb(
     for (const post of posts) {
       const dr = detailResults.get(post.url);
       if (!dr?.ok) {
-        logger.warn(
+        const detailFetchFailFields = {
+          event: "collector.web.detail_failed" as const,
+          source: ps.source.name,
+          postUrl: post.url,
+          error: dr?.error ?? "no result",
+        };
+        logger.warn(detailFetchFailFields, "web detail fetch failed");
+        void runLogger?.error(
           {
+            stage: "collect",
+            source: "blog",
             event: "collector.web.detail_failed",
-            source: ps.source.name,
+            step: "extract",
+            url: post.url,
+            sourceName: ps.source.name,
             postUrl: post.url,
             error: dr?.error ?? "no result",
           },
@@ -443,10 +508,21 @@ export async function collectWeb(
         allItems.push(buildRawItem(post.url, dr.result.markdown, merged, dr.result.publishedAt));
         itemsBySource.set(ps.source.name, (itemsBySource.get(ps.source.name) ?? 0) + 1);
       } catch (err) {
-        logger.warn(
+        const detailExtractFailFields = {
+          event: "collector.web.detail_failed" as const,
+          source: ps.source.name,
+          postUrl: post.url,
+          error: truncateError(err),
+        };
+        logger.warn(detailExtractFailFields, "web detail extraction failed");
+        void runLogger?.error(
           {
+            stage: "collect",
+            source: "blog",
             event: "collector.web.detail_failed",
-            source: ps.source.name,
+            step: "extract",
+            url: post.url,
+            sourceName: ps.source.name,
             postUrl: post.url,
             error: truncateError(err),
           },
@@ -457,13 +533,15 @@ export async function collectWeb(
     }
   }
 
-  logger.info(
-    {
-      event: "web.extract.done",
-      extracted,
-      total: totalToExtract,
-      durationMs: Date.now() - extractStart,
-    },
+  const extractDoneFields = {
+    event: "web.extract.done" as const,
+    extracted,
+    total: totalToExtract,
+    durationMs: Date.now() - extractStart,
+  };
+  logger.info(extractDoneFields, "post field extraction complete");
+  void runLogger?.info(
+    { stage: "collect", source: "blog", ...extractDoneFields },
     "post field extraction complete",
   );
 
@@ -488,8 +566,13 @@ export async function collectWeb(
   }
 
   if (config.sources.length > 0 && perSource.every((ps) => ps.sourceFailed)) {
-    logger.error(
-      { event: "collector.web.all_failed", failures: allFailures },
+    const allFailedFields = {
+      event: "collector.web.all_failed" as const,
+      failures: allFailures,
+    };
+    logger.error(allFailedFields, "all web sources failed");
+    void runLogger?.error(
+      { stage: "collect", source: "blog", step: "collect", ...allFailedFields },
       "all web sources failed",
     );
     throw new Error("all sources failed");
@@ -501,7 +584,12 @@ export async function collectWeb(
 
   const durationMs = Date.now() - startTime;
   const unitResults: SourceUnitResult[] = perSource.map((ps) => ({
-    identifier: ps.source.listingUrl,
+    identifier: deriveRawItemIdentifier({
+      sourceType: "blog",
+      url: ps.source.listingUrl,
+      sourceUrl: ps.source.listingUrl,
+      metadata: null,
+    }),
     displayName: ps.source.name,
     itemsFetched: ps.sourceFailed ? 0 : itemsBySource.get(ps.source.name) ?? 0,
     status: ps.sourceFailed ? "failed" : "completed",
@@ -517,14 +605,16 @@ export async function collectWeb(
     unitResults,
   };
 
-  logger.info(
-    {
-      event: "collector.web.completed",
-      itemsFetched: result.itemsFetched,
-      itemsStored: result.itemsStored,
-      failures: result.failures?.length ?? 0,
-      durationMs,
-    },
+  const finalCompletedFields = {
+    event: "collector.web.completed" as const,
+    itemsFetched: result.itemsFetched,
+    itemsStored: result.itemsStored,
+    failures: result.failures?.length ?? 0,
+    durationMs,
+  };
+  logger.info(finalCompletedFields, "collection completed");
+  void runLogger?.info(
+    { stage: "collect", source: "blog", ...finalCompletedFields },
     "collection completed",
   );
   return result;

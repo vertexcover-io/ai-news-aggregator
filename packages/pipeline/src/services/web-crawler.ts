@@ -7,6 +7,7 @@ import {
 import type { ConvertResult, FetchMode } from "@pipeline/services/web-fetch/types.js";
 import { convert, isHealthyResult, hasListingPostLinks } from "@pipeline/services/web-fetch/convert.js";
 import { createLogger } from "@newsletter/shared/logger";
+import type { RunLogger } from "@pipeline/services/run-logger.js";
 
 const logger = createLogger("crawler:web");
 
@@ -30,6 +31,7 @@ export type CrawlResult = CrawlSuccess | CrawlFailure;
 export interface RunWebCrawlOptions {
   signal?: AbortSignal;
   maxConcurrency?: number;
+  runLogger?: RunLogger;
 }
 
 interface PushedItem {
@@ -228,19 +230,23 @@ export async function runWebCrawl(
   }
 
   const statsState = crawler.stats.state;
-  logger.info(
-    {
-      event: "crawler.stats",
-      jobs: jobs.length,
-      crawlableJobs: crawlableJobs.length,
-      droppedInvalidUrls: jobs.length - crawlableJobs.length,
-      requestsFinished: statsState.requestsFinished,
-      requestsFailed: statsState.requestsFailed,
-      requestsRetries: statsState.requestsRetries,
-      httpOnlyRequestHandlerRuns: statsState.httpOnlyRequestHandlerRuns,
-      browserRequestHandlerRuns: statsState.browserRequestHandlerRuns,
-      renderingTypeMispredictions: statsState.renderingTypeMispredictions,
-    },
+  const statsFields = {
+    event: "crawler.stats" as const,
+    jobs: jobs.length,
+    crawlableJobs: crawlableJobs.length,
+    droppedInvalidUrls: jobs.length - crawlableJobs.length,
+    requestsFinished: statsState.requestsFinished,
+    requestsFailed: statsState.requestsFailed,
+    requestsRetries: statsState.requestsRetries,
+    httpOnlyRequestHandlerRuns: statsState.httpOnlyRequestHandlerRuns,
+    browserRequestHandlerRuns: statsState.browserRequestHandlerRuns,
+    renderingTypeMispredictions: statsState.renderingTypeMispredictions,
+  };
+  logger.info(statsFields, "crawler completed");
+  const runLogLevel: "info" | "warn" =
+    statsState.requestsFailed > 0 ? "warn" : "info";
+  void opts.runLogger?.[runLogLevel](
+    { stage: "collect", source: "blog", step: "crawl", ...statsFields },
     "crawler completed",
   );
 

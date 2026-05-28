@@ -528,4 +528,74 @@ describe("runWebCrawl", () => {
     };
     expect(checker(unhealthyResult)).toBe(false);
   });
+
+  // ── VS-5: level mapping for crawler.stats (REQ-002 + REQ-009) ──────────────
+  describe("runLogger crawler.stats emission", () => {
+    function makeFakeLogger(): {
+      debug: ReturnType<typeof vi.fn>;
+      info: ReturnType<typeof vi.fn>;
+      warn: ReturnType<typeof vi.fn>;
+      error: ReturnType<typeof vi.fn>;
+    } {
+      return {
+        debug: vi.fn().mockResolvedValue(undefined),
+        info: vi.fn().mockResolvedValue(undefined),
+        warn: vi.fn().mockResolvedValue(undefined),
+        error: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    it("emits crawler.stats at info when requestsFailed === 0", async () => {
+      const fakeLogger = makeFakeLogger();
+      const jobs: CrawlJob[] = [
+        { kind: "listing", sourceName: "s", url: "https://ok.com" },
+      ];
+      await runWebCrawl(jobs, { runLogger: fakeLogger });
+
+      // Mock default has requestsFailed: 0
+      expect(fakeLogger.info).toHaveBeenCalled();
+      const infoCall = fakeLogger.info.mock.calls.find(
+        (c) => (c[0] as { event?: string }).event === "crawler.stats",
+      );
+      expect(infoCall).toBeDefined();
+      if (!infoCall) throw new Error("no crawler.stats info call");
+      const fields = infoCall[0] as Record<string, unknown>;
+      expect(fields.stage).toBe("collect");
+      expect(fields.source).toBe("blog");
+      expect(fields.step).toBe("crawl");
+      expect(fields.requestsFailed).toBe(0);
+      // Must not be at warn
+      const warnCall = fakeLogger.warn.mock.calls.find(
+        (c) => (c[0] as { event?: string }).event === "crawler.stats",
+      );
+      expect(warnCall).toBeUndefined();
+    });
+
+    it("emits crawler.stats at warn when requestsFailed > 0", async () => {
+      const fakeLogger = makeFakeLogger();
+      const jobs: CrawlJob[] = [
+        { kind: "listing", sourceName: "s", url: "https://flaky.com" },
+      ];
+      const runPromise = runWebCrawl(jobs, { runLogger: fakeLogger });
+      // Mutate the mock crawler's stats BEFORE the underlying run() resolves so
+      // the post-run stats emission sees requestsFailed > 0.
+      getInstance().stats.state.requestsFailed = 2;
+      await runPromise;
+
+      const warnCall = fakeLogger.warn.mock.calls.find(
+        (c) => (c[0] as { event?: string }).event === "crawler.stats",
+      );
+      expect(warnCall).toBeDefined();
+      if (!warnCall) throw new Error("no crawler.stats warn call");
+      const fields = warnCall[0] as Record<string, unknown>;
+      expect(fields.stage).toBe("collect");
+      expect(fields.source).toBe("blog");
+      expect(fields.requestsFailed).toBe(2);
+      // Must not be at info
+      const infoCall = fakeLogger.info.mock.calls.find(
+        (c) => (c[0] as { event?: string }).event === "crawler.stats",
+      );
+      expect(infoCall).toBeUndefined();
+    });
+  });
 });

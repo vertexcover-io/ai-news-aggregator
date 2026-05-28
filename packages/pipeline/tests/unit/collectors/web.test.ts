@@ -1669,13 +1669,13 @@ describe("collectWeb (P2 telemetry)", () => {
     const alpha = result.unitResults?.find((u) => u.displayName === "alpha");
     const beta = result.unitResults?.find((u) => u.displayName === "beta");
     expect(alpha).toMatchObject({
-      identifier: sourceA.listingUrl,
+      identifier: "alpha.example.com",
       status: "completed",
       errors: [],
     });
     expect(alpha?.itemsFetched).toBeGreaterThan(0);
     expect(beta).toMatchObject({
-      identifier: sourceB.listingUrl,
+      identifier: "beta.example.com",
       status: "failed",
       itemsFetched: 0,
     });
@@ -1796,5 +1796,193 @@ describe("resolveDefaultModel provider", () => {
     expect(createDeepSeek).toHaveBeenCalledWith({ apiKey: "test-deepseek-key-123" });
     const provider = createDeepSeek.mock.results[0].value as ReturnType<typeof createDeepSeek>;
     expect(provider).toHaveBeenCalledWith("deepseek-chat");
+  });
+});
+
+// ── VS-1: unit identifier parity with deriveRawItemIdentifier (REQ-005) ───────
+
+describe("unit identifier matches deriveRawItemIdentifier (VS-1)", () => {
+  const matrix: { listingUrl: string; postPath: string }[] = [
+    { listingUrl: "https://cursor.com/blog", postPath: "/some-post" },
+    { listingUrl: "https://CURSOR.com/blog", postPath: "/another-post" },
+    { listingUrl: "https://blog.example.com/posts", postPath: "/p/x" },
+    { listingUrl: "https://anthropic.com/engineering/", postPath: "claims" },
+    { listingUrl: "https://example.co.uk/news", postPath: "/q/1" },
+  ];
+
+  for (const { listingUrl, postPath } of matrix) {
+    it(`unit.identifier equals deriveRawItemIdentifier for ${listingUrl}`, async () => {
+      const { deriveRawItemIdentifier } = await import(
+        "@newsletter/shared/services"
+      );
+      const source: BlogSource = { name: "x", listingUrl };
+      const postUrl = new URL(postPath, listingUrl).href;
+
+      const model = makeDiscoveryThenExtractModel(
+        [{ url: postUrl, title: "Post", published_at: "2026-03-30" }],
+        { title: "Post", author: "A", published_at: "2026-03-30" },
+      );
+      const repo = makeRepo();
+      const listingMap = new Map<string, CrawlResult>([
+        [listingUrl, makeSuccessResult(`Body\n${postUrl}`)],
+      ]);
+      const detailMap = new Map<string, CrawlResult>([
+        [postUrl, makeSuccessResult(DETAIL_MARKDOWN)],
+      ]);
+      const runWebCrawl = vi
+        .fn()
+        .mockResolvedValueOnce(listingMap)
+        .mockResolvedValueOnce(detailMap);
+
+      const result = await collectWeb(
+        { rawItemsRepo: repo, llmModel: model, runWebCrawl },
+        { sources: [source], maxItems: 10 },
+      );
+
+      const expected = deriveRawItemIdentifier({
+        sourceType: "blog",
+        url: postUrl,
+        sourceUrl: postUrl,
+        metadata: null,
+      });
+      expect(result.unitResults).toHaveLength(1);
+      expect(result.unitResults[0]?.identifier).toBe(expected);
+    });
+  }
+});
+
+// ── VS-5: level mapping for web collector + crawler events (REQ-009) ─────────
+
+interface FakeRunLogger {
+  debug: ReturnType<typeof vi.fn>;
+  info: ReturnType<typeof vi.fn>;
+  warn: ReturnType<typeof vi.fn>;
+  error: ReturnType<typeof vi.fn>;
+}
+
+function makeFakeRunLogger(): FakeRunLogger {
+  return {
+    debug: vi.fn().mockResolvedValue(undefined),
+    info: vi.fn().mockResolvedValue(undefined),
+    warn: vi.fn().mockResolvedValue(undefined),
+    error: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function findCall(
+  fn: ReturnType<typeof vi.fn>,
+  event: string,
+): { fields: Record<string, unknown>; msg: string } | null {
+  for (const call of fn.mock.calls) {
+    const fields = call[0] as Record<string, unknown>;
+    if (fields.event === event) {
+      return { fields, msg: call[1] as string };
+    }
+  }
+  return null;
+}
+
+describe("level mapping for web collector events (VS-5)", () => {
+  it("routes collector.web.listing_completed -> runLogger.info", async () => {
+    const fakeLogger = makeFakeRunLogger();
+    const repo = makeRepo();
+    const model = makeDiscoveryThenExtractModel(
+      [DISCOVERY_POSTS[0]],
+      { title: "T", author: "A", published_at: "2026-03-30" },
+    );
+    const listingMap = new Map<string, CrawlResult>([
+      [sourceA.listingUrl, makeSuccessResult(LISTING_MARKDOWN)],
+    ]);
+    const detailMap = new Map<string, CrawlResult>([
+      [DISCOVERY_POSTS[0].url, makeSuccessResult(DETAIL_MARKDOWN)],
+    ]);
+    const runWebCrawl = vi
+      .fn()
+      .mockResolvedValueOnce(listingMap)
+      .mockResolvedValueOnce(detailMap);
+
+    await collectWeb(
+      { rawItemsRepo: repo, llmModel: model, runWebCrawl, runLogger: fakeLogger },
+      { sources: [sourceA], maxItems: 10 },
+    );
+
+    const hit = findCall(fakeLogger.info, "collector.web.listing_completed");
+    expect(hit).not.toBeNull();
+    expect(hit?.fields.stage).toBe("collect");
+    expect(hit?.fields.source).toBe("blog");
+    // It must NOT be at warn or error
+    expect(findCall(fakeLogger.warn, "collector.web.listing_completed")).toBeNull();
+    expect(findCall(fakeLogger.error, "collector.web.listing_completed")).toBeNull();
+  });
+
+  it("routes collector.web.discovery_failed -> runLogger.warn", async () => {
+    const fakeLogger = makeFakeRunLogger();
+    const repo = makeRepo();
+    // First call discovery — throw; on the listing path the LLM throws.
+    const model = new MockLanguageModelV2({
+      doGenerate: () => Promise.reject(new Error("LLM down")),
+    });
+    const listingMap = new Map<string, CrawlResult>([
+      [sourceA.listingUrl, makeSuccessResult(LISTING_MARKDOWN)],
+    ]);
+    const runWebCrawl = vi
+      .fn()
+      .mockResolvedValueOnce(listingMap)
+      .mockResolvedValueOnce(new Map());
+
+    await expect(
+      collectWeb(
+        { rawItemsRepo: repo, llmModel: model, runWebCrawl, runLogger: fakeLogger },
+        { sources: [sourceA], maxItems: 10 },
+      ),
+    ).rejects.toThrow();
+
+    const hit = findCall(fakeLogger.warn, "collector.web.discovery_failed");
+    expect(hit).not.toBeNull();
+    expect(hit?.fields.stage).toBe("collect");
+    expect(hit?.fields.source).toBe("blog");
+    expect(hit?.fields.step).toBe("discovery");
+    expect(hit?.fields.url).toBe(sourceA.listingUrl);
+    expect(hit?.fields.error).toBeDefined();
+    // Not at info or error
+    expect(findCall(fakeLogger.info, "collector.web.discovery_failed")).toBeNull();
+    expect(findCall(fakeLogger.error, "collector.web.discovery_failed")).toBeNull();
+  });
+
+  it("routes collector.web.detail_failed -> runLogger.error with step=extract", async () => {
+    const fakeLogger = makeFakeRunLogger();
+    const repo = makeRepo();
+    const model = makeDiscoveryThenExtractModel(
+      DISCOVERY_POSTS,
+      { title: "T", author: "A", published_at: "2026-03-30" },
+    );
+    const listingMap = new Map<string, CrawlResult>([
+      [sourceA.listingUrl, makeSuccessResult(LISTING_MARKDOWN)],
+    ]);
+    // One detail succeeds, one fails — so we still produce a passing run that exercises the failure branch.
+    const detailMap = new Map<string, CrawlResult>([
+      [DISCOVERY_POSTS[0].url, makeSuccessResult(DETAIL_MARKDOWN)],
+      [DISCOVERY_POSTS[1].url, makeFailureResult("timeout")],
+    ]);
+    const runWebCrawl = vi
+      .fn()
+      .mockResolvedValueOnce(listingMap)
+      .mockResolvedValueOnce(detailMap);
+
+    await collectWeb(
+      { rawItemsRepo: repo, llmModel: model, runWebCrawl, runLogger: fakeLogger },
+      { sources: [sourceA], maxItems: 10 },
+    );
+
+    const hit = findCall(fakeLogger.error, "collector.web.detail_failed");
+    expect(hit).not.toBeNull();
+    expect(hit?.fields.stage).toBe("collect");
+    expect(hit?.fields.source).toBe("blog");
+    expect(hit?.fields.step).toBe("extract");
+    expect(hit?.fields.url).toBe(DISCOVERY_POSTS[1].url);
+    expect(hit?.fields.error).toBe("timeout");
+    // Not at info or warn
+    expect(findCall(fakeLogger.info, "collector.web.detail_failed")).toBeNull();
+    expect(findCall(fakeLogger.warn, "collector.web.detail_failed")).toBeNull();
   });
 });
