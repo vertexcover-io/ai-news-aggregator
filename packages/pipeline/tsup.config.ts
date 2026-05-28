@@ -13,7 +13,7 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   external: [
-    "playwright",
+    "playwright-core",
     "crawlee",
     "@mozilla/readability",
     "jsdom",

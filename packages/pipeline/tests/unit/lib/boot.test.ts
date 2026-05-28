@@ -1,27 +1,27 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 
-// vi.hoisted ensures the spy is initialized before vi.mock runs (which gets hoisted)
-const { mockExecutablePath } = vi.hoisted(() => ({
-  mockExecutablePath: vi.fn<() => string>(),
+const { mockAccessSync } = vi.hoisted(() => ({
+  mockAccessSync: vi.fn<(path: string, mode?: number) => void>(),
 }));
 
-vi.mock("playwright", () => ({
-  chromium: {
-    executablePath: mockExecutablePath,
-  },
-}));
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+  return {
+    ...actual,
+    accessSync: mockAccessSync,
+  };
+});
 
 import { assertChromiumInstalled } from "@pipeline/lib/boot.js";
 
 describe("assertChromiumInstalled", () => {
   afterEach(() => {
-    mockExecutablePath.mockReset();
+    mockAccessSync.mockReset();
+    delete process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
   });
 
-  it("calls process.exit(1) and logs the install command when executablePath throws", () => {
-    mockExecutablePath.mockImplementation(() => {
-      throw new Error("Executable not found");
-    });
+  it("exits when PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH is unset", () => {
+    delete process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 
     const errorMessages: unknown[] = [];
     const savedError = console.error;
@@ -43,13 +43,40 @@ describe("assertChromiumInstalled", () => {
 
     expect(exitCodes).toEqual([1]);
     expect(errorMessages).toHaveLength(1);
-    const msg = errorMessages[0];
-    expect(typeof msg).toBe("string");
-    expect(msg as string).toContain("pnpm exec playwright install chromium");
+    expect(errorMessages[0] as string).toContain("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH");
   });
 
-  it("returns void and does not log or exit when executablePath succeeds", () => {
-    mockExecutablePath.mockReturnValue("/usr/bin/chromium");
+  it("exits when the binary is not executable", () => {
+    process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = "/usr/bin/chromium";
+    mockAccessSync.mockImplementation(() => {
+      throw new Error("ENOENT");
+    });
+
+    const errorMessages: unknown[] = [];
+    const savedError = console.error;
+    console.error = (...args: unknown[]) => errorMessages.push(args[0]);
+
+    const exitCodes: (string | number | null | undefined)[] = [];
+    const savedExit = process.exit.bind(process);
+    process.exit = (code?: number | string | null) => {
+      exitCodes.push(code);
+      throw new Error("process.exit called");
+    };
+
+    try {
+      expect(() => assertChromiumInstalled()).toThrow("process.exit called");
+    } finally {
+      console.error = savedError;
+      process.exit = savedExit;
+    }
+
+    expect(exitCodes).toEqual([1]);
+    expect(errorMessages[0] as string).toContain("/usr/bin/chromium");
+  });
+
+  it("returns void when the binary is executable", () => {
+    process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = "/usr/bin/chromium";
+    mockAccessSync.mockReturnValue(undefined);
 
     const errorMessages: unknown[] = [];
     const savedError = console.error;

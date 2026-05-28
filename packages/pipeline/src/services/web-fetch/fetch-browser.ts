@@ -1,9 +1,14 @@
-import { chromium } from "playwright";
+import { chromium } from "playwright-core";
 import type { ConvertResult, FetchMode } from "@pipeline/services/web-fetch/types.js";
 import { convert } from "@pipeline/services/web-fetch/convert.js";
 
 export interface FetchBrowserOptions {
   signal?: AbortSignal;
+}
+
+function resolveChromiumExecutablePath(): string | undefined {
+  const p = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim();
+  return p === "" ? undefined : p;
 }
 
 export async function fetchBrowser(
@@ -17,12 +22,15 @@ export async function fetchBrowser(
       : new Error("aborted");
   }
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: resolveChromiumExecutablePath(),
+    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+  });
   try {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
 
-    // Close browser on abort signal
     const onAbort = (): void => {
       void browser.close();
     };

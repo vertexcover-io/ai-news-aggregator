@@ -1,9 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-alpine AS build
+FROM node:22-bookworm-slim AS build
 
-# Browser binaries belong in the runtime stage (which uses the official
-# Playwright image with browsers preinstalled). Alpine can't run them anyway.
+# Build stage does not run browsers; skip Playwright's bundled download.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 RUN corepack enable
@@ -26,15 +25,27 @@ RUN pnpm --filter @newsletter/shared build \
 
 RUN pnpm --filter @newsletter/pipeline --prod --legacy deploy /out/pipeline
 
-# Runtime: Microsoft's official Playwright image. Pinned to match the
-# `playwright` npm package version (packages/pipeline/package.json). Bumping
-# Playwright requires bumping this tag in lockstep.
-FROM mcr.microsoft.com/playwright:v1.52.0-jammy AS runtime
+# Runtime: Debian slim + system Chromium via apt. We use playwright-core
+# (no bundled browser download) and point it at the apt-installed binary
+# via PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH. This drops the runtime image
+# from ~2 GB (mcr.microsoft.com/playwright:jammy) to ~400-500 MB.
+FROM node:22-bookworm-slim AS runtime
 
-ENV NODE_ENV=production
-# The official image installs browsers under /ms-playwright. Make sure the
-# Playwright package looks there at runtime instead of $HOME/.cache.
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV NODE_ENV=production \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
+
+# The chromium debian package pulls libnss3/libatk/libxkbcommon and
+# friends transitively; we add fonts-liberation for default font
+# fallbacks, ca-certificates for TLS, and procps so the HEALTHCHECK's
+# pgrep works.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      chromium \
+      fonts-liberation \
+      ca-certificates \
+      procps \
+ && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r app && useradd -r -g app -m -d /home/app app
 
