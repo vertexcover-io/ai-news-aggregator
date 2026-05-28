@@ -52,6 +52,40 @@ describe("SaveBar", () => {
     expect(onSave).toHaveBeenCalledTimes(1);
   });
 
+  it("renders the regen-required tooltip and title when disabledReason is set", () => {
+    render(
+      <SaveBar
+        unsavedCount={1}
+        saving={false}
+        canSave={false}
+        disabledReason="Regenerate the digest meta before saving — the ranked list has changed."
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
+    expect(saveBtn.hasAttribute("disabled")).toBe(true);
+    expect(saveBtn.getAttribute("title")).toBe(
+      "Regenerate the digest meta before saving — the ranked list has changed.",
+    );
+    const tooltip = screen.getByTestId("save-disabled-tooltip");
+    expect(tooltip.textContent).toContain("Regenerate the digest meta");
+    expect(tooltip.getAttribute("role")).toBe("tooltip");
+  });
+
+  it("does not render the tooltip when disabledReason is null", () => {
+    render(
+      <SaveBar
+        unsavedCount={0}
+        saving={false}
+        canSave={false}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("save-disabled-tooltip")).toBeNull();
+  });
+
   it("opens a confirm dialog with 'Discard all changes?' and only calls onDiscard after confirm (REQ-153)", () => {
     const onDiscard = vi.fn();
     render(

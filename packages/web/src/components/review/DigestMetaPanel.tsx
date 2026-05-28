@@ -30,6 +30,7 @@ interface DigestMetaPanelProps {
   items: RegenerateItem[];
   values: DigestMetaValues;
   onChange: (values: DigestMetaValues) => void;
+  onRegenerated?: () => void;
 }
 
 function CharCounter({
@@ -58,6 +59,7 @@ export function DigestMetaPanel({
   items,
   values,
   onChange,
+  onRegenerated,
 }: DigestMetaPanelProps): ReactElement {
   const mutation = useMutation({
     mutationFn: () => regenerateDigestMeta(runId, items),
@@ -71,6 +73,7 @@ export function DigestMetaPanel({
         hook: values.hook,
         twitterSummary: meta.twitterSummary,
       });
+      onRegenerated?.();
     },
   });
 
