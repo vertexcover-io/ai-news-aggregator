@@ -77,7 +77,19 @@ sudo -n /usr/bin/install -m 644 "$DEPLOY_DIR/Caddyfile" /etc/caddy/Caddyfile
 sudo -n /bin/systemctl reload caddy
 
 # ─── 5. Prune old images ──────────────────────────────────────────────────
-log "Pruning unused images older than 72h"
-docker image prune -af --filter "until=72h" || true
+# Drop every tag of our two GHCR repos except :latest and the just-deployed
+# :$GIT_SHA, then sweep dangling layers. Other images on the host (postgres,
+# redis, caddy, etc.) are untouched.
+GHCR_REPO_OWNER="$(get_env_value GHCR_REPO_OWNER)"
+for service in api pipeline; do
+	repo="ghcr.io/${GHCR_REPO_OWNER}/ai-news-aggregator-${service}"
+	log "Pruning old tags of ${repo}"
+	docker images --format '{{.Repository}}:{{.Tag}}' "$repo" \
+		| grep -v -e "^${repo}:latest$" -e "^${repo}:${GIT_SHA}$" \
+		| xargs -r docker rmi || true
+done
+
+log "Pruning dangling images"
+docker image prune -f || true
 
 log "Deploy complete — GIT_SHA=$GIT_SHA"
