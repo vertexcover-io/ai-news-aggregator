@@ -8,9 +8,20 @@ describe("MODEL_PRICING (REQ-001)", () => {
         "claude-haiku-4-5-20251001",
         "claude-sonnet-4-5-20250929",
         "claude-sonnet-4-6",
+        "deepseek-chat",
         "gemini-3.1-flash-lite",
       ].sort(),
     );
+  });
+
+  it("deepseek-chat rates match official DeepSeek V4 Flash pricing (REQ-004/REQ-016)", () => {
+    expect(MODEL_PRICING["deepseek-chat"]).toEqual({
+      inputPerMTok: 0.14,
+      outputPerMTok: 0.28,
+      cacheReadPerMTok: 0.0028,
+      cacheWrite5mPerMTok: 0,
+      cacheWrite1hPerMTok: 0,
+    });
   });
 
   it("gemini-3.1-flash-lite rates match design values (REQ-005)", () => {

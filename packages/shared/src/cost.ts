@@ -62,13 +62,33 @@ export function extractAnthropicUsage(
 }
 
 export function extractGeminiUsage(usage: UsageLike | undefined): CostComponents {
+  // Gemini also reports inputTokens as the TOTAL (cached + non-cached). Subtract the cached
+  // portion so CostComponents.inputTokens is uniformly "tokens billed at full input rate".
+  const totalInput = usage?.inputTokens ?? 0;
+  const cached = usage?.cachedInputTokens ?? 0;
   return {
-    inputTokens: usage?.inputTokens ?? 0,
+    inputTokens: totalInput - cached,
     outputTokens: usage?.outputTokens ?? 0,
-    cachedInputTokens: usage?.cachedInputTokens ?? 0,
+    cachedInputTokens: cached,
     cacheCreation5mTokens: 0,
     cacheCreation1hTokens: 0,
     reasoningTokens: usage?.reasoningTokens ?? 0,
+  };
+}
+
+export function extractDeepSeekUsage(usage: UsageLike | undefined): CostComponents {
+  // DeepSeek reports inputTokens as the TOTAL (cached + non-cached). Subtract the cached
+  // portion so CostComponents.inputTokens is uniformly "tokens billed at full input rate"
+  // across all providers, matching the Anthropic convention.
+  const totalInput = usage?.inputTokens ?? 0;
+  const cached = usage?.cachedInputTokens ?? 0;
+  return {
+    inputTokens: totalInput - cached,
+    outputTokens: usage?.outputTokens ?? 0,
+    cachedInputTokens: cached,
+    cacheCreation5mTokens: 0,
+    cacheCreation1hTokens: 0,
+    reasoningTokens: 0,
   };
 }
 
@@ -77,6 +97,7 @@ export function extractUsage(
   usage: UsageLike | undefined,
   providerMetadata: unknown,
 ): CostComponents {
+  if (modelId.startsWith("deepseek-")) return extractDeepSeekUsage(usage);
   if (modelId.startsWith("gemini-")) return extractGeminiUsage(usage);
   return extractAnthropicUsage(usage, providerMetadata);
 }

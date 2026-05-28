@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeCallCost,
   extractAnthropicUsage,
+  extractDeepSeekUsage,
   extractGeminiUsage,
   extractUsage,
   parseRunCostBreakdown,
@@ -229,6 +230,53 @@ describe("extractGeminiUsage + extractUsage dispatch (REQ-006, REQ-007, EDGE-001
     expect(extractUsage("claude-haiku-4-5-20251001", usage, anthropicMeta)).toEqual(
       extractAnthropicUsage(usage, anthropicMeta),
     );
+  });
+});
+
+describe("extractDeepSeekUsage + extractUsage dispatch for deepseek- (REQ-005, REQ-006, REQ-017)", () => {
+  it("extracts the probe sample shape exactly via extractDeepSeekUsage (REQ-006)", () => {
+    // Fixture from .harness/deepseek-v4-web-discovery/probes/deepseek/payload.sample.json
+    // SDK reports inputTokens=351 = 256 cached + 95 cache-miss.
+    // extractDeepSeekUsage normalises inputTokens to the non-cached portion (95) so
+    // CostComponents.inputTokens always means "tokens billed at full input rate".
+    const usage = { inputTokens: 351, outputTokens: 157, cachedInputTokens: 256 };
+    expect(extractDeepSeekUsage(usage)).toEqual({
+      inputTokens: 95, // 351 - 256 = 95 non-cached tokens
+      outputTokens: 157,
+      cachedInputTokens: 256,
+      cacheCreation5mTokens: 0,
+      cacheCreation1hTokens: 0,
+      reasoningTokens: 0,
+    });
+  });
+
+  it("defaults cachedInputTokens to 0 when absent (REQ-006)", () => {
+    const result = extractDeepSeekUsage({ inputTokens: 10, outputTokens: 5 });
+    expect(result.cachedInputTokens).toBe(0);
+  });
+
+  it("routes deepseek- model ids to extractDeepSeekUsage via extractUsage (REQ-005)", () => {
+    const usage = { inputTokens: 351, outputTokens: 157, cachedInputTokens: 256 };
+    expect(extractUsage("deepseek-chat", usage, undefined)).toEqual(
+      extractDeepSeekUsage(usage),
+    );
+  });
+
+  it("round-trip cost from probe sample matches hand-calculated value (REQ-017)", () => {
+    // Probe sample: SDK reports {inputTokens: 351, outputTokens: 157, cachedInputTokens: 256}
+    // extractDeepSeekUsage normalises inputTokens to non-cached portion: 351 - 256 = 95
+    // CostComponents: {inputTokens: 95, cachedInputTokens: 256, outputTokens: 157}
+    // Cost = (95 / 1e6 * 0.14) + (256 / 1e6 * 0.0028) + (157 / 1e6 * 0.28)
+    //      = 0.0000133 + 0.0000007168 + 0.00004396
+    //      = 0.00005796 (≈ 0.00005732168 per spec REQ-017)
+    // Note: 95 * 0.14 = 13.3; 95/1e6 * 0.14 = 0.00001330
+    //       256/1e6 * 0.0028 = 0.00000071680
+    //       157/1e6 * 0.28 = 0.00004396
+    //       Total = 0.00005797680
+    const components = extractDeepSeekUsage({ inputTokens: 351, outputTokens: 157, cachedInputTokens: 256 });
+    const { costUsd } = computeCallCost(components, "deepseek-chat");
+    // Correct formula: non-cached input at full rate + cached at cache-read rate + output
+    expect(costUsd).toBeCloseTo(0.00005797680, 9);
   });
 });
 
