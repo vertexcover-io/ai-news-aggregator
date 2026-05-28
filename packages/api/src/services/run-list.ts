@@ -2,6 +2,7 @@ import type IORedis from "ioredis";
 import type { RunState, RunSummary } from "@newsletter/shared";
 import { formatDateInTimezone, parseRunCostBreakdown } from "@newsletter/shared";
 import type { RunArchivesRepo } from "@api/repositories/run-archives.js";
+import { TERMINAL_STATUSES } from "@api/services/run-observability.js";
 
 export interface RunListDeps {
   redis: Pick<IORedis, "scanStream" | "get" | "mget">;
@@ -39,12 +40,24 @@ export async function listRuns(
   limit: number,
   deps: RunListDeps,
 ): Promise<RunSummary[]> {
-  const keys = await scanRunKeys(deps.redis);
+  const [keys, archives] = await Promise.all([
+    scanRunKeys(deps.redis),
+    deps.archiveRepo.list(limit),
+  ]);
+  const archiveIds = new Set(archives.map((row) => row.id));
+
   const values = keys.length > 0 ? await deps.redis.mget(...keys) : [];
   const redisSummaries: RunSummary[] = [];
   for (const raw of values) {
     const state = parseRunState(raw);
     if (!state) continue;
+    // Skip terminal Redis entries that have no matching archive row: these are
+    // ghosts (the empty-shortlist class — terminal in Redis but the archive
+    // upsert was never reached). The archive row is the source of truth for
+    // terminal runs; Redis only contributes live-progress entries.
+    if (TERMINAL_STATUSES.has(state.status) && !archiveIds.has(state.id)) {
+      continue;
+    }
     redisSummaries.push({
       runId: state.id,
       startedAt: state.startedAt,
@@ -61,7 +74,6 @@ export async function listRuns(
     });
   }
 
-  const archives = await deps.archiveRepo.list(limit);
   const archiveSummaries: RunSummary[] = archives.map((row) => {
     const startedAt = row.completedAt.toISOString();
     // Validate the JSONB shape at the boundary. Rows written by the prior

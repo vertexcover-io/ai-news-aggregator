@@ -493,18 +493,30 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
       return c.json({ error: "invalid runId" }, 400);
     }
     const result = await deps.getArchiveRepo().delete(runId);
-    if (!result.deleted) {
-      return c.json({ error: "not found" }, 404);
-    }
+    // Always attempt Redis cleanup, even when the DB row was absent: a ghost
+    // run (Redis run-state present but archive upsert never reached) is
+    // exactly the case where Delete must work. `redis.del` returns the number
+    // of keys removed, so we can distinguish ghost-cleanup (1) from true 404 (0).
+    let redisKeysRemoved = 0;
     if (deps.redis) {
       try {
-        await deps.redis.del(`run:${runId}`);
+        redisKeysRemoved = await deps.redis.del(`run:${runId}`);
       } catch (err) {
         logger.warn(
           { event: "archive.deleted.redis_cleanup_failed", runId, err: String(err) },
           "redis del failed",
         );
       }
+    }
+    if (!result.deleted) {
+      if (redisKeysRemoved > 0) {
+        logger.info(
+          { event: "archive.deleted.ghost_cleanup", runId },
+          "archive.deleted.ghost_cleanup",
+        );
+        return c.body(null, 204);
+      }
+      return c.json({ error: "not found" }, 404);
     }
     logger.info(
       { event: "archive.deleted", runId, removedEmailSends: result.removedEmailSends },

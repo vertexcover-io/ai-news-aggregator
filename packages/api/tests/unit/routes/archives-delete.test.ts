@@ -106,9 +106,31 @@ describe("DELETE /api/admin/archives/:runId", () => {
     );
   });
 
-  it("REQ-9: returns 404 when archive does not exist and skips redis cleanup", async () => {
+  it("returns 204 and removes the Redis key when the archive row is absent but the Redis key exists (ghost cleanup)", async () => {
     const { repo } = makeArchiveRepo({ deleted: false, removedEmailSends: 0 });
     const del = vi.fn(() => Promise.resolve(1));
+    const redis = { del } as unknown as Pick<IORedis, "del">;
+    const logger = makeLogger();
+    const app = buildApp({ archiveRepo: repo, redis, logger });
+
+    const res = await app.request(`/api/admin/archives/${VALID_UUID}`, {
+      method: "DELETE",
+    });
+
+    expect(res.status).toBe(204);
+    expect(del).toHaveBeenCalledWith(`run:${VALID_UUID}`);
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "archive.deleted.ghost_cleanup",
+        runId: VALID_UUID,
+      }),
+      expect.any(String),
+    );
+  });
+
+  it("returns 404 when both the archive row and the Redis key are absent", async () => {
+    const { repo } = makeArchiveRepo({ deleted: false, removedEmailSends: 0 });
+    const del = vi.fn(() => Promise.resolve(0));
     const redis = { del } as unknown as Pick<IORedis, "del">;
     const app = buildApp({ archiveRepo: repo, redis });
 
@@ -117,7 +139,7 @@ describe("DELETE /api/admin/archives/:runId", () => {
     });
 
     expect(res.status).toBe(404);
-    expect(del).not.toHaveBeenCalled();
+    expect(del).toHaveBeenCalledWith(`run:${VALID_UUID}`);
   });
 
   it("REQ-7: returns 400 for non-UUID runId and never calls repo.delete", async () => {

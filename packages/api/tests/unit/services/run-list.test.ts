@@ -134,6 +134,42 @@ describe("listRuns", () => {
     expect(result[0].reviewed).toBe(true);
   });
 
+  it("skips Redis entries whose status is terminal AND no archive row exists (ghost runs)", async () => {
+    const redisEntries = new Map<string, RedisEntry>([
+      [
+        "run:live-1",
+        {
+          value: JSON.stringify(
+            runState({
+              id: "live-1",
+              status: "running",
+              startedAt: "2026-04-14T10:00:00.000Z",
+            }),
+          ),
+        },
+      ],
+      [
+        "run:ghost-1",
+        {
+          value: JSON.stringify(
+            runState({
+              id: "ghost-1",
+              status: "completed",
+              startedAt: "2026-04-14T09:00:00.000Z",
+              completedAt: "2026-04-14T09:05:00.000Z",
+            }),
+          ),
+        },
+      ],
+    ]);
+    const result = await listRuns(10, {
+      redis: makeRedis(redisEntries) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo([]),
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].runId).toBe("live-1");
+  });
+
   it("sorts DESC by startedAt", async () => {
     const entries = new Map<string, RedisEntry>([
       [

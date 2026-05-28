@@ -22,7 +22,7 @@ export interface BuildRunObservabilityDeps {
   runLogRepo: RunLogRepo;
 }
 
-const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>([
+export const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>([
   "completed",
   "failed",
   "cancelled",
