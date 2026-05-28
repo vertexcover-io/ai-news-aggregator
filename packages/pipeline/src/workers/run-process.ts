@@ -90,7 +90,7 @@ import {
   createRunLogger,
   type RunLogger,
 } from "@pipeline/services/run-logger.js";
-import type { RunCostBreakdown, RunFunnel } from "@newsletter/shared";
+import type { RunCostBreakdown, RunFunnel, RunSourceTelemetry } from "@newsletter/shared";
 
 const logger = createLogger("worker:run-process");
 
@@ -136,6 +136,7 @@ async function writeFailedArchive(input: {
   readonly isDryRun: boolean;
   readonly costBreakdown: RunCostBreakdown | null;
   readonly runFunnel: RunFunnel | null;
+  readonly sourceTelemetry?: RunSourceTelemetry | null;
   readonly logger: ReturnType<typeof createLogger>;
 }): Promise<boolean> {
   try {
@@ -150,6 +151,7 @@ async function writeFailedArchive(input: {
       reviewed: false,
       isDryRun: input.isDryRun,
       runFunnel: input.runFunnel,
+      sourceTelemetry: input.sourceTelemetry ?? null,
     });
     if (input.costBreakdown !== null) {
       await input.archiveRepo.setCostBreakdown(input.runId, input.costBreakdown);
@@ -636,6 +638,8 @@ export async function handleRunProcessJob(
         error: errorMessage,
         completedAt: new Date().toISOString(),
       }));
+      const failedCollectingTelemetry = buildSourceTelemetry(collecting.outcomes);
+      failedCollectingTelemetry.enrichment = toEnrichmentTelemetry(enrichmentCtx.counters);
       await writeFailedArchive({
         archiveRepo: deps.archiveRepo,
         runId,
@@ -646,6 +650,7 @@ export async function handleRunProcessJob(
         isDryRun: dryRun,
         costBreakdown: snapshotCost(),
         runFunnel: { ...funnel },
+        sourceTelemetry: failedCollectingTelemetry,
         logger,
       });
       logger.error(
@@ -679,6 +684,7 @@ export async function handleRunProcessJob(
           sourceTypes,
           isDryRun: dryRun,
           runFunnel: { ...funnel },
+          sourceTelemetry: failedCollectingTelemetry,
         });
       } catch (archiveErr) {
         logger.error(
@@ -837,6 +843,32 @@ export async function handleRunProcessJob(
         rankedItems: [],
         completedAt: new Date().toISOString(),
       }));
+      const emptyShortlistTelemetry = buildSourceTelemetry(collecting.outcomes);
+      emptyShortlistTelemetry.enrichment = toEnrichmentTelemetry(enrichmentCtx.counters);
+      try {
+        await deps.archiveRepo.upsert({
+          id: runId,
+          status: "completed",
+          rankedItems: [],
+          topN,
+          completedAt: new Date(),
+          startedAt: runStartedAt,
+          sourceTypes,
+          isDryRun: dryRun,
+          sourceTelemetry: emptyShortlistTelemetry,
+          runFunnel: { ...funnel },
+          shortlistedItemIds: shortlistIds,
+        });
+      } catch (archiveErr) {
+        logger.error(
+          {
+            event: "archive.write_failed",
+            runId,
+            error: archiveErr instanceof Error ? archiveErr.message : String(archiveErr),
+          },
+          "archive.write_failed",
+        );
+      }
       logger.info(
         {
           event: "run.completed",
@@ -885,6 +917,8 @@ export async function handleRunProcessJob(
       // observes currentStage="ranking" (set by beginStage above) and the stack.
       // Ensure archive row exists before setCostBreakdown (REQ-040 / EDGE-002):
       // setCostBreakdown is a plain UPDATE that silently no-ops without a row.
+      const rankFailedTelemetry = buildSourceTelemetry(collecting.outcomes);
+      rankFailedTelemetry.enrichment = toEnrichmentTelemetry(enrichmentCtx.counters);
       try {
         await deps.archiveRepo.upsert({
           id: runId,
@@ -896,6 +930,7 @@ export async function handleRunProcessJob(
           sourceTypes,
           isDryRun: dryRun,
           runFunnel: { ...funnel },
+          sourceTelemetry: rankFailedTelemetry,
         });
       } catch (archiveErr) {
         logger.error(
