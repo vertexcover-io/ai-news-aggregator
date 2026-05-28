@@ -20,6 +20,7 @@ export interface PatchArchiveBody {
   digestSummary?: string | null;
   hook?: string | null;
   twitterSummary?: string | null;
+  linkedinPostBody?: string | null;
 }
 
 export interface RegenerateDigestMetaItem {

@@ -8,6 +8,13 @@ export interface RankedStory {
 export interface ComposeInput {
   heading?: string | null;
   hook: string | null;
+  /**
+   * Admin-edited LinkedIn post body. When a non-empty string is provided, the
+   * composer uses it verbatim as `linkedinText` instead of building from
+   * `hook` + story summaries. The pipeline persists this on `run_archives`
+   * when the admin edits the preview on the review page.
+   */
+  linkedinPostBody?: string | null;
   twitterSummary?: string | null;
   twitterIsPremium?: boolean;
   stories: RankedStory[];
@@ -90,6 +97,7 @@ export function twitterWeightedLength(value: string): number {
 
 export function composePosts(input: ComposeInput): ComposedPosts | null {
   const hook = normalize(input.hook);
+  const linkedinOverride = normalize(input.linkedinPostBody ?? null);
   const twitterSummary = normalize(input.twitterSummary ?? null) ?? hook;
   const heading = normalize(input.heading ?? null);
   const premium = input.twitterIsPremium ?? false;
@@ -102,7 +110,7 @@ export function composePosts(input: ComposeInput): ComposedPosts | null {
   // Bail only when neither LinkedIn nor Twitter has anything to render:
   // LinkedIn needs at least one usable story (header defaults to constant);
   // Twitter needs at least a summary.
-  if (stories.length === 0 && twitterSummary === null) return null;
+  if (stories.length === 0 && twitterSummary === null && linkedinOverride === null) return null;
   const twitterText = buildTwitterText(
     heading,
     twitterSummary ?? "",
@@ -118,8 +126,10 @@ export function composePosts(input: ComposeInput): ComposedPosts | null {
   // null hook no longer short-circuits the post. We only skip when there are
   // zero usable stories — bullets would be empty and the post would carry only
   // the header + footer, which is not useful.
+  const linkedinText =
+    linkedinOverride ?? (stories.length === 0 ? null : buildLinkedin(hook, stories));
   return {
-    linkedinText: stories.length === 0 ? null : buildLinkedin(hook, stories),
+    linkedinText,
     twitter,
   };
 }

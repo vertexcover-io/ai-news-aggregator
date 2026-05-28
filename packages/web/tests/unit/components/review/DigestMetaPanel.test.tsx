@@ -50,6 +50,7 @@ function seed(): DigestMetaValues {
     summary: "Initial summary",
     hook: "Initial hook",
     twitterSummary: "Initial twitter",
+    linkedinPostBody: "Initial LinkedIn body",
   };
 }
 
@@ -88,15 +89,44 @@ afterEach(() => {
 });
 
 describe("DigestMetaPanel", () => {
-  it("REQ-015: renders four labeled fields seeded with initial values", () => {
+  it("REQ-015: renders labeled fields seeded with initial values", () => {
     renderPanel({});
     expect(fieldValue("Headline")).toBe("Initial headline");
     expect(fieldValue("Summary")).toBe("Initial summary");
-    expect(fieldValue("LinkedIn Header")).toBe("Initial hook");
+    expect(fieldValue("LinkedIn post")).toBe("Initial LinkedIn body");
     expect(fieldValue("Twitter Summary")).toBe("Initial twitter");
   });
 
-  it("REQ-016 / VS-7: Regenerate overwrites headline/summary/twitterSummary but preserves LinkedIn header", async () => {
+  it("Admin can edit the LinkedIn post body inline", () => {
+    let current = seed();
+    const onChange = vi.fn((v: DigestMetaValues) => {
+      current = v;
+    });
+    const client = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    function Harness(): ReactElement {
+      return (
+        <QueryClientProvider client={client}>
+          <DigestMetaPanel
+            runId="run-1"
+            items={items()}
+            values={current}
+            onChange={onChange}
+          />
+        </QueryClientProvider>
+      );
+    }
+    render(<Harness />);
+    fireEvent.change(screen.getByTestId("linkedin-post-body"), {
+      target: { value: "Admin-edited post body" },
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ linkedinPostBody: "Admin-edited post body" }),
+    );
+  });
+
+  it("Regenerate overwrites headline/summary/twitterSummary and rebuilds the LinkedIn body from current stories", async () => {
     const fresh: DigestMeta = {
       headline: "Fresh headline",
       summary: "Fresh summary",
@@ -124,16 +154,7 @@ describe("DigestMetaPanel", () => {
         </QueryClientProvider>
       );
     }
-    const { rerender } = render(<Harness />);
-
-    // Manual edit on the LinkedIn header first
-    fireEvent.change(screen.getByLabelText("LinkedIn Header"), {
-      target: { value: "Admin-edited header" },
-    });
-    expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ hook: "Admin-edited header" }),
-    );
-    rerender(<Harness />);
+    render(<Harness />);
 
     fireEvent.click(screen.getByRole("button", { name: /regenerate/i }));
 
@@ -145,34 +166,10 @@ describe("DigestMetaPanel", () => {
     });
     expect(current.summary).toBe("Fresh summary");
     expect(current.twitterSummary).toBe("Fresh twitter");
-    // Admin-edited LinkedIn header survives — LLM-emitted hook is discarded.
-    expect(current.hook).toBe("Admin-edited header");
-  });
-
-  it("VS-5/VS-6: renders a LinkedIn post preview block that reflects header + top-5 stories", () => {
-    renderPanel({
-      values: {
-        headline: "h",
-        summary: "s",
-        hook: "",
-        twitterSummary: "t",
-      },
-      items: [
-        { id: 1, title: "T1", summary: "first lede.", bottomLine: "b1" },
-        { id: 2, title: "T2", summary: "second lede.", bottomLine: "b2" },
-        { id: 3, title: "T3", summary: "third lede.", bottomLine: "b3" },
-        { id: 4, title: "T4", summary: "fourth lede.", bottomLine: "b4" },
-        { id: 5, title: "T5", summary: "fifth lede.", bottomLine: "b5" },
-        { id: 6, title: "T6", summary: "sixth lede.", bottomLine: "b6" },
-      ],
-    });
-    const preview = screen.getByTestId("linkedin-post-preview");
-    const text = preview.textContent ?? "";
-    expect(text.startsWith("AgentLoop — Today in Agentic Engineering\n\n")).toBe(true);
-    expect(text).toContain("→ first lede.");
-    expect(text).toContain("→ fifth lede.");
-    expect(text).not.toContain("→ sixth lede.");
-    expect(text.endsWith("Full newsletter linked in the comments.")).toBe(true);
+    expect(current.linkedinPostBody).toContain("AgentLoop — Today in Agentic Engineering");
+    expect(current.linkedinPostBody).toContain("→ s1");
+    expect(current.linkedinPostBody).toContain("→ s2");
+    expect(current.linkedinPostBody).toContain("Full newsletter linked in the comments.");
   });
 
   it("REQ-017: Regenerate button is disabled and shows a loading affordance while in flight", async () => {

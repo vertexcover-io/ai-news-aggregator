@@ -1,10 +1,7 @@
-import { type ReactElement, useMemo } from "react";
+import { type ReactElement } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Loader2, Sparkles } from "lucide-react";
-import {
-  DEFAULT_LINKEDIN_HOOK,
-  buildLinkedinPostBody,
-} from "@newsletter/shared/constants";
+import { buildLinkedinPostBody } from "@newsletter/shared/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +10,6 @@ import {
   type RegenerateDigestMetaItem,
 } from "../../api/archives";
 
-const HOOK_MAX_CHARS = 140;
 const TWITTER_SUMMARY_MAX_CHARS = 180;
 
 export type RegenerateItem = RegenerateDigestMetaItem;
@@ -23,6 +19,7 @@ export interface DigestMetaValues {
   summary: string;
   hook: string;
   twitterSummary: string;
+  linkedinPostBody: string;
 }
 
 interface DigestMetaPanelProps {
@@ -64,27 +61,22 @@ export function DigestMetaPanel({
   const mutation = useMutation({
     mutationFn: () => regenerateDigestMeta(runId, items),
     onSuccess: (meta) => {
-      // LinkedIn header is admin-only — preserve the existing hook on regen
-      // instead of overwriting with the LLM-generated value (which is now
-      // discarded by the pipeline anyway).
+      // Rebuild the editable LinkedIn body from the default hook + current
+      // ranked summaries so the admin can re-seed it after reordering.
+      const rebuiltLinkedin = buildLinkedinPostBody(
+        null,
+        items.map((it) => ({ summary: it.summary })),
+      );
       onChange({
         headline: meta.headline,
         summary: meta.summary,
         hook: values.hook,
         twitterSummary: meta.twitterSummary,
+        linkedinPostBody: rebuiltLinkedin,
       });
       onRegenerated?.();
     },
   });
-
-  const linkedinPreview = useMemo(
-    () =>
-      buildLinkedinPostBody(
-        values.hook,
-        items.map((it) => ({ summary: it.summary })),
-      ),
-    [values.hook, items],
-  );
 
   const regenerating = mutation.isPending;
   const canRegenerate = items.length > 0 && !regenerating;
@@ -160,39 +152,20 @@ export function DigestMetaPanel({
       </div>
 
       <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="digest-hook">LinkedIn Header</Label>
-          <CharCounter
-            count={values.hook.length}
-            max={HOOK_MAX_CHARS}
-            testId="hook-counter"
-          />
-        </div>
+        <Label htmlFor="digest-linkedin-post-body">LinkedIn post</Label>
         <textarea
-          id="digest-hook"
-          rows={2}
-          value={values.hook}
+          id="digest-linkedin-post-body"
+          data-testid="linkedin-post-body"
+          rows={12}
+          value={values.linkedinPostBody}
           onChange={(e) => {
-            update("hook", e.target.value);
+            update("linkedinPostBody", e.target.value);
           }}
-          placeholder={DEFAULT_LINKEDIN_HOOK}
-          className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+          className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-sans whitespace-pre-wrap shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
         />
         <p className="text-xs text-muted-foreground">
-          Leave empty to use the default: <span className="font-medium">{DEFAULT_LINKEDIN_HOOK}</span>
-        </p>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label>LinkedIn post preview</Label>
-        <pre
-          data-testid="linkedin-post-preview"
-          className="whitespace-pre-wrap rounded-md border border-input bg-muted/40 px-3 py-2 text-xs font-sans text-foreground"
-        >
-          {linkedinPreview}
-        </pre>
-        <p className="text-xs text-muted-foreground">
-          Top {Math.min(items.length, 5)} of {items.length} ranked stories.
+          Edit the full post inline — header and bullets are part of the same
+          field. Regenerate rebuilds this from the current ranked stories.
           Archive link is posted as a follow-up comment.
         </p>
       </div>
