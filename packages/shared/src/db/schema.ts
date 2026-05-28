@@ -20,6 +20,7 @@ import type {
 } from "@shared/types/index.js";
 import type { RunCostBreakdown } from "@shared/types/cost-breakdown.js";
 import type { EncryptedBlob } from "@shared/services/credential-cipher.js";
+import type { EditType, PreReviewSnapshot } from "@shared/review-edits/types.js";
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter" | "web_search";
 
@@ -75,6 +76,7 @@ export const runArchives = pgTable("run_archives", {
   costBreakdown: jsonb("cost_breakdown").$type<RunCostBreakdown | null>(),
   runFunnel: jsonb("run_funnel").$type<RunFunnel | null>(),
   shortlistedItemIds: jsonb("shortlisted_item_ids").$type<number[] | null>(),
+  preReviewSnapshot: jsonb("pre_review_snapshot").$type<PreReviewSnapshot | null>(),
 });
 
 export const runLogs = pgTable(
@@ -280,3 +282,22 @@ export const evalRuns = pgTable("eval_runs", {
 
 export type EvalRunInsert = typeof evalRuns.$inferInsert;
 export type EvalRunSelect = typeof evalRuns.$inferSelect;
+
+export const reviewEdits = pgTable("review_edits", {
+  id: bigserial("id", { mode: "bigint" }).primaryKey(),
+  runId: uuid("run_id").notNull().references(() => runArchives.id, { onDelete: "cascade" }),
+  editType: text("edit_type").$type<EditType>().notNull(),
+  rawItemId: integer("raw_item_id"),
+  field: text("field"),
+  before: jsonb("before"),
+  after: jsonb("after"),
+  positionBefore: integer("position_before"),
+  positionAfter: integer("position_after"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("review_edits_run_id_idx").on(t.runId),
+  index("review_edits_edit_type_idx").on(t.editType),
+]);
+
+export type ReviewEditInsert = typeof reviewEdits.$inferInsert;
+export type ReviewEditSelect = typeof reviewEdits.$inferSelect;
