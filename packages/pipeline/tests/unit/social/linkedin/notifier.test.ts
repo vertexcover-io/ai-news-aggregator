@@ -42,7 +42,9 @@ function makeArchive(
   return {
     id: RUN_ID,
     status: "completed",
-    rankedItems: [],
+    rankedItems: [
+      { rawItemId: 1, title: "Story 1 title", summary: "Story 1 summary body." },
+    ],
     topN: 10,
     reviewed: true,
     completedAt: NOW,
@@ -196,10 +198,9 @@ describe("createLinkedInNotifier", () => {
     expect(callArg.personUrn).toBe("urn:li:person:abc");
     expect(callArg.apiVersion).toBe("202511");
     expect(callArg.text).toContain("Hook line for social.");
-    // Body ends with the teaser pointing at the comment, but the URL itself
-    // is only ever in the comment (createComment call below), never in the body.
-    expect(callArg.text).toContain("Full breakdown ↓");
-    expect(callArg.text).not.toContain("Full breakdown:");
+    expect(callArg.text).toContain("→ Story 1 summary body.");
+    // Body ends with the LinkedIn footer pointing at the follow-up comment.
+    expect(callArg.text).toContain("Full newsletter linked in the comments.");
     expect(callArg.text).not.toContain("https://");
 
     expect(deps.apiClient.createComment).toHaveBeenCalledTimes(1);
@@ -274,9 +275,26 @@ describe("createLinkedInNotifier", () => {
     expect(deps.tokens.withTokenLock).not.toHaveBeenCalled();
   });
 
-  it("null hook → skipped, no api call", async () => {
+  it("null hook → posts with DEFAULT_LINKEDIN_HOOK as header", async () => {
     const { notifier, deps } = build({
       archive: makeArchive({ hook: null }),
+      tokenRow: makeTokenRow(),
+      postResult: { ok: true, postUrn: "urn:li:share:default" },
+    });
+
+    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
+
+    expect(result).toEqual({ status: "posted", permalink: "urn:li:share:default" });
+    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(1);
+    const callArg = deps.apiClient.createPost.mock.calls[0][0];
+    expect(callArg.text.startsWith("AgentLoop — Today in Agentic Engineering\n\n")).toBe(
+      true,
+    );
+  });
+
+  it("no stories → skipped no_headline", async () => {
+    const { notifier, deps } = build({
+      archive: makeArchive({ rankedItems: [] }),
       tokenRow: makeTokenRow(),
     });
 

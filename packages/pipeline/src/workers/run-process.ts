@@ -955,7 +955,12 @@ export async function handleRunProcessJob(
       "enrichment.summary",
     );
     const { digestHeadline, digestSummary } = pickArchiveDigest(rankResult);
-    const hook = nonEmptyText(rankResult.hook);
+    // LinkedIn header defaults to the constant DEFAULT_LINKEDIN_HOOK at compose
+    // time; the rerank LLM still emits a hook string (the schema requires it)
+    // but we discard it so the admin sees the constant placeholder in the
+    // review UI and posts default to the brand header unless explicitly
+    // overridden in the Meta Digest panel.
+    const hook = null;
     const twitterSummary = nonEmptyText(rankResult.twitterSummary);
     const rankedRawIds = rankResult.rankedItems.map((r) => r.rawItemId);
     const rankedRawRows = await deps.rawItemsRepo.findByIds(rankedRawIds);

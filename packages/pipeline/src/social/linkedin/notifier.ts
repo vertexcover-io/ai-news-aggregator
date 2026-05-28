@@ -116,15 +116,14 @@ export function createLinkedInNotifier(
         }
 
         const hook = archive.hook;
-        if (hook === null || hook.trim() === "") {
+        const stories = await buildStories(archive, deps.rawItems);
+        if (stories.length === 0) {
           logger.warn(
             { event: "social.linkedin.skipped", reason: "no_headline", runId },
-            "linkedin notification skipped (no hook)",
+            "linkedin notification skipped (no stories)",
           );
           return { status: "skipped", reason: "no_headline" };
         }
-
-        const stories = await buildStories(archive, deps.rawItems);
         const archiveUrl = `${stripTrailingSlash(config.publicArchiveBaseUrl)}/archive/${runId}`;
         const composed = composePosts({
           hook,
