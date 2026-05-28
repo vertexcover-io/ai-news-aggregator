@@ -31,6 +31,10 @@ import {
   type RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
 import {
+  createReviewEditsRepo,
+  type ReviewEditsRepo,
+} from "@api/repositories/review-edits.js";
+import {
   createUserSettingsRepo,
   type UserSettingsRepo,
 } from "@api/repositories/user-settings.js";
@@ -58,6 +62,7 @@ import { captureAnalytics } from "@api/lib/posthog.js";
 export interface ArchivesRouterDeps {
   getRawItemsRepo: () => RawItemsRepo;
   getArchiveRepo: () => RunArchivesRepo;
+  getReviewEditsRepo?: () => ReviewEditsRepo;
   getSettingsRepo?: () => Pick<UserSettingsRepo, "get">;
   hydrateAddedPost?: HydrateAddedPostFn;
   generateRecapFn?: GenerateRecapFn;
@@ -187,16 +192,27 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         isDryRun: archive.isDryRun,
       };
 
+      const reviewEditsRepo = deps.getReviewEditsRepo?.();
+      const reviewEdits = reviewEditsRepo
+        ? await reviewEditsRepo.listForRun(runId)
+        : [];
+
+      const adminState = {
+        ...state,
+        preReviewSnapshot: archive.preReviewSnapshot ?? null,
+        reviewEdits,
+      };
+
       if (archive.status === "completed" && Array.isArray(archive.rankedItems)) {
         const hydrated = await hydrateRankedItems(
           deps.getRawItemsRepo(),
           archive.rankedItems,
           archive.completedAt,
         );
-        return c.json({ ...state, rankedItems: hydrated });
+        return c.json({ ...adminState, rankedItems: hydrated });
       }
 
-      return c.json(state);
+      return c.json(adminState);
     } catch (err) {
       logger.error({ err, runId }, "admin.archive.fetch_failed");
       return c.json({ error: "internal error" }, 500);
@@ -219,6 +235,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
       const updated = await patchArchive(runId, parsed.data, {
         archiveRepo: deps.getArchiveRepo(),
         rawItemsRepo: deps.getRawItemsRepo(),
+        reviewEditsRepo: deps.getReviewEditsRepo?.(),
       });
       logger.info(
         { event: "archive.patched", runId, count: parsed.data.rankedItems.length },
@@ -550,6 +567,7 @@ function createDefaultArchivesDeps(): ArchivesRouterDeps {
   return {
     getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
     getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
+    getReviewEditsRepo: () => createReviewEditsRepo(defaultGetDb()),
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
     hydrateAddedPost: createDefaultHydrateAddedPost(),
     generateRecapFn: createDefaultGenerateRecapFn(),

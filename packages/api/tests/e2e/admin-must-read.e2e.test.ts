@@ -461,6 +461,8 @@ describe("NF-006: SameSite cookie on /api/admin/login", () => {
       adminRunsRouter: new Hono(),
       adminSocialCredentialsRouter: new Hono(),
       adminMustReadRouter: new Hono(),
+      publicSourcesRouter: new Hono(),
+      adminEvalRouter: new Hono(),
       runsRouter: new Hono(),
       settingsRouter: new Hono(),
       adminRouter: createAdminRouter({
@@ -473,6 +475,8 @@ describe("NF-006: SameSite cookie on /api/admin/login", () => {
       webhooksRouter: new Hono(),
       analyticsRouter: new Hono(),
       analyticsConfigRouter: new Hono(),
+      linkedInOAuthRouter: new Hono(),
+      linkedInOAuthCallbackRouter: new Hono(),
     });
   }
 

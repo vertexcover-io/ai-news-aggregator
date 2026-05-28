@@ -12,6 +12,7 @@ import type {
   SourceType,
 } from "@newsletter/shared";
 import { parseRunCostBreakdown } from "@newsletter/shared";
+import type { PreReviewSnapshot } from "@newsletter/shared/review-edits";
 import { canonicalizeUrl } from "../processors/dedup.js";
 
 export interface RunArchiveUpsertInput {
@@ -33,6 +34,7 @@ export interface RunArchiveUpsertInput {
   runFunnel?: RunFunnel | null;
   publishedAt?: Date;
   shortlistedItemIds?: number[] | null;
+  preReviewSnapshot?: PreReviewSnapshot;
 }
 
 export interface PipelineRunArchiveRow {
@@ -256,6 +258,7 @@ export function createRunArchivesRepo(
           runFunnel: input.runFunnel ?? null,
           publishedAt: input.publishedAt ?? null,
           shortlistedItemIds: input.shortlistedItemIds ?? null,
+          preReviewSnapshot: input.preReviewSnapshot ?? null,
         })
         .onConflictDoUpdate({
           target: runArchives.id,
@@ -275,6 +278,8 @@ export function createRunArchivesRepo(
             runFunnel: sql.raw(`excluded.${runArchives.runFunnel.name}`),
             publishedAt: sql.raw(`excluded.${runArchives.publishedAt.name}`),
             shortlistedItemIds: sql.raw(`excluded.${runArchives.shortlistedItemIds.name}`),
+            // REQ-008: existing non-null snapshot wins; only write when current is null
+            preReviewSnapshot: sql`COALESCE(${runArchives.preReviewSnapshot}, excluded.${sql.raw(runArchives.preReviewSnapshot.name)})`,
           },
         });
     },

@@ -65,6 +65,7 @@ describe("run-archives repository", () => {
       runFunnel: null,
       publishedAt: null,
       shortlistedItemIds: null,
+      preReviewSnapshot: null,
     });
     expect(mockOnConflictDoUpdate).toHaveBeenCalledOnce();
   });
@@ -315,6 +316,73 @@ describe("run-archives repository", () => {
 
     const conflictConfig = mockOnConflictDoUpdate.mock.calls[0]?.[0];
     expect(conflictConfig.set).toHaveProperty("shortlistedItemIds");
+  });
+
+  // REQ-001 (Phase 2): preReviewSnapshot is written when provided
+  it("writes preReviewSnapshot to the row when provided (REQ-001)", async () => {
+    resetMocks();
+    const db = makeMockDb();
+    const { createRunArchivesRepo } = await import(
+      "@pipeline/repositories/run-archives.js"
+    );
+    const repo = createRunArchivesRepo(db as never);
+    const snapshot = {
+      capturedAt: "2026-05-28T12:00:00.000Z",
+      rankedItemIds: [1, 2],
+      recap: {
+        1: { title: "T1", summary: "S1", bullets: [], bottomLine: "BL1" },
+        2: { title: "T2", summary: "S2", bullets: ["B"], bottomLine: "BL2" },
+      },
+      digestMeta: { headline: "H", summary: "S", hook: null, twitterSummary: null },
+    };
+    await repo.upsert({
+      id: "run-snap",
+      status: "completed",
+      rankedItems: [],
+      topN: 2,
+      completedAt: new Date("2026-05-28T12:00:00Z"),
+      preReviewSnapshot: snapshot,
+    });
+    const insertedValues = mockValues.mock.calls[0]?.[0] as { preReviewSnapshot: unknown };
+    expect(insertedValues.preReviewSnapshot).toEqual(snapshot);
+  });
+
+  // REQ-001 (Phase 2): preReviewSnapshot defaults to null when omitted
+  it("defaults preReviewSnapshot to null when omitted (REQ-001)", async () => {
+    resetMocks();
+    const db = makeMockDb();
+    const { createRunArchivesRepo } = await import(
+      "@pipeline/repositories/run-archives.js"
+    );
+    const repo = createRunArchivesRepo(db as never);
+    await repo.upsert({
+      id: "run-no-snap",
+      status: "failed",
+      rankedItems: [],
+      topN: 0,
+      completedAt: new Date("2026-05-28T12:00:00Z"),
+    });
+    const insertedValues = mockValues.mock.calls[0]?.[0] as { preReviewSnapshot: unknown };
+    expect(insertedValues.preReviewSnapshot).toBeNull();
+  });
+
+  // REQ-008: preReviewSnapshot is included in the onConflictDoUpdate set
+  it("includes preReviewSnapshot in the onConflictDoUpdate set (REQ-008)", async () => {
+    resetMocks();
+    const db = makeMockDb();
+    const { createRunArchivesRepo } = await import(
+      "@pipeline/repositories/run-archives.js"
+    );
+    const repo = createRunArchivesRepo(db as never);
+    await repo.upsert({
+      id: "run-conflict-snap",
+      status: "completed",
+      rankedItems: [],
+      topN: 3,
+      completedAt: new Date("2026-05-28T12:00:00Z"),
+    });
+    const conflictConfig = mockOnConflictDoUpdate.mock.calls[0]?.[0];
+    expect(conflictConfig.set).toHaveProperty("preReviewSnapshot");
   });
 
   // REQ-003/REQ-005: getPublishedCanonicalUrls returns only reviewed, !isDryRun, status=completed

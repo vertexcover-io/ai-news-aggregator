@@ -8,6 +8,8 @@ import type {
   RunArchivesRepo,
   UpdateRankedItemsContext,
 } from "@api/repositories/run-archives.js";
+import type { ReviewEditsRepo } from "@api/repositories/review-edits.js";
+import { diffReview } from "@newsletter/shared/review-edits";
 import { detectAddPostSourceType, type AddPostSourceType } from "@newsletter/pipeline/add-post";
 export type { AddPostSourceType };
 
@@ -78,6 +80,7 @@ export interface ReviewDeps {
   archiveRepo: RunArchivesRepo;
   rawItemsRepo: RawItemsRepo;
   hydrateAddedPost?: HydrateAddedPostFn;
+  reviewEditsRepo?: ReviewEditsRepo;
 }
 
 export interface PatchArchiveInput {
@@ -144,12 +147,37 @@ export async function patchArchive(
   const effectiveSummary =
     "digestSummary" in input ? input.digestSummary ?? null : archive.digestSummary;
 
-  return deps.archiveRepo.updateRankedItems(runId, refs, {
+  const updateCtx: NonNullable<UpdateRankedItemsContext> = {
     rawItemsById,
     digestHeadline: effectiveHeadline,
     digestSummary: effectiveSummary,
     digestMeta: Object.keys(digestMeta).length > 0 ? digestMeta : undefined,
-  });
+  };
+
+  // REQ-003 / REQ-007: compute diff when snapshot is present, skip when NULL.
+  // The archive UPDATE + review_edits DELETE/INSERT must be atomic.
+  if (deps.reviewEditsRepo && archive.preReviewSnapshot) {
+    const edits = diffReview(archive.preReviewSnapshot, {
+      rankedItems: input.rankedItems.map((i) => ({
+        id: i.id,
+        ...(i.title !== undefined ? { title: i.title } : {}),
+        ...(i.summary !== undefined ? { summary: i.summary } : {}),
+        ...(i.bullets !== undefined ? { bullets: i.bullets } : {}),
+        ...(i.bottomLine !== undefined ? { bottomLine: i.bottomLine } : {}),
+      })),
+      ...("digestHeadline" in input ? { digestHeadline: input.digestHeadline } : {}),
+      ...("digestSummary" in input ? { digestSummary: input.digestSummary } : {}),
+      ...("hook" in input ? { hook: input.hook } : {}),
+      ...("twitterSummary" in input ? { twitterSummary: input.twitterSummary } : {}),
+    });
+    const editsRepo = deps.reviewEditsRepo;
+    return deps.archiveRepo.runTransaction(async (tx) => {
+      await editsRepo.replaceForRun(runId, edits, tx);
+      return deps.archiveRepo.updateRankedItemsInTx(runId, refs, updateCtx, tx);
+    });
+  }
+
+  return deps.archiveRepo.updateRankedItems(runId, refs, updateCtx);
 }
 
 export interface AddPostInput {

@@ -232,7 +232,7 @@ async function seedRun(): Promise<{
 
   return {
     runId,
-    sourceKey: encodeURIComponent("reddit:r/AI_Agents"),
+    sourceKey: encodeURIComponent("reddit:r/ai_agents"),
     rankedId,
     droppedId,
   };
@@ -269,7 +269,7 @@ describe("GET /api/admin/runs/:runId/sources/:sourceKey/items", () => {
     expect(res.status).toBe(200);
     const body: RunSourceItemsResponse = responseSchema.parse(await res.json());
     expect(body.runId).toBe(runId);
-    expect(body.sourceKey).toBe("reddit:r/AI_Agents");
+    expect(body.sourceKey).toBe("reddit:r/ai_agents");
     expect(body.summary.ranked).toBe(2);
     expect(body.summary.dedupDropped).toBe(1);
     expect(body.items[0]?.id).toBe(rankedId);
@@ -316,7 +316,7 @@ describe("GET /api/admin/runs/:runId/sources/:sourceKey/items", () => {
 
   it("returns 404 for an unknown runId", async () => {
     const res = await buildGatedApp().request(
-      `/api/admin/runs/${randomUUID()}/sources/${encodeURIComponent("reddit:r/AI_Agents")}/items`,
+      `/api/admin/runs/${randomUUID()}/sources/${encodeURIComponent("reddit:r/ai_agents")}/items`,
       { headers: { cookie: adminCookie() } },
     );
     expect(res.status).toBe(404);

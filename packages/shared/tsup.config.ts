@@ -28,6 +28,7 @@ export default defineConfig((options) => ({
     "src/services/static-page-fetcher.ts",
     "src/services/page-metadata.ts",
     "src/services/summary-source.ts",
+    "src/review-edits/index.ts",
   ],
   format: ["esm"],
   dts: true,

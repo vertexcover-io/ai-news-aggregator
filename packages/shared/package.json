@@ -23,7 +23,8 @@
     "./services/url-safety": "./dist/services/url-safety.js",
     "./services/static-page-fetcher": "./dist/services/static-page-fetcher.js",
     "./services/page-metadata": "./dist/services/page-metadata.js",
-    "./services/summary-source": "./dist/services/summary-source.js"
+    "./services/summary-source": "./dist/services/summary-source.js",
+    "./review-edits": "./dist/review-edits/index.js"
   },
   "scripts": {
     "build": "tsup",

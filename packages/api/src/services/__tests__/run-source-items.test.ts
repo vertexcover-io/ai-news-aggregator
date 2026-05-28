@@ -50,6 +50,7 @@ function makeArchive(overrides: Partial<RunArchiveRow> = {}): RunArchiveRow {
     runFunnel: null,
     socialMetadata: null,
     shortlistedItemIds: [3],
+    preReviewSnapshot: null,
     ...overrides,
   };
 }
