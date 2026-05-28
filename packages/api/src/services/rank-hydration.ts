@@ -63,6 +63,7 @@ export async function hydrateRankedItems(
         sourceType: row.sourceType,
         url: row.url,
         sourceUrl: row.sourceUrl,
+        metadata: row.metadata,
       }),
       preview: buildItemPreview(row),
     });

@@ -622,6 +622,7 @@ describe("JS↔SQL identifier cross-check (REQ-018 / VS-5)", () => {
   interface ProbeCase {
     readonly sourceType: SourceType;
     readonly url: string;
+    readonly metadata?: { readonly query?: string };
   }
 
   const cases: readonly ProbeCase[] = [
@@ -651,6 +652,18 @@ describe("JS↔SQL identifier cross-check (REQ-018 / VS-5)", () => {
     {
       sourceType: "web_search",
       url: "https://example.com/from-search",
+    },
+    // web_search with metadata.query → identifier should be the query string.
+    {
+      sourceType: "web_search",
+      url: "https://example.com/q-result",
+      metadata: { query: "Claude Code OR Cursor OR Aider" },
+    },
+    // web_search with blank/whitespace-only query falls back to 'web search'.
+    {
+      sourceType: "web_search",
+      url: "https://example.com/blank-q",
+      metadata: { query: "   " },
     },
     // Malformed URLs (regex miss → hostname fallback). REQ-018 requires
     // the SQL CASE to fall through to hostname before 'unknown', matching
@@ -696,16 +709,22 @@ describe("JS↔SQL identifier cross-check (REQ-018 / VS-5)", () => {
     record("VS-5", "JS vs SQL identifier alignment", async () => {
       const caseSql = deriveRawItemIdentifierSql();
       for (const c of cases) {
+        const metadataJson = JSON.stringify(c.metadata ?? {});
         const rows = await db.execute<{ identifier: string }>(sql`
           SELECT (${caseSql}) AS identifier
-          FROM (VALUES (${c.sourceType}::text, ${c.url}::text, NULL::text))
-            AS t(source_type, url, source_url)
+          FROM (VALUES (
+            ${c.sourceType}::text,
+            ${c.url}::text,
+            NULL::text,
+            ${metadataJson}::jsonb
+          )) AS t(source_type, url, source_url, metadata)
         `);
         const sqlResult = rows[0]?.identifier;
         const jsResult = deriveRawItemIdentifier({
           sourceType: c.sourceType,
           url: c.url,
           sourceUrl: null,
+          metadata: c.metadata ?? null,
         });
         expect(
           sqlResult,

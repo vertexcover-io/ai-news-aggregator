@@ -322,6 +322,7 @@ export async function promoteItem(
       sourceType: rawItem.sourceType,
       url: rawItem.url,
       sourceUrl: rawItem.sourceUrl,
+      metadata: rawItem.metadata,
     }),
     preview: buildItemPreview(rawItem),
   };

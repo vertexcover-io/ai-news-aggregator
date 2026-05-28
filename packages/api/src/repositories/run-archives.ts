@@ -212,6 +212,7 @@ export function createRunArchivesRepo(
         sourceType: row.sourceType,
         url: row.url,
         sourceUrl: row.sourceUrl,
+        metadata: row.metadata,
       }),
       preview: buildItemPreview(row),
       recapSummary: row.metadata.recap?.summary ?? null,

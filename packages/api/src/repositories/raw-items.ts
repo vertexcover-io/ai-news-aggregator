@@ -114,7 +114,8 @@ const DERIVED_IDENTIFIER_SQL = sql`CASE
       lower(regexp_replace(substring(COALESCE(url, source_url) FROM '://([^/?#:]+)'), '^www\\.', '')),
       'unknown'
     )
-  WHEN source_type = 'web_search' THEN 'web search'
+  WHEN source_type = 'web_search' THEN
+    COALESCE(NULLIF(trim(metadata->>'query'), ''), 'web search')
   ELSE 'unknown'
 END`;
 
@@ -371,6 +372,7 @@ function toRawItemWithEnrichment(row: RawItemWithEnrichmentRow): RawItemWithEnri
       sourceType: row.sourceType,
       url: row.url,
       sourceUrl: row.sourceUrl,
+      metadata: row.metadata,
     }),
   };
 }

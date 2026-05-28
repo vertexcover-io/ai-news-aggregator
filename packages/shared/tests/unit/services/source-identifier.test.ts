@@ -8,6 +8,7 @@ interface Case {
   readonly sourceType: SourceType;
   readonly url: string | null;
   readonly sourceUrl?: string | null;
+  readonly metadata?: { readonly query?: string } | null;
   readonly expected: string;
 }
 
@@ -29,7 +30,9 @@ const cases: readonly Case[] = [
   { name: "github case preserved", sourceType: "github", url: "https://github.com/Vercel/Next.js", expected: "Vercel/Next.js" },
   { name: "github malformed falls back to hostname", sourceType: "github", url: "https://github.com/", expected: "github.com" },
   { name: "newsletter host", sourceType: "newsletter", url: "https://latent.space", expected: "latent.space" },
-  { name: "web_search constant", sourceType: "web_search", url: "https://anything", expected: "web search" },
+  { name: "web_search no metadata falls back to constant", sourceType: "web_search", url: "https://anything", expected: "web search" },
+  { name: "web_search uses metadata.query when present", sourceType: "web_search", url: "https://anything", metadata: { query: "Claude Code OR Cursor" }, expected: "Claude Code OR Cursor" },
+  { name: "web_search blank query falls back to constant", sourceType: "web_search", url: "https://anything", metadata: { query: "   " }, expected: "web search" },
   { name: "blog null URL falls back to sourceUrl", sourceType: "blog", url: null, sourceUrl: "https://example.com/x", expected: "example.com" },
   { name: "blog both null returns unknown", sourceType: "blog", url: null, sourceUrl: null, expected: "unknown" },
   { name: "rss invalid URL returns unknown", sourceType: "rss", url: "not-a-url", sourceUrl: null, expected: "unknown" },
@@ -42,6 +45,7 @@ describe("deriveRawItemIdentifier", () => {
         sourceType: c.sourceType,
         url: c.url,
         sourceUrl: c.sourceUrl ?? null,
+        metadata: c.metadata ?? null,
       });
       expect(got).toBe(c.expected);
     });

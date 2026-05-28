@@ -94,6 +94,7 @@ function toRankedItem(row: RawItemRow, score: number): RankedItem {
       sourceType: row.sourceType,
       url: row.url,
       sourceUrl: row.sourceUrl,
+      metadata: row.metadata,
     }),
     author: row.author,
     publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,

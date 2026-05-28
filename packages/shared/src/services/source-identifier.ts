@@ -1,9 +1,11 @@
 import type { SourceType } from "../db/schema.js";
+import type { RawItemMetadata } from "../types/index.js";
 
 interface DeriveArgs {
   readonly sourceType: SourceType;
   readonly url: string | null;
   readonly sourceUrl: string | null;
+  readonly metadata?: Pick<RawItemMetadata, "query"> | null;
 }
 
 function hostname(url: string | null): string | null {
@@ -57,8 +59,11 @@ export function deriveRawItemIdentifier(args: DeriveArgs): string {
       return hostnameFallback(args);
     }
 
-    case "web_search":
+    case "web_search": {
+      const query = args.metadata?.query?.trim();
+      if (query) return query;
       return "web search";
+    }
 
     default: {
       const _exhaustive: never = args.sourceType;
