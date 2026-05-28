@@ -162,7 +162,7 @@ function buildConfigured(settings: UserSettings | null): ConfiguredSection[] {
 
   if (settings.redditEnabled && settings.redditConfig) {
     const rows: ConfiguredRow[] = settings.redditConfig.subreddits
-      .map((s) => s.trim().replace(/^r\//i, ""))
+      .map((s) => s.trim().replace(/^r\//i, "").toLowerCase())
       .filter((s) => s.length > 0)
       .map((name) => ({
         identifier: `r/${name}`,

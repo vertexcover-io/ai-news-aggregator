@@ -137,8 +137,8 @@ describe("buildSourcesSummary", () => {
       // Configured Reddit row.
       {
         sourceType: "reddit",
-        identifier: "r/LocalLLaMA",
-        url: "https://reddit.com/r/LocalLLaMA/x",
+        identifier: "r/localllama",
+        url: "https://reddit.com/r/localllama/x",
         fetchedCount: 10,
         lastCollectedAt: NOW,
       },
@@ -160,7 +160,7 @@ describe("buildSourcesSummary", () => {
       now: () => NOW,
     });
     const reddit = result.sections.find((s) => s.sourceType === "reddit");
-    expect(reddit?.rows.map((r) => r.identifier)).toEqual(["r/LocalLLaMA"]);
+    expect(reddit?.rows.map((r) => r.identifier)).toEqual(["r/localllama"]);
   });
 
   it("includes web_search rows regardless of identifier match", async () => {
@@ -207,7 +207,7 @@ describe("buildSourcesSummary", () => {
     const byType = new Map(result.configured.map((s) => [s.sourceType, s]));
     expect(byType.get("hn")?.rows[0]?.displayName).toBe("Hacker News");
     expect(byType.get("reddit")?.rows.map((r) => r.displayName)).toEqual([
-      "r/LocalLLaMA",
+      "r/localllama",
     ]);
     expect(byType.get("twitter")?.rows.map((r) => r.displayName)).toEqual([
       "@karpathy",
@@ -243,8 +243,8 @@ describe("buildSourcesSummary", () => {
     const agg: RawItemsAggregateRow[] = [
       {
         sourceType: "reddit",
-        identifier: "r/LocalLLaMA",
-        url: "https://reddit.com/r/LocalLLaMA/x",
+        identifier: "r/localllama",
+        url: "https://reddit.com/r/localllama/x",
         fetchedCount: 5,
         lastCollectedAt: NOW,
       },
@@ -252,8 +252,8 @@ describe("buildSourcesSummary", () => {
     const failures: RangeFailureEntry[] = [
       {
         sourceType: "reddit",
-        identifier: "r/LocalLLaMA",
-        displayName: "r/LocalLLaMA",
+        identifier: "r/localllama",
+        displayName: "r/localllama",
         runsAffected: 3,
         lastErrorMessage: "RSS 403",
         lastFailedAt: NOW,
@@ -269,7 +269,7 @@ describe("buildSourcesSummary", () => {
     });
     const row = result.sections
       .find((s) => s.sourceType === "reddit")
-      ?.rows.find((r) => r.identifier === "r/LocalLLaMA");
+      ?.rows.find((r) => r.identifier === "r/localllama");
     expect(row?.failureCount).toBe(3);
     expect(row?.lastFailureMessage).toBe("RSS 403");
   });
@@ -316,7 +316,7 @@ describe("buildSourcesSummary", () => {
       },
       {
         sourceType: "reddit",
-        identifier: "r/Alpha",
+        identifier: "r/alpha",
         url: null,
         fetchedCount: 1,
         lastCollectedAt: NOW,
@@ -343,7 +343,7 @@ describe("buildSourcesSummary", () => {
       result.sections
         .find((s) => s.sourceType === "reddit")
         ?.rows.map((r) => r.identifier),
-    ).toEqual(["r/Alpha", "r/zeta"]);
+    ).toEqual(["r/alpha", "r/zeta"]);
   });
 
   it("returns empty configured when settings is null", async () => {
