@@ -1698,7 +1698,7 @@ describe("collectWeb (P2 telemetry)", () => {
   });
 });
 
-// ── Phase 2: gemini model id recorded to tracker (REQ-001, REQ-002) ───────────
+// ── Phase 2: deepseek-chat model id recorded to tracker (REQ-001, REQ-002) ───────────
 describe("collectWeb cost-tracker model id", () => {
   function makeRecordingTracker(): { records: RecordInput[]; tracker: CostTracker } {
     const records: RecordInput[] = [];
@@ -1717,7 +1717,7 @@ describe("collectWeb cost-tracker model id", () => {
     return { records, tracker };
   }
 
-  it("records modelId gemini-3.1-flash-lite for both web-discovery and web-extraction stages", async () => {
+  it("records modelId deepseek-chat for both web-discovery and web-extraction stages", async () => {
     const repo = makeRepo();
     const model = makeDiscoveryThenExtractModel(
       [DISCOVERY_POSTS[0]],
@@ -1745,25 +1745,25 @@ describe("collectWeb cost-tracker model id", () => {
 
     const discovery = records.find((r) => r.stage === "web-discovery");
     const extraction = records.find((r) => r.stage === "web-extraction");
-    expect(discovery?.modelId).toBe("gemini-3.1-flash-lite");
-    expect(extraction?.modelId).toBe("gemini-3.1-flash-lite");
-    expect(WEB_COLLECTOR_MODEL_ID).toBe("gemini-3.1-flash-lite");
+    expect(discovery?.modelId).toBe("deepseek-chat");
+    expect(extraction?.modelId).toBe("deepseek-chat");
+    expect(WEB_COLLECTOR_MODEL_ID).toBe("deepseek-chat");
   });
 });
 
-// ── Phase 2: default provider built from @ai-sdk/google keyed by GEMINI_API_KEY (REQ-003) ─
+// ── Phase 2: default provider built from @ai-sdk/deepseek keyed by DEEPSEEK_API_KEY (REQ-003) ─
 describe("resolveDefaultModel provider", () => {
   afterEach(() => {
     vi.resetModules();
     vi.unstubAllEnvs();
-    vi.doUnmock("@ai-sdk/google");
+    vi.doUnmock("@ai-sdk/deepseek");
   });
 
-  it("builds the default model from @ai-sdk/google keyed by GEMINI_API_KEY", async () => {
+  it("builds the default model from @ai-sdk/deepseek keyed by DEEPSEEK_API_KEY", async () => {
     vi.resetModules();
-    vi.stubEnv("GEMINI_API_KEY", "test-gemini-key-123");
+    vi.stubEnv("DEEPSEEK_API_KEY", "test-deepseek-key-123");
 
-    const createGoogleGenerativeAI = vi.fn(() => {
+    const createDeepSeek = vi.fn(() => {
       const provider = vi.fn(() => new MockLanguageModelV2({
         doGenerate: () => Promise.resolve({
           content: [{ type: "text", text: JSON.stringify({ posts: [] }) }],
@@ -1775,9 +1775,9 @@ describe("resolveDefaultModel provider", () => {
       return provider;
     });
 
-    vi.doMock("@ai-sdk/google", () => ({ createGoogleGenerativeAI }));
+    vi.doMock("@ai-sdk/deepseek", () => ({ createDeepSeek }));
 
-    const { collectWeb: freshCollectWeb } = await import("@pipeline/collectors/web.js");
+    const { collectWeb: freshCollectWeb, WEB_COLLECTOR_MODEL_ID: MODEL_ID } = await import("@pipeline/collectors/web.js");
 
     const repo = makeRepo();
     const listingMap = new Map<string, CrawlResult>([
@@ -1785,15 +1785,16 @@ describe("resolveDefaultModel provider", () => {
     ]);
     const runWebCrawl = vi.fn().mockResolvedValue(listingMap);
 
-    // No llmModel injected → resolveDefaultModel() runs and must use the Google provider.
+    // No llmModel injected → resolveDefaultModel() runs and must use the DeepSeek provider.
     await freshCollectWeb(
       { rawItemsRepo: repo, runWebCrawl },
       { sources: [sourceA], maxItems: 5 },
     );
 
-    expect(createGoogleGenerativeAI).toHaveBeenCalledTimes(1);
-    expect(createGoogleGenerativeAI).toHaveBeenCalledWith({ apiKey: "test-gemini-key-123" });
-    const provider = createGoogleGenerativeAI.mock.results[0].value as ReturnType<typeof createGoogleGenerativeAI>;
-    expect(provider).toHaveBeenCalledWith("gemini-3.1-flash-lite");
+    expect(MODEL_ID).toBe("deepseek-chat");
+    expect(createDeepSeek).toHaveBeenCalledTimes(1);
+    expect(createDeepSeek).toHaveBeenCalledWith({ apiKey: "test-deepseek-key-123" });
+    const provider = createDeepSeek.mock.results[0].value as ReturnType<typeof createDeepSeek>;
+    expect(provider).toHaveBeenCalledWith("deepseek-chat");
   });
 });

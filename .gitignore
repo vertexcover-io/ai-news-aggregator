@@ -33,8 +33,9 @@ docs/spec/**
 !docs/spec/**/verification/verification-stubs.md
 !docs/spec/**/learnings.md
 !docs/spec/**/README.md
+!docs/spec/**/design.md
+!docs/spec/**/library-probe.md
 # VER-68: ship full audit trail (probes + library-probe + verification logs)
-!docs/spec/share-archive-on-social/library-probe.md
 !docs/spec/share-archive-on-social/probes/
 !docs/spec/share-archive-on-social/probes/*.sh
 !docs/spec/share-archive-on-social/probes/*.md

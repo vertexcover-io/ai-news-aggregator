@@ -28,6 +28,13 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     cacheWrite5mPerMTok: 3.75,
     cacheWrite1hPerMTok: 6.0,
   },
+  "deepseek-chat": {
+    inputPerMTok: 0.14,
+    outputPerMTok: 0.28,
+    cacheReadPerMTok: 0.0028,
+    cacheWrite5mPerMTok: 0,
+    cacheWrite1hPerMTok: 0,
+  },
   "gemini-3.1-flash-lite": {
     inputPerMTok: 0.25,
     outputPerMTok: 1.5,
