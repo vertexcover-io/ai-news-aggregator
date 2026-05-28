@@ -171,9 +171,9 @@ importers:
       '@ai-sdk/anthropic':
         specifier: 2.0.74
         version: 2.0.74(zod@4.3.6)
-      '@ai-sdk/google':
-        specifier: 2.0.74
-        version: 2.0.74(zod@4.3.6)
+      '@ai-sdk/deepseek':
+        specifier: 1.0.41
+        version: 1.0.41(zod@4.3.6)
       '@aws-sdk/client-sesv2':
         specifier: 3.1042.0
         version: 3.1042.0
@@ -456,14 +456,14 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/gateway@2.0.73':
-    resolution: {integrity: sha512-4c6yRZGvRxaaTeswOpzSWAJixsY16ucSda8PVpLSJC2P5F4MBitPnibkjYLNRgjlK4fqeRouckOiGFq9M3JZpg==}
+  '@ai-sdk/deepseek@1.0.41':
+    resolution: {integrity: sha512-7L2Do5wk0xRe0Ox8CVRF9B5b5SPemZP16ZbyBUAlNtO16EMFLSX8LXGeQREZ2SOQ4pC95BwSXThcTkt1JbFNlA==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/google@2.0.74':
-    resolution: {integrity: sha512-Lhw1742RXc+4pRIvqVXa0jdl5+qdpmw8lj0lm6OchUg9rVGHzymlaxe7CDiYX5U2af4jbjKeTY22LDi3bIycgQ==}
+  '@ai-sdk/gateway@2.0.73':
+    resolution: {integrity: sha512-4c6yRZGvRxaaTeswOpzSWAJixsY16ucSda8PVpLSJC2P5F4MBitPnibkjYLNRgjlK4fqeRouckOiGFq9M3JZpg==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -6323,17 +6323,17 @@ snapshots:
       '@ai-sdk/provider-utils': 3.0.23(zod@4.3.6)
       zod: 4.3.6
 
+  '@ai-sdk/deepseek@1.0.41(zod@4.3.6)':
+    dependencies:
+      '@ai-sdk/provider': 2.0.3
+      '@ai-sdk/provider-utils': 3.0.25(zod@4.3.6)
+      zod: 4.3.6
+
   '@ai-sdk/gateway@2.0.73(zod@4.3.6)':
     dependencies:
       '@ai-sdk/provider': 2.0.1
       '@ai-sdk/provider-utils': 3.0.23(zod@4.3.6)
       '@vercel/oidc': 3.1.0
-      zod: 4.3.6
-
-  '@ai-sdk/google@2.0.74(zod@4.3.6)':
-    dependencies:
-      '@ai-sdk/provider': 2.0.3
-      '@ai-sdk/provider-utils': 3.0.25(zod@4.3.6)
       zod: 4.3.6
 
   '@ai-sdk/provider-utils@3.0.23(zod@4.3.6)':
