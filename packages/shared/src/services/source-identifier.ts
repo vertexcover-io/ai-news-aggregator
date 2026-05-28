@@ -31,7 +31,10 @@ export function deriveRawItemIdentifier(args: DeriveArgs): string {
       const source = args.url ?? args.sourceUrl;
       if (source) {
         const match = /\/r\/([^/?#]+)/i.exec(source);
-        if (match) return `r/${match[1]}`;
+        // Reddit subreddit names are case-insensitive; Reddit canonicalises to
+        // lowercase in URLs. Normalise here so user-configured "Google_antigravity"
+        // and the URL "r/google_antigravity" collapse to the same identifier.
+        if (match) return `r/${match[1].toLowerCase()}`;
       }
       return hostnameFallback(args);
     }

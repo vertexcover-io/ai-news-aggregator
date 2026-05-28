@@ -140,6 +140,13 @@ function parseSourceKey(sourceKey: string): ParsedSourceKey {
     identifier = identifier.slice(redundantPrefix.length);
   }
 
+  // Reddit subreddit names are case-insensitive; canonicalise the "r/<name>"
+  // segment to lowercase so user-configured mixed-case ("r/Google_antigravity")
+  // resolves against URL-derived lowercase identifiers ("r/google_antigravity").
+  if (sourceType === "reddit" && identifier.toLowerCase().startsWith("r/")) {
+    identifier = identifier.toLowerCase();
+  }
+
   return {
     sourceType: sourceType as SourceType,
     identifier,

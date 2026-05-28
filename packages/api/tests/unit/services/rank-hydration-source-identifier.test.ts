@@ -34,7 +34,7 @@ describe("hydrateRankedItems — sourceIdentifier + preview (REQ-006)", () => {
     expect(item.sourceIdentifier).toBe("news.ycombinator.com");
   });
 
-  it("REQ-006: sets sourceIdentifier=r/LocalLLaMA for reddit", async () => {
+  it("REQ-006: sets sourceIdentifier=r/localllama for reddit (case-folded)", async () => {
     const repo = makeRepo([
       makeRow({
         id: 2,
@@ -44,7 +44,7 @@ describe("hydrateRankedItems — sourceIdentifier + preview (REQ-006)", () => {
     ]);
     const refs: RankedItemRef[] = [{ rawItemId: 2, score: 0.5, rationale: "" }];
     const [item] = await hydrateRankedItems(repo, refs);
-    expect(item.sourceIdentifier).toBe("r/LocalLLaMA");
+    expect(item.sourceIdentifier).toBe("r/localllama");
   });
 
   it("REQ-006: sets sourceIdentifier=@karpathy for twitter", async () => {

@@ -343,12 +343,16 @@ export async function collectReddit(
   const unitResults: SourceUnitResult[] = [];
 
   for (const subreddit of subreddits) {
+    // Reddit subreddit names are case-insensitive; canonicalise to lowercase so
+    // telemetry / facet / per-item identifiers all agree regardless of how the
+    // user typed the name in settings.
+    const canonical = subreddit.toLowerCase();
     const url = buildListingUrl(subreddit, sort, timeframe, limit);
     const subStart = Date.now();
 
     try {
       const xml = await fetchTextWithRetry(fetchFn, url);
-      const entries = parseListingItems(xml, subreddit);
+      const entries = parseListingItems(xml, canonical);
 
       let added = 0;
       for (const { item } of entries) {
@@ -361,7 +365,7 @@ export async function collectReddit(
       logger.info(
         {
           event: "collector.reddit.subreddit_completed",
-          subreddit,
+          subreddit: canonical,
           url,
           sinceDays: config.sinceDays,
           fetched: entries.length,
@@ -371,8 +375,8 @@ export async function collectReddit(
         "subreddit fetched",
       );
       unitResults.push({
-        identifier: `r/${subreddit}`,
-        displayName: `r/${subreddit}`,
+        identifier: `r/${canonical}`,
+        displayName: `r/${canonical}`,
         itemsFetched: added,
         status: "completed",
         errors: [],
@@ -384,7 +388,7 @@ export async function collectReddit(
       logger.error(
         {
           event: "collector.reddit.subreddit_failed",
-          subreddit,
+          subreddit: canonical,
           url,
           sinceDays: config.sinceDays,
           error: message,
@@ -394,8 +398,8 @@ export async function collectReddit(
         "failed to fetch subreddit",
       );
       unitResults.push({
-        identifier: `r/${subreddit}`,
-        displayName: `r/${subreddit}`,
+        identifier: `r/${canonical}`,
+        displayName: `r/${canonical}`,
         itemsFetched: 0,
         status: "failed",
         errors: [cause ? `${message} (cause: ${cause})` : message],

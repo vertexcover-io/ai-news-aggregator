@@ -219,7 +219,7 @@ async function seedSources(): Promise<SeededIds> {
       await insertRawItem({
         sourceType: "reddit",
         externalId: `localllama-today-${String(i)}`,
-        url: `https://reddit.com/r/LocalLLaMA/comments/today${String(i)}/post`,
+        url: `https://reddit.com/r/localllama/comments/today${String(i)}/post`,
         title: `LocalLLaMA today ${String(i)}`,
         collectedAt: today,
       }),
@@ -232,7 +232,7 @@ async function seedSources(): Promise<SeededIds> {
       await insertRawItem({
         sourceType: "reddit",
         externalId: `localllama-week-${String(i)}`,
-        url: `https://reddit.com/r/LocalLLaMA/comments/week${String(i)}/post`,
+        url: `https://reddit.com/r/localllama/comments/week${String(i)}/post`,
         title: `LocalLLaMA week ${String(i)}`,
         collectedAt: fiveDaysAgo,
       }),
@@ -282,7 +282,7 @@ async function seedSources(): Promise<SeededIds> {
       await insertRawItem({
         sourceType: "reddit",
         externalId: `ml-today-${String(i)}`,
-        url: `https://reddit.com/r/MachineLearning/comments/today${String(i)}/post`,
+        url: `https://reddit.com/r/machinelearning/comments/today${String(i)}/post`,
         title: `MachineLearning today ${String(i)}`,
         collectedAt: today,
       }),
@@ -293,8 +293,8 @@ async function seedSources(): Promise<SeededIds> {
     sources: [
       {
         sourceType: "reddit",
-        identifier: "r/LocalLLaMA",
-        displayName: "r/LocalLLaMA",
+        identifier: "r/localllama",
+        displayName: "r/localllama",
         itemsFetched: 5,
         status: "completed",
         errors: [],
@@ -313,8 +313,8 @@ async function seedSources(): Promise<SeededIds> {
       },
       {
         sourceType: "reddit",
-        identifier: "r/MachineLearning",
-        displayName: "r/MachineLearning",
+        identifier: "r/machinelearning",
+        displayName: "r/machinelearning",
         itemsFetched: 0,
         status: "failed",
         errors: ["boom"],
@@ -517,8 +517,8 @@ describe("GET /api/sources/summary (e2e)", () => {
       // configured identifiers remain.
       const redditSection = body.sections.find((s) => s.sourceType === "reddit");
       const redditIds = redditSection?.rows.map((r) => r.identifier) ?? [];
-      expect(redditIds).toContain("r/LocalLLaMA");
-      expect(redditIds).toContain("r/MachineLearning");
+      expect(redditIds).toContain("r/localllama");
+      expect(redditIds).toContain("r/machinelearning");
       const blogSection = body.sections.find((s) => s.sourceType === "blog");
       const blogIds = blogSection?.rows.map((r) => r.identifier) ?? [];
       expect(blogIds).toContain("anthropic.com");
@@ -532,7 +532,7 @@ describe("GET /api/sources/summary (e2e)", () => {
       await seedSettings("the prompt");
       await seedSources();
       const body = await getSummary();
-      const reddit = findRow(body, "reddit", "r/LocalLLaMA");
+      const reddit = findRow(body, "reddit", "r/localllama");
       expect(reddit).toBeDefined();
       expect(reddit?.fetchedCount).toBe(8); // 5 today + 3 from 5 days ago, all in 7d window
       expect(reddit?.usedCount).toBe(2);
@@ -547,7 +547,7 @@ describe("GET /api/sources/summary (e2e)", () => {
       await seedSettings("the prompt");
       await seedSources();
       const body = await getSummary();
-      const ml = findRow(body, "reddit", "r/MachineLearning");
+      const ml = findRow(body, "reddit", "r/machinelearning");
       expect(ml).toBeDefined();
       expect(ml?.failureCount).toBeGreaterThanOrEqual(1);
       expect(ml?.lastFailureMessage).toBeTruthy();
@@ -597,7 +597,7 @@ describe("GET /api/sources/summary (e2e)", () => {
       expect(byType.get("hn")?.rows[0]?.displayName).toBe("Hacker News");
       expect(
         byType.get("reddit")?.rows.map((r) => r.displayName),
-      ).toContain("r/LocalLLaMA");
+      ).toContain("r/localllama");
       expect(byType.get("blog")?.rows[0]?.displayName).toBe("Anthropic");
       expect(byType.get("twitter")?.rows[0]?.displayName).toBe("@karpathy");
     }),
@@ -630,7 +630,7 @@ describe("JS↔SQL identifier cross-check (REQ-018 / VS-5)", () => {
     { sourceType: "hn", url: "https://news.ycombinator.com/item?id=42" },
     {
       sourceType: "reddit",
-      url: "https://reddit.com/r/LocalLLaMA/comments/abc/post",
+      url: "https://reddit.com/r/localllama/comments/abc/post",
     },
     {
       sourceType: "twitter",

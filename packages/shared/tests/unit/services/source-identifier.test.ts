@@ -15,8 +15,9 @@ interface Case {
 const cases: readonly Case[] = [
   { name: "hn item URL", sourceType: "hn", url: "https://news.ycombinator.com/item?id=1", expected: "news.ycombinator.com" },
   { name: "hn malformed URL still constant", sourceType: "hn", url: "not a url", expected: "news.ycombinator.com" },
-  { name: "reddit canonical", sourceType: "reddit", url: "https://reddit.com/r/LocalLLaMA/comments/abc/", expected: "r/LocalLLaMA" },
-  { name: "reddit www host", sourceType: "reddit", url: "https://www.reddit.com/r/MachineLearning/comments/xyz/", expected: "r/MachineLearning" },
+  { name: "reddit canonical", sourceType: "reddit", url: "https://reddit.com/r/LocalLLaMA/comments/abc/", expected: "r/localllama" },
+  { name: "reddit mixed-case user input lowercased", sourceType: "reddit", url: "https://reddit.com/r/Google_Antigravity/comments/abc/", expected: "r/google_antigravity" },
+  { name: "reddit www host", sourceType: "reddit", url: "https://www.reddit.com/r/MachineLearning/comments/xyz/", expected: "r/machinelearning" },
   { name: "reddit malformed falls back to hostname", sourceType: "reddit", url: "https://example.com/no-r-prefix", expected: "example.com" },
   { name: "reddit garbage falls back to unknown", sourceType: "reddit", url: "https://garbage", expected: "garbage" },
   { name: "twitter x.com", sourceType: "twitter", url: "https://x.com/karpathy/status/1", expected: "@karpathy" },

@@ -2248,16 +2248,16 @@ describe("run-process slack notifier + telemetry (P4)", () => {
           durationMs: 100,
           unitResults: [
             {
-              identifier: "r/MachineLearning",
-              displayName: "r/MachineLearning",
+              identifier: "r/machinelearning",
+              displayName: "r/machinelearning",
               itemsFetched: 5,
               status: "completed",
               errors: [],
               durationMs: 50,
             },
             {
-              identifier: "r/LocalLLaMA",
-              displayName: "r/LocalLLaMA",
+              identifier: "r/localllama",
+              displayName: "r/localllama",
               itemsFetched: 2,
               status: "completed",
               errors: [],
@@ -2299,8 +2299,8 @@ describe("run-process slack notifier + telemetry (P4)", () => {
     };
     expect(arg.sourceTelemetry.sources).toHaveLength(2);
     expect(arg.sourceTelemetry.sources.map((s) => s.displayName)).toEqual([
-      "r/MachineLearning",
-      "r/LocalLLaMA",
+      "r/machinelearning",
+      "r/localllama",
     ]);
     expect(arg.sourceTelemetry.totalItemsFetched).toBe(7);
   });

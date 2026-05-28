@@ -74,7 +74,7 @@ function makeRawItem(
     collectedAt: "2026-05-25T00:02:00.000Z",
     engagement: { points: 1, commentCount: 0 },
     enrichedLink: { url: overrides.url, fetchedAt: "2026-05-25T00:02:00.000Z", status: "ok" },
-    sourceIdentifier: "r/AI_Agents",
+    sourceIdentifier: "r/ai_agents",
   };
   return { ...defaults, ...overrides };
 }
@@ -92,7 +92,7 @@ function log(overrides: Partial<RunLogEntry> & { id: number }): RunLogEntry {
     ts: "2026-05-25T00:03:00.000Z",
     level: "info",
     stage: "collecting",
-    source: "r/AI_Agents",
+    source: "r/ai_agents",
     event: "source.completed",
     message: "source completed",
     context: null,
@@ -155,7 +155,7 @@ describe("buildRunSourceItems", () => {
     });
 
     expect(result.live).toBe(false);
-    expect(result.sourceKey).toBe("reddit:r/AI_Agents");
+    expect(result.sourceKey).toBe("reddit:r/ai_agents");
     expect(result.items.map((item) => item.id)).toEqual([3, 1, 2, 5]);
     expect(result.summary).toEqual({
       ranked: 1,

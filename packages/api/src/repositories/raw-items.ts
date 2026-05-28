@@ -93,7 +93,7 @@ const DERIVED_IDENTIFIER_SQL = sql`CASE
   WHEN source_type = 'hn' THEN 'news.ycombinator.com'
   WHEN source_type = 'reddit' THEN
     COALESCE(
-      'r/' || substring(COALESCE(url, source_url) FROM '(?i)/r/([^/?#]+)'),
+      'r/' || lower(substring(COALESCE(url, source_url) FROM '(?i)/r/([^/?#]+)')),
       lower(regexp_replace(substring(COALESCE(url, source_url) FROM '://([^/?#:]+)'), '^www\\.', '')),
       'unknown'
     )

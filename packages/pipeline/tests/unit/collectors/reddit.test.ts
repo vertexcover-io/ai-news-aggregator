@@ -207,8 +207,8 @@ describe("collectReddit RSS", () => {
     expect(rows[0].metadata).toEqual({
       comments: [],
       sourceUnit: {
-        identifier: "r/MachineLearning",
-        displayName: "r/MachineLearning",
+        identifier: "r/machinelearning",
+        displayName: "r/machinelearning",
       },
     });
     expect(rows[0].publishedAt).toEqual(new Date(RECENT_PUBLISHED_ISO));
@@ -263,7 +263,7 @@ describe("collectReddit RSS", () => {
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     expect(rows[0].metadata).toEqual({
       comments: [],
-      sourceUnit: { identifier: "r/MachineLearning", displayName: "r/MachineLearning" },
+      sourceUnit: { identifier: "r/machinelearning", displayName: "r/machinelearning" },
     });
   });
 
@@ -285,7 +285,7 @@ describe("collectReddit RSS", () => {
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     expect(rows[0].metadata).toEqual({
       comments: [],
-      sourceUnit: { identifier: "r/MachineLearning", displayName: "r/MachineLearning" },
+      sourceUnit: { identifier: "r/machinelearning", displayName: "r/machinelearning" },
     });
   });
 
@@ -313,8 +313,8 @@ describe("collectReddit RSS", () => {
 
     expect(result.itemsFetched).toBe(1);
     expect(result.unitResults).toHaveLength(2);
-    expect(result.unitResults?.[0]).toMatchObject({ identifier: "r/MachineLearning", status: "completed", itemsFetched: 2 });
-    expect(result.unitResults?.[1]).toMatchObject({ identifier: "r/LocalLLaMA", status: "completed", itemsFetched: 0 });
+    expect(result.unitResults?.[0]).toMatchObject({ identifier: "r/machinelearning", status: "completed", itemsFetched: 2 });
+    expect(result.unitResults?.[1]).toMatchObject({ identifier: "r/localllama", status: "completed", itemsFetched: 0 });
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
     expect(rows.map((row) => row.externalId)).toEqual(["fresh001"]);
   });
@@ -335,7 +335,7 @@ describe("collectReddit RSS", () => {
 
     expect(result.itemsFetched).toBe(1);
     const [bad, good] = result.unitResults ?? [];
-    expect(bad).toMatchObject({ identifier: "r/BadSub", status: "failed", itemsFetched: 0 });
-    expect(good).toMatchObject({ identifier: "r/GoodSub", status: "completed", itemsFetched: 1 });
+    expect(bad).toMatchObject({ identifier: "r/badsub", status: "failed", itemsFetched: 0 });
+    expect(good).toMatchObject({ identifier: "r/goodsub", status: "completed", itemsFetched: 1 });
   });
 });
