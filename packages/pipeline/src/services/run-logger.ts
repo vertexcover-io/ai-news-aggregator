@@ -82,3 +82,43 @@ export function createRunLogger(
     error: emit("error"),
   };
 }
+
+export function withPinoBridge(
+  runLogger: RunLogger,
+  baseLogger: Logger,
+): RunLogger {
+  const make = (level: RunLogLevel): RunLogMethod => {
+    return async (fields, message) => {
+      const { stage, source, event } = fields;
+      const context = splitContext(fields);
+      try {
+        baseLogger[level](
+          { stage, source, event, ...context },
+          message,
+        );
+      } catch (err) {
+        console.error("withPinoBridge.base_failed", {
+          level,
+          event,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      try {
+        await runLogger[level](fields, message);
+      } catch (err) {
+        console.error("withPinoBridge.run_failed", {
+          level,
+          event,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    };
+  };
+
+  return {
+    debug: make("debug"),
+    info: make("info"),
+    warn: make("warn"),
+    error: make("error"),
+  };
+}
