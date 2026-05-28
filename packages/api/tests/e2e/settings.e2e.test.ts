@@ -44,6 +44,8 @@ function buildApp(queue: ReturnType<typeof makeQueue>) {
 
 const validBody = {
   topN: 10,
+  shortlistSize: 30,
+  shortlistPrompt: "Shortlist the top items by signal.",
   halfLifeHours: null,
   hnEnabled: true,
   hnConfig: { sinceDays: 1 },

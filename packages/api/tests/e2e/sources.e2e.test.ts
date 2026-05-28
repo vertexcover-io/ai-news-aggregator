@@ -208,9 +208,9 @@ interface SeededIds {
 
 async function seedSources(): Promise<SeededIds> {
   const now = new Date();
-  const today = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0),
-  );
+  // Seed slightly in the past so items always fall inside the route's
+  // [now-7d, now] window regardless of wall-clock time of day.
+  const today = new Date(now.getTime() - 60 * 60 * 1000);
   const fiveDaysAgo = new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000);
 
   const localLlamaToday: number[] = [];
@@ -354,6 +354,8 @@ async function seedSettings(rankingPrompt: string): Promise<UserSettings> {
   const base: UserSettings = existing ?? ({
     id: "settings",
     topN: 12,
+    shortlistSize: 30,
+    shortlistPrompt: "Shortlist top items.",
     halfLifeHours: 24,
     hnEnabled: true,
     hnConfig: null,
