@@ -6,7 +6,7 @@ export interface FetchBrowserOptions {
   signal?: AbortSignal;
 }
 
-function resolveChromiumExecutablePath(): string | undefined {
+export function resolveChromiumExecutablePath(): string | undefined {
   const p = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim();
   return p === "" ? undefined : p;
 }

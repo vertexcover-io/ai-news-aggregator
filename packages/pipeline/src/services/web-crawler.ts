@@ -6,6 +6,7 @@ import {
 } from "crawlee";
 import type { ConvertResult, FetchMode } from "@pipeline/services/web-fetch/types.js";
 import { convert, isHealthyResult, hasListingPostLinks } from "@pipeline/services/web-fetch/convert.js";
+import { resolveChromiumExecutablePath } from "@pipeline/services/web-fetch/fetch-browser.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RunLogger } from "@pipeline/services/run-logger.js";
 
@@ -83,6 +84,13 @@ export async function runWebCrawl(
   const maxConcurrency =
     opts.maxConcurrency ?? Number(process.env.WEB_CRAWLER_CONCURRENCY ?? "4");
 
+  // Crawlee manages its own BrowserPool/PlaywrightPlugin and does NOT read
+  // PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH like our direct chromium.launch call
+  // in fetch-browser.ts does. Pass executablePath through launchContext so
+  // Crawlee uses the apt-installed Chromium instead of trying to download
+  // its bundled headless shell (skipped at build via PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1).
+  const executablePath = resolveChromiumExecutablePath();
+
   const crawlerOptions: AdaptivePlaywrightCrawlerOptions = {
     maxConcurrency,
     maxRequestRetries: 3,
@@ -90,6 +98,9 @@ export async function runWebCrawl(
     sameDomainDelaySecs: 1,
     respectRobotsTxtFile: true,
     renderingTypeDetectionRatio: 0.1,
+    launchContext: executablePath
+      ? { launchOptions: { executablePath } }
+      : undefined,
 
     // When the browser path is used (Adaptive promotes a URL after the static
     // path fails resultChecker), navigate only to domcontentloaded — `load`
