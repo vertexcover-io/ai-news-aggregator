@@ -51,6 +51,11 @@ export function ReviewPage(): ReactElement {
     twitterSummary: "",
   });
   const [digestHydratedId, setDigestHydratedId] = useState<string | null>(null);
+  // Signature (ordered list of ranked-item ids) at the time the digest meta
+  // was last in sync with the ranked list — either when the archive loaded
+  // or when the user clicked Regenerate. If `current` drifts from this, the
+  // operator must regenerate before saving.
+  const [regenSignature, setRegenSignature] = useState<string | null>(null);
   const [promotingIds, setPromotingIds] = useState<Set<number>>(
     () => new Set(),
   );
@@ -76,6 +81,8 @@ export function ReviewPage(): ReactElement {
       twitterSummary: query.data?.twitterSummary ?? "",
     });
     setDigestHydratedId(digestCompletedKey);
+    const initialIds = (query.data?.rankedItems ?? []).map((i) => i.id).join("|");
+    setRegenSignature(initialIds);
   }
 
   async function handlePromote(
@@ -210,11 +217,18 @@ export function ReviewPage(): ReactElement {
     );
   }
 
+  const currentSignature = state.current.map((it) => it.id).join("|");
+  const needsRegen =
+    regenSignature !== null && currentSignature !== regenSignature;
   const canSave =
     state.current.length > 0 &&
     state.pending.length === 0 &&
     state.pendingPromotes.length === 0 &&
-    !saving;
+    !saving &&
+    !needsRegen;
+  const saveDisabledReason = needsRegen
+    ? "Regenerate the digest meta before saving — the ranked list has changed."
+    : null;
 
   async function handleSave(): Promise<void> {
     setSaving(true);
@@ -238,6 +252,7 @@ export function ReviewPage(): ReactElement {
       });
       allowSaveNavigation.current = true;
       reset(state.current);
+      setRegenSignature(state.current.map((it) => it.id).join("|"));
       void navigate(`/archive/${runId}`);
     } catch (e) {
       const message =
@@ -297,6 +312,9 @@ export function ReviewPage(): ReactElement {
           }))}
           values={digestMeta}
           onChange={setDigestMeta}
+          onRegenerated={() => {
+            setRegenSignature(currentSignature);
+          }}
         />
 
         <div className="text-xs text-muted-foreground">
@@ -336,6 +354,7 @@ export function ReviewPage(): ReactElement {
         unsavedCount={unsavedCount}
         saving={saving}
         canSave={canSave}
+        disabledReason={saveDisabledReason}
         onSave={() => {
           void handleSave();
         }}

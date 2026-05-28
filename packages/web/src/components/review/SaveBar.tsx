@@ -17,6 +17,7 @@ interface SaveBarProps {
   canSave: boolean;
   onSave: () => void;
   onDiscard: () => void;
+  disabledReason?: string | null;
 }
 
 export function SaveBar({
@@ -25,6 +26,7 @@ export function SaveBar({
   canSave,
   onSave,
   onDiscard,
+  disabledReason = null,
 }: SaveBarProps): ReactElement {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -72,16 +74,28 @@ export function SaveBar({
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        <Button
-          type="button"
-          onClick={onSave}
-          disabled={!canSave || saving}
-          aria-disabled={!canSave || saving}
-          className="bg-black text-white hover:bg-black/90 min-h-[44px] px-4"
-        >
-          {saving ? "Saving..." : "Save & view archive"}
-          <ArrowRight />
-        </Button>
+        <span className="relative group inline-block">
+          <Button
+            type="button"
+            onClick={onSave}
+            disabled={!canSave || saving}
+            aria-disabled={!canSave || saving}
+            title={disabledReason ?? undefined}
+            className="bg-black text-white hover:bg-black/90 min-h-[44px] px-4"
+          >
+            {saving ? "Saving..." : "Save & view archive"}
+            <ArrowRight />
+          </Button>
+          {disabledReason !== null && !canSave && !saving ? (
+            <span
+              role="tooltip"
+              data-testid="save-disabled-tooltip"
+              className="pointer-events-none absolute bottom-full right-0 mb-2 hidden whitespace-nowrap rounded-md bg-gray-900 px-3 py-1.5 text-xs text-white shadow-md group-hover:block group-focus-within:block"
+            >
+              {disabledReason}
+            </span>
+          ) : null}
+        </span>
       </div>
     </div>
   );

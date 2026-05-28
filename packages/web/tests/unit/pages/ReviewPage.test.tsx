@@ -23,7 +23,7 @@ vi.mock("../../../src/api/archives", async () => {
   return { ...actual, patchArchive: vi.fn(), regenerateDigestMeta: vi.fn() };
 });
 
-import { patchArchive } from "../../../src/api/archives";
+import { patchArchive, regenerateDigestMeta } from "../../../src/api/archives";
 
 function fieldValue(label: string): string {
   const el = screen.getByLabelText(label);
@@ -383,5 +383,137 @@ describe("ReviewPage", () => {
     renderAt("run-live");
     await screen.findByRole("article");
     expect(screen.queryByTestId("dry-run-pill")).toBeNull();
+  });
+
+  describe("regenerate-before-save gate", () => {
+    function makeCompletedRun(): RunStateResponse {
+      return {
+        id: "run-regen",
+        status: "completed",
+        stage: "completed",
+        topN: 10,
+        startedAt: "2026-04-14T00:00:00Z",
+        updatedAt: "2026-04-14T00:00:00Z",
+        completedAt: "2026-04-14T00:00:00Z",
+        sources: {},
+        rankedItems: [
+          makeItem(1, "First"),
+          makeItem(2, "Second"),
+          makeItem(3, "Third"),
+        ],
+        shortlistedItemIds: null,
+        warnings: [],
+        error: null,
+        digestHeadline: "Old headline",
+        digestSummary: "Old summary",
+        hook: "Old hook",
+        twitterSummary: "Old tweet",
+      };
+    }
+
+    it("save button is enabled on initial load (no list change)", async () => {
+      vi.mocked(getAdminArchive).mockResolvedValue(makeCompletedRun());
+      renderAt("run-regen");
+      await screen.findByText("First");
+      const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
+      expect(saveBtn.hasAttribute("disabled")).toBe(false);
+      expect(screen.queryByTestId("save-disabled-tooltip")).toBeNull();
+    });
+
+    it("disables save with regen tooltip after removing an item", async () => {
+      vi.mocked(getAdminArchive).mockResolvedValue(makeCompletedRun());
+      renderAt("run-regen");
+      await screen.findByText("First");
+
+      const deleteButtons = await screen.findAllByRole("button", {
+        name: /delete|remove/i,
+      });
+      const [firstDelete] = deleteButtons;
+      act(() => {
+        fireEvent.click(firstDelete);
+      });
+
+      const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
+      expect(saveBtn.hasAttribute("disabled")).toBe(true);
+      expect(saveBtn.getAttribute("title")).toMatch(/Regenerate the digest meta/);
+      const tooltip = screen.getByTestId("save-disabled-tooltip");
+      expect(tooltip.textContent).toMatch(/Regenerate the digest meta/);
+    });
+
+    it("re-enables save after the user regenerates the digest meta", async () => {
+      vi.mocked(getAdminArchive).mockResolvedValue(makeCompletedRun());
+      vi.mocked(regenerateDigestMeta).mockResolvedValue({
+        headline: "Fresh headline",
+        summary: "Fresh summary",
+        hook: "ignored",
+        twitterSummary: "Fresh tweet",
+      });
+      renderAt("run-regen");
+      await screen.findByText("First");
+
+      const deleteButtons = await screen.findAllByRole("button", {
+        name: /delete|remove/i,
+      });
+      act(() => {
+        fireEvent.click(deleteButtons[0]);
+      });
+
+      expect(
+        screen.getByRole("button", { name: /save & view archive/i }).hasAttribute("disabled"),
+      ).toBe(true);
+
+      const regenBtn = screen.getByRole("button", { name: /regenerate/i });
+      await act(async () => {
+        fireEvent.click(regenBtn);
+        await Promise.resolve();
+      });
+      // flush react-query microtasks
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
+      expect(saveBtn.hasAttribute("disabled")).toBe(false);
+      expect(screen.queryByTestId("save-disabled-tooltip")).toBeNull();
+    });
+
+    it("calls patchArchive when save is clicked after regeneration", async () => {
+      vi.mocked(getAdminArchive).mockResolvedValue(makeCompletedRun());
+      vi.mocked(regenerateDigestMeta).mockResolvedValue({
+        headline: "Fresh headline",
+        summary: "Fresh summary",
+        hook: "ignored",
+        twitterSummary: "Fresh tweet",
+      });
+      vi.mocked(patchArchive).mockResolvedValue(undefined);
+
+      renderAt("run-regen");
+      await screen.findByText("First");
+
+      const deleteButtons = await screen.findAllByRole("button", {
+        name: /delete|remove/i,
+      });
+      act(() => {
+        fireEvent.click(deleteButtons[0]);
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /regenerate/i }));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
+      await act(async () => {
+        fireEvent.click(saveBtn);
+        await Promise.resolve();
+      });
+
+      expect(patchArchive).toHaveBeenCalledTimes(1);
+      // sanity: the new headline reached the patch body
+      const [, body] = vi.mocked(patchArchive).mock.calls[0];
+      expect(body.digestHeadline).toBe("Fresh headline");
+    });
   });
 });
