@@ -388,6 +388,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     try {
       const meta = await regenerateDigestMeta(runId, parsed.data, {
         archiveRepo: deps.getArchiveRepo(),
+        rawItemsRepo: deps.getRawItemsRepo(),
         generateDigestMeta: deps.generateDigestMeta,
       });
       logger.info(

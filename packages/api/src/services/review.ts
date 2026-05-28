@@ -228,6 +228,7 @@ export interface RegenerateDigestMetaInput {
 
 export interface RegenerateDigestMetaDeps {
   archiveRepo: RunArchivesRepo;
+  rawItemsRepo: RawItemsRepo;
   generateDigestMeta: GenerateDigestMetaFn;
 }
 
@@ -242,11 +243,15 @@ export async function regenerateDigestMeta(
     throw new ConflictError("cannot regenerate digest for a dry-run archive");
   }
 
-  const rankedIds = new Set(archive.rankedItems.map((r) => r.rawItemId));
-  const missing = input.items.map((i) => i.id).filter((id) => !rankedIds.has(id));
+  // Validate against raw_items (not archive.rankedItems) so freshly added
+  // posts can be regenerated before the operator clicks Save.
+  const ids = input.items.map((i) => i.id);
+  const existing = await deps.rawItemsRepo.findByIds(ids);
+  const found = new Set(existing.map((r) => r.id));
+  const missing = ids.filter((id) => !found.has(id));
   if (missing.length > 0) {
     throw new ValidationError(
-      `unknown ranked item ids: ${missing.join(", ")}`,
+      `unknown raw item ids: ${missing.join(", ")}`,
       missing,
     );
   }

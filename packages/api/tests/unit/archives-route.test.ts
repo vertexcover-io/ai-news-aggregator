@@ -812,10 +812,27 @@ describe("POST /api/archives/:runId/regenerate-digest-meta", () => {
     return JSON.stringify({ items });
   }
 
+  function rawRow(id: number): RawItemRow {
+    return {
+      id,
+      sourceType: "hn",
+      title: `t${String(id)}`,
+      url: `https://example.com/${String(id)}`,
+      sourceUrl: null,
+      author: null,
+      publishedAt: null,
+      engagement: { points: 0, commentCount: 0 },
+      content: null,
+      imageUrl: null,
+      metadata: {},
+    } as RawItemRow;
+  }
+
   it("REQ-005: returns 200 with four string fields and does NOT persist", async () => {
     const archiveRepo = makeArchiveRepo(makeRow());
     const generateDigestMeta: GenerateDigestMetaFn = vi.fn(() => Promise.resolve(sampleMeta));
-    const app = makeApp({ archiveRepo, generateDigestMeta });
+    const repo = makeRepo([rawRow(1)]);
+    const app = makeApp({ archiveRepo, generateDigestMeta, repo });
 
     const res = await app.request("/api/archives/run-1/regenerate-digest-meta", {
       method: "POST",
@@ -873,7 +890,8 @@ describe("POST /api/archives/:runId/regenerate-digest-meta", () => {
     const generateDigestMeta: GenerateDigestMetaFn = vi.fn(() =>
       Promise.reject(new Error("anthropic exploded")),
     );
-    const app = makeApp({ archiveRepo, generateDigestMeta });
+    const repo = makeRepo([rawRow(1)]);
+    const app = makeApp({ archiveRepo, generateDigestMeta, repo });
 
     const res = await app.request("/api/archives/run-1/regenerate-digest-meta", {
       method: "POST",
@@ -902,10 +920,11 @@ describe("POST /api/archives/:runId/regenerate-digest-meta", () => {
     expect(generateDigestMeta).not.toHaveBeenCalled();
   });
 
-  it("returns 400 when an item id is not in the archive's ranked set", async () => {
+  it("returns 400 when an item id does not exist in raw_items", async () => {
     const archiveRepo = makeArchiveRepo(makeRow());
     const generateDigestMeta: GenerateDigestMetaFn = vi.fn(() => Promise.resolve(sampleMeta));
-    const app = makeApp({ archiveRepo, generateDigestMeta });
+    // Empty repo: id 999 does not exist anywhere in raw_items
+    const app = makeApp({ archiveRepo, generateDigestMeta, repo: makeRepo([]) });
 
     const res = await app.request("/api/archives/run-1/regenerate-digest-meta", {
       method: "POST",
@@ -917,6 +936,29 @@ describe("POST /api/archives/:runId/regenerate-digest-meta", () => {
     expect(generateDigestMeta).not.toHaveBeenCalled();
   });
 
+  it("accepts an added post that is not yet in archive.rankedItems (regression)", async () => {
+    // The archive's persisted ranked set is {1, 2}; the operator just added a
+    // post via /add-post which created raw_items.id=13150 — but they have not
+    // clicked Save yet, so 13150 is not in archive.rankedItems. Regenerate
+    // must still succeed because the row exists in raw_items.
+    const archiveRepo = makeArchiveRepo(makeRow());
+    const repo = makeRepo([rawRow(1), rawRow(2), rawRow(13150)]);
+    const generateDigestMeta: GenerateDigestMetaFn = vi.fn(() => Promise.resolve(sampleMeta));
+    const app = makeApp({ archiveRepo, generateDigestMeta, repo });
+
+    const res = await app.request("/api/archives/run-1/regenerate-digest-meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body([
+        { id: 1, title: "T1", summary: "S1", bottomLine: "B1" },
+        { id: 13150, title: "Added", summary: "Sx", bottomLine: "Bx" },
+      ]),
+    });
+
+    expect(res.status).toBe(200);
+    expect(generateDigestMeta).toHaveBeenCalledTimes(1);
+  });
+
   it("EDGE-006: passes items to generateDigestMeta in body order with rank = index+1", async () => {
     const archiveRepo = makeArchiveRepo(makeRow());
     const captured: { rank: number; title: string; summary: string; bottomLine: string }[][] = [];
@@ -924,7 +966,8 @@ describe("POST /api/archives/:runId/regenerate-digest-meta", () => {
       captured.push(items);
       return Promise.resolve(sampleMeta);
     });
-    const app = makeApp({ archiveRepo, generateDigestMeta });
+    const repo = makeRepo([rawRow(1), rawRow(2)]);
+    const app = makeApp({ archiveRepo, generateDigestMeta, repo });
 
     // body order is item 2 first, then item 1 — opposite of DB rankedItems order
     const res = await app.request("/api/archives/run-1/regenerate-digest-meta", {
@@ -947,12 +990,13 @@ describe("POST /api/archives/:runId/regenerate-digest-meta", () => {
   it("REQ-009: route is registered on the admin router, not the public router", async () => {
     const archiveRepo = makeArchiveRepo(makeRow());
     const generateDigestMeta: GenerateDigestMetaFn = vi.fn(() => Promise.resolve(sampleMeta));
+    const seededRepo = (): RawItemsRepo => makeRepo([rawRow(1)]);
 
     const publicApp = new Hono();
     publicApp.route(
       "/api/archives",
       createPublicArchivesRouter({
-        getRawItemsRepo: () => makeRepo(),
+        getRawItemsRepo: seededRepo,
         getArchiveRepo: () => archiveRepo,
         generateDigestMeta,
       }),
@@ -969,7 +1013,7 @@ describe("POST /api/archives/:runId/regenerate-digest-meta", () => {
     adminApp.route(
       "/api/archives",
       createAdminArchivesRouter({
-        getRawItemsRepo: () => makeRepo(),
+        getRawItemsRepo: seededRepo,
         getArchiveRepo: () => archiveRepo,
         generateDigestMeta,
       }),
