@@ -48,7 +48,7 @@ function LogRow({ entry }: { entry: RunLogEntry }): ReactElement {
         data-testid="log-level-dot"
         className={`mt-1.5 h-[7px] w-[7px] justify-self-center rounded-full ${LEVEL_DOT[entry.level]}`}
       />
-      <span className="text-[11px] tracking-wide text-rust-deep">
+      <span className="truncate text-[11px] tracking-wide text-rust-deep" title={entry.event}>
         {entry.event}
       </span>
       <span className={isError ? "leading-relaxed text-[#9d2f22]" : "leading-relaxed text-ink-2"}>
