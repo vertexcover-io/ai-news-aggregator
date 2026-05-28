@@ -126,9 +126,18 @@ function parseSourceKey(sourceKey: string): ParsedSourceKey {
   }
 
   const sourceType = decoded.slice(0, separatorIndex);
-  const identifier = decoded.slice(separatorIndex + 1);
+  let identifier = decoded.slice(separatorIndex + 1);
   if (!SOURCE_TYPES.has(sourceType)) {
     throw new InvalidSourceKeyError(sourceKey);
+  }
+
+  // Legacy compatibility: web_search runs archived before the source-identifier
+  // alignment fix emitted unit.identifier = "web_search:<query>", which the web
+  // UI concatenated into a double-prefixed sourceKey ("web_search:web_search:<q>").
+  // Strip the redundant "<sourceType>:" prefix so legacy archives still resolve.
+  const redundantPrefix = `${sourceType}:`;
+  if (identifier.startsWith(redundantPrefix)) {
+    identifier = identifier.slice(redundantPrefix.length);
   }
 
   return {

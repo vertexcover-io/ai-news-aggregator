@@ -107,7 +107,7 @@ export async function collectWebSearch(
         "web-search query failed",
       );
       unitResults.push({
-        identifier: `web_search:${query}`,
+        identifier: query,
         displayName: query,
         itemsFetched: 0,
         status: "failed",
@@ -140,7 +140,7 @@ export async function collectWebSearch(
     );
 
     unitResults.push({
-      identifier: `web_search:${query}`,
+      identifier: query,
       displayName: query,
       itemsFetched: results.length,
       status: "completed",
