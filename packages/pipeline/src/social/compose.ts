@@ -1,3 +1,5 @@
+import { buildLinkedinPostBody } from "@newsletter/shared/constants";
+
 export interface RankedStory {
   title: string;
   summary?: string;
@@ -40,17 +42,8 @@ function normalize(value: string | null): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
-function buildLinkedinStoryLine(index: number, story: RankedStory): string {
-  return `${String(index)}) ${story.summary ?? ""}`;
-}
-
-function buildLinkedin(hook: string, stories: RankedStory[]): string {
-  const parts: string[] = [hook];
-  for (let i = 0; i < stories.length; i += 1) {
-    parts.push(buildLinkedinStoryLine(i + 1, stories[i]));
-  }
-  parts.push(TEASER_CTA);
-  return parts.join("\n\n");
+function buildLinkedin(hook: string | null, stories: RankedStory[]): string {
+  return buildLinkedinPostBody(hook, stories);
 }
 
 function buildTwitterText(
@@ -98,7 +91,6 @@ export function twitterWeightedLength(value: string): number {
 export function composePosts(input: ComposeInput): ComposedPosts | null {
   const hook = normalize(input.hook);
   const twitterSummary = normalize(input.twitterSummary ?? null) ?? hook;
-  if (hook === null && twitterSummary === null) return null;
   const heading = normalize(input.heading ?? null);
   const premium = input.twitterIsPremium ?? false;
 
@@ -106,6 +98,11 @@ export function composePosts(input: ComposeInput): ComposedPosts | null {
     (s) => s.title.trim() !== "" && (s.summary ?? "").trim() !== "",
   );
   const twitterStories = input.stories.filter((s) => s.title.trim() !== "");
+
+  // Bail only when neither LinkedIn nor Twitter has anything to render:
+  // LinkedIn needs at least one usable story (header defaults to constant);
+  // Twitter needs at least a summary.
+  if (stories.length === 0 && twitterSummary === null) return null;
   const twitterText = buildTwitterText(
     heading,
     twitterSummary ?? "",
@@ -117,8 +114,12 @@ export function composePosts(input: ComposeInput): ComposedPosts | null {
       ? ({ ok: false, reason: "free_plan_over_limit", text: twitterText } as const)
       : ({ ok: true, text: twitterText } as const);
 
+  // LinkedIn body uses a constant header fallback (DEFAULT_LINKEDIN_HOOK), so a
+  // null hook no longer short-circuits the post. We only skip when there are
+  // zero usable stories — bullets would be empty and the post would carry only
+  // the header + footer, which is not useful.
   return {
-    linkedinText: hook === null ? null : buildLinkedin(hook, stories),
+    linkedinText: stories.length === 0 ? null : buildLinkedin(hook, stories),
     twitter,
   };
 }

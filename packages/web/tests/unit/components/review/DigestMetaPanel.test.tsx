@@ -92,15 +92,15 @@ describe("DigestMetaPanel", () => {
     renderPanel({});
     expect(fieldValue("Headline")).toBe("Initial headline");
     expect(fieldValue("Summary")).toBe("Initial summary");
-    expect(fieldValue("Hook")).toBe("Initial hook");
+    expect(fieldValue("LinkedIn Header")).toBe("Initial hook");
     expect(fieldValue("Twitter Summary")).toBe("Initial twitter");
   });
 
-  it("REQ-016 / EDGE-002: Regenerate overwrites all four fields, even after a manual edit", async () => {
+  it("REQ-016 / VS-7: Regenerate overwrites headline/summary/twitterSummary but preserves LinkedIn header", async () => {
     const fresh: DigestMeta = {
       headline: "Fresh headline",
       summary: "Fresh summary",
-      hook: "Fresh hook",
+      hook: "LLM-Hook-IGNORED",
       twitterSummary: "Fresh twitter",
     };
     vi.mocked(regenerateDigestMeta).mockResolvedValue(fresh);
@@ -126,22 +126,53 @@ describe("DigestMetaPanel", () => {
     }
     const { rerender } = render(<Harness />);
 
-    // Manual edit first (EDGE-002)
-    fireEvent.change(screen.getByLabelText("Headline"), {
-      target: { value: "Manually edited" },
+    // Manual edit on the LinkedIn header first
+    fireEvent.change(screen.getByLabelText("LinkedIn Header"), {
+      target: { value: "Admin-edited header" },
     });
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ headline: "Manually edited" }),
+      expect.objectContaining({ hook: "Admin-edited header" }),
     );
     rerender(<Harness />);
 
     fireEvent.click(screen.getByRole("button", { name: /regenerate/i }));
 
     await waitFor(() => {
-      expect(onChange).toHaveBeenLastCalledWith(fresh);
+      expect(vi.mocked(regenerateDigestMeta)).toHaveBeenCalledWith("run-1", items());
     });
-    expect(vi.mocked(regenerateDigestMeta)).toHaveBeenCalledWith("run-1", items());
-    expect(current).toEqual(fresh);
+    await waitFor(() => {
+      expect(current.headline).toBe("Fresh headline");
+    });
+    expect(current.summary).toBe("Fresh summary");
+    expect(current.twitterSummary).toBe("Fresh twitter");
+    // Admin-edited LinkedIn header survives — LLM-emitted hook is discarded.
+    expect(current.hook).toBe("Admin-edited header");
+  });
+
+  it("VS-5/VS-6: renders a LinkedIn post preview block that reflects header + top-5 stories", () => {
+    renderPanel({
+      values: {
+        headline: "h",
+        summary: "s",
+        hook: "",
+        twitterSummary: "t",
+      },
+      items: [
+        { id: 1, title: "T1", summary: "first lede.", bottomLine: "b1" },
+        { id: 2, title: "T2", summary: "second lede.", bottomLine: "b2" },
+        { id: 3, title: "T3", summary: "third lede.", bottomLine: "b3" },
+        { id: 4, title: "T4", summary: "fourth lede.", bottomLine: "b4" },
+        { id: 5, title: "T5", summary: "fifth lede.", bottomLine: "b5" },
+        { id: 6, title: "T6", summary: "sixth lede.", bottomLine: "b6" },
+      ],
+    });
+    const preview = screen.getByTestId("linkedin-post-preview");
+    const text = preview.textContent ?? "";
+    expect(text.startsWith("AgentLoop — Today in Agentic Engineering\n\n")).toBe(true);
+    expect(text).toContain("→ first lede.");
+    expect(text).toContain("→ fifth lede.");
+    expect(text).not.toContain("→ sixth lede.");
+    expect(text.endsWith("Full newsletter linked in the comments.")).toBe(true);
   });
 
   it("REQ-017: Regenerate button is disabled and shows a loading affordance while in flight", async () => {

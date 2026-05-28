@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_LINKEDIN_HOOK,
+  LINKEDIN_FOOTER,
+} from "@newsletter/shared/constants";
+
+import {
   TWITTER_MAX_CHARS,
   composePosts,
   twitterWeightedLength,
@@ -21,52 +26,69 @@ function stories(n: number): RankedStory[] {
 }
 
 describe("composePosts", () => {
-  it("REQ-030 returns null only when both hook and twitterSummary are blank", () => {
-    expect(composePosts({ hook: null, stories: stories(2) })).toBeNull();
-    expect(composePosts({ hook: "   ", stories: stories(2) })).toBeNull();
-    expect(
-      composePosts({
-        hook: null,
-        twitterSummary: "Twitter summary.",
-        stories: stories(2),
-      }),
-    ).not.toBeNull();
+  it("REQ-1/REQ-2 LinkedIn body uses DEFAULT_LINKEDIN_HOOK when hook is null", () => {
+    const result = composePosts({ hook: null, stories: stories(3) });
+    expect(result).not.toBeNull();
+    const text = result?.linkedinText ?? "";
+    expect(text.startsWith(`${DEFAULT_LINKEDIN_HOOK}\n\n→ Summary 1 body.`)).toBe(
+      true,
+    );
+    expect(text.endsWith(`\n\n${LINKEDIN_FOOTER}`)).toBe(true);
   });
 
-  it("REQ-031 LinkedIn body starts with hook followed by first story", () => {
+  it("REQ-3 LinkedIn body uses admin-edited hook verbatim when non-empty", () => {
+    const result = composePosts({ hook: "Custom header", stories: stories(2) });
+    expect(result).not.toBeNull();
+    expect(result?.linkedinText).toBe(
+      ["Custom header", "→ Summary 1 body.", "→ Summary 2 body.", LINKEDIN_FOOTER].join(
+        "\n\n",
+      ),
+    );
+  });
+
+  it("REQ-4 LinkedIn body caps bullets at 5", () => {
+    const result = composePosts({ hook: null, stories: stories(7) });
+    expect(result).not.toBeNull();
+    const text = result?.linkedinText ?? "";
+    expect(text).toContain("→ Summary 1 body.");
+    expect(text).toContain("→ Summary 5 body.");
+    expect(text).not.toContain("→ Summary 6 body.");
+    expect(text).not.toContain("→ Summary 7 body.");
+  });
+
+  it("REQ-5 LinkedIn body emits fewer than 5 bullets when fewer ranked items", () => {
+    const result = composePosts({ hook: null, stories: stories(3) });
+    expect(result).not.toBeNull();
+    const bullets = (result?.linkedinText ?? "")
+      .split("\n\n")
+      .filter((line) => line.startsWith("→ "));
+    expect(bullets).toHaveLength(3);
+  });
+
+  it("REQ-11 LinkedIn body is null when no usable stories", () => {
     const result = composePosts({
-      hook: "Hook line.",
-      stories: stories(3),
+      hook: "Custom",
+      twitterSummary: "T",
+      stories: [{ title: "T", summary: "" }],
     });
     expect(result).not.toBeNull();
-    expect(result?.linkedinText?.startsWith("Hook line.\n\n1) Summary 1 body.")).toBe(true);
+    expect(result?.linkedinText).toBeNull();
   });
 
-  it("REQ-032 LinkedIn body lists numbered stories, ends with teaser, and does not embed the archive URL", () => {
+  it("VS-4 LinkedIn filters whitespace-only summaries before slicing top-5", () => {
     const result = composePosts({
-      hook: "Hook.",
-      stories: stories(3),
+      hook: null,
+      stories: [
+        { title: "A", summary: "first" },
+        { title: "B", summary: "  " },
+        { title: "C", summary: "third" },
+      ],
     });
     expect(result).not.toBeNull();
     const text = result?.linkedinText ?? "";
-    expect(text).toContain("1) Summary 1 body.");
-    expect(text).toContain("2) Summary 2 body.");
-    expect(text).toContain("3) Summary 3 body.");
-    // The archive URL is posted as a comment by the notifier, not embedded here.
-    expect(text).not.toContain("Full breakdown:");
-    expect(text).not.toContain("https://");
-    // Body ends with the "Full breakdown ↓" teaser pointing readers at the comment.
-    expect(text.endsWith(`\n\n${TEASER}`)).toBe(true);
-  });
-
-  it("REQ-032 LinkedIn includes all ranked stories (no cap)", () => {
-    const result = composePosts({
-      hook: "Hook.",
-      stories: stories(12),
-    });
-    expect(result).not.toBeNull();
-    expect(result?.linkedinText).toContain("1) Summary 1 body.");
-    expect(result?.linkedinText).toContain("12) Summary 12 body.");
+    expect(text).toContain("→ first");
+    expect(text).toContain("→ third");
+    expect(text).not.toContain("→  ");
   });
 
   it("REQ-034 non-premium X post is twitterSummary followed by teaser (no URL — link is the reply)", () => {
