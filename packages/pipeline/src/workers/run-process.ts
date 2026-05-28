@@ -11,6 +11,7 @@ import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
 import { resolveScheduledPublishAt } from "@newsletter/shared/scheduling";
 import { canonicalizeUrl, dedupCandidates } from "@pipeline/processors/dedup.js";
+import { buildPreReviewSnapshot } from "@pipeline/services/build-pre-review-snapshot.js";
 import {
   createCandidatesRepo,
   type CandidatesRepo,
@@ -999,6 +1000,13 @@ export async function handleRunProcessJob(
         runFunnel: { ...funnel },
         publishedAt: publishedAt ?? undefined,
         shortlistedItemIds: shortlistIds,
+        preReviewSnapshot: buildPreReviewSnapshot({
+          rankedItems: rankResult.rankedItems,
+          digestHeadline,
+          digestSummary,
+          hook,
+          twitterSummary,
+        }),
       });
       archiveWritten = true;
     } catch (err) {
