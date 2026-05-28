@@ -217,7 +217,7 @@ function RunActionCell({
     derived === "cancelled";
 
   return (
-    <div className="flex items-center justify-end gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-2">
       {primary}
       <SocialOverflowMenu
         run={run}
@@ -367,17 +367,17 @@ export function RunsTable({
         run={costRun}
       />
 
-      <div className="rounded-lg border bg-white">
+      <div className="rounded-lg border bg-white [&_[data-slot=table-container]]:overflow-x-visible">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="px-6 py-3">Date</TableHead>
-              <TableHead className="px-6 py-3">Publish date</TableHead>
-              <TableHead className="px-6 py-3">Status</TableHead>
-              <TableHead className="px-6 py-3">Items</TableHead>
-              <TableHead className="px-6 py-3">Sources</TableHead>
-              <TableHead className="px-6 py-3">Cost</TableHead>
-              <TableHead className="px-6 py-3 text-right">Action</TableHead>
+              <TableHead className="px-3 py-3 whitespace-normal">Date</TableHead>
+              <TableHead className="px-3 py-3 whitespace-normal">Publish date</TableHead>
+              <TableHead className="px-3 py-3 whitespace-normal">Status</TableHead>
+              <TableHead className="px-3 py-3 whitespace-normal">Items</TableHead>
+              <TableHead className="px-3 py-3 whitespace-normal">Sources</TableHead>
+              <TableHead className="px-3 py-3 whitespace-normal">Cost</TableHead>
+              <TableHead className="px-3 py-3 text-right whitespace-normal">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -387,18 +387,18 @@ export function RunsTable({
               const publishDate = formatIssueDate(run.issueDate);
               return (
                 <TableRow key={run.runId} data-run-id={run.runId}>
-                  <TableCell className="px-6 py-4 align-middle">
+                  <TableCell className="px-3 py-4 align-middle whitespace-normal">
                     <div className="font-medium">{date}</div>
                     <div className="text-xs text-muted-foreground">{time}</div>
                   </TableCell>
                   <TableCell
-                    className="px-6 py-4 align-middle font-medium"
+                    className="px-3 py-4 align-middle font-medium whitespace-normal"
                     data-testid="publish-date-cell"
                   >
                     {publishDate === "" ? "—" : publishDate}
                   </TableCell>
-                  <TableCell className="px-6 py-4 align-middle">
-                    <div className="flex items-center gap-2">
+                  <TableCell className="px-3 py-4 align-middle whitespace-normal">
+                    <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge status={derived} />
                       {run.isDryRun ? (
                         <span
@@ -410,13 +410,13 @@ export function RunsTable({
                       ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className="px-6 py-4 align-middle text-sm text-muted-foreground">
+                  <TableCell className="px-3 py-4 align-middle text-sm text-muted-foreground whitespace-normal">
                     {derived === "failed" || derived === "cancelled"
                       ? "—"
                       : `${String(run.itemCount)} posts`}
                   </TableCell>
-                  <TableCell className="px-6 py-4 align-middle">
-                    <div className="flex items-center gap-2">
+                  <TableCell className="px-3 py-4 align-middle whitespace-normal">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button asChild variant="outline" size="sm">
                         <Link to={`/admin/runs/${run.runId}`}>Details</Link>
                       </Button>
@@ -427,13 +427,13 @@ export function RunsTable({
                       ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className="px-6 py-4 align-middle">
+                  <TableCell className="px-3 py-4 align-middle whitespace-normal">
                     <CostButton
                       costBreakdown={run.costBreakdown}
                       onClick={() => { setCostRun(run); }}
                     />
                   </TableCell>
-                  <TableCell className="px-6 py-4 align-middle text-right">
+                  <TableCell className="px-3 py-4 align-middle text-right whitespace-normal">
                     <RunActionCell
                       run={run}
                       derived={derived}
