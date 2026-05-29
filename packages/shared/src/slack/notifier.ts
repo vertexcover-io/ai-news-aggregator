@@ -7,6 +7,8 @@ import { buildSourceDistributionMessage } from "./builders/source-distribution.j
 import { buildEmailDeliveryMessage } from "./builders/email-delivery.js";
 import { buildLinkedinPostedMessage } from "./builders/linkedin-posted.js";
 import { buildTwitterPostedMessage } from "./builders/twitter-posted.js";
+import { buildSubscriberConfirmedMessage } from "./builders/subscriber-confirmed.js";
+import { buildSubscriberRemovedMessage } from "./builders/subscriber-removed.js";
 import type {
   NotifyNewsletterSentInput,
   SlackNotifier,
@@ -47,6 +49,8 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
       notifyEmailDelivery: (): Promise<void> => Promise.resolve(),
       notifyLinkedinPosted: (): Promise<void> => Promise.resolve(),
       notifyTwitterPosted: (): Promise<void> => Promise.resolve(),
+      notifySubscriberConfirmed: (): Promise<void> => Promise.resolve(),
+      notifySubscriberRemoved: (): Promise<void> => Promise.resolve(),
     };
   }
 
@@ -419,6 +423,63 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
             publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
           }).blocks,
       });
+    },
+
+    async notifySubscriberConfirmed(input: {
+      readonly email: string;
+      readonly totalConfirmed: number;
+    }): Promise<void> {
+      try {
+        const { blocks } = buildSubscriberConfirmedMessage(input);
+        const result = await postToWebhook({ url: webhookUrl, blocks, fetchFn: deps.fetchFn });
+        if (!result.ok) {
+          logger.warn(
+            {
+              event: "slack.subscriber_confirmed.failed",
+              status: result.status,
+              responseBody: result.error,
+            },
+            "slack subscriber confirmed notification failed",
+          );
+        }
+      } catch (err) {
+        logger.warn(
+          {
+            event: "slack.subscriber_confirmed.failed",
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "slack subscriber confirmed notification threw unexpectedly",
+        );
+      }
+    },
+
+    async notifySubscriberRemoved(input: {
+      readonly email: string;
+      readonly via: "unsubscribe-link" | "one-click" | "bounce" | "complaint";
+      readonly totalConfirmed: number;
+    }): Promise<void> {
+      try {
+        const { blocks } = buildSubscriberRemovedMessage(input);
+        const result = await postToWebhook({ url: webhookUrl, blocks, fetchFn: deps.fetchFn });
+        if (!result.ok) {
+          logger.warn(
+            {
+              event: "slack.subscriber_removed.failed",
+              status: result.status,
+              responseBody: result.error,
+            },
+            "slack subscriber removed notification failed",
+          );
+        }
+      } catch (err) {
+        logger.warn(
+          {
+            event: "slack.subscriber_removed.failed",
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "slack subscriber removed notification threw unexpectedly",
+        );
+      }
     },
   };
 }

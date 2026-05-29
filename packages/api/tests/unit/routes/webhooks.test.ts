@@ -3,9 +3,9 @@ import { Hono } from "hono";
 import type { SnsMessage } from "@api/lib/sns-verifier.js";
 import type { SesEventsRepo } from "@api/repositories/ses-events.js";
 import type { EmailSendsRepo } from "@api/repositories/email-sends.js";
-import type { SubscribersRepo } from "@api/repositories/subscribers.js";
+import type { SubscribersRepo, SubscriberStatusUpdateResult } from "@api/repositories/subscribers.js";
 import { createWebhooksRouter } from "@api/routes/webhooks.js";
-import type { SesEventInsert, SesEventSelect, EmailSendSelect, SubscriberSelect, SubscriberStatus } from "@newsletter/shared";
+import type { SesEventInsert, SesEventSelect, EmailSendSelect, SubscriberSelect, SubscriberStatus, SlackNotifier } from "@newsletter/shared";
 
 const SUBSCRIBER_ID = "00000000-0000-0000-0000-000000000001";
 const MESSAGE_ID = "ses-msg-abc123";
@@ -75,9 +75,31 @@ interface TestDeps {
   emailSendsRepo: EmailSendsRepo;
   subscribersRepo: SubscribersRepo & { statusUpdates: { id: string; status: SubscriberStatus }[] };
   verifySns: ReturnType<typeof vi.fn>;
+  slackNotifier: ReturnType<typeof makeSlackNotifier>;
 }
 
-function makeDeps(emailSend: EmailSendSelect | null = makeEmailSend()): TestDeps {
+function makeSlackNotifier() {
+  return {
+    notifyNewsletterSent: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+    notifyReviewPending: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+    notifyReviewWarning: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+    notifyPublishFailed: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+    notifyPublishUnavailable: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+    notifySourceDistribution: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+    notifyEmailDelivery: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+    notifyLinkedinPosted: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+    notifyTwitterPosted: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+    notifySubscriberConfirmed: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+    notifySubscriberRemoved: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+  } satisfies SlackNotifier;
+}
+
+function makeDeps(opts: {
+  emailSend?: EmailSendSelect | null;
+  unchanged?: boolean;
+  confirmedCount?: number;
+} = {}): TestDeps {
+  const { emailSend = makeEmailSend(), unchanged = false, confirmedCount = 2 } = opts;
   const upserted: SesEventInsert[] = [];
   const statusUpdates: { id: string; status: SubscriberStatus }[] = [];
 
@@ -102,16 +124,22 @@ function makeDeps(emailSend: EmailSendSelect | null = makeEmailSend()): TestDeps
     findByIds: vi.fn(),
     create: vi.fn(),
     updateConfirmToken: vi.fn(() => Promise.resolve()),
-    updateStatus: vi.fn((id: string, status: SubscriberStatus) => {
+    updateStatus: vi.fn((id: string, status: SubscriberStatus): Promise<SubscriberStatusUpdateResult> => {
       statusUpdates.push({ id, status });
-      return Promise.resolve(makeSubscriber({ id, status }));
+      const row = makeSubscriber({ id, status });
+      if (unchanged) {
+        return Promise.resolve({ changed: false, next: status, row });
+      }
+      return Promise.resolve({ changed: true, next: status, row });
     }),
-    listConfirmed: vi.fn(),
+    listConfirmed: vi.fn(() => Promise.resolve([])),
+    countConfirmed: vi.fn(() => Promise.resolve(confirmedCount)),
   };
 
   const verifySns = vi.fn();
+  const slackNotifier = makeSlackNotifier();
 
-  return { sesEventsRepo, emailSendsRepo, subscribersRepo, verifySns };
+  return { sesEventsRepo, emailSendsRepo, subscribersRepo, verifySns, slackNotifier };
 }
 
 function buildApp(deps: TestDeps): Hono {
@@ -121,6 +149,7 @@ function buildApp(deps: TestDeps): Hono {
     emailSendsRepo: deps.emailSendsRepo,
     subscribersRepo: deps.subscribersRepo,
     verifySns: deps.verifySns,
+    slackNotifier: deps.slackNotifier,
     logger: {
       info: vi.fn(),
       warn: vi.fn(),
@@ -303,7 +332,7 @@ describe("POST /webhooks/ses", () => {
 
   describe("unknown messageId", () => {
     it("creates ses_events with subscriberId=null and no subscriber update", async () => {
-      const deps = makeDeps(null);
+      const deps = makeDeps({ emailSend: null });
       const inner = makeInnerNotification({ notificationType: "Delivery" });
       deps.verifySns.mockResolvedValue(makeSnsNotification(inner));
       const app = buildApp(deps);
@@ -331,5 +360,90 @@ describe("POST /webhooks/ses", () => {
       expect(res2.status).toBe(200);
       expect(deps.sesEventsRepo.upserted).toHaveLength(2);
     });
+  });
+});
+
+// ---- VS-8: Slack notification wiring for SES bounce/complaint ----
+
+describe("VS-8: SES webhook Slack notifications", () => {
+  function makePermanentBounceInner(): Record<string, unknown> {
+    return makeInnerNotification({
+      notificationType: "Bounce",
+      bounce: {
+        bounceType: "Permanent",
+        bounceSubType: "General",
+        bouncedRecipients: [{ emailAddress: "user@example.com" }],
+      },
+    });
+  }
+
+  function makeComplaintInner(): Record<string, unknown> {
+    return makeInnerNotification({
+      notificationType: "Complaint",
+      complaint: { complainedRecipients: [{ emailAddress: "user@example.com" }] },
+    });
+  }
+
+  it("permanent bounce fires notifySubscriberRemoved with via:bounce", async () => {
+    const deps = makeDeps({ confirmedCount: 7 });
+    const { notifySubscriberRemoved } = deps.slackNotifier;
+    const inner = makePermanentBounceInner();
+    deps.verifySns.mockResolvedValue(makeSnsNotification(inner));
+    const app = buildApp(deps);
+
+    await postSes(app, JSON.stringify(makeSnsNotification(inner)));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(notifySubscriberRemoved).toHaveBeenCalledOnce();
+    expect(notifySubscriberRemoved).toHaveBeenCalledWith({
+      email: "user@example.com",
+      via: "bounce",
+      totalConfirmed: 7,
+    });
+  });
+
+  it("complaint fires notifySubscriberRemoved with via:complaint", async () => {
+    const deps = makeDeps({ confirmedCount: 6 });
+    const { notifySubscriberRemoved } = deps.slackNotifier;
+    const inner = makeComplaintInner();
+    deps.verifySns.mockResolvedValue(makeSnsNotification(inner));
+    const app = buildApp(deps);
+
+    await postSes(app, JSON.stringify(makeSnsNotification(inner)));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(notifySubscriberRemoved).toHaveBeenCalledOnce();
+    expect(notifySubscriberRemoved).toHaveBeenCalledWith({
+      email: "user@example.com",
+      via: "complaint",
+      totalConfirmed: 6,
+    });
+  });
+
+  it("duplicate SES delivery (idempotent repo) only fires ONE notification when changed:false", async () => {
+    // Simulate SES retry: second call returns changed:false
+    let callCount = 0;
+    const deps = makeDeps();
+    const { notifySubscriberRemoved } = deps.slackNotifier;
+    const origUpdateStatus = deps.subscribersRepo.updateStatus as ReturnType<typeof vi.fn>;
+    origUpdateStatus.mockImplementation((id: string, status: SubscriberStatus) => {
+      deps.subscribersRepo.statusUpdates.push({ id, status });
+      const row = makeSubscriber({ id, status });
+      callCount++;
+      return Promise.resolve({ changed: callCount === 1, next: status, row });
+    });
+
+    const inner = makePermanentBounceInner();
+    deps.verifySns.mockResolvedValue(makeSnsNotification(inner));
+    const app = buildApp(deps);
+
+    // First delivery
+    await postSes(app, JSON.stringify(makeSnsNotification(inner)));
+    // Second delivery (SES retry)
+    await postSes(app, JSON.stringify(makeSnsNotification(inner)));
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Only the first call should have triggered the Slack notification
+    expect(notifySubscriberRemoved).toHaveBeenCalledOnce();
   });
 });

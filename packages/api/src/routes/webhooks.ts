@@ -3,7 +3,7 @@ import type { SnsMessage } from "@api/lib/sns-verifier.js";
 import type { SesEventsRepo } from "@api/repositories/ses-events.js";
 import type { EmailSendsRepo } from "@api/repositories/email-sends.js";
 import type { SubscribersRepo } from "@api/repositories/subscribers.js";
-import type { createLogger } from "@newsletter/shared";
+import type { createLogger, SlackNotifier } from "@newsletter/shared";
 import type { SesEventType } from "@newsletter/shared";
 import { captureAnalytics } from "@api/lib/posthog.js";
 
@@ -41,6 +41,7 @@ export interface WebhooksRouterDeps {
   emailSendsRepo: EmailSendsRepo;
   subscribersRepo: SubscribersRepo;
   verifySns: (rawBody: string) => Promise<SnsMessage>;
+  slackNotifier: SlackNotifier;
   logger: Logger;
 }
 
@@ -119,13 +120,43 @@ export function createWebhooksRouter(deps: WebhooksRouterDeps): Hono {
     }
 
     if (inner.notificationType === "Bounce" && inner.bounce?.bounceType === "Permanent" && subscriberId) {
-      await deps.subscribersRepo.updateStatus(subscriberId, "bounced");
+      const { changed: bounceChanged, next: bounceNext, row: bounceRow } =
+        await deps.subscribersRepo.updateStatus(subscriberId, "bounced");
       deps.logger.info({ subscriberId }, "Subscriber marked bounced");
+      if (bounceChanged && bounceNext === "bounced") {
+        const totalConfirmed = await deps.subscribersRepo.countConfirmed();
+        void deps.slackNotifier
+          .notifySubscriberRemoved({ email: bounceRow.email, via: "bounce", totalConfirmed })
+          .catch((err: unknown) => {
+            deps.logger.warn(
+              {
+                event: "slack.subscriber_removed.unexpected_throw",
+                error: err instanceof Error ? err.message : String(err),
+              },
+              "slack: unexpected throw from notifySubscriberRemoved (bounce)",
+            );
+          });
+      }
     }
 
     if (inner.notificationType === "Complaint" && subscriberId) {
-      await deps.subscribersRepo.updateStatus(subscriberId, "complained");
+      const { changed: complaintChanged, next: complaintNext, row: complaintRow } =
+        await deps.subscribersRepo.updateStatus(subscriberId, "complained");
       deps.logger.info({ subscriberId }, "Subscriber marked complained");
+      if (complaintChanged && complaintNext === "complained") {
+        const totalConfirmed = await deps.subscribersRepo.countConfirmed();
+        void deps.slackNotifier
+          .notifySubscriberRemoved({ email: complaintRow.email, via: "complaint", totalConfirmed })
+          .catch((err: unknown) => {
+            deps.logger.warn(
+              {
+                event: "slack.subscriber_removed.unexpected_throw",
+                error: err instanceof Error ? err.message : String(err),
+              },
+              "slack: unexpected throw from notifySubscriberRemoved (complaint)",
+            );
+          });
+      }
     }
 
     return c.json({ ok: true });

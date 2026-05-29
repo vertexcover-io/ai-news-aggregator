@@ -1,7 +1,13 @@
-import { count, eq } from "drizzle-orm";
+import { and, count, eq, ne } from "drizzle-orm";
 import { subscribers } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { SubscriberInsert, SubscriberSelect, SubscriberStatus } from "@newsletter/shared";
+
+export interface SubscriberStatusUpdateResult {
+  readonly changed: boolean;
+  readonly next: SubscriberStatus;
+  readonly row: SubscriberSelect;
+}
 
 export interface SubscribersRepo {
   findByEmail(email: string): Promise<SubscriberSelect | null>;
@@ -22,7 +28,7 @@ export interface SubscribersRepo {
       confirmToken?: null;
       confirmTokenExpiresAt?: null;
     },
-  ): Promise<SubscriberSelect>;
+  ): Promise<SubscriberStatusUpdateResult>;
   listConfirmed(): Promise<SubscriberSelect[]>;
   countConfirmed(): Promise<number>;
 }
@@ -80,13 +86,24 @@ export function createSubscribersRepo(
         confirmToken?: null;
         confirmTokenExpiresAt?: null;
       },
-    ): Promise<SubscriberSelect> {
-      const [row] = await db
+    ): Promise<SubscriberStatusUpdateResult> {
+      const updatedRows = await db
         .update(subscribers)
-        .set({ status, updatedAt: new Date(), ...extra })
-        .where(eq(subscribers.id, id))
+        .set({ status, updatedAt: new Date(), ...(extra ?? {}) })
+        .where(and(eq(subscribers.id, id), ne(subscribers.status, status)))
         .returning();
-      return row;
+      for (const updated of updatedRows) {
+        return { changed: true, next: status, row: updated };
+      }
+      const currentRows = await db
+        .select()
+        .from(subscribers)
+        .where(eq(subscribers.id, id))
+        .limit(1);
+      for (const current of currentRows) {
+        return { changed: false, next: current.status, row: current };
+      }
+      throw new Error(`subscriber ${id} not found`);
     },
 
     async listConfirmed(): Promise<SubscriberSelect[]> {
