@@ -916,6 +916,165 @@ describe("NotificationKey type (VS-14)", () => {
   });
 });
 
+describe("notifySubscriberConfirmed", () => {
+  it("disabled mode no-ops — no fetch attempted", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive());
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: undefined,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifySubscriberConfirmed({ email: "alice@example.com", totalConfirmed: 42 });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("disabled mode (empty string) no-ops — no fetch attempted", async () => {
+    const { logger } = makeCapturedLogger();
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: "",
+      archives: makeArchives(makeArchive()),
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifySubscriberConfirmed({ email: "bob@example.com", totalConfirmed: 1 });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("happy path: POSTs once with email + total in message", async () => {
+    const { logger } = makeCapturedLogger();
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("ok", { status: 200 })));
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives: makeArchives(makeArchive()),
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifySubscriberConfirmed({ email: "alice@example.com", totalConfirmed: 42 });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchFn.mock.calls[0] as [string, { body: string }];
+    expect(url).toBe(SECRET_URL);
+    const payload = JSON.parse(init.body) as { blocks: { type: string; text?: { text?: string } }[] };
+    const text = payload.blocks
+      .filter((b) => b.type === "section")
+      .map((b) => b.text?.text ?? "")
+      .join("\n");
+    expect(text).toContain("alice@example.com");
+    expect(text).toContain("#42 total");
+    expect(text).toContain(":green_circle:");
+  });
+
+  it("webhook 5xx does not throw; warn-log is emitted", async () => {
+    const { calls, logger } = makeCapturedLogger();
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("server error", { status: 500 })));
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives: makeArchives(makeArchive()),
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await expect(
+      notifier.notifySubscriberConfirmed({ email: "alice@example.com", totalConfirmed: 42 }),
+    ).resolves.toBeUndefined();
+    const warnCall = calls.find(
+      (c) =>
+        c.level === "warn" &&
+        (c.obj as { event?: string } | undefined)?.event === "slack.subscriber_confirmed.failed",
+    );
+    expect(warnCall).toBeDefined();
+  });
+});
+
+describe("notifySubscriberRemoved", () => {
+  it("disabled mode no-ops — no fetch attempted", async () => {
+    const { logger } = makeCapturedLogger();
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: undefined,
+      archives: makeArchives(makeArchive()),
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifySubscriberRemoved({ email: "alice@example.com", via: "unsubscribe-link", totalConfirmed: 41 });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("disabled mode (empty string) no-ops — no fetch attempted", async () => {
+    const { logger } = makeCapturedLogger();
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: "",
+      archives: makeArchives(makeArchive()),
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await notifier.notifySubscriberRemoved({ email: "bob@example.com", via: "bounce", totalConfirmed: 0 });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("happy path: formats `via` correctly for each enum value", async () => {
+    const viaValues: ("unsubscribe-link" | "one-click" | "bounce" | "complaint")[] = [
+      "unsubscribe-link",
+      "one-click",
+      "bounce",
+      "complaint",
+    ];
+    for (const via of viaValues) {
+      const { logger } = makeCapturedLogger();
+      const fetchFn = vi.fn(() => Promise.resolve(new Response("ok", { status: 200 })));
+      const notifier = createSlackNotifier({
+        webhookUrl: SECRET_URL,
+        archives: makeArchives(makeArchive()),
+        resolveTopRankedTitle: resolveTitle,
+        logger,
+        fetchFn: fetchFn as unknown as typeof fetch,
+      });
+      await notifier.notifySubscriberRemoved({ email: "alice@example.com", via, totalConfirmed: 41 });
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      const [, init] = fetchFn.mock.calls[0] as [string, { body: string }];
+      const payload = JSON.parse(init.body) as { blocks: { type: string; text?: { text?: string } }[] };
+      const text = payload.blocks
+        .filter((b) => b.type === "section")
+        .map((b) => b.text?.text ?? "")
+        .join("\n");
+      expect(text).toContain(`via ${via}`);
+      expect(text).toContain("alice@example.com");
+      expect(text).toContain("#41 total");
+      expect(text).toContain(":red_circle:");
+    }
+  });
+
+  it("webhook 5xx does not throw; warn-log is emitted", async () => {
+    const { calls, logger } = makeCapturedLogger();
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("server error", { status: 500 })));
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives: makeArchives(makeArchive()),
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await expect(
+      notifier.notifySubscriberRemoved({ email: "alice@example.com", via: "bounce", totalConfirmed: 41 }),
+    ).resolves.toBeUndefined();
+    const warnCall = calls.find(
+      (c) =>
+        c.level === "warn" &&
+        (c.obj as { event?: string } | undefined)?.event === "slack.subscriber_removed.failed",
+    );
+    expect(warnCall).toBeDefined();
+  });
+});
+
 // VS-15: legacy method preserved
 describe("notifyNewsletterSent preserved (VS-15)", () => {
   it("notifyNewsletterSent still exists on the interface and is callable", async () => {

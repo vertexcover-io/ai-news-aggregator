@@ -30,6 +30,7 @@ BullMQ workers that collect, process, and prepare newsletter items.
 - Jobs must be idempotent — safe to retry
 - Use `@pipeline/*` path aliases, never relative imports
 - `ANTHROPIC_API_KEY` is validated at worker startup (not per job) — stage-2 rerank always needs Anthropic. `RANKING_MODEL` defaults to `claude-haiku-4-5-20251001`.
+- **Archive-level idempotency markers are broadcast-only.** The fields `run_archives.email_sent_at`, `run_archives.linkedin_posted_at`, `run_archives.twitter_posted_at`, and every key in `run_archives.notification_state` JSONB are written ONLY from the canonical scheduled/broadcast path. Any worker that supports a targeted/per-recipient/manual variant (e.g. the welcome back-issue email sent via `subscriberIds: [<id>]`) MUST short-circuit before stamping these markers and before firing the corresponding Slack summary. Per-recipient dedup belongs on a per-recipient table (e.g. `email_sends`). This convention prevents the class of bug where a targeted send silently poisons the next broadcast (see commit 60d748b for the canonical fix in `email-send.ts`).
 
 ## Path Aliases
 - `@pipeline/*` → `src/*` (configured in tsconfig.json, tsup.config.ts, vitest.config.ts)

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { createLogger } from "@newsletter/shared";
+import type { SlackNotifier } from "@newsletter/shared";
 import { issueSubscriberToken, verifySubscriberToken } from "@api/lib/subscriber-token.js";
 import type { SubscribersRepo } from "@api/repositories/subscribers.js";
 import { captureAnalytics } from "@api/lib/posthog.js";
@@ -13,6 +14,7 @@ export interface SubscribeRouterDeps {
   sendConfirmationEmail: (email: string, confirmUrl: string) => Promise<void>;
   sendNewsletterToSubscriber: (runId: string, subscriberId: string) => Promise<void>;
   getMostRecentReviewedArchiveId: () => Promise<string | null>;
+  slackNotifier: SlackNotifier;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -148,11 +150,12 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       return c.redirect(`${deps.webBaseUrl}/confirm?status=invalid`);
     }
 
-    await deps.subscribersRepo.updateStatus(result.subscriberId, "confirmed", {
-      subscribedAt: new Date(),
-      confirmToken: null,
-      confirmTokenExpiresAt: null,
-    });
+    const { changed: confirmChanged, next: confirmNext, row: confirmRow } =
+      await deps.subscribersRepo.updateStatus(result.subscriberId, "confirmed", {
+        subscribedAt: new Date(),
+        confirmToken: null,
+        confirmTokenExpiresAt: null,
+      });
 
     logger.info(
       { event: "confirm.success", subscriberId: result.subscriberId },
@@ -162,6 +165,21 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       distinctId: result.subscriberId,
       event: "subscriber_confirmed",
     });
+
+    if (confirmChanged && confirmNext === "confirmed") {
+      const totalConfirmed = await deps.subscribersRepo.countConfirmed();
+      void deps.slackNotifier
+        .notifySubscriberConfirmed({ email: confirmRow.email, totalConfirmed })
+        .catch((err: unknown) => {
+          logger.warn(
+            {
+              event: "slack.subscriber_confirmed.unexpected_throw",
+              error: err instanceof Error ? err.message : String(err),
+            },
+            "slack: unexpected throw from notifySubscriberConfirmed",
+          );
+        });
+    }
 
     const recentArchiveId = await deps.getMostRecentReviewedArchiveId();
     if (recentArchiveId) {
@@ -196,9 +214,10 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
     const result = verifySubscriberToken(token, "unsub", deps.sessionSecret);
 
     if (result.valid) {
-      await deps.subscribersRepo.updateStatus(result.subscriberId, "unsubscribed", {
-        unsubscribedAt: new Date(),
-      });
+      const { changed: unsubChanged, next: unsubNext, row: unsubRow } =
+        await deps.subscribersRepo.updateStatus(result.subscriberId, "unsubscribed", {
+          unsubscribedAt: new Date(),
+        });
       logger.info(
         { event: "unsubscribe.success", subscriberId: result.subscriberId, via: "GET" },
         "unsubscribe: subscriber unsubscribed",
@@ -208,6 +227,20 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
         event: "subscriber_unsubscribed",
         properties: { via: "GET" },
       });
+      if (unsubChanged && unsubNext === "unsubscribed") {
+        const totalConfirmed = await deps.subscribersRepo.countConfirmed();
+        void deps.slackNotifier
+          .notifySubscriberRemoved({ email: unsubRow.email, via: "unsubscribe-link", totalConfirmed })
+          .catch((err: unknown) => {
+            logger.warn(
+              {
+                event: "slack.subscriber_removed.unexpected_throw",
+                error: err instanceof Error ? err.message : String(err),
+              },
+              "slack: unexpected throw from notifySubscriberRemoved",
+            );
+          });
+      }
     } else {
       logger.warn(
         { event: "unsubscribe.invalid_token", via: "GET", reason: result.reason },
@@ -239,9 +272,10 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
     if (token) {
       const result = verifySubscriberToken(token, "unsub", deps.sessionSecret);
       if (result.valid) {
-        await deps.subscribersRepo.updateStatus(result.subscriberId, "unsubscribed", {
-          unsubscribedAt: new Date(),
-        });
+        const { changed: oneClickChanged, next: oneClickNext, row: oneClickRow } =
+          await deps.subscribersRepo.updateStatus(result.subscriberId, "unsubscribed", {
+            unsubscribedAt: new Date(),
+          });
         logger.info(
           { event: "unsubscribe.success", subscriberId: result.subscriberId, via: "POST" },
           "unsubscribe: subscriber unsubscribed (one-click)",
@@ -251,6 +285,20 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
           event: "subscriber_unsubscribed",
           properties: { via: "POST" },
         });
+        if (oneClickChanged && oneClickNext === "unsubscribed") {
+          const totalConfirmed = await deps.subscribersRepo.countConfirmed();
+          void deps.slackNotifier
+            .notifySubscriberRemoved({ email: oneClickRow.email, via: "one-click", totalConfirmed })
+            .catch((err: unknown) => {
+              logger.warn(
+                {
+                  event: "slack.subscriber_removed.unexpected_throw",
+                  error: err instanceof Error ? err.message : String(err),
+                },
+                "slack: unexpected throw from notifySubscriberRemoved",
+              );
+            });
+        }
       } else {
         logger.warn(
           { event: "unsubscribe.invalid_token", via: "POST", reason: result.reason },

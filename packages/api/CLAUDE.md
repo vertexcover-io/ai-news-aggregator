@@ -22,7 +22,7 @@ Hono REST API for job enqueueing and email delivery.
   - `scheduler.ts` — `reconcileDailyRunSchedule()` calls BullMQ `upsertJobScheduler` to add/update/remove the daily-run repeatable job whenever settings change
   - `review.ts` — `patchArchive()` and `addPostToArchive()` implement the curation mutations
   - `run-observability.ts` — `buildRunObservability(runId, deps)` branches live vs historical and composes the single `RunObservability` payload from Redis run-state, `run_archives` (incl. the `run_funnel` column read via the extended `run-archives.ts` `findById` select), and `run_logs`
-- `src/repositories/` — Drizzle wrappers including `user-settings.ts` (`get()` and `upsert()` for the singleton settings row) and `run-logs.ts` (`createRunLogRepo(db).listForRun(runId)` — reads `run_logs` rows for a run ordered by `id` ascending, mapping `created_at` → `ts` ISO and passing `context` through)
+- `src/repositories/` — Drizzle wrappers including `user-settings.ts` (`get()` and `upsert()` for the singleton settings row), `run-logs.ts` (`createRunLogRepo(db).listForRun(runId)` — reads `run_logs` rows for a run ordered by `id` ascending, mapping `created_at` → `ts` ISO and passing `context` through), and `subscribers.ts` (`updateStatus` now returns `SubscriberStatusUpdateResult { changed, next, row }` — callers gate Slack notification on `changed: true` to avoid firing on idempotent replays)
 - `src/lib/` — package-private helpers (`validate.ts` is the zod request-schema layer; `flow.ts` is a legacy `FlowProducer` helper kept in place for rollback and no longer used by `runs.ts`)
 
 ## Rules

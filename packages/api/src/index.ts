@@ -11,7 +11,7 @@ if (!process.env.SESSION_SECRET) {
 }
 
 import { serve } from "@hono/node-server";
-import { createLogger, getDb } from "@newsletter/shared";
+import { createLogger, getDb, createSlackNotifier } from "@newsletter/shared";
 import { createDefaultRunsRouter } from "@api/routes/runs.js";
 import { createDefaultAdminRunsRouter } from "@api/routes/admin-runs.js";
 import { createDefaultAdminEvalRouter } from "@api/routes/admin-eval.js";
@@ -98,6 +98,14 @@ if (settingsForBootstrap !== null) {
 const runArchivesRepoForSubscribe = createRunArchivesRepo(getDb());
 configurePostHog(async () => createUserSettingsRepo(getDb()).get());
 
+const slackNotifier = createSlackNotifier({
+  webhookUrl: process.env.SLACK_WEBHOOK_URL,
+  archives: runArchivesRepoForSubscribe,
+  resolveTopRankedTitle: () => Promise.resolve(null),
+  logger: createLogger("slack"),
+  publicArchiveBaseUrl: process.env.PUBLIC_BASE_URL ?? process.env.NEWSLETTER_BASE_URL,
+});
+
 const subscribeRouter = createSubscribeRouter({
   subscribersRepo: createSubscribersRepo(getDb()),
   sessionSecret,
@@ -125,6 +133,7 @@ const subscribeRouter = createSubscribeRouter({
     const archive = await runArchivesRepoForSubscribe.findMostRecentReviewed();
     return archive?.id ?? null;
   },
+  slackNotifier,
 });
 
 const webhooksRouter = createWebhooksRouter({
@@ -132,6 +141,7 @@ const webhooksRouter = createWebhooksRouter({
   emailSendsRepo: createEmailSendsRepo(getDb()),
   subscribersRepo: createSubscribersRepo(getDb()),
   verifySns: verifySnsMessage,
+  slackNotifier,
   logger,
 });
 

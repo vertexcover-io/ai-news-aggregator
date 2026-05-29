@@ -32,6 +32,15 @@ export interface SlackNotifier {
   notifyEmailDelivery(input: EmailDeliveryInput): Promise<void>;
   notifyLinkedinPosted(input: LinkedinPostedInput): Promise<void>;
   notifyTwitterPosted(input: TwitterPostedInput): Promise<void>;
+  notifySubscriberConfirmed(input: {
+    readonly email: string;
+    readonly totalConfirmed: number;
+  }): Promise<void>;
+  notifySubscriberRemoved(input: {
+    readonly email: string;
+    readonly via: "unsubscribe-link" | "one-click" | "bounce" | "complaint";
+    readonly totalConfirmed: number;
+  }): Promise<void>;
 }
 
 export interface DeliveryFailureReason {
