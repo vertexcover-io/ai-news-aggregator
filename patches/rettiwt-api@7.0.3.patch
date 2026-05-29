@@ -1,0 +1,38 @@
+diff --git a/dist/models/data/Tweet.js b/dist/models/data/Tweet.js
+index a684ab2d5e028d7758beab0de99a7171306b7d47..33090041d4b2b43ef8658f0eaaa8dcb1c7773c1a 100644
+--- a/dist/models/data/Tweet.js
++++ b/dist/models/data/Tweet.js
+@@ -78,7 +78,12 @@ class Tweet {
+             return new Tweet(tweet.quoted_status_result.result.tweet);
+         }
+         // If normal tweet
+-        else if (tweet.quoted_status_result?.result?.rest_id) {
++        // PATCH (newsletter): also require `.legacy` — a quoted tweet that has been
++        // deleted/withheld/age-restricted arrives with `rest_id` but no `legacy`
++        // block; recursing into it crashes the whole page on
++        // `tweet.legacy.conversation_id_str`. Drop the unreadable quote instead.
++        else if (tweet.quoted_status_result?.result?.rest_id &&
++            tweet.quoted_status_result?.result?.legacy) {
+             return new Tweet(tweet.quoted_status_result.result);
+         }
+         // Else, skip
+diff --git a/src/models/data/Tweet.ts b/src/models/data/Tweet.ts
+index 92c86dd6e4ff5cde1dc6036e25c97ef415a95a03..83d95292705ab0f965f2b5355e7c20e842d5d348 100644
+--- a/src/models/data/Tweet.ts
++++ b/src/models/data/Tweet.ts
+@@ -90,7 +90,14 @@ export class Tweet implements ITweet {
+ 			return new Tweet((tweet.quoted_status_result.result as ILimitedVisibilityTweet).tweet);
+ 		}
+ 		// If normal tweet
+-		else if ((tweet.quoted_status_result?.result as IRawTweet)?.rest_id) {
++		// PATCH (newsletter): also require `.legacy` — a quoted tweet that has been
++		// deleted/withheld/age-restricted arrives with `rest_id` but no `legacy`
++		// block; recursing into it crashes the whole page on
++		// `tweet.legacy.conversation_id_str`. Drop the unreadable quote instead.
++		else if (
++			(tweet.quoted_status_result?.result as IRawTweet)?.rest_id &&
++			(tweet.quoted_status_result?.result as IRawTweet)?.legacy
++		) {
+ 			return new Tweet(tweet.quoted_status_result.result as IRawTweet);
+ 		}
+ 		// Else, skip
