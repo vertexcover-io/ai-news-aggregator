@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { createLogger } from "@newsletter/shared/logger";
 import type { EmailProvider, RankedItemRef, RecapContent, SlackNotifier, SubscriberSelect } from "@newsletter/shared";
+import { EmailSendError } from "@newsletter/shared";
 import type { PipelineSubscribersRepo } from "@pipeline/repositories/subscribers.js";
 import type { PipelineEmailSendsRepo } from "@pipeline/repositories/email-sends.js";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
@@ -13,7 +14,28 @@ import { ENRICHED_SUMMARY_LAUNCHED_AT } from "@newsletter/shared/constants";
 const logger = createLogger("worker:email-send");
 
 const BATCH_SIZE = 50;
-const SEND_RATE_PER_SECOND = 5;
+const DEFAULT_SEND_RATE_PER_SECOND = 3;
+
+export function resolveSendRate(env: NodeJS.ProcessEnv | Record<string, string | undefined>): number {
+  const raw = env.EMAIL_SEND_RATE_PER_SECOND;
+  if (raw === undefined || raw === "") return DEFAULT_SEND_RATE_PER_SECOND;
+  // Must be a positive integer string — no decimals, no negatives, no zero
+  if (!/^\d+$/.test(raw)) return DEFAULT_SEND_RATE_PER_SECOND;
+  const n = parseInt(raw, 10);
+  if (n <= 0) return DEFAULT_SEND_RATE_PER_SECOND;
+  return n;
+}
+
+let sharedPacer: SendPacer | null = null;
+
+export function getSharedPacer(): SendPacer {
+  sharedPacer ??= createSendPacer(resolveSendRate(process.env));
+  return sharedPacer;
+}
+
+export function resetSharedPacerForTests(): void {
+  sharedPacer = null;
+}
 
 export interface SendPacer {
   acquire(): Promise<void>;
@@ -99,6 +121,7 @@ export interface EmailSendDeps {
   baseUrl: string;
   slackNotifier?: SlackNotifier;
   sendPacer?: SendPacer;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export interface EmailSendJobLike {
@@ -136,6 +159,13 @@ function chunk<T>(arr: T[], size: number): T[][] {
     chunks.push(arr.slice(i, i + size));
   }
   return chunks;
+}
+
+function isRetryable(err: unknown): boolean {
+  if (err instanceof EmailSendError) return err.retryable;
+  // Network/timeout heuristic for non-typed errors (e.g. SES path, fetch failures)
+  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  return msg.includes("timeout") || msg.includes("etimedout") || msg.includes("econnreset");
 }
 
 /**
@@ -306,7 +336,9 @@ export async function handleEmailSendJob(
   let okCount = 0;
   let failCount = 0;
   const failureReasonCounts = new Map<string, number>();
-  const pacer = deps.sendPacer ?? createSendPacer(SEND_RATE_PER_SECOND);
+  const pacer = deps.sendPacer ?? getSharedPacer();
+  const sleep = deps.sleep ?? delay;
+
   for (const batch of batches) {
     await Promise.allSettled(
       batch.map(async (subscriber) => {
@@ -324,34 +356,52 @@ export async function handleEmailSendJob(
             digestHeadline: archive.digestHeadline,
             digestSummary: archive.digestSummary,
           });
-          await pacer.acquire();
-          const result = await deps.emailProvider.send({
-            to: [subscriber.email],
-            from: deps.fromMail,
-            replyTo: deps.replyToEmail,
-            subject,
-            html,
-            text: htmlToPlainText(html),
-            headers: {
-              "List-Unsubscribe": `<${unsubUrl}>`,
-              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-            },
-          });
-          await deps.emailSendsRepo.create({
-            subscriberId: subscriber.id,
-            runArchiveId: runId,
-            messageId: result.messageId,
-          });
-          okCount += 1;
-          logger.info(
-            {
-              event: "newsletter-send.sent",
-              runId,
-              subscriberId: subscriber.id,
-              messageId: result.messageId,
-            },
-            "newsletter-send: sent to subscriber",
-          );
+
+          const MAX_ATTEMPTS = 2;
+          for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            await pacer.acquire();
+            try {
+              const result = await deps.emailProvider.send({
+                to: [subscriber.email],
+                from: deps.fromMail,
+                replyTo: deps.replyToEmail,
+                subject,
+                html,
+                text: htmlToPlainText(html),
+                headers: {
+                  "List-Unsubscribe": `<${unsubUrl}>`,
+                  "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                },
+              });
+              await deps.emailSendsRepo.create({
+                subscriberId: subscriber.id,
+                runArchiveId: runId,
+                messageId: result.messageId,
+              });
+              okCount += 1;
+              logger.info(
+                {
+                  event: "newsletter-send.sent",
+                  runId,
+                  subscriberId: subscriber.id,
+                  messageId: result.messageId,
+                },
+                "newsletter-send: sent to subscriber",
+              );
+              return; // success — exit the attempt loop
+            } catch (sendErr) {
+              const retryable = isRetryable(sendErr);
+              if (retryable && attempt < MAX_ATTEMPTS) {
+                const backoffMs =
+                  sendErr instanceof EmailSendError && sendErr.retryAfterMs !== null
+                    ? sendErr.retryAfterMs
+                    : attempt * 1000;
+                await sleep(backoffMs);
+                continue; // loop re-acquires pacer for next attempt
+              }
+              throw sendErr; // exhausted or non-retryable → fall through to outer catch
+            }
+          }
         } catch (err) {
           failCount += 1;
           const rawMessage = err instanceof Error ? err.message : String(err);

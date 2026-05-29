@@ -110,6 +110,55 @@ export interface EmailProvider {
   send(params: SendEmailParams): Promise<SendEmailResult>;
 }
 
+export const RETRYABLE_RESEND_CODES: ReadonlySet<string> = new Set([
+  "rate_limit_exceeded",
+  "application_error",
+  "internal_server_error",
+]);
+
+export function parseRetryAfter(
+  headerValue: string | null | undefined,
+  now: number = Date.now(),
+): number | null {
+  if (headerValue === null || headerValue === undefined || headerValue === "") {
+    return null;
+  }
+  const trimmed = headerValue.trim();
+  // Try delta-seconds: a string of only digits (possibly with a leading minus)
+  const deltaMatch = /^-?\d+$/.exec(trimmed);
+  if (deltaMatch !== null) {
+    const seconds = parseInt(trimmed, 10);
+    return Math.max(0, seconds * 1000);
+  }
+  // Try HTTP-date
+  const parsed = Date.parse(trimmed);
+  if (!isNaN(parsed)) {
+    return Math.max(0, parsed - now);
+  }
+  return null;
+}
+
+export interface EmailSendErrorParams {
+  code: string;
+  message: string;
+  retryAfterMs: number | null;
+  retryable: boolean;
+}
+
+export class EmailSendError extends Error {
+  readonly retryAfterMs: number | null;
+  readonly retryable: boolean;
+
+  constructor(params: EmailSendErrorParams) {
+    super(params.message);
+    this.name = params.code;
+    this.retryAfterMs = params.retryAfterMs;
+    this.retryable = params.retryable;
+    // Restore prototype chain for instanceof checks
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 export interface NewsletterSendJobPayload {
   runId: string;
   subscriberIds: string[] | "all";
