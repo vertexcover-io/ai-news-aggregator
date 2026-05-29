@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  rettiwt-api@7.0.3:
+    hash: cf58694866c74347a978be3eadc200dc71a265f766231b297fe6643b8f37da2a
+    path: patches/rettiwt-api@7.0.3.patch
+
 importers:
 
   .:
@@ -115,7 +120,7 @@ importers:
         version: 6.12.2(@react-email/render@2.0.8(react-dom@19.2.4(react@19.2.4))(react@19.2.4))
       rettiwt-api:
         specifier: 7.0.3
-        version: 7.0.3
+        version: 7.0.3(patch_hash=cf58694866c74347a978be3eadc200dc71a265f766231b297fe6643b8f37da2a)
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -233,7 +238,7 @@ importers:
         version: 6.12.2(@react-email/render@2.0.8(react-dom@19.2.4(react@19.2.4))(react@19.2.4))
       rettiwt-api:
         specifier: 7.0.3
-        version: 7.0.3
+        version: 7.0.3(patch_hash=cf58694866c74347a978be3eadc200dc71a265f766231b297fe6643b8f37da2a)
       turndown:
         specifier: 7.2.0
         version: 7.2.0
@@ -11569,7 +11574,7 @@ snapshots:
 
   retry@0.12.0: {}
 
-  rettiwt-api@7.0.3:
+  rettiwt-api@7.0.3(patch_hash=cf58694866c74347a978be3eadc200dc71a265f766231b297fe6643b8f37da2a):
     dependencies:
       axios: 1.16.0
       chalk: 5.6.2
