@@ -233,6 +233,48 @@ describe("handleEmailSendJob", () => {
     expect(deps.archiveRepo.markEmailSent).not.toHaveBeenCalled();
   });
 
+  // VS-9 — regression guard for Part 1 fix (commit 60d748b)
+  it("targeted welcome send does NOT fire notifyEmailDelivery (regression guard for broadcast Slack poisoning)", async () => {
+    const archive = makeArchive({ id: "00000000-0000-0000-0000-000000000456" });
+    const newSubscriber = makeSubscriber({ id: "vs9-sub", email: "vs9@example.com" });
+    const notifyEmailDelivery = vi.fn(() => Promise.resolve());
+    const deps = makeDeps(null, {
+      archiveRepo: {
+        ...makeDeps(null).archiveRepo,
+        findById: vi.fn(() => Promise.resolve(archive)),
+        findLatestTerminal: vi.fn(() => Promise.resolve(null)),
+      },
+      subscribersRepo: {
+        listConfirmed: vi.fn(() => Promise.resolve([makeSubscriber()])),
+        findByIds: vi.fn(() => Promise.resolve([newSubscriber])),
+      },
+      slackNotifier: {
+        notifyNewsletterSent: vi.fn(() => Promise.resolve()),
+        notifyReviewPending: vi.fn(() => Promise.resolve()),
+        notifyReviewWarning: vi.fn(() => Promise.resolve()),
+        notifyPublishFailed: vi.fn(() => Promise.resolve()),
+        notifyPublishUnavailable: vi.fn(() => Promise.resolve()),
+        notifySourceDistribution: vi.fn(() => Promise.resolve()),
+        notifyEmailDelivery,
+        notifyLinkedinPosted: vi.fn(() => Promise.resolve()),
+        notifyTwitterPosted: vi.fn(() => Promise.resolve()),
+      },
+    });
+
+    await handleEmailSendJob(deps, {
+      name: "email-send",
+      id: "vs9-job",
+      data: { runId: archive.id, subscriberIds: ["vs9-sub"] },
+    });
+
+    // The targeted send delivers the issue to the subscriber
+    expect(deps.emailProvider.send).toHaveBeenCalledOnce();
+    // REGRESSION GUARD: targeted send must never fire the broadcast-level Slack summary
+    expect(notifyEmailDelivery).not.toHaveBeenCalled();
+    // REGRESSION GUARD: targeted send must never stamp the archive marker
+    expect(deps.archiveRepo.markEmailSent).not.toHaveBeenCalled();
+  });
+
   it("broadcast IS blocked when emailSentAt is already set by a prior broadcast", async () => {
     const archive = makeArchive({
       id: "00000000-0000-0000-0000-000000000123",
