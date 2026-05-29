@@ -175,6 +175,87 @@ describe("handleEmailSendJob", () => {
     expect(deps.slackNotifier?.notifyPublishUnavailable).not.toHaveBeenCalled();
   });
 
+  it("targeted welcome send to a new subscriber does NOT stamp emailSentAt (would poison the broadcast guard)", async () => {
+    const archive = makeArchive({ id: "00000000-0000-0000-0000-000000000123" });
+    const newSubscriber = makeSubscriber({ id: "new-sub", email: "new@example.com" });
+    const deps = makeDeps(null, {
+      archiveRepo: {
+        ...makeDeps(null).archiveRepo,
+        findById: vi.fn(() => Promise.resolve(archive)),
+        findLatestTerminal: vi.fn(() => Promise.resolve(null)),
+      },
+      subscribersRepo: {
+        listConfirmed: vi.fn(() => Promise.resolve([makeSubscriber()])),
+        findByIds: vi.fn(() => Promise.resolve([newSubscriber])),
+      },
+    });
+
+    await handleEmailSendJob(deps, {
+      name: "email-send",
+      id: "welcome-job",
+      data: { runId: archive.id, subscriberIds: ["new-sub"] },
+    });
+
+    expect(deps.subscribersRepo.findByIds).toHaveBeenCalledWith(["new-sub"]);
+    expect(deps.emailProvider.send).toHaveBeenCalledOnce();
+    // The targeted send delivers the issue but must NOT touch the archive marker
+    // or fire the digest-level "newsletter emailed" Slack summary.
+    expect(deps.archiveRepo.markEmailSent).not.toHaveBeenCalled();
+    expect(deps.slackNotifier?.notifyEmailDelivery).not.toHaveBeenCalled();
+  });
+
+  it("targeted welcome send still delivers even after the broadcast has emailSentAt set", async () => {
+    const archive = makeArchive({
+      id: "00000000-0000-0000-0000-000000000123",
+      emailSentAt: new Date("2026-05-18T10:00:00.000Z"),
+    });
+    const newSubscriber = makeSubscriber({ id: "late-sub", email: "late@example.com" });
+    const deps = makeDeps(null, {
+      archiveRepo: {
+        ...makeDeps(null).archiveRepo,
+        findById: vi.fn(() => Promise.resolve(archive)),
+        findLatestTerminal: vi.fn(() => Promise.resolve(null)),
+      },
+      subscribersRepo: {
+        listConfirmed: vi.fn(() => Promise.resolve([makeSubscriber()])),
+        findByIds: vi.fn(() => Promise.resolve([newSubscriber])),
+      },
+    });
+
+    await handleEmailSendJob(deps, {
+      name: "email-send",
+      id: "welcome-job",
+      data: { runId: archive.id, subscriberIds: ["late-sub"] },
+    });
+
+    // The broadcast guard must NOT block a targeted welcome send.
+    expect(deps.emailProvider.send).toHaveBeenCalledOnce();
+    expect(deps.archiveRepo.markEmailSent).not.toHaveBeenCalled();
+  });
+
+  it("broadcast IS blocked when emailSentAt is already set by a prior broadcast", async () => {
+    const archive = makeArchive({
+      id: "00000000-0000-0000-0000-000000000123",
+      emailSentAt: new Date("2026-05-18T10:00:00.000Z"),
+    });
+    const deps = makeDeps(null, {
+      archiveRepo: {
+        ...makeDeps(null).archiveRepo,
+        findById: vi.fn(() => Promise.resolve(archive)),
+        findLatestTerminal: vi.fn(() => Promise.resolve(null)),
+      },
+    });
+
+    await handleEmailSendJob(deps, {
+      name: "email-send",
+      id: "broadcast-job",
+      data: { runId: archive.id, subscriberIds: "all" },
+    });
+
+    expect(deps.emailProvider.send).not.toHaveBeenCalled();
+    expect(deps.archiveRepo.markEmailSent).not.toHaveBeenCalled();
+  });
+
   it("explicit runId jobs keep exact-archive behavior", async () => {
     const archive = makeArchive({ id: "00000000-0000-0000-0000-000000000123" });
     const deps = makeDeps(null, {

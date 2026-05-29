@@ -238,6 +238,7 @@ export async function handleEmailSendJob(
   if (job.name !== "email-send") return;
 
   const { runId: explicitRunId, subscriberIds = "all" } = job.data;
+  const isBroadcast = subscriberIds === "all";
 
   const archive = await resolvePublishTarget(deps, {
     channel: "email-send",
@@ -250,7 +251,13 @@ export async function handleEmailSendJob(
     );
     return;
   }
-  if (archive.emailSentAt !== null) return;
+  // `email_sent_at` is the BROADCAST idempotency marker — it must only gate (and
+  // only be set by) the daily all-subscribers send. Targeted sends (e.g. the
+  // welcome back-issue to a single new subscriber) must neither be blocked by it
+  // nor set it, or they would poison the broadcast guard and the daily send
+  // would silently no-op. Per-subscriber dedup (the `email_sends` table) already
+  // prevents duplicate delivery in both modes.
+  if (isBroadcast && archive.emailSentAt !== null) return;
   const runId = archive.id;
 
   const rawIds = archive.rankedItems.map((r) => r.rawItemId);
@@ -383,6 +390,13 @@ export async function handleEmailSendJob(
     },
     "newsletter-send completed",
   );
+
+  // Only a broadcast stamps the archive-level marker and fires the "newsletter
+  // emailed" Slack summary. A targeted welcome send neither marks the archive
+  // (see the broadcast-guard note above) nor emits the digest-level summary.
+  if (!isBroadcast) {
+    return;
+  }
 
   await deps.archiveRepo.markEmailSent(runId, new Date());
 
