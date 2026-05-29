@@ -15,6 +15,10 @@ COPY packages/pipeline/package.json      packages/pipeline/package.json
 COPY packages/web/package.json           packages/web/package.json
 COPY packages/eslint-plugin/package.json packages/eslint-plugin/package.json
 
+# pnpm-workspace.yaml declares patchedDependencies; the patch files must be
+# present before install or `pnpm install` fails with ENOENT on the patch path.
+COPY patches ./patches
+
 RUN pnpm install --frozen-lockfile
 
 COPY packages/shared ./packages/shared
