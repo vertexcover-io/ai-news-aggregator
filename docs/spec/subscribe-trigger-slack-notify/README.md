@@ -33,4 +33,4 @@ Two-part PR built through the orchestrate pipeline:
 
 ## PR
 
-_(filled in after PR creation)_
+https://github.com/vertexcover-io/ai-news-aggregator/pull/227
