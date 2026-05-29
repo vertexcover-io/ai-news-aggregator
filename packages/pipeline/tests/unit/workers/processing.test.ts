@@ -301,4 +301,21 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
     expect(mockLoggerWarn).toHaveBeenCalled();
     expect(result).toBeUndefined();
   });
+
+  // REQ-014: no two email-send jobs burst past the rate limit — guaranteed by
+  // the shared module-scope pacer in email-send.ts (all invocations in the same
+  // process share one token-bucket instance). Worker-level concurrency: 1 is NOT
+  // set because it would stall all other job types (run-process, linkedin-post,
+  // twitter-post) behind a long-running email-send. The pacer alone is sufficient.
+  it("REQ-014: worker does not restrict concurrency (shared pacer is the rate guard)", () => {
+    const workerInstance = createProcessingWorker({
+      runProcessDeps: { fake: "rp-deps" } as never,
+      dailyRunDeps: { fake: "dr-deps" } as never,
+      connection: { fake: "redis" } as never,
+    }) as unknown as { opts?: Record<string, unknown> };
+
+    // concurrency: 1 must NOT be set — it would serialize all job types behind
+    // a long-running run-process, delaying email delivery and social posts.
+    expect(workerInstance.opts?.concurrency).not.toBe(1);
+  });
 });

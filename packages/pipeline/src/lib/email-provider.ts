@@ -1,6 +1,11 @@
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { Resend } from "resend";
 import type { EmailProvider, SendEmailParams, SendEmailResult } from "@newsletter/shared";
+import {
+  EmailSendError,
+  RETRYABLE_RESEND_CODES,
+  parseRetryAfter,
+} from "@newsletter/shared/types";
 
 function createSesProvider(): EmailProvider {
   const client = new SESv2Client({
@@ -61,7 +66,13 @@ function createResendProvider(): EmailProvider {
         headers: params.headers,
       });
       if (result.error !== null) {
-        throw new Error(`Resend error: ${result.error.message}`);
+        const code = result.error.name;
+        throw new EmailSendError({
+          code,
+          message: `Resend error: ${result.error.message}`,
+          retryAfterMs: parseRetryAfter(result.headers?.["retry-after"]),
+          retryable: RETRYABLE_RESEND_CODES.has(code),
+        });
       }
       return { messageId: result.data.id };
     },

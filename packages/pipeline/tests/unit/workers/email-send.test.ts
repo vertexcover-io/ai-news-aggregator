@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EmailSendDeps } from "@pipeline/workers/email-send.js";
 import type { PipelineRunArchiveRow } from "@pipeline/repositories/run-archives.js";
 import type { SubscriberSelect } from "@newsletter/shared";
+import { EmailSendError } from "@newsletter/shared";
 
-const { handleEmailSendJob } = await import("@pipeline/workers/email-send.js");
+const { handleEmailSendJob, resolveSendRate, getSharedPacer, resetSharedPacerForTests } = await import("@pipeline/workers/email-send.js");
 
 function makeSubscriber(overrides: Partial<SubscriberSelect> = {}): SubscriberSelect {
   return {
@@ -113,6 +114,21 @@ function makeDeps(
       notifyTwitterPosted: vi.fn(() => Promise.resolve()),
     },
     sendPacer: { acquire: vi.fn(() => Promise.resolve()) },
+    ...overrides,
+  };
+}
+
+function makeSlackNotifier(overrides: Partial<NonNullable<EmailSendDeps["slackNotifier"]>> = {}): NonNullable<EmailSendDeps["slackNotifier"]> {
+  return {
+    notifyNewsletterSent: vi.fn(() => Promise.resolve()),
+    notifyReviewPending: vi.fn(() => Promise.resolve()),
+    notifyReviewWarning: vi.fn(() => Promise.resolve()),
+    notifyPublishFailed: vi.fn(() => Promise.resolve()),
+    notifyPublishUnavailable: vi.fn(() => Promise.resolve()),
+    notifySourceDistribution: vi.fn(() => Promise.resolve()),
+    notifyEmailDelivery: vi.fn(() => Promise.resolve()),
+    notifyLinkedinPosted: vi.fn(() => Promise.resolve()),
+    notifyTwitterPosted: vi.fn(() => Promise.resolve()),
     ...overrides,
   };
 }
@@ -331,5 +347,290 @@ describe("handleEmailSendJob", () => {
     await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
 
     expect(notifyNewsletterSent).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Phase 2: Rate resolution ─────────────────────────────────────────────────
+
+describe("resolveSendRate (REQ-003/004/005)", () => {
+  it("returns 3 when env is empty", () => {
+    expect(resolveSendRate({})).toBe(3);
+  });
+
+  it("returns 2 when EMAIL_SEND_RATE_PER_SECOND=2", () => {
+    expect(resolveSendRate({ EMAIL_SEND_RATE_PER_SECOND: "2" })).toBe(2);
+  });
+
+  it("returns 3 when EMAIL_SEND_RATE_PER_SECOND is empty string", () => {
+    expect(resolveSendRate({ EMAIL_SEND_RATE_PER_SECOND: "" })).toBe(3);
+  });
+
+  it("returns 3 when EMAIL_SEND_RATE_PER_SECOND is non-numeric", () => {
+    expect(resolveSendRate({ EMAIL_SEND_RATE_PER_SECOND: "abc" })).toBe(3);
+  });
+
+  it("returns 3 when EMAIL_SEND_RATE_PER_SECOND is zero", () => {
+    expect(resolveSendRate({ EMAIL_SEND_RATE_PER_SECOND: "0" })).toBe(3);
+  });
+
+  it("returns 3 when EMAIL_SEND_RATE_PER_SECOND is negative", () => {
+    expect(resolveSendRate({ EMAIL_SEND_RATE_PER_SECOND: "-1" })).toBe(3);
+  });
+
+  it("returns 3 when EMAIL_SEND_RATE_PER_SECOND is a float string", () => {
+    expect(resolveSendRate({ EMAIL_SEND_RATE_PER_SECOND: "2.5" })).toBe(3);
+  });
+
+  it("honors large valid values (EDGE-008)", () => {
+    expect(resolveSendRate({ EMAIL_SEND_RATE_PER_SECOND: "50" })).toBe(50);
+  });
+});
+
+// ─── Phase 2: Shared pacer (REQ-002 / EDGE-001) ──────────────────────────────
+
+describe("getSharedPacer (REQ-002)", () => {
+  beforeEach(() => {
+    resetSharedPacerForTests();
+  });
+
+  it("returns the same instance on repeated calls", () => {
+    const p1 = getSharedPacer();
+    const p2 = getSharedPacer();
+    expect(p1).toBe(p2);
+  });
+});
+
+// ─── Phase 2: Per-recipient retry ────────────────────────────────────────────
+
+describe("handleEmailSendJob — per-recipient retry", () => {
+  beforeEach(() => {
+    resetSharedPacerForTests();
+    vi.clearAllMocks();
+  });
+
+  function makeSleepSpy(): (ms: number) => Promise<void> {
+    const spy = vi.fn((_ms: number) => Promise.resolve());
+    return spy as (ms: number) => Promise<void>;
+  }
+
+  // REQ-006: retryable error once then resolves → sent, send called 2×, one email_sends row
+  it("REQ-006: retries once on retryable error then succeeds", async () => {
+    const archive = makeArchive();
+    const sleepSpy = makeSleepSpy();
+    const retryableErr = new EmailSendError({
+      code: "rate_limit_exceeded",
+      message: "Too many requests",
+      retryAfterMs: null,
+      retryable: true,
+    });
+    const sendSpy = vi.fn()
+      .mockRejectedValueOnce(retryableErr)
+      .mockResolvedValueOnce({ messageId: "msg-ok" });
+
+    const deps = makeDeps(archive, {
+      emailProvider: { send: sendSpy },
+      sleep: sleepSpy,
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(sendSpy).toHaveBeenCalledTimes(2);
+    expect(deps.emailSendsRepo.create).toHaveBeenCalledOnce();
+    // sleep called once between attempts
+    expect(sleepSpy).toHaveBeenCalledOnce();
+  });
+
+  // REQ-007: retryAfterMs=1500 → sleep called with 1500
+  it("REQ-007: honors retryAfterMs when set", async () => {
+    const archive = makeArchive();
+    const sleepSpy = makeSleepSpy();
+    const retryableErr = new EmailSendError({
+      code: "rate_limit_exceeded",
+      message: "Too many requests",
+      retryAfterMs: 1500,
+      retryable: true,
+    });
+    const sendSpy = vi.fn()
+      .mockRejectedValueOnce(retryableErr)
+      .mockResolvedValueOnce({ messageId: "msg-ok" });
+
+    const deps = makeDeps(archive, {
+      emailProvider: { send: sendSpy },
+      sleep: sleepSpy,
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(sleepSpy).toHaveBeenCalledWith(1500);
+  });
+
+  // REQ-008: no retryAfter → exponential backoff, attempt 1 → 1000 ms
+  it("REQ-008: uses exponential backoff (1000ms) when no retryAfterMs", async () => {
+    const archive = makeArchive();
+    const sleepSpy = makeSleepSpy();
+    const retryableErr = new EmailSendError({
+      code: "application_error",
+      message: "Application error",
+      retryAfterMs: null,
+      retryable: true,
+    });
+    const sendSpy = vi.fn()
+      .mockRejectedValueOnce(retryableErr)
+      .mockResolvedValueOnce({ messageId: "msg-ok" });
+
+    const deps = makeDeps(archive, {
+      emailProvider: { send: sendSpy },
+      sleep: sleepSpy,
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(sleepSpy).toHaveBeenCalledWith(1000);
+  });
+
+  // REQ-009: non-retryable error → send called once, recipient failed
+  it("REQ-009: does not retry non-retryable errors", async () => {
+    const archive = makeArchive();
+    const sleepSpy = makeSleepSpy();
+    const nonRetryableErr = new EmailSendError({
+      code: "validation_error",
+      message: "Invalid address",
+      retryAfterMs: null,
+      retryable: false,
+    });
+    const sendSpy = vi.fn().mockRejectedValue(nonRetryableErr);
+
+    const notifyEmailDelivery = vi.fn(() => Promise.resolve());
+    const deps = makeDeps(archive, {
+      emailProvider: { send: sendSpy },
+      sleep: sleepSpy,
+      slackNotifier: makeSlackNotifier({ notifyEmailDelivery }),
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    expect(sleepSpy).not.toHaveBeenCalled();
+    expect(notifyEmailDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        delivery: expect.objectContaining({ failed: 1, sent: 0 }),
+      }),
+    );
+  });
+
+  // REQ-010: acquire() called once per send attempt
+  it("REQ-010: re-acquires pacer on retry", async () => {
+    const archive = makeArchive();
+    const sleepSpy = makeSleepSpy();
+    const retryableErr = new EmailSendError({
+      code: "rate_limit_exceeded",
+      message: "Too many requests",
+      retryAfterMs: null,
+      retryable: true,
+    });
+    const sendSpy = vi.fn()
+      .mockRejectedValueOnce(retryableErr)
+      .mockResolvedValueOnce({ messageId: "msg-ok" });
+
+    const acquireSpy = vi.fn(() => Promise.resolve());
+    const deps = makeDeps(archive, {
+      emailProvider: { send: sendSpy },
+      sleep: sleepSpy,
+      sendPacer: { acquire: acquireSpy },
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    // 2 send attempts → 2 pacer acquisitions
+    expect(acquireSpy).toHaveBeenCalledTimes(2);
+  });
+
+  // REQ-011 / EDGE-005: always-throwing retryable → failed counted once, reason in summary
+  it("REQ-011/EDGE-005: failed counted once when all retries exhausted", async () => {
+    const archive = makeArchive();
+    const sleepSpy = makeSleepSpy();
+    const retryableErr = new EmailSendError({
+      code: "rate_limit_exceeded",
+      message: "Too many requests",
+      retryAfterMs: null,
+      retryable: true,
+    });
+    const sendSpy = vi.fn().mockRejectedValue(retryableErr);
+
+    const notifyEmailDelivery = vi.fn(() => Promise.resolve());
+    const deps = makeDeps(archive, {
+      emailProvider: { send: sendSpy },
+      sleep: sleepSpy,
+      slackNotifier: makeSlackNotifier({ notifyEmailDelivery }),
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    // Exactly 2 send attempts (max), not 3
+    expect(sendSpy).toHaveBeenCalledTimes(2);
+    // Failed counted exactly once
+    expect(notifyEmailDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        delivery: expect.objectContaining({ failed: 1, sent: 0 }),
+      }),
+    );
+    // failure reason is present
+    const call = (notifyEmailDelivery.mock.calls[0] as [{ delivery: { failureReasons?: { reason: string; count: number }[] } }])[0];
+    expect(call.delivery.failureReasons).toBeDefined();
+    expect((call.delivery.failureReasons ?? []).length).toBeGreaterThan(0);
+  });
+
+  // EDGE-007: retry-then-succeed creates exactly one email_sends row
+  it("EDGE-007: retry-then-succeed creates exactly one email_sends row", async () => {
+    const archive = makeArchive();
+    const sleepSpy = makeSleepSpy();
+    const retryableErr = new EmailSendError({
+      code: "rate_limit_exceeded",
+      message: "Too many requests",
+      retryAfterMs: null,
+      retryable: true,
+    });
+    const sendSpy = vi.fn()
+      .mockRejectedValueOnce(retryableErr)
+      .mockResolvedValueOnce({ messageId: "msg-ok" });
+
+    const deps = makeDeps(archive, {
+      emailProvider: { send: sendSpy },
+      sleep: sleepSpy,
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(deps.emailSendsRepo.create).toHaveBeenCalledTimes(1);
+  });
+
+  // REQ-002/EDGE-001: shared pacer persists across two sequential jobs
+  it("REQ-002/EDGE-001: shared pacer is the same instance across two job runs", async () => {
+    resetSharedPacerForTests();
+
+    const archive1 = makeArchive({ id: "00000000-0000-0000-0000-000000000001" });
+    const archive2 = makeArchive({ id: "00000000-0000-0000-0000-000000000002" });
+
+    const acquireSpy = vi.fn(() => Promise.resolve());
+    const sharedPacerInstance = { acquire: acquireSpy };
+
+    // First job
+    const deps1 = makeDeps(archive1, { sendPacer: sharedPacerInstance });
+    await handleEmailSendJob(deps1, { name: "email-send", id: "job-1", data: {} });
+
+    // Second job with same pacer instance
+    const deps2 = makeDeps(archive2, {
+      sendPacer: sharedPacerInstance,
+      archiveRepo: {
+        ...makeDeps(archive2).archiveRepo,
+        findLatestTerminal: vi.fn(() => Promise.resolve(archive2)),
+        findById: vi.fn(() => Promise.resolve(archive2)),
+        markEmailSent: vi.fn(() => Promise.resolve()),
+      },
+    });
+    await handleEmailSendJob(deps2, { name: "email-send", id: "job-2", data: {} });
+
+    // Acquire called once per job (one subscriber each)
+    expect(acquireSpy).toHaveBeenCalledTimes(2);
   });
 });
