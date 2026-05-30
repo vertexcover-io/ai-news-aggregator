@@ -50,6 +50,7 @@ function FooterSubscribeField(): ReactElement {
 
   return (
     <form
+      id="subscribe"
       data-purpose="subscribe"
       onSubmit={onSubmit}
       aria-label="Subscribe in footer"

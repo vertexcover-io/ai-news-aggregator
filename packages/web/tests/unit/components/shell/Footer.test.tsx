@@ -82,4 +82,10 @@ describe("Footer", () => {
       screen.getAllByRole("button", { name: /subscribe|join/i }).length,
     ).toBeGreaterThan(0);
   });
+
+  it("exposes the footer subscribe form as the #subscribe hash target", () => {
+    renderFooter();
+    const form = screen.getByRole("form", { name: /subscribe in footer/i });
+    expect(form.getAttribute("id")).toBe("subscribe");
+  });
 });
