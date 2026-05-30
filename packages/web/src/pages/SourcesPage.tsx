@@ -1,14 +1,17 @@
 import { useEffect, type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { SOURCE_TYPE_SECTION_LABELS } from "@newsletter/shared/constants";
 import type {
-  ConfiguredRow,
   ConfiguredSection,
   SourcesSummaryResponse,
 } from "@newsletter/shared/types";
 import { fetchSourcesSummary } from "../api/sources";
 import { setMeta } from "../lib/meta";
 import { InlineSubscribeCard } from "../components/shell/InlineSubscribeCard";
+import {
+  SourceCatalog,
+  type SourceCatalogSection,
+} from "../components/sources/SourceCatalog";
+import { sourceTypeLabel } from "../components/sources/sourceCatalogUtils";
 
 function totalRows(sections: ConfiguredSection[]): number {
   return sections.reduce((acc, s) => acc + s.rows.length, 0);
@@ -52,76 +55,38 @@ function hostnameForDisplay(url: string): string {
   }
 }
 
-function Row({
-  row,
-  sourceType,
-}: {
-  row: ConfiguredRow;
-  sourceType: ConfiguredSection["sourceType"];
-}): ReactElement {
-  const isQuery = sourceType === "web_search";
-  const host = row.url !== null ? hostnameForDisplay(row.url) : null;
-
-  const nameClass = `font-serif text-[16px] font-medium leading-[1.3] text-[#14110d] hover:text-[#8c3a1e] ${
-    isQuery ? "italic" : ""
-  }`;
-
-  const nameEl =
-    row.url !== null && row.url.length > 0 ? (
-      <a
-        href={row.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={nameClass}
-      >
-        {row.displayName}
-      </a>
-    ) : (
-      <span className={nameClass}>{row.displayName}</span>
-    );
-
-  return (
-    <div
-      data-source-row="true"
-      className="grid grid-cols-[1fr_auto] items-baseline gap-4 py-2.5"
-    >
-      {nameEl}
-      <span className="font-mono text-[11.5px] text-[#a39a86]">
-        {isQuery ? "via Tavily" : host !== null ? `${host} ↗` : ""}
-      </span>
-    </div>
-  );
+function rowCountLabel(section: ConfiguredSection): string {
+  const noun =
+    section.sourceType === "web_search"
+      ? section.rows.length === 1
+        ? "query"
+        : "queries"
+      : section.rows.length === 1
+        ? "source"
+        : "sources";
+  return `${String(section.rows.length)} ${noun}`;
 }
 
-function Section({ section }: { section: ConfiguredSection }): ReactElement {
-  return (
-    <section className="pt-6">
-      <div className="flex items-baseline justify-between gap-4 border-b border-[#8c3a1e] pb-1">
-        <h2 className="m-0 font-mono text-[12px] font-medium uppercase tracking-[0.22em] text-[#14110d]">
-          {SOURCE_TYPE_SECTION_LABELS[section.sourceType]}
-        </h2>
-        <span className="font-mono text-[10.5px] tabular-nums text-[#a39a86]">
-          {section.rows.length}{" "}
-          {section.sourceType === "web_search"
-            ? section.rows.length === 1
-              ? "query"
-              : "queries"
-            : section.rows.length === 1
-              ? "source"
-              : "sources"}
-        </span>
-      </div>
-      <div className="mt-1 divide-y divide-[#efeadd]">
-        {section.rows.map((r) => (
-          <Row
-            key={`${section.sourceType}:${r.identifier || r.displayName}`}
-            row={r}
-            sourceType={section.sourceType}
-          />
-        ))}
-      </div>
-    </section>
-  );
+function configuredToCatalogSection(section: ConfiguredSection): SourceCatalogSection {
+  return {
+    sourceType: section.sourceType,
+    label: sourceTypeLabel(section.sourceType),
+    countLabel: rowCountLabel(section),
+    rows: section.rows.map((row) => {
+      const host = row.url !== null ? hostnameForDisplay(row.url) : null;
+      return {
+        id: `${section.sourceType}:${row.identifier || row.displayName}`,
+        displayName: row.displayName,
+        url: row.url,
+        meta:
+          section.sourceType === "web_search"
+            ? "via Tavily"
+            : host !== null
+              ? `${host} ↗`
+              : "",
+      };
+    }),
+  };
 }
 
 function HowWePick(): ReactElement {
@@ -189,9 +154,10 @@ export function SourcesPage(): ReactElement {
           sourceCount={totalRows(sections)}
           sectionCount={sections.length}
         />
-        {sections.map((s) => (
-          <Section key={s.sourceType} section={s} />
-        ))}
+        <SourceCatalog
+          sections={sections.map(configuredToCatalogSection)}
+          variant="page"
+        />
         <HowWePick />
       </main>
     </Shell>

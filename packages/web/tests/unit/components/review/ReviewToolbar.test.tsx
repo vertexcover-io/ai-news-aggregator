@@ -33,11 +33,16 @@ const mockFacets: SourceFacetGroup[] = [
   },
 ];
 
-function makeProps(overrides: Partial<Parameters<typeof ReviewToolbar>[0]> = {}): Parameters<typeof ReviewToolbar>[0] {
+function makeProps(
+  overrides: Partial<Parameters<typeof ReviewToolbar>[0]> = {},
+): Parameters<typeof ReviewToolbar>[0] {
   return {
     shortlistedOnly: false,
     toggleShortlisted: vi.fn(),
     shortlistedItemIds: [1, 2, 3],
+    sourceTypes: ["blog", "reddit", "twitter"],
+    selectedSourceTypes: new Set<string>(),
+    toggleSourceType: vi.fn(),
     selectedSources: new Set<string>(),
     toggleSource: vi.fn(),
     clearAll: vi.fn(),
@@ -46,6 +51,17 @@ function makeProps(overrides: Partial<Parameters<typeof ReviewToolbar>[0]> = {})
     poolTotalCount: 20,
     isFiltered: false,
     ...overrides,
+  };
+}
+
+function makePropsWithCollectorFilters(
+  overrides: Partial<Parameters<typeof ReviewToolbar>[0]> = {},
+): Parameters<typeof ReviewToolbar>[0] {
+  return {
+    ...makeProps(overrides),
+    sourceTypes: overrides.sourceTypes ?? ["hn", "blog", "web_search", "reddit"],
+    selectedSourceTypes: overrides.selectedSourceTypes ?? new Set<string>(),
+    toggleSourceType: overrides.toggleSourceType ?? vi.fn(),
   };
 }
 
@@ -169,5 +185,73 @@ describe("ReviewToolbar", () => {
     );
     expect(container.textContent).toContain("7");
     expect(container.textContent).toContain("matching");
+  });
+
+  it("renders collector filters and granular source filters in one source menu", () => {
+    render(<ReviewToolbar {...makePropsWithCollectorFilters()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /source/i }));
+
+    expect(screen.getByRole("button", { name: /hacker news/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /engineering blogs/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /web search/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /openai\.com/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /anthropic\.com/i })).toBeTruthy();
+  });
+
+  it("does not render source-level options for single-entity collectors", () => {
+    render(
+      <ReviewToolbar
+        {...makePropsWithCollectorFilters({
+          facets: [
+            {
+              sourceType: "hn",
+              facets: [
+                {
+                  sourceIdentifier: "hn:frontpage",
+                  displayName: "Hacker News frontpage",
+                  count: 12,
+                },
+              ],
+            },
+            {
+              sourceType: "web_search",
+              facets: [
+                {
+                  sourceIdentifier: "agent news",
+                  displayName: "agent news",
+                  count: 9,
+                },
+              ],
+            },
+          ],
+          sourceTypes: ["hn", "web_search"],
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /source/i }));
+
+    expect(screen.getByRole("button", { name: /^hacker news/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^web search/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /frontpage/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^agent news/i })).toBeNull();
+  });
+
+  it("selecting a collector filter toggles by source type", () => {
+    const toggleSourceType = vi.fn();
+    render(
+      <ReviewToolbar
+        {...makePropsWithCollectorFilters({
+          sourceTypes: ["blog"],
+          toggleSourceType,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /source/i }));
+    fireEvent.click(screen.getByRole("button", { name: /engineering blogs/i }));
+
+    expect(toggleSourceType).toHaveBeenCalledWith("blog");
   });
 });

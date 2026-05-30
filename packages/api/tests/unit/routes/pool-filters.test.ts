@@ -148,6 +148,21 @@ describe("GET /api/admin/archives/:runId/pool — source + shortlist filters (RE
     expect(opts.selectedSources).toEqual(["openai.com", "r/LocalLLaMA"]);
   });
 
+  it("passes selected collector filters from repeated ?sourceTypes= params", async () => {
+    const archiveRepo = makeArchiveRepo(
+      makeRow({ sourceTypes: ["blog", "hn"] }),
+      { items: [], total: 0 },
+    );
+    const app = makeAdminApp(archiveRepo);
+    await app.request("/api/admin/archives/run-1/pool?sourceTypes=blog&sourceTypes=hn");
+    const findPoolItems = archiveRepo.findPoolItems as ReturnType<typeof vi.fn>;
+    const [, opts] = findPoolItems.mock.calls[0] as [
+      string,
+      { selectedSourceTypes?: string[] },
+    ];
+    expect(opts.selectedSourceTypes).toEqual(["blog", "hn"]);
+  });
+
   it("REQ-017: passes shortlistedOnly=true when ?shortlisted=true", async () => {
     const archiveRepo = makeArchiveRepo(makeRow(), { items: [], total: 0 });
     const app = makeAdminApp(archiveRepo);

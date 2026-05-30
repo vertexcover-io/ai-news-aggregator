@@ -128,6 +128,7 @@ export async function addPost(
 export interface PoolQuery {
   sort?: "engagement" | "recency";
   source?: string;
+  sourceTypes?: string[];
   sources?: string[];
   shortlisted?: boolean;
   q?: string;
@@ -142,6 +143,11 @@ export async function getPool(
   const params = new URLSearchParams();
   if (query.sort) params.set("sort", query.sort);
   if (query.source) params.set("source", query.source);
+  if (query.sourceTypes && query.sourceTypes.length > 0) {
+    for (const sourceType of query.sourceTypes) {
+      params.append("sourceTypes", sourceType);
+    }
+  }
   if (query.sources && query.sources.length > 0) {
     for (const s of query.sources) params.append("sources", s);
   }

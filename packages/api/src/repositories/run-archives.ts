@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, inArray, lte, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lte, notInArray, or, sql } from "drizzle-orm";
 import { emailSends, rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import {
@@ -91,6 +91,7 @@ export interface FindPoolItemsOpts {
   offset: number;
   limit: number;
   selectedSources?: string[];
+  selectedSourceTypes?: SourceType[];
   shortlistedOnly?: boolean;
   shortlistedIds?: number[] | null;
 }
@@ -713,15 +714,28 @@ export function createRunArchivesRepo(
         const escaped = opts.q.replace(/[%_\\]/g, "\\$&");
         conditions.push(ilike(rawItems.title, `%${escaped}%`));
       }
-      if (opts.selectedSources && opts.selectedSources.length > 0) {
-        // Match on the stamped collection unit — the same identity the source
-        // facets are built from. Items without a unit never match a selection.
-        conditions.push(
-          inArray(
-            sql<string>`${rawItems.metadata} #>> '{sourceUnit,identifier}'`,
-            opts.selectedSources,
-          ),
-        );
+      if (
+        (opts.selectedSourceTypes && opts.selectedSourceTypes.length > 0) ||
+        (opts.selectedSources && opts.selectedSources.length > 0)
+      ) {
+        const sourceSelectionConditions: typeof conditions = [];
+        if (opts.selectedSourceTypes && opts.selectedSourceTypes.length > 0) {
+          sourceSelectionConditions.push(
+            inArray(rawItems.sourceType, opts.selectedSourceTypes),
+          );
+        }
+        if (opts.selectedSources && opts.selectedSources.length > 0) {
+          const selectedSourceIdentifierSql = sql<string>`COALESCE(NULLIF(${rawItems.metadata} #>> '{sourceUnit,identifier}', ''), ${DERIVED_IDENTIFIER_SQL})`;
+          sourceSelectionConditions.push(
+            inArray(selectedSourceIdentifierSql, opts.selectedSources),
+          );
+        }
+        if (sourceSelectionConditions.length === 1) {
+          conditions.push(sourceSelectionConditions[0]);
+        } else if (sourceSelectionConditions.length > 1) {
+          const sourceSelection = or(...sourceSelectionConditions);
+          if (sourceSelection) conditions.push(sourceSelection);
+        }
       }
       if (opts.shortlistedOnly && opts.shortlistedIds && opts.shortlistedIds.length > 0) {
         conditions.push(inArray(rawItems.id, opts.shortlistedIds));
@@ -761,14 +775,9 @@ export function createRunArchivesRepo(
       return { items: rows.map(toPoolItem), total: countRow.count };
     },
     async getSourceFacets(runId: string): Promise<SourceFacet[]> {
-      // One filter option per collection UNIT — the same identity Source
-      // Telemetry shows (r/OpenAI, "Twitter list 158…", @sama, each blog, …).
-      // We group by the per-item stamped `metadata.sourceUnit`, which is the
-      // only per-row link back to the unit it was collected from. Items with
-      // no stamped unit (collected before this feature) are intentionally
-      // excluded — old runs simply show no source filter. Counts reflect the
-      // pool-eligible window (collectedAt within the run), and only non-empty
-      // units appear, so the dropdown never lists a unit you can't filter to.
+      // One filter option per collection unit when available. Older or
+      // single-entity collectors can lack metadata.sourceUnit, so those rows
+      // fall back to the derived per-item source identifier.
       const archive = await db
         .select({
           startedAt: runArchives.startedAt,
@@ -781,8 +790,8 @@ export function createRunArchivesRepo(
       if (!row.startedAt || !row.sourceTypes || row.sourceTypes.length === 0) {
         return [];
       }
-      const UNIT_ID_SQL = sql<string>`${rawItems.metadata} #>> '{sourceUnit,identifier}'`;
-      const UNIT_NAME_SQL = sql<string>`${rawItems.metadata} #>> '{sourceUnit,displayName}'`;
+      const UNIT_ID_SQL = sql<string>`COALESCE(NULLIF(${rawItems.metadata} #>> '{sourceUnit,identifier}', ''), ${DERIVED_IDENTIFIER_SQL})`;
+      const UNIT_NAME_SQL = sql<string>`COALESCE(NULLIF(${rawItems.metadata} #>> '{sourceUnit,displayName}', ''), ${UNIT_ID_SQL})`;
       const rows = await db
         .select({
           sourceType: rawItems.sourceType,
@@ -795,7 +804,6 @@ export function createRunArchivesRepo(
           and(
             gte(rawItems.collectedAt, row.startedAt),
             inArray(rawItems.sourceType, row.sourceTypes),
-            sql`${rawItems.metadata} #>> '{sourceUnit,identifier}' IS NOT NULL`,
           ),
         )
         .groupBy(rawItems.sourceType, UNIT_ID_SQL, UNIT_NAME_SQL);

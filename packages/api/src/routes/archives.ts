@@ -425,11 +425,21 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     const limit = Math.min(parseInt(c.req.query("limit") ?? "20", 10), 100);
     // Parse repeated ?sources= params as selectedSources (derived identifier filter, distinct from ?source= SourceType filter)
     const selectedSources = c.req.queries("sources") ?? undefined;
+    const selectedSourceTypes = c.req.queries("sourceTypes") ?? undefined;
     const shortlistedOnly = c.req.query("shortlisted") === "true";
     try {
       const result = await getPool(
         runId,
-        { sort, source, q, offset, limit, selectedSources, shortlistedOnly },
+        {
+          sort,
+          source,
+          q,
+          offset,
+          limit,
+          selectedSources,
+          selectedSourceTypes,
+          shortlistedOnly,
+        },
         { archiveRepo: deps.getArchiveRepo() },
       );
       return c.json(result);

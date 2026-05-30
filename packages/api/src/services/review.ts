@@ -273,6 +273,7 @@ export interface GetPoolQuery {
   offset: number;
   limit: number;
   selectedSources?: string[];
+  selectedSourceTypes?: string[];
   shortlistedOnly?: boolean;
 }
 
@@ -286,17 +287,23 @@ export async function getPool(
   if (!archive.startedAt || !archive.sourceTypes) {
     return { items: [], total: 0 };
   }
+  const archiveSourceTypes = archive.sourceTypes;
   const rankedIds = archive.rankedItems.map((r) => r.rawItemId);
+  const selectedSourceTypes = query.selectedSourceTypes?.filter(
+    (sourceType): sourceType is (typeof archiveSourceTypes)[number] =>
+      archiveSourceTypes.includes(sourceType as (typeof archiveSourceTypes)[number]),
+  );
   return deps.archiveRepo.findPoolItems(runId, {
     rankedIds,
     startedAt: archive.startedAt,
-    sourceTypes: archive.sourceTypes,
+    sourceTypes: archiveSourceTypes,
     sort: query.sort,
-    source: query.source as (typeof archive.sourceTypes)[number] | undefined,
+    source: query.source as (typeof archiveSourceTypes)[number] | undefined,
     q: query.q,
     offset: query.offset,
     limit: query.limit,
     selectedSources: query.selectedSources,
+    selectedSourceTypes,
     shortlistedOnly: query.shortlistedOnly,
     shortlistedIds: query.shortlistedOnly ? (archive.shortlistedItemIds ?? null) : undefined,
   });

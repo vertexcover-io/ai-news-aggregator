@@ -41,6 +41,7 @@ import { getAdminArchive } from "../../../../src/api/runs";
 
 const mockSetSort = vi.fn();
 const mockSetSource = vi.fn();
+const mockSetSourceTypes = vi.fn();
 const mockSetQ = vi.fn();
 const mockLoadMore = vi.fn();
 const mockAddPromotedId = vi.fn();
@@ -52,6 +53,7 @@ const defaultPoolReturn: UsePoolReturn = {
   total: 0,
   sort: "engagement",
   source: undefined,
+  sourceTypes: [],
   sources: [],
   shortlisted: false,
   q: "",
@@ -61,6 +63,7 @@ const defaultPoolReturn: UsePoolReturn = {
   promotedIds: new Set(),
   setSort: mockSetSort,
   setSource: mockSetSource,
+  setSourceTypes: mockSetSourceTypes,
   setSources: mockSetSources,
   setShortlisted: mockSetShortlisted,
   setQ: mockSetQ,

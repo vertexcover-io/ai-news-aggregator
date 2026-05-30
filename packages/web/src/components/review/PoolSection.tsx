@@ -14,6 +14,8 @@ interface PoolSectionProps {
   sourceTypes: string[] | null;
   shortlistedOnly: boolean;
   toggleShortlisted: () => void;
+  selectedSourceTypes: Set<string>;
+  toggleSourceType: (sourceType: string) => void;
   selectedSources: Set<string>;
   toggleSource: (identifier: string) => void;
   clearAll: () => void;
@@ -32,6 +34,8 @@ export function PoolSection({
   sourceTypes,
   shortlistedOnly,
   toggleShortlisted,
+  selectedSourceTypes,
+  toggleSourceType,
   selectedSources,
   toggleSource,
   clearAll,
@@ -61,6 +65,12 @@ export function PoolSection({
     pool.setSources(Array.from(selectedSources));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Array.from(selectedSources).join(",")]);
+
+  // Sync selected source collectors to pool server-side filter
+  useEffect(() => {
+    pool.setSourceTypes(Array.from(selectedSourceTypes));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Array.from(selectedSourceTypes).join(",")]);
 
   // Sync shortlistedOnly to pool
   useEffect(() => {
@@ -116,6 +126,9 @@ export function PoolSection({
         shortlistedOnly={shortlistedOnly}
         toggleShortlisted={toggleShortlisted}
         shortlistedItemIds={shortlistedItemIds}
+        sourceTypes={sourceTypes}
+        selectedSourceTypes={selectedSourceTypes}
+        toggleSourceType={toggleSourceType}
         selectedSources={selectedSources}
         toggleSource={toggleSource}
         clearAll={clearAll}

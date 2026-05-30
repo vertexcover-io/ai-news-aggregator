@@ -355,6 +355,8 @@ export function ReviewPage(): ReactElement {
           sourceTypes={query.data.sourceTypes ?? null}
           shortlistedOnly={filters.shortlistedOnly}
           toggleShortlisted={filters.toggleShortlisted}
+          selectedSourceTypes={filters.selectedSourceTypes}
+          toggleSourceType={filters.toggleSourceType}
           selectedSources={filters.selectedSources}
           toggleSource={filters.toggleSource}
           clearAll={filters.clearAll}

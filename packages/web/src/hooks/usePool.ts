@@ -13,6 +13,7 @@ export interface UsePoolReturn {
   total: number;
   sort: "engagement" | "recency";
   source: string | undefined;
+  sourceTypes: string[];
   sources: string[];
   shortlisted: boolean;
   q: string;
@@ -22,6 +23,7 @@ export interface UsePoolReturn {
   promotedIds: Set<number>;
   setSort: (sort: "engagement" | "recency") => void;
   setSource: (source: string | undefined) => void;
+  setSourceTypes: (sourceTypes: string[]) => void;
   setSources: (sources: string[]) => void;
   setShortlisted: (shortlisted: boolean) => void;
   setQ: (q: string) => void;
@@ -34,6 +36,7 @@ const PAGE_SIZE = 20;
 export function usePool({ runId, enabled }: UsePoolOptions): UsePoolReturn {
   const [sort, setSortState] = useState<"engagement" | "recency">("engagement");
   const [source, setSourceState] = useState<string | undefined>(undefined);
+  const [sourceTypes, setSourceTypesState] = useState<string[]>([]);
   const [sources, setSourcesState] = useState<string[]>([]);
   const [shortlisted, setShortlistedState] = useState(false);
   const [q, setQState] = useState("");
@@ -43,8 +46,19 @@ export function usePool({ runId, enabled }: UsePoolOptions): UsePoolReturn {
   const [promotedIds, setPromotedIds] = useState<Set<number>>(() => new Set());
   const [prevFilterKey, setPrevFilterKey] = useState("");
 
+  const sourceTypesKey = sourceTypes.slice().sort().join(",");
   const sourcesKey = sources.slice().sort().join(",");
-  const queryKey = ["pool", runId, sort, source, sourcesKey, shortlisted, q, offset] as const;
+  const queryKey = [
+    "pool",
+    runId,
+    sort,
+    source,
+    sourceTypesKey,
+    sourcesKey,
+    shortlisted,
+    q,
+    offset,
+  ] as const;
 
   const query = useQuery({
     queryKey,
@@ -52,6 +66,7 @@ export function usePool({ runId, enabled }: UsePoolOptions): UsePoolReturn {
       getPool(runId, {
         sort,
         source: source ?? undefined,
+        sourceTypes: sourceTypes.length > 0 ? sourceTypes : undefined,
         sources: sources.length > 0 ? sources : undefined,
         shortlisted: shortlisted || undefined,
         q: q || undefined,
@@ -62,7 +77,7 @@ export function usePool({ runId, enabled }: UsePoolOptions): UsePoolReturn {
     refetchOnWindowFocus: false,
   });
 
-  const currentKey = `${sort}:${source ?? ""}:${sourcesKey}:${String(shortlisted)}:${q}`;
+  const currentKey = `${sort}:${source ?? ""}:${sourceTypesKey}:${sourcesKey}:${String(shortlisted)}:${q}`;
 
   // Render-time sync: follow the "store previous value in state" pattern
   // used by useReview.ts to avoid effects that call setState.
@@ -106,6 +121,12 @@ export function usePool({ runId, enabled }: UsePoolOptions): UsePoolReturn {
     setAccumulated([]);
   }, []);
 
+  const setSourceTypes = useCallback((s: string[]) => {
+    setSourceTypesState(s);
+    setOffset(0);
+    setAccumulated([]);
+  }, []);
+
   const setShortlisted = useCallback((v: boolean) => {
     setShortlistedState(v);
     setOffset(0);
@@ -137,6 +158,7 @@ export function usePool({ runId, enabled }: UsePoolOptions): UsePoolReturn {
     total,
     sort,
     source,
+    sourceTypes,
     sources,
     shortlisted,
     q,
@@ -146,6 +168,7 @@ export function usePool({ runId, enabled }: UsePoolOptions): UsePoolReturn {
     promotedIds,
     setSort,
     setSource,
+    setSourceTypes,
     setSources,
     setShortlisted,
     setQ,

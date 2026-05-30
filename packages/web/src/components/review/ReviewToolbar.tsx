@@ -2,11 +2,21 @@ import { useState, type ReactElement } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SourceFacetGroup } from "../../hooks/useSourceFacets";
+import {
+  SourceCatalog,
+  type SourceCatalogSection,
+} from "../sources/SourceCatalog";
+import { sourceTypeLabel } from "../sources/sourceCatalogUtils";
+
+const SOURCE_TYPES_WITHOUT_SOURCE_ROWS = new Set(["hn", "web_search"]);
 
 interface ReviewToolbarProps {
   shortlistedOnly: boolean;
   toggleShortlisted: () => void;
   shortlistedItemIds: number[] | null;
+  sourceTypes: string[];
+  selectedSourceTypes: Set<string>;
+  toggleSourceType: (sourceType: string) => void;
   selectedSources: Set<string>;
   toggleSource: (identifier: string) => void;
   clearAll: () => void;
@@ -20,6 +30,9 @@ export function ReviewToolbar({
   shortlistedOnly,
   toggleShortlisted,
   shortlistedItemIds,
+  sourceTypes,
+  selectedSourceTypes,
+  toggleSourceType,
   selectedSources,
   toggleSource,
   clearAll,
@@ -36,16 +49,65 @@ export function ReviewToolbar({
     ? undefined
     : "No shortlist data for this run";
 
-  const filteredFacets = facetSearch
-    ? facets.map((g) => ({
-        ...g,
-        facets: g.facets.filter((f) =>
-          `${f.displayName} ${f.sourceIdentifier}`
-            .toLowerCase()
-            .includes(facetSearch.toLowerCase()),
+  const sourceTypeOrder = Array.from(
+    new Set([
+      ...sourceTypes,
+      ...facets.map((group) => group.sourceType),
+    ]),
+  );
+  const facetsByType = new Map(facets.map((group) => [group.sourceType, group.facets]));
+
+  const menuSections: SourceCatalogSection[] = sourceTypeOrder
+    .map((sourceType) => {
+      const groupFacets = facetsByType.get(sourceType) ?? [];
+      const total = groupFacets.reduce((sum, facet) => sum + facet.count, 0);
+      const rows = [
+        {
+          id: `collector:${sourceType}`,
+          displayName: sourceTypeLabel(sourceType),
+          count: total > 0 ? total : undefined,
+          selected: selectedSourceTypes.has(sourceType),
+          onSelect: () => {
+            toggleSourceType(sourceType);
+          },
+        },
+        ...(
+          SOURCE_TYPES_WITHOUT_SOURCE_ROWS.has(sourceType)
+            ? []
+            : groupFacets.map((facet) => ({
+                id: `source:${facet.sourceIdentifier}`,
+                displayName: facet.displayName,
+                count: facet.count,
+                selected: selectedSources.has(facet.sourceIdentifier),
+                onSelect: () => {
+                  toggleSource(facet.sourceIdentifier);
+                },
+              }))
         ),
-      })).filter((g) => g.facets.length > 0)
-    : facets;
+      ];
+
+      return {
+        sourceType,
+        label: sourceTypeLabel(sourceType),
+        rows,
+      };
+    })
+    .filter((section) => section.rows.length > 0);
+
+  const filteredSections = facetSearch
+    ? menuSections
+        .map((section) => ({
+          ...section,
+          rows: section.rows.filter((row) =>
+            `${section.label ?? section.sourceType} ${row.displayName} ${row.id}`
+              .toLowerCase()
+              .includes(facetSearch.toLowerCase()),
+          ),
+        }))
+        .filter((section) => section.rows.length > 0)
+    : menuSections;
+
+  const activeFilterCount = selectedSourceTypes.size + selectedSources.size;
 
   // Map an active identifier back to its human label for the chips row.
   const displayNameFor = (identifier: string): string => {
@@ -90,9 +152,9 @@ export function ReviewToolbar({
           className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 min-h-[36px]"
         >
           Source
-          {selectedSources.size > 0 && (
+          {activeFilterCount > 0 && (
             <span className="ml-1 rounded-full bg-blue-600 text-white text-xs px-1.5">
-              {selectedSources.size}
+              {activeFilterCount}
             </span>
           )}
           <span className="ml-1 text-gray-400">▾</span>
@@ -115,35 +177,13 @@ export function ReviewToolbar({
               {facetsLoading && (
                 <p className="text-xs text-gray-400 px-2 py-1">Loading...</p>
               )}
-              {!facetsLoading && filteredFacets.length === 0 && (
-                <p className="text-xs text-gray-400 px-2 py-1">
-                  No sources found
-                </p>
+              {!facetsLoading && (
+                <SourceCatalog
+                  sections={filteredSections}
+                  variant="menu"
+                  emptyMessage="No sources found"
+                />
               )}
-              {filteredFacets.map((group) => (
-                <div key={group.sourceType} className="mb-1">
-                  <div className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-                    {group.sourceType}
-                  </div>
-                  {group.facets.map((facet) => (
-                    <button
-                      key={facet.sourceIdentifier}
-                      type="button"
-                      onClick={() => {
-                        toggleSource(facet.sourceIdentifier);
-                      }}
-                      className={cn(
-                        "flex w-full items-center justify-between rounded px-2 py-1 text-xs hover:bg-gray-50",
-                        selectedSources.has(facet.sourceIdentifier) &&
-                          "bg-blue-50 text-blue-700 font-medium",
-                      )}
-                    >
-                      <span>{facet.displayName}</span>
-                      <span className="text-gray-400">{facet.count}</span>
-                    </button>
-                  ))}
-                </div>
-              ))}
             </div>
           </div>
         )}
@@ -151,6 +191,24 @@ export function ReviewToolbar({
 
       {/* Active chips */}
       <div className="flex flex-wrap items-center gap-1">
+        {Array.from(selectedSourceTypes).map((sourceType) => (
+          <span
+            key={`collector:${sourceType}`}
+            className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700"
+          >
+            {sourceTypeLabel(sourceType)}
+            <button
+              type="button"
+              aria-label={`Remove ${sourceTypeLabel(sourceType)}`}
+              onClick={() => {
+                toggleSourceType(sourceType);
+              }}
+              className="ml-0.5 hover:text-blue-900"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
         {Array.from(selectedSources).map((identifier) => (
           <span
             key={identifier}
