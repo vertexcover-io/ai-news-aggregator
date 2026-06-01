@@ -62,6 +62,7 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       return c.json({ ok: true });
     }
 
+    const PG_UNIQUE_VIOLATION = "23505";
     let subscriber;
     try {
       subscriber = await deps.subscribersRepo.create({
@@ -70,7 +71,7 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       });
     } catch (err) {
       const code = (err as { code?: unknown }).code;
-      if (code === "23505") {
+      if (code === PG_UNIQUE_VIOLATION) {
         logger.info(
           { event: "subscribe.race_won", email: masked },
           "subscribe: concurrent insert lost the race, returning idempotent ok",

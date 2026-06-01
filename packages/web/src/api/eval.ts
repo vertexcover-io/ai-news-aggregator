@@ -246,7 +246,7 @@ interface QueueNode<T> {
 class AsyncEventQueue<T> implements AsyncIterable<T> {
   private head: QueueNode<T> | null = null;
   private tail: QueueNode<T> | null = null;
-  private waiter: ((v: IteratorResult<T>) => void) | null = null;
+  private waiter: ((v: IteratorResult<T, undefined>) => void) | null = null;
   private done = false;
   private error: Error | null = null;
 
@@ -271,13 +271,13 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
     if (this.waiter) {
       const w = this.waiter;
       this.waiter = null;
-      w({ value: undefined as unknown as T, done: true });
+      w({ value: undefined, done: true });
     }
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<T> {
+  [Symbol.asyncIterator](): AsyncIterator<T, undefined> {
     return {
-      next: (): Promise<IteratorResult<T>> => {
+      next: (): Promise<IteratorResult<T, undefined>> => {
         if (this.head) {
           const node = this.head;
           this.head = node.next;
@@ -287,19 +287,19 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
         if (this.done) {
           if (this.error) return Promise.reject(this.error);
           return Promise.resolve({
-            value: undefined as unknown as T,
-            done: true,
+            value: undefined,
+            done: true as const,
           });
         }
-        return new Promise<IteratorResult<T>>((resolve) => {
+        return new Promise<IteratorResult<T, undefined>>((resolve) => {
           this.waiter = resolve;
         });
       },
-      return: (): Promise<IteratorResult<T>> => {
+      return: (): Promise<IteratorResult<T, undefined>> => {
         this.done = true;
         return Promise.resolve({
-          value: undefined as unknown as T,
-          done: true,
+          value: undefined,
+          done: true as const,
         });
       },
     };

@@ -97,7 +97,7 @@ export function createWebhooksRouter(deps: WebhooksRouterDeps): Hono {
       messageId,
       eventType,
       subscriberId,
-      rawPayload: inner as unknown as Record<string, unknown>,
+      rawPayload: { ...inner } as Record<string, unknown>,
       occurredAt: new Date(inner.mail.timestamp),
     });
 

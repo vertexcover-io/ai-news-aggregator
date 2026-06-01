@@ -12,6 +12,8 @@ import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types
 
 const logger = createLogger("collector:reddit");
 
+const ERROR_MESSAGE_MAX_LEN = 120;
+
 const DEFAULT_SUBREDDITS = [
   "MachineLearning", "LocalLLaMA", "artificial", "OpenAI",
   "AI_Agents", "aiagents", "generativeAI",
@@ -64,7 +66,7 @@ function parseXmlDocument(xml: string): Document {
   const doc = dom.window.document;
   const parseError = doc.querySelector("parsererror");
   if (parseError) {
-    throw new Error(`Reddit RSS returned invalid XML: ${normalizeText(parseError.textContent).slice(0, 160)}`);
+    throw new Error(`Reddit RSS returned invalid XML: ${normalizeText(parseError.textContent).slice(0, ERROR_MESSAGE_MAX_LEN)}`);
   }
   return doc;
 }

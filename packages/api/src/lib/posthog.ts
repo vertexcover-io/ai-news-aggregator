@@ -76,7 +76,7 @@ export async function captureAnalytics(event: AnalyticsCapture): Promise<void> {
     const posthog = getClient(await loadConfig());
     posthog?.capture(event);
   } catch {
-    // Analytics must never affect product flows.
+    console.warn("[analytics] captureAnalytics failed — misconfigured or network error");
   }
 }
 
@@ -85,7 +85,7 @@ export async function identifyAnalytics(person: AnalyticsIdentify): Promise<void
     const posthog = getClient(await loadConfig());
     posthog?.identify(person);
   } catch {
-    // Analytics must never affect product flows.
+    console.warn("[analytics] identifyAnalytics failed — misconfigured or network error");
   }
 }
 

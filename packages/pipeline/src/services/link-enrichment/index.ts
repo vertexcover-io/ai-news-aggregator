@@ -9,6 +9,8 @@ import { enrichOne } from "@pipeline/services/link-enrichment/fetcher.js";
 import type { EnrichmentContext, EnrichmentCounters } from "@pipeline/services/link-enrichment/types.js";
 import { shouldEnrich } from "@pipeline/services/link-enrichment/url-classifier.js";
 
+const FAILURE_REASON_MAX_LEN = 120;
+
 function attach(item: RawItemInsert, enriched: EnrichedLinkContent): void {
   const existing: RawItemMetadata = item.metadata ?? { comments: [] };
   item.metadata = { ...existing, enrichedLink: enriched };
@@ -107,12 +109,12 @@ export async function enrichRawItems(
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      const failureReason = `exception: ${msg}`.slice(0, 200);
+      const failureReason = `exception: ${msg}`.slice(0, FAILURE_REASON_MAX_LEN);
       const enriched: EnrichedLinkContent = {
         url: item.url,
         fetchedAt: new Date().toISOString(),
         status: "failed",
-        failureReason: failureReason.slice(0, 120),
+        failureReason,
       };
       attach(item, enriched);
       ctx.counters.attempted += 1;

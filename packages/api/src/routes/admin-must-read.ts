@@ -69,7 +69,8 @@ async function previewUrl(
       status: "extracted",
       suggested: { title: meta.title, author: meta.author, year: meta.year },
     };
-  } catch {
+  } catch (err) {
+    console.error({ err, url }, "admin-must-read.previewUrl.unexpected_error");
     return { status: "extraction_failed", error: "Unexpected error while fetching the URL." };
   }
 }
@@ -80,7 +81,8 @@ function safeExtractMetadata(
 ): ReturnType<typeof extractPageMetadata> | null {
   try {
     return extractPageMetadata(html, finalUrl);
-  } catch {
+  } catch (err) {
+    console.error({ err, finalUrl }, "admin-must-read.safeExtractMetadata.failed");
     return null;
   }
 }
