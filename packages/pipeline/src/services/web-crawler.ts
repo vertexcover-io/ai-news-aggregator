@@ -3,10 +3,12 @@ import {
   type AdaptivePlaywrightCrawlerOptions,
   type RequestHandlerResult,
   Configuration,
+  ProxyConfiguration,
 } from "crawlee";
 import type { ConvertResult, FetchMode } from "@pipeline/services/web-fetch/types.js";
 import { convert, isHealthyResult, hasListingPostLinks } from "@pipeline/services/web-fetch/convert.js";
 import { resolveChromiumExecutablePath } from "@pipeline/services/web-fetch/fetch-browser.js";
+import { resolveWebProxyUrl } from "@pipeline/services/web-fetch/proxy.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RunLogger } from "@pipeline/services/run-logger.js";
 
@@ -91,8 +93,17 @@ export async function runWebCrawl(
   // its bundled headless shell (skipped at build via PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1).
   const executablePath = resolveChromiumExecutablePath();
 
+  // Route outbound crawl traffic through WEB_HTTP_PROXY when set; a single
+  // ProxyConfiguration covers both the static and the adaptive-browser
+  // sub-paths. Unset ⇒ undefined ⇒ direct egress (unchanged behaviour). The
+  // proxy URL is a secret and must never be logged.
+  const proxyUrl = resolveWebProxyUrl();
+
   const crawlerOptions: AdaptivePlaywrightCrawlerOptions = {
     maxConcurrency,
+    proxyConfiguration: proxyUrl
+      ? new ProxyConfiguration({ proxyUrls: [proxyUrl] })
+      : undefined,
     maxRequestRetries: 3,
     requestHandlerTimeoutSecs: 30,
     sameDomainDelaySecs: 1,
