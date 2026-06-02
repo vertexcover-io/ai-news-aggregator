@@ -3,6 +3,17 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import type { ReactElement } from "react";
 import { SourcesSection } from "../../../../src/components/settings/SourcesSection";
+
+vi.mock("../../../../src/hooks/useHealthCheck", () => ({
+  useHealthCheck: () => ({
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    data: undefined,
+    error: null,
+    mutate: vi.fn(),
+  }),
+}));
 import {
   normalizeTwitterConfigForSubmit,
   type SettingsFormValues,

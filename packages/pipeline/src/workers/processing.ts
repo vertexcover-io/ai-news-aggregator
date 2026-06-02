@@ -39,6 +39,11 @@ import {
   type SocialHealthDeps,
   type SocialHealthJobLike,
 } from "@pipeline/workers/social-health.js";
+import {
+  handleHealthCheckJob,
+  type HealthCheckDeps,
+  type HealthCheckJobLike,
+} from "@pipeline/workers/health-check.js";
 import { createLinkedInApiClient } from "@pipeline/social/linkedin/api-client.js";
 import {
   createTwitterApiClient,
@@ -105,6 +110,15 @@ import { rankCandidates } from "@pipeline/processors/rank.js";
 import { shortlistCandidates } from "@pipeline/processors/shortlist.js";
 import { renderNewsletter } from "@pipeline/lib/email-render.js";
 import { createEmailProvider } from "@pipeline/lib/email-provider.js";
+import {
+  runAllHealthChecks,
+  type HealthCheckFns,
+} from "@pipeline/collectors/health/index.js";
+import { checkHnHealth } from "@pipeline/collectors/health/hn-health.js";
+import { checkRedditHealth } from "@pipeline/collectors/health/reddit-health.js";
+import { checkTwitterHealth } from "@pipeline/collectors/health/twitter-health.js";
+import { checkWebSearchHealth } from "@pipeline/collectors/health/web-search-health.js";
+import { checkBlogHealth } from "@pipeline/collectors/health/blog-health.js";
 
 const logger = createLogger("worker:processing");
 
@@ -114,6 +128,7 @@ export interface CreateProcessingWorkerOptions {
   dailyRunDeps?: DailyRunDeps;
   publishDeps?: PublishDeps;
   socialHealthDeps?: SocialHealthDeps;
+  healthCheckDeps?: HealthCheckDeps;
 }
 
 type PublishDeps = EmailSendDeps & LinkedInPostDeps & TwitterPostDeps;
@@ -132,6 +147,8 @@ export function createProcessingWorker(
     options.dailyRunDeps ?? buildDefaultDailyRunDeps(connection);
   const socialHealthDeps =
     options.socialHealthDeps ?? buildDefaultSocialHealthDeps();
+  const healthCheckDeps =
+    options.healthCheckDeps ?? buildDefaultHealthCheckDeps();
   // NOTE: publishDeps are intentionally rebuilt per job when not injected by
   // a test/caller. Notifiers embed credential values at construction time, and
   // the design (docs/plans/2026-05-19-admin-social-config-design.md §3, §4.4)
@@ -200,6 +217,15 @@ export function createProcessingWorker(
             data: job.data,
           };
           await handleSocialHealthJob(socialHealthDeps, typed);
+          return undefined;
+        }
+        case "health-check": {
+          const typed: HealthCheckJobLike = {
+            name: job.name,
+            id: job.id,
+            data: job.data,
+          };
+          await handleHealthCheckJob(healthCheckDeps, typed);
           return undefined;
         }
         default: {
@@ -477,6 +503,65 @@ export function buildDefaultSocialHealthDeps(): SocialHealthDeps {
       : null,
     slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
     logger: twitterLogger,
+  };
+}
+
+export function buildDefaultHealthCheckDeps(): HealthCheckDeps {
+  const log = createLogger("worker:health-check");
+  const slackNotifier = createSlackNotifier({
+    webhookUrl: process.env.SLACK_WEBHOOK_URL,
+    archives: createRunArchivesRepo(getDb()),
+    resolveTopRankedTitle: () => Promise.resolve(null),
+    logger: log,
+    publicArchiveBaseUrl: process.env.PUBLIC_BASE_URL ?? process.env.NEWSLETTER_BASE_URL,
+  });
+
+  const credentialsRepo = getSharedSocialCredentialsRepo();
+
+  const buildHealthFns = (): HealthCheckFns => ({
+    hn: () => checkHnHealth({}),
+    reddit: () => checkRedditHealth({}),
+    twitter: () => {
+      return checkTwitterHealth({
+        resolveCookie: () => resolveTwitterCollectorCookie({ repo: credentialsRepo, env: process.env }),
+        createClient: (cookie) => {
+          const rettiwt = new Rettiwt({ apiKey: cookie.apiKey });
+          return createRettiwtClient({
+            rettiwt,
+            auth: {
+              refreshCsrfToken: () => refreshRettiwtCsrfToken({
+                rettiwt,
+                repo: credentialsRepo,
+                credentialSource: cookie.source,
+              }),
+            },
+          });
+        },
+      });
+    },
+    webSearch: () => {
+      const provider = process.env.TAVILY_API_KEY
+        ? createWebSearchProvider("tavily", { tavilyApiKey: process.env.TAVILY_API_KEY })
+        : undefined;
+      return checkWebSearchHealth({ getProvider: () => provider });
+    },
+    blog: () => {
+      return checkBlogHealth({
+        getSources: () => [],
+        getModel: () => undefined,
+      });
+    },
+  });
+
+  return {
+    runHealthChecks: async (options) => {
+      const healthFns = buildHealthFns();
+      return runAllHealthChecks(healthFns, options);
+    },
+    notifyHealthCheckFailed: async ({ report }) => {
+      await slackNotifier.notifyHealthCheckFailed({ report });
+    },
+    logger: log,
   };
 }
 

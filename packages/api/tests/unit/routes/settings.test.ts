@@ -310,7 +310,7 @@ describe("PUT /api/settings", () => {
       body: JSON.stringify(validBody),
     });
     expect(res.status).toBe(200);
-    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(5);
+    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(6);
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
   });
 
@@ -344,7 +344,7 @@ describe("PUT /api/settings", () => {
       body: JSON.stringify({ ...validBody, scheduleEnabled: false }),
     });
     expect(res.status).toBe(200);
-    expect(queue.removeJobScheduler).toHaveBeenCalledTimes(5);
+    expect(queue.removeJobScheduler).toHaveBeenCalledTimes(6);
     expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
   });
 
