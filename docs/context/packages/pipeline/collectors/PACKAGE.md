@@ -1,8 +1,8 @@
 ---
 governs: packages/pipeline/src/collectors/
-last_verified_sha: 5a2ff20
-key_files: [hn.ts, reddit.ts, web.ts, web-date.ts]
-flow_fns: [hn.ts::collectHn, reddit.ts::collectReddit, web.ts::collectWeb, web.ts::discoverPostUrls, web.ts::extractPostFields, web-date.ts::resolvePublishedDate]
+last_verified_sha: e3fe6c5
+key_files: [hn.ts, reddit.ts, web.ts, web-date.ts, health/hn-health.ts, health/reddit-health.ts, health/twitter-health.ts, health/web-search-health.ts, health/blog-health.ts, health/index.ts]
+flow_fns: [hn.ts::collectHn, reddit.ts::collectReddit, web.ts::collectWeb, web.ts::discoverPostUrls, web.ts::extractPostFields, web-date.ts::resolvePublishedDate, health/index.ts::runAllHealthChecks]
 decisions: [D-010, D-011, D-012]
 status: active
 ---
@@ -18,6 +18,12 @@ Each collector function fetches from a specific source API, transforms responses
 - `collectWeb(deps, config)` → `WebCollectorResult` — two-pass web collector: Pass 1 listings via Crawlee, Pass 2 details via Crawlee + LLM extraction
 - `collectTwitter(deps, config)` → `CollectorResult` — batch collect from X/Twitter lists + user timelines via Rettiwt
 - `collectWebSearch(deps, config)` → `CollectorResult` — batch collect from web search provider (Tavily)
+- `checkHnHealth(deps?)` → `HealthCheckResult` — health check: fetches 1 Algolia story, validates response shape
+- `checkRedditHealth(deps?)` → `HealthCheckResult` — health check: fetches 1 RSS entry from configured subreddit
+- `checkTwitterHealth(deps, config)` → `HealthCheckResult` — health check: fetches 1 tweet from configured source
+- `checkWebSearchHealth(deps?)` → `HealthCheckResult` — health check: validates Tavily API reachability
+- `checkBlogHealth(deps, config)` → `HealthCheckResult` — health check: validates blog listing URL reachability
+- `runAllHealthChecks(healthFns, options?)` → `HealthCheckReport` — runs all or single health check strategy in parallel
 - `fetchHnPost(url, deps)` → `RawItemInsert` — single-post fetch for add-post flow
 - `fetchRedditPost(url, deps)` → `RawItemInsert` — single-post fetch for add-post flow
 - `fetchWebPost(url, deps)` → `RawItemInsert` — single-post fetch for add-post flow (generic web)

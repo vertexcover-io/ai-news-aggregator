@@ -1,7 +1,7 @@
 ---
 governs: packages/shared/src/types/
 last_verified_sha: 5a2ff20
-key_files: [index.ts, run.ts, settings.ts, observability.ts, eval-ranking.ts, eval-ranking-schemas.ts, cost-breakdown.ts, archive.ts]
+key_files: [index.ts, run.ts, settings.ts, observability.ts, eval-ranking.ts, eval-ranking-schemas.ts, cost-breakdown.ts, archive.ts, health-check.ts]
 flow_fns: [index.ts::parseRetryAfter]
 decisions: [D-101]
 status: active
@@ -19,6 +19,7 @@ Defines every shared interface, type alias, enum, and zod schema consumed by 2+ 
 - Cost: CostStage, CostComponents, ModelStageCost, StageCost, RunCostBreakdown
 - Observability: RunLogLevel, RunLogEvent, RunLogEntry, RunFunnel, RunObservability, ItemLifecycle, RunSourceItem
 - Eval: Fixture, GroundTruth, EvalResult, CalendarRunDetail, ~30 more types + full zod schema mirrors
+- HealthCheck: HealthCheckResult (status/collector/error/durationMs/itemsFound), HealthCheckReport (results/summary counts), HealthCheckJobData (collectorType, triggeredBy), CollectorType union (hn, reddit, twitter, web_search, blog)
 - Other: ArchiveListItem, HomePagePayload, SourcesSummaryResponse, Candidate, etc.
 
 ## Data flows

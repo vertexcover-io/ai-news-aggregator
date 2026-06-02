@@ -1,7 +1,7 @@
 ---
 governs: packages/api/src/routes/
 last_verified_sha: 5a2ff20
-key_files: [subscribe.ts, archives.ts, runs.ts, settings.ts, admin-eval.ts, linkedin-oauth.ts, webhooks.ts, admin.ts, admin-runs.ts, admin-must-read.ts, admin-social-credentials.ts, archives-search.ts, home.ts, must-read.ts, sources.ts, analytics.ts, analytics-config.ts]
+key_files: [subscribe.ts, archives.ts, runs.ts, settings.ts, admin-eval.ts, linkedin-oauth.ts, webhooks.ts, admin.ts, admin-runs.ts, admin-must-read.ts, admin-social-credentials.ts, admin-health-check.ts, archives-search.ts, home.ts, must-read.ts, sources.ts, analytics.ts, analytics-config.ts]
 flow_fns: [subscribe.ts::POST /subscribe, subscribe.ts::GET /confirm, archives.ts::PATCH /:runId, archives.ts::DELETE /:runId, runs.ts::POST /:runId/post/:channel, settings.ts::PUT /, webhooks.ts::POST /ses, linkedin-oauth.ts::POST /start, linkedin-oauth.ts::GET / (callback)]
 decisions: [D-001, D-004, D-007]
 status: active
@@ -20,6 +20,7 @@ Route handlers are thin: validate input with zod → call a service or repo → 
 - `admin-must-read.ts` — CRUD for must-read entries + URL preview
 - `admin-runs.ts` — per-run observability, source items, raw items listing
 - `admin-social-credentials.ts` — CRUD for LinkedIn/Twitter/Twitter-collector credentials
+- `admin-health-check.ts` — `POST /` (all collectors) and `POST /:collectorType` (single collector), admin-gated, enqueues `health-check` BullMQ job
 - `analytics-config.ts` — public PostHog config endpoint
 - `analytics.ts` — admin-gated analytics metrics
 - `archives-search.ts` — public FTS search over archives

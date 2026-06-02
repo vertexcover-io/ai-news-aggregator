@@ -18,6 +18,9 @@ Pure functions for resolving publish dates from user-configured HH:MM times in n
 - resolveScheduledPublishAt(input) → Date | null — computes scheduled publish datetime; returns null on missing/malformed settings
 - selectImmediatePublishChannels(input) → PublishChannel[] — returns past-due channels (now > scheduled moment)
 - jobIdFor(channel, runId) → string — "{channel}:{runId}"
+- HEALTH_CHECK_SCHEDULER_KEY → string — "health-check" constant for BullMQ job scheduler name
+- DAILY_RUN_SCHEDULER_KEY → string — "daily-run" constant for BullMQ job scheduler name
+- SOCIAL_HEALTH_SCHEDULER_KEY → string — "social-health" constant for BullMQ job scheduler name
 
 ## Depends on / used by
 Uses: Intl.DateTimeFormat (pure TypeScript, no dependencies)
