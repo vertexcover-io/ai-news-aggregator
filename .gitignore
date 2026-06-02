@@ -16,6 +16,10 @@ docs/*
 !docs/spec/
 !docs/mocks/
 !docs/mocks/**
+# docs/context: auto-generated context map — ship it, but not the per-run sync report
+!docs/context/
+!docs/context/**
+docs/context/.sync-report.md
 
 docs/spec/**
 !docs/spec/**/
