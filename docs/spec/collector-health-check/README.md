@@ -23,4 +23,4 @@ No new external dependencies introduced. All health checks reuse existing produc
 
 ## PR Link
 
-<!-- placeholder: filled in after PR creation -->
+https://github.com/vertexcover-io/ai-news-aggregator/pull/232
