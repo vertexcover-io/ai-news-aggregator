@@ -35,10 +35,11 @@ export async function runAllHealthChecks(
   const fns = types.map((type) => fnMap[type]());
 
   const settled = await Promise.allSettled(fns);
-  const results: HealthCheckResult[] = settled.map((r) => {
+  const results: HealthCheckResult[] = types.map((type, i) => {
+    const r = settled[i];
     if (r.status === "fulfilled") return r.value;
     return {
-      collector: "hn",
+      collector: type,
       status: "failed",
       durationMs: 0,
       error: "Unexpected health check error",
