@@ -1,7 +1,7 @@
 ---
 governs: packages/web/src/api/
 last_verified_sha: 5a2ff20
-key_files: [client.ts, admin.ts, archives.ts, runs.ts, settings.ts, eval.ts, socialCredentials.ts, sources.ts, subscribe.ts, home.ts, must-read.ts, analytics.ts, analyticsConfig.ts]
+key_files: [client.ts, admin.ts, archives.ts, runs.ts, settings.ts, eval.ts, socialCredentials.ts, sources.ts, subscribe.ts, home.ts, must-read.ts, analytics.ts, analyticsConfig.ts, health-check.ts]
 flow_fns: [client.ts::apiFetchAdmin, eval.ts::runEval]
 decisions: [D-008]
 status: active
@@ -54,6 +54,8 @@ One file per backend API domain. Every function calls the base wrappers `apiFetc
 | `socialCredentials.ts::startLinkedInOAuth()` | POST `/api/admin/social-credentials/linkedin/oauth/start` → `{ authorizeUrl }` |
 | `socialCredentials.ts::fetchLinkedInOAuthStatus()` | GET `/api/admin/social-credentials/linkedin/oauth/status` |
 | `subscribe.ts::postSubscribe(email)` | POST `/api/subscribe` → `{ ok: true }` or `{ error: string }` |
+| `health-check.ts::triggerHealthCheck(collectorType)` | POST `/api/admin/health-check/:collectorType` → `{ jobId, collector }` |
+| `health-check.ts::triggerHealthCheckAll()` | POST `/api/admin/health-check` → `{ jobId, collectors: [...] }` |
 
 ## Depends on / used by
 

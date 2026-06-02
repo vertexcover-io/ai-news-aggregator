@@ -201,4 +201,5 @@ export * from "./cost-breakdown.js";
 export * from "./must-read.js";
 export * from "./home.js";
 export * from "./sources-summary.js";
+export * from "./health-check.js";
 export type { Candidate } from "./candidate.js";

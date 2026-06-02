@@ -27,7 +27,7 @@ Service functions implement multi-step business operations that span repositorie
 - `cancelRun(runId, deps) → RunState` — validates cancellable state, publishes Redis cancel message
 - `hydrateRankedItems(repo, refs, completedAt) → RankedItem[]` — joins ranked refs to raw_items rows, builds enriched output
 - `createRun(payload, redis, queue, options) → CreatedRun` — builds synthetic UserSettings, calls shared `startRun()`
-- `reconcilePipelineSchedule(queue, settings) → void` — upserts/removes BullMQ job schedulers based on settings
+- `reconcilePipelineSchedule(queue, settings) → void` — upserts/removes BullMQ job schedulers for daily-run, social-health, AND health-check based on settings; health-check scheduled at `pipelineTime - 15 minutes`
 - `resolveLinkedInClient(deps) → LinkedInClientCreds | null` — DB-first credential resolution with env fallback
 - `resolveTwitterHandles(handles, deps) → ResolvedHandle[]` — calls rettiwt API to resolve @handle → userId
 

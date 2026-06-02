@@ -2,6 +2,7 @@ import type { Logger } from "pino";
 import type { NotificationKey, NotificationState } from "../types/notifications.js";
 import type { RunSourceTelemetry } from "../types/run.js";
 import type { PublishChannel } from "../scheduling/job-ids.js";
+import type { HealthCheckReport } from "../types/health-check.js";
 import type { PublishUnavailableReason } from "./builders/publish-unavailable.js";
 
 export interface SlackNotifier {
@@ -41,6 +42,7 @@ export interface SlackNotifier {
     readonly via: "unsubscribe-link" | "one-click" | "bounce" | "complaint";
     readonly totalConfirmed: number;
   }): Promise<void>;
+  notifyHealthCheckFailed(input: HealthCheckFailedInput): Promise<void>;
 }
 
 export interface DeliveryFailureReason {
@@ -84,6 +86,10 @@ export interface LinkedinPostedInput {
 export interface TwitterPostedInput {
   runId: string;
   permalink: string;
+}
+
+export interface HealthCheckFailedInput {
+  report: HealthCheckReport;
 }
 
 export interface NotifyNewsletterSentInput {

@@ -5,6 +5,8 @@ import { getDb, createSlackNotifier } from "@newsletter/shared";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RunProcessJobPayload } from "@newsletter/shared";
+import type { HealthCheckReport } from "@newsletter/shared/types";
+import type { LanguageModel } from "ai";
 import {
   handleRunProcessJob,
   type RunProcessDeps,
@@ -39,6 +41,11 @@ import {
   type SocialHealthDeps,
   type SocialHealthJobLike,
 } from "@pipeline/workers/social-health.js";
+import {
+  handleHealthCheckJob,
+  type HealthCheckDeps,
+  type HealthCheckJobLike,
+} from "@pipeline/workers/health-check.js";
 import { createLinkedInApiClient } from "@pipeline/social/linkedin/api-client.js";
 import {
   createTwitterApiClient,
@@ -105,6 +112,15 @@ import { rankCandidates } from "@pipeline/processors/rank.js";
 import { shortlistCandidates } from "@pipeline/processors/shortlist.js";
 import { renderNewsletter } from "@pipeline/lib/email-render.js";
 import { createEmailProvider } from "@pipeline/lib/email-provider.js";
+import {
+  runAllHealthChecks,
+  type HealthCheckFns,
+} from "@pipeline/collectors/health/index.js";
+import { checkHnHealth } from "@pipeline/collectors/health/hn-health.js";
+import { checkRedditHealth } from "@pipeline/collectors/health/reddit-health.js";
+import { checkTwitterHealth } from "@pipeline/collectors/health/twitter-health.js";
+import { checkWebSearchHealth } from "@pipeline/collectors/health/web-search-health.js";
+import { checkBlogHealth } from "@pipeline/collectors/health/blog-health.js";
 
 const logger = createLogger("worker:processing");
 
@@ -114,6 +130,7 @@ export interface CreateProcessingWorkerOptions {
   dailyRunDeps?: DailyRunDeps;
   publishDeps?: PublishDeps;
   socialHealthDeps?: SocialHealthDeps;
+  healthCheckDeps?: HealthCheckDeps;
 }
 
 type PublishDeps = EmailSendDeps & LinkedInPostDeps & TwitterPostDeps;
@@ -132,6 +149,8 @@ export function createProcessingWorker(
     options.dailyRunDeps ?? buildDefaultDailyRunDeps(connection);
   const socialHealthDeps =
     options.socialHealthDeps ?? buildDefaultSocialHealthDeps();
+  const healthCheckDeps =
+    options.healthCheckDeps ?? buildDefaultHealthCheckDeps();
   // NOTE: publishDeps are intentionally rebuilt per job when not injected by
   // a test/caller. Notifiers embed credential values at construction time, and
   // the design (docs/plans/2026-05-19-admin-social-config-design.md §3, §4.4)
@@ -200,6 +219,15 @@ export function createProcessingWorker(
             data: job.data,
           };
           await handleSocialHealthJob(socialHealthDeps, typed);
+          return undefined;
+        }
+        case "health-check": {
+          const typed: HealthCheckJobLike = {
+            name: job.name,
+            id: job.id,
+            data: job.data,
+          };
+          await handleHealthCheckJob(healthCheckDeps, typed);
           return undefined;
         }
         default: {
@@ -477,6 +505,120 @@ export function buildDefaultSocialHealthDeps(): SocialHealthDeps {
       : null,
     slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
     logger: twitterLogger,
+  };
+}
+
+const HEALTH_CHECK_NOTIFIED_KEY = "health-check:last-notified";
+const HEALTH_CHECK_DEBOUNCE_TTL_S = 3600; // 1 hour
+
+/**
+ * Deterministic hash of the failure set for debounce comparison.
+ * Produces a short hex string from sorted (collector, error) tuples.
+ */
+function computeFailureHash(report: HealthCheckReport): string {
+  const failures = report.results
+    .filter((r) => r.status === "failed" && r.error !== undefined)
+    .map((r) => `${r.collector}:${r.error}`)
+    .sort()
+    .join("|");
+  // Simple string hash (djb2) — not cryptographic, just for debounce comparison
+  let hash = 5381;
+  for (let i = 0; i < failures.length; i++) {
+    hash = ((hash << 5) + hash) + failures.charCodeAt(i);
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return String(hash >>> 0); // Ensure unsigned, return as string for Redis
+}
+
+export function buildDefaultHealthCheckDeps(): HealthCheckDeps {
+  const log = createLogger("worker:health-check");
+  const slackNotifier = createSlackNotifier({
+    webhookUrl: process.env.SLACK_WEBHOOK_URL,
+    archives: createRunArchivesRepo(getDb()),
+    resolveTopRankedTitle: () => Promise.resolve(null),
+    logger: log,
+    publicArchiveBaseUrl: process.env.PUBLIC_BASE_URL ?? process.env.NEWSLETTER_BASE_URL,
+  });
+
+  const credentialsRepo = getSharedSocialCredentialsRepo();
+  const userSettingsRepo = createUserSettingsRepo(getDb());
+  const redis = createRedisConnection();
+
+  const buildHealthFns = (): HealthCheckFns => ({
+    hn: () => checkHnHealth({}),
+    reddit: () => checkRedditHealth({}),
+    twitter: () => {
+      return checkTwitterHealth({
+        resolveCookie: () => resolveTwitterCollectorCookie({ repo: credentialsRepo, env: process.env }),
+        createClient: (cookie) => {
+          const rettiwt = new Rettiwt({ apiKey: cookie.apiKey });
+          return createRettiwtClient({
+            rettiwt,
+            auth: {
+              refreshCsrfToken: () => refreshRettiwtCsrfToken({
+                rettiwt,
+                repo: credentialsRepo,
+                credentialSource: cookie.source,
+              }),
+            },
+          });
+        },
+      });
+    },
+    webSearch: () => {
+      const provider = process.env.TAVILY_API_KEY
+        ? createWebSearchProvider("tavily", { tavilyApiKey: process.env.TAVILY_API_KEY })
+        : undefined;
+      return checkWebSearchHealth({ getProvider: () => provider });
+    },
+    blog: async () => {
+      const settings = await userSettingsRepo.get();
+      const webConfig = settings?.webConfig ?? null;
+      const sources = webConfig?.sources ?? [];
+      let model: LanguageModel | undefined;
+      const apiKey = process.env.DEEPSEEK_API_KEY;
+      if (apiKey && apiKey !== "") {
+        try {
+          const { createDeepSeek } = await import("@ai-sdk/deepseek");
+          model = createDeepSeek({ apiKey })("deepseek-chat");
+        } catch {
+          // Failed to load DeepSeek SDK — skip blog check gracefully
+        }
+      }
+      return checkBlogHealth({
+        getSources: () => sources.map((s) => ({ name: s.name, listingUrl: s.listingUrl })),
+        getModel: () => model,
+      });
+    },
+  });
+
+  return {
+    runHealthChecks: async (options) => {
+      const healthFns = buildHealthFns();
+      return runAllHealthChecks(healthFns, options);
+    },
+    notifyHealthCheckFailed: async ({ report }) => {
+      await slackNotifier.notifyHealthCheckFailed({ report });
+    },
+    checkDebounce: async (report) => {
+      try {
+        const hash = computeFailureHash(report);
+        const existing = await redis.get(HEALTH_CHECK_NOTIFIED_KEY);
+        return existing === hash;
+      } catch {
+        // fail-open: send notification if Redis is unreachable
+        return false;
+      }
+    },
+    markDebounce: async (report) => {
+      try {
+        const hash = computeFailureHash(report);
+        await redis.set(HEALTH_CHECK_NOTIFIED_KEY, hash, "EX", HEALTH_CHECK_DEBOUNCE_TTL_S);
+      } catch {
+        // best-effort: debounce state lost on Redis failure; next check will notify
+      }
+    },
+    logger: log,
   };
 }
 
