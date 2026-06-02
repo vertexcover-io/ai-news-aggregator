@@ -5,12 +5,14 @@ import type { ReactNode } from "react";
 import { HealthCheckButton } from "../../../../src/components/settings/HealthCheckButton";
 
 vi.mock("../../../../src/hooks/useHealthCheck", () => ({
-  useHealthCheck: vi.fn(),
+  useHealthCheckStatus: vi.fn(),
+  useTriggerHealthCheck: vi.fn(),
 }));
 
-import { useHealthCheck } from "../../../../src/hooks/useHealthCheck";
+import { useHealthCheckStatus, useTriggerHealthCheck } from "../../../../src/hooks/useHealthCheck";
 
-const mockUseHealthCheck = useHealthCheck as ReturnType<typeof vi.fn>;
+const mockUseHealthCheckStatus = useHealthCheckStatus as ReturnType<typeof vi.fn>;
+const mockUseTriggerHealthCheck = useTriggerHealthCheck as ReturnType<typeof vi.fn>;
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -31,33 +33,44 @@ function TestWrapper({ children }: { children: ReactNode }) {
   );
 }
 
-describe("HealthCheckButton", () => {
-  function mockState(overrides: Record<string, unknown> = {}) {
-    const mutate = vi.fn();
-    mockUseHealthCheck.mockReturnValue({
-      isPending: false,
-      isSuccess: false,
-      isError: false,
-      data: undefined,
-      error: null,
-      mutate,
-      ...overrides,
-    });
-    return mutate;
-  }
+function mockStatus(report: unknown = null) {
+  mockUseHealthCheckStatus.mockReturnValue({
+    report,
+    isLoading: false,
+    error: null,
+  });
+}
 
-  it("renders 'Check Health' label by default", () => {
-    mockState();
+function mockTrigger(overrides: Record<string, unknown> = {}) {
+  const mutate = vi.fn();
+  mockUseTriggerHealthCheck.mockReturnValue({
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    data: undefined,
+    error: null,
+    mutate,
+    ...overrides,
+  });
+  return mutate;
+}
+
+describe("HealthCheckButton", () => {
+  it("renders 'Check Health' label and 'Not checked yet' when no report", () => {
+    mockStatus(null);
+    mockTrigger();
     render(
       <TestWrapper>
         <HealthCheckButton collector="hn" label="Hacker News" />
       </TestWrapper>,
     );
     expect(screen.getByText("Check Health")).toBeTruthy();
+    expect(screen.getByText("Not checked yet")).toBeTruthy();
   });
 
   it("has type='button' to avoid form submission", () => {
-    mockState();
+    mockStatus(null);
+    mockTrigger();
     render(
       <TestWrapper>
         <HealthCheckButton collector="hn" label="Hacker News" />
@@ -67,8 +80,9 @@ describe("HealthCheckButton", () => {
     expect(btn.getAttribute("type")).toBe("button");
   });
 
-  it("shows disabled button when pending", () => {
-    mockState({ isPending: true });
+  it("disables button and shows Checking... when trigger is pending", () => {
+    mockStatus(null);
+    mockTrigger({ isPending: true });
     render(
       <TestWrapper>
         <HealthCheckButton collector="hn" label="Hacker News" />
@@ -76,10 +90,12 @@ describe("HealthCheckButton", () => {
     );
     const btn = screen.getByRole("button");
     expect(btn.getAttribute("disabled")).not.toBeNull();
+    expect(screen.getByText("Checking...")).toBeTruthy();
   });
 
   it("calls mutate on click", () => {
-    const mutate = mockState();
+    mockStatus(null);
+    const mutate = mockTrigger();
     render(
       <TestWrapper>
         <HealthCheckButton collector="hn" label="Hacker News" />
@@ -89,23 +105,57 @@ describe("HealthCheckButton", () => {
     expect(mutate).toHaveBeenCalledOnce();
   });
 
-  it("shows 'Healthy' text on success", () => {
-    mockState({ isSuccess: true, data: { jobId: "job-1" } });
+  it("shows 'Healthy' when report has healthy result for this collector", () => {
+    mockStatus({
+      results: [{ collector: "hn", status: "healthy", durationMs: 100, itemsFound: 1 }],
+      storedAt: "2026-06-02T12:00:00Z",
+      totalDurationMs: 500,
+      failedCount: 0,
+      healthyCount: 1,
+      skippedCount: 0,
+    });
+    mockTrigger();
     render(
       <TestWrapper>
         <HealthCheckButton collector="hn" label="Hacker News" />
       </TestWrapper>,
     );
-    expect(screen.getByText("Healthy")).toBeTruthy();
+    expect(screen.getByText(/Healthy/)).toBeTruthy();
   });
 
-  it("shows error text on failure", () => {
-    mockState({ isError: true, error: new Error("Connection failed") });
+  it("shows 'Failed' with error when report has failed result", () => {
+    mockStatus({
+      results: [{ collector: "hn", status: "failed", durationMs: 100, error: "API unreachable" }],
+      storedAt: "2026-06-02T12:00:00Z",
+      totalDurationMs: 500,
+      failedCount: 1,
+      healthyCount: 0,
+      skippedCount: 0,
+    });
+    mockTrigger();
     render(
       <TestWrapper>
         <HealthCheckButton collector="hn" label="Hacker News" />
       </TestWrapper>,
     );
-    expect(screen.getByText("Connection failed")).toBeTruthy();
+    expect(screen.getByText(/Failed: API unreachable/)).toBeTruthy();
+  });
+
+  it("shows 'Skipped' when report has skipped result", () => {
+    mockStatus({
+      results: [{ collector: "hn", status: "skipped", durationMs: 0, reason: "no config" }],
+      totalDurationMs: 0,
+      failedCount: 0,
+      healthyCount: 0,
+      skippedCount: 1,
+    });
+    mockTrigger();
+    render(
+      <TestWrapper>
+        <HealthCheckButton collector="hn" label="Hacker News" />
+      </TestWrapper>,
+    );
+    expect(screen.getByText(/Skipped/)).toBeTruthy();
+    expect(screen.getByText(/no config/)).toBeTruthy();
   });
 });
