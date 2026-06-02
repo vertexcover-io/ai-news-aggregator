@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { Queue } from "bullmq";
-import type { CollectorType, HealthCheckJobData } from "@newsletter/shared/types";
+import type IORedis from "ioredis";
+import type { CollectorType, HealthCheckJobData, HealthCheckReport } from "@newsletter/shared/types";
 
 export const ALL_COLLECTORS: CollectorType[] = [
   "hn",
@@ -11,13 +12,32 @@ export const ALL_COLLECTORS: CollectorType[] = [
 ];
 
 const COLLECTOR_TYPE_SET = new Set<string>(ALL_COLLECTORS);
+const HEALTH_CHECK_LATEST_KEY = "health-check:latest";
 
 export interface HealthCheckRouterDeps {
   processingQueue: Queue;
+  redis?: IORedis;
 }
 
 export function createHealthCheckRouter(deps: HealthCheckRouterDeps): Hono {
   const router = new Hono();
+
+  // GET /status — fetch latest health check results
+  router.get("/status", async (c) => {
+    if (!deps.redis) {
+      return c.json(null, 200);
+    }
+    try {
+      const raw = await deps.redis.get(HEALTH_CHECK_LATEST_KEY);
+      if (!raw) {
+        return c.json(null, 200);
+      }
+      const report = JSON.parse(raw) as HealthCheckReport & { storedAt?: string };
+      return c.json(report, 200);
+    } catch {
+      return c.json(null, 200);
+    }
+  });
 
   // POST / — trigger health check for all collectors
   router.post("/", async (c) => {

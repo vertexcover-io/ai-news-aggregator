@@ -5,8 +5,6 @@ import { getDb, createSlackNotifier } from "@newsletter/shared";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RunProcessJobPayload } from "@newsletter/shared";
-import type { HealthCheckReport } from "@newsletter/shared/types";
-import type { LanguageModel } from "ai";
 import {
   handleRunProcessJob,
   type RunProcessDeps,
@@ -508,28 +506,6 @@ export function buildDefaultSocialHealthDeps(): SocialHealthDeps {
   };
 }
 
-const HEALTH_CHECK_NOTIFIED_KEY = "health-check:last-notified";
-const HEALTH_CHECK_DEBOUNCE_TTL_S = 3600; // 1 hour
-
-/**
- * Deterministic hash of the failure set for debounce comparison.
- * Produces a short hex string from sorted (collector, error) tuples.
- */
-function computeFailureHash(report: HealthCheckReport): string {
-  const failures = report.results
-    .filter((r) => r.status === "failed" && r.error !== undefined)
-    .map((r) => `${r.collector}:${r.error}`)
-    .sort()
-    .join("|");
-  // Simple string hash (djb2) — not cryptographic, just for debounce comparison
-  let hash = 5381;
-  for (let i = 0; i < failures.length; i++) {
-    hash = ((hash << 5) + hash) + failures.charCodeAt(i);
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return String(hash >>> 0); // Ensure unsigned, return as string for Redis
-}
-
 export function buildDefaultHealthCheckDeps(): HealthCheckDeps {
   const log = createLogger("worker:health-check");
   const slackNotifier = createSlackNotifier({
@@ -541,8 +517,6 @@ export function buildDefaultHealthCheckDeps(): HealthCheckDeps {
   });
 
   const credentialsRepo = getSharedSocialCredentialsRepo();
-  const userSettingsRepo = createUserSettingsRepo(getDb());
-  const redis = createRedisConnection();
 
   const buildHealthFns = (): HealthCheckFns => ({
     hn: () => checkHnHealth({}),
@@ -571,23 +545,10 @@ export function buildDefaultHealthCheckDeps(): HealthCheckDeps {
         : undefined;
       return checkWebSearchHealth({ getProvider: () => provider });
     },
-    blog: async () => {
-      const settings = await userSettingsRepo.get();
-      const webConfig = settings?.webConfig ?? null;
-      const sources = webConfig?.sources ?? [];
-      let model: LanguageModel | undefined;
-      const apiKey = process.env.DEEPSEEK_API_KEY;
-      if (apiKey && apiKey !== "") {
-        try {
-          const { createDeepSeek } = await import("@ai-sdk/deepseek");
-          model = createDeepSeek({ apiKey })("deepseek-chat");
-        } catch {
-          // Failed to load DeepSeek SDK — skip blog check gracefully
-        }
-      }
+    blog: () => {
       return checkBlogHealth({
-        getSources: () => sources.map((s) => ({ name: s.name, listingUrl: s.listingUrl })),
-        getModel: () => model,
+        getSources: () => [],
+        getModel: () => undefined,
       });
     },
   });
@@ -599,24 +560,6 @@ export function buildDefaultHealthCheckDeps(): HealthCheckDeps {
     },
     notifyHealthCheckFailed: async ({ report }) => {
       await slackNotifier.notifyHealthCheckFailed({ report });
-    },
-    checkDebounce: async (report) => {
-      try {
-        const hash = computeFailureHash(report);
-        const existing = await redis.get(HEALTH_CHECK_NOTIFIED_KEY);
-        return existing === hash;
-      } catch {
-        // fail-open: send notification if Redis is unreachable
-        return false;
-      }
-    },
-    markDebounce: async (report) => {
-      try {
-        const hash = computeFailureHash(report);
-        await redis.set(HEALTH_CHECK_NOTIFIED_KEY, hash, "EX", HEALTH_CHECK_DEBOUNCE_TTL_S);
-      } catch {
-        // best-effort: debounce state lost on Redis failure; next check will notify
-      }
     },
     logger: log,
   };
