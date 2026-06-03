@@ -83,4 +83,35 @@ describe("publishDateForWindow", () => {
 
     expect(localParts("America/New_York", actual)).toBe("2026-05-19, 09:00");
   });
+
+  // Regression: a near-midnight pipelineTime whose run crosses midnight before
+  // finishing must still publish on the run's morning, not a day later.
+  // Prod incident: pipeline 23:59 IST started 2026-06-02, completed 2026-06-03
+  // 00:10 IST; published_at was wrongly computed as 2026-06-04 09:00 IST.
+  it("publishes the next morning, not two days out, when a 23:59 run crosses midnight", () => {
+    const actual = publishDateForWindow({
+      timezone: "Asia/Kolkata",
+      pipelineTime: "23:59",
+      publishTime: "09:00",
+      // 2026-06-02T18:40:35Z = 2026-06-03 00:10 IST (already past midnight)
+      completedAt: new Date("2026-06-02T18:40:35.071Z"),
+    });
+
+    // 2026-06-03 09:00 IST = 2026-06-03T03:30:00Z (NOT 2026-06-04)
+    expect(actual.toISOString()).toBe("2026-06-03T03:30:00.000Z");
+  });
+
+  // A run that finishes after the publish time-of-day rolls to the next
+  // occurrence (cannot publish in the past).
+  it("rolls to the next day when completion is past the publish time-of-day", () => {
+    const actual = publishDateForWindow({
+      timezone: "UTC",
+      pipelineTime: "07:00",
+      publishTime: "09:00",
+      // completed at 09:05, just past the 09:00 publish slot
+      completedAt: new Date("2026-05-18T09:05:00.000Z"),
+    });
+
+    expect(actual.toISOString()).toBe("2026-05-19T09:00:00.000Z");
+  });
 });

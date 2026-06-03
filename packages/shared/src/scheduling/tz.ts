@@ -109,13 +109,22 @@ export function publishDateForWindow(input: PublishWindowInput): Date {
   const target = parseHHMM(input.publishTime);
   const formatter = formatterFor(input.timezone);
   const completedParts = partsInTimezone(formatter, input.completedAt);
-  const targetParts: DateParts = {
+  const sameDayParts: DateParts = {
     ...completedParts,
     hour: target.hour,
     minute: target.minute,
   };
-  const scheduledParts =
-    publishMinutes < pipelineMinutes ? addLocalDays(targetParts, 1) : targetParts;
 
-  return dateFromTzParts(input.timezone, scheduledParts);
+  // Publish at the first occurrence of publishTime at or after the run actually
+  // completed. Anchoring on the completion instant — rather than deriving the
+  // day from publishTime-vs-pipelineTime — keeps the result correct when a
+  // late-night pipeline run (e.g. pipelineTime 23:59) crosses midnight before
+  // finishing: completedParts has already rolled to the next calendar day, so
+  // the old `publishMinutes < pipelineMinutes ? +1 day` heuristic double-counted
+  // the rollover and scheduled the digest a full day late.
+  const sameDay = dateFromTzParts(input.timezone, sameDayParts);
+  if (sameDay.getTime() >= input.completedAt.getTime()) {
+    return sameDay;
+  }
+  return dateFromTzParts(input.timezone, addLocalDays(sameDayParts, 1));
 }
