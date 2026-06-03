@@ -24,6 +24,7 @@ import { createDefaultPublicHomeRouter } from "@api/routes/home.js";
 import { createDefaultPublicMustReadRouter } from "@api/routes/must-read.js";
 import { createDefaultPublicSourcesRouter } from "@api/routes/sources.js";
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
+import { createDefaultCollectorHealthRouter } from "@api/routes/collector-health.js";
 import { createDefaultAdminSocialCredentialsRouter } from "@api/routes/admin-social-credentials.js";
 import {
   createLinkedInOAuthRouter,
@@ -49,7 +50,11 @@ import { createSesEventsRepo } from "@api/repositories/ses-events.js";
 import { createEmailSendsRepo } from "@api/repositories/email-sends.js";
 import { verifySnsMessage } from "@api/lib/sns-verifier.js";
 import { resolveBaseUrls } from "@api/lib/base-urls.js";
-import { reconcilePipelineSchedule, removeLegacySchedulers } from "@api/services/scheduler.js";
+import {
+  reconcileCollectorHealthSchedule,
+  reconcilePipelineSchedule,
+  removeLegacySchedulers,
+} from "@api/services/scheduler.js";
 import { configurePostHog, shutdownAnalytics } from "@api/lib/posthog.js";
 
 const logger = createLogger("api");
@@ -84,7 +89,9 @@ const { baseUrl: apiBaseUrl, webBaseUrl: newsletterBaseUrl } = resolveBaseUrls(p
 
 const { Queue: BullQueue } = await import("bullmq");
 const { createRedisConnection } = await import("@newsletter/shared/redis");
+const { COLLECTOR_HEALTH_QUEUE_NAME } = await import("@newsletter/shared");
 const processingQueue = new BullQueue("processing", { connection: createRedisConnection() });
+const collectorHealthQueue = new BullQueue(COLLECTOR_HEALTH_QUEUE_NAME, { connection: createRedisConnection() });
 // Shared Redis connection for OAuth state storage (SET/GET/DEL — not a BullMQ queue).
 const oauthRedis = createRedisConnection();
 
@@ -93,6 +100,7 @@ await removeLegacySchedulers(processingQueue);
 const settingsForBootstrap = await settingsRepoForBootstrap.get();
 if (settingsForBootstrap !== null) {
   await reconcilePipelineSchedule(processingQueue, settingsForBootstrap);
+  await reconcileCollectorHealthSchedule(collectorHealthQueue, settingsForBootstrap);
 }
 
 const runArchivesRepoForSubscribe = createRunArchivesRepo(getDb());
@@ -168,6 +176,7 @@ const app = buildApp({
   adminMustReadRouter: createDefaultAdminMustReadRouter(),
   runsRouter: createDefaultRunsRouter(),
   settingsRouter: createDefaultSettingsRouter(),
+  collectorHealthRouter: createDefaultCollectorHealthRouter(),
   adminRouter: createAdminRouter({
     adminPassword,
     sessionSecret,

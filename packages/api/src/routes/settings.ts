@@ -10,6 +10,7 @@ import type {
   RunSubmitTwitterUser,
 } from "@newsletter/shared";
 import { Queue as BullQueue } from "bullmq";
+import { COLLECTOR_HEALTH_QUEUE_NAME } from "@newsletter/shared";
 import {
   userSettingsUpsertSchema,
   type UserSettingsUpsertBody,
@@ -19,7 +20,10 @@ import {
   type UserSettingsRepo,
   type UserSettingsUpsertInput,
 } from "@api/repositories/user-settings.js";
-import { reconcilePipelineSchedule } from "@api/services/scheduler.js";
+import {
+  reconcilePipelineSchedule,
+  reconcileCollectorHealthSchedule,
+} from "@api/services/scheduler.js";
 import {
   defaultRettiwtFactory,
   resolveTwitterHandles,
@@ -33,6 +37,7 @@ type RettiwtFactory = TwitterHandleResolverDeps["rettiwtFactory"];
 export interface SettingsRouterDeps {
   getSettingsRepo: () => UserSettingsRepo;
   processingQueue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">;
+  collectorHealthQueue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">;
   resolveHandles?: (
     handles: string[],
     deps: TwitterHandleResolverDeps,
@@ -205,6 +210,7 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
     const saved = await deps.getSettingsRepo().upsert(upsertInput);
     refreshPostHogConfig(saved);
     await reconcilePipelineSchedule(deps.processingQueue, saved);
+    await reconcileCollectorHealthSchedule(deps.collectorHealthQueue, saved);
     logger.info(
       {
         event: "settings.saved",
@@ -238,9 +244,18 @@ function getDefaultProcessingQueue(): Queue {
   return defaultProcessingQueue;
 }
 
+let defaultCollectorHealthQueue: Queue | null = null;
+function getDefaultCollectorHealthQueue(): Queue {
+  defaultCollectorHealthQueue ??= new BullQueue(COLLECTOR_HEALTH_QUEUE_NAME, {
+    connection: createRedisConnection(),
+  });
+  return defaultCollectorHealthQueue;
+}
+
 export function createDefaultSettingsRouter(): Hono {
   return createSettingsRouter({
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
     processingQueue: getDefaultProcessingQueue(),
+    collectorHealthQueue: getDefaultCollectorHealthQueue(),
   });
 }

@@ -32,11 +32,16 @@ beforeEach(async () => {
 
 function buildApp(queue: ReturnType<typeof makeQueue>) {
   const app = new Hono();
+  // Separate mock for the dedicated collector-health queue (D-110) so the
+  // processing-queue scheduler-call assertions below are not affected by the
+  // collector-health reconcile.
+  const collectorHealthQueue = makeQueue();
   app.route(
     "/api/settings",
     createSettingsRouter({
       getSettingsRepo: () => createUserSettingsRepo(db),
       processingQueue: queue as never,
+      collectorHealthQueue: collectorHealthQueue as never,
     }),
   );
   return app;

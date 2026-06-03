@@ -38,6 +38,8 @@ export interface BuildAppDeps {
    * Mounted BEFORE adminApp so the gate does not intercept this path.
    */
   linkedInOAuthCallbackRouter: Hono;
+  /** Admin-gated collector health check trigger + snapshot routes. */
+  collectorHealthRouter: Hono;
 }
 
 const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
@@ -120,6 +122,7 @@ export function buildApp(deps: BuildAppDeps): Hono {
   );
   adminApp.route("/must-read", deps.adminMustReadRouter);
   adminApp.route("/analytics", deps.analyticsRouter);
+  adminApp.route("/collector-health", deps.collectorHealthRouter);
   app.route("/api/admin", adminApp);
 
   app.route("/api/runs", gatedWrap(gate, deps.runsRouter));

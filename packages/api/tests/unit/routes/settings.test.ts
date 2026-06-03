@@ -75,6 +75,7 @@ function buildApp(
     createSettingsRouter({
       getSettingsRepo: () => repo,
       processingQueue: queue as never,
+      collectorHealthQueue: queue as never,
       resolveHandles: resolveHandles
         ? (handles) => resolveHandles(handles)
         : undefined,
@@ -310,7 +311,8 @@ describe("PUT /api/settings", () => {
       body: JSON.stringify(validBody),
     });
     expect(res.status).toBe(200);
-    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(5);
+    // 5 from reconcilePipelineSchedule + 1 from reconcileCollectorHealthSchedule
+    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(6);
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
   });
 
@@ -344,7 +346,8 @@ describe("PUT /api/settings", () => {
       body: JSON.stringify({ ...validBody, scheduleEnabled: false }),
     });
     expect(res.status).toBe(200);
-    expect(queue.removeJobScheduler).toHaveBeenCalledTimes(5);
+    // 5 from reconcilePipelineSchedule + 1 from reconcileCollectorHealthSchedule
+    expect(queue.removeJobScheduler).toHaveBeenCalledTimes(6);
     expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
   });
 
