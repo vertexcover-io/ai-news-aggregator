@@ -1,7 +1,7 @@
 ---
 governs: packages/web/src/hooks/
 last_verified_sha: 5a2ff20
-key_files: [useReview.ts, usePool.ts, useReviewFilters.ts, useRunList.ts, useRunPolling.ts, useRunObservability.ts, useEvalRuns.ts, useGradingProgress.ts, useSettings.ts, useArchive.ts, useHealthCheck.ts]
+key_files: [useReview.ts, usePool.ts, useReviewFilters.ts, useRunList.ts, useRunPolling.ts, useRunObservability.ts, useEvalRuns.ts, useGradingProgress.ts, useSettings.ts, useArchive.ts]
 flow_fns: [useReview.ts::useReview, usePool.ts::usePool, useRunList.ts::useRunList, useEvalRuns.ts::useEvalRuns]
 decisions: [D-009, D-010]
 status: active
@@ -27,7 +27,6 @@ Custom hooks that connect the typed API client to components via `@tanstack/reac
 | `useRunObservability(runId)` | Polls `GET /api/admin/runs/:runId/observability` every 2s until terminal; 404 → null |
 | `useSettings()` | `useQuery(["settings"], getSettings)` — no poll, refetchOnWindowFocus: false |
 | `useSourceFacets(runId)` | `useQuery(["source-facets", runId], getSourceFacets)` |
-| `useHealthCheck(collector)` | `useMutation` — POSTs health check for a collector; returns `{ jobId, collector }` on success; used by `HealthCheckButton` |
 | `useRunSources({ runId, enabled })` | `useQuery(["run-sources", runId], getRunSources)` — stale for 30s |
 | `useRunSourceItems(runId, sourceKey, expanded)` | Lazy query enabled only when `expanded=true` |
 | `useDeleteArchive()` | Mutation that calls `deleteArchive` then invalidates `["runs"]` |

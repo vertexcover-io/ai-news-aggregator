@@ -8,7 +8,6 @@ import { ArrowLeft, Newspaper } from "lucide-react";
 import { useSettings } from "../hooks/useSettings";
 import { putSettings, SettingsApiError } from "../api/settings";
 import { triggerRunNow } from "../api/runs";
-import { triggerHealthCheckAll } from "../api/health-check";
 import {
   settingsFormSchema,
   normalizeSettingsForSubmit,
@@ -183,17 +182,6 @@ export function SettingsPage(): ReactElement {
     }
   }
 
-  async function handleCheckAll(): Promise<void> {
-    try {
-      const result = await triggerHealthCheckAll();
-      toast.success(`Health check enqueued: ${result.jobId}`);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to trigger health check";
-      toast.error(message);
-    }
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="flex items-center justify-between border-b bg-white px-4 sm:px-6 md:px-8 py-4">
@@ -265,9 +253,6 @@ export function SettingsPage(): ReactElement {
           runNowDisabled={saveMutation.isPending}
           onRunNow={() => {
             void handleRunNow();
-          }}
-          onCheckAll={() => {
-            void handleCheckAll();
           }}
           lastSavedLabel={
             settingsQuery.data ? "All changes saved" : undefined

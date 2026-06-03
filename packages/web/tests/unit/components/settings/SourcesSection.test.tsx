@@ -1,20 +1,7 @@
-import { describe, expect, it, afterEach, vi } from "vitest";
+import { describe, expect, it, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import type { ReactElement } from "react";
-
-// Mock health check hooks so HealthCheckButton renders without QueryClientProvider
-vi.mock("../../../../src/hooks/useHealthCheck", () => ({
-  useHealthCheckStatus: () => ({ report: null, isLoading: false, error: null }),
-  useTriggerHealthCheck: () => ({
-    isPending: false,
-    isSuccess: false,
-    isError: false,
-    data: undefined,
-    error: null,
-    mutate: vi.fn(),
-  }),
-}));
 import { SourcesSection, summarizeWebSearch } from "../../../../src/components/settings/SourcesSection";
 import {
   normalizeSettingsForSubmit,
@@ -230,86 +217,6 @@ describe("WebEditPanel — per-source Name+URL row inputs", () => {
     openWebEditPanel();
 
     expect(screen.getByDisplayValue("Anthropic")).toBeTruthy();
-  });
-});
-
-describe("Health check buttons in source edit panels", () => {
-  function openHnPanel(): void {
-    fireEvent.click(
-      screen.getByRole("button", { name: /hacker news edit/i }),
-    );
-  }
-
-  function openRedditPanel(): void {
-    fireEvent.click(
-      screen.getByRole("button", { name: /reddit edit/i }),
-    );
-  }
-
-  function openWebPanel(): void {
-    fireEvent.click(
-      screen.getByRole("button", { name: /web \(blog listings\) edit/i }),
-    );
-  }
-
-  function openTwitterPanel(): void {
-    fireEvent.click(
-      screen.getByRole("button", { name: /twitter \/ x edit/i }),
-    );
-  }
-
-  function openWebSearchPanel(): void {
-    fireEvent.click(
-      screen.getByRole("button", { name: /web search edit/i }),
-    );
-  }
-
-  it("shows 'Check Health' button in HN expanded panel", () => {
-    render(<TestWrapper />);
-    openHnPanel();
-    expect(screen.getByText("Check Health")).toBeTruthy();
-  });
-
-  it("shows 'Check Health' button in Reddit expanded panel", () => {
-    render(<TestWrapper />);
-    openRedditPanel();
-    expect(screen.getByText("Check Health")).toBeTruthy();
-  });
-
-  it("shows 'Check Health' button in Web expanded panel", () => {
-    render(<TestWrapper />);
-    openWebPanel();
-    expect(screen.getByText("Check Health")).toBeTruthy();
-  });
-
-  it("shows 'Check Health' button in Twitter expanded panel", () => {
-    render(<TestWrapper />);
-    openTwitterPanel();
-    expect(screen.getByText("Check Health")).toBeTruthy();
-  });
-
-  it("shows 'Check Health' button in Web Search expanded panel", () => {
-    render(<TestWrapper />);
-    openWebSearchPanel();
-    expect(screen.getByText("Check Health")).toBeTruthy();
-  });
-
-  it("health check buttons have type='button'", () => {
-    render(<TestWrapper />);
-    openHnPanel();
-    const buttons = screen.getAllByText("Check Health");
-    for (const btn of buttons) {
-      const parentBtn = btn.closest("button");
-      expect(parentBtn?.getAttribute("type")).toBe("button");
-    }
-  });
-
-  it("health check buttons are inside the edit panel (border-t div)", () => {
-    render(<TestWrapper />);
-    openHnPanel();
-    // The button should be inside the edit panel area
-    const checkBtn = screen.getByText("Check Health");
-    expect(checkBtn).toBeTruthy();
   });
 });
 

@@ -31,7 +31,6 @@ import type {
   RunSubmitWebConfig,
 } from "@newsletter/shared";
 import type { RunSubmitWebSearchConfig } from "@newsletter/shared/types";
-import { HealthCheckButton } from "./HealthCheckButton";
 
 const DEFAULT_HN: RunSubmitHnConfig = {
   keywords: ["ai", "llm", "agents"],
@@ -179,7 +178,6 @@ export function SourcesSection({
           editPanel={
             <HnEditPanel control={control} />
           }
-          healthCheckButton={<HealthCheckButton collector="hn" label="Hacker News" />}
         >
           <Controller
             control={control}
@@ -218,7 +216,6 @@ export function SourcesSection({
           editPanel={
             <RedditEditPanel control={control} />
           }
-          healthCheckButton={<HealthCheckButton collector="reddit" label="Reddit" />}
         >
           <Controller
             control={control}
@@ -257,7 +254,6 @@ export function SourcesSection({
           editPanel={
             <WebEditPanel control={control} />
           }
-          healthCheckButton={<HealthCheckButton collector="blog" label="Web (blog listings)" />}
         >
           <Controller
             control={control}
@@ -296,7 +292,6 @@ export function SourcesSection({
           editPanel={
             <TwitterEditPanel control={control} register={register} />
           }
-          healthCheckButton={<HealthCheckButton collector="twitter" label="Twitter / X" />}
         >
           <Controller
             control={control}
@@ -337,7 +332,6 @@ export function SourcesSection({
           editPanel={
             <WebSearchEditPanel control={control} />
           }
-          healthCheckButton={<HealthCheckButton collector="web_search" label="Web Search" />}
         >
           <Controller
             control={control}
@@ -374,7 +368,6 @@ interface SourceRowProps {
   editPanel: ReactElement;
   children: ReactElement;
   testId?: string;
-  healthCheckButton?: ReactElement;
 }
 
 function SourceRow({
@@ -387,7 +380,6 @@ function SourceRow({
   editPanel,
   children,
   testId,
-  healthCheckButton,
 }: SourceRowProps): ReactElement {
   return (
     <div className="rounded-md border bg-white" data-testid={testId}>
@@ -416,12 +408,7 @@ function SourceRow({
         </Button>
       </div>
       {expanded && editable && (
-        <div className="border-t px-4 pb-4 pt-3">
-          {healthCheckButton && (
-            <div className="mb-3 flex justify-end">{healthCheckButton}</div>
-          )}
-          {editPanel}
-        </div>
+        <div className="border-t px-4 pb-4 pt-3">{editPanel}</div>
       )}
     </div>
   );

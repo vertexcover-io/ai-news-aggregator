@@ -7,7 +7,6 @@ export type NotificationKey =
   | "sourceDistribution"
   | "emailDelivery"
   | "linkedinPosted"
-  | "twitterPosted"
-  | "healthCheckFailed";
+  | "twitterPosted";
 
 export type NotificationState = Partial<Record<NotificationKey, string>>;

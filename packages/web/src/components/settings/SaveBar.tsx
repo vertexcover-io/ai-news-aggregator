@@ -10,8 +10,6 @@ interface SaveBarProps {
   // When the SaveBar lives outside the <form> element, set this to the
   // form's `id` so the submit button still triggers the form's onSubmit.
   formId?: string;
-  onCheckAll?: () => void;
-  checkAllDisabled?: boolean;
 }
 
 export function SaveBar({
@@ -20,8 +18,6 @@ export function SaveBar({
   onRunNow,
   lastSavedLabel,
   formId,
-  onCheckAll,
-  checkAllDisabled,
 }: SaveBarProps): ReactElement {
   return (
     <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-4 border-t bg-white px-4 py-4 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8">
@@ -44,17 +40,6 @@ export function SaveBar({
           <Play />
           Run now
         </Button>
-        {onCheckAll !== undefined && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCheckAll}
-            disabled={saving || checkAllDisabled === true}
-            className="min-h-[44px] px-4"
-          >
-            Check All
-          </Button>
-        )}
         <Button
           type="submit"
           form={formId}

@@ -4,18 +4,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { ReactElement } from "react";
 import { SourcesSection } from "../../../../src/components/settings/SourcesSection";
-
-vi.mock("../../../../src/hooks/useHealthCheck", () => ({
-  useHealthCheckStatus: () => ({ report: null, isLoading: false, error: null }),
-  useTriggerHealthCheck: () => ({
-    isPending: false,
-    isSuccess: false,
-    isError: false,
-    data: undefined,
-    error: null,
-    mutate: vi.fn(),
-  }),
-}));
 import {
   settingsFormSchema,
   normalizeSettingsForSubmit,
