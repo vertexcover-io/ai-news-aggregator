@@ -1,4 +1,4 @@
-import type { CollectorType, HealthCheckReport } from "@newsletter/shared/types";
+import type { CollectorType } from "@newsletter/shared/types";
 import { apiFetchAdmin } from "./client";
 
 export interface HealthCheckJobResponse {
@@ -25,12 +25,4 @@ export async function triggerHealthCheckAll(): Promise<HealthCheckJobResponse> {
     throw new Error(`Health check failed: ${String(res.status)}`);
   }
   return (await res.json()) as HealthCheckJobResponse;
-}
-
-export async function fetchHealthCheckStatus(): Promise<(HealthCheckReport & { storedAt?: string }) | null> {
-  const res = await apiFetchAdmin("/api/admin/health-check/status");
-  if (!res.ok) {
-    return null;
-  }
-  return (await res.json()) as (HealthCheckReport & { storedAt?: string }) | null;
 }

@@ -3,10 +3,9 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import { useForm } from "react-hook-form";
 import type { ReactElement } from "react";
 
-// Mock health check hooks so HealthCheckButton renders without QueryClientProvider
+// Mock useHealthCheck so HealthCheckButton renders without QueryClientProvider
 vi.mock("../../../../src/hooks/useHealthCheck", () => ({
-  useHealthCheckStatus: () => ({ report: null, isLoading: false, error: null }),
-  useTriggerHealthCheck: () => ({
+  useHealthCheck: () => ({
     isPending: false,
     isSuccess: false,
     isError: false,

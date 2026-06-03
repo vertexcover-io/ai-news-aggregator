@@ -190,7 +190,6 @@ const app = buildApp({
   linkedInOAuthCallbackRouter: createLinkedInOAuthCallbackRouter(linkedInOAuthDeps),
   healthCheckRouter: createHealthCheckRouter({
     processingQueue,
-    redis: oauthRedis,
   }),
 });
 

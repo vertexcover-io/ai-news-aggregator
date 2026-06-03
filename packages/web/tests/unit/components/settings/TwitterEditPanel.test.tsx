@@ -5,8 +5,7 @@ import type { ReactElement } from "react";
 import { SourcesSection } from "../../../../src/components/settings/SourcesSection";
 
 vi.mock("../../../../src/hooks/useHealthCheck", () => ({
-  useHealthCheckStatus: () => ({ report: null, isLoading: false, error: null }),
-  useTriggerHealthCheck: () => ({
+  useHealthCheck: () => ({
     isPending: false,
     isSuccess: false,
     isError: false,
