@@ -1,5 +1,5 @@
 ---
-last_verified_sha: 5a2ff20
+last_verified_sha: 40c6b83
 status: active
 ---
 
@@ -126,7 +126,34 @@ PUT /api/settings (api/routes/settings.ts)
         email-send at emailTime
         linkedin-post at linkedinTime
         twitter-post at twitterTime
+  → reconcileCollectorHealthSchedule(collectorHealthQueue, saved) (api/services/scheduler.ts)  (D-110: sibling reconcile, DEDICATED queue)
+    → !scheduleEnabled → removeJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY)
+    → scheduleEnabled → upsertJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY, cron = pipelineTime − 30min, tz)
   Detail: api/routes/PACKAGE.md § Data flows, api/services/PACKAGE.md § Data flows
+```
+
+## Collector health check (manual + scheduled)
+
+```
+[manual] POST /api/admin/collector-health/check (api/routes/collector-health.ts)  [admin-gated, REQ-023]
+  → checkBodySchema.safeParse → targets = [collector] | enabledCollectors(settings) | []
+  → store.setRunning(c,"manual",now) per target → Redis collector-health:<c> (status:running, NO TTL)
+  → targets>0 → collectorHealthQueue.add("collector-health", { collectors, trigger:"manual" }) → 202 {enqueued}
+[scheduled] BullMQ repeatable COLLECTOR_HEALTH_SCHEDULER_KEY fires (pipelineTime − 30min)
+  → collectorHealthQueue job { trigger:"scheduled" } (no collectors → all enabled)
+        ↓ (dedicated collector-health Worker, NOT processing; D-110)
+  handleCollectorHealthJob (pipeline/workers/collector-health.ts)
+    → trigger==="scheduled" → store.setRunning per target  (manual already running via the route)
+    → buildHealthCheckDeps() per-job (Twitter cookie DB-first/env + TAVILY key; D-051)
+    → Promise.allSettled: runCollectorHealthCheck(c, settings, deps)  (REQ-010 isolation)
+        → per-collector probe (Algolia / Reddit RSS / rettiwt / crawl-only blog / Tavily)
+        → store.set({status:healthy|failed, durationMs, reason, detail}) → Redis collector-health:<c> (NO TTL)
+    → failures>0 AND SLACK_WEBHOOK_URL set → buildCollectorHealthMessage → postToWebhook  (D-111: ONE msg, no marker, both triggers)
+        ↓ (UI reads back)
+  useCollectorHealth() (web/hooks) polls GET /api/admin/collector-health → store.getSnapshot() → 5 entries
+    → CollectorHealthModal renders running→healthy|failed; refetchInterval=false once none running (REQ-019)
+  Detail: api/routes/PACKAGE.md § Data flows, pipeline/workers/PACKAGE.md § Data flows,
+          pipeline/services/PACKAGE.md § runCollectorHealthCheck, web/hooks/PACKAGE.md
 ```
 
 ## Slack notification idempotency

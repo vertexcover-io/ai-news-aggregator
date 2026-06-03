@@ -1,9 +1,9 @@
 ---
 governs: packages/pipeline/src/workers/
-last_verified_sha: 5a2ff20
-key_files: [processing.ts, run-process.ts, daily-run.ts, email-send.ts, linkedin-post.ts, twitter-post.ts, social-health.ts, publish-target.ts, newsletter-send.ts, collection.ts]
-flow_fns: [processing.ts::createProcessingWorker, run-process.ts::handleRunProcessJob, daily-run.ts::handleDailyRunJob, email-send.ts::handleEmailSendJob, linkedin-post.ts::handleLinkedInPostJob, twitter-post.ts::handleTwitterPostJob, publish-target.ts::resolvePublishTarget]
-decisions: [D-050, D-051, D-052]
+last_verified_sha: 40c6b83
+key_files: [processing.ts, run-process.ts, daily-run.ts, email-send.ts, linkedin-post.ts, twitter-post.ts, social-health.ts, collector-health.ts, publish-target.ts, newsletter-send.ts, collection.ts]
+flow_fns: [processing.ts::createProcessingWorker, run-process.ts::handleRunProcessJob, daily-run.ts::handleDailyRunJob, email-send.ts::handleEmailSendJob, linkedin-post.ts::handleLinkedInPostJob, twitter-post.ts::handleTwitterPostJob, collector-health.ts::handleCollectorHealthJob, publish-target.ts::resolvePublishTarget]
+decisions: [D-050, D-051, D-052, D-110, D-111]
 status: active
 ---
 
@@ -21,6 +21,9 @@ Each worker file exports a handler function called by the dispatching `processin
 - `handleLinkedInPostJob(deps, job)` → `void` — resolves target, posts to LinkedIn, fires Slack on success/failure
 - `handleTwitterPostJob(deps, job)` → `void` — resolves target, posts to X/Twitter, fires Slack on success/failure
 - `handleSocialHealthJob(deps, job)` → `void` — validates Twitter credentials, alerts Slack on failure
+- `createCollectorHealthWorker(options?)` → `Worker` — **dedicated** worker on the `collector-health` queue (own Redis connection), separate from the processing worker (D-110); never set to `concurrency:1`
+- `handleCollectorHealthJob(deps, job)` → `void` — resolves targets (payload collectors, or all enabled from settings), runs each strategy under `Promise.allSettled` (one failure never aborts others, REQ-010), persists per-collector terminal result to Redis, posts ONE consolidated Slack message on any failure (D-111)
+- `buildDefaultCollectorHealthDeps()` → `CollectorHealthJobDeps` — wires the default deps incl. the per-job `buildHealthCheckDeps` factory (D-051 pattern — Twitter cookie + Tavily key resolved per job, never at worker construction)
 - `handleNewsletterSendJob(deps, job)` → `void` — **@deprecated** legacy combined email+social send; kept for back-compat
 - `resolvePublishTarget(deps, input)` → `PipelineRunArchiveRow | null` — resolves the archive to publish (by runId or latest terminal), validates reviewed/non-dry-run
 - `handleCollectionJob(job, deps?)` → `CollectorResult` — **legacy** per-source collection worker (kept for rollback)
@@ -93,10 +96,32 @@ Each worker file exports a handler function called by the dispatching `processin
               └─ non-retryable / exhausted → classifyDeliveryFailure → failCount++
     → broadcast only: archiveRepo.markEmailSent + slackNotifier.notifyEmailDelivery
 
+### handleCollectorHealthJob(deps, job) → void
+  job.data { collectors?, trigger: "manual"|"scheduled" }
+    → userSettingsRepo.get() [DB]
+      ├─ settings.get() throws → set("failed", reason=err) for any payload collectors → rethrow  (so manual targets never stay stuck "running")
+      ├─ payload.collectors non-empty → targets = payload (explicit; allowed even if disabled, EDGE-013)
+      └─ else → targets = resolveEnabledCollectors(settings) (blog ⇐ webEnabled; "Check all")
+    → targets empty → log collector_health.no_targets → return  (EDGE-001 enqueued:[])
+    → trigger==="scheduled" → store.setRunning(c,"scheduled",now) per target  (manual already set running by the API route; D-110/AD-3)
+    → buildHealthCheckDeps()  (per-job: resolveTwitterCollectorCookie DB-first/env + TAVILY_API_KEY; D-051)
+      └─ throws → set("failed") for all targets → rethrow  (no stuck "running")
+    → Promise.allSettled over targets:  (REQ-010 isolation)
+        each: runCollectorHealthCheck(collector, settings, deps) → CollectorHealthOutcome
+          ├─ resolves → store.set({status: healthy|failed, durationMs, reason, detail}) [Redis collector-health:<c>, no TTL]
+          └─ throws → store.set({status:"failed", reason:err.message})
+    → collect failures[] (status==="failed")
+      ├─ failures empty OR SLACK_WEBHOOK_URL unset → return  (D-111 no-op)
+      └─ else → buildCollectorHealthMessage({failures,trigger}) → postToWebhook  (D-111: ONE consolidated msg, no notification_state marker, fires for both triggers)
+            └─ non-2xx / throw → log warn slack.collector_health.failed, never rethrow
+
 ## Gotchas / landmines
 - **`email_sent_at` is broadcast-only**: Targeted welcome sends (subscriberIds: [id]) must NOT set this marker. The `isBroadcast` guard in `handleEmailSendJob` short-circuits before stamping. (D-050)
 - **`publishDeps` built per-job, not at startup**: `buildDefaultPublishDeps()` is called inside the worker processor, not during worker construction. This fulfills the "admin credential save takes effect on next job without restart" contract. (D-051)
 - **`newsletter-send.ts` is deprecated**: The legacy combined email+social worker (`handleNewsletterSendJob`) uses a hard-coded 5/s pacer (no retry), the old single-message Slack notifier, and has the `classify-then-count` key-mismatch bug (`failureReasonCounts.set(rawMessage, ...)` instead of `set(reason, ...)`). The active path is split across `email-send.ts`, `linkedin-post.ts`, `twitter-post.ts`. (D-052)
+- **Collector-health worker is dedicated, not the processing worker** (D-110): `createCollectorHealthWorker` runs on the `collector-health` queue with its own `createRedisConnection()`. Do NOT route health checks through the processing worker or set it to `concurrency:1` — that anti-pattern (`queue-concurrency-vs-in-process-pacer.md`) would serialize every job type behind a multi-minute run.
+- **Manual vs scheduled `running` ownership** (AD-3): the API route writes `running` synchronously for a manual check before enqueue; the worker only writes `running` for the `scheduled` trigger. A `buildHealthCheckDeps` throw after `setRunning` writes `failed` for all targets so nothing is stuck `running`.
+- **Health-check Slack has no idempotency marker** (D-111): unlike run-bearing Slack (D-107), the consolidated collector-health failure message fires every time on both manual and scheduled failures — there is no `notification_state` (no run to attach it to). A re-checked still-broken collector re-alerts; this is intended.
 
 ## Decisions
 - **D-050**: `email_sent_at` is the broadcast idempotency marker, not per-recipient. Why: per-recipient dedup belongs on the `email_sends` table. A targeted send stamping `email_sent_at` would poison the next broadcast. Tradeoff: two dedup mechanisms (archive-level for broadcast, send-level for per-recipient). Governs: `workers/email-send.ts`.

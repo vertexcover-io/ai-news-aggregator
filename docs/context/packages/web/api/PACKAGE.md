@@ -1,7 +1,7 @@
 ---
 governs: packages/web/src/api/
-last_verified_sha: 5a2ff20
-key_files: [client.ts, admin.ts, archives.ts, runs.ts, settings.ts, eval.ts, socialCredentials.ts, sources.ts, subscribe.ts, home.ts, must-read.ts, analytics.ts, analyticsConfig.ts]
+last_verified_sha: 40c6b83
+key_files: [client.ts, admin.ts, archives.ts, runs.ts, settings.ts, eval.ts, socialCredentials.ts, collector-health.ts, sources.ts, subscribe.ts, home.ts, must-read.ts, analytics.ts, analyticsConfig.ts]
 flow_fns: [client.ts::apiFetchAdmin, eval.ts::runEval]
 decisions: [D-008]
 status: active
@@ -32,6 +32,8 @@ One file per backend API domain. Every function calls the base wrappers `apiFetc
 | `runs.ts::cancelRun(runId)` | POST `/api/runs/:runId/cancel` → `{ status: "ok" }` or `{ status: "already-terminal" }` (409 → not an error) |
 | `runs.ts::getRunObservability(runId)` | GET `/api/admin/runs/:runId/observability` → `RunObservability \| null` |
 | `runs.ts::getRunSourceItems(runId, sourceKey)` | GET `/api/admin/runs/:runId/sources/:key/items` |
+| `collector-health.ts::triggerCollectorHealth(collector?)` | POST `/api/admin/collector-health/check` via `apiFetchAdmin`; body `{collector}` when given, else `{}` (Check all) → `{enqueued}` |
+| `collector-health.ts::getCollectorHealthSnapshot()` | GET `/api/admin/collector-health` via `apiFetchAdmin` → `CollectorHealthSnapshot` |
 | `archives.ts::listArchives()` | GET `/api/archives` → public, `ArchiveListResponse` |
 | `archives.ts::searchArchives(query)` | GET `/api/archives/search?q=&from=&to=` → FTS search |
 | `archives.ts::patchArchive(runId, body)` | PATCH `/api/admin/archives/:runId` |

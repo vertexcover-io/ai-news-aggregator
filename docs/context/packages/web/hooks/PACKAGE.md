@@ -1,7 +1,7 @@
 ---
 governs: packages/web/src/hooks/
-last_verified_sha: 5a2ff20
-key_files: [useReview.ts, usePool.ts, useReviewFilters.ts, useRunList.ts, useRunPolling.ts, useRunObservability.ts, useEvalRuns.ts, useGradingProgress.ts, useSettings.ts, useArchive.ts]
+last_verified_sha: 40c6b83
+key_files: [useReview.ts, usePool.ts, useReviewFilters.ts, useRunList.ts, useRunPolling.ts, useRunObservability.ts, useCollectorHealth.ts, useEvalRuns.ts, useGradingProgress.ts, useSettings.ts, useArchive.ts]
 flow_fns: [useReview.ts::useReview, usePool.ts::usePool, useRunList.ts::useRunList, useEvalRuns.ts::useEvalRuns]
 decisions: [D-009, D-010]
 status: active
@@ -25,6 +25,8 @@ Custom hooks that connect the typed API client to components via `@tanstack/reac
 | `useRunList(limit?)` | Polls `GET /api/runs` every 2s while any run is active |
 | `useRunPolling(runId)` | Polls `GET /api/runs/:runId` every 2s until terminal status |
 | `useRunObservability(runId)` | Polls `GET /api/admin/runs/:runId/observability` every 2s until terminal; 404 → null |
+| `useCollectorHealth()` | `useQuery(["collector-health"], getCollectorHealthSnapshot)` — `refetchInterval` returns 2000ms while any collector is `status:"running"`, else `false` (stops polling at terminal, REQ-019); `retry:false` |
+| `useCollectorHealthTrigger()` | Mutation wrapping `triggerCollectorHealth(collector?)`; on success invalidates + refetches `["collector-health"]` (no optimistic update — running state arrives on the next refetch) |
 | `useSettings()` | `useQuery(["settings"], getSettings)` — no poll, refetchOnWindowFocus: false |
 | `useSourceFacets(runId)` | `useQuery(["source-facets", runId], getSourceFacets)` |
 | `useRunSources({ runId, enabled })` | `useQuery(["run-sources", runId], getRunSources)` — stale for 30s |
@@ -82,6 +84,7 @@ useEvalRuns() → UseEvalRunsResult:
 - **`usePool` accumulation dedup**: `loadMore` appends items that are NOT already in `accumulated` (checked by `id`). If a filter change resets offset but the same items come back, they populate from scratch correctly because `accumulated` was cleared.
 - **`useRunPolling` treats null as not-found then stops**: After one poll that returns null (404), `dataUpdateCount > 0 && data === null` triggers and polling stops. This prevents infinite 404 polling for runs that don't exist.
 - **`useEvalRuns` client-side search**: The backend list endpoint doesn't accept a `q` param — client-side filtering narrows the current page only. Acceptable for "find this prompt hash in my last few runs" use case; not suitable for large datasets.
+- **`useCollectorHealth` stops polling at terminal** (REQ-019): `refetchInterval` is a function of the latest snapshot — it returns `2000` only while at least one collector is `running`, else `false`. A run that resolves to all `healthy`/`failed`/`never` stops the poll (no infinite spinner). `useCollectorHealthTrigger` does NOT optimistically set `running`; the running state appears on the success-triggered refetch (the API route's synchronous `setRunning` is what makes the next poll show `running`).
 
 ## Decisions
 

@@ -2,8 +2,8 @@
 governs: packages/api/src/services/
 last_verified_sha: 5a2ff20
 key_files: [review.ts, run-observability.ts, run-source-items.ts, run-list.ts, sources-summary.ts, cancel-run.ts, rank-hydration.ts, runs.ts, scheduler.ts, linkedin-oauth.ts, linkedin-credential-resolver.ts, twitter-handle-resolver.ts, item-preview.ts]
-flow_fns: [review.ts::patchArchive, review.ts::promoteItem, review.ts::addPostToArchive, review.ts::regenerateDigestMeta, run-observability.ts::buildRunObservability, run-source-items.ts::buildRunSourceItems, run-list.ts::listRuns, sources-summary.ts::buildSourcesSummary, cancel-run.ts::cancelRun, rank-hydration.ts::hydrateRankedItems, scheduler.ts::reconcilePipelineSchedule]
-decisions: [D-002, D-004, D-013, D-014]
+flow_fns: [review.ts::patchArchive, review.ts::promoteItem, review.ts::addPostToArchive, review.ts::regenerateDigestMeta, run-observability.ts::buildRunObservability, run-source-items.ts::buildRunSourceItems, run-list.ts::listRuns, sources-summary.ts::buildSourcesSummary, cancel-run.ts::cancelRun, rank-hydration.ts::hydrateRankedItems, scheduler.ts::reconcilePipelineSchedule, scheduler.ts::reconcileCollectorHealthSchedule]
+decisions: [D-002, D-004, D-013, D-014, D-110]
 status: active
 ---
 
@@ -28,6 +28,8 @@ Service functions implement multi-step business operations that span repositorie
 - `hydrateRankedItems(repo, refs, completedAt) → RankedItem[]` — joins ranked refs to raw_items rows, builds enriched output
 - `createRun(payload, redis, queue, options) → CreatedRun` — builds synthetic UserSettings, calls shared `startRun()`
 - `reconcilePipelineSchedule(queue, settings) → void` — upserts/removes BullMQ job schedulers based on settings
+- `reconcileCollectorHealthSchedule(collectorHealthQueue, settings) → void` — sibling reconcile on the **dedicated** `collector-health` queue (D-110): `scheduleEnabled=false` → `removeJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY)`; else `upsertJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY, { pattern: toCronMinusMinutes(pipelineTime, COLLECTOR_HEALTH_LEAD_MINUTES=30), tz: scheduleTimezone })`. Called everywhere `reconcilePipelineSchedule` is (bootstrap + `PUT /api/settings`), kept separate because it targets a different queue.
+- `toCronMinusMinutes(hhmm, minutesBefore) → string` — subtracts N minutes from an HH:MM and returns a daily cron (wraps midnight: `00:15` − 30 → `45 23 * * *`, EDGE-007)
 - `resolveLinkedInClient(deps) → LinkedInClientCreds | null` — DB-first credential resolution with env fallback
 - `resolveTwitterHandles(handles, deps) → ResolvedHandle[]` — calls rettiwt API to resolve @handle → userId
 
@@ -87,6 +89,12 @@ reconcilePipelineSchedule(queue, settings) → void:
       → for each channel (email, linkedin, twitter):
           ├─ !enabled → removeJobScheduler
           └─ enabled → upsertJobScheduler at channel's time
+
+reconcileCollectorHealthSchedule(collectorHealthQueue, settings) → void:
+  → !scheduleEnabled → removeJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY)   (no upsert)
+  → scheduleEnabled → upsertJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY,
+        { pattern: toCronMinusMinutes(pipelineTime, 30), tz: scheduleTimezone })
+  (separate queue from reconcilePipelineSchedule — D-110; re-run on every PUT /api/settings)
 ```
 
 ## Gotchas / landmines
@@ -94,6 +102,7 @@ reconcilePipelineSchedule(queue, settings) → void:
 - **`patchArchive` uses `"k" in input` to distinguish "not provided" from "set to null".** Zod `.optional()` drops absent keys. Explicit `null` writes null (clears the field); omitting the key preserves the existing DB value. (D-013)
 - **`addPostToArchive` has a 30s timeout.** Adjust `ADD_POST_TIMEOUT_MS` if web crawling is consistently slow.
 - **`cancelRun` publishes to Redis pub/sub, not BullMQ.** The pipeline worker subscribes to `run:cancel:<runId>` directly for mid-stage abort. (D-014)
+- **`reconcileCollectorHealthSchedule` is a sibling, not folded into `reconcilePipelineSchedule`.** It targets the dedicated `collector-health` queue (D-110); both must be called together at bootstrap and on every settings save so the auto-check cron tracks `pipelineTime`. Folding them would conflate two different queues' ownership.
 
 ## Decisions
 
