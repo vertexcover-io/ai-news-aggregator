@@ -40,6 +40,8 @@ export interface RettiwtRawTweet {
 
 const SAME_PLATFORM_URL_RE = /^https?:\/\/(?:[^/]*\.)?(?:x\.com|twitter\.com|t\.co)\//i;
 
+const TWITTER_CSRF_ERROR_CODE = 353; // Twitter's CSRF mismatch error code
+
 function pickExternalUrl(entities: RettiwtRawEntities | undefined): string | undefined {
   const urls = entities?.urls ?? [];
   for (const u of urls) {
@@ -188,7 +190,7 @@ function hasCsrfMismatchMessage(err: unknown): boolean {
 export function isCsrfMismatchError(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
   const status = "status" in err ? (err as { status: unknown }).status : undefined;
-  return status === 403 && (hasTwitterErrorCode(err, 353) || hasCsrfMismatchMessage(err));
+  return status === 403 && (hasTwitterErrorCode(err, TWITTER_CSRF_ERROR_CODE) || hasCsrfMismatchMessage(err));
 }
 
 async function withCsrfRefreshRetry<T>(
