@@ -1,9 +1,9 @@
 ---
 governs: packages/shared/src/slack/
-last_verified_sha: 5a2ff20
-key_files: [notifier.ts, webhook-client.ts, message-builder.ts, types.ts, builders/_helpers.ts]
+last_verified_sha: 40c6b83
+key_files: [notifier.ts, webhook-client.ts, message-builder.ts, types.ts, builders/_helpers.ts, builders/collector-health.ts]
 flow_fns: [notifier.ts::createSlackNotifier, webhook-client.ts::postToWebhook]
-decisions: [D-107]
+decisions: [D-107, D-111]
 status: active
 ---
 
@@ -16,6 +16,7 @@ Complete Slack notification layer: SlackNotifier interface with 11 methods, fact
 - createSlackNotifier(deps) → SlackNotifier — factory with idempotency via notification_state JSONB + dry-run gating; returns no-op when webhookUrl is unset
 - postToWebhook({ url, blocks, fetchFn? }) → WebhookPostResult — POSTs blocks as JSON
 - Message builders: buildSourceDistributionMessage, buildEmailDeliveryMessage, buildLinkedinPostedMessage, buildTwitterPostedMessage, buildPublishFailedMessage, buildPublishUnavailableMessage, buildReviewPendingMessage, buildReviewWarningMessage, buildSubscriberConfirmedMessage, buildSubscriberRemovedMessage, buildReviewedMessage (deprecated)
+- buildCollectorHealthMessage({ failures, trigger }) → `{ blocks }` — ONE consolidated message: header `🔴 Collector health check failed (<scheduled|manual>)` + a single section block with one bullet per failed collector (`<collector>: <reason>`, each reason truncated to 120 chars). No archive context block, no `notification_state` marker — fires for both triggers every time (D-111). Posted directly via `postToWebhook` by the collector-health worker, NOT through `createSlackNotifier`'s idempotency path.
 - Builder helpers (_helpers.ts): headerBlock, sectionMarkdown, contextMarkdown, statusSuffix, truncate, renderPermalink, archiveContextLine
 
 ## Depends on / used by
@@ -40,3 +41,4 @@ postToWebhook({ url, blocks }) → WebhookPostResult:
 2. No-op notifier silently swallows all calls when SLACK_WEBHOOK_URL unset
 3. Subscriber notifications have no idempotency (fire-and-forget)
 4. buildReviewedMessage is deprecated — use split messages instead
+5. **`buildCollectorHealthMessage` bypasses the notifier's idempotency** (D-111): it is called directly by the collector-health worker + `postToWebhook`, NOT via `createSlackNotifier`/`notifyWithMarker`. Health checks have no run/archive to carry a `notification_state` marker, so the message intentionally re-fires on every failed check (manual or scheduled). This is the deliberate counterpoint to D-107.

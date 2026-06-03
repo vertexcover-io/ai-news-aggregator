@@ -6,6 +6,7 @@ import type { Job } from "bullmq";
 import type { CollectionJobLike } from "@pipeline/workers/collection.js";
 import { collectionWorker } from "@pipeline/workers/collection.js";
 import { createProcessingWorker } from "@pipeline/workers/processing.js";
+import { createCollectorHealthWorker } from "@pipeline/workers/collector-health.js";
 import { createLogger } from "@newsletter/shared/logger";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { createRunStateService } from "@pipeline/services/run-state.js";
@@ -46,6 +47,9 @@ const processingConnection = createRedisConnection();
 const runState = createRunStateService(processingConnection);
 const processingWorker = createProcessingWorker({ connection: processingConnection });
 
+const collectorHealthConnection = createRedisConnection();
+const collectorHealthWorker = createCollectorHealthWorker({ connection: collectorHealthConnection });
+
 const shutdown = async (): Promise<void> => {
   logger.info({ queue: "collection" }, "worker shutting down");
   await collectionWorker.close();
@@ -53,6 +57,9 @@ const shutdown = async (): Promise<void> => {
   logger.info({ queue: "processing" }, "worker shutting down");
   await processingWorker.close();
   logger.info({ queue: "processing" }, "worker shut down");
+  logger.info({ queue: "collector-health" }, "worker shutting down");
+  await collectorHealthWorker.close();
+  logger.info({ queue: "collector-health" }, "worker shut down");
   process.exit(0);
 };
 
@@ -101,4 +108,23 @@ processingWorker.on("failed", (job: Job | undefined, err: Error) => {
 
 processingWorker.on("stalled", (jobId: string) => {
   logger.warn({ jobId }, "processing job stalled — BullMQ will retry");
+});
+
+collectorHealthWorker.on("ready", () => {
+  logger.info({ queue: "collector-health" }, "worker ready");
+});
+
+collectorHealthWorker.on("completed", (job: Job) => {
+  logger.info(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- BullMQ types returnvalue as any
+    { jobId: job.id, jobName: job.name, result: job.returnvalue },
+    "job completed",
+  );
+});
+
+collectorHealthWorker.on("failed", (job: Job | undefined, err: Error) => {
+  logger.error(
+    { jobId: job?.id, jobName: job?.name, error: err.message },
+    "job failed",
+  );
 });

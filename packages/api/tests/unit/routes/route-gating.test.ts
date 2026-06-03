@@ -122,6 +122,7 @@ function makeApp(
     analyticsConfigRouter: makeStubAnalyticsConfigRouter(),
     linkedInOAuthRouter: new Hono(),
     linkedInOAuthCallbackRouter: new Hono(),
+    collectorHealthRouter: new Hono(),
   });
 }
 

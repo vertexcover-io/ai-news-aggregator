@@ -1,5 +1,5 @@
 ---
-last_verified_sha: 5a2ff20
+last_verified_sha: 40c6b83
 status: active
 ---
 
@@ -39,8 +39,26 @@ status: active
 | D-105 | Generated migrations must be inspected for NOT NULL adds | packages/shared/PACKAGE.md |
 | D-106 | JS and SQL implementations of deriveRawItemIdentifier must stay aligned | packages/shared/PACKAGE.md |
 | D-107 | Slack notification idempotency via notification_state JSONB | packages/shared/PACKAGE.md |
+| D-110 | Collector health runs on a dedicated queue/worker, never processing concurrency:1 | DECISIONS.md (cross-package) |
+| D-111 | Collector-health Slack message has no notification_state marker (fires every failure) | DECISIONS.md (cross-package) |
 
 # Cross-package decisions (full bodies)
+
+## D-110 — Collector health runs on a dedicated queue/worker, never processing concurrency:1
+
+**Why:** A health check must neither block nor be blocked by a pipeline run (F5/NF2). The Blog/crawl check can take ~20–30s and a `run-process` job runs for minutes; the `processing` worker is effectively single-flight per run. So the API enqueues health checks to a dedicated `collector-health` queue (`COLLECTOR_HEALTH_QUEUE_NAME`) consumed by a separate `createCollectorHealthWorker` in the pipeline entrypoint, with its own `createRedisConnection()`, ready/completed/failed listeners, and SIGTERM/SIGINT close. Setting the processing worker to `concurrency: 1` to serialize health checks was explicitly rejected — it would serialize ALL job types (run-process, daily-run, email-send, linkedin-post, twitter-post) and is the recorded anti-pattern in `.claude/rules/learnings/queue-concurrency-vs-in-process-pacer.md`. Within a health job, one strategy throwing never aborts the others (`Promise.allSettled` + per-collector try/catch). The auto-check scheduler is a sibling reconcile (`reconcileCollectorHealthSchedule`) on this same dedicated queue rather than folded into `reconcileDailyRunSchedule` (which only owns the `processing` queue), cron = `toCronMinusMinutes(pipelineTime, COLLECTOR_HEALTH_LEAD_MINUTES=30)`, re-derived on every settings save.
+
+**Tradeoff:** One extra `Queue` (api) + `Worker` (pipeline) + Redis connection to wire and start, plus a second repeatable-scheduler key (`collector-health:default`) to keep in sync with settings. Justified by the hard non-blocking requirement; the alternative (shared queue + raised concurrency) changes scheduling semantics for every job type.
+
+**Governs:** packages/shared/src/constants/index.ts (COLLECTOR_HEALTH_QUEUE_NAME, COLLECTOR_HEALTH_LEAD_MINUTES), packages/api/src/services/scheduler.ts (reconcileCollectorHealthSchedule), packages/api/src/routes/collector-health.ts, packages/pipeline/src/workers/collector-health.ts, packages/pipeline/src/index.ts
+
+## D-111 — Collector-health Slack message has no notification_state marker (fires every failure)
+
+**Why:** A health check has no run and no `run_archives` row, so the D-107 idempotency mechanism (a key in `run_archives.notification_state`) does not apply. By deliberate decision, the consolidated collector-health failure message fires on BOTH manual and scheduled failures every time — there is intentionally no dedup marker. This mirrors the `social-health` notifier shape. One consolidated Block Kit message per job lists every failed collector with its filtered reason (truncated to 120 chars), tagged with the trigger source (`scheduled`/`manual`), built by `buildCollectorHealthMessage` in `shared/slack/builders` and posted via `postToWebhook`. A non-2xx or thrown webhook call logs `slack.collector_health.failed` at warn and never rethrows; a no-op when `SLACK_WEBHOOK_URL` is unset. This is the explicit counterpoint to D-107: D-107 is honored for run-bearing notifications; collector-health deliberately opts out because it has no run to attach a marker to.
+
+**Tradeoff:** An operator re-triggering a still-broken collector will get a repeat Slack alert (no suppression). Accepted — health-check failures are operator-initiated diagnostics, and a repeat alert on a manual re-check is expected, not noise to suppress.
+
+**Governs:** packages/shared/src/slack/builders/collector-health.ts, packages/pipeline/src/workers/collector-health.ts
 
 ## D-100 — Web must use subpath imports from shared
 

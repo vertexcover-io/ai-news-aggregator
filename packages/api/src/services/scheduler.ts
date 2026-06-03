@@ -1,5 +1,7 @@
 import type { Queue } from "bullmq";
 import {
+  COLLECTOR_HEALTH_LEAD_MINUTES,
+  COLLECTOR_HEALTH_SCHEDULER_KEY,
   EMAIL_SEND_SCHEDULER_KEY,
   LEGACY_DAILY_RUN_SCHEDULER_KEY,
   LINKEDIN_POST_SCHEDULER_KEY,
@@ -87,6 +89,24 @@ export async function reconcilePipelineSchedule(
   }
 }
 
+export async function reconcileCollectorHealthSchedule(
+  queue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">,
+  settings: UserSettings,
+): Promise<void> {
+  if (!settings.scheduleEnabled) {
+    await queue.removeJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY);
+    return;
+  }
+  await queue.upsertJobScheduler(
+    COLLECTOR_HEALTH_SCHEDULER_KEY,
+    {
+      pattern: toCronMinusMinutes(settings.pipelineTime, COLLECTOR_HEALTH_LEAD_MINUTES),
+      tz: settings.scheduleTimezone,
+    },
+    { name: "collector-health", data: { trigger: "scheduled" } },
+  );
+}
+
 export async function removeLegacySchedulers(
   queue: Pick<Queue, "removeJobScheduler">,
 ): Promise<void> {
@@ -94,6 +114,8 @@ export async function removeLegacySchedulers(
 }
 
 export {
+  COLLECTOR_HEALTH_LEAD_MINUTES,
+  COLLECTOR_HEALTH_SCHEDULER_KEY,
   EMAIL_SEND_SCHEDULER_KEY,
   LEGACY_DAILY_RUN_SCHEDULER_KEY,
   LINKEDIN_POST_SCHEDULER_KEY,
