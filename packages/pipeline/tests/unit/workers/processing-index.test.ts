@@ -29,6 +29,9 @@ vi.mock("@pipeline/workers/collection.js", () => ({
 vi.mock("@pipeline/workers/processing.js", () => ({
   createProcessingWorker: vi.fn(() => ({ on: vi.fn(), close: vi.fn() })),
 }));
+vi.mock("@pipeline/workers/collector-health.js", () => ({
+  createCollectorHealthWorker: vi.fn(() => ({ on: vi.fn(), close: vi.fn() })),
+}));
 vi.mock("@pipeline/services/run-state.js", () => ({
   createRunStateService: vi.fn(() => ({ setStage: vi.fn() })),
   RUN_STATE_TTL_SECONDS: 3600,
