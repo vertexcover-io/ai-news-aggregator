@@ -1,7 +1,6 @@
 import type { Queue } from "bullmq";
 import {
   EMAIL_SEND_SCHEDULER_KEY,
-  HEALTH_CHECK_SCHEDULER_KEY,
   LEGACY_DAILY_RUN_SCHEDULER_KEY,
   LINKEDIN_POST_SCHEDULER_KEY,
   PIPELINE_RUN_SCHEDULER_KEY,
@@ -11,7 +10,6 @@ import {
 
 export const SOCIAL_HEALTH_SCHEDULER_KEY = "social-health:default";
 const SOCIAL_HEALTH_LEAD_MINUTES = 15;
-const HEALTH_CHECK_LEAD_MINUTES = 15;
 const PUBLISH_SCHEDULERS = [
   {
     key: EMAIL_SEND_SCHEDULER_KEY,
@@ -55,7 +53,6 @@ export async function reconcilePipelineSchedule(
   if (!settings.scheduleEnabled) {
     await queue.removeJobScheduler(PIPELINE_RUN_SCHEDULER_KEY);
     await queue.removeJobScheduler(SOCIAL_HEALTH_SCHEDULER_KEY);
-    await queue.removeJobScheduler(HEALTH_CHECK_SCHEDULER_KEY);
     for (const scheduler of PUBLISH_SCHEDULERS) {
       await queue.removeJobScheduler(scheduler.key);
     }
@@ -76,17 +73,6 @@ export async function reconcilePipelineSchedule(
       tz: settings.scheduleTimezone,
     },
     { name: "social-health", data: {} },
-  );
-  await queue.upsertJobScheduler(
-    HEALTH_CHECK_SCHEDULER_KEY,
-    {
-      pattern: toCronMinusMinutes(
-        pipelineTime,
-        HEALTH_CHECK_LEAD_MINUTES,
-      ),
-      tz: settings.scheduleTimezone,
-    },
-    { name: "health-check", data: { triggeredBy: "scheduled" } },
   );
   for (const scheduler of PUBLISH_SCHEDULERS) {
     if (!scheduler.enabled(settings)) {
@@ -109,7 +95,6 @@ export async function removeLegacySchedulers(
 
 export {
   EMAIL_SEND_SCHEDULER_KEY,
-  HEALTH_CHECK_SCHEDULER_KEY,
   LEGACY_DAILY_RUN_SCHEDULER_KEY,
   LINKEDIN_POST_SCHEDULER_KEY,
   PIPELINE_RUN_SCHEDULER_KEY,

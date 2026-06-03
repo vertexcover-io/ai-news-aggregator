@@ -1,7 +1,7 @@
 ---
 governs: packages/web/src/components/settings/
 last_verified_sha: 5a2ff20
-key_files: [SourcesSection.tsx, ScheduleSection.tsx, RankingPromptSection.tsx, ShortlistPromptSection.tsx, ShortlistSizeField.tsx, AnalyticsSection.tsx, SaveBar.tsx, HealthCheckButton.tsx]
+key_files: [SourcesSection.tsx, ScheduleSection.tsx, RankingPromptSection.tsx, ShortlistPromptSection.tsx, ShortlistSizeField.tsx, AnalyticsSection.tsx, SaveBar.tsx]
 flow_fns: []
 decisions: []
 status: active
@@ -23,8 +23,7 @@ Form sections for the admin settings page (`/admin/settings`). Each section is a
 | `ShortlistPromptSection()` | Textarea for the shortlist prompt, uses form context |
 | `ShortlistSizeField()` | Number input for shortlist size (5-100) |
 | `AnalyticsSection({ register, control })` | PostHog config: enabled toggle, project token, host URL |
-| `SaveBar({ formId, saving, runNowDisabled, onRunNow, lastSavedLabel, onCheckAll, checkAllDisabled })` | Fixed bottom bar: Save + Run Now + "Check All" health-check buttons |
-| `HealthCheckButton({ collector, label })` | Per-source health check button: shows "Check Health" by default, spinner while pending, green "Healthy" on success, red X + error on failure; uses `type="button"` |
+| `SaveBar({ formId, saving, runNowDisabled, onRunNow, lastSavedLabel })` | Fixed bottom bar: "All changes saved" status or Save + Run Now buttons |
 
 ## Depends on / used by
 

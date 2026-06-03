@@ -47,11 +47,6 @@ vi.mock("@pipeline/workers/social-health.js", () => ({
   handleSocialHealthJob: (...args: unknown[]) => mockHandleSocialHealthJob(...args),
 }));
 
-const mockHandleHealthCheckJob = vi.fn();
-vi.mock("@pipeline/workers/health-check.js", () => ({
-  handleHealthCheckJob: (...args: unknown[]) => mockHandleHealthCheckJob(...args),
-}));
-
 const mockHandleLinkedInPostJob = vi.fn();
 vi.mock("@pipeline/workers/linkedin-post.js", () => ({
   handleLinkedInPostJob: (...args: unknown[]) => mockHandleLinkedInPostJob(...args),
@@ -195,16 +190,6 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
     expect(mockHandleSocialHealthJob).toHaveBeenCalledOnce();
     expect(mockHandleDailyRunJob).not.toHaveBeenCalled();
     expect(mockHandleRunProcessJob).not.toHaveBeenCalled();
-  });
-
-  it("routes job.name === 'health-check' to handleHealthCheckJob", async () => {
-    mockHandleHealthCheckJob.mockResolvedValue(undefined);
-    const worker = makeWorker();
-    const job = { name: "health-check", id: "j-hc", data: { triggeredBy: "manual" } };
-    await worker.handler(job);
-    expect(mockHandleHealthCheckJob).toHaveBeenCalledOnce();
-    expect(mockHandleSocialHealthJob).not.toHaveBeenCalled();
-    expect(mockHandleDailyRunJob).not.toHaveBeenCalled();
   });
 
   describe("buildDefaultNewsletterSendDeps env-var construction", () => {

@@ -9,7 +9,6 @@ import { buildLinkedinPostedMessage } from "./builders/linkedin-posted.js";
 import { buildTwitterPostedMessage } from "./builders/twitter-posted.js";
 import { buildSubscriberConfirmedMessage } from "./builders/subscriber-confirmed.js";
 import { buildSubscriberRemovedMessage } from "./builders/subscriber-removed.js";
-import { buildHealthCheckFailedBlocks } from "./builders/health-check-failed.js";
 import type {
   NotifyNewsletterSentInput,
   SlackNotifier,
@@ -18,7 +17,6 @@ import type {
   EmailDeliveryInput,
   LinkedinPostedInput,
   TwitterPostedInput,
-  HealthCheckFailedInput,
 } from "./types.js";
 import type { NotificationKey } from "../types/notifications.js";
 import { postToWebhook } from "./webhook-client.js";
@@ -53,7 +51,6 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
       notifyTwitterPosted: (): Promise<void> => Promise.resolve(),
       notifySubscriberConfirmed: (): Promise<void> => Promise.resolve(),
       notifySubscriberRemoved: (): Promise<void> => Promise.resolve(),
-      notifyHealthCheckFailed: (): Promise<void> => Promise.resolve(),
     };
   }
 
@@ -481,31 +478,6 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
             error: err instanceof Error ? err.message : String(err),
           },
           "slack subscriber removed notification threw unexpectedly",
-        );
-      }
-    },
-
-    async notifyHealthCheckFailed(input: HealthCheckFailedInput): Promise<void> {
-      try {
-        const { blocks } = buildHealthCheckFailedBlocks(input.report);
-        const result = await postToWebhook({ url: webhookUrl, blocks, fetchFn: deps.fetchFn });
-        if (!result.ok) {
-          logger.warn(
-            {
-              event: "slack.health_check_failed.failed",
-              status: result.status,
-              responseBody: result.error,
-            },
-            "health check failed notification failed",
-          );
-        }
-      } catch (err) {
-        logger.warn(
-          {
-            event: "slack.health_check_failed.failed",
-            error: err instanceof Error ? err.message : String(err),
-          },
-          "health check failed notification threw unexpectedly",
         );
       }
     },

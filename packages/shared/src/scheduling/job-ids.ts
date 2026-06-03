@@ -15,7 +15,6 @@ export const LEGACY_DAILY_RUN_SCHEDULER_KEY = "daily-run:default";
 export const EMAIL_SEND_SCHEDULER_KEY = "email-send:default";
 export const LINKEDIN_POST_SCHEDULER_KEY = "linkedin-post:default";
 export const TWITTER_POST_SCHEDULER_KEY = "twitter-post:default";
-export const HEALTH_CHECK_SCHEDULER_KEY = "health-check:default";
 
 export function jobIdFor(channel: ScheduledChannel, runId: string): string {
   return `${channel}:${runId}`;

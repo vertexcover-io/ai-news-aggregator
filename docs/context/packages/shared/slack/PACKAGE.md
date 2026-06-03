@@ -1,7 +1,7 @@
 ---
 governs: packages/shared/src/slack/
 last_verified_sha: 5a2ff20
-key_files: [notifier.ts, webhook-client.ts, message-builder.ts, types.ts, builders/_helpers.ts, builders/health-check-failed.ts]
+key_files: [notifier.ts, webhook-client.ts, message-builder.ts, types.ts, builders/_helpers.ts]
 flow_fns: [notifier.ts::createSlackNotifier, webhook-client.ts::postToWebhook]
 decisions: [D-107]
 status: active
@@ -15,7 +15,7 @@ Complete Slack notification layer: SlackNotifier interface with 11 methods, fact
 ## Public surface
 - createSlackNotifier(deps) → SlackNotifier — factory with idempotency via notification_state JSONB + dry-run gating; returns no-op when webhookUrl is unset
 - postToWebhook({ url, blocks, fetchFn? }) → WebhookPostResult — POSTs blocks as JSON
-- Message builders: buildSourceDistributionMessage, buildEmailDeliveryMessage, buildLinkedinPostedMessage, buildTwitterPostedMessage, buildPublishFailedMessage, buildPublishUnavailableMessage, buildReviewPendingMessage, buildReviewWarningMessage, buildSubscriberConfirmedMessage, buildSubscriberRemovedMessage, buildHealthCheckFailedMessage, buildReviewedMessage (deprecated)
+- Message builders: buildSourceDistributionMessage, buildEmailDeliveryMessage, buildLinkedinPostedMessage, buildTwitterPostedMessage, buildPublishFailedMessage, buildPublishUnavailableMessage, buildReviewPendingMessage, buildReviewWarningMessage, buildSubscriberConfirmedMessage, buildSubscriberRemovedMessage, buildReviewedMessage (deprecated)
 - Builder helpers (_helpers.ts): headerBlock, sectionMarkdown, contextMarkdown, statusSuffix, truncate, renderPermalink, archiveContextLine
 
 ## Depends on / used by

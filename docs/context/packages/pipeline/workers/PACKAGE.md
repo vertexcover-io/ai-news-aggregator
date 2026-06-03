@@ -1,8 +1,8 @@
 ---
 governs: packages/pipeline/src/workers/
 last_verified_sha: 5a2ff20
-key_files: [processing.ts, run-process.ts, daily-run.ts, email-send.ts, linkedin-post.ts, twitter-post.ts, social-health.ts, health-check.ts, publish-target.ts, newsletter-send.ts, collection.ts]
-flow_fns: [processing.ts::createProcessingWorker, run-process.ts::handleRunProcessJob, daily-run.ts::handleDailyRunJob, email-send.ts::handleEmailSendJob, linkedin-post.ts::handleLinkedInPostJob, twitter-post.ts::handleTwitterPostJob, health-check.ts::handleHealthCheckJob, publish-target.ts::resolvePublishTarget]
+key_files: [processing.ts, run-process.ts, daily-run.ts, email-send.ts, linkedin-post.ts, twitter-post.ts, social-health.ts, publish-target.ts, newsletter-send.ts, collection.ts]
+flow_fns: [processing.ts::createProcessingWorker, run-process.ts::handleRunProcessJob, daily-run.ts::handleDailyRunJob, email-send.ts::handleEmailSendJob, linkedin-post.ts::handleLinkedInPostJob, twitter-post.ts::handleTwitterPostJob, publish-target.ts::resolvePublishTarget]
 decisions: [D-050, D-051, D-052]
 status: active
 ---
@@ -13,7 +13,7 @@ status: active
 Each worker file exports a handler function called by the dispatching `processing.ts` Worker. Handlers coordinate repository reads, processor calls, service interactions, and archive finalization. Business logic lives in processors/services; workers wire them together.
 
 ## Public surface
-- `createProcessingWorker(options?)` → `Worker` — single dispatching worker routing by `job.name` (run-process, daily-run, email-send, linkedin-post, twitter-post, social-health, health-check)
+- `createProcessingWorker(options?)` → `Worker` — single dispatching worker routing by `job.name` (run-process, daily-run, email-send, linkedin-post, twitter-post, social-health)
 - `createRunProcessWorker(options?)` → `Worker` — standalone run-process worker (testable with injected deps)
 - `handleRunProcessJob(deps, job)` → `RunProcessResult` — 4-stage pipeline: collect → dedup → shortlist → rank; writes archive + Slack on success/failure/cancel
 - `handleDailyRunJob(deps, job)` → `void` — loads settings, calls `startRun()`, enqueues `run-process`
@@ -21,7 +21,6 @@ Each worker file exports a handler function called by the dispatching `processin
 - `handleLinkedInPostJob(deps, job)` → `void` — resolves target, posts to LinkedIn, fires Slack on success/failure
 - `handleTwitterPostJob(deps, job)` → `void` — resolves target, posts to X/Twitter, fires Slack on success/failure
 - `handleSocialHealthJob(deps, job)` → `void` — validates Twitter credentials, alerts Slack on failure
-- `handleHealthCheckJob(deps, job)` → `void` — runs health-check strategies for all (or specified) collectors, sends Slack notification on failure (debounced for scheduled checks)
 - `handleNewsletterSendJob(deps, job)` → `void` — **@deprecated** legacy combined email+social send; kept for back-compat
 - `resolvePublishTarget(deps, input)` → `PipelineRunArchiveRow | null` — resolves the archive to publish (by runId or latest terminal), validates reviewed/non-dry-run
 - `handleCollectionJob(job, deps?)` → `CollectorResult` — **legacy** per-source collection worker (kept for rollback)

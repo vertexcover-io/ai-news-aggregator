@@ -29,7 +29,6 @@ import {
   createLinkedInOAuthRouter,
   createLinkedInOAuthCallbackRouter,
 } from "@api/routes/linkedin-oauth.js";
-import { createHealthCheckRouter } from "@api/routes/admin-health-check.js";
 import { createSocialCredentialsRepo } from "@api/repositories/social-credentials.js";
 import { createSocialTokensRepo } from "@api/repositories/social-tokens.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
@@ -188,9 +187,6 @@ const app = buildApp({
   analyticsConfigRouter: createDefaultAnalyticsConfigRouter(),
   linkedInOAuthRouter: createLinkedInOAuthRouter(linkedInOAuthDeps),
   linkedInOAuthCallbackRouter: createLinkedInOAuthCallbackRouter(linkedInOAuthDeps),
-  healthCheckRouter: createHealthCheckRouter({
-    processingQueue,
-  }),
 });
 
 const port = Number(process.env.API_PORT ?? 3000);
