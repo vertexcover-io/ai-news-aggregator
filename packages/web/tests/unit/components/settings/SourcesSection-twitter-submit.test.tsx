@@ -11,6 +11,12 @@ import {
   type SettingsSubmitInput,
 } from "../../../../src/pages/settingsSchema";
 
+// Mock collector health hooks so SourcesSection tests don't need a QueryClientProvider
+vi.mock("../../../../src/hooks/useCollectorHealth", () => ({
+  useCollectorHealth: () => ({ data: undefined, isLoading: false, isFetched: false }),
+  useCollectorHealthTrigger: () => ({ trigger: vi.fn(), isPending: false }),
+}));
+
 // VS-6 regression: SettingsPage's Save button silently no-ops for Twitter
 // dynamic-array changes. The existing TwitterEditPanel test wraps the form
 // WITHOUT a zod resolver, so it can't catch validation rejections. This

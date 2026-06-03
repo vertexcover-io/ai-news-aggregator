@@ -9,6 +9,12 @@ import {
   type TwitterFormConfig,
 } from "../../../../src/pages/settingsSchema";
 
+// Mock collector health hooks so SourcesSection tests don't need a QueryClientProvider
+vi.mock("../../../../src/hooks/useCollectorHealth", () => ({
+  useCollectorHealth: () => ({ data: undefined, isLoading: false, isFetched: false }),
+  useCollectorHealthTrigger: () => ({ trigger: vi.fn(), isPending: false }),
+}));
+
 interface WrapperProps {
   initialTwitter?: TwitterFormConfig | null;
   onSubmit?: (values: SettingsFormValues) => void;

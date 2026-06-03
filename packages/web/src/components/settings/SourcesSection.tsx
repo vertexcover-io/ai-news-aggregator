@@ -8,7 +8,13 @@ import {
   useFieldArray,
   useWatch,
 } from "react-hook-form";
-import { Pencil, ChevronUp, Trash2 } from "lucide-react";
+import { Pencil, ChevronUp, Trash2, Activity } from "lucide-react";
+import type {
+  CollectorHealthResult,
+  HealthCheckCollector,
+} from "@newsletter/shared/types";
+import { useCollectorHealth, useCollectorHealthTrigger } from "../../hooks/useCollectorHealth";
+import { CollectorHealthModal } from "./CollectorHealthModal";
 import {
   Card,
   CardContent,
@@ -137,6 +143,23 @@ export function SourcesSection({
     "hn" | "reddit" | "web" | "twitter" | "webSearch" | null
   >(null);
 
+  const [modalCollector, setModalCollector] = useState<HealthCheckCollector | null>(null);
+  const { data: healthSnapshot } = useCollectorHealth();
+  const { trigger: triggerCheck } = useCollectorHealthTrigger();
+
+  function getHealthResult(collector: HealthCheckCollector): CollectorHealthResult | null {
+    return healthSnapshot?.collectors.find((c) => c.collector === collector) ?? null;
+  }
+
+  function handleCheckCollector(collector: HealthCheckCollector): void {
+    triggerCheck(collector);
+    setModalCollector(collector);
+  }
+
+  function handleCheckAll(): void {
+    triggerCheck(undefined);
+  }
+
   const hn = useWatch({ control, name: "hnConfig" });
   const hnEnabled = useWatch({ control, name: "hnEnabled" });
   const reddit = useWatch({ control, name: "redditConfig" });
@@ -152,15 +175,40 @@ export function SourcesSection({
     setExpandedSource((prev) => (prev === source ? null : source));
   }
 
+  const modalResult = modalCollector !== null ? getHealthResult(modalCollector) : null;
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Sources</CardTitle>
-        <CardDescription>
-          Toggle sources and edit their configs. At least one must be enabled.
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Sources</CardTitle>
+            <CardDescription>
+              Toggle sources and edit their configs. At least one must be enabled.
+            </CardDescription>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleCheckAll}
+            aria-label="Check all collectors"
+            data-testid="check-all-button"
+            className="shrink-0"
+          >
+            <Activity className="h-4 w-4 mr-1" />
+            Check all
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        <CollectorHealthModal
+          open={modalCollector !== null}
+          onOpenChange={(open) => {
+            if (!open) setModalCollector(null);
+          }}
+          result={modalResult}
+        />
         <SourceRow
           label="Hacker News"
           summary={summarizeSource(hnEnabled, summarizeHn(hn))}
@@ -175,6 +223,7 @@ export function SourcesSection({
             }
             toggleExpand("hn");
           }}
+          onCheck={() => { handleCheckCollector("hn"); }}
           editPanel={
             <HnEditPanel control={control} />
           }
@@ -213,6 +262,7 @@ export function SourcesSection({
             }
             toggleExpand("reddit");
           }}
+          onCheck={() => { handleCheckCollector("reddit"); }}
           editPanel={
             <RedditEditPanel control={control} />
           }
@@ -251,6 +301,7 @@ export function SourcesSection({
             }
             toggleExpand("web");
           }}
+          onCheck={() => { handleCheckCollector("blog"); }}
           editPanel={
             <WebEditPanel control={control} />
           }
@@ -289,6 +340,7 @@ export function SourcesSection({
             }
             toggleExpand("twitter");
           }}
+          onCheck={() => { handleCheckCollector("twitter"); }}
           editPanel={
             <TwitterEditPanel control={control} register={register} />
           }
@@ -329,6 +381,7 @@ export function SourcesSection({
             }
             toggleExpand("webSearch");
           }}
+          onCheck={() => { handleCheckCollector("web_search"); }}
           editPanel={
             <WebSearchEditPanel control={control} />
           }
@@ -365,6 +418,7 @@ interface SourceRowProps {
   editable: boolean;
   expanded: boolean;
   onEdit: () => void;
+  onCheck: () => void;
   editPanel: ReactElement;
   children: ReactElement;
   testId?: string;
@@ -377,6 +431,7 @@ function SourceRow({
   editable,
   expanded,
   onEdit,
+  onCheck,
   editPanel,
   children,
   testId,
@@ -394,18 +449,32 @@ function SourceRow({
             <div className="text-xs text-muted-foreground">{summary}</div>
           </div>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onEdit}
-          aria-expanded={expanded}
-          aria-label={`${label} ${expanded ? "Close" : "Edit"}`}
-          className="min-h-[44px] min-w-[44px]"
-        >
-          {expanded ? <ChevronUp /> : <Pencil />}
-          {expanded ? "Close" : "Edit"}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onCheck}
+            aria-label={`Check ${label}`}
+            data-testid={`check-button-${label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+            className="min-h-[44px] min-w-[44px]"
+          >
+            <Activity className="h-4 w-4" />
+            Check
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onEdit}
+            aria-expanded={expanded}
+            aria-label={`${label} ${expanded ? "Close" : "Edit"}`}
+            className="min-h-[44px] min-w-[44px]"
+          >
+            {expanded ? <ChevronUp /> : <Pencil />}
+            {expanded ? "Close" : "Edit"}
+          </Button>
+        </div>
       </div>
       {expanded && editable && (
         <div className="border-t px-4 pb-4 pt-3">{editPanel}</div>

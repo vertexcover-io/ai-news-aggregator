@@ -1,8 +1,14 @@
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import type { ReactElement } from "react";
 import { SourcesSection, summarizeWebSearch } from "../../../../src/components/settings/SourcesSection";
+
+// Mock collector health hooks so SourcesSection tests don't need a QueryClientProvider
+vi.mock("../../../../src/hooks/useCollectorHealth", () => ({
+  useCollectorHealth: () => ({ data: undefined, isLoading: false, isFetched: false }),
+  useCollectorHealthTrigger: () => ({ trigger: vi.fn(), isPending: false }),
+}));
 import {
   normalizeSettingsForSubmit,
   type SettingsSubmitInput,
