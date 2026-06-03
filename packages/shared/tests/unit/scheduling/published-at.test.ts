@@ -29,8 +29,11 @@ describe("resolveScheduledPublishAt", () => {
     expect(localParts("America/New_York", result as Date)).toBe("2026-05-19, 06:00");
   });
 
-  // EDGE-002: completedAt NY-local 03:00 with same times -> still next-day 06:00.
-  it("adds a local day when publishMinutes < pipelineMinutes for an early-morning run", () => {
+  // EDGE-002: a run that crossed midnight before finishing (completedAt NY-local
+  // 03:00, past midnight) publishes the SAME morning at 06:00 — three hours after
+  // completion — not a full day later. The publish moment is anchored on the
+  // completion instant, so the already-elapsed midnight is not double-counted.
+  it("publishes the same morning for a run that completed just after midnight", () => {
     const result = resolveScheduledPublishAt({
       scheduleTimezone: "America/New_York",
       pipelineTime: "23:00",
@@ -39,7 +42,7 @@ describe("resolveScheduledPublishAt", () => {
     });
 
     expect(result).not.toBeNull();
-    expect(localParts("America/New_York", result as Date)).toBe("2026-05-19, 06:00");
+    expect(localParts("America/New_York", result as Date)).toBe("2026-05-18, 06:00");
   });
 
   // REQ-004, EDGE-001: emailTime === pipelineTime -> null, no throw.
