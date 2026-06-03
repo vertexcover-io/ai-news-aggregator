@@ -3,6 +3,7 @@ import {
   DEFAULT_HALF_LIFE_HOURS,
   recencyDecay,
   ageHoursFromPublishedAt,
+  engagementScore,
 } from "@pipeline/services/recency.js";
 
 describe("recencyDecay (REQ-030, REQ-031)", () => {
@@ -48,5 +49,24 @@ describe("ageHoursFromPublishedAt (REQ-026)", () => {
 describe("DEFAULT_HALF_LIFE_HOURS", () => {
   it("is 72", () => {
     expect(DEFAULT_HALF_LIFE_HOURS).toBe(72);
+  });
+});
+
+describe("engagementScore", () => {
+  it("returns 0 when both points and commentCount are 0", () => {
+    expect(engagementScore(0, 0)).toBe(0);
+  });
+
+  it("returns log1p(points) when commentCount is 0", () => {
+    expect(engagementScore(100, 0)).toBeCloseTo(Math.log1p(100), 10);
+  });
+
+  it("returns 0.5 * log1p(commentCount) when points is 0", () => {
+    expect(engagementScore(0, 10)).toBeCloseTo(0.5 * Math.log1p(10), 10);
+  });
+
+  it("sums both components when both are nonzero", () => {
+    const expected = Math.log1p(200) + 0.5 * Math.log1p(50);
+    expect(engagementScore(200, 50)).toBeCloseTo(expected, 10);
   });
 });
