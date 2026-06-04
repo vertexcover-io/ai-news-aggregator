@@ -2,15 +2,10 @@ import type {
   RankedItem,
   RunState,
   RunSourcesResponse,
-  RunSubmitPayload,
   RunSummary,
 } from "@newsletter/shared";
 import type { RunObservability, RunSourceItemsResponse } from "@newsletter/shared/types";
 import { apiFetch, apiFetchAdmin } from "./client";
-
-export interface SubmitRunResponse {
-  runId: string;
-}
 
 export type RunStateResponse = Omit<RunState, "rankedItems"> & {
   rankedItems: RankedItem[] | null;
@@ -25,20 +20,6 @@ export type RunStateResponse = Omit<RunState, "rankedItems"> & {
 
 interface ApiErrorBody {
   error?: string;
-}
-
-export async function submitRun(
-  payload: RunSubmitPayload,
-): Promise<SubmitRunResponse> {
-  const res = await apiFetchAdmin("/api/runs", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
-    throw new Error(body.error ?? "Failed to submit run");
-  }
-  return (await res.json()) as SubmitRunResponse;
 }
 
 export async function getRunSources(

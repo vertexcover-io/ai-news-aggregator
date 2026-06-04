@@ -24,10 +24,3 @@ export async function truncateAll(): Promise<void> {
   await db.execute(sql`TRUNCATE TABLE raw_items RESTART IDENTITY CASCADE`);
 }
 
-export async function closeTestDb(): Promise<void> {
-  if (testSql) {
-    await testSql.end();
-    testSql = undefined;
-    testDb = undefined;
-  }
-}

@@ -1,10 +1,7 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { mustReadEntries } from "@newsletter/shared/db";
 import type { AppDb, MustReadEntry } from "@newsletter/shared/db";
-import type {
-  PublicMustReadEntry,
-  AdminMustReadEntry,
-} from "@newsletter/shared/types";
+import type { PublicMustReadEntry } from "@newsletter/shared/types";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,12 +20,6 @@ export function toPublicWire(row: MustReadPublicEntry): PublicMustReadEntry {
   };
 }
 
-export function toAdminWire(row: MustReadEntry): AdminMustReadEntry {
-  return {
-    ...toPublicWire(row),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
 
 export interface MustReadCreateInput {
   url: string;

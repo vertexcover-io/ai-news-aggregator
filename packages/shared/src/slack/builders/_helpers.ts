@@ -17,7 +17,7 @@ export function sectionMarkdown(text: string): SlackBlock {
   };
 }
 
-export function contextMarkdown(text: string): SlackBlock {
+function contextMarkdown(text: string): SlackBlock {
   return {
     type: "context",
     elements: [{ type: "mrkdwn", text }],

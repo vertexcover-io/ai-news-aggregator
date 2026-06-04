@@ -30,7 +30,7 @@ export interface ComposedPosts {
 }
 
 export const TWITTER_MAX_CHARS = 280;
-export const TWITTER_URL_CHARS = 23;
+const TWITTER_URL_CHARS = 23;
 
 // "Full breakdown ↓" lives at the bottom of the body to point readers at the
 // follow-up reply where the archive URL is posted (the body never contains a

@@ -2,7 +2,7 @@ import type { WebSearchProviderName } from "@newsletter/shared/types";
 import type { WebSearchProvider } from "./types.js";
 import { TavilyProvider } from "./tavily.js";
 
-export type { WebSearchProvider, SearchInput, WebSearchResult } from "./types.js";
+export type { WebSearchProvider, WebSearchResult } from "./types.js";
 
 export function createWebSearchProvider(
   _name: WebSearchProviderName,

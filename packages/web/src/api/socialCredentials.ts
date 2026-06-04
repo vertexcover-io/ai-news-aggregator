@@ -82,7 +82,7 @@ async function readError(res: Response, fallback: string): Promise<never> {
   );
 }
 
-export async function getSocialCredentialsStatus(): Promise<SocialCredentialsStatus> {
+async function getSocialCredentialsStatus(): Promise<SocialCredentialsStatus> {
   const res = await apiFetchAdmin("/api/admin/social-credentials");
   if (!res.ok) {
     await readError(res, "Failed to fetch social credentials");
@@ -90,7 +90,7 @@ export async function getSocialCredentialsStatus(): Promise<SocialCredentialsSta
   return (await res.json()) as SocialCredentialsStatus;
 }
 
-export async function putLinkedInCredentials(
+async function putLinkedInCredentials(
   input: LinkedInUpsertInput,
 ): Promise<UpsertResult> {
   const res = await apiFetchAdmin("/api/admin/social-credentials/linkedin", {
@@ -103,7 +103,7 @@ export async function putLinkedInCredentials(
   return (await res.json()) as UpsertResult;
 }
 
-export async function putTwitterCredentials(
+async function putTwitterCredentials(
   input: TwitterUpsertInput,
 ): Promise<UpsertResult> {
   const res = await apiFetchAdmin("/api/admin/social-credentials/twitter", {
@@ -116,7 +116,7 @@ export async function putTwitterCredentials(
   return (await res.json()) as UpsertResult;
 }
 
-export async function putTwitterCollectorCookie(
+async function putTwitterCollectorCookie(
   input: TwitterCollectorUpsertInput,
 ): Promise<UpsertResult> {
   const res = await apiFetchAdmin(
@@ -132,7 +132,7 @@ export async function putTwitterCollectorCookie(
   return (await res.json()) as UpsertResult;
 }
 
-export async function deleteSocialCredentials(
+async function deleteSocialCredentials(
   platform: Platform,
 ): Promise<{ ok: boolean; removed: boolean }> {
   const res = await apiFetchAdmin(

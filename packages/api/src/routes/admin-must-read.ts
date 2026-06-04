@@ -31,7 +31,7 @@ export interface PreviewFailure {
   error: string;
 }
 
-export type PreviewResponse = PreviewSuccess | PreviewFailure;
+type PreviewResponse = PreviewSuccess | PreviewFailure;
 
 export type FetchPageStaticFn = (
   url: string,
