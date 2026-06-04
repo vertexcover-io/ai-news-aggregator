@@ -1,13 +1,19 @@
--- 0035_record_review_edits.sql
--- Adds review-edits capture: pre_review_snapshot on run_archives + review_edits event table.
--- The new column is nullable with no default — Postgres treats this as a metadata-only change,
--- safe against populated tables (see learnings/drizzle-not-null-add-column-existing-rows.md).
+-- 0037_reapply_record_review_edits.sql
+-- Idempotent re-apply of 0035_record_review_edits.
 --
--- NOTE (2026-06-04): rewritten to the idempotent form and the journal `when` corrected.
--- The original entry carried a backdated timestamp, so already-migrated databases skipped
--- this file silently; 0037_reapply_record_review_edits heals them. Idempotency here covers
--- databases whose last applied migration predates the corrected timestamp and which would
--- therefore re-run this file. Semantics are unchanged from the original.
+-- WHY: 0035 originally shipped with a backdated journal `when` (1748433600000,
+-- out of order with its neighbours). drizzle-kit only applies entries whose `when`
+-- is greater than the last applied migration's recorded timestamp, so every
+-- database that had already migrated past 0034 before 0035 landed SKIPPED it
+-- silently — no review_edits table, no run_archives.pre_review_snapshot column,
+-- and runtime 42703 errors on the next archive query. Fresh databases were
+-- unaffected (everything applies in order from zero), which is why CI never
+-- caught it.
+--
+-- This migration heals any such database on its next normal `db:migrate` and is
+-- a no-op everywhere 0035 actually ran. 0035 itself was rewritten to the same
+-- idempotent form and its journal `when` corrected; the monotonicity regression
+-- test in tests/unit/migrations-journal.test.ts prevents a recurrence.
 CREATE TABLE IF NOT EXISTS "review_edits" (
 	"id" bigserial PRIMARY KEY NOT NULL,
 	"run_id" uuid NOT NULL,
