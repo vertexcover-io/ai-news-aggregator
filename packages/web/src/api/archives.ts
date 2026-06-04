@@ -1,27 +1,16 @@
 import type {
+  PatchArchivePayload,
   RankedItem,
   PoolResponse,
   ArchiveListResponse,
-} from "@newsletter/shared";
+} from "@newsletter/shared/types";
 import type { DigestMeta } from "@newsletter/shared/constants";
 import { apiFetch, apiFetchAdmin } from "./client";
 
-export interface PatchArchiveBody {
-  rankedItems: {
-    id: number;
-    sourceType: string;
-    title?: string;
-    summary?: string;
-    bullets?: string[];
-    bottomLine?: string;
-    imageUrl?: string | null;
-  }[];
-  digestHeadline?: string | null;
-  digestSummary?: string | null;
-  hook?: string | null;
-  twitterSummary?: string | null;
-  linkedinPostBody?: string | null;
-}
+// PatchArchiveBody is now the shared PatchArchivePayload — kept as a type alias
+// for backwards compat with callers inside this package.
+export type { PatchArchivePayload };
+export type PatchArchiveBody = PatchArchivePayload;
 
 export interface RegenerateDigestMetaItem {
   id: number;

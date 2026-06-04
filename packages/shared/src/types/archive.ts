@@ -32,3 +32,23 @@ export interface AdminLoginResponse {
 export interface AdminMeResponse {
   admin: true;
 }
+
+/** Shared shape for the curated ranked-items patch payload — used by both the
+ * API server (as the parsed request body) and the web client (as the request
+ * body type sent to PATCH /api/admin/archives/:runId). */
+export interface PatchArchivePayload {
+  rankedItems: {
+    id: number;
+    sourceType: string;
+    title?: string;
+    summary?: string;
+    bullets?: string[];
+    bottomLine?: string;
+    imageUrl?: string | null;
+  }[];
+  digestHeadline?: string | null;
+  digestSummary?: string | null;
+  hook?: string | null;
+  twitterSummary?: string | null;
+  linkedinPostBody?: string | null;
+}
