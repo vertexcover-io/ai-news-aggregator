@@ -1,7 +1,7 @@
 import { Worker } from "bullmq";
 import type IORedis from "ioredis";
 import { createRedisConnection } from "@newsletter/shared/redis";
-import { getDb, serializeArchiveSearchText } from "@newsletter/shared";
+import { getDb } from "@newsletter/shared";
 import {
   DEFAULT_RANKING_PROMPT,
   DEFAULT_SHORTLIST_PROMPT,
@@ -9,9 +9,7 @@ import {
 import type { SlackNotifier } from "@newsletter/shared";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
-import { resolveScheduledPublishAt } from "@newsletter/shared/scheduling";
 import { canonicalizeUrl, dedupCandidates } from "@pipeline/processors/dedup.js";
-import { buildPreReviewSnapshot } from "@pipeline/services/build-pre-review-snapshot.js";
 import {
   createCandidatesRepo,
   type CandidatesRepo,
@@ -90,7 +88,9 @@ import {
   createRunLogger,
   type RunLogger,
 } from "@pipeline/services/run-logger.js";
-import type { RunCostBreakdown, RunFunnel, RunSourceTelemetry } from "@newsletter/shared";
+import type { RunCostBreakdown, RunFunnel } from "@newsletter/shared";
+import { writeFailedArchive } from "@pipeline/services/run-archive-writer.js";
+import { finalizeRun } from "@pipeline/services/finalize-run.js";
 
 const logger = createLogger("worker:run-process");
 
@@ -101,74 +101,6 @@ function ensureDb(db: AppDb | undefined): AppDb {
   return db;
 }
 
-function nonEmptyText(value: string | null | undefined): string | null {
-  if (value === null || value === undefined) return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? value : null;
-}
-
-function pickArchiveDigest(rankResult: RankResult): {
-  digestHeadline: string | null;
-  digestSummary: string | null;
-} {
-  if (rankResult.rankedItems.length === 0) {
-    return {
-      digestHeadline: nonEmptyText(rankResult.digestHeadline),
-      digestSummary: nonEmptyText(rankResult.digestSummary),
-    };
-  }
-
-  const firstRankedItem = rankResult.rankedItems[0];
-  return {
-    digestHeadline:
-      nonEmptyText(firstRankedItem.title) ?? nonEmptyText(rankResult.digestHeadline),
-    digestSummary: nonEmptyText(rankResult.digestSummary),
-  };
-}
-
-async function writeFailedArchive(input: {
-  readonly archiveRepo: RunArchivesRepo;
-  readonly runId: string;
-  readonly topN: number;
-  readonly completedAt: Date;
-  readonly startedAt: Date;
-  readonly sourceTypes: readonly SourceType[];
-  readonly isDryRun: boolean;
-  readonly costBreakdown: RunCostBreakdown | null;
-  readonly runFunnel: RunFunnel | null;
-  readonly sourceTelemetry?: RunSourceTelemetry | null;
-  readonly logger: ReturnType<typeof createLogger>;
-}): Promise<boolean> {
-  try {
-    await input.archiveRepo.upsert({
-      id: input.runId,
-      status: "failed",
-      rankedItems: [],
-      topN: input.topN,
-      completedAt: input.completedAt,
-      startedAt: input.startedAt,
-      sourceTypes: [...input.sourceTypes],
-      reviewed: false,
-      isDryRun: input.isDryRun,
-      runFunnel: input.runFunnel,
-      sourceTelemetry: input.sourceTelemetry ?? null,
-    });
-    if (input.costBreakdown !== null) {
-      await input.archiveRepo.setCostBreakdown(input.runId, input.costBreakdown);
-    }
-    return true;
-  } catch (err) {
-    input.logger.error(
-      {
-        event: "archive.write_failed",
-        runId: input.runId,
-        error: err instanceof Error ? err.message : String(err),
-      },
-      "archive.write_failed",
-    );
-    return false;
-  }
-}
 
 export interface RunCollectorsPayload {
   hn?: HnCollectConfig;
@@ -984,127 +916,26 @@ export async function handleRunProcessJob(
       completedAt: new Date().toISOString(),
     }));
 
-    const autoReviewed = settings?.autoReview === true;
-    const sourceTelemetry = buildSourceTelemetry(collecting.outcomes);
-    const enrichmentTelemetry = toEnrichmentTelemetry(enrichmentCtx.counters);
-    sourceTelemetry.enrichment = enrichmentTelemetry;
-    await runLog.info(
-      {
-        stage: "processing",
-        event: "enrichment.summary",
-        enrichment: enrichmentTelemetry,
-      },
-      "enrichment.summary",
-    );
-    const { digestHeadline, digestSummary } = pickArchiveDigest(rankResult);
-    // LinkedIn header defaults to the constant DEFAULT_LINKEDIN_HOOK at compose
-    // time; the rerank LLM still emits a hook string (the schema requires it)
-    // but we discard it so the admin sees the constant placeholder in the
-    // review UI and posts default to the brand header unless explicitly
-    // overridden in the Meta Digest panel.
-    const hook = null;
-    const twitterSummary = nonEmptyText(rankResult.twitterSummary);
-    const rankedRawIds = rankResult.rankedItems.map((r) => r.rawItemId);
-    const rankedRawRows = await deps.rawItemsRepo.findByIds(rankedRawIds);
-    const rawItemsById = new Map(rankedRawRows.map((r) => [r.id, r]));
-    const searchText = serializeArchiveSearchText({
-      digestHeadline,
-      digestSummary,
-      rankedItems: rankResult.rankedItems,
-      rawItemsById,
+    return await finalizeRun({
+      runId,
+      topN,
+      sourceTypes,
+      dryRun,
+      runStartedAt,
+      runLog,
+      logger,
+      archiveRepo: deps.archiveRepo,
+      rawItemsRepo: deps.rawItemsRepo,
+      slackNotifier: deps.slackNotifier,
+      settings,
+      rankResult,
+      collectingOutcomes: collecting.outcomes,
+      enrichmentCtx,
+      funnel,
+      shortlistIds,
+      startedTimestamp: started,
+      persistCost,
     });
-    const completedAt = new Date();
-    const publishedAt = resolveScheduledPublishAt({
-      scheduleTimezone: settings?.scheduleTimezone,
-      pipelineTime: settings?.pipelineTime,
-      emailTime: settings?.emailTime,
-      completedAt,
-    });
-    let archiveWritten = false;
-    try {
-      await deps.archiveRepo.upsert({
-        id: runId,
-        status: "completed",
-        rankedItems: rankResult.rankedItems,
-        topN,
-        completedAt,
-        startedAt: runStartedAt,
-        sourceTypes,
-        reviewed: autoReviewed,
-        digestHeadline,
-        digestSummary,
-        hook,
-        twitterSummary,
-        sourceTelemetry,
-        searchText,
-        isDryRun: dryRun,
-        runFunnel: { ...funnel },
-        publishedAt: publishedAt ?? undefined,
-        shortlistedItemIds: shortlistIds,
-        preReviewSnapshot: buildPreReviewSnapshot({
-          rankedItems: rankResult.rankedItems,
-          digestHeadline,
-          digestSummary,
-          hook,
-          twitterSummary,
-        }),
-      });
-      archiveWritten = true;
-    } catch (err) {
-      logger.error(
-        {
-          event: "archive.write_failed",
-          runId,
-          error: err instanceof Error ? err.message : String(err),
-        },
-        "archive.write_failed",
-      );
-    }
-
-    if (archiveWritten) {
-      await persistCost();
-    }
-
-    if (archiveWritten) {
-      try {
-        await deps.slackNotifier?.notifySourceDistribution({ runId });
-      } catch (err) {
-        logger.warn(
-          {
-            event: "slack.source_distribution.unexpected_throw",
-            runId,
-            error: err instanceof Error ? err.message : String(err),
-          },
-          "slack.source_distribution.unexpected_throw",
-        );
-      }
-    }
-
-    if (archiveWritten && settings && !settings.autoReview) {
-      await deps.slackNotifier?.notifyReviewPending({ runId });
-    }
-
-    logger.info(
-      {
-        event: "run.completed",
-        runId,
-        totalDurationMs: Date.now() - started,
-        rankedItemCount: rankResult.rankedItems.length,
-        dryRun,
-      },
-      "run.completed",
-    );
-    await runLog.info(
-      {
-        stage: "completed",
-        event: "run.completed",
-        rankedItemCount: rankResult.rankedItems.length,
-        durationMs: Date.now() - started,
-      },
-      "run.completed",
-    );
-
-    return { rankedCount: rankResult.rankedItems.length };
   } catch (err) {
     // REQ-08: handle CancelledError — write cancelled state, archive, return normally
     if (err instanceof CancelledError) {
