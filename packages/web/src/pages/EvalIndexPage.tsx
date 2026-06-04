@@ -1,4 +1,4 @@
-import {
+import React, {
   useEffect,
   useMemo,
   useRef,
@@ -171,6 +171,67 @@ function isCalendarDoneRow(
   return row.status === "done";
 }
 
+interface StreamEventSetters {
+  setRows: React.Dispatch<React.SetStateAction<EvalProgressRow[]>>;
+  setCalendarRows: React.Dispatch<React.SetStateAction<CalendarProgressRow[]>>;
+  setTotalUsd: React.Dispatch<React.SetStateAction<number | null>>;
+  setRunError: React.Dispatch<React.SetStateAction<string | null>>;
+  setSourcing: React.Dispatch<React.SetStateAction<SourcingReportRow[]>>;
+}
+
+export function handleStreamEvent(
+  ev: { event: string; data: unknown },
+  mode: Mode,
+  setters: StreamEventSetters,
+): void {
+  const { setRows, setCalendarRows, setTotalUsd, setRunError, setSourcing } = setters;
+  if (ev.event === "progress") {
+    if (mode === "ab") {
+      const payload = ev.data as CalendarProgressRow;
+      setCalendarRows((prev) => upsertCalendarRow(prev, payload));
+      return;
+    }
+    const payload = ev.data as ScoredProgressPayload;
+    setRows((prev) => {
+      const idx = prev.findIndex((r) => r.fixtureId === payload.fixtureId);
+      const next = [...prev];
+      const row: EvalProgressRow = {
+        fixtureId: payload.fixtureId,
+        status: payload.status,
+        score: payload.score,
+        cost: payload.cost,
+        error: payload.error,
+        ...(payload.actualRanking === undefined ? {} : { actualRanking: payload.actualRanking }),
+        ...(payload.expectedRanking === undefined ? {} : { expectedRanking: payload.expectedRanking }),
+        ...(payload.poolSize === undefined ? {} : { poolSize: payload.poolSize }),
+      };
+      if (idx >= 0) next[idx] = row;
+      else next.push(row);
+      return next;
+    });
+    return;
+  }
+  if (ev.event === "aggregate" || ev.event === "done") {
+    const payload = ev.data as {
+      totalCost?: { usd?: number };
+      calendarRuns?: CalendarRunReportEntry[];
+      sourcingReport?: SourcingReportRow[];
+    };
+    if (typeof payload.totalCost?.usd === "number") {
+      setTotalUsd(payload.totalCost.usd);
+    }
+    if (payload.calendarRuns && payload.calendarRuns.length > 0) {
+      setCalendarRows(payload.calendarRuns);
+    }
+    if (payload.sourcingReport) setSourcing(payload.sourcingReport);
+    return;
+  }
+  if (ev.event === "error") {
+    const payload = ev.data as { message?: string };
+    setRunError(payload.message ?? "run failed");
+  }
+}
+
 function upsertCalendarRow(
   rows: readonly CalendarProgressRow[],
   nextRow: CalendarProgressRow,
@@ -194,6 +255,275 @@ function countLines(s: string): number {
 interface CalendarReportDialogProps {
   row: Extract<CalendarRunReportEntry, { status: "done" }> | null;
   onClose: () => void;
+}
+
+interface ScoredResultsPanelProps {
+  rows: EvalProgressRow[];
+  totalUsd: number | null;
+  onOpenReport: (row: EvalProgressRow) => void;
+}
+
+function ScoredResultsPanel({ rows, totalUsd, onOpenReport }: ScoredResultsPanelProps): ReactElement {
+  return (
+    <section className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+      <header className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50/60 px-5 py-3">
+        <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-700">Per-fixture results</span>
+        <span className="font-mono text-[11px] text-neutral-500">
+          {rows.length === 0 ? "no runs yet" : `${String(rows.length)} fixture${rows.length === 1 ? "" : "s"}`}
+        </span>
+      </header>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-neutral-200 text-left">
+            <th className="px-5 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-500">Fixture</th>
+            <th className="px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-500">Status</th>
+            <th className="px-3 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">nDCG@10</th>
+            <th className="px-3 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">P@10</th>
+            <th className="px-3 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">Recall</th>
+            <th className="px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-500">R1=must</th>
+            <th className="px-5 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">Cost</th>
+            <th className="px-5 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">Report</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={8} className="px-5 py-6 text-center font-mono text-xs text-neutral-500">No runs yet.</td>
+            </tr>
+          ) : (
+            rows.map((r) => {
+              const ndcgPct = r.score === undefined ? 0 : Math.max(0, Math.min(1, r.score.ndcgAt10)) * 100;
+              return (
+                <tr key={r.fixtureId} data-testid="eval-result-row" data-fixture-id={r.fixtureId} className="border-b border-neutral-100 last:border-none">
+                  <td className="px-5 py-3 font-mono text-xs font-medium text-neutral-900">{r.fixtureId}</td>
+                  <td className="px-3 py-3">
+                    {r.status === "done" ? (
+                      <span className="inline-flex items-center gap-1 rounded-sm bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-700">done</span>
+                    ) : r.status === "running" ? (
+                      <span className="inline-flex items-center gap-1 rounded-sm bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-amber-700">running</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-sm bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-rose-700">error</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-right font-mono text-xs tabular-nums">
+                    {r.score ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="relative inline-block h-1 w-[60px] overflow-hidden rounded-sm bg-neutral-200 align-middle" aria-hidden>
+                          <span className="absolute inset-y-0 left-0" style={{ width: `${ndcgPct.toFixed(0)}%`, background: "#8c3a1e" }} />
+                        </span>
+                        {fmtNumber(r.score.ndcgAt10)}
+                      </span>
+                    ) : "—"}
+                  </td>
+                  <td className="px-3 py-3 text-right font-mono text-xs tabular-nums">{r.score ? fmtNumber(r.score.precisionAt10) : "—"}</td>
+                  <td className="px-3 py-3 text-right font-mono text-xs tabular-nums">{r.score ? fmtNumber(r.score.mustIncludeRecall) : "—"}</td>
+                  <td className="px-3 py-3 font-mono text-xs">{r.score ? (r.score.rankOneIsMustInclude ? "yes" : "no") : "—"}</td>
+                  <td className="px-5 py-3 text-right font-mono text-xs tabular-nums">
+                    {r.cost ? (
+                      <span>{fmtUsd(r.cost.usd)}{r.cost.cacheHit ? <span className="ml-1 text-neutral-500">cached</span> : null}</span>
+                    ) : "—"}
+                    {r.error ? <div className="text-rose-700">{r.error}</div> : null}
+                  </td>
+                  <td className="px-5 py-3 text-right">
+                    {hasReportPayload(r) ? (
+                      <button type="button" aria-label={`Report for ${r.fixtureId}`} onClick={() => { onOpenReport(r); }} className="inline-flex items-center rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-neutral-700 hover:bg-neutral-50">Report</button>
+                    ) : <span className="font-mono text-xs text-neutral-300">—</span>}
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+      {totalUsd !== null ? (
+        <footer className="border-t border-neutral-200 bg-neutral-50/60 px-5 py-2 text-right font-mono text-[11px] text-neutral-500">total cost: {fmtUsd(totalUsd)}</footer>
+      ) : null}
+    </section>
+  );
+}
+
+interface CalendarResultsPanelProps {
+  calendarRows: CalendarProgressRow[];
+  totalUsd: number | null;
+  onOpenReport: (row: Extract<CalendarRunReportEntry, { status: "done" }>) => void;
+}
+
+function CalendarResultsPanel({ calendarRows, totalUsd, onOpenReport }: CalendarResultsPanelProps): ReactElement {
+  return (
+    <section className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+      <header className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50/60 px-5 py-3">
+        <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-700">Calendar results</span>
+        <span className="font-mono text-[11px] text-neutral-500">
+          {calendarRows.length === 0 ? "no runs yet" : `${String(calendarRows.length)} run${calendarRows.length === 1 ? "" : "s"}`}
+        </span>
+      </header>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-neutral-200 text-left">
+            <th className="px-5 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-500">Run</th>
+            <th className="px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-500">Status</th>
+            <th className="px-5 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">Cost</th>
+            <th className="px-5 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">Report</th>
+          </tr>
+        </thead>
+        <tbody>
+          {calendarRows.length === 0 ? (
+            <tr>
+              <td colSpan={4} className="px-5 py-6 text-center font-mono text-xs text-neutral-500">No calendar eval runs yet.</td>
+            </tr>
+          ) : (
+            calendarRows.map((row) => (
+              <tr key={row.runId} data-testid="calendar-result-row" className="border-b border-neutral-100 last:border-none">
+                <td className="px-5 py-3 font-mono text-xs font-medium text-neutral-900">{shortId(row.runId)}</td>
+                <td className="px-3 py-3">
+                  {row.status === "done" ? (
+                    <span className="inline-flex items-center gap-1 rounded-sm bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-700">done</span>
+                  ) : row.status === "running" ? (
+                    <span className="inline-flex items-center gap-1 rounded-sm bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-amber-700">running</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-sm bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-rose-700">error</span>
+                  )}
+                  {isCalendarReportRow(row) && row.status === "error" ? <div className="mt-1 text-xs text-rose-700">{row.error}</div> : null}
+                </td>
+                <td className="px-5 py-3 text-right font-mono text-xs tabular-nums">{isCalendarDoneRow(row) ? fmtUsd(row.cost.usd) : "—"}</td>
+                <td className="px-5 py-3 text-right">
+                  {isCalendarDoneRow(row) ? (
+                    <button type="button" aria-label={`Report for calendar run ${shortId(row.runId)}`} onClick={() => { onOpenReport(row); }} className="inline-flex items-center rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-neutral-700 hover:bg-neutral-50">Report</button>
+                  ) : <span className="font-mono text-xs text-neutral-300">—</span>}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+      {totalUsd !== null ? (
+        <footer className="border-t border-neutral-200 bg-neutral-50/60 px-5 py-2 text-right font-mono text-[11px] text-neutral-500">total cost: {fmtUsd(totalUsd)}</footer>
+      ) : null}
+    </section>
+  );
+}
+
+interface EvalFixtureSummary {
+  fixtureId: string;
+  gradingStatus: string;
+}
+
+interface ModeAPanelProps {
+  fixtures: EvalFixtureSummary[];
+  fixtureId: string;
+  bypassCache: boolean;
+  running: boolean;
+  onFixtureChange: (id: string) => void;
+  onBypassCacheChange: (v: boolean) => void;
+  onRun: () => void;
+  onStop: () => void;
+}
+
+function ModeScoredPanel({
+  fixtures,
+  fixtureId,
+  bypassCache,
+  running,
+  onFixtureChange,
+  onBypassCacheChange,
+  onRun,
+  onStop,
+}: ModeAPanelProps): ReactElement {
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <div className="mb-1.5 flex items-center justify-between">
+          <label htmlFor="fixture-select" className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Fixture</label>
+          <Link to="/admin/eval/fixtures/new" data-testid="new-fixture-link" className="font-mono text-[11px] uppercase tracking-wider text-[#8c3a1e] hover:underline">+ New fixture</Link>
+        </div>
+        <select id="fixture-select" data-testid="fixture-select" className="block w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-500 focus:outline-none" value={fixtureId} onChange={(e) => { onFixtureChange(e.target.value); }}>
+          <option value="">— pick a fixture —</option>
+          {fixtures.map((f) => (
+            <option key={f.fixtureId} value={f.fixtureId} disabled={f.gradingStatus !== "graded"}>{f.fixtureId} ({f.gradingStatus})</option>
+          ))}
+        </select>
+      </div>
+      <label className="flex items-center gap-2 text-sm text-neutral-700">
+        <input type="checkbox" checked={bypassCache} onChange={(e) => { onBypassCacheChange(e.target.checked); }} className="h-4 w-4" />
+        Bypass response cache
+      </label>
+      <div className="flex items-center gap-2">
+        <Button type="button" data-testid="run-mode-a" disabled={running || !fixtureId} onClick={onRun} className="w-full justify-center" style={{ background: running ? undefined : "#8c3a1e", color: running ? undefined : "#fff" }}>
+          {running ? "Running…" : "Run scored eval"}
+        </Button>
+        {running ? <Button type="button" variant="ghost" onClick={onStop}>Stop</Button> : null}
+      </div>
+    </div>
+  );
+}
+
+interface CalendarRunEntry {
+  runId: string;
+  digestHeadline?: string | null;
+  itemCount: number;
+  topN: number;
+  completedAt: string;
+  sourceTypes: string[];
+}
+
+interface ModeABPanelProps {
+  calendarDate: string;
+  today: string;
+  calendarRuns: CalendarRunEntry[];
+  calendarRunsLoading: boolean;
+  calendarRunsError: boolean;
+  selectedRunIds: string[];
+  dirty: boolean;
+  running: boolean;
+  timezone: string | null;
+  onDateChange: (date: string) => void;
+  onToggleRun: (id: string) => void;
+  onRun: () => void;
+}
+
+function ModeABPanel({
+  calendarDate, today, calendarRuns, calendarRunsLoading, calendarRunsError,
+  selectedRunIds, dirty, running, timezone,
+  onDateChange, onToggleRun, onRun,
+}: ModeABPanelProps): ReactElement {
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <label htmlFor="ab-date" className="mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-neutral-500">Date</label>
+        <input id="ab-date" data-testid="ab-date" type="date" value={calendarDate} max={today} onChange={(e) => { onDateChange(e.target.value); }} className="block w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-500 focus:outline-none" />
+      </div>
+      {!dirty ? (
+        <p data-testid="ab-hint" className="rounded bg-amber-50 px-2 py-1.5 text-xs text-amber-800">Draft matches saved — edit the prompt to see a diff.</p>
+      ) : null}
+      <section className="rounded-md border border-neutral-200">
+        <header className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50 px-3 py-2">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Runs on date</span>
+          <span className="font-mono text-[11px] text-neutral-500">{calendarRunsLoading ? "loading" : `${String(calendarRuns.length)} run${calendarRuns.length === 1 ? "" : "s"}`}</span>
+        </header>
+        <div className="max-h-[260px] overflow-auto">
+          {calendarRunsError ? (
+            <div className="px-3 py-4 text-xs text-rose-700">Failed to load runs.</div>
+          ) : calendarRuns.length === 0 ? (
+            <div className="px-3 py-4 font-mono text-xs text-neutral-500">No completed runs for this date.</div>
+          ) : (
+            calendarRuns.map((run) => (
+              <label key={run.runId} className="flex cursor-pointer gap-3 border-b border-neutral-100 px-3 py-2 last:border-none hover:bg-neutral-50">
+                <input type="checkbox" checked={selectedRunIds.includes(run.runId)} onChange={() => { onToggleRun(run.runId); }} aria-label={`Select calendar run ${shortId(run.runId)}`} className="mt-1 h-4 w-4" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-neutral-900">{calendarRunLabel(run as CalendarRunSummary)}</span>
+                  <span className="block font-mono text-[11px] text-neutral-500">{shortId(run.runId)} · {String(run.itemCount)} items · top {String(run.topN)}</span>
+                  <span className="block truncate text-[11px] text-neutral-500">{formatTimestamp(run.completedAt, timezone)} · {run.sourceTypes.join(", ") || "sources n/a"}</span>
+                </span>
+              </label>
+            ))
+          )}
+        </div>
+      </section>
+      <Button type="button" data-testid="run-mode-b" disabled={running || !dirty || selectedRunIds.length === 0} onClick={onRun} className="w-full justify-center" style={{ background: running || !dirty || selectedRunIds.length === 0 ? undefined : "#8c3a1e", color: running || !dirty || selectedRunIds.length === 0 ? undefined : "#fff" }}>
+        {running ? "Running…" : "Run calendar eval"}
+      </Button>
+    </div>
+  );
 }
 
 function CalendarReportDialog({
@@ -387,57 +717,10 @@ export function EvalIndexPage(): ReactElement {
       bypassCache: mode === "scored" ? bypassCache : undefined,
     });
     streamRef.current = stream;
+    const streamSetters: StreamEventSetters = { setRows, setCalendarRows, setTotalUsd, setRunError, setSourcing };
     try {
       for await (const ev of stream.progress) {
-        if (ev.event === "progress") {
-          if (mode === "ab") {
-            const payload = ev.data as CalendarProgressRow;
-            setCalendarRows((prev) => upsertCalendarRow(prev, payload));
-            continue;
-          }
-          const payload = ev.data as ScoredProgressPayload;
-          setRows((prev) => {
-            const idx = prev.findIndex(
-              (r) => r.fixtureId === payload.fixtureId,
-            );
-            const next = [...prev];
-            const row: EvalProgressRow = {
-              fixtureId: payload.fixtureId,
-              status: payload.status,
-              score: payload.score,
-              cost: payload.cost,
-              error: payload.error,
-              ...(payload.actualRanking === undefined
-                ? {}
-                : { actualRanking: payload.actualRanking }),
-              ...(payload.expectedRanking === undefined
-                ? {}
-                : { expectedRanking: payload.expectedRanking }),
-              ...(payload.poolSize === undefined
-                ? {}
-                : { poolSize: payload.poolSize }),
-            };
-            if (idx >= 0) next[idx] = row;
-            else next.push(row);
-            return next;
-          });
-        } else if (ev.event === "aggregate" || ev.event === "done") {
-          const payload = ev.data as {
-            totalCost?: { usd?: number };
-            calendarRuns?: CalendarRunReportEntry[];
-            sourcingReport?: SourcingReportRow[];
-          };
-          if (typeof payload.totalCost?.usd === "number") {
-            setTotalUsd(payload.totalCost.usd);
-          }
-          if (payload.calendarRuns && payload.calendarRuns.length > 0) {
-            setCalendarRows(payload.calendarRuns);
-          }
-          if (payload.sourcingReport) setSourcing(payload.sourcingReport);
-        } else if (ev.event === "error") {
-          const payload = ev.data as { message?: string };
-          setRunError(payload.message ?? "run failed");
-        }
+        handleStreamEvent(ev, mode, streamSetters);
       }
     } finally {
       setRunning(false);
@@ -608,271 +891,17 @@ export function EvalIndexPage(): ReactElement {
 
             {/* Per-fixture results table — scored mode */}
             {mode === "scored" ? (
-              <section className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-                <header className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50/60 px-5 py-3">
-                  <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-700">
-                    Per-fixture results
-                  </span>
-                  <span className="font-mono text-[11px] text-neutral-500">
-                    {rows.length === 0
-                      ? "no runs yet"
-                      : `${String(rows.length)} fixture${rows.length === 1 ? "" : "s"}`}
-                  </span>
-                </header>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-neutral-200 text-left">
-                      <th className="px-5 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                        Fixture
-                      </th>
-                      <th className="px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                        Status
-                      </th>
-                      <th className="px-3 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                        nDCG@10
-                      </th>
-                      <th className="px-3 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                        P@10
-                      </th>
-                      <th className="px-3 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                        Recall
-                      </th>
-                      <th className="px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                        R1=must
-                      </th>
-                      <th className="px-5 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                        Cost
-                      </th>
-                      <th className="px-5 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                        Report
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={8}
-                          className="px-5 py-6 text-center font-mono text-xs text-neutral-500"
-                        >
-                          No runs yet.
-                        </td>
-                      </tr>
-                    ) : (
-                      rows.map((r) => {
-                        const ndcgPct =
-                          r.score === undefined
-                            ? 0
-                            : Math.max(0, Math.min(1, r.score.ndcgAt10)) * 100;
-                        return (
-                          <tr
-                            key={r.fixtureId}
-                            data-testid="eval-result-row"
-                            data-fixture-id={r.fixtureId}
-                            className="border-b border-neutral-100 last:border-none"
-                          >
-                            <td className="px-5 py-3 font-mono text-xs font-medium text-neutral-900">
-                              {r.fixtureId}
-                            </td>
-                            <td className="px-3 py-3">
-                              {r.status === "done" ? (
-                                <span className="inline-flex items-center gap-1 rounded-sm bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-700">
-                                  done
-                                </span>
-                              ) : r.status === "running" ? (
-                                <span className="inline-flex items-center gap-1 rounded-sm bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-amber-700">
-                                  running
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 rounded-sm bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-rose-700">
-                                  error
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 text-right font-mono text-xs tabular-nums">
-                              {r.score ? (
-                                <span className="inline-flex items-center gap-2">
-                                  <span
-                                    className="relative inline-block h-1 w-[60px] overflow-hidden rounded-sm bg-neutral-200 align-middle"
-                                    aria-hidden
-                                  >
-                                    <span
-                                      className="absolute inset-y-0 left-0"
-                                      style={{
-                                        width: `${ndcgPct.toFixed(0)}%`,
-                                        background: "#8c3a1e",
-                                      }}
-                                    />
-                                  </span>
-                                  {fmtNumber(r.score.ndcgAt10)}
-                                </span>
-                              ) : (
-                                "—"
-                              )}
-                            </td>
-                            <td className="px-3 py-3 text-right font-mono text-xs tabular-nums">
-                              {r.score ? fmtNumber(r.score.precisionAt10) : "—"}
-                            </td>
-                            <td className="px-3 py-3 text-right font-mono text-xs tabular-nums">
-                              {r.score
-                                ? fmtNumber(r.score.mustIncludeRecall)
-                                : "—"}
-                            </td>
-                            <td className="px-3 py-3 font-mono text-xs">
-                              {r.score
-                                ? r.score.rankOneIsMustInclude
-                                  ? "yes"
-                                  : "no"
-                                : "—"}
-                            </td>
-                            <td className="px-5 py-3 text-right font-mono text-xs tabular-nums">
-                              {r.cost ? (
-                                <span>
-                                  {fmtUsd(r.cost.usd)}{" "}
-                                  {r.cost.cacheHit ? (
-                                    <span className="ml-1 text-neutral-500">
-                                      cached
-                                    </span>
-                                  ) : null}
-                                </span>
-                              ) : (
-                                "—"
-                              )}
-                              {r.error ? (
-                                <div className="text-rose-700">{r.error}</div>
-                              ) : null}
-                            </td>
-                            <td className="px-5 py-3 text-right">
-                              {hasReportPayload(r) ? (
-                                <button
-                                  type="button"
-                                  aria-label={`Report for ${r.fixtureId}`}
-                                  onClick={() => {
-                                    setReportRow(r);
-                                  }}
-                                  className="inline-flex items-center rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-neutral-700 hover:bg-neutral-50"
-                                >
-                                  Report
-                                </button>
-                              ) : (
-                                <span className="font-mono text-xs text-neutral-300">
-                                  —
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-                {totalUsd !== null ? (
-                  <footer className="border-t border-neutral-200 bg-neutral-50/60 px-5 py-2 text-right font-mono text-[11px] text-neutral-500">
-                    total cost: {fmtUsd(totalUsd)}
-                  </footer>
-                ) : null}
-              </section>
+              <ScoredResultsPanel
+                rows={rows}
+                totalUsd={totalUsd}
+                onOpenReport={(r) => { setReportRow(r); }}
+              />
             ) : (
-              <section className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-                <header className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50/60 px-5 py-3">
-                  <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-700">
-                    Calendar results
-                  </span>
-                  <span className="font-mono text-[11px] text-neutral-500">
-                    {calendarRows.length === 0
-                      ? "no runs yet"
-                      : `${String(calendarRows.length)} run${calendarRows.length === 1 ? "" : "s"}`}
-                  </span>
-                </header>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-neutral-200 text-left">
-                      <th className="px-5 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                        Run
-                      </th>
-                      <th className="px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                        Status
-                      </th>
-                      <th className="px-5 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                        Cost
-                      </th>
-                      <th className="px-5 py-2 text-right font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                        Report
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {calendarRows.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="px-5 py-6 text-center font-mono text-xs text-neutral-500"
-                        >
-                          No calendar eval runs yet.
-                        </td>
-                      </tr>
-                    ) : (
-                      calendarRows.map((row) => (
-                        <tr
-                          key={row.runId}
-                          data-testid="calendar-result-row"
-                          className="border-b border-neutral-100 last:border-none"
-                        >
-                          <td className="px-5 py-3 font-mono text-xs font-medium text-neutral-900">
-                            {shortId(row.runId)}
-                          </td>
-                          <td className="px-3 py-3">
-                            {row.status === "done" ? (
-                              <span className="inline-flex items-center gap-1 rounded-sm bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-700">
-                                done
-                              </span>
-                            ) : row.status === "running" ? (
-                              <span className="inline-flex items-center gap-1 rounded-sm bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-amber-700">
-                                running
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 rounded-sm bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-rose-700">
-                                error
-                              </span>
-                            )}
-                            {isCalendarReportRow(row) && row.status === "error" ? (
-                              <div className="mt-1 text-xs text-rose-700">
-                                {row.error}
-                              </div>
-                            ) : null}
-                          </td>
-                          <td className="px-5 py-3 text-right font-mono text-xs tabular-nums">
-                            {isCalendarDoneRow(row) ? fmtUsd(row.cost.usd) : "—"}
-                          </td>
-                          <td className="px-5 py-3 text-right">
-                            {isCalendarDoneRow(row) ? (
-                              <button
-                                type="button"
-                                aria-label={`Report for calendar run ${shortId(row.runId)}`}
-                                onClick={() => {
-                                  setCalendarReportRow(row);
-                                }}
-                                className="inline-flex items-center rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-neutral-700 hover:bg-neutral-50"
-                              >
-                                Report
-                              </button>
-                            ) : (
-                              <span className="font-mono text-xs text-neutral-300">
-                                —
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-                {totalUsd !== null ? (
-                  <footer className="border-t border-neutral-200 bg-neutral-50/60 px-5 py-2 text-right font-mono text-[11px] text-neutral-500">
-                    total cost: {fmtUsd(totalUsd)}
-                  </footer>
-                ) : null}
-              </section>
+              <CalendarResultsPanel
+                calendarRows={calendarRows}
+                totalUsd={totalUsd}
+                onOpenReport={(row) => { setCalendarReportRow(row); }}
+              />
             )}
 
             {mode === "scored" ? (
@@ -915,190 +944,34 @@ export function EvalIndexPage(): ReactElement {
                   </div>
 
                   {mode === "scored" ? (
-                    <div className="flex flex-col gap-4">
-                      <div>
-                        <div className="mb-1.5 flex items-center justify-between">
-                          <label
-                            htmlFor="fixture-select"
-                            className="font-mono text-[10px] uppercase tracking-widest text-neutral-500"
-                          >
-                            Fixture
-                          </label>
-                          <Link
-                            to="/admin/eval/fixtures/new"
-                            data-testid="new-fixture-link"
-                            className="font-mono text-[11px] uppercase tracking-wider text-[#8c3a1e] hover:underline"
-                          >
-                            + New fixture
-                          </Link>
-                        </div>
-                        <select
-                          id="fixture-select"
-                          data-testid="fixture-select"
-                          className="block w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-500 focus:outline-none"
-                          value={fixtureId}
-                          onChange={(e) => {
-                            setFixtureId(e.target.value);
-                          }}
-                        >
-                          <option value="">— pick a fixture —</option>
-                          {fixtures.map((f) => (
-                            <option
-                              key={f.fixtureId}
-                              value={f.fixtureId}
-                              disabled={f.gradingStatus !== "graded"}
-                            >
-                              {f.fixtureId} ({f.gradingStatus})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <label className="flex items-center gap-2 text-sm text-neutral-700">
-                        <input
-                          type="checkbox"
-                          checked={bypassCache}
-                          onChange={(e) => {
-                            setBypassCache(e.target.checked);
-                          }}
-                          className="h-4 w-4"
-                        />
-                        Bypass response cache
-                      </label>
-
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          data-testid="run-mode-a"
-                          disabled={running || !fixtureId}
-                          onClick={() => {
-                            void handleRun();
-                          }}
-                          className="w-full justify-center"
-                          style={{
-                            background: running ? undefined : "#8c3a1e",
-                            color: running ? undefined : "#fff",
-                          }}
-                        >
-                          {running ? "Running…" : "Run scored eval"}
-                        </Button>
-                        {running ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            onClick={handleStop}
-                          >
-                            Stop
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
+                    <ModeScoredPanel
+                      fixtures={fixtures}
+                      fixtureId={fixtureId}
+                      bypassCache={bypassCache}
+                      running={running}
+                      onFixtureChange={setFixtureId}
+                      onBypassCacheChange={setBypassCache}
+                      onRun={() => { void handleRun(); }}
+                      onStop={handleStop}
+                    />
                   ) : (
-                    <div className="flex flex-col gap-4">
-                      <div>
-                        <label
-                          htmlFor="ab-date"
-                          className="mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-neutral-500"
-                        >
-                          Date
-                        </label>
-                        <input
-                          id="ab-date"
-                          data-testid="ab-date"
-                          type="date"
-                          value={calendarDate}
-                          max={today}
-                          onChange={(e) => {
-                            calendarDateTouchedRef.current = true;
-                            setCalendarDate(e.target.value);
-                          }}
-                          className="block w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-500 focus:outline-none"
-                        />
-                      </div>
-                      {!dirty ? (
-                        <p
-                          data-testid="ab-hint"
-                          className="rounded bg-amber-50 px-2 py-1.5 text-xs text-amber-800"
-                        >
-                          Draft matches saved — edit the prompt to see a diff.
-                        </p>
-                      ) : null}
-                      <section className="rounded-md border border-neutral-200">
-                        <header className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50 px-3 py-2">
-                          <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                            Runs on date
-                          </span>
-                          <span className="font-mono text-[11px] text-neutral-500">
-                            {calendarRunsQuery.isLoading
-                              ? "loading"
-                              : `${String(calendarRuns.length)} run${calendarRuns.length === 1 ? "" : "s"}`}
-                          </span>
-                        </header>
-                        <div className="max-h-[260px] overflow-auto">
-                          {calendarRunsQuery.isError ? (
-                            <div className="px-3 py-4 text-xs text-rose-700">
-                              Failed to load runs.
-                            </div>
-                          ) : calendarRuns.length === 0 ? (
-                            <div className="px-3 py-4 font-mono text-xs text-neutral-500">
-                              No completed runs for this date.
-                            </div>
-                          ) : (
-                            calendarRuns.map((run) => (
-                              <label
-                                key={run.runId}
-                                className="flex cursor-pointer gap-3 border-b border-neutral-100 px-3 py-2 last:border-none hover:bg-neutral-50"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={selectedRunIds.includes(run.runId)}
-                                  onChange={() => {
-                                    toggleCalendarRun(run.runId);
-                                  }}
-                                  aria-label={`Select calendar run ${shortId(run.runId)}`}
-                                  className="mt-1 h-4 w-4"
-                                />
-                                <span className="min-w-0 flex-1">
-                                  <span className="block truncate text-sm font-medium text-neutral-900">
-                                    {calendarRunLabel(run)}
-                                  </span>
-                                  <span className="block font-mono text-[11px] text-neutral-500">
-                                    {shortId(run.runId)} ·{" "}
-                                    {String(run.itemCount)} items · top{" "}
-                                    {String(run.topN)}
-                                  </span>
-                                  <span className="block truncate text-[11px] text-neutral-500">
-                                    {formatTimestamp(run.completedAt, timezone)} ·{" "}
-                                    {run.sourceTypes.join(", ") || "sources n/a"}
-                                  </span>
-                                </span>
-                              </label>
-                            ))
-                          )}
-                        </div>
-                      </section>
-                      <Button
-                        type="button"
-                        data-testid="run-mode-b"
-                        disabled={running || !dirty || selectedRunIds.length === 0}
-                        onClick={() => {
-                          void handleRun();
-                        }}
-                        className="w-full justify-center"
-                        style={{
-                          background:
-                            running || !dirty || selectedRunIds.length === 0
-                              ? undefined
-                              : "#8c3a1e",
-                          color:
-                            running || !dirty || selectedRunIds.length === 0
-                              ? undefined
-                              : "#fff",
-                        }}
-                      >
-                        {running ? "Running…" : "Run calendar eval"}
-                      </Button>
-                    </div>
+                    <ModeABPanel
+                      calendarDate={calendarDate}
+                      today={today}
+                      calendarRuns={calendarRuns}
+                      calendarRunsLoading={calendarRunsQuery.isLoading}
+                      calendarRunsError={calendarRunsQuery.isError}
+                      selectedRunIds={selectedRunIds}
+                      dirty={dirty}
+                      running={running}
+                      timezone={timezone}
+                      onDateChange={(date) => {
+                        calendarDateTouchedRef.current = true;
+                        setCalendarDate(date);
+                      }}
+                      onToggleRun={toggleCalendarRun}
+                      onRun={() => { void handleRun(); }}
+                    />
                   )}
                 </div>
               </div>

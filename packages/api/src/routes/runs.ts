@@ -254,9 +254,10 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     }
 
     const jobName = channel === "linkedin" ? "linkedin-post" : "twitter-post";
-    // Cast to Queue<{ runId: string }> — social post jobs only carry runId, not the full
-    // RunProcessJobPayload that the processing queue is typed for.
-    await (deps.processingQueue as Queue<{ runId: string }>).add(jobName, { runId });
+    // Social post jobs carry only { runId } but share the processing queue.
+    // Queue<RunProcessJobPayload> is structurally compatible via BullMQ's base class —
+    // casting through the base QueueBase which exposes an untyped add.
+    await (deps.processingQueue as Queue).add(jobName, { runId });
 
     logger.info({ event: "run.post.manual", runId, channel }, "run.post.manual");
     void captureAnalytics({

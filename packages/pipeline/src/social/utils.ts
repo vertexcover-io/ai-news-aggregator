@@ -1,4 +1,4 @@
-export const FAILURE_BODY_MAX = 500;
+const FAILURE_BODY_MAX = 500;
 
 export function truncate(value: string): string {
   if (value.length <= FAILURE_BODY_MAX) return value;

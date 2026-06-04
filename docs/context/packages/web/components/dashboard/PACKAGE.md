@@ -1,7 +1,7 @@
 ---
 governs: packages/web/src/components/dashboard/
-last_verified_sha: 5a2ff20
-key_files: [RunsTable.tsx, RunsCardList.tsx, CostDialog.tsx, CostButton.tsx, SocialOverflowMenu.tsx, ScheduleBanner.tsx, EmptyState.tsx, cost-format.ts]
+last_verified_sha: 8d5cbd1
+key_files: [RunsTable.tsx, RunsCardList.tsx, CostDialog.tsx, CostButton.tsx, SocialOverflowMenu.tsx, ScheduleBanner.tsx, EmptyState.tsx, cost-format.ts, run-status.tsx]
 flow_fns: [RunsTable.tsx::RunsTable, SocialOverflowMenu.tsx::SocialOverflowMenu]
 decisions: [D-017, D-018]
 status: active
@@ -25,6 +25,7 @@ Components for the admin dashboard (`/admin`): runs table with dual responsive r
 | `ScheduleBanner({ scheduleTime, scheduleTimezone })` | Info banner showing next scheduled run time |
 | `EmptyState()` | "No settings yet — configure your newsletter to get started" CTA |
 | `cost-format.ts` | `formatCostUsd(n)`, `formatTokens(n)` — pure formatting |
+| `run-status.tsx` | `RunStatusBadge({ status, stage? })` — extracted from RunsTable; renders colored status pill with optional stage annotation. Tested independently. |
 
 ## Depends on / used by
 

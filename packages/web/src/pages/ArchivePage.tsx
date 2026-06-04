@@ -31,6 +31,102 @@ function formatIssueDate(value: string): string {
   });
 }
 
+export function resolveIssueDate(
+  issueDate: string | null | undefined,
+  startedAt: string | null | undefined,
+): string {
+  const value = issueDate ?? startedAt ?? "";
+  return value.length > 0 ? formatIssueDate(value) : "";
+}
+
+export function resolveShareTitle(
+  topStoryTitle: string | null,
+  digestHeadline: string | null,
+  fallbackTitle: string,
+): string {
+  return topStoryTitle ?? digestHeadline ?? fallbackTitle;
+}
+
+function LoadingState(): ReactElement {
+  return (
+    <PageShell>
+      <div role="status" aria-busy="true" aria-label="Loading issue" className="space-y-6 py-12">
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="grid grid-cols-1 md:grid-cols-[120px_1fr_120px] gap-4 md:gap-10 animate-pulse"
+          >
+            <div className="h-16 rounded bg-[#f1ede2]" />
+            <div className="h-24 rounded bg-[#f1ede2]" />
+            <div className="h-8 rounded bg-[#f1ede2]" />
+          </div>
+        ))}
+      </div>
+    </PageShell>
+  );
+}
+
+function ErrorState(): ReactElement {
+  return (
+    <PageShell>
+      <div className="py-16">
+        <BackToArchive />
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8c3a1e] text-center">
+          ERROR
+        </p>
+        <h2 className="mt-3 font-serif text-3xl md:text-5xl font-medium text-[#14110d] text-center">
+          Couldn't load this issue
+        </h2>
+      </div>
+    </PageShell>
+  );
+}
+
+function NotFoundState(): ReactElement {
+  return (
+    <PageShell>
+      <div className="py-16">
+        <BackToArchive />
+        <h2 className="font-serif text-3xl md:text-5xl font-medium text-[#14110d] text-center">
+          This issue isn't here
+        </h2>
+        <p className="mt-3 font-mono text-xs uppercase tracking-[0.18em] text-[#6b6557] text-center">
+          It may have been removed or never existed.
+        </p>
+      </div>
+    </PageShell>
+  );
+}
+
+function CancelledState(): ReactElement {
+  return (
+    <PageShell>
+      <div className="py-16">
+        <BackToArchive />
+        <h2 className="font-serif text-3xl md:text-5xl font-medium text-[#14110d] text-center">
+          This issue was cancelled.
+        </h2>
+      </div>
+    </PageShell>
+  );
+}
+
+function InProgressState(): ReactElement {
+  return (
+    <PageShell>
+      <div className="py-16">
+        <BackToArchive />
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8c3a1e] text-center">
+          IN PROGRESS
+        </p>
+        <h2 className="mt-3 font-serif text-3xl md:text-5xl font-medium text-[#14110d] text-center">
+          Today's issue is still being curated.
+        </h2>
+      </div>
+    </PageShell>
+  );
+}
+
 function BackToArchive(): ReactElement {
   return (
     <div className="text-center mb-7">
@@ -78,10 +174,9 @@ export function ArchivePage(): ReactElement {
   const topStoryTitle = hasTopStory ? items[0].title : null;
   const digestHeadline = data?.digestHeadline ?? null;
   const digestSummary = data?.digestSummary ?? null;
-  const issueDateValue = data?.issueDate ?? data?.startedAt ?? "";
-  const issueDate = issueDateValue.length > 0 ? formatIssueDate(issueDateValue) : "";
+  const issueDate = resolveIssueDate(data?.issueDate, data?.startedAt);
   const fallbackTitle = `AI news - ${issueDate}`;
-  const shareTitle = topStoryTitle ?? digestHeadline ?? fallbackTitle;
+  const shareTitle = resolveShareTitle(topStoryTitle, digestHeadline, fallbackTitle);
   const readingMin = readingTimeMinutes(items);
 
   useEffect(() => {
@@ -103,85 +198,11 @@ export function ArchivePage(): ReactElement {
     });
   }, [data?.id, data?.status, items.length]);
 
-  if (isLoading) {
-    return (
-      <PageShell>
-        <div role="status" aria-busy="true" aria-label="Loading issue" className="space-y-6 py-12">
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              className="grid grid-cols-1 md:grid-cols-[120px_1fr_120px] gap-4 md:gap-10 animate-pulse"
-            >
-              <div className="h-16 rounded bg-[#f1ede2]" />
-              <div className="h-24 rounded bg-[#f1ede2]" />
-              <div className="h-8 rounded bg-[#f1ede2]" />
-            </div>
-          ))}
-        </div>
-      </PageShell>
-    );
-  }
-
-  if (isError) {
-    return (
-      <PageShell>
-        <div className="py-16">
-          <BackToArchive />
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8c3a1e] text-center">
-            ERROR
-          </p>
-          <h2 className="mt-3 font-serif text-3xl md:text-5xl font-medium text-[#14110d] text-center">
-            Couldn't load this issue
-          </h2>
-        </div>
-      </PageShell>
-    );
-  }
-
-  if (data === null || data === undefined) {
-    return (
-      <PageShell>
-        <div className="py-16">
-          <BackToArchive />
-          <h2 className="font-serif text-3xl md:text-5xl font-medium text-[#14110d] text-center">
-            This issue isn't here
-          </h2>
-          <p className="mt-3 font-mono text-xs uppercase tracking-[0.18em] text-[#6b6557] text-center">
-            It may have been removed or never existed.
-          </p>
-        </div>
-      </PageShell>
-    );
-  }
-
-  if (data.status === "cancelled") {
-    return (
-      <PageShell>
-        <div className="py-16">
-          <BackToArchive />
-          <h2 className="font-serif text-3xl md:text-5xl font-medium text-[#14110d] text-center">
-            This issue was cancelled.
-          </h2>
-        </div>
-      </PageShell>
-    );
-  }
-
-  if (data.status !== "completed") {
-    return (
-      <PageShell>
-        <div className="py-16">
-          <BackToArchive />
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8c3a1e] text-center">
-            IN PROGRESS
-          </p>
-          <h2 className="mt-3 font-serif text-3xl md:text-5xl font-medium text-[#14110d] text-center">
-            Today's issue is still being curated.
-          </h2>
-        </div>
-      </PageShell>
-    );
-  }
+  if (isLoading) return <LoadingState />;
+  if (isError) return <ErrorState />;
+  if (data === null || data === undefined) return <NotFoundState />;
+  if (data.status === "cancelled") return <CancelledState />;
+  if (data.status !== "completed") return <InProgressState />;
 
   // Place the subscribe interlude after the midpoint when there are at least 4 stories
   const interludeAfter =

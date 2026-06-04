@@ -2,10 +2,9 @@ import type {
   PatchArchivePayload,
   RankedItem,
   PoolResponse,
-  ArchiveListResponse,
 } from "@newsletter/shared/types";
 import type { DigestMeta } from "@newsletter/shared/constants";
-import { apiFetch, apiFetchAdmin } from "./client";
+import { apiFetchAdmin } from "./client";
 
 // PatchArchiveBody is now the shared PatchArchivePayload — kept as a type alias
 // for backwards compat with callers inside this package.
@@ -27,31 +26,6 @@ interface ApiErrorBody {
   error?: string;
 }
 
-export async function listArchives(): Promise<ArchiveListResponse> {
-  const res = await apiFetch("/api/archives");
-  if (!res.ok) throw new Error(`listArchives: ${String(res.status)}`);
-  return (await res.json()) as ArchiveListResponse;
-}
-
-export interface SearchArchivesQuery {
-  q?: string;
-  from?: string;
-  to?: string;
-}
-
-export async function searchArchives(
-  query: SearchArchivesQuery = {},
-): Promise<ArchiveListResponse> {
-  const params = new URLSearchParams();
-  if (query.q) params.set("q", query.q);
-  if (query.from) params.set("from", query.from);
-  if (query.to) params.set("to", query.to);
-  const qs = params.toString();
-  const url = `/api/archives/search${qs ? `?${qs}` : ""}`;
-  const res = await apiFetch(url);
-  if (!res.ok) throw new Error(`searchArchives: ${String(res.status)}`);
-  return (await res.json()) as ArchiveListResponse;
-}
 
 export async function deleteArchive(runId: string): Promise<void> {
   const res = await apiFetchAdmin(`/api/admin/archives/${runId}`, {

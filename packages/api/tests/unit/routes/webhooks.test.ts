@@ -425,13 +425,14 @@ describe("VS-8: SES webhook Slack notifications", () => {
     let callCount = 0;
     const deps = makeDeps();
     const { notifySubscriberRemoved } = deps.slackNotifier;
-    const origUpdateStatus = deps.subscribersRepo.updateStatus as ReturnType<typeof vi.fn>;
-    origUpdateStatus.mockImplementation((id: string, status: SubscriberStatus) => {
-      deps.subscribersRepo.statusUpdates.push({ id, status });
-      const row = makeSubscriber({ id, status });
-      callCount++;
-      return Promise.resolve({ changed: callCount === 1, next: status, row });
-    });
+    vi.spyOn(deps.subscribersRepo, "updateStatus").mockImplementation(
+      (id: string, status: SubscriberStatus) => {
+        deps.subscribersRepo.statusUpdates.push({ id, status });
+        const row = makeSubscriber({ id, status });
+        callCount++;
+        return Promise.resolve({ changed: callCount === 1, next: status, row });
+      },
+    );
 
     const inner = makePermanentBounceInner();
     deps.verifySns.mockResolvedValue(makeSnsNotification(inner));
