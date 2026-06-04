@@ -1,7 +1,7 @@
 ---
 governs: packages/pipeline/src/workers/
-last_verified_sha: 40c6b83
-key_files: [processing.ts, run-process.ts, daily-run.ts, email-send.ts, linkedin-post.ts, twitter-post.ts, social-health.ts, collector-health.ts, publish-target.ts, newsletter-send.ts, collection.ts]
+last_verified_sha: 8d5cbd1
+key_files: [processing.ts, run-process.ts, daily-run.ts, email-send.ts, linkedin-post.ts, twitter-post.ts, social-health.ts, collector-health.ts, publish-target.ts, newsletter-send.ts]
 flow_fns: [processing.ts::createProcessingWorker, run-process.ts::handleRunProcessJob, daily-run.ts::handleDailyRunJob, email-send.ts::handleEmailSendJob, linkedin-post.ts::handleLinkedInPostJob, twitter-post.ts::handleTwitterPostJob, collector-health.ts::handleCollectorHealthJob, publish-target.ts::resolvePublishTarget]
 decisions: [D-050, D-051, D-052, D-110, D-111]
 status: active
@@ -58,12 +58,15 @@ Each worker file exports a handler function called by the dispatching `processin
             ├─ rankFn(shortlist, { topN, systemPrompt, tracker }) → runLog stage.result
             ├─ updateRecapData (write recap content to raw_items.metadata.recap)
             ├─ buildSourceTelemetry → compute digestHeadline/digestSummary
-            ├─ resolveScheduledPublishAt → publishedAt
-            ├─ archiveRepo.upsert (completed, rankedItems, runFunnel, shortlistedItemIds, preReviewSnapshot)
-            ├─ persistCost
-            ├─ slackNotifier.notifySourceDistribution (idempotent)
-            └─ if !autoReview → slackNotifier.notifyReviewPending
-    → catch CancelledError: write cancelled archive + persistCost
+            └─ finalizeRun(deps, args) [services/finalize-run.ts]
+                ├─ pickArchiveDigest → digestHeadline/digestSummary
+                ├─ serializeArchiveSearchText
+                ├─ resolveScheduledPublishAt → publishedAt
+                ├─ archiveRepo.upsert (completed, rankedItems, runFunnel, shortlistedItemIds, preReviewSnapshot)
+                ├─ persistCost
+                ├─ slackNotifier.notifySourceDistribution (idempotent)
+                └─ if !autoReview → slackNotifier.notifyReviewPending
+    → catch CancelledError: writeFailedArchive (services/run-archive-writer.ts) + persistCost
     → catch other: writeFailedArchive + runLog.error + re-throw
     → finally: subscriber.close()
 

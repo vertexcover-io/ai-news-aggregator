@@ -1,6 +1,6 @@
 ---
 governs: packages/web/src/components/settings/
-last_verified_sha: 40c6b83
+last_verified_sha: 8d5cbd1
 key_files: [SourcesSection.tsx, CollectorHealthModal.tsx, ScheduleSection.tsx, RankingPromptSection.tsx, ShortlistPromptSection.tsx, ShortlistSizeField.tsx, AnalyticsSection.tsx, SaveBar.tsx]
 flow_fns: []
 decisions: []
