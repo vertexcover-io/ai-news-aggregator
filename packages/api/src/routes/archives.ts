@@ -567,9 +567,6 @@ export function createArchivesRouter(deps: ArchivesRouterDeps): Hono {
   return app;
 }
 
-export function createDefaultArchivesRouter(): Hono {
-  return createArchivesRouter(createDefaultArchivesDeps());
-}
 
 export function createDefaultPublicArchivesRouter(): Hono {
   return createPublicArchivesRouter(createDefaultArchivesDeps());

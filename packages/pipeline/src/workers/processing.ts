@@ -10,7 +10,6 @@ import {
   type RunProcessDeps,
   type RunProcessJobData,
   type RunProcessJobLike,
-  type RunProcessResult,
   type CollectFns,
 } from "@pipeline/workers/run-process.js";
 import { createCancelSubscriber } from "@pipeline/services/cancel-subscriber.js";
@@ -465,7 +464,7 @@ export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
 
 export const buildDefaultNewsletterSendDeps = buildDefaultPublishDeps;
 
-export function buildDefaultSocialHealthDeps(): SocialHealthDeps {
+function buildDefaultSocialHealthDeps(): SocialHealthDeps {
   const twitterLogger = createLogger("social.twitter");
   const twitterOAuth1 = readTwitterOAuth1Config();
   if (twitterOAuth1.status === "partial") {
@@ -495,11 +494,3 @@ function getSharedSocialCredentialsRepo(): SocialCredentialsRepo {
   return cachedSocialCredentialsRepo;
 }
 
-export type {
-  RunProcessDeps,
-  DailyRunDeps,
-  EmailSendDeps,
-  PublishDeps,
-  SocialHealthDeps,
-  RunProcessResult,
-};

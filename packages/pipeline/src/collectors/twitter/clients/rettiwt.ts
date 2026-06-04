@@ -69,7 +69,7 @@ interface CreateRettiwtClientDeps {
   auth?: RettiwtAuthRefresher;
 }
 
-export interface RettiwtAuthRefresher {
+interface RettiwtAuthRefresher {
   refreshCsrfToken(): Promise<boolean>;
 }
 

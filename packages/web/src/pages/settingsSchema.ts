@@ -61,7 +61,6 @@ const nullableUrlSchema = nullableTrimmedStringSchema.refine(
 );
 
 export type TwitterFormConfig = z.infer<typeof twitterConfigSchema>;
-export type TwitterFormUser = z.infer<typeof twitterUserSchema>;
 
 export interface SettingsSubmitTwitterConfig {
   listIds: string[];

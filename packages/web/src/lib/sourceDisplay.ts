@@ -24,13 +24,3 @@ export const SOURCE_BADGE_CLASSES: Record<SourceType, string> = {
   web_search: "bg-teal-100 text-teal-700",
 };
 
-export const SOURCE_ORDER: readonly SourceType[] = [
-  "hn",
-  "reddit",
-  "twitter",
-  "blog",
-  "rss",
-  "github",
-  "newsletter",
-  "web_search",
-];

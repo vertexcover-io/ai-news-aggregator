@@ -284,7 +284,3 @@ export function createLinkedInOAuthCallbackRouter(
   return app;
 }
 
-/**
- * Default (production) factories — wired in app.ts via createDefaultLinkedInOAuthRouter.
- */
-export { buildRedirectUri };

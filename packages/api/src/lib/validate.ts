@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { UserSettings } from "@newsletter/shared";
 
 const hnConfigSchema = z.object({
   keywords: z.array(z.string()).optional(),
@@ -32,12 +31,7 @@ const twitterUserInputSchema = z.object({
     .optional(),
 });
 
-const twitterUserPersistedSchema = z.object({
-  handle: z.string().regex(TWITTER_HANDLE_RE),
-  userId: z.string().regex(/^\d+$/),
-});
-
-export const twitterConfigInputSchema = z.object({
+const twitterConfigInputSchema = z.object({
   listIds: z.array(
     z
       .string()
@@ -47,16 +41,6 @@ export const twitterConfigInputSchema = z.object({
   maxTweetsPerSource: z.number().int().min(1).max(500).optional(),
   sinceHours: z.number().int().min(1).max(168).optional(),
 });
-
-const twitterConfigPersistedSchema = z.object({
-  listIds: z.array(z.string().regex(/^\d+$/)),
-  users: z.array(twitterUserPersistedSchema),
-  maxTweetsPerSource: z.number().int().min(1).max(500).optional(),
-  sinceHours: z.number().int().min(1).max(168).optional(),
-});
-
-export type TwitterConfigInput = z.infer<typeof twitterConfigInputSchema>;
-export type TwitterUserInput = z.infer<typeof twitterUserInputSchema>;
 
 const webConfigSchema = z.object({
   sources: z
@@ -87,13 +71,11 @@ export const runSubmitSchema = z
     { message: "at least one of hn, reddit, web is required" },
   );
 
-export type RunSubmitBody = z.infer<typeof runSubmitSchema>;
 
 export const runNowBodySchema = z
   .object({ dryRun: z.boolean().optional() })
   .strict();
 
-export type RunNowBody = z.infer<typeof runNowBodySchema>;
 
 const HH_MM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const hhmmSchema = z
@@ -356,30 +338,6 @@ export const userSettingsUpsertSchema = z
 
 export type UserSettingsUpsertBody = z.infer<typeof userSettingsUpsertSchema>;
 
-export const userSettingsPersistedSchema = z
-  .object({
-    ...userSettingsCommonShape,
-    pipelineTime: hhmmSchema,
-    emailTime: hhmmSchema,
-    linkedinTime: hhmmSchema,
-    twitterTime: hhmmSchema,
-    emailEnabled: z.boolean(),
-    linkedinEnabled: z.boolean(),
-    twitterPostEnabled: z.boolean(),
-    autoReview: z.boolean(),
-    twitterConfig: twitterConfigPersistedSchema.nullable(),
-    webSearchEnabled: z.boolean(),
-    webSearchConfig: webSearchConfigSchema.nullable(),
-  })
-  .superRefine((payload, ctx) => {
-    if (!sourcesEnabledRefinement(payload)) {
-      ctx.addIssue({ code: "custom", ...sourcesPresentMessage });
-    }
-    addEnabledConfigIssues(payload, ctx);
-    addScheduleOrderingIssues(payload, ctx);
-  }) satisfies z.ZodType<Omit<UserSettings, "id" | "updatedAt" | "scheduleTime">>;
-
-export type UserSettingsPersistedBody = z.infer<typeof userSettingsPersistedSchema>;
 
 export const archivePatchSchema = z
   .object({
@@ -407,7 +365,6 @@ export const archivePatchSchema = z
     linkedinPostBody: z.string().nullable().optional(),
   });
 
-export type ArchivePatchBody = z.infer<typeof archivePatchSchema>;
 
 export const regenerateDigestMetaSchema = z.object({
   items: z
@@ -422,7 +379,6 @@ export const regenerateDigestMetaSchema = z.object({
     .min(1, { message: "items cannot be empty" }),
 });
 
-export type RegenerateDigestMetaBody = z.infer<typeof regenerateDigestMetaSchema>;
 
 export const addPostSchema = z.object({
   url: z.url(),
@@ -430,12 +386,9 @@ export const addPostSchema = z.object({
 
 export const socialChannelSchema = z.enum(["linkedin", "twitter"]);
 
-export type SocialChannel = z.infer<typeof socialChannelSchema>;
 
-export type AddPostBody = z.infer<typeof addPostSchema>;
 
 export const promoteSchema = z.object({
   rawItemId: z.number().int().positive(),
 });
 
-export type PromoteBody = z.infer<typeof promoteSchema>;

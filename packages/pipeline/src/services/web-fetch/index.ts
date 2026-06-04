@@ -3,8 +3,6 @@ import { fetchAdaptive } from "@pipeline/services/web-fetch/fetch-adaptive.js";
 
 export * from "@pipeline/services/web-fetch/convert.js";
 export * from "@pipeline/services/web-fetch/types.js";
-export { fetchStatic } from "@pipeline/services/web-fetch/fetch-static.js";
-export { fetchBrowser } from "@pipeline/services/web-fetch/fetch-browser.js";
 export { fetchAdaptive } from "@pipeline/services/web-fetch/fetch-adaptive.js";
 
 export interface FetchMarkdownOptions {
