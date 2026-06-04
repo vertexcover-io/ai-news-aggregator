@@ -4,7 +4,7 @@ import type {
   GroundTruth,
 } from "@newsletter/shared/types/eval-ranking";
 import type { RankedItemRef } from "@newsletter/shared";
-import { buildActualRanking, buildExpectedRanking } from "../admin-eval.js";
+import { buildActualRanking, buildExpectedRanking } from "../../services/eval-report.js";
 
 function poolItem(
   rawItemId: number,
