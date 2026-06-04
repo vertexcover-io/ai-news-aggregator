@@ -204,6 +204,35 @@ function checkAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new AbortError();
 }
 
+interface SourceMeta {
+  identifier: string;
+  displayName: string;
+}
+
+function buildSourceMeta(source: Source, userIdToHandle: Map<string, string>): SourceMeta {
+  return {
+    identifier: source.kind === "list" ? `list:${source.id}` : `user:${source.id}`,
+    displayName: source.kind === "list" ? `Twitter list ${source.id}` : `@${userIdToHandle.get(source.id) ?? source.id}`,
+  };
+}
+
+async function enrichAndStoreItems(
+  items: RawItemInsert[],
+  deps: TwitterCollectorDeps,
+): Promise<void> {
+  if (deps.enrichment) {
+    await enrichRawItems(items, deps.enrichment);
+    for (const item of items) {
+      if (item.imageUrl != null) continue;
+      const enriched = item.metadata?.enrichedLink;
+      if (enriched?.status === "ok" && enriched.imageUrl) {
+        item.imageUrl = enriched.imageUrl;
+      }
+    }
+  }
+  await deps.rawItemsRepo.upsertItems(items);
+}
+
 export async function collectTwitter(
   deps: TwitterCollectorDeps,
   config: TwitterCollectConfig,
@@ -280,15 +309,10 @@ export async function collectTwitter(
   for (const source of sources) {
     checkAborted(deps.signal);
     const sourceStart = now().getTime();
+    const { identifier, displayName } = buildSourceMeta(source, userIdToHandle);
 
     try {
       const outcome = await fetchSource(source, deps, config, sleep, now);
-      const displayName =
-        source.kind === "list"
-          ? `Twitter list ${source.id}`
-          : `@${userIdToHandle.get(source.id) ?? source.id}`;
-      const identifier =
-        source.kind === "list" ? `list:${source.id}` : `user:${source.id}`;
       const rows = outcome.tweets.map((t) =>
         tweetToRawItem(t, { identifier, displayName }),
       );
@@ -340,12 +364,8 @@ export async function collectTwitter(
       const code = classifyError(err);
       const errorObj = err instanceof Error ? err : new Error(errMessage(err));
       failures.push({ source: source.id, error: errorObj });
-      const displayName =
-        source.kind === "list"
-          ? `Twitter list ${source.id}`
-          : `@${userIdToHandle.get(source.id) ?? source.id}`;
       unitResults.push({
-        identifier: source.kind === "list" ? `list:${source.id}` : `user:${source.id}`,
+        identifier,
         displayName,
         itemsFetched: 0,
         status: "failed",
@@ -372,17 +392,7 @@ export async function collectTwitter(
 
   const deduped = dedupByExternalId(batch);
   if (deduped.length > 0) {
-    if (deps.enrichment) {
-      await enrichRawItems(deduped, deps.enrichment);
-      for (const item of deduped) {
-        if (item.imageUrl != null) continue;
-        const enriched = item.metadata?.enrichedLink;
-        if (enriched?.status === "ok" && enriched.imageUrl) {
-          item.imageUrl = enriched.imageUrl;
-        }
-      }
-    }
-    await deps.rawItemsRepo.upsertItems(deduped);
+    await enrichAndStoreItems(deduped, deps);
   }
 
   if (failures.length === sources.length && sources.length > 0) {
