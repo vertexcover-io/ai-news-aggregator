@@ -16,6 +16,9 @@ export const EMAIL_SEND_SCHEDULER_KEY = "email-send:default";
 export const LINKEDIN_POST_SCHEDULER_KEY = "linkedin-post:default";
 export const TWITTER_POST_SCHEDULER_KEY = "twitter-post:default";
 
+// Custom BullMQ job ids must not contain ":" — bullmq >=5.x validateOptions rejects it
+// (colon is the Redis key delimiter). Scheduler keys above are exempt: BullMQ generates
+// their job ids internally (repeat:<key>:<ts>).
 export function jobIdFor(channel: ScheduledChannel, runId: string): string {
-  return `${channel}:${runId}`;
+  return `${channel}-${runId}`;
 }

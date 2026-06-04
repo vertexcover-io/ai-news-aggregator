@@ -245,17 +245,17 @@ describe("PATCH /api/admin/archives/:runId — immediate publish block", () => {
       expect(addSpy).toHaveBeenCalledWith(
         "email-send",
         { runId: "run-uuid-1" },
-        { jobId: "email-send:run-uuid-1", delay: 0 },
+        { jobId: "email-send-run-uuid-1", delay: 0 },
       );
       expect(addSpy).toHaveBeenCalledWith(
         "linkedin-post",
         { runId: "run-uuid-1" },
-        { jobId: "linkedin-post:run-uuid-1", delay: 0 },
+        { jobId: "linkedin-post-run-uuid-1", delay: 0 },
       );
       expect(addSpy).toHaveBeenCalledWith(
         "twitter-post",
         { runId: "run-uuid-1" },
-        { jobId: "twitter-post:run-uuid-1", delay: 0 },
+        { jobId: "twitter-post-run-uuid-1", delay: 0 },
       );
 
       vi.useRealTimers();
@@ -293,7 +293,7 @@ describe("PATCH /api/admin/archives/:runId — immediate publish block", () => {
       expect(addSpy).toHaveBeenCalledWith(
         "email-send",
         { runId: "run-uuid-1" },
-        { jobId: "email-send:run-uuid-1", delay: 0 },
+        { jobId: "email-send-run-uuid-1", delay: 0 },
       );
       expect(addSpy).not.toHaveBeenCalledWith(
         "linkedin-post",
@@ -342,12 +342,12 @@ describe("PATCH /api/admin/archives/:runId — immediate publish block", () => {
       expect(addSpy).toHaveBeenCalledWith(
         "linkedin-post",
         { runId: "run-uuid-1" },
-        { jobId: "linkedin-post:run-uuid-1", delay: 0 },
+        { jobId: "linkedin-post-run-uuid-1", delay: 0 },
       );
       expect(addSpy).toHaveBeenCalledWith(
         "twitter-post",
         { runId: "run-uuid-1" },
-        { jobId: "twitter-post:run-uuid-1", delay: 0 },
+        { jobId: "twitter-post-run-uuid-1", delay: 0 },
       );
 
       vi.useRealTimers();
