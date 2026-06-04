@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import type IORedis from "ioredis";
 import { runKey } from "@newsletter/shared";
 import type {
-  EnrichmentTelemetry,
   RunCostBreakdown,
   RunFunnel,
   RunLogEntry,
@@ -225,9 +224,7 @@ describe("buildRunObservability", () => {
     expect(reddit?.retries).toBe(2);
     expect(reddit?.durationMs).toBe(800);
     // enrichment + cost from archive
-    expect(result.enrichment).toEqual<EnrichmentTelemetry | undefined>(
-      archiveTelemetry.enrichment,
-    );
+    expect(result.enrichment).toEqual(archiveTelemetry.enrichment);
     expect(result.cost).toEqual(archiveCost);
   });
 

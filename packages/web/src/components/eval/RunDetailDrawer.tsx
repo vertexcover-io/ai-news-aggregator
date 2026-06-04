@@ -196,6 +196,42 @@ function deriveTabHint(
     : { sent: firstDone.poolSize, ranked: firstDone.draftRanking.length };
 }
 
+interface UseDrawerTabStateResult {
+  activeTab: DrawerTab;
+  setActiveTab: (next: DrawerTab) => void;
+}
+
+function useDrawerTabState(
+  runId: string | null,
+  reportAvailable: boolean,
+): UseDrawerTabStateResult {
+  const [tabState, setTabState] = useState<{
+    runId: string | null;
+    seenAvailable: boolean;
+    tab: DrawerTab;
+  }>({ runId: null, seenAvailable: false, tab: "prompt-cost" });
+
+  let activeTab: DrawerTab = tabState.tab;
+  const sameRun = tabState.runId === runId;
+  if (!sameRun) {
+    activeTab = reportAvailable ? "report" : "prompt-cost";
+    setTabState({ runId, seenAvailable: reportAvailable, tab: activeTab });
+  } else if (!tabState.seenAvailable && reportAvailable) {
+    activeTab = "report";
+    setTabState({ runId, seenAvailable: true, tab: "report" });
+  }
+
+  const setActiveTab = (next: DrawerTab): void => {
+    setTabState({
+      runId,
+      seenAvailable: tabState.seenAvailable || reportAvailable,
+      tab: next,
+    });
+  };
+
+  return { activeTab, setActiveTab };
+}
+
 export interface RunDetailDrawerProps {
   runId: string | null;
   onClose: () => void;
@@ -204,6 +240,14 @@ export interface RunDetailDrawerProps {
 function shortHash(hash: string | null): string {
   if (hash === null) return "—";
   return hash.slice(0, 8);
+}
+
+function resolveModelLabel(costBreakdown: unknown): string {
+  if (costBreakdown !== null && typeof costBreakdown === "object") {
+    const model = (costBreakdown as { model?: unknown }).model;
+    if (typeof model === "string") return model;
+  }
+  return "—";
 }
 
 function modeLabel(mode: EvalRun["mode"]): string {
@@ -577,40 +621,7 @@ export function RunDetailDrawer({
   // running runs, and failed runs default to Prompt & Cost.
   const reportAvailable =
     (run?.mode === "scored" && reportData !== null) || calendarReportAvailable;
-  // We can't lazily-init the default off `reportAvailable` because the run
-  // fetch is still pending on first render. Track which (runId, available)
-  // combination we've already defaulted for; flip to "report" the first time
-  // data arrives showing it's available. Once the operator clicks a tab the
-  // explicit value wins.
-  const [tabState, setTabState] = useState<{
-    runId: string | null;
-    seenAvailable: boolean;
-    tab: DrawerTab;
-  }>({ runId: null, seenAvailable: false, tab: "prompt-cost" });
-
-  let activeTab: DrawerTab = tabState.tab;
-  const sameRun = tabState.runId === runId;
-  if (!sameRun) {
-    // New run opened — reset to the default for the current data shape.
-    activeTab = reportAvailable ? "report" : "prompt-cost";
-    setTabState({
-      runId,
-      seenAvailable: reportAvailable,
-      tab: activeTab,
-    });
-  } else if (!tabState.seenAvailable && reportAvailable) {
-    // Same run, but data has just arrived and report data is now available.
-    activeTab = "report";
-    setTabState({ runId, seenAvailable: true, tab: "report" });
-  }
-
-  const setActiveTab = (next: DrawerTab): void => {
-    setTabState({
-      runId,
-      seenAvailable: tabState.seenAvailable || reportAvailable,
-      tab: next,
-    });
-  };
+  const { activeTab, setActiveTab } = useDrawerTabState(runId, reportAvailable);
   const showReportTab = run?.mode === "scored" || calendarReportAvailable;
   const tabHint = deriveTabHint(reportData, calendarReports);
 
@@ -786,14 +797,7 @@ export function RunDetailDrawer({
                         Cost breakdown
                       </span>
                       <span className="font-mono text-[11px] text-neutral-400">
-                        {(() => {
-                          const cb = run.costBreakdown;
-                          if (cb !== null && typeof cb === "object") {
-                            const model = (cb as { model?: unknown }).model;
-                            if (typeof model === "string") return model;
-                          }
-                          return "—";
-                        })()}
+                        {resolveModelLabel(run.costBreakdown)}
                       </span>
                     </header>
                     {run.status === "running" ? (

@@ -24,7 +24,7 @@ const BUCKET_LABEL: Record<SourceBucket, string> = {
   web: "Web",
 };
 
-export function classifyUrl(rawUrl: string): SourceBucket {
+function classifyUrl(rawUrl: string): SourceBucket {
   let host: string;
   try {
     host = new URL(rawUrl).hostname.toLowerCase();
@@ -46,7 +46,7 @@ export function classifyUrl(rawUrl: string): SourceBucket {
   return "web";
 }
 
-export function computeSourceMix(urls: string[]): SourceMix {
+function computeSourceMix(urls: string[]): SourceMix {
   const mix: SourceMix = { hn: 0, reddit: 0, twitter: 0, web: 0, total: 0 };
   for (const u of urls) {
     const bucket = classifyUrl(u);

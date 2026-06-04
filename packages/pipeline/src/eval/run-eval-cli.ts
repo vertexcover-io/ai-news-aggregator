@@ -118,7 +118,7 @@ async function resolveTargetFixtures(
   return graded.slice(0, windowSize).map((g) => g.fixture);
 }
 
-function formatPrettyLine(r: PerFixtureResult): string {
+export function formatPrettyLine(r: PerFixtureResult): string {
   if (r.error !== undefined) {
     return `[${r.fixtureId}] ERROR: ${r.error}`;
   }
@@ -138,6 +138,113 @@ function formatPrettyLine(r: PerFixtureResult): string {
   }
   const cost = r.cost !== undefined ? ` cost $${r.cost.usd.toFixed(4)}` : "";
   return `[${s.fixtureId}] nDCG@10 ${ndcg}${delta} P@10 ${p10} recall ${rec} rank1Must ${r1}${cost}`;
+}
+
+interface RunFixtureEvalInput {
+  fixture: Fixture;
+  prompt: string;
+  cache: EvalCache;
+  history: Record<string, ScoreHistoryEntry>;
+  runEvalFn: typeof runEvalDefault;
+  readGroundTruth: typeof readGroundTruthDefault;
+  recordScore: typeof recordScoreDefault;
+}
+
+interface RunFixtureEvalOutput {
+  result: PerFixtureResult;
+  graded: { fixture: Fixture; groundTruth: GroundTruth } | null;
+}
+
+export async function runFixtureEval(
+  input: RunFixtureEvalInput,
+): Promise<RunFixtureEvalOutput> {
+  const { fixture, prompt, cache, history, runEvalFn, readGroundTruth, recordScore } = input;
+  try {
+    const gt: GroundTruth | null = await readGroundTruth(fixture.fixtureId);
+    if (gt === null) {
+      return {
+        result: { fixtureId: fixture.fixtureId, error: "no ground truth" },
+        graded: null,
+      };
+    }
+    const out = await runEvalFn({ fixture, groundTruth: gt, prompt, model: fixture.model, cache });
+    if (out.score === null) {
+      return {
+        result: { fixtureId: fixture.fixtureId, error: "runEval returned null score" },
+        graded: { fixture, groundTruth: gt },
+      };
+    }
+    const previous = fixture.fixtureId in history ? history[fixture.fixtureId] : undefined;
+    const result: PerFixtureResult = {
+      fixtureId: fixture.fixtureId,
+      score: out.score,
+      cost: {
+        tokensIn: out.cost.tokensIn,
+        tokensOut: out.cost.tokensOut,
+        usd: out.cost.usd,
+        cacheHit: out.cost.cacheHit,
+        promptHash: out.cost.promptHash,
+      },
+      previousNdcgAt10: previous?.ndcgAt10,
+    };
+    await recordScore({
+      fixtureId: fixture.fixtureId,
+      ndcgAt10: out.score.ndcgAt10,
+      ranAt: out.score.ranAt,
+      promptHash: out.cost.promptHash,
+    });
+    return { result, graded: { fixture, groundTruth: gt } };
+  } catch (err) {
+    return {
+      result: {
+        fixtureId: fixture.fixtureId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      graded: null,
+    };
+  }
+}
+
+export function formatEvalOutput(
+  perFixture: PerFixtureResult[],
+  aggregate: AggregateResult,
+  opts: { json?: boolean; diff?: boolean },
+  writeLine: (s: string) => void,
+): void {
+  const { json, diff } = opts;
+  const exitCode: 0 | 1 = aggregate.succeeded > 0 ? 0 : 1;
+  if (json === true) {
+    const payload = {
+      exitCode,
+      perFixture: diff === true
+        ? perFixture
+        : perFixture.map((p) => {
+            if (p.score === undefined) return p;
+            const { perItemDiff: _diff, ...rest } = p.score;
+            return { ...p, score: rest };
+          }),
+      aggregate,
+    };
+    writeLine(JSON.stringify(payload));
+  } else {
+    for (const p of perFixture) {
+      writeLine(formatPrettyLine(p));
+      if (diff === true && p.score !== undefined) {
+        writeLine(`  perItemDiff: ${JSON.stringify(p.score.perItemDiff)}`);
+      }
+    }
+    writeLine(
+      `aggregate: mean nDCG@10 ${aggregate.meanNdcgAt10.toFixed(3)}, total cost $${aggregate.totalCost.toFixed(4)}, ${aggregate.succeeded}/${perFixture.length} succeeded`,
+    );
+    if (aggregate.sourcingReport.length > 0) {
+      writeLine("sourcing report (source / must / nice / drop):");
+      for (const row of aggregate.sourcingReport) {
+        writeLine(
+          `  ${row.sourceType.padEnd(16)} ${String(row.mustIncludeCount).padStart(4)} ${String(row.niceCount).padStart(4)} ${String(row.dropCount).padStart(4)}`,
+        );
+      }
+    }
+  }
 }
 
 export async function runEvalCli(
@@ -204,58 +311,17 @@ export async function runEvalCli(
   const perFixture: PerFixtureResult[] = [];
   const graded: { fixture: Fixture; groundTruth: GroundTruth }[] = [];
   for (const fixture of fixtures) {
-    try {
-      const gt: GroundTruth | null = await readGroundTruth(fixture.fixtureId);
-      if (gt !== null) graded.push({ fixture, groundTruth: gt });
-      if (gt === null) {
-        perFixture.push({
-          fixtureId: fixture.fixtureId,
-          error: "no ground truth",
-        });
-        continue;
-      }
-      const out = await runEvalFn({
-        fixture,
-        groundTruth: gt,
-        prompt,
-        model: fixture.model,
-        cache,
-      });
-      if (out.score === null) {
-        perFixture.push({
-          fixtureId: fixture.fixtureId,
-          error: "runEval returned null score",
-        });
-        continue;
-      }
-      const previous = fixture.fixtureId in history ? history[fixture.fixtureId] : undefined;
-      const entry: PerFixtureResult = {
-        fixtureId: fixture.fixtureId,
-        score: out.score,
-        cost: {
-          tokensIn: out.cost.tokensIn,
-          tokensOut: out.cost.tokensOut,
-          usd: out.cost.usd,
-          cacheHit: out.cost.cacheHit,
-          promptHash: out.cost.promptHash,
-        },
-        previousNdcgAt10: previous?.ndcgAt10,
-      };
-      perFixture.push(entry);
-
-      const historyEntry: ScoreHistoryEntry = {
-        fixtureId: fixture.fixtureId,
-        ndcgAt10: out.score.ndcgAt10,
-        ranAt: out.score.ranAt,
-        promptHash: out.cost.promptHash,
-      };
-      await recordScore(historyEntry);
-    } catch (err) {
-      perFixture.push({
-        fixtureId: fixture.fixtureId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    const { result, graded: gradedEntry } = await runFixtureEval({
+      fixture,
+      prompt,
+      cache,
+      history,
+      runEvalFn,
+      readGroundTruth,
+      recordScore,
+    });
+    perFixture.push(result);
+    if (gradedEntry !== null) graded.push(gradedEntry);
   }
 
   const succeeded = perFixture.filter((p) => p.score !== undefined);
@@ -277,40 +343,8 @@ export async function runEvalCli(
     failed,
     sourcingReport: report,
   };
-  const exitCode: 0 | 1 = succeeded.length > 0 ? 0 : 1;
 
-  if (opts.json === true) {
-    const payload = {
-      exitCode,
-      perFixture: opts.diff === true
-        ? perFixture
-        : perFixture.map((p) => {
-            if (p.score === undefined) return p;
-            const { perItemDiff: _diff, ...rest } = p.score;
-            return { ...p, score: rest };
-          }),
-      aggregate,
-    };
-    writeLine(JSON.stringify(payload));
-  } else {
-    for (const p of perFixture) {
-      writeLine(formatPrettyLine(p));
-      if (opts.diff === true && p.score !== undefined) {
-        writeLine(`  perItemDiff: ${JSON.stringify(p.score.perItemDiff)}`);
-      }
-    }
-    writeLine(
-      `aggregate: mean nDCG@10 ${meanNdcg.toFixed(3)}, total cost $${totalCost.toFixed(4)}, ${succeeded.length}/${perFixture.length} succeeded`,
-    );
-    if (report.length > 0) {
-      writeLine("sourcing report (source / must / nice / drop):");
-      for (const row of report) {
-        writeLine(
-          `  ${row.sourceType.padEnd(16)} ${String(row.mustIncludeCount).padStart(4)} ${String(row.niceCount).padStart(4)} ${String(row.dropCount).padStart(4)}`,
-        );
-      }
-    }
-  }
+  formatEvalOutput(perFixture, aggregate, { json: opts.json, diff: opts.diff }, writeLine);
 
-  return { exitCode, perFixture, aggregate };
+  return { exitCode: aggregate.succeeded > 0 ? 0 : 1, perFixture, aggregate };
 }

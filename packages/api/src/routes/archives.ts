@@ -301,7 +301,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
       await deps.processingQueue.add(
         "email-send",
         { runId },
-        { jobId: `email-send:${runId}`, delay: 0 },
+        { jobId: jobIdFor("email-send", runId), delay: 0 },
       );
       logger.info(
         { event: "archive.send_enqueued", runId, trigger: "force-send" },
@@ -567,9 +567,6 @@ export function createArchivesRouter(deps: ArchivesRouterDeps): Hono {
   return app;
 }
 
-export function createDefaultArchivesRouter(): Hono {
-  return createArchivesRouter(createDefaultArchivesDeps());
-}
 
 export function createDefaultPublicArchivesRouter(): Hono {
   return createPublicArchivesRouter(createDefaultArchivesDeps());

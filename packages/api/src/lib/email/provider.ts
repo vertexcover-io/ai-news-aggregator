@@ -1,8 +1,6 @@
 import { createSesProvider } from "./ses-provider.js";
 import { createResendProvider } from "./resend-provider.js";
-import type { EmailProvider, SendEmailParams, SendEmailResult } from "@newsletter/shared";
-
-export type { EmailProvider, SendEmailParams, SendEmailResult };
+import type { EmailProvider } from "@newsletter/shared";
 
 export function createEmailProvider(): EmailProvider {
   return process.env.EMAIL_PROVIDER === "ses"

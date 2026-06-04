@@ -41,6 +41,3 @@ export const patchSchema = z
     { message: "at least one field is required" },
   );
 
-export type PreviewBody = z.infer<typeof previewSchema>;
-export type CreateBody = z.infer<typeof createSchema>;
-export type PatchBody = z.infer<typeof patchSchema>;

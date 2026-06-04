@@ -318,7 +318,7 @@ interface RawItemWithEnrichmentRow {
   readonly metadata: RawItemMetadata;
 }
 
-export async function listRawItemsForRunWithEnrichment(
+async function listRawItemsForRunWithEnrichment(
   runId: string,
   deps: ListRawItemsForRunDeps,
 ): Promise<RawItemWithEnrichment[]> {

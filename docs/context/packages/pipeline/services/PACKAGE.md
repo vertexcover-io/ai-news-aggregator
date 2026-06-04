@@ -1,8 +1,8 @@
 ---
 governs: packages/pipeline/src/services/
-last_verified_sha: 40c6b83
-key_files: [run-state.ts, run-logger.ts, cost-tracker.ts, candidate-loader.ts, credential-resolver.ts, source-telemetry.ts, cancel-subscriber.ts, recency.ts, web-crawler.ts, add-post-helper.ts, build-pre-review-snapshot.ts, collector-health/index.ts, collector-health/classify.ts]
-flow_fns: [run-state.ts::createRunStateService, run-logger.ts::createRunLogger, cost-tracker.ts::createCostTracker, credential-resolver.ts::resolveLinkedInCredentials, cancel-subscriber.ts::createCancelSubscriber, web-crawler.ts::runWebCrawl, add-post-helper.ts::hydrateAddedPost, collector-health/index.ts::runCollectorHealthCheck]
+last_verified_sha: 8d5cbd1
+key_files: [run-state.ts, run-logger.ts, cost-tracker.ts, candidate-loader.ts, credential-resolver.ts, source-telemetry.ts, cancel-subscriber.ts, recency.ts, web-crawler.ts, add-post-helper.ts, build-pre-review-snapshot.ts, collector-health/index.ts, collector-health/classify.ts, run-archive-writer.ts, finalize-run.ts]
+flow_fns: [run-state.ts::createRunStateService, run-logger.ts::createRunLogger, cost-tracker.ts::createCostTracker, credential-resolver.ts::resolveLinkedInCredentials, cancel-subscriber.ts::createCancelSubscriber, web-crawler.ts::runWebCrawl, add-post-helper.ts::hydrateAddedPost, collector-health/index.ts::runCollectorHealthCheck, run-archive-writer.ts::writeFailedArchive, run-archive-writer.ts::pickArchiveDigest, finalize-run.ts::finalizeRun]
 decisions: [D-070, D-071, D-072, D-080]
 status: active
 ---
@@ -84,6 +84,11 @@ Services own state management (Redis run-state, cost tracking), candidate loadin
                     → tavilyFactory(key).search(q, maxItems 1) → {healthy,"tavily results: N"}
   (each wrapped in a per-collector timeout → on timeout {failed, reason includes "timeout"};
    any thrown error → classifyCollectorHealthError(collector, err) → short reason, raw err logged only)
+
+## New services (added: refactor #249 + duplication #250)
+
+- `run-archive-writer.ts` — extracted from `run-process.ts`: `writeFailedArchive(runId, reason, deps)` → writes a failed/cancelled archive row with partial cost; `pickArchiveDigest(ranked)` → picks digest headline/summary from ranked items; `nonEmptyText(s)` → null-coalesces empty strings.
+- `finalize-run.ts` — extracted from `run-process.ts`: `finalizeRun(deps, args)` → the success finalize block: digest selection → `serializeArchiveSearchText` → `resolveScheduledPublishAt` → archive upsert → cost persist → Slack `notifySourceDistribution` + conditional `notifyReviewPending` → run.completed log. Per D-051, receives already-resolved deps.
 
 ## Gotchas / landmines
 - **Run-logger is best-effort**: `repo.append` failure is caught and logged to stdout — it never throws. A DB outage during a run loses telemetry but doesn't crash the pipeline. (D-070)

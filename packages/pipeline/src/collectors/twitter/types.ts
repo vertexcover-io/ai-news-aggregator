@@ -1,4 +1,3 @@
-import type { CollectorResult } from "@newsletter/shared/types";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
 
@@ -59,6 +58,3 @@ export interface TwitterCollectorDeps {
   enrichment?: EnrichmentContext;
 }
 
-export interface TwitterCollectorResult extends CollectorResult {
-  failures: TwitterCollectorFailure[];
-}

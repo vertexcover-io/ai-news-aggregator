@@ -1,7 +1,6 @@
 import type { EnrichedLinkContent, EnrichmentSkipReason, RawItemInsert } from "@newsletter/shared";
-import { canonicalizeFetchUrl, isPrivateOrLoopbackHost } from "@newsletter/shared/services/url-safety";
+import { canonicalizeFetchUrl } from "@newsletter/shared/services/url-safety";
 
-export { isPrivateOrLoopbackHost };
 
 const SAME_PLATFORM_HOSTS = [
   "reddit.com",

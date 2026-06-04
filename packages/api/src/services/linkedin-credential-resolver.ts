@@ -22,7 +22,6 @@ export interface ResolveLinkedInClientDeps {
   env?: NodeJS.ProcessEnv;
 }
 
-const DEFAULT_LINKEDIN_API_VERSION = "202511";
 const logger = createLogger("service:linkedin-credential-resolver");
 
 function present(value: string | undefined): value is string {
@@ -56,5 +55,3 @@ export async function resolveLinkedInClient(
   if (!present(clientId) || !present(clientSecret)) return null;
   return { clientId, clientSecret };
 }
-
-export { DEFAULT_LINKEDIN_API_VERSION };

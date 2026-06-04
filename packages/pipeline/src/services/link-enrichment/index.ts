@@ -142,12 +142,5 @@ export function toEnrichmentTelemetry(counters: EnrichmentCounters): EnrichmentT
 }
 
 export { createEnrichmentCache } from "@pipeline/services/link-enrichment/cache.js";
-export { enrichOne } from "@pipeline/services/link-enrichment/fetcher.js";
-export {
-  shouldEnrich,
-  canonicalizeEnrichmentUrl,
-  getContentType,
-} from "@pipeline/services/link-enrichment/url-classifier.js";
-export type { ShouldEnrichResult } from "@pipeline/services/link-enrichment/url-classifier.js";
 export { newCounters } from "@pipeline/services/link-enrichment/types.js";
 export type { EnrichmentContext, EnrichmentCounters } from "@pipeline/services/link-enrichment/types.js";

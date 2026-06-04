@@ -36,9 +36,6 @@ export interface WebCollectConfig {
   postConcurrency?: number;
 }
 
-export interface WebCollectJobData {
-  config: WebCollectConfig;
-}
 
 export interface CollectorFailure {
   source: string;

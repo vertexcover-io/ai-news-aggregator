@@ -4,6 +4,48 @@ import { pickSummarySource, deriveRawItemIdentifier } from "@newsletter/shared/s
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
 import { buildItemPreview } from "./item-preview.js";
 
+type RawRow = Awaited<ReturnType<RawItemsRepo["findByIds"]>>[number];
+
+export function buildRecapContent(
+  ref: RankedItemRef,
+  rawRecap: RecapContent | null | undefined,
+): RecapContent | null {
+  const hasRefRecap =
+    ref.title !== undefined ||
+    ref.summary !== undefined ||
+    ref.bullets !== undefined ||
+    ref.bottomLine !== undefined;
+  if (hasRefRecap) {
+    return {
+      title: ref.title ?? rawRecap?.title ?? "",
+      summary: ref.summary ?? rawRecap?.summary ?? "",
+      bullets: ref.bullets ?? rawRecap?.bullets ?? [],
+      bottomLine: ref.bottomLine ?? rawRecap?.bottomLine ?? "",
+    };
+  }
+  return rawRecap ?? null;
+}
+
+export function resolveDisplayTitle(
+  ref: RankedItemRef,
+  rawRecap: RecapContent | null | undefined,
+  rowTitle: string,
+): string {
+  return ref.title ?? rawRecap?.title ?? rowTitle;
+}
+
+export function resolveEnrichedSource(
+  row: RawRow,
+  isLegacyArchive: boolean,
+): { hostname: string; url: string } | null {
+  if (isLegacyArchive) return null;
+  const source = pickSummarySource(row.content, row.metadata.enrichedLink);
+  if (source.kind === "enriched") {
+    return { hostname: source.hostname, url: source.url };
+  }
+  return null;
+}
+
 export async function hydrateRankedItems(
   repo: RawItemsRepo,
   refs: RankedItemRef[],
@@ -20,30 +62,9 @@ export async function hydrateRankedItems(
     const row = byId.get(ref.rawItemId);
     if (!row) continue;
     const rawRecap = row.metadata.recap;
-    let recap: RecapContent | null = null;
-    const hasRefRecap =
-      ref.title !== undefined ||
-      ref.summary !== undefined ||
-      ref.bullets !== undefined ||
-      ref.bottomLine !== undefined;
-    if (hasRefRecap) {
-      recap = {
-        title: ref.title ?? rawRecap?.title ?? "",
-        summary: ref.summary ?? rawRecap?.summary ?? "",
-        bullets: ref.bullets ?? rawRecap?.bullets ?? [],
-        bottomLine: ref.bottomLine ?? rawRecap?.bottomLine ?? "",
-      };
-    } else if (rawRecap) {
-      recap = rawRecap;
-    }
-    const displayTitle = ref.title ?? rawRecap?.title ?? row.title;
-    let enrichedSource: { hostname: string; url: string } | null = null;
-    if (!isLegacyArchive) {
-      const source = pickSummarySource(row.content, row.metadata.enrichedLink);
-      if (source.kind === "enriched") {
-        enrichedSource = { hostname: source.hostname, url: source.url };
-      }
-    }
+    const recap = buildRecapContent(ref, rawRecap);
+    const displayTitle = resolveDisplayTitle(ref, rawRecap, row.title);
+    const enrichedSource = resolveEnrichedSource(row, isLegacyArchive);
     hydrated.push({
       id: row.id,
       rawItemId: row.id,

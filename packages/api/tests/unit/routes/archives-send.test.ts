@@ -124,7 +124,7 @@ describe("POST /api/admin/archives/:runId/send", () => {
     expect(addSpy).toHaveBeenCalledWith(
       "email-send",
       { runId: "run-1" },
-      { jobId: "email-send:run-1", delay: 0 },
+      { jobId: "email-send-run-1", delay: 0 },
     );
   });
 

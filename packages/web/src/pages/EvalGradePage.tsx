@@ -31,7 +31,7 @@ function engagementScore(item: FixtureItem): number {
   return item.engagement.points + item.engagement.commentCount;
 }
 
-export function buildClusters(fixture: Fixture): Cluster[] {
+function buildClusters(fixture: Fixture): Cluster[] {
   const itemsById = new Map<number, FixtureItem>();
   for (const item of fixture.pool) itemsById.set(item.rawItemId, item);
 

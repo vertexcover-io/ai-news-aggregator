@@ -780,7 +780,7 @@ describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
       expect(addSpy).toHaveBeenCalledWith(
         "email-send",
         { runId: archive.runId },
-        { jobId: `email-send:${archive.runId}`, delay: 0 },
+        { jobId: `email-send-${archive.runId}`, delay: 0 },
       );
       expect(addSpy).toHaveBeenCalledWith(
         "linkedin-post",

@@ -17,6 +17,7 @@ import {
   runWebCrawl,
   type CrawlJob,
   type CrawlResult,
+  type CrawlSuccess,
 } from "@pipeline/services/web-crawler.js";
 import type { CostTracker } from "@pipeline/services/cost-tracker.js";
 import type { RunLogger } from "@pipeline/services/run-logger.js";
@@ -203,6 +204,213 @@ async function resolveDefaultModel(): Promise<LanguageModel> {
   return cachedDefaultModel;
 }
 
+interface PerSource {
+  source: BlogSource;
+  capped: DiscoveredPost[];
+  failure?: string;
+  sourceFailed: boolean;
+}
+
+interface DiscoveryDeps {
+  llmModel: LanguageModel;
+  reportDiscovery: UsageReporter | undefined;
+  runLogger: RunLogger | undefined;
+  config: WebCollectConfig;
+}
+
+async function processDiscoveryPhase(
+  source: BlogSource,
+  listingResult: CrawlResult | undefined,
+  deps: DiscoveryDeps,
+): Promise<PerSource> {
+  const { llmModel, reportDiscovery, runLogger, config } = deps;
+  if (!listingResult?.ok) {
+    const error = listingResult?.error ?? "no result";
+    logger.warn(
+      { event: "collector.web.listing_failed" as const, source: source.name, listingUrl: source.listingUrl, sinceDays: config.sinceDays, error },
+      "web listing failed",
+    );
+    void runLogger?.warn(
+      { stage: "collect", source: "blog", event: "collector.web.listing_failed", step: "listing", url: source.listingUrl, sourceName: source.name, listingUrl: source.listingUrl, sinceDays: config.sinceDays, error },
+      "web listing failed",
+    );
+    return { source, capped: [], failure: error, sourceFailed: true };
+  }
+  try {
+    const discovered = await discoverPostUrls(
+      source.listingUrl,
+      listingResult.result.markdown,
+      listingResult.result.structuredData,
+      llmModel,
+      reportDiscovery,
+    );
+    const validated = validateDiscoveredUrls(discovered, source.listingUrl);
+    const sorted = sortPostsByPublishedAtDesc(validated);
+    const filtered = applySinceDays(sorted, config.sinceDays);
+    const capped = filtered.slice(0, config.maxItems);
+    const listingCompletedFields = {
+      event: "collector.web.listing_completed" as const,
+      source: source.name,
+      listingUrl: source.listingUrl,
+      sinceDays: config.sinceDays,
+      discovered: discovered.length,
+      validated: validated.length,
+      afterSinceDays: filtered.length,
+      capped: capped.length,
+      structuredDataBytes: listingResult.result.structuredData?.length ?? 0,
+    };
+    logger.info(listingCompletedFields, "web listing processed");
+    void runLogger?.info(
+      {
+        stage: "collect",
+        source: "blog",
+        event: "collector.web.listing_completed" as const,
+        url: source.listingUrl,
+        sourceName: source.name,
+        listingUrl: source.listingUrl,
+        sinceDays: config.sinceDays,
+        discovered: discovered.length,
+        validated: validated.length,
+        afterSinceDays: filtered.length,
+        capped: capped.length,
+        structuredDataBytes: listingResult.result.structuredData?.length ?? 0,
+      },
+      "web listing processed",
+    );
+    return { source, capped, sourceFailed: false };
+  } catch (err) {
+    const error = truncateError(err);
+    logger.warn(
+      { event: "collector.web.discovery_failed" as const, source: source.name, listingUrl: source.listingUrl, sinceDays: config.sinceDays, error },
+      "web listing discovery failed",
+    );
+    void runLogger?.warn(
+      { stage: "collect", source: "blog", event: "collector.web.discovery_failed", step: "discovery", url: source.listingUrl, sourceName: source.name, listingUrl: source.listingUrl, sinceDays: config.sinceDays, error },
+      "web listing discovery failed",
+    );
+    return { source, capped: [], failure: error, sourceFailed: true };
+  }
+}
+
+interface DetailPhaseDeps {
+  llmModel: LanguageModel;
+  reportExtraction: UsageReporter | undefined;
+  runLogger: RunLogger | undefined;
+}
+
+interface DetailPhaseResult {
+  allItems: RawItemInsert[];
+  allFailures: CollectorFailure[];
+  itemsBySource: Map<string, number>;
+}
+
+interface ExtractPostResult {
+  item: RawItemInsert | null;
+  failure: CollectorFailure | null;
+}
+
+async function extractDetailPost(
+  sourceName: string,
+  post: DiscoveredPost,
+  dr: CrawlSuccess,
+  extractedSoFar: number,
+  totalToExtract: number,
+  llmModel: LanguageModel,
+  reportExtraction: UsageReporter | undefined,
+  runLogger: RunLogger | undefined,
+): Promise<ExtractPostResult> {
+  try {
+    const fields = await extractPostFields(post.url, dr.result.markdown, llmModel, reportExtraction);
+    logger.info({ event: "web.extract.progress", source: sourceName, postUrl: post.url, done: extractedSoFar + 1, total: totalToExtract }, "extracted post fields");
+    const merged: ExtractedFields = {
+      title: fields.title.trim() || post.title.trim(),
+      author: fields.author,
+      published_at: fields.published_at.trim() || post.published_at,
+      image_url: (fields.image_url.trim() || dr.result.imageUrl) ?? "",
+    };
+    if (!merged.title) {
+      return { item: null, failure: { source: sourceName, postUrl: post.url, error: "empty title" } };
+    }
+    return { item: buildRawItem(post.url, dr.result.markdown, merged, dr.result.publishedAt), failure: null };
+  } catch (err) {
+    const error = truncateError(err);
+    logger.warn({ event: "collector.web.detail_failed" as const, source: sourceName, postUrl: post.url, error }, "web detail extraction failed");
+    void runLogger?.error({ stage: "collect", source: "blog", event: "collector.web.detail_failed", step: "extract", url: post.url, sourceName, postUrl: post.url, error }, "web detail extraction failed");
+    return { item: null, failure: { source: sourceName, postUrl: post.url, error } };
+  }
+}
+
+async function reconcileDetailPhase(
+  perSource: PerSource[],
+  postBySource: Map<string, DiscoveredPost[]>,
+  selfReferentialBySource: Map<string, DiscoveredPost[]>,
+  detailResults: Map<string, CrawlResult>,
+  deps: DetailPhaseDeps,
+): Promise<DetailPhaseResult> {
+  const { llmModel, reportExtraction, runLogger } = deps;
+  const allItems: RawItemInsert[] = [];
+  const allFailures: CollectorFailure[] = [];
+  const itemsBySource = new Map<string, number>();
+
+  for (const ps of perSource) {
+    if (ps.sourceFailed) {
+      allFailures.push({ source: ps.source.name, error: ps.failure ?? "unknown" });
+    }
+  }
+
+  const totalToExtract = Array.from(postBySource.values()).reduce(
+    (n, posts) => n + posts.filter((p) => detailResults.get(p.url)?.ok).length,
+    0,
+  );
+  const extractStart = Date.now();
+  logger.info({ event: "web.extract.start" as const, posts: totalToExtract }, "extracting post fields via LLM");
+  void runLogger?.info({ stage: "collect", source: "blog", event: "web.extract.start" as const, posts: totalToExtract }, "extracting post fields via LLM");
+
+  let extracted = 0;
+  for (const ps of perSource) {
+    if (ps.sourceFailed) continue;
+    const posts = postBySource.get(ps.source.name) ?? [];
+    for (const post of posts) {
+      const dr = detailResults.get(post.url);
+      if (!dr?.ok) {
+        const error = dr?.error ?? "no result";
+        logger.warn({ event: "collector.web.detail_failed" as const, source: ps.source.name, postUrl: post.url, error }, "web detail fetch failed");
+        void runLogger?.error({ stage: "collect", source: "blog", event: "collector.web.detail_failed", step: "extract", url: post.url, sourceName: ps.source.name, postUrl: post.url, error }, "web detail fetch failed");
+        allFailures.push({ source: ps.source.name, postUrl: post.url, error });
+        continue;
+      }
+      const { item, failure } = await extractDetailPost(
+        ps.source.name, post, dr, extracted, totalToExtract, llmModel, reportExtraction, runLogger,
+      );
+      if (failure !== null) { allFailures.push(failure); continue; }
+      if (item !== null) {
+        extracted += 1;
+        allItems.push(item);
+        itemsBySource.set(ps.source.name, (itemsBySource.get(ps.source.name) ?? 0) + 1);
+      }
+    }
+  }
+
+  logger.info({ event: "web.extract.done" as const, extracted, total: totalToExtract, durationMs: Date.now() - extractStart }, "post field extraction complete");
+  void runLogger?.info({ stage: "collect", source: "blog", event: "web.extract.done" as const, extracted, total: totalToExtract, durationMs: Date.now() - extractStart }, "post field extraction complete");
+
+  for (const ps of perSource) {
+    if (ps.sourceFailed) continue;
+    const selfRefs = selfReferentialBySource.get(ps.source.name) ?? [];
+    for (const post of selfRefs) {
+      const fields: ExtractedFields = { title: post.title.trim(), author: "", published_at: post.published_at, image_url: "" };
+      if (!fields.title) {
+        allFailures.push({ source: ps.source.name, postUrl: post.url, error: "empty title" });
+        continue;
+      }
+      allItems.push(buildRawItem(post.url, "", fields, null));
+      itemsBySource.set(ps.source.name, (itemsBySource.get(ps.source.name) ?? 0) + 1);
+    }
+  }
+
+  return { allItems, allFailures, itemsBySource };
+}
+
 export async function collectWeb(
   deps: WebCollectorDeps,
   config: WebCollectConfig,
@@ -213,22 +421,12 @@ export async function collectWeb(
   const tracker = deps.tracker;
   const reportDiscovery: UsageReporter | undefined = tracker
     ? (usage, providerMetadata) => {
-        tracker.record({
-          stage: "web-discovery",
-          modelId: WEB_COLLECTOR_MODEL_ID,
-          usage,
-          providerMetadata,
-        });
+        tracker.record({ stage: "web-discovery", modelId: WEB_COLLECTOR_MODEL_ID, usage, providerMetadata });
       }
     : undefined;
   const reportExtraction: UsageReporter | undefined = tracker
     ? (usage, providerMetadata) => {
-        tracker.record({
-          stage: "web-extraction",
-          modelId: WEB_COLLECTOR_MODEL_ID,
-          usage,
-          providerMetadata,
-        });
+        tracker.record({ stage: "web-extraction", modelId: WEB_COLLECTOR_MODEL_ID, usage, providerMetadata });
       }
     : undefined;
 
@@ -236,18 +434,9 @@ export async function collectWeb(
 
   if (config.sources.length === 0) {
     const durationMs = Date.now() - startTime;
-    const completedFields = {
-      event: "collector.web.completed" as const,
-      itemsFetched: 0,
-      itemsStored: 0,
-      failures: 0,
-      durationMs,
-    };
+    const completedFields = { event: "collector.web.completed" as const, itemsFetched: 0, itemsStored: 0, failures: 0, durationMs };
     logger.info(completedFields, "collection completed");
-    void runLogger?.info(
-      { stage: "collect", source: "blog", ...completedFields },
-      "collection completed",
-    );
+    void runLogger?.info({ stage: "collect", source: "blog", ...completedFields }, "collection completed");
     return { itemsFetched: 0, itemsStored: 0, commentsFetched: 0, durationMs, failures: undefined, unitResults: [] };
   }
 
@@ -258,132 +447,17 @@ export async function collectWeb(
     url: s.listingUrl,
   }));
   logger.info(
-    {
-      event: "collector.web.started",
-      sourceCount: config.sources.length,
-      maxItems: config.maxItems,
-      sinceDays: config.sinceDays,
-      sources: config.sources.map((source) => ({
-        name: source.name,
-        listingUrl: source.listingUrl,
-      })),
-    },
+    { event: "collector.web.started", sourceCount: config.sources.length, maxItems: config.maxItems, sinceDays: config.sinceDays, sources: config.sources.map((source) => ({ name: source.name, listingUrl: source.listingUrl })) },
     "web collector started",
   );
-  const listingResults = await fetcher(listingJobs, {
-    signal: deps.signal,
-    runLogger,
-  });
+  const listingResults = await fetcher(listingJobs, { signal: deps.signal, runLogger });
 
   // Per source: run discovery LLM + dedup + filter
-  interface PerSource {
-    source: BlogSource;
-    capped: DiscoveredPost[];
-    failure?: string;
-    sourceFailed: boolean;
-  }
-
+  const discoveryDeps: DiscoveryDeps = { llmModel, reportDiscovery, runLogger, config };
   const perSource: PerSource[] = await Promise.all(
-    config.sources.map(async (source) => {
-      const r = listingResults.get(source.listingUrl);
-      if (!r?.ok) {
-        const listingFailedFields = {
-          event: "collector.web.listing_failed" as const,
-          source: source.name,
-          listingUrl: source.listingUrl,
-          sinceDays: config.sinceDays,
-          error: r?.error ?? "no result",
-        };
-        logger.warn(listingFailedFields, "web listing failed");
-        void runLogger?.warn(
-          {
-            stage: "collect",
-            source: "blog",
-            event: "collector.web.listing_failed",
-            step: "listing",
-            url: source.listingUrl,
-            sourceName: source.name,
-            listingUrl: source.listingUrl,
-            sinceDays: config.sinceDays,
-            error: r?.error ?? "no result",
-          },
-          "web listing failed",
-        );
-        return {
-          source,
-          capped: [],
-          failure: r?.error ?? "no result",
-          sourceFailed: true,
-        };
-      }
-      try {
-        const discovered = await discoverPostUrls(
-          source.listingUrl,
-          r.result.markdown,
-          r.result.structuredData,
-          llmModel,
-          reportDiscovery,
-        );
-        const validated = validateDiscoveredUrls(discovered, source.listingUrl);
-        const sorted = sortPostsByPublishedAtDesc(validated);
-        const filtered = applySinceDays(sorted, config.sinceDays);
-        const capped = filtered.slice(0, config.maxItems);
-        const listingCompletedFields = {
-          event: "collector.web.listing_completed" as const,
-          source: source.name,
-          listingUrl: source.listingUrl,
-          sinceDays: config.sinceDays,
-          discovered: discovered.length,
-          validated: validated.length,
-          afterSinceDays: filtered.length,
-          capped: capped.length,
-          structuredDataBytes: r.result.structuredData?.length ?? 0,
-        };
-        logger.info(listingCompletedFields, "web listing processed");
-        void runLogger?.info(
-          {
-            stage: "collect",
-            source: "blog",
-            event: "collector.web.listing_completed",
-            url: source.listingUrl,
-            sourceName: source.name,
-            listingUrl: source.listingUrl,
-            sinceDays: config.sinceDays,
-            discovered: discovered.length,
-            validated: validated.length,
-            afterSinceDays: filtered.length,
-            capped: capped.length,
-            structuredDataBytes: r.result.structuredData?.length ?? 0,
-          },
-          "web listing processed",
-        );
-        return { source, capped, sourceFailed: false };
-      } catch (err) {
-        const discoveryFailedFields = {
-          event: "collector.web.discovery_failed" as const,
-          source: source.name,
-          listingUrl: source.listingUrl,
-          sinceDays: config.sinceDays,
-          error: truncateError(err),
-        };
-        logger.warn(discoveryFailedFields, "web listing discovery failed");
-        void runLogger?.warn(
-          {
-            stage: "collect",
-            source: "blog",
-            event: "collector.web.discovery_failed",
-            step: "discovery",
-            url: source.listingUrl,
-            sourceName: source.name,
-            listingUrl: source.listingUrl,
-            sinceDays: config.sinceDays,
-            error: truncateError(err),
-          },
-          "web listing discovery failed",
-        );
-        return { source, capped: [], failure: truncateError(err), sourceFailed: true };
-      }
-    }),
+    config.sources.map((source) =>
+      processDiscoveryPhase(source, listingResults.get(source.listingUrl), discoveryDeps),
+    ),
   );
 
   // Dedup detail URLs against existing external IDs
@@ -416,165 +490,18 @@ export async function collectWeb(
     ? await fetcher(detailJobs, { signal: deps.signal, runLogger })
     : new Map<string, CrawlResult>();
 
-  // Aggregate items and failures
-  const allItems: RawItemInsert[] = [];
-  const allFailures: CollectorFailure[] = [];
-  const itemsBySource = new Map<string, number>();
-
-  // Source-level failures (listing + LLM-discovery)
-  for (const ps of perSource) {
-    if (ps.sourceFailed) {
-      allFailures.push({ source: ps.source.name, error: ps.failure ?? "unknown" });
-    }
-  }
-
-  // Detail-stage results
-  const totalToExtract = Array.from(postBySource.values()).reduce(
-    (n, posts) => n + posts.filter((p) => detailResults.get(p.url)?.ok).length,
-    0,
+  const { allItems, allFailures, itemsBySource } = await reconcileDetailPhase(
+    perSource,
+    postBySource,
+    selfReferentialBySource,
+    detailResults,
+    { llmModel, reportExtraction, runLogger },
   );
-  const extractStart = Date.now();
-  const extractStartFields = {
-    event: "web.extract.start" as const,
-    posts: totalToExtract,
-  };
-  logger.info(extractStartFields, "extracting post fields via LLM");
-  void runLogger?.info(
-    { stage: "collect", source: "blog", ...extractStartFields },
-    "extracting post fields via LLM",
-  );
-  let extracted = 0;
-  for (const ps of perSource) {
-    if (ps.sourceFailed) continue;
-    const posts = postBySource.get(ps.source.name) ?? [];
-    for (const post of posts) {
-      const dr = detailResults.get(post.url);
-      if (!dr?.ok) {
-        const detailFetchFailFields = {
-          event: "collector.web.detail_failed" as const,
-          source: ps.source.name,
-          postUrl: post.url,
-          error: dr?.error ?? "no result",
-        };
-        logger.warn(detailFetchFailFields, "web detail fetch failed");
-        void runLogger?.error(
-          {
-            stage: "collect",
-            source: "blog",
-            event: "collector.web.detail_failed",
-            step: "extract",
-            url: post.url,
-            sourceName: ps.source.name,
-            postUrl: post.url,
-            error: dr?.error ?? "no result",
-          },
-          "web detail fetch failed",
-        );
-        allFailures.push({
-          source: ps.source.name,
-          postUrl: post.url,
-          error: dr?.error ?? "no result",
-        });
-        continue;
-      }
-      try {
-        const fields = await extractPostFields(
-          post.url,
-          dr.result.markdown,
-          llmModel,
-          reportExtraction,
-        );
-        extracted += 1;
-        logger.info(
-          {
-            event: "web.extract.progress",
-            source: ps.source.name,
-            postUrl: post.url,
-            done: extracted,
-            total: totalToExtract,
-          },
-          "extracted post fields",
-        );
-        const merged: ExtractedFields = {
-          title: fields.title.trim() || post.title.trim(),
-          author: fields.author,
-          published_at: fields.published_at.trim() || post.published_at,
-          image_url: (fields.image_url.trim() || dr.result.imageUrl) ?? "",
-        };
-        if (!merged.title) {
-          allFailures.push({ source: ps.source.name, postUrl: post.url, error: "empty title" });
-          continue;
-        }
-        allItems.push(buildRawItem(post.url, dr.result.markdown, merged, dr.result.publishedAt));
-        itemsBySource.set(ps.source.name, (itemsBySource.get(ps.source.name) ?? 0) + 1);
-      } catch (err) {
-        const detailExtractFailFields = {
-          event: "collector.web.detail_failed" as const,
-          source: ps.source.name,
-          postUrl: post.url,
-          error: truncateError(err),
-        };
-        logger.warn(detailExtractFailFields, "web detail extraction failed");
-        void runLogger?.error(
-          {
-            stage: "collect",
-            source: "blog",
-            event: "collector.web.detail_failed",
-            step: "extract",
-            url: post.url,
-            sourceName: ps.source.name,
-            postUrl: post.url,
-            error: truncateError(err),
-          },
-          "web detail extraction failed",
-        );
-        allFailures.push({ source: ps.source.name, postUrl: post.url, error: truncateError(err) });
-      }
-    }
-  }
-
-  const extractDoneFields = {
-    event: "web.extract.done" as const,
-    extracted,
-    total: totalToExtract,
-    durationMs: Date.now() - extractStart,
-  };
-  logger.info(extractDoneFields, "post field extraction complete");
-  void runLogger?.info(
-    { stage: "collect", source: "blog", ...extractDoneFields },
-    "post field extraction complete",
-  );
-
-  // Build self-referential items (no Pass-2 detail fetch)
-  for (const ps of perSource) {
-    if (ps.sourceFailed) continue;
-    const selfRefs = selfReferentialBySource.get(ps.source.name) ?? [];
-    for (const post of selfRefs) {
-      const fields: ExtractedFields = {
-        title: post.title.trim(),
-        author: "",
-        published_at: post.published_at,
-        image_url: "",
-      };
-      if (!fields.title) {
-        allFailures.push({ source: ps.source.name, postUrl: post.url, error: "empty title" });
-        continue;
-      }
-      allItems.push(buildRawItem(post.url, "", fields, null));
-      itemsBySource.set(ps.source.name, (itemsBySource.get(ps.source.name) ?? 0) + 1);
-    }
-  }
 
   if (config.sources.length > 0 && perSource.every((ps) => ps.sourceFailed)) {
-    const allFailedFields = {
-      event: "collector.web.all_failed" as const,
-      failures: allFailures,
-    };
+    const allFailedFields = { event: "collector.web.all_failed" as const, failures: allFailures };
     logger.error(allFailedFields, "all web sources failed");
-    void runLogger?.error(
-      { stage: "collect", source: "blog", step: "collect", ...allFailedFields },
-      "all web sources failed",
-    );
+    void runLogger?.error({ stage: "collect", source: "blog", step: "collect", ...allFailedFields }, "all web sources failed");
     throw new Error("all sources failed");
   }
 
@@ -584,12 +511,7 @@ export async function collectWeb(
 
   const durationMs = Date.now() - startTime;
   const unitResults: SourceUnitResult[] = perSource.map((ps) => ({
-    identifier: deriveRawItemIdentifier({
-      sourceType: "blog",
-      url: ps.source.listingUrl,
-      sourceUrl: ps.source.listingUrl,
-      metadata: null,
-    }),
+    identifier: deriveRawItemIdentifier({ sourceType: "blog", url: ps.source.listingUrl, sourceUrl: ps.source.listingUrl, metadata: null }),
     displayName: ps.source.name,
     itemsFetched: ps.sourceFailed ? 0 : itemsBySource.get(ps.source.name) ?? 0,
     status: ps.sourceFailed ? "failed" : "completed",
@@ -605,18 +527,9 @@ export async function collectWeb(
     unitResults,
   };
 
-  const finalCompletedFields = {
-    event: "collector.web.completed" as const,
-    itemsFetched: result.itemsFetched,
-    itemsStored: result.itemsStored,
-    failures: result.failures?.length ?? 0,
-    durationMs,
-  };
+  const finalCompletedFields = { event: "collector.web.completed" as const, itemsFetched: result.itemsFetched, itemsStored: result.itemsStored, failures: result.failures?.length ?? 0, durationMs };
   logger.info(finalCompletedFields, "collection completed");
-  void runLogger?.info(
-    { stage: "collect", source: "blog", ...finalCompletedFields },
-    "collection completed",
-  );
+  void runLogger?.info({ stage: "collect", source: "blog", ...finalCompletedFields }, "collection completed");
   return result;
 }
 

@@ -1,0 +1,15 @@
+{
+  "files.watcherExclude": {
+    "**/.worktrees/**": true,
+    "**/.harness/**": true,
+    "**/.fallow/**": true,
+    "**/node_modules/**": true,
+    "**/dist/**": true,
+    "**/.turbo/**": true
+  },
+  "search.exclude": {
+    "**/.worktrees": true,
+    "**/.harness": true,
+    "**/dist": true
+  }
+}

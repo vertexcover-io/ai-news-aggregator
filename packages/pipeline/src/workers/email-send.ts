@@ -1,4 +1,3 @@
-import { createHmac } from "node:crypto";
 import { createLogger } from "@newsletter/shared/logger";
 import type { EmailProvider, RankedItemRef, RecapContent, SlackNotifier, SubscriberSelect } from "@newsletter/shared";
 import { EmailSendError } from "@newsletter/shared";
@@ -10,6 +9,18 @@ import { delay } from "@pipeline/lib/delay.js";
 import { resolvePublishTarget } from "./publish-target.js";
 import { pickSummarySource, getPlatformLabel } from "@newsletter/shared/services";
 import { ENRICHED_SUMMARY_LAUNCHED_AT } from "@newsletter/shared/constants";
+import {
+  type SendPacer,
+  createSendPacer,
+  issueUnsubToken,
+  htmlToPlainText,
+  formatArchiveDate,
+  chunk,
+  classifyDeliveryFailure,
+} from "@pipeline/lib/email-send-common.js";
+
+export type { SendPacer };
+export { createSendPacer };
 
 const logger = createLogger("worker:email-send");
 
@@ -26,6 +37,10 @@ export function resolveSendRate(env: NodeJS.ProcessEnv | Record<string, string |
   return n;
 }
 
+// Module-level singleton: shared pacing across all email-send job invocations
+// within this process. This must stay here (not in email-send-common) to
+// preserve the CLAUDE.md guarantee that a second back-to-back email-send job
+// does NOT reset the token bucket.
 let sharedPacer: SendPacer | null = null;
 
 export function getSharedPacer(): SendPacer {
@@ -35,53 +50,6 @@ export function getSharedPacer(): SendPacer {
 
 export function resetSharedPacerForTests(): void {
   sharedPacer = null;
-}
-
-export interface SendPacer {
-  acquire(): Promise<void>;
-}
-
-interface PacerClock {
-  now?: () => number;
-  sleep?: (ms: number) => Promise<void>;
-}
-
-/**
- * Fixed-interval pacer: enforces a minimum spacing of `ceil(1000 / rate)` ms
- * between successive permits. For rate = 5 that's 200 ms between sends, which
- * guarantees the provider can never observe more than `rate` starts in any
- * rolling 1-second window — even if its rate-limit bucket boundary differs
- * from ours. A pure sliding-window admission policy can let 5 sends bunch at
- * the start of a window and trip the provider when its bucket happens to
- * straddle that bunch; fixed spacing avoids the issue entirely.
- *
- * Acquisition is serialized via an internal queue so concurrent `acquire()`
- * callers wait their turn; the caller then proceeds and any downstream async
- * work (e.g. `emailProvider.send(...)`) runs in parallel with later
- * acquisitions.
- */
-export function createSendPacer(rate: number, deps: PacerClock = {}): SendPacer {
-  const now = deps.now ?? (() => Date.now());
-  const sleep = deps.sleep ?? delay;
-  const minIntervalMs = Math.ceil(1000 / rate);
-  let nextAvailableAt = 0;
-  let chain: Promise<void> = Promise.resolve();
-
-  async function next(): Promise<void> {
-    const t = now();
-    if (t < nextAvailableAt) {
-      await sleep(nextAvailableAt - t);
-    }
-    nextAvailableAt = Math.max(now(), nextAvailableAt) + minIntervalMs;
-  }
-
-  return {
-    acquire(): Promise<void> {
-      const run = chain.then(next);
-      chain = run.catch(() => undefined);
-      return run;
-    },
-  };
 }
 
 export interface NewsletterStory {
@@ -130,74 +98,11 @@ export interface EmailSendJobLike {
   data: { runId?: string; subscriberIds?: string[] | "all" };
 }
 
-function issueUnsubToken(subscriberId: string, secret: string): string {
-  const expires = Date.now() + 365 * 24 * 60 * 60 * 1000;
-  const payload = `${subscriberId}:unsub:${expires}`;
-  const mac = createHmac("sha256", secret).update(payload).digest("hex");
-  return Buffer.from(payload).toString("base64url") + "." + mac;
-}
-
-function htmlToPlainText(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function formatArchiveDate(date: Date): string {
-  return date.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
-
-function chunk<T>(arr: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) {
-    chunks.push(arr.slice(i, i + size));
-  }
-  return chunks;
-}
-
 function isRetryable(err: unknown): boolean {
   if (err instanceof EmailSendError) return err.retryable;
   // Network/timeout heuristic for non-typed errors (e.g. SES path, fetch failures)
   const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
   return msg.includes("timeout") || msg.includes("etimedout") || msg.includes("econnreset");
-}
-
-/**
- * Boil a provider error message down to a short, actionable category.
- * Strategic by design: the full per-recipient error stays in the structured
- * log; the notifier surface gets a single human-grokkable label per class.
- */
-function classifyDeliveryFailure(message: string): string {
-  const m = message.toLowerCase();
-  if (m.includes("rate limit") || m.includes("too many requests")) {
-    return "rate limit";
-  }
-  if (m.includes("domain is not verified") || m.includes("domain not verified")) {
-    return "unverified sender domain";
-  }
-  if (m.includes("bounce") || m.includes("mailbox") || m.includes("recipient")) {
-    return "recipient rejected";
-  }
-  if (m.includes("invalid") && m.includes("address")) {
-    return "invalid recipient address";
-  }
-  if (m.includes("timeout") || m.includes("etimedout") || m.includes("econnreset")) {
-    return "network timeout";
-  }
-  if (m.includes("auth") || m.includes("unauthorized") || m.includes("forbidden")) {
-    return "auth/permission denied";
-  }
-  // Fallback: keep it short — first sentence or first 60 chars.
-  const firstSentence = message.split(/[.\n]/)[0]?.trim() ?? message;
-  return firstSentence.length > 60
-    ? firstSentence.slice(0, 59).trimEnd() + "…"
-    : firstSentence;
 }
 
 function hydrateItems(refs: RankedItemRef[], rows: RawItemRow[], archiveCompletedAt: Date): NewsletterStory[] {
