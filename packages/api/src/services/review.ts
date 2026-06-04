@@ -1,4 +1,4 @@
-import type { PoolResponse, RankedItem, RankedItemRef } from "@newsletter/shared";
+import type { PatchArchivePayload, PoolResponse, RankedItem, RankedItemRef } from "@newsletter/shared";
 import type { DigestMeta } from "@newsletter/shared/constants";
 import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
@@ -83,24 +83,11 @@ export interface ReviewDeps {
   reviewEditsRepo?: ReviewEditsRepo;
 }
 
-export interface PatchArchiveInput {
-  rankedItems: {
-    id: number;
-    sourceType: string;
-    title?: string;
-    summary?: string;
-    bullets?: string[];
-    bottomLine?: string;
-    imageUrl?: string | null;
-  }[];
-  // Optional digest-meta fields. An omitted key (absent from the parsed body)
-  // preserves the existing column; a present `null`/string is written verbatim.
-  digestHeadline?: string | null;
-  digestSummary?: string | null;
-  hook?: string | null;
-  twitterSummary?: string | null;
-  linkedinPostBody?: string | null;
-}
+// PatchArchivePayload is the shared API contract — used by both api and web.
+// PatchArchiveInput is kept as a type alias for backwards compat with callers
+// inside this package that already reference it.
+export type { PatchArchivePayload };
+export type PatchArchiveInput = PatchArchivePayload;
 
 export async function patchArchive(
   runId: string,
