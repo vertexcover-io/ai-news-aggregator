@@ -1,4 +1,4 @@
-import { and, count, eq, ne } from "drizzle-orm";
+import { and, count, eq, inArray, ne } from "drizzle-orm";
 import { subscribers } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { SubscriberInsert, SubscriberSelect, SubscriberStatus } from "@newsletter/shared";
@@ -57,7 +57,6 @@ export function createSubscribersRepo(
 
     async findByIds(ids: string[]): Promise<SubscriberSelect[]> {
       if (ids.length === 0) return [];
-      const { inArray } = await import("drizzle-orm");
       return db.select().from(subscribers).where(inArray(subscribers.id, ids));
     },
 

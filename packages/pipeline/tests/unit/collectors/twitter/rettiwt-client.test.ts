@@ -448,8 +448,8 @@ describe("createRettiwtClient", () => {
 
     it("rejects with AbortError when aborted mid-call", async () => {
       const stub = makeRettiwtStub();
-      stub.list.tweets.mockImplementationOnce(
-        () => new Promise<RettiwtCursoredPage>(() => undefined),
+      stub.list.tweets.mockReturnValueOnce(
+        new Promise<RettiwtCursoredPage>(() => undefined),
       );
       const client = createRettiwtClient({ rettiwt: stub });
       const ctrl = new AbortController();
