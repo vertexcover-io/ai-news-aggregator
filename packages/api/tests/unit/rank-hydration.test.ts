@@ -184,38 +184,12 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
     expect(result[0].recap).toBeNull();
   });
 
-  it("REQ-004: ref.summary overrides raw recap summary", async () => {
-    const repo = makeRepo([
-      {
-        id: 10,
-        sourceType: "hn",
-        title: "Override test",
-        url: "https://example.com/10",
-        author: null,
-        publishedAt: null,
-        engagement: { points: 10, commentCount: 0 },
-        content: null,
-        imageUrl: null,
-        metadata: {
-          comments: [],
-          recap: {
-            title: "Recap title",
-            summary: "original",
-            bullets: ["b1"],
-            bottomLine: "original bottom",
-          },
-        },
-      },
-    ]);
-    const refs: RankedItemRef[] = [
-      { rawItemId: 10, score: 0.9, rationale: "ok", summary: "override" },
-    ];
-    const result = await hydrateRankedItems(repo, refs);
-    expect(result[0].recap?.summary).toBe("override");
-    // non-overridden fields fall back to raw
-    expect(result[0].recap?.bullets).toEqual(["b1"]);
-    expect(result[0].recap?.bottomLine).toBe("original bottom");
-  });
+  // The recap-field override/fallback matrix (ref.summary overrides raw,
+  // undefined falls back, '' overrides) is unit-tested directly against the
+  // extracted pure helper `buildRecapContent` in
+  // services/rank-hydration-helpers.test.ts. The title-precedence matrix is
+  // likewise covered there via `resolveDisplayTitle`. We keep only the
+  // hydration-level concerns below (imageUrl resolution, enriched join, etc.).
 
   it("REQ-005: ref.imageUrl overrides raw imageUrl", async () => {
     const repo = makeRepo([
@@ -242,147 +216,6 @@ describe("hydrateRankedItems (REQ-012, REQ-013)", () => {
     ];
     const result = await hydrateRankedItems(repo, refs);
     expect(result[0].imageUrl).toBe("https://a.com/img.png");
-  });
-
-  it("EDGE-009: ref.summary=undefined falls back to raw recap summary", async () => {
-    const repo = makeRepo([
-      {
-        id: 12,
-        sourceType: "hn",
-        title: "Fallback test",
-        url: "https://example.com/12",
-        author: null,
-        publishedAt: null,
-        engagement: { points: 5, commentCount: 0 },
-        content: null,
-        imageUrl: null,
-        metadata: {
-          comments: [],
-          recap: {
-            title: "Recap title",
-            summary: "raw summary",
-            bullets: ["raw bullet"],
-            bottomLine: "raw bottom",
-          },
-        },
-      },
-    ]);
-    const refs: RankedItemRef[] = [{ rawItemId: 12, score: 0.6, rationale: "ok" }];
-    const result = await hydrateRankedItems(repo, refs);
-    expect(result[0].recap?.summary).toBe("raw summary");
-  });
-
-  it("EDGE-010b: ref.summary='' (explicitly empty) overrides raw recap summary", async () => {
-    const repo = makeRepo([
-      {
-        id: 13,
-        sourceType: "hn",
-        title: "Empty override test",
-        url: "https://example.com/13",
-        author: null,
-        publishedAt: null,
-        engagement: { points: 5, commentCount: 0 },
-        content: null,
-        imageUrl: null,
-        metadata: {
-          comments: [],
-          recap: {
-            title: "Recap title",
-            summary: "raw summary",
-            bullets: ["raw bullet"],
-            bottomLine: "raw bottom",
-          },
-        },
-      },
-    ]);
-    const refs: RankedItemRef[] = [
-      { rawItemId: 13, score: 0.6, rationale: "ok", summary: "" },
-    ];
-    const result = await hydrateRankedItems(repo, refs);
-    expect(result[0].recap?.summary).toBe("");
-  });
-
-  it("title precedence: ref.title overrides recap.title and row.title", async () => {
-    const repo = makeRepo([
-      {
-        id: 20,
-        sourceType: "hn",
-        title: "source-title",
-        url: "https://example.com/20",
-        author: null,
-        publishedAt: null,
-        engagement: { points: 0, commentCount: 0 },
-        content: null,
-        imageUrl: null,
-        metadata: {
-          comments: [],
-          recap: {
-            title: "ai-title",
-            summary: "s",
-            bullets: ["b"],
-            bottomLine: "bl",
-          },
-        },
-      },
-    ]);
-    const refs: RankedItemRef[] = [
-      { rawItemId: 20, score: 0.5, rationale: "ok", title: "operator-title" },
-    ];
-    const result = await hydrateRankedItems(repo, refs);
-    expect(result[0].title).toBe("operator-title");
-    expect(result[0].recap?.title).toBe("operator-title");
-  });
-
-  it("title precedence: recap.title is used when ref.title is absent", async () => {
-    const repo = makeRepo([
-      {
-        id: 21,
-        sourceType: "hn",
-        title: "source-title",
-        url: "https://example.com/21",
-        author: null,
-        publishedAt: null,
-        engagement: { points: 0, commentCount: 0 },
-        content: null,
-        imageUrl: null,
-        metadata: {
-          comments: [],
-          recap: {
-            title: "ai-title",
-            summary: "s",
-            bullets: ["b"],
-            bottomLine: "bl",
-          },
-        },
-      },
-    ]);
-    const refs: RankedItemRef[] = [
-      { rawItemId: 21, score: 0.5, rationale: "ok" },
-    ];
-    const result = await hydrateRankedItems(repo, refs);
-    expect(result[0].title).toBe("ai-title");
-  });
-
-  it("title precedence: falls back to row.title when neither ref nor recap has a title (backcompat)", async () => {
-    const repo = makeRepo([
-      {
-        id: 22,
-        sourceType: "hn",
-        title: "source-title",
-        url: "https://example.com/22",
-        author: null,
-        publishedAt: null,
-        engagement: { points: 0, commentCount: 0 },
-        content: null,
-        imageUrl: null,
-        metadata: { comments: [] },
-      },
-    ]);
-    const refs: RankedItemRef[] = [
-      { rawItemId: 22, score: 0.5, rationale: "ok" },
-    ];
-    const result = await hydrateRankedItems(repo, refs);
-    expect(result[0].title).toBe("source-title");
   });
 
   it("EDGE-011: both ref.imageUrl and raw.imageUrl are null → hydrated imageUrl is null", async () => {

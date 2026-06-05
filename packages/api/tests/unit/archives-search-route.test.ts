@@ -104,36 +104,18 @@ describe("GET /api/archives/search — validation 400 cases", () => {
     expect(body.error).toBe("invalid-range");
   });
 
-  it("REQ-026: from='garbage' returns 400", async () => {
+  // The remaining boundary cases all reject with a plain 400 (no specific error
+  // body to assert). EDGE-010: zod max(50) rejects limit > 50 rather than
+  // coercing — the cap is explicit at the validation boundary.
+  it.each<{ name: string; query: string }>([
+    { name: "REQ-026: from='garbage'", query: "from=garbage" },
+    { name: "REQ-026: to='garbage'", query: "to=garbage" },
+    { name: "EDGE-011: limit=-1", query: "limit=-1" },
+    { name: "EDGE-011: limit=0", query: "limit=0" },
+    { name: "EDGE-010: limit=1000 (over the cap of 50)", query: "limit=1000" },
+  ])("$name returns 400", async ({ query }) => {
     const { app } = makeApp();
-    const res = await app.request("/api/archives/search?from=garbage");
-    expect(res.status).toBe(400);
-  });
-
-  it("REQ-026: to='garbage' returns 400", async () => {
-    const { app } = makeApp();
-    const res = await app.request("/api/archives/search?to=garbage");
-    expect(res.status).toBe(400);
-  });
-
-  it("EDGE-011: limit=-1 returns 400", async () => {
-    const { app } = makeApp();
-    const res = await app.request("/api/archives/search?limit=-1");
-    expect(res.status).toBe(400);
-  });
-
-  it("EDGE-011: limit=0 returns 400", async () => {
-    const { app } = makeApp();
-    const res = await app.request("/api/archives/search?limit=0");
-    expect(res.status).toBe(400);
-  });
-
-  // Implementation choice (EDGE-010): zod max(50) rejects limit > 50 with 400
-  // rather than coercing. Spec says "cap at 50"; we make the cap explicit
-  // at the validation boundary.
-  it("EDGE-010: limit=1000 returns 400 (zod cap at 50 rejects oversize)", async () => {
-    const { app } = makeApp();
-    const res = await app.request("/api/archives/search?limit=1000");
+    const res = await app.request(`/api/archives/search?${query}`);
     expect(res.status).toBe(400);
   });
 });

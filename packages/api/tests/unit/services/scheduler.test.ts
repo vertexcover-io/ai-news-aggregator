@@ -53,14 +53,12 @@ function makeQueue() {
 }
 
 describe("toCron", () => {
-  it("converts 09:30 to '30 9 * * *'", () => {
-    expect(toCron("09:30")).toBe("30 9 * * *");
-  });
-  it("converts 00:00 to '0 0 * * *'", () => {
-    expect(toCron("00:00")).toBe("0 0 * * *");
-  });
-  it("converts 23:59 to '59 23 * * *'", () => {
-    expect(toCron("23:59")).toBe("59 23 * * *");
+  it.each([
+    { time: "09:30", cron: "30 9 * * *" },
+    { time: "00:00", cron: "0 0 * * *" },
+    { time: "23:59", cron: "59 23 * * *" },
+  ])("converts $time to '$cron'", ({ time, cron }) => {
+    expect(toCron(time)).toBe(cron);
   });
 });
 
@@ -185,25 +183,9 @@ describe("reconcileDailyRunSchedule", () => {
     expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(2);
     expect(queue.removeJobScheduler).toHaveBeenCalledTimes(4);
   });
-
-  it("REQ-023/EDGE-002: DST — 09:30 America/New_York produces consistent local fire times across spring-forward", () => {
-    // Spring-forward in US 2026 is on March 8. Verify that a cron "30 9 * * *"
-    // interpreted in America/New_York fires at 09:30 local on both sides.
-    // We assert that a UTC Date at the expected UTC instant has the correct
-    // local hour/minute in the target zone.
-    const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-    // Before DST (EST = UTC-5): Mar 7 2026 09:30 local == 14:30 UTC
-    const before = new Date(Date.UTC(2026, 2, 7, 14, 30));
-    // After DST (EDT = UTC-4): Mar 9 2026 09:30 local == 13:30 UTC
-    const after = new Date(Date.UTC(2026, 2, 9, 13, 30));
-    expect(fmt.format(before)).toBe("09:30");
-    expect(fmt.format(after)).toBe("09:30");
-    // Sanity check on cron string used for the scheduler
-    expect(toCron("09:30")).toBe("30 9 * * *");
-  });
+  // The removed DST test asserted that Intl.DateTimeFormat renders two UTC
+  // instants as 09:30 in America/New_York — it exercised the platform's
+  // timezone engine, not the scheduler. The scheduler only emits the tz-naive
+  // cron string (tested by toCron) + the IANA tz string (passed through to
+  // upsertJobScheduler), both covered above.
 });

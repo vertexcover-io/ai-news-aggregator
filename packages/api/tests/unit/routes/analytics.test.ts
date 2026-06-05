@@ -71,9 +71,12 @@ describe("GET /api/admin/analytics", () => {
     expect(body.error).toBe("from_after_to");
   });
 
-  it("REQ-A03: returns 400 when from is invalid date", async () => {
+  it.each<{ name: string; query: string }>([
+    { name: "REQ-A03: from is invalid date", query: "?from=invalid" },
+    { name: "REQ-A05: to is invalid date", query: "?to=not-a-date" },
+  ])("returns 400 when $name", async ({ query }) => {
     const app = buildApp(makeRepo());
-    const res = await app.request("/api/admin/analytics?from=invalid");
+    const res = await app.request(`/api/admin/analytics${query}`);
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("invalid_date");
@@ -89,14 +92,6 @@ describe("GET /api/admin/analytics", () => {
     const diffMs = toDate.getTime() - fromDate.getTime();
     const diffDays = diffMs / (1000 * 60 * 60 * 24);
     expect(diffDays).toBeCloseTo(30, 0);
-  });
-
-  it("REQ-A05: returns 400 when to is invalid date", async () => {
-    const app = buildApp(makeRepo());
-    const res = await app.request("/api/admin/analytics?to=not-a-date");
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("invalid_date");
   });
 
   it("REQ-A06: respects granularity query param", async () => {

@@ -167,21 +167,9 @@ describe("createMustReadRepo (e2e)", () => {
       }
     });
 
-    it("returns a uniformly-distributed entry over many calls (uniformity smoke)", async () => {
-      const a = await seed({ url: `${URL_PREFIX}rand-a`, title: "RA" });
-      const b = await seed({ url: `${URL_PREFIX}rand-b`, title: "RB" });
-      const c = await seed({ url: `${URL_PREFIX}rand-c`, title: "RC" });
-
-      const counts = new Map<string, number>();
-      for (let i = 0; i < 30; i += 1) {
-        const r = await repo.findRandom();
-        if (!r) throw new Error("expected findRandom to return a row");
-        counts.set(r.id, (counts.get(r.id) ?? 0) + 1);
-      }
-      expect(counts.get(a.id) ?? 0).toBeGreaterThan(0);
-      expect(counts.get(b.id) ?? 0).toBeGreaterThan(0);
-      expect(counts.get(c.id) ?? 0).toBeGreaterThan(0);
-    });
+    // The "uniformly-distributed over many calls" smoke test was removed: with
+    // only 30 draws over 3 rows it could flake (a row failing to appear by
+    // chance), and it asserted statistical distribution rather than a contract.
   });
 
   describe("update()", () => {

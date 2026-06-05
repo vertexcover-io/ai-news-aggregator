@@ -79,12 +79,19 @@ function makeRepo(opts: {
   return Object.assign(repo, { created, updated });
 }
 
+type SubscribeRouterDeps = Parameters<typeof createSubscribeRouter>[0];
+
+function makeLogger(): Record<"info" | "warn" | "error" | "debug", ReturnType<typeof vi.fn>> {
+  return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+}
+
 function buildApp(opts: {
   repo: SubscribersRepo;
   slackNotifier?: SlackNotifier;
   sendConfirmationEmail?: (email: string, confirmUrl: string) => Promise<void>;
   sendNewsletterToSubscriber?: (runId: string, subscriberId: string) => Promise<void>;
   getMostRecentReviewedArchiveId?: () => Promise<string | null>;
+  logger?: ReturnType<typeof makeLogger>;
 }): Hono {
   const app = new Hono();
   const router = createSubscribeRouter({
@@ -97,6 +104,9 @@ function buildApp(opts: {
       opts.sendNewsletterToSubscriber ?? vi.fn(() => Promise.resolve()),
     getMostRecentReviewedArchiveId: opts.getMostRecentReviewedArchiveId ?? (() => Promise.resolve(null)),
     slackNotifier: opts.slackNotifier ?? makeSlackNotifier(),
+    ...(opts.logger === undefined
+      ? {}
+      : { logger: opts.logger as unknown as SubscribeRouterDeps["logger"] }),
   });
   app.route("/api", router);
   return app;
@@ -401,8 +411,8 @@ describe("VS-5: unsubscribe of already-unsubscribed subscriber does NOT fire Sla
   });
 });
 
-describe("VS-6: Slack webhook throws — HTTP response is still 302, warn-log emitted", () => {
-  it("confirm still redirects even if notifySubscriberConfirmed throws", async () => {
+describe("VS-6: Slack webhook throws — confirm still succeeds and logs the failure", () => {
+  it("redirects 302, persists the confirmation, and warn-logs the slack throw", async () => {
     const subscriber = makeSubscriber({ email: "eve@example.com", status: "pending" });
     const repo = makeRepo({ existing: subscriber });
     const slackNotifier = makeSlackNotifier();
@@ -410,34 +420,29 @@ describe("VS-6: Slack webhook throws — HTTP response is still 302, warn-log em
     (notifySubscriberConfirmed as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error("network error"),
     );
-    const app = buildApp({ repo, slackNotifier });
+    const logger = makeLogger();
+    const app = buildApp({ repo, slackNotifier, logger });
 
     const token = issueSubscriberToken(subscriber.id, "confirm", SECRET);
     const res = await app.request(`/api/confirm?token=${token}`);
 
     expect(res.status).toBe(302);
-    // Allow microtask to settle (catch handler runs)
+    expect(res.headers.get("location")).toBe(`${BASE_URL}/confirm?status=success`);
+    // The confirmation was still persisted despite the Slack failure.
+    expect(repo.updateStatus).toHaveBeenCalledWith(
+      subscriber.id,
+      "confirmed",
+      expect.objectContaining({ subscribedAt: expect.any(Date) }),
+    );
+    // Allow the void-fired .catch() microtask to settle, then assert the
+    // failure was warn-logged rather than swallowed silently.
     await new Promise((r) => setTimeout(r, 0));
-    // The redirect still happened — test passes without checking logger
-  });
-});
-
-describe("VS-7: confirm route succeeds 302 even when notifier is a no-op (smoke test)", () => {
-  it("confirm route 302s and calls notifySubscriberConfirmed regardless of notifier implementation", async () => {
-    // Smoke test: confirm the route wires the notifier correctly for any notifier that resolves.
-    // Disabled-mode (SLACK_WEBHOOK_URL unset) end-to-end is covered by
-    // packages/shared/tests/unit/slack/notifier.test.ts ("disabled mode no-ops" tests).
-    const subscriber = makeSubscriber({ email: "frank@example.com", status: "pending" });
-    const repo = makeRepo({ existing: subscriber });
-    const notifier = makeSlackNotifier();
-    const { notifySubscriberConfirmed } = notifier;
-    const app = buildApp({ repo, slackNotifier: notifier });
-
-    const token = issueSubscriberToken(subscriber.id, "confirm", SECRET);
-    const res = await app.request(`/api/confirm?token=${token}`);
-
-    expect(res.status).toBe(302);
-    await new Promise((r) => setTimeout(r, 0));
-    expect(notifySubscriberConfirmed).toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "slack.subscriber_confirmed.unexpected_throw",
+        error: "network error",
+      }),
+      expect.any(String),
+    );
   });
 });

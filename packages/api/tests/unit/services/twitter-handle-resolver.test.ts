@@ -110,23 +110,30 @@ describe("resolveTwitterHandles", () => {
     ).rejects.toMatchObject({ reason: "unknown", handle: "jack" });
   });
 
-  it("REQ-047: throws missing_api_key (without calling factory) when env is unset", async () => {
-    delete process.env.RETTIWT_API_KEY;
-    const factory = vi.fn();
-    await expect(
-      resolveTwitterHandles(["jack"], { rettiwtFactory: factory as never }),
-    ).rejects.toMatchObject({ reason: "missing_api_key" });
-    expect(factory).not.toHaveBeenCalled();
-  });
-
-  it("REQ-047: throws missing_api_key when env is empty string", async () => {
-    process.env.RETTIWT_API_KEY = "";
-    const factory = vi.fn();
-    await expect(
-      resolveTwitterHandles(["jack"], { rettiwtFactory: factory as never }),
-    ).rejects.toMatchObject({ reason: "missing_api_key" });
-    expect(factory).not.toHaveBeenCalled();
-  });
+  it.each<{ name: string; apply: () => void }>([
+    {
+      name: "env is unset",
+      apply: () => {
+        delete process.env.RETTIWT_API_KEY;
+      },
+    },
+    {
+      name: "env is empty string",
+      apply: () => {
+        process.env.RETTIWT_API_KEY = "";
+      },
+    },
+  ])(
+    "REQ-047: throws missing_api_key without calling factory when $name",
+    async ({ apply }) => {
+      apply();
+      const factory = vi.fn();
+      await expect(
+        resolveTwitterHandles(["jack"], { rettiwtFactory: factory as never }),
+      ).rejects.toMatchObject({ reason: "missing_api_key" });
+      expect(factory).not.toHaveBeenCalled();
+    },
+  );
 
   it("TwitterHandleResolutionError carries cause when provided", () => {
     const cause = new Error("orig");

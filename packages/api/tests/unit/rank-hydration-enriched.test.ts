@@ -62,65 +62,11 @@ describe("hydrateRankedItems — enrichedSource (Phase 3, REQ-014, REQ-015)", ()
     expect(result[0].enrichedSource).toBeNull();
   });
 
-  it("enrichedLink with status 'skipped' gets enrichedSource: null (native fallback)", async () => {
-    const repo = makeRepo([
-      {
-        ...BASE_ROW,
-        id: 1,
-        metadata: {
-          comments: [],
-          enrichedLink: {
-            url: "https://twitter.com/foo/status/1",
-            fetchedAt: "2026-05-25T00:00:00Z",
-            status: "skipped",
-            skipReason: "same-platform",
-          },
-        },
-      },
-    ]);
-    const result = await hydrateRankedItems(repo, [BASE_REF], null);
-    expect(result[0].enrichedSource).toBeNull();
-  });
-
-  it("enrichedLink with empty markdown gets enrichedSource: null", async () => {
-    const repo = makeRepo([
-      {
-        ...BASE_ROW,
-        id: 1,
-        metadata: {
-          comments: [],
-          enrichedLink: {
-            url: "https://theverge.com/article",
-            fetchedAt: "2026-05-25T00:00:00Z",
-            status: "ok",
-            markdown: "",
-          },
-        },
-      },
-    ]);
-    const result = await hydrateRankedItems(repo, [BASE_REF], null);
-    expect(result[0].enrichedSource).toBeNull();
-  });
-
-  it("enrichedLink with malformed URL gets enrichedSource: null (defensive)", async () => {
-    const repo = makeRepo([
-      {
-        ...BASE_ROW,
-        id: 1,
-        metadata: {
-          comments: [],
-          enrichedLink: {
-            url: "::::not-a-url",
-            fetchedAt: "2026-05-25T00:00:00Z",
-            status: "ok",
-            markdown: "some content",
-          },
-        },
-      },
-    ]);
-    const result = await hydrateRankedItems(repo, [BASE_REF], null);
-    expect(result[0].enrichedSource).toBeNull();
-  });
+  // The non-ok / empty-markdown / malformed-url / www-strip branches of
+  // enrichedSource derivation are unit-tested directly against the pure helper
+  // `resolveEnrichedSource` in services/rank-hydration-helpers.test.ts. Here we
+  // keep only the hydration-level concerns: the populated/native cases above and
+  // the launch-date gate below.
 
   it("VS-8: legacy archive (archiveCompletedAt < ENRICHED_SUMMARY_LAUNCHED_AT) forces all enrichedSource to null", async () => {
     const legacyDate = new Date(ENRICHED_SUMMARY_LAUNCHED_AT.getTime() - 24 * 60 * 60 * 1000); // 1 day before launch
@@ -187,26 +133,6 @@ describe("hydrateRankedItems — enrichedSource (Phase 3, REQ-014, REQ-015)", ()
       hostname: "arxiv.org",
       url: "https://arxiv.org/abs/2401.0001",
     });
-  });
-
-  it("www. is stripped from hostname in enrichedSource", async () => {
-    const repo = makeRepo([
-      {
-        ...BASE_ROW,
-        id: 1,
-        metadata: {
-          comments: [],
-          enrichedLink: {
-            url: "https://www.example.com/post/123",
-            fetchedAt: "2026-05-25T00:00:00Z",
-            status: "ok",
-            markdown: "Content",
-          },
-        },
-      },
-    ]);
-    const result = await hydrateRankedItems(repo, [BASE_REF], null);
-    expect(result[0].enrichedSource?.hostname).toBe("example.com");
   });
 
   it("legacy gate applies to all items in the batch — not just first", async () => {

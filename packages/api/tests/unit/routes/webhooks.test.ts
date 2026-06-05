@@ -281,53 +281,51 @@ describe("POST /webhooks/ses", () => {
     });
   });
 
-  describe("Delivery notification", () => {
-    it("upserts ses_events and does not update subscriber status", async () => {
-      const deps = makeDeps();
-      const inner = makeInnerNotification({ notificationType: "Delivery" });
-      deps.verifySns.mockResolvedValue(makeSnsNotification(inner));
-      const app = buildApp(deps);
+  describe("non-status-changing notifications (Delivery / Open / Click)", () => {
+    it.each<{ name: string; inner: Record<string, unknown>; eventType: string }>([
+      {
+        name: "Delivery",
+        inner: { notificationType: "Delivery" },
+        eventType: "delivery",
+      },
+      {
+        name: "Open",
+        inner: {
+          notificationType: "Open",
+          open: {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            userAgent: "Mozilla/5.0",
+            ipAddress: "1.2.3.4",
+          },
+        },
+        eventType: "open",
+      },
+      {
+        name: "Click",
+        inner: {
+          notificationType: "Click",
+          click: {
+            timestamp: "2024-01-01T00:00:00.000Z",
+            link: "https://example.com/article",
+          },
+        },
+        eventType: "click",
+      },
+    ])(
+      "$name: upserts ses_events with eventType=$eventType and no subscriber status change",
+      async ({ inner, eventType }) => {
+        const deps = makeDeps();
+        const notification = makeSnsNotification(makeInnerNotification(inner));
+        deps.verifySns.mockResolvedValue(notification);
+        const app = buildApp(deps);
 
-      const res = await postSes(app, JSON.stringify(makeSnsNotification(inner)));
+        const res = await postSes(app, JSON.stringify(notification));
 
-      expect(res.status).toBe(200);
-      expect(deps.sesEventsRepo.upserted[0].eventType).toBe("delivery");
-      expect(deps.subscribersRepo.statusUpdates).toHaveLength(0);
-    });
-  });
-
-  describe("Open notification", () => {
-    it("upserts ses_events with eventType=open", async () => {
-      const deps = makeDeps();
-      const inner = makeInnerNotification({
-        notificationType: "Open",
-        open: { timestamp: "2024-01-01T00:00:00.000Z", userAgent: "Mozilla/5.0", ipAddress: "1.2.3.4" },
-      });
-      deps.verifySns.mockResolvedValue(makeSnsNotification(inner));
-      const app = buildApp(deps);
-
-      const res = await postSes(app, JSON.stringify(makeSnsNotification(inner)));
-
-      expect(res.status).toBe(200);
-      expect(deps.sesEventsRepo.upserted[0].eventType).toBe("open");
-    });
-  });
-
-  describe("Click notification", () => {
-    it("upserts ses_events with eventType=click", async () => {
-      const deps = makeDeps();
-      const inner = makeInnerNotification({
-        notificationType: "Click",
-        click: { timestamp: "2024-01-01T00:00:00.000Z", link: "https://example.com/article" },
-      });
-      deps.verifySns.mockResolvedValue(makeSnsNotification(inner));
-      const app = buildApp(deps);
-
-      const res = await postSes(app, JSON.stringify(makeSnsNotification(inner)));
-
-      expect(res.status).toBe(200);
-      expect(deps.sesEventsRepo.upserted[0].eventType).toBe("click");
-    });
+        expect(res.status).toBe(200);
+        expect(deps.sesEventsRepo.upserted[0].eventType).toBe(eventType);
+        expect(deps.subscribersRepo.statusUpdates).toHaveLength(0);
+      },
+    );
   });
 
   describe("unknown messageId", () => {
@@ -359,6 +357,27 @@ describe("POST /webhooks/ses", () => {
       expect(res1.status).toBe(200);
       expect(res2.status).toBe(200);
       expect(deps.sesEventsRepo.upserted).toHaveLength(2);
+    });
+  });
+
+  describe("ses_events persistence failure", () => {
+    it("returns a non-2xx status when upsert rejects, so SES retries the delivery", async () => {
+      // Real integration-point failure: the SNS signature is valid and the body
+      // parses, but persisting the ses_events row throws (e.g. Postgres down).
+      // The handler must NOT ack with 2xx — SES retries only on a non-2xx, so
+      // swallowing this would silently drop the event.
+      const deps = makeDeps();
+      const inner = makeInnerNotification({ notificationType: "Delivery" });
+      deps.verifySns.mockResolvedValue(makeSnsNotification(inner));
+      deps.sesEventsRepo.upsert = vi.fn(() =>
+        Promise.reject(new Error("connection terminated unexpectedly")),
+      );
+      const app = buildApp(deps);
+
+      const res = await postSes(app, JSON.stringify(makeSnsNotification(inner)));
+
+      expect(res.status).toBeGreaterThanOrEqual(500);
+      expect(res.status).toBeLessThan(600);
     });
   });
 });

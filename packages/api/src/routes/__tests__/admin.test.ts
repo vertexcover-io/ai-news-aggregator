@@ -92,35 +92,19 @@ describe("POST /api/admin/login", () => {
     expect(typeof call[1].timestamp).toBe("string");
   });
 
-  it("returns 400 on missing body", async () => {
+  it.each<{ name: string; body?: string }>([
+    { name: "missing body" },
+    { name: "empty password", body: JSON.stringify({ password: "" }) },
+    { name: "password field missing", body: JSON.stringify({}) },
+  ])("returns 400 with invalid_body on $name", async ({ body }) => {
     const { app } = makeAdminApp();
     const res = await app.request("/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
+      ...(body === undefined ? {} : { body }),
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_body" });
-  });
-
-  it("returns 400 on empty password", async () => {
-    const { app } = makeAdminApp();
-    const res = await app.request("/api/admin/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ password: "" }),
-    });
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "invalid_body" });
-  });
-
-  it("returns 400 when password field is missing", async () => {
-    const { app } = makeAdminApp();
-    const res = await app.request("/api/admin/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    expect(res.status).toBe(400);
   });
 });
 

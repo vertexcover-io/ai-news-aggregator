@@ -706,156 +706,10 @@ describe("RunArchivesRepo.delete (REQ-8, REQ-9, REQ-12)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Phase 4: dry-run filtering (R-12, R-13)
-// ---------------------------------------------------------------------------
-
-/**
- * Walk a Drizzle SQL/composite filter object and extract every
- * (column-name, param-value) eq() pair, in tree order.
- */
-function extractEqPairs(sql: unknown): [string, unknown][] {
-  const seen = new Set<unknown>();
-  const out: [string, unknown][] = [];
-  function walk(o: unknown): void {
-    if (!o || typeof o !== "object" || seen.has(o)) return;
-    seen.add(o);
-    const chunks = (o as { queryChunks?: unknown[] }).queryChunks;
-    if (!chunks) return;
-    let lastCol: string | null = null;
-    for (const c of chunks) {
-      if (!c || typeof c !== "object") continue;
-      const cls = (c as { constructor?: { name?: string } }).constructor?.name;
-      if (cls === "PgBoolean" || cls === "PgColumn" || cls?.startsWith("Pg")) {
-        const name = (c as { name?: string }).name;
-        if (typeof name === "string") lastCol = name;
-      } else if (cls === "Param" && lastCol) {
-        out.push([lastCol, (c as { value?: unknown }).value]);
-        lastCol = null;
-      } else if (cls === "SQL") {
-        walk(c);
-      }
-    }
-  }
-  walk(sql);
-  return out;
-}
-
-/**
- * Fake db that captures every .where(...) argument for both .select()...
- * and .execute() calls so tests can assert filter composition.
- */
-function makeWhereCapturingDb(): {
-  db: Pick<AppDb, "select" | "update" | "execute">;
-  selectWhereArgs: unknown[];
-  executeArgs: unknown[];
-} {
-  const selectWhereArgs: unknown[] = [];
-  const executeArgs: unknown[] = [];
-  const db = {
-    select: () => ({
-      from: () => ({
-        where: (arg: unknown) => {
-          selectWhereArgs.push(arg);
-          // Return a chainable that supports:
-          //   .where(...).orderBy(...)            → awaits to rows
-          //   .where(...).orderBy(...).limit(...) → awaits to rows
-          //   .where(...)                          → awaits to count rows
-          const limitThenable = {
-            then: (resolve: (v: unknown) => void) => { resolve([]); },
-          };
-          const orderByThenable = {
-            limit: () => limitThenable,
-            then: (resolve: (v: unknown) => void) => { resolve([]); },
-          };
-          const tail = {
-            orderBy: () => orderByThenable,
-            then: (resolve: (v: unknown) => void) => { resolve([{ count: 0 }]); },
-          };
-          return tail;
-        },
-      }),
-    }),
-    update: () => ({
-      set: () => ({ where: () => ({ returning: () => Promise.resolve([]) }) }),
-    }),
-    execute: (arg: unknown) => {
-      executeArgs.push(arg);
-      // First call returns matched rows (empty), second call returns count row.
-      const isCount = executeArgs.length >= 2;
-      return Promise.resolve(isCount ? [{ c: 0 }] : []);
-    },
-  } as unknown as Pick<AppDb, "select" | "update" | "execute">;
-  return { db, selectWhereArgs, executeArgs };
-}
-
-describe("RunArchivesRepo.listReviewed — dry-run filtering (R-12)", () => {
-  it("filters where reviewed = true AND is_dry_run = false", async () => {
-    const { db, selectWhereArgs } = makeWhereCapturingDb();
-    const repo = createRunArchivesRepo(db);
-    const { repo: rawRepo } = makeFakeRawItemsRepo([]);
-    await repo.listReviewed({ rawItemsRepo: rawRepo });
-    expect(selectWhereArgs).toHaveLength(1);
-    const pairs = extractEqPairs(selectWhereArgs[0]);
-    expect(pairs).toEqual(
-      expect.arrayContaining([
-        ["reviewed", true],
-        ["is_dry_run", false],
-      ]),
-    );
-  });
-});
-
-describe("RunArchivesRepo.searchReviewed — dry-run filtering (R-13)", () => {
-  it("no-query branch: list query and count(*) query both filter is_dry_run = false", async () => {
-    const { db, selectWhereArgs } = makeWhereCapturingDb();
-    const repo = createRunArchivesRepo(db);
-    const { repo: rawRepo } = makeFakeRawItemsRepo([]);
-    await repo.searchReviewed({
-      from: new Date("2026-01-01T00:00:00Z"),
-      to: new Date("2026-12-31T23:59:59Z"),
-      rawItemsRepo: rawRepo,
-    });
-    // Two .where() invocations: one for the list, one for count(*)
-    expect(selectWhereArgs).toHaveLength(2);
-    for (const arg of selectWhereArgs) {
-      const pairs = extractEqPairs(arg);
-      expect(pairs).toEqual(
-        expect.arrayContaining([
-          ["reviewed", true],
-          ["is_dry_run", false],
-        ]),
-      );
-    }
-  });
-
-  it("FTS branch: list SQL and count(*) SQL both contain `is_dry_run = false`", async () => {
-    const { db, executeArgs } = makeWhereCapturingDb();
-    const repo = createRunArchivesRepo(db);
-    const { repo: rawRepo } = makeFakeRawItemsRepo([]);
-    await repo.searchReviewed({ q: "agentic", rawItemsRepo: rawRepo });
-    expect(executeArgs).toHaveLength(2);
-    function sqlText(arg: unknown): string {
-      const chunks = (arg as { queryChunks?: unknown[] }).queryChunks ?? [];
-      let s = "";
-      for (const c of chunks) {
-        if (c && typeof c === "object") {
-          const cls = (c as { constructor?: { name?: string } }).constructor?.name;
-          if (cls === "StringChunk") {
-            const v = (c as { value?: unknown }).value;
-            s += Array.isArray(v) ? v.join("") : String(v);
-          } else if (cls === "SQL") {
-            s += sqlText(c);
-          }
-        }
-      }
-      return s;
-    }
-    for (const arg of executeArgs) {
-      expect(sqlText(arg)).toMatch(/is_dry_run\s*=\s*false/);
-    }
-  });
-});
+// Dry-run filtering (R-12, R-13) is verified end-to-end against real Postgres
+// in archives.e2e.test.ts (dry runs excluded from list + search). The previous
+// unit tests here walked the Drizzle SQL AST to assert `is_dry_run = false`,
+// which tested the query-builder internals rather than observable behavior.
 
 describe("findMostRecentReviewed", () => {
   it("returns null when no reviewed archives exist", async () => {
@@ -880,21 +734,7 @@ describe("findMostRecentReviewed", () => {
     const result = await createRunArchivesRepo(db).findMostRecentReviewed();
     expect(result).toEqual({ id: "00000000-0000-0000-0000-0000000000aa" });
   });
-
-  it("returns the most recent reviewed archive when multiple exist (most-recent first)", async () => {
-    const older = makeDefaultArchive({
-      id: "00000000-0000-0000-0000-0000000000aa",
-      reviewed: true,
-      completedAt: new Date("2026-04-09T00:00:00Z"),
-    });
-    const newer = makeDefaultArchive({
-      id: "00000000-0000-0000-0000-0000000000bb",
-      reviewed: true,
-      completedAt: new Date("2026-04-10T00:00:00Z"),
-    });
-    // Fake db respects the provided order; production query enforces ORDER BY completedAt DESC LIMIT 1.
-    const db = makeFakeDbForMostRecent([newer, older]);
-    const result = await createRunArchivesRepo(db).findMostRecentReviewed();
-    expect(result).toEqual({ id: "00000000-0000-0000-0000-0000000000bb" });
-  });
+  // The "most recent when multiple exist" ordering is enforced by the SQL
+  // (ORDER BY completedAt DESC LIMIT 1), which the fake db here cannot model —
+  // it just echoes the provided array order, so the test was tautological.
 });

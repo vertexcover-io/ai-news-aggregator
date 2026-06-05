@@ -42,25 +42,17 @@ describe("issueToken / verifyToken", () => {
     expect(verifyToken(token, SECRET, boundary)).toBe(true);
   });
 
-  it("rejects an empty string", () => {
-    expect(verifyToken("", SECRET)).toBe(false);
-  });
-
-  it("rejects a token with no dot separator", () => {
-    expect(verifyToken("abcdef1234567890", SECRET)).toBe(false);
-  });
-
-  it("rejects a token with a non-numeric issuedAt", () => {
-    const mac = issueToken(SECRET).split(".")[1];
-    expect(verifyToken(`notanumber.${mac}`, SECRET)).toBe(false);
-  });
-
-  it("rejects a token with empty mac", () => {
-    expect(verifyToken("1700000000000.", SECRET)).toBe(false);
-  });
-
-  it("rejects a token with empty issuedAt", () => {
-    expect(verifyToken(".abcdef", SECRET)).toBe(false);
+  it.each<{ name: string; token: () => string }>([
+    { name: "an empty string", token: () => "" },
+    { name: "no dot separator", token: () => "abcdef1234567890" },
+    {
+      name: "a non-numeric issuedAt",
+      token: () => `notanumber.${issueToken(SECRET).split(".")[1]}`,
+    },
+    { name: "an empty mac", token: () => "1700000000000." },
+    { name: "an empty issuedAt", token: () => ".abcdef" },
+  ])("rejects a malformed token: $name", ({ token }) => {
+    expect(verifyToken(token(), SECRET)).toBe(false);
   });
 });
 
@@ -69,27 +61,17 @@ describe("verifyPassword", () => {
     expect(verifyPassword("hunter2", "hunter2")).toBe(true);
   });
 
-  it("returns false on mismatch of same length", () => {
-    expect(verifyPassword("hunter2", "hunter3")).toBe(false);
-  });
-
-  it("returns false when submitted is shorter", () => {
-    expect(verifyPassword("short", "longer-password")).toBe(false);
-  });
-
-  it("returns false when submitted is longer", () => {
-    expect(verifyPassword("longer-password", "short")).toBe(false);
-  });
-
-  it("returns false for empty submitted vs non-empty expected", () => {
-    expect(verifyPassword("", "hunter2")).toBe(false);
-  });
-
-  it("returns false for non-empty submitted vs empty expected", () => {
-    expect(verifyPassword("hunter2", "")).toBe(false);
-  });
-
   it("returns true when both are empty", () => {
     expect(verifyPassword("", "")).toBe(true);
+  });
+
+  it.each<{ name: string; submitted: string; expected: string }>([
+    { name: "mismatch of same length", submitted: "hunter2", expected: "hunter3" },
+    { name: "submitted shorter", submitted: "short", expected: "longer-password" },
+    { name: "submitted longer", submitted: "longer-password", expected: "short" },
+    { name: "empty submitted vs non-empty expected", submitted: "", expected: "hunter2" },
+    { name: "non-empty submitted vs empty expected", submitted: "hunter2", expected: "" },
+  ])("returns false for $name", ({ submitted, expected }) => {
+    expect(verifyPassword(submitted, expected)).toBe(false);
   });
 });

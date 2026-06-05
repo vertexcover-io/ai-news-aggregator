@@ -162,46 +162,45 @@ beforeEach(() => {
   cipher = getCredentialCipher(process.env);
 });
 
+interface RequestCase {
+  readonly name: string;
+  readonly path: string;
+  readonly init?: { method: string; body?: string };
+}
+
 describe("admin-social-credentials router — VS-6: auth gating", () => {
-  it("GET without cookie → 401", async () => {
+  it.each<RequestCase>([
+    { name: "GET status", path: "/api/admin/social-credentials" },
+    {
+      name: "PUT /linkedin",
+      path: "/api/admin/social-credentials/linkedin",
+      init: { method: "PUT", body: JSON.stringify({ clientId: "a", clientSecret: "b" }) },
+    },
+    {
+      name: "PUT /twitter",
+      path: "/api/admin/social-credentials/twitter",
+      init: {
+        method: "PUT",
+        body: JSON.stringify({
+          apiKey: "k",
+          apiSecret: "s",
+          accessToken: "t",
+          accessTokenSecret: "ts",
+        }),
+      },
+    },
+    {
+      name: "DELETE /:platform",
+      path: "/api/admin/social-credentials/linkedin",
+      init: { method: "DELETE" },
+    },
+  ])("$name without cookie → 401", async ({ path, init }) => {
     const { repo } = makeInMemoryRepo(cipher);
     const app = buildProtectedApp(repo);
-    const res = await app.request("/api/admin/social-credentials");
-    expect(res.status).toBe(401);
-  });
-
-  it("PUT /linkedin without cookie → 401", async () => {
-    const { repo } = makeInMemoryRepo(cipher);
-    const app = buildProtectedApp(repo);
-    const res = await app.request("/api/admin/social-credentials/linkedin", {
-      method: "PUT",
+    const res = await app.request(path, {
+      method: init?.method ?? "GET",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ clientId: "a", clientSecret: "b" }),
-    });
-    expect(res.status).toBe(401);
-  });
-
-  it("PUT /twitter without cookie → 401", async () => {
-    const { repo } = makeInMemoryRepo(cipher);
-    const app = buildProtectedApp(repo);
-    const res = await app.request("/api/admin/social-credentials/twitter", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        apiKey: "k",
-        apiSecret: "s",
-        accessToken: "t",
-        accessTokenSecret: "ts",
-      }),
-    });
-    expect(res.status).toBe(401);
-  });
-
-  it("DELETE /:platform without cookie → 401", async () => {
-    const { repo } = makeInMemoryRepo(cipher);
-    const app = buildProtectedApp(repo);
-    const res = await app.request("/api/admin/social-credentials/linkedin", {
-      method: "DELETE",
+      ...(init?.body === undefined ? {} : { body: init.body }),
     });
     expect(res.status).toBe(401);
   });
@@ -252,89 +251,97 @@ describe("admin-social-credentials router — VS-7: GET hides secrets", () => {
 });
 
 describe("admin-social-credentials router — VS-8: PUT validation", () => {
-  it("LinkedIn PUT with empty clientSecret → 400", async () => {
+  it.each<{ name: string; path: string; body: Record<string, unknown> }>([
+    {
+      name: "LinkedIn with empty clientSecret",
+      path: "/api/admin/social-credentials/linkedin",
+      body: { clientId: "abc", clientSecret: "", apiVersion: "v" },
+    },
+    {
+      name: "LinkedIn with whitespace-only clientId",
+      path: "/api/admin/social-credentials/linkedin",
+      body: { clientId: "   ", clientSecret: "ok" },
+    },
+    {
+      name: "Twitter missing accessToken",
+      path: "/api/admin/social-credentials/twitter",
+      body: { apiKey: "k", apiSecret: "s", accessTokenSecret: "ts" },
+    },
+    {
+      name: "Twitter with whitespace-only apiSecret",
+      path: "/api/admin/social-credentials/twitter",
+      body: { apiKey: "k", apiSecret: "  ", accessToken: "t", accessTokenSecret: "ts" },
+    },
+  ])("PUT $name → 400 with error + issues", async ({ path, body }) => {
     const { repo } = makeInMemoryRepo(cipher);
     const app = buildProtectedApp(repo);
-    const res = await app.request("/api/admin/social-credentials/linkedin", {
+    const res = await app.request(path, {
       method: "PUT",
       headers: { "content-type": "application/json", cookie: authCookie() },
-      body: JSON.stringify({ clientId: "abc", clientSecret: "", apiVersion: "v" }),
+      body: JSON.stringify(body),
     });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string; issues: unknown };
-    expect(body.error).toBeDefined();
-    expect(body.issues).toBeDefined();
-  });
-
-  it("LinkedIn PUT with whitespace-only clientId → 400", async () => {
-    const { repo } = makeInMemoryRepo(cipher);
-    const app = buildProtectedApp(repo);
-    const res = await app.request("/api/admin/social-credentials/linkedin", {
-      method: "PUT",
-      headers: { "content-type": "application/json", cookie: authCookie() },
-      body: JSON.stringify({ clientId: "   ", clientSecret: "ok" }),
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it("Twitter PUT missing accessToken → 400", async () => {
-    const { repo } = makeInMemoryRepo(cipher);
-    const app = buildProtectedApp(repo);
-    const res = await app.request("/api/admin/social-credentials/twitter", {
-      method: "PUT",
-      headers: { "content-type": "application/json", cookie: authCookie() },
-      body: JSON.stringify({
-        apiKey: "k",
-        apiSecret: "s",
-        accessTokenSecret: "ts",
-      }),
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it("Twitter PUT with whitespace-only apiSecret → 400", async () => {
-    const { repo } = makeInMemoryRepo(cipher);
-    const app = buildProtectedApp(repo);
-    const res = await app.request("/api/admin/social-credentials/twitter", {
-      method: "PUT",
-      headers: { "content-type": "application/json", cookie: authCookie() },
-      body: JSON.stringify({
-        apiKey: "k",
-        apiSecret: "  ",
-        accessToken: "t",
-        accessTokenSecret: "ts",
-      }),
-    });
-    expect(res.status).toBe(400);
+    const resBody = (await res.json()) as { error: string; issues: unknown };
+    expect(resBody.error).toBeDefined();
+    expect(resBody.issues).toBeDefined();
   });
 });
 
+interface EncryptionCase {
+  readonly name: string;
+  readonly platform: SocialCredentialPlatform;
+  readonly path: string;
+  readonly body: Record<string, unknown>;
+  /** Plaintext secret to verify never appears in ciphertext + round-trips. */
+  readonly secret: string;
+  /** Pull the encrypted blob for `secret` out of the stored row. */
+  readonly blobOf: (fields: InMemoryRow["encryptedFields"]) => EncryptedBlob;
+}
+
 describe("admin-social-credentials router — VS-9: stored row is encrypted", () => {
-  it("after PUT, stored row contains encrypted blob (not plaintext)", async () => {
+  it.each<EncryptionCase>([
+    {
+      name: "LinkedIn clientId",
+      platform: "linkedin",
+      path: "/api/admin/social-credentials/linkedin",
+      body: { clientId: "abc-secret", clientSecret: "xyz-secret", apiVersion: "202511" },
+      secret: "abc-secret",
+      blobOf: (f) => (f as LinkedInEncryptedFields).clientId,
+    },
+    {
+      name: "twitter-collector apiKey cookie blob",
+      platform: "twitter_collector",
+      path: "/api/admin/social-credentials/twitter-collector",
+      body: { apiKey: "plaintext-cookie-blob" },
+      secret: "plaintext-cookie-blob",
+      blobOf: (f) => (f as TwitterCollectorEncryptedFields).apiKey,
+    },
+  ])("after PUT, $name is stored as ciphertext and round-trips", async ({
+    platform,
+    path,
+    body,
+    secret,
+    blobOf,
+  }) => {
     const { repo, rows } = makeInMemoryRepo(cipher);
     const app = buildProtectedApp(repo);
-    const res = await app.request("/api/admin/social-credentials/linkedin", {
+    const res = await app.request(path, {
       method: "PUT",
       headers: { "content-type": "application/json", cookie: authCookie() },
-      body: JSON.stringify({
-        clientId: "abc-secret",
-        clientSecret: "xyz-secret",
-        apiVersion: "202511",
-      }),
+      body: JSON.stringify(body),
     });
     expect(res.status).toBe(200);
 
-    const stored = rows.get("linkedin");
-    expect(stored).toBeDefined();
-    const encryptedFields = stored?.encryptedFields as LinkedInEncryptedFields;
-    expect(encryptedFields.clientId.ct).not.toBe("abc-secret");
-    expect(encryptedFields.clientSecret.ct).not.toBe("xyz-secret");
-    expect(encryptedFields.clientId.iv).toMatch(/.+/);
-    expect(encryptedFields.clientId.tag).toMatch(/.+/);
-
+    const stored = rows.get(platform);
+    if (stored === undefined) {
+      throw new Error(`expected ${platform} row to exist after PUT`);
+    }
+    const blob = blobOf(stored.encryptedFields);
+    expect(blob.ct).not.toContain(secret);
+    expect(blob.iv).toMatch(/.+/);
+    expect(blob.tag).toMatch(/.+/);
     // Round-trip: decrypting reproduces the plaintext.
-    const decrypted = cipher.decrypt(encryptedFields.clientId);
-    expect(decrypted).toBe("abc-secret");
+    expect(cipher.decrypt(blob)).toBe(secret);
   });
 });
 
@@ -523,20 +530,6 @@ describe("admin-social-credentials router — twitter-collector (REQ-004)", () =
     expect(res.status).toBe(401);
   });
 
-  it("stored row holds an encrypted blob (not plaintext)", async () => {
-    const { repo, rows } = makeInMemoryRepo(cipher);
-    const app = buildProtectedApp(repo);
-    await app.request("/api/admin/social-credentials/twitter-collector", {
-      method: "PUT",
-      headers: { cookie: authCookie(), "content-type": "application/json" },
-      body: JSON.stringify({ apiKey: "plaintext-cookie-blob" }),
-    });
-    const row = rows.get("twitter_collector");
-    if (row === undefined) {
-      throw new Error("expected row to exist after PUT");
-    }
-    const fields = row.encryptedFields as TwitterCollectorEncryptedFields;
-    expect(fields.apiKey.ct).not.toContain("plaintext-cookie-blob");
-    expect(cipher.decrypt(fields.apiKey)).toBe("plaintext-cookie-blob");
-  });
+  // The twitter-collector encryption-at-rest case is covered alongside LinkedIn
+  // in the VS-9 parameterized table above.
 });

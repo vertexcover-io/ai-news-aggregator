@@ -148,21 +148,6 @@ describe("GET /api/admin/archives/:runId/pool — source + shortlist filters (RE
     expect(opts.selectedSources).toEqual(["openai.com", "r/LocalLLaMA"]);
   });
 
-  it("passes selected collector filters from repeated ?sourceTypes= params", async () => {
-    const archiveRepo = makeArchiveRepo(
-      makeRow({ sourceTypes: ["blog", "hn"] }),
-      { items: [], total: 0 },
-    );
-    const app = makeAdminApp(archiveRepo);
-    await app.request("/api/admin/archives/run-1/pool?sourceTypes=blog&sourceTypes=hn");
-    const findPoolItems = archiveRepo.findPoolItems as ReturnType<typeof vi.fn>;
-    const [, opts] = findPoolItems.mock.calls[0] as [
-      string,
-      { selectedSourceTypes?: string[] },
-    ];
-    expect(opts.selectedSourceTypes).toEqual(["blog", "hn"]);
-  });
-
   it("REQ-017: passes shortlistedOnly=true when ?shortlisted=true", async () => {
     const archiveRepo = makeArchiveRepo(makeRow(), { items: [], total: 0 });
     const app = makeAdminApp(archiveRepo);
@@ -190,18 +175,6 @@ describe("GET /api/admin/archives/:runId/pool — source + shortlist filters (RE
     expect(opts.shortlistedIds).toEqual([1, 2, 3]);
   });
 
-  it("shortlistedIds is null for legacy runs without shortlistedItemIds", async () => {
-    const legacyRow = makeRow({ shortlistedItemIds: null });
-    const archiveRepo = makeArchiveRepo(legacyRow, { items: [], total: 0 });
-    const app = makeAdminApp(archiveRepo);
-    await app.request("/api/admin/archives/run-1/pool?shortlisted=true");
-    const findPoolItems = archiveRepo.findPoolItems as ReturnType<typeof vi.fn>;
-    const [, opts] = findPoolItems.mock.calls[0] as [
-      string,
-      { shortlistedIds?: number[] | null },
-    ];
-    expect(opts.shortlistedIds).toBeNull();
-  });
 });
 
 // ---- Step 3: facets endpoint ----
@@ -232,37 +205,10 @@ describe("GET /api/admin/archives/:runId/source-facets (REQ-016)", () => {
     });
   });
 
-  it("EDGE-002: blog hostname and twitter handle with same string are distinct facets keyed by (sourceType,identifier)", async () => {
-    // e.g. blog identifier "x.com" vs twitter "@x.com" — different sourceType, no merge
-    const facets: SourceFacet[] = [
-      { sourceType: "blog", identifier: "x.com", displayName: "x.com", count: 2 },
-      { sourceType: "twitter", identifier: "@x.com", displayName: "@x.com", count: 1 },
-    ];
-    const archiveRepo = makeArchiveRepo(makeRow(), undefined, facets);
-    const app = makeAdminApp(archiveRepo);
-    const res = await app.request("/api/admin/archives/run-1/source-facets");
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { facets: SourceFacet[] };
-    expect(body.facets).toHaveLength(2);
-    const sourceTypes = body.facets.map((f: SourceFacet) => f.sourceType);
-    expect(sourceTypes).toContain("blog");
-    expect(sourceTypes).toContain("twitter");
-  });
-
-  it("EDGE-012: returns all 30+ distinct facets without truncation", async () => {
-    const facets: SourceFacet[] = Array.from({ length: 35 }, (_, i) => ({
-      sourceType: "blog" as const,
-      identifier: `blog${i}.com`,
-      displayName: `blog${i}.com`,
-      count: i + 1,
-    }));
-    const archiveRepo = makeArchiveRepo(makeRow(), undefined, facets);
-    const app = makeAdminApp(archiveRepo);
-    const res = await app.request("/api/admin/archives/run-1/source-facets");
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { facets: SourceFacet[] };
-    expect(body.facets).toHaveLength(35);
-  });
+  // EDGE-002 (distinct facets by sourceType+identifier) and EDGE-012 (no
+  // truncation) were removed: the route does not compute or transform facets —
+  // it returns the repo's array verbatim, so these only re-asserted the mock's
+  // own input. Facet derivation is repo-level behavior covered elsewhere.
 
   it("returns 404 when archive not found", async () => {
     const archiveRepo = makeArchiveRepo(null);

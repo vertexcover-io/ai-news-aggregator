@@ -55,40 +55,20 @@ describe("POST /api/admin/login (e2e)", () => {
     expect(body.error).toBe("invalid_password");
   });
 
-  it("REQ-A3: returns 400 for empty-string password", async () => {
+  it.each<{ name: string; body: string }>([
+    { name: "empty-string password", body: JSON.stringify({ password: "" }) },
+    { name: "missing password field", body: JSON.stringify({}) },
+    { name: "malformed JSON body", body: "{bad-json" },
+  ])("REQ-A3: returns 400 with invalid_body for $name", async ({ body }) => {
     const app = buildApp();
     const res = await app.request("/api/admin/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: "" }),
+      body,
     });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("invalid_body");
-  });
-
-  it("REQ-A3: returns 400 for missing password field", async () => {
-    const app = buildApp();
-    const res = await app.request("/api/admin/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("invalid_body");
-  });
-
-  it("REQ-A3: returns 400 for malformed JSON body", async () => {
-    const app = buildApp();
-    const res = await app.request("/api/admin/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{bad-json",
-    });
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("invalid_body");
+    const resBody = (await res.json()) as { error: string };
+    expect(resBody.error).toBe("invalid_body");
   });
 });
 
