@@ -674,23 +674,25 @@ describe("ReviewPage", () => {
       expect(saveBtn.hasAttribute("disabled")).toBe(false);
     });
 
-    it("test_REQ_011_regen_failure_unlocks_save_with_warning — failed regenerate unlocks save + shows warning", async () => {
+    it("test_REQ_011_regen_failure_keeps_save_available_with_warning — failed regenerate never blocks Save", async () => {
       vi.mocked(getAdminArchive).mockResolvedValue(makeNonDryRun());
       vi.mocked(regenerateDigestMeta).mockRejectedValue(new Error("Server error"));
 
       renderAt("run-live");
       await screen.findByText("First");
 
-      // Remove an item to engage the regen gate
+      // Remove an item — digest meta is now stale for the new order
       const deleteButtons = await screen.findAllByRole("button", { name: /delete|remove/i });
       act(() => {
         fireEvent.click(deleteButtons[0]);
       });
 
-      // Save should be disabled now
+      // Save stays enabled (the gate is a confirm dialog now, not a disable)
       expect(
         screen.getByRole("button", { name: /save & view archive/i }).hasAttribute("disabled"),
-      ).toBe(true);
+      ).toBe(false);
+      // Ambient stale-digest warning is visible
+      expect(screen.getByTestId("save-warning").textContent).toMatch(/may not match/i);
 
       // Attempt Regenerate — it will fail
       await act(async () => {
@@ -700,16 +702,14 @@ describe("ReviewPage", () => {
         await Promise.resolve();
       });
 
-      // After failure: Save should be unlocked
+      // After failure: Save still enabled, warning persists (digest still stale)
       const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
       expect(saveBtn.hasAttribute("disabled")).toBe(false);
-
-      // Warning text should be visible
       const warning = screen.getByTestId("save-warning");
       expect(warning.textContent).toMatch(/digest|may not match/i);
     });
 
-    it("test_EDGE_006_regen_fail_then_success_clears_warning — failure then reorder then success clears warning", async () => {
+    it("test_EDGE_006_regen_fail_then_success_clears_warning — warning tracks digest staleness across failure and success", async () => {
       vi.mocked(getAdminArchive).mockResolvedValue(makeNonDryRun());
       // First call fails, second call succeeds
       vi.mocked(regenerateDigestMeta)
@@ -724,13 +724,14 @@ describe("ReviewPage", () => {
       renderAt("run-live");
       await screen.findByText("First");
 
-      // Remove an item to engage regen gate
+      // Remove an item — digest is stale, warning appears immediately
       const deleteButtons = await screen.findAllByRole("button", { name: /delete|remove/i });
       act(() => {
         fireEvent.click(deleteButtons[0]);
       });
+      expect(screen.getByTestId("save-warning")).toBeTruthy();
 
-      // First regenerate fails → save unlocks + warning
+      // First regenerate fails → still stale, warning persists, Save stays enabled
       await act(async () => {
         fireEvent.click(screen.getByRole("button", { name: /regenerate/i }));
         await Promise.resolve();
@@ -738,29 +739,25 @@ describe("ReviewPage", () => {
         await Promise.resolve();
       });
       expect(screen.getByTestId("save-warning")).toBeTruthy();
-
-      // Remove another item to re-engage the gate
-      const deleteButtonsAfter = await screen.findAllByRole("button", { name: /delete|remove/i });
-      act(() => {
-        fireEvent.click(deleteButtonsAfter[0]);
-      });
-
-      // Gate should re-engage (save disabled, no warning yet)
       expect(
         screen.getByRole("button", { name: /save & view archive/i }).hasAttribute("disabled"),
-      ).toBe(true);
-      expect(screen.queryByTestId("save-warning")).toBeNull();
+      ).toBe(false);
 
-      // Second regenerate succeeds → warning gone, save enabled
+      // Second regenerate succeeds → signature syncs, warning clears
       await act(async () => {
         fireEvent.click(screen.getByRole("button", { name: /regenerate/i }));
         await Promise.resolve();
         await Promise.resolve();
         await Promise.resolve();
       });
-      const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
-      expect(saveBtn.hasAttribute("disabled")).toBe(false);
       expect(screen.queryByTestId("save-warning")).toBeNull();
+
+      // A new removal makes the digest stale again → warning re-appears
+      const deleteButtonsAfter = await screen.findAllByRole("button", { name: /delete|remove/i });
+      act(() => {
+        fireEvent.click(deleteButtonsAfter[0]);
+      });
+      expect(screen.getByTestId("save-warning")).toBeTruthy();
     });
   });
 
@@ -910,8 +907,9 @@ describe("ReviewPage", () => {
       expect(screen.queryByTestId("save-disabled-tooltip")).toBeNull();
     });
 
-    it("disables save with regen tooltip after removing an item", async () => {
+    it("keeps save enabled and opens a confirm dialog when saving with stale digest meta", async () => {
       vi.mocked(getAdminArchive).mockResolvedValue(makeCompletedRun());
+      vi.mocked(patchArchive).mockResolvedValue(undefined);
       renderAt("run-regen");
       await screen.findByText("First");
 
@@ -923,21 +921,30 @@ describe("ReviewPage", () => {
         fireEvent.click(firstDelete);
       });
 
+      // Save stays enabled — no disable, no tooltip
       const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
-      expect(saveBtn.hasAttribute("disabled")).toBe(true);
-      expect(saveBtn.getAttribute("title")).toMatch(/Regenerate the digest meta/);
-      const tooltip = screen.getByTestId("save-disabled-tooltip");
-      expect(tooltip.textContent).toMatch(/Regenerate the digest meta/);
+      expect(saveBtn.hasAttribute("disabled")).toBe(false);
+      expect(screen.queryByTestId("save-disabled-tooltip")).toBeNull();
+
+      // Clicking Save opens the confirmation dialog instead of saving
+      act(() => {
+        fireEvent.click(saveBtn);
+      });
+      const message = screen.getByTestId("save-confirmation-message");
+      expect(message.textContent).toMatch(/story order changed|may not match/i);
+      expect(patchArchive).not.toHaveBeenCalled();
+
+      // Cancel closes the dialog without saving
+      act(() => {
+        fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+      });
+      expect(screen.queryByTestId("save-confirmation-message")).toBeNull();
+      expect(patchArchive).not.toHaveBeenCalled();
     });
 
-    it("re-enables save after the user regenerates the digest meta", async () => {
+    it("confirming 'Save anyway' saves despite stale digest meta", async () => {
       vi.mocked(getAdminArchive).mockResolvedValue(makeCompletedRun());
-      vi.mocked(regenerateDigestMeta).mockResolvedValue({
-        headline: "Fresh headline",
-        summary: "Fresh summary",
-        hook: "ignored",
-        twitterSummary: "Fresh tweet",
-      });
+      vi.mocked(patchArchive).mockResolvedValue(undefined);
       renderAt("run-regen");
       await screen.findByText("First");
 
@@ -948,9 +955,35 @@ describe("ReviewPage", () => {
         fireEvent.click(deleteButtons[0]);
       });
 
-      expect(
-        screen.getByRole("button", { name: /save & view archive/i }).hasAttribute("disabled"),
-      ).toBe(true);
+      act(() => {
+        fireEvent.click(screen.getByRole("button", { name: /save & view archive/i }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /save anyway/i }));
+        await Promise.resolve();
+      });
+
+      expect(patchArchive).toHaveBeenCalledTimes(1);
+    });
+
+    it("saves directly without a confirm dialog after the user regenerates the digest meta", async () => {
+      vi.mocked(getAdminArchive).mockResolvedValue(makeCompletedRun());
+      vi.mocked(regenerateDigestMeta).mockResolvedValue({
+        headline: "Fresh headline",
+        summary: "Fresh summary",
+        hook: "ignored",
+        twitterSummary: "Fresh tweet",
+      });
+      vi.mocked(patchArchive).mockResolvedValue(undefined);
+      renderAt("run-regen");
+      await screen.findByText("First");
+
+      const deleteButtons = await screen.findAllByRole("button", {
+        name: /delete|remove/i,
+      });
+      act(() => {
+        fireEvent.click(deleteButtons[0]);
+      });
 
       const regenBtn = screen.getByRole("button", { name: /regenerate/i });
       await act(async () => {
@@ -963,9 +996,15 @@ describe("ReviewPage", () => {
         await Promise.resolve();
       });
 
+      // Signature is back in sync — Save goes straight through, no dialog
       const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
       expect(saveBtn.hasAttribute("disabled")).toBe(false);
-      expect(screen.queryByTestId("save-disabled-tooltip")).toBeNull();
+      await act(async () => {
+        fireEvent.click(saveBtn);
+        await Promise.resolve();
+      });
+      expect(screen.queryByTestId("save-confirmation-message")).toBeNull();
+      expect(patchArchive).toHaveBeenCalledTimes(1);
     });
 
     it("calls patchArchive when save is clicked after regeneration", async () => {

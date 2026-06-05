@@ -20,5 +20,7 @@ test("save & view archive navigates to /archive/:runId (REQ-151)", async ({
   await page
     .getByRole("button", { name: /save & view archive/i })
     .click();
+  // Reordering leaves the digest meta stale — confirm the save-anyway dialog.
+  await page.getByRole("button", { name: /save anyway/i }).click();
   await expect(page).toHaveURL(new RegExp(`/archive/${runId}$`));
 });

@@ -20,6 +20,11 @@ interface SaveBarProps {
   disabledReason?: string | null;
   /** Non-blocking amber warning shown alongside the unsaved count. Never disables Save. */
   warning?: string | null;
+  /**
+   * When non-null, clicking Save opens a confirm dialog showing this message;
+   * onSave only fires after the user confirms with "Save anyway".
+   */
+  saveConfirmation?: string | null;
 }
 
 export function SaveBar({
@@ -30,12 +35,27 @@ export function SaveBar({
   onDiscard,
   disabledReason = null,
   warning = null,
+  saveConfirmation = null,
 }: SaveBarProps): ReactElement {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
 
   function handleConfirmDiscard(): void {
     setConfirmOpen(false);
     onDiscard();
+  }
+
+  function handleSaveClick(): void {
+    if (saveConfirmation !== null) {
+      setConfirmSaveOpen(true);
+      return;
+    }
+    onSave();
+  }
+
+  function handleConfirmSave(): void {
+    setConfirmSaveOpen(false);
+    onSave();
   }
 
   return (
@@ -87,10 +107,38 @@ export function SaveBar({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <Dialog open={confirmSaveOpen} onOpenChange={setConfirmSaveOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Save without regenerating?</DialogTitle>
+              <DialogDescription data-testid="save-confirmation-message">
+                {saveConfirmation}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setConfirmSaveOpen(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleConfirmSave}
+                className="bg-black text-white hover:bg-black/90"
+              >
+                Save anyway
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <span className="relative group inline-block">
           <Button
             type="button"
-            onClick={onSave}
+            onClick={handleSaveClick}
             disabled={!canSave || saving}
             aria-disabled={!canSave || saving}
             title={disabledReason ?? undefined}
