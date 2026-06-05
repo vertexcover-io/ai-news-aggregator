@@ -241,7 +241,8 @@ test.describe("Edit-after-review page mode (Phase 3)", () => {
     // After save, should navigate to /archive/:runId
     await expect(page).toHaveURL(new RegExp(`/archive/${editArchive.runId}`));
 
-    // The public archive page should display the edited title (check the page heading)
-    await expect(page.getByRole("heading", { name: editedTitle, level: 1 })).toBeVisible();
+    // The public archive page should display the edited title.
+    // ArchiveStoryCard renders story titles as <h2>, not <h1>.
+    await expect(page.getByRole("heading", { name: editedTitle, level: 2 })).toBeVisible();
   });
 });
