@@ -639,6 +639,163 @@ describe("PATCH /api/admin/archives/:runId — immediate publish block", () => {
     });
   });
 
+  describe("test_REQ_007_repatch_skips_sent_channel: re-PATCH reviewed archive with linkedinPostedAt set → linkedin-post not enqueued", () => {
+    it("test_REQ_007_repatch_skips_sent_channel", async () => {
+      vi.setSystemTime(NOW_PAST_DUE);
+
+      const updatedRow = makeArchiveRow({
+        reviewed: true,
+        linkedinPostedAt: new Date("2026-01-15T08:05:00Z"), // already posted
+      });
+      const { queue, addSpy } = makeQueue();
+      const { app } = buildApp({
+        archiveRow: makeArchiveRow({ reviewed: true }), // already reviewed archive
+        updatedRow,
+        settings: makeSettings(),
+        processingQueue: queue,
+      });
+
+      const res = await app.request("/api/admin/archives/run-uuid-1", {
+        method: "PATCH",
+        headers: PATCH_HEADERS,
+        body: PATCH_BODY,
+      });
+
+      expect(res.status).toBe(200);
+      expect(addSpy).not.toHaveBeenCalledWith(
+        "linkedin-post",
+        expect.anything(),
+        expect.anything(),
+      );
+      // email-send and twitter-post still enqueued (not yet sent)
+      expect(addSpy).toHaveBeenCalledWith("email-send", expect.anything(), expect.anything());
+      expect(addSpy).toHaveBeenCalledWith("twitter-post", expect.anything(), expect.anything());
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe("test_REQ_008_repatch_reviewed_archive_returns_200_and_updates: re-PATCH already-reviewed archive → 200 + persisted", () => {
+    it("test_REQ_008_repatch_reviewed_archive_returns_200_and_updates", async () => {
+      vi.setSystemTime(NOW_PAST_DUE);
+
+      const updatedRow = makeArchiveRow({
+        reviewed: true,
+        rankedItems: [
+          { rawItemId: 1, score: 0.9, rationale: "" },
+          { rawItemId: 2, score: 0.8, rationale: "" },
+        ],
+      });
+      const archiveRepo = makeArchiveRepo(
+        makeArchiveRow({ reviewed: true }),
+        updatedRow,
+      );
+      const app = new Hono();
+      app.route(
+        "/api/admin/archives",
+        createAdminArchivesRouter({
+          getArchiveRepo: () => archiveRepo,
+          getRawItemsRepo: () => makeRawRepo(),
+          // no processingQueue: we only care about the 200 + repo call
+        }),
+      );
+
+      const res = await app.request("/api/admin/archives/run-uuid-1", {
+        method: "PATCH",
+        headers: PATCH_HEADERS,
+        body: JSON.stringify({ rankedItems: [{ id: 1, sourceType: "hn" }, { id: 2, sourceType: "hn" }] }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(archiveRepo.updateRankedItems).toHaveBeenCalledOnce();
+      const body = (await res.json()) as { reviewed: boolean; rankedItems: unknown[] };
+      expect(body.reviewed).toBe(true);
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe("test_EDGE_001_all_channels_sent_enqueues_nothing: all three sent → zero queue.add calls", () => {
+    it("test_EDGE_001_all_channels_sent_enqueues_nothing", async () => {
+      vi.setSystemTime(NOW_PAST_DUE);
+
+      const updatedRow = makeArchiveRow({
+        reviewed: true,
+        emailSentAt: new Date("2026-01-15T07:05:00Z"),
+        linkedinPostedAt: new Date("2026-01-15T08:05:00Z"),
+        twitterPostedAt: new Date("2026-01-15T09:05:00Z"),
+      });
+      const { queue, addSpy } = makeQueue();
+      const { app } = buildApp({
+        archiveRow: makeArchiveRow({ reviewed: true }),
+        updatedRow,
+        settings: makeSettings(),
+        processingQueue: queue,
+      });
+
+      const res = await app.request("/api/admin/archives/run-uuid-1", {
+        method: "PATCH",
+        headers: PATCH_HEADERS,
+        body: PATCH_BODY,
+      });
+
+      expect(res.status).toBe(200);
+      expect(addSpy).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe("test_EDGE_002_unsent_pastdue_email_enqueued_sent_linkedin_skipped: emailSentAt null + linkedinPostedAt set → only email-send", () => {
+    it("test_EDGE_002_unsent_pastdue_email_enqueued_sent_linkedin_skipped", async () => {
+      vi.setSystemTime(NOW_PAST_DUE);
+
+      const updatedRow = makeArchiveRow({
+        reviewed: true,
+        emailSentAt: null,
+        linkedinPostedAt: new Date("2026-01-15T08:05:00Z"), // already posted
+        twitterPostedAt: null,
+      });
+      const { queue, addSpy } = makeQueue();
+      const { app } = buildApp({
+        archiveRow: makeArchiveRow({ reviewed: true }),
+        updatedRow,
+        settings: makeSettings(),
+        processingQueue: queue,
+      });
+
+      const res = await app.request("/api/admin/archives/run-uuid-1", {
+        method: "PATCH",
+        headers: PATCH_HEADERS,
+        body: PATCH_BODY,
+      });
+
+      expect(res.status).toBe(200);
+      // email-send enqueued (null emailSentAt, past-due)
+      expect(addSpy).toHaveBeenCalledWith(
+        "email-send",
+        { runId: "run-uuid-1" },
+        { jobId: "email-send-run-uuid-1", delay: 0 },
+      );
+      // linkedin-post NOT enqueued (already posted)
+      expect(addSpy).not.toHaveBeenCalledWith(
+        "linkedin-post",
+        expect.anything(),
+        expect.anything(),
+      );
+      // twitter-post enqueued (null twitterPostedAt, past-due)
+      expect(addSpy).toHaveBeenCalledWith(
+        "twitter-post",
+        { runId: "run-uuid-1" },
+        { jobId: "twitter-post-run-uuid-1", delay: 0 },
+      );
+      // Total: 2 calls
+      expect(addSpy).toHaveBeenCalledTimes(2);
+
+      vi.useRealTimers();
+    });
+  });
+
   describe("EDGE-004, REQ-011: re-PATCH with all channels already sent → no re-enqueue", () => {
     it("all sentAt fields set → zero enqueue calls", async () => {
       vi.setSystemTime(NOW_PAST_DUE);

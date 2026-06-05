@@ -379,6 +379,97 @@ describe("GET /api/archives/:runId", () => {
   });
 });
 
+describe("GET /api/admin/archives/:runId — review/publish field exposure (REQ-003, REQ-004)", () => {
+  function makeAdminApp(row: RunArchiveRow | null): Hono {
+    const archiveRepo = makeArchiveRepo(row);
+    const app = new Hono();
+    app.route(
+      "/api/admin/archives",
+      createAdminArchivesRouter({
+        getRawItemsRepo: () => makeRepo(),
+        getArchiveRepo: () => archiveRepo,
+      }),
+    );
+    return app;
+  }
+
+  function makeAdminRow(overrides: Partial<RunArchiveRow> = {}): RunArchiveRow {
+    const completedAt = new Date("2026-05-01T10:00:00Z");
+    return {
+      id: "admin-run-1",
+      status: "completed",
+      rankedItems: [],
+      topN: 5,
+      reviewed: true,
+      completedAt,
+      createdAt: completedAt,
+      startedAt: null,
+      sourceTypes: null,
+      emailSentAt: null,
+      linkedinPostedAt: null,
+      twitterPostedAt: null,
+      notificationState: {},
+      isDryRun: false,
+      ...overrides,
+    } as RunArchiveRow;
+  }
+
+  it("test_REQ_003_admin_get_exposes_review_publish_fields: includes reviewed + all three sent timestamps", async () => {
+    const emailSentAt = new Date("2026-05-01T11:00:00Z");
+    const linkedinPostedAt = new Date("2026-05-01T12:00:00Z");
+    const row = makeAdminRow({
+      reviewed: true,
+      emailSentAt,
+      linkedinPostedAt,
+      twitterPostedAt: null,
+    });
+    const app = makeAdminApp(row);
+    const res = await app.request("/api/admin/archives/admin-run-1");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.reviewed).toBe(true);
+    expect(body.emailSentAt).toBe(emailSentAt.toISOString());
+    expect(body.linkedinPostedAt).toBe(linkedinPostedAt.toISOString());
+    expect(body.twitterPostedAt).toBeNull();
+  });
+
+  it("test_REQ_004_public_get_omits_publish_fields: public GET does not contain any of the four keys", async () => {
+    const completedAt = new Date("2026-05-01T10:00:00Z");
+    const archiveRepo = makeArchiveRepo({
+      id: "public-run-1",
+      status: "completed",
+      rankedItems: [],
+      topN: 5,
+      reviewed: true,
+      completedAt,
+      createdAt: completedAt,
+      startedAt: null,
+      sourceTypes: null,
+      emailSentAt: new Date("2026-05-01T11:00:00Z"),
+      linkedinPostedAt: new Date("2026-05-01T12:00:00Z"),
+      twitterPostedAt: null,
+      notificationState: {},
+      isDryRun: false,
+    } as RunArchiveRow);
+
+    const publicApp = new Hono();
+    publicApp.route(
+      "/api/archives",
+      createPublicArchivesRouter({
+        getRawItemsRepo: () => makeRepo(),
+        getArchiveRepo: () => archiveRepo,
+      }),
+    );
+    const res = await publicApp.request("/api/archives/public-run-1");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(body, "reviewed")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(body, "emailSentAt")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(body, "linkedinPostedAt")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(body, "twitterPostedAt")).toBe(false);
+  });
+});
+
 describe("GET /api/archives (listing)", () => {
   it("REQ-003/EDGE-003: surfaces exactly what listReviewed returns and never re-includes a dry run", async () => {
     const liveItem: ArchiveListItem = {

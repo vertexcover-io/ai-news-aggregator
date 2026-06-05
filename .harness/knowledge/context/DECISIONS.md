@@ -1,5 +1,5 @@
 ---
-last_verified_sha: ad0153a
+last_verified_sha: 3ad3477b859f71536aeca7cae4436ef4b490aabf
 status: active
 ---
 
@@ -25,6 +25,7 @@ status: active
 | D-016 | Source telemetry row disabled for failed/cancelled + zero items | packages/web/components/observability/PACKAGE.md |
 | D-017 | Dual publish/start date columns | packages/web/components/dashboard/PACKAGE.md |
 | D-018 | SocialOverflowMenu "✓ Posted" without permalink | packages/web/components/dashboard/PACKAGE.md |
+| D-027 | Edit newsletter gate includes dry-run; social gate excludes it | packages/web/components/dashboard/PACKAGE.md |
 | D-019 | RunDetailDrawer tab default based on report data presence | packages/web/components/eval/PACKAGE.md |
 | D-020 | RankingFunnel graceful degradation on null poolSize | packages/web/components/eval/PACKAGE.md |
 | D-021 | ArchiveRow is not a link when no stories | packages/web/components/archive-listing/PACKAGE.md |

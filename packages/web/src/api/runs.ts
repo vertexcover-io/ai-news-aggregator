@@ -16,6 +16,10 @@ export type RunStateResponse = Omit<RunState, "rankedItems"> & {
   twitterSummary?: string | null;
   linkedinPostBody?: string | null;
   isDryRun?: boolean;
+  reviewed?: boolean;
+  emailSentAt?: string | null;
+  linkedinPostedAt?: string | null;
+  twitterPostedAt?: string | null;
 };
 
 interface ApiErrorBody {

@@ -12,16 +12,20 @@ import { DigestMetaPanel } from "../components/review/DigestMetaPanel";
 import { SaveBar } from "../components/review/SaveBar";
 import { PoolSection } from "../components/review/PoolSection";
 
-function formatHeading(startedAt: string | null | undefined): string {
-  if (!startedAt) return "Review";
+function formatHeading(
+  startedAt: string | null | undefined,
+  isEdit: boolean,
+): string {
+  const prefix = isEdit ? "Edit" : "Review";
+  if (!startedAt) return prefix;
   const d = new Date(startedAt);
-  if (Number.isNaN(d.getTime())) return "Review";
+  if (Number.isNaN(d.getTime())) return prefix;
   const formatted = d.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
-  return `Review · ${formatted}`;
+  return `${prefix} · ${formatted}`;
 }
 
 interface ReviewStateItem {
@@ -246,6 +250,13 @@ export function ReviewPage(): ReactElement {
     );
   }
 
+  const isEdit = query.data.reviewed === true;
+
+  const publishedChannels: string[] = [];
+  if (query.data.emailSentAt != null) publishedChannels.push("Email");
+  if (query.data.linkedinPostedAt != null) publishedChannels.push("LinkedIn");
+  if (query.data.twitterPostedAt != null) publishedChannels.push("X");
+
   const currentSignature = state.current.map((it) => it.id).join("|");
   const needsRegen =
     regenSignature !== null && currentSignature !== regenSignature;
@@ -310,7 +321,7 @@ export function ReviewPage(): ReactElement {
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold">
-              {formatHeading(query.data.startedAt)}
+              {formatHeading(query.data.startedAt, isEdit)}
             </h2>
             {query.data.isDryRun === true ? (
               <span
@@ -321,10 +332,20 @@ export function ReviewPage(): ReactElement {
               </span>
             ) : null}
           </div>
-          <p className="text-sm text-muted-foreground">
-            Remove, reorder, or add posts before the archive renders.
+          <p className="text-sm text-muted-foreground" data-testid="review-page-subtitle">
+            {isEdit
+              ? "Update posts or copy — the archive and any unsent channels will pick up your changes."
+              : "Remove, reorder, or add posts before the archive renders."}
           </p>
         </div>
+        {isEdit && publishedChannels.length > 0 ? (
+          <div
+            className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+            data-testid="published-channels-banner"
+          >
+            Already published: {publishedChannels.join(", ")} — edits won&apos;t change those. The archive and any unsent channels will update.
+          </div>
+        ) : null}
         <AddPostPanel
           runId={runId}
           hasUrl={hasUrl}
