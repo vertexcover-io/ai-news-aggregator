@@ -347,7 +347,7 @@ function ReadonlySourcePool({
         <h3 className="text-sm font-bold uppercase tracking-wide text-gray-500">
           Source Pool{" "}
           <span className="font-normal text-gray-400">
-            ({pool.total} items)
+            ({pool.total ?? "…"} items)
           </span>
         </h3>
       </div>
@@ -427,7 +427,7 @@ function ReadonlySourcePool({
       {pool.hasMore && !pool.isLoading ? (
         <div className="text-center">
           <Button variant="outline" size="sm" onClick={pool.loadMore}>
-            Show more ({pool.total - pool.items.length} remaining)
+            Show more ({pool.total !== null ? pool.total - pool.items.length : "…"} remaining)
           </Button>
         </div>
       ) : null}

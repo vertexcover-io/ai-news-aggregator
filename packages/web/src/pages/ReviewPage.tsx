@@ -42,6 +42,28 @@ interface ReviewState {
   pendingPromotes: unknown[];
 }
 
+interface DigestMetaValues {
+  headline: string;
+  summary: string;
+  hook: string;
+  twitterSummary: string;
+  linkedinPostBody: string;
+}
+
+/** Pure helper: returns true if any of the five digest fields differ between a and b. */
+export function digestMetaChanged(
+  a: DigestMetaValues,
+  b: DigestMetaValues,
+): boolean {
+  return (
+    a.headline !== b.headline ||
+    a.summary !== b.summary ||
+    a.hook !== b.hook ||
+    a.twitterSummary !== b.twitterSummary ||
+    a.linkedinPostBody !== b.linkedinPostBody
+  );
+}
+
 export function computeUnsavedCount(state: ReviewState): number {
   const initialIds = state.initial.map((i) => i.id);
   const currentIds = state.current.map((i) => i.id);
@@ -91,19 +113,27 @@ export function ReviewPage(): ReactElement {
     updateItemField,
   } = useReview(runId);
   const [saving, setSaving] = useState(false);
-  const [digestMeta, setDigestMeta] = useState({
+  const emptyDigest: DigestMetaValues = {
     headline: "",
     summary: "",
     hook: "",
     twitterSummary: "",
     linkedinPostBody: "",
-  });
+  };
+  const [digestMeta, setDigestMeta] = useState(emptyDigest);
+  // Baseline snapshot — set at hydration and after successful save.
+  // Digest is dirty when digestBaseline is non-null and digestMeta differs from it.
+  const [digestBaseline, setDigestBaseline] = useState<DigestMetaValues | null>(null);
   const [digestHydratedId, setDigestHydratedId] = useState<string | null>(null);
   // Signature (ordered list of ranked-item ids) at the time the digest meta
   // was last in sync with the ranked list — either when the archive loaded
   // or when the user clicked Regenerate. If `current` drifts from this, the
   // operator must regenerate before saving.
   const [regenSignature, setRegenSignature] = useState<string | null>(null);
+  // Track the signature at the time of the last Regenerate failure.
+  // regenFailed = (lastFailedSignature === currentSignature).
+  // When the user reorders again (signature changes), gate re-engages automatically.
+  const [lastFailedSignature, setLastFailedSignature] = useState<string | null>(null);
   const [promotingIds, setPromotingIds] = useState<Set<number>>(
     () => new Set(),
   );
@@ -113,7 +143,12 @@ export function ReviewPage(): ReactElement {
   const allowSaveNavigation = useRef(false);
 
   const filters = useReviewFilters();
-  const { facets, isLoading: facetsLoading } = useSourceFacets(runId);
+  const {
+    facets,
+    isLoading: facetsLoading,
+    isError: facetsError,
+    refetch: retryFacets,
+  } = useSourceFacets(runId);
 
   const shortlistedItemIds = query.data?.shortlistedItemIds ?? null;
 
@@ -132,16 +167,30 @@ export function ReviewPage(): ReactElement {
               summary: it.recap?.summary ?? "",
             })),
           );
-    setDigestMeta({
+    const hydratedValues: DigestMetaValues = {
       headline: query.data?.digestHeadline ?? "",
       summary: query.data?.digestSummary ?? "",
       hook: query.data?.hook ?? "",
       twitterSummary: query.data?.twitterSummary ?? "",
       linkedinPostBody: seededBody,
-    });
+    };
+    setDigestMeta(hydratedValues);
+    setDigestBaseline(hydratedValues);
     setDigestHydratedId(digestCompletedKey);
     const initialIds = (query.data?.rankedItems ?? []).map((i) => i.id).join("|");
     setRegenSignature(initialIds);
+  }
+
+  function handleRemove(id: number): void {
+    remove(id);
+    // If this item was promoted during this session, remove it from promotingIds
+    // so PoolSection stops filtering it out (item returns to pool without reload).
+    setPromotingIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }
 
   async function handlePromote(
@@ -183,22 +232,29 @@ export function ReviewPage(): ReactElement {
     void handlePromote(rawItemId, title);
   }
 
+  // digest dirty: non-null baseline and any field differs from it
+  const digestDirty =
+    digestBaseline !== null && digestMetaChanged(digestBaseline, digestMeta);
+
+  // effective dirty combines ranked-list dirty and digest dirty
+  const effectiveDirty = isDirty || digestDirty;
+
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
     if (allowSaveNavigation.current) return false;
-    if (!isDirty) return false;
+    if (!effectiveDirty) return false;
     return currentLocation.pathname !== nextLocation.pathname;
   });
 
   useEffect(() => {
     function onBeforeUnload(e: BeforeUnloadEvent): void {
-      if (!isDirty) return;
+      if (!effectiveDirty) return;
       e.preventDefault();
     }
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => {
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [isDirty]);
+  }, [effectiveDirty]);
 
   useEffect(() => {
     if (blocker.state !== "blocked") return;
@@ -212,12 +268,35 @@ export function ReviewPage(): ReactElement {
     }
   }, [blocker]);
 
-  const unsavedCount = useMemo(() => computeUnsavedCount(state), [state]);
+  const unsavedCount = useMemo(
+    () => computeUnsavedCount(state) + (digestDirty ? 1 : 0),
+    [state, digestDirty],
+  );
 
   if (query.isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
         <p className="text-gray-600">Loading...</p>
+      </div>
+    );
+  }
+
+  if (query.isError) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-4xl mx-auto space-y-4">
+          <p className="text-gray-700">Failed to load this run.</p>
+          <button
+            type="button"
+            onClick={() => { void query.refetch(); }}
+            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            Retry
+          </button>
+          <Link to="/admin" className="block text-sm text-blue-600 hover:underline">
+            ← Back to dashboard
+          </Link>
+        </div>
       </div>
     );
   }
@@ -250,6 +329,7 @@ export function ReviewPage(): ReactElement {
     );
   }
 
+  const isDryRun = query.data.isDryRun === true;
   const isEdit = query.data.reviewed === true;
 
   const publishedChannels: string[] = [];
@@ -258,8 +338,24 @@ export function ReviewPage(): ReactElement {
   if (query.data.twitterPostedAt != null) publishedChannels.push("X");
 
   const currentSignature = state.current.map((it) => it.id).join("|");
+
+  // The regen gate: needs regen when signature drifted from last sync,
+  // UNLESS it's a dry-run (bypass) or the last failure was at this signature (unlock).
+  const regenFailed = lastFailedSignature === currentSignature;
   const needsRegen =
-    regenSignature !== null && currentSignature !== regenSignature;
+    regenSignature !== null &&
+    currentSignature !== regenSignature &&
+    !isDryRun &&
+    !regenFailed;
+
+  // Warning: shown when the ranked list changed but regen was skipped (dry-run or failed)
+  const saveWarning =
+    (isDryRun || regenFailed) &&
+    regenSignature !== null &&
+    currentSignature !== regenSignature
+      ? "Digest copy may not match the story order — regeneration was skipped."
+      : null;
+
   const canSave =
     state.current.length > 0 &&
     state.pending.length === 0 &&
@@ -268,6 +364,11 @@ export function ReviewPage(): ReactElement {
     !needsRegen;
   const saveDisabledReason = needsRegen
     ? "Regenerate the digest meta before saving — the ranked list has changed."
+    : null;
+
+  // Regenerate disabled reason for dry-runs
+  const regenerateDisabledReason = isDryRun
+    ? "Regeneration is unavailable for dry-run archives."
     : null;
 
   async function handleSave(): Promise<void> {
@@ -293,7 +394,10 @@ export function ReviewPage(): ReactElement {
       });
       allowSaveNavigation.current = true;
       reset(state.current);
-      setRegenSignature(state.current.map((it) => it.id).join("|"));
+      const newSig = state.current.map((it) => it.id).join("|");
+      setRegenSignature(newSig);
+      // Update the digest baseline so the dirty flag resets after successful save
+      setDigestBaseline(digestMeta);
       void navigate(`/archive/${runId}`);
     } catch (e) {
       const message =
@@ -302,6 +406,18 @@ export function ReviewPage(): ReactElement {
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleDiscard(): void {
+    discard();
+    // Revert digest fields to the last saved/hydrated baseline
+    if (digestBaseline !== null) {
+      setDigestMeta(digestBaseline);
+    }
+    // A discarded session's failed-regen marker must not leak into the next
+    // edit — without this, re-making the same reorder would show the stale
+    // "digest copy may not match" warning before any new regen attempt.
+    setLastFailedSignature(null);
   }
 
   return (
@@ -323,7 +439,7 @@ export function ReviewPage(): ReactElement {
             <h2 className="text-2xl font-bold">
               {formatHeading(query.data.startedAt, isEdit)}
             </h2>
-            {query.data.isDryRun === true ? (
+            {isDryRun ? (
               <span
                 className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-700"
                 data-testid="dry-run-pill"
@@ -365,7 +481,14 @@ export function ReviewPage(): ReactElement {
           onChange={setDigestMeta}
           onRegenerated={() => {
             setRegenSignature(currentSignature);
+            // Clear any failure marker on success
+            setLastFailedSignature(null);
           }}
+          onRegenerateFailed={() => {
+            // Record the signature at which regen failed so Save unlocks at this signature
+            setLastFailedSignature(currentSignature);
+          }}
+          regenerateDisabledReason={regenerateDisabledReason}
         />
 
         <div className="text-xs text-muted-foreground">
@@ -376,7 +499,7 @@ export function ReviewPage(): ReactElement {
           items={state.current}
           addedIds={state.addedIds}
           onReorder={reorder}
-          onDelete={remove}
+          onDelete={handleRemove}
           onUpdateField={updateItemField}
           pendingCount={state.pending.length}
           pendingPromotes={state.pendingPromotes}
@@ -401,6 +524,8 @@ export function ReviewPage(): ReactElement {
           shortlistedItemIds={shortlistedItemIds}
           facets={facets}
           facetsLoading={facetsLoading}
+          facetsError={facetsError}
+          onRetryFacets={retryFacets}
         />
       </main>
       <SaveBar
@@ -408,10 +533,11 @@ export function ReviewPage(): ReactElement {
         saving={saving}
         canSave={canSave}
         disabledReason={saveDisabledReason}
+        warning={saveWarning}
         onSave={() => {
           void handleSave();
         }}
-        onDiscard={discard}
+        onDiscard={handleDiscard}
       />
     </div>
   );

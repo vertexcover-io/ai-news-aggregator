@@ -255,4 +255,35 @@ describe("DigestMetaPanel", () => {
     renderPanel({ items: [] });
     expect(regenerateButton().disabled).toBe(true);
   });
+
+  // Phase 3 tests
+
+  it("test_REQ_010_dry_run_disables_regenerate — disabled reason disables button with title/tooltip", () => {
+    const client = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    function Wrapper(): ReactElement {
+      return (
+        <QueryClientProvider client={client}>
+          <DigestMetaPanel
+            runId="run-dry"
+            items={items()}
+            values={seed()}
+            onChange={vi.fn()}
+            regenerateDisabledReason="Regeneration is unavailable for dry-run archives."
+          />
+        </QueryClientProvider>
+      );
+    }
+    render(<Wrapper />);
+
+    const btn = regenerateButton();
+    expect(btn.disabled).toBe(true);
+    // The disabled reason should be accessible via title or visible text
+    const hasReason =
+      btn.title.includes("dry-run") ||
+      !!screen.queryByText(/dry-run/i) ||
+      !!screen.queryByText(/unavailable/i);
+    expect(hasReason).toBe(true);
+  });
 });

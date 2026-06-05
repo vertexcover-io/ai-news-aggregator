@@ -10,7 +10,8 @@ export interface UsePoolOptions {
 
 export interface UsePoolReturn {
   items: PoolItem[];
-  total: number;
+  /** `null` means "no total for the current filter key yet" (transition in flight). */
+  total: number | null;
   sort: "engagement" | "recency";
   source: string | undefined;
   sourceTypes: string[];
@@ -19,6 +20,7 @@ export interface UsePoolReturn {
   q: string;
   offset: number;
   isLoading: boolean;
+  isError: boolean;
   hasMore: boolean;
   promotedIds: Set<number>;
   setSort: (sort: "engagement" | "recency") => void;
@@ -29,6 +31,7 @@ export interface UsePoolReturn {
   setQ: (q: string) => void;
   loadMore: () => void;
   addPromotedId: (id: number) => void;
+  refetch: () => void;
 }
 
 const PAGE_SIZE = 20;
@@ -42,7 +45,12 @@ export function usePool({ runId, enabled }: UsePoolOptions): UsePoolReturn {
   const [q, setQState] = useState("");
   const [offset, setOffset] = useState(0);
   const [accumulated, setAccumulated] = useState<PoolItem[]>([]);
-  const [total, setTotal] = useState(0);
+  // Transition-aware total: track total alongside the filter key that produced it.
+  // Expose `null` when the current key has no confirmed total yet (REQ-005, EDGE-005).
+  const [totalState, setTotalState] = useState({
+    total: 0,
+    key: "",
+  });
   const [promotedIds, setPromotedIds] = useState<Set<number>>(() => new Set());
   const [prevFilterKey, setPrevFilterKey] = useState("");
 
@@ -85,7 +93,7 @@ export function usePool({ runId, enabled }: UsePoolOptions): UsePoolReturn {
     if (currentKey !== prevFilterKey) {
       setPrevFilterKey(currentKey);
       setAccumulated(query.data.items);
-      setTotal(query.data.total);
+      setTotalState({ total: query.data.total, key: currentKey });
     } else if (offset > 0) {
       // loadMore — append new items
       const existingIds = new Set(accumulated.map((i) => i.id));
@@ -93,13 +101,13 @@ export function usePool({ runId, enabled }: UsePoolOptions): UsePoolReturn {
       if (newItems.length > 0) {
         setAccumulated([...accumulated, ...newItems]);
       }
-      if (total !== query.data.total) {
-        setTotal(query.data.total);
+      if (totalState.total !== query.data.total) {
+        setTotalState({ total: query.data.total, key: currentKey });
       }
     } else if (accumulated.length === 0 && query.data.items.length > 0) {
       // Initial load
       setAccumulated(query.data.items);
-      setTotal(query.data.total);
+      setTotalState({ total: query.data.total, key: currentKey });
     }
   }
 
@@ -151,7 +159,22 @@ export function usePool({ runId, enabled }: UsePoolOptions): UsePoolReturn {
     });
   }, []);
 
-  const hasMore = useMemo(() => accumulated.length < total, [accumulated.length, total]);
+  // `total` is null when the current filter key has no confirmed response yet.
+  const total: number | null =
+    totalState.key === currentKey ? totalState.total : null;
+
+  // hasMore requires a confirmed total for the current key; false during transitions.
+  const hasMore = useMemo(
+    () => totalState.key === currentKey && accumulated.length < totalState.total,
+    [accumulated.length, totalState, currentKey],
+  );
+
+  // query.refetch is referentially stable in react-query v5, so depending on
+  // it (not the whole result object) keeps this callback memoized.
+  const queryRefetch = query.refetch;
+  const refetch = useCallback(() => {
+    void queryRefetch();
+  }, [queryRefetch]);
 
   return {
     items: accumulated,
@@ -164,6 +187,7 @@ export function usePool({ runId, enabled }: UsePoolOptions): UsePoolReturn {
     q,
     offset,
     isLoading: query.isLoading,
+    isError: query.isError,
     hasMore,
     promotedIds,
     setSort,
@@ -174,5 +198,6 @@ export function usePool({ runId, enabled }: UsePoolOptions): UsePoolReturn {
     setQ,
     loadMore,
     addPromotedId,
+    refetch,
   };
 }

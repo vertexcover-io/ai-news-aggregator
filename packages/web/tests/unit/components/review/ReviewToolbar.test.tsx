@@ -48,6 +48,8 @@ function makeProps(
     clearAll: vi.fn(),
     facets: mockFacets,
     facetsLoading: false,
+    facetsError: false,
+    onRetryFacets: vi.fn(),
     poolTotalCount: 20,
     isFiltered: false,
     ...overrides,
@@ -253,5 +255,63 @@ describe("ReviewToolbar", () => {
     fireEvent.click(screen.getByRole("button", { name: /engineering blogs/i }));
 
     expect(toggleSourceType).toHaveBeenCalledWith("blog");
+  });
+
+  it("test_REQ_004_facets_error_shows_retry_in_dropdown — facets error shows Retry, no 'No sources found'", () => {
+    const onRetryFacets = vi.fn();
+    render(
+      <ReviewToolbar
+        {...makeProps({ facetsError: true, onRetryFacets })}
+      />,
+    );
+
+    // Open the dropdown
+    fireEvent.click(screen.getByRole("button", { name: /source/i }));
+
+    // Error text and Retry button present
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.getByText(/failed to load sources/i)).toBeTruthy();
+    const retryBtn = screen.getByRole("button", { name: /retry/i });
+    expect(retryBtn).toBeTruthy();
+
+    // "No sources found" must NOT appear
+    expect(screen.queryByText(/no sources found/i)).toBeNull();
+
+    // Clicking Retry calls onRetryFacets
+    fireEvent.click(retryBtn);
+    expect(onRetryFacets).toHaveBeenCalledOnce();
+  });
+
+  it("test_REQ_014_dropdown_closes_outside_and_escape — outside click and Escape close the dropdown", () => {
+    render(<ReviewToolbar {...makeProps()} />);
+
+    // Open the dropdown
+    fireEvent.click(screen.getByRole("button", { name: /source/i }));
+    // Dropdown panel should be visible (contains the filter input)
+    expect(screen.getByPlaceholderText(/filter sources/i)).toBeTruthy();
+
+    // Outside mousedown should close it
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByPlaceholderText(/filter sources/i)).toBeNull();
+
+    // Reopen
+    fireEvent.click(screen.getByRole("button", { name: /source/i }));
+    expect(screen.getByPlaceholderText(/filter sources/i)).toBeTruthy();
+
+    // Escape should close it
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByPlaceholderText(/filter sources/i)).toBeNull();
+  });
+
+  it("test_REQ_015_empty_shortlist_array_disables_toggle — empty shortlistedItemIds disables the toggle", () => {
+    render(
+      <ReviewToolbar {...makeProps({ shortlistedItemIds: [] })} />,
+    );
+    const toggle = screen.getByRole("checkbox", { name: /shortlisted only/i });
+    expect(toggle.hasAttribute("disabled")).toBe(true);
+
+    // The tooltip container should carry the "No shortlist data" title
+    const wrapper = document.querySelector("[title='No shortlist data for this run']");
+    expect(wrapper).not.toBeNull();
   });
 });

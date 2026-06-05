@@ -1,6 +1,6 @@
 ---
 governs: packages/web/src/hooks/
-last_verified_sha: ad0153a
+last_verified_sha: e3449ebd5407a13ac525f5429f6ba31f8f6123aa
 key_files: [useReview.ts, usePool.ts, useReviewFilters.ts, useRunList.ts, useRunPolling.ts, useRunObservability.ts, useCollectorHealth.ts, useRunSourceItems.ts, useSourceFacets.ts, useEvalRuns.ts, useGradingProgress.ts, useSettings.ts, useArchive.ts]
 flow_fns: [useReview.ts::useReview, usePool.ts::usePool, useRunList.ts::useRunList, useEvalRuns.ts::useEvalRuns]
 decisions: [D-009, D-010]
@@ -59,10 +59,12 @@ useReview(runId) → UseReviewResult:
 
 usePool({ runId, enabled }) → UsePoolReturn:
   State: sort, source, sourceTypes, sources, shortlisted, q, offset, accumulated[]
-    → useQuery(["pool", runId, ...filter state], getPool(runId, { sort, source, sourceTypes, sources, shortlisted, q, offset, limit: 20 }))
+    → filterKey = JSON.stringify([sort, source, sourceTypes, sources, shortlisted, q])
+    → useQuery(["pool", runId, filterKey, offset], getPool(runId, { ...filterState, limit: 20 }))
        ├─ filter key changes → reset accumulated, set offset=0
+       ├─ filterKey transitions → total: null (stale total suppressed until new key resolves) (D-008)
        ├─ loadMore → offset += 20, append new items to accumulated (dedup by id)
-       └─ return { items: accumulated, total, hasMore, loadMore, setSort, setSource, ... }
+       └─ return { items: accumulated, total: currentKeyTotal | null, hasMore, isLoading, isError, refetch, setSort, setSource, ... }
 
 useRunList(limit?) → UseQueryResult<RunSummary[]>:
   useQuery(["runs", { limit }], listRuns(limit))
@@ -81,6 +83,7 @@ useEvalRuns() → UseEvalRunsResult:
 
 - **`useReview` render-time hydration** (D-004): Hydration happens during render, not in useEffect. The `completedKey !== hydratedId` guard ensures re-hydration only when a new completed archive arrives. This pattern avoids React 19 Strict Mode double-render issues.
 - **`usePool` accumulation dedup**: `loadMore` appends items that are NOT already in `accumulated` (checked by `id`). If a filter change resets offset but the same items come back, they populate from scratch correctly because `accumulated` was cleared.
+- **`usePool` stale total suppression** (D-008): When `filterKey` changes, `total` is set to `null` until the new key's query resolves. This prevents the pool header from showing the previous filter's count next to the loading spinner. Uses render-time key comparison (D-004 pattern).
 - **`useRunPolling` treats null as not-found then stops**: After one poll that returns null (404), `dataUpdateCount > 0 && data === null` triggers and polling stops. This prevents infinite 404 polling for runs that don't exist.
 - **`useEvalRuns` client-side search**: The backend list endpoint doesn't accept a `q` param — client-side filtering narrows the current page only. Acceptable for "find this prompt hash in my last few runs" use case; not suitable for large datasets.
 - **`useCollectorHealth` stops polling at terminal** (REQ-019): `refetchInterval` is a function of the latest snapshot — it returns `2000` only while at least one collector is `running`, else `false`. A run that resolves to all `healthy`/`failed`/`never` stops the poll (no infinite spinner). `useCollectorHealthTrigger` does NOT optimistically set `running`; the running state appears on the success-triggered refetch (the API route's synchronous `setRunning` is what makes the next poll show `running`).

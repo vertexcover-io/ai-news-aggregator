@@ -69,6 +69,8 @@ const defaultPoolReturn: UsePoolReturn = {
   setQ: mockSetQ,
   loadMore: mockLoadMore,
   addPromotedId: mockAddPromotedId,
+  isError: false,
+  refetch: vi.fn(),
 };
 
 let poolReturnOverride: Partial<UsePoolReturn> = {};

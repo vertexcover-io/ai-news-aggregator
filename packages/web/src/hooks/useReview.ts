@@ -63,12 +63,22 @@ function itemFieldsChanged(a: RankedItem, b: RankedItem): boolean {
   return ab.some((bullet, i) => bullet !== bb[i]);
 }
 
+const POLL_INTERVAL_MS = 5000;
+const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
+
 export function useReview(runId: string): UseReviewResult {
   const query = useQuery<RunStateResponse | null>({
     queryKey: ["archive", runId],
     queryFn: () => getAdminArchive(runId),
     retry: false,
     refetchOnWindowFocus: false,
+    refetchInterval: (q) => {
+      const status = q.state.data?.status;
+      if (status !== undefined && !TERMINAL_STATUSES.has(status)) {
+        return POLL_INTERVAL_MS;
+      }
+      return false;
+    },
   });
 
   const [initial, setInitial] = useState<RankedItem[]>([]);

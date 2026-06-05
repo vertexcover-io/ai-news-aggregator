@@ -15,6 +15,8 @@ export interface SourceFacetGroup {
 export interface UseSourceFacetsResult {
   facets: SourceFacetGroup[];
   isLoading: boolean;
+  isError: boolean;
+  refetch: () => void;
 }
 
 export function useSourceFacets(runId: string): UseSourceFacetsResult {
@@ -28,5 +30,9 @@ export function useSourceFacets(runId: string): UseSourceFacetsResult {
   return {
     facets: query.data ?? [],
     isLoading: query.isLoading,
+    isError: query.isError,
+    refetch: () => {
+      void query.refetch();
+    },
   };
 }

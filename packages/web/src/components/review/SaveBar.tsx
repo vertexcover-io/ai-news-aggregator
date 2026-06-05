@@ -18,6 +18,8 @@ interface SaveBarProps {
   onSave: () => void;
   onDiscard: () => void;
   disabledReason?: string | null;
+  /** Non-blocking amber warning shown alongside the unsaved count. Never disables Save. */
+  warning?: string | null;
 }
 
 export function SaveBar({
@@ -27,6 +29,7 @@ export function SaveBar({
   onSave,
   onDiscard,
   disabledReason = null,
+  warning = null,
 }: SaveBarProps): ReactElement {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -37,8 +40,18 @@ export function SaveBar({
 
   return (
     <div className="sticky bottom-0 left-0 right-0 flex items-center justify-between gap-4 border-t bg-white px-8 py-4 shadow-lg">
-      <div className="text-sm text-muted-foreground">
-        {unsavedCount} unsaved {unsavedCount === 1 ? "change" : "changes"}
+      <div className="flex flex-col gap-0.5">
+        <span className="text-sm text-muted-foreground">
+          {unsavedCount} unsaved {unsavedCount === 1 ? "change" : "changes"}
+        </span>
+        {warning !== null ? (
+          <span
+            data-testid="save-warning"
+            className="text-xs text-amber-700"
+          >
+            {warning}
+          </span>
+        ) : null}
       </div>
       <div className="flex items-center gap-2">
         <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

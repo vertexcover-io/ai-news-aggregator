@@ -28,6 +28,10 @@ interface DigestMetaPanelProps {
   values: DigestMetaValues;
   onChange: (values: DigestMetaValues) => void;
   onRegenerated?: () => void;
+  /** When set, the Regenerate button is disabled with this reason shown in the title attribute. */
+  regenerateDisabledReason?: string | null;
+  /** Called when the Regenerate mutation fails (after inline error is set). */
+  onRegenerateFailed?: () => void;
 }
 
 function CharCounter({
@@ -57,6 +61,8 @@ export function DigestMetaPanel({
   values,
   onChange,
   onRegenerated,
+  regenerateDisabledReason = null,
+  onRegenerateFailed,
 }: DigestMetaPanelProps): ReactElement {
   const mutation = useMutation({
     mutationFn: () => regenerateDigestMeta(runId, items),
@@ -76,10 +82,17 @@ export function DigestMetaPanel({
       });
       onRegenerated?.();
     },
+    onError: () => {
+      onRegenerateFailed?.();
+    },
   });
 
   const regenerating = mutation.isPending;
-  const canRegenerate = items.length > 0 && !regenerating;
+  // Disabled when: externally disabled (dry-run), no items, or currently regenerating
+  const canRegenerate =
+    regenerateDisabledReason === null &&
+    items.length > 0 &&
+    !regenerating;
 
   function update<K extends keyof DigestMetaValues>(
     key: K,
@@ -106,6 +119,7 @@ export function DigestMetaPanel({
           type="button"
           variant="outline"
           disabled={!canRegenerate}
+          title={regenerateDisabledReason ?? undefined}
           onClick={() => {
             mutation.mutate();
           }}
@@ -119,6 +133,11 @@ export function DigestMetaPanel({
             "Regenerate"
           )}
         </Button>
+        {regenerateDisabledReason !== null ? (
+          <span className="text-xs text-muted-foreground">
+            {regenerateDisabledReason}
+          </span>
+        ) : null}
       </div>
 
       {errorMessage !== null && (

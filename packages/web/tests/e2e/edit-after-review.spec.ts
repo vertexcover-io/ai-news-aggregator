@@ -2,6 +2,7 @@
  * Edit-after-review e2e — Phase 2 + Phase 3.
  * Phase 2 traces: REQ-001, REQ-002, EDGE-003, EDGE-004 (VS-1 steps 1-3, VS-2)
  * Phase 3 traces: REQ-005, REQ-006, EDGE-005, EDGE-006 (VS-1 steps 3-5)
+ * Phase 3 (new): EDGE-004 dry-run reorder+save (REQ-009, REQ-010)
  *
  * Prereqs (managed by functional-verify):
  *   - `pnpm infra:up` (Postgres + Redis)
@@ -118,6 +119,48 @@ async function seedArchives(): Promise<SeededArchives> {
   }
 }
 
+async function seedDryRunWithItems(): Promise<{ runId: string }> {
+  const client = new Client({ connectionString: DATABASE_URL });
+  await client.connect();
+  try {
+    await ensureUserSettings(client);
+    const futureBase = new Date(Date.UTC(2299, 11, 1));
+    const t = (n: number): Date => new Date(futureBase.getTime() + n * 60_000);
+
+    // Insert two raw_items
+    const rawItem1Result = await client.query<{ id: number }>(
+      `INSERT INTO raw_items (url, title, source_type, external_id, collected_at, metadata)
+       VALUES ('https://example.com/dry-item-1', 'Dry Run Story Alpha', 'hn', $1, now(), '{}'::jsonb)
+       RETURNING id`,
+      [`dry-e2e-1-${String(Date.now())}`],
+    );
+    const rawItem2Result = await client.query<{ id: number }>(
+      `INSERT INTO raw_items (url, title, source_type, external_id, collected_at, metadata)
+       VALUES ('https://example.com/dry-item-2', 'Dry Run Story Beta', 'hn', $1, now(), '{}'::jsonb)
+       RETURNING id`,
+      [`dry-e2e-2-${String(Date.now())}`],
+    );
+    const id1 = rawItem1Result.rows[0]?.id;
+    const id2 = rawItem2Result.rows[0]?.id;
+    if (!id1 || !id2) throw new Error("Failed to insert raw_items");
+
+    const rankedItems = JSON.stringify([
+      { rawItemId: id1, score: 0.9, rationale: "test", title: "Dry Run Story Alpha" },
+      { rawItemId: id2, score: 0.8, rationale: "test", title: "Dry Run Story Beta" },
+    ]);
+
+    const runId = randomUUID();
+    await client.query(
+      `INSERT INTO run_archives (id, status, ranked_items, top_n, reviewed, is_dry_run, completed_at, started_at)
+       VALUES ($1, 'completed', $2::jsonb, 5, true, true, $3::timestamptz, $4::timestamptz)`,
+      [runId, rankedItems, t(10), t(9)],
+    );
+    return { runId };
+  } finally {
+    await client.end();
+  }
+}
+
 async function adminLogin(page: Page): Promise<void> {
   const res = await page.request.post(`${API_BASE}/api/admin/login`, {
     data: { password: ADMIN_PASSWORD },
@@ -212,6 +255,43 @@ test.describe("Edit-after-review page mode (Phase 3)", () => {
     const banner = page.getByTestId("published-channels-banner");
     await expect(banner).toBeVisible();
     await expect(banner).toContainText("Email");
+  });
+
+  // VS-3: EDGE-004 — dry-run reorder + save (REQ-009, REQ-010)
+  // Regenerate must be disabled (dry-run reason), Save must be enabled after reorder, PATCH succeeds.
+  test("test_EDGE_004_dry_run_review_edit_saves — dry-run: reorder → Regenerate disabled → Save enabled → PATCH succeeds", async ({
+    page,
+  }) => {
+    const { runId } = await seedDryRunWithItems();
+    await adminLogin(page);
+    await page.goto(`/admin/review/${runId}`);
+
+    // Verify dry-run pill is present
+    const dryRunPill = page.getByTestId("dry-run-pill");
+    await expect(dryRunPill).toBeVisible();
+
+    // Wait for items to render
+    await expect(page.getByText("Dry Run Story Alpha")).toBeVisible();
+    await expect(page.getByText("Dry Run Story Beta")).toBeVisible();
+
+    // Regenerate should be disabled with dry-run reason on load
+    const regenBtn = page.getByRole("button", { name: /regenerate/i });
+    await expect(regenBtn).toBeDisabled();
+
+    // Remove the second item to change the ranked list
+    const deleteButtons = page.getByRole("button", { name: /delete|remove/i });
+    await deleteButtons.last().click();
+
+    // After deletion: Regenerate still disabled (dry-run), Save should be enabled
+    await expect(regenBtn).toBeDisabled();
+    const saveBtn = page.getByRole("button", { name: /save/i });
+    await expect(saveBtn).toBeEnabled();
+
+    // Click Save
+    await saveBtn.click();
+
+    // Should navigate to /archive/:runId after successful PATCH
+    await expect(page).toHaveURL(new RegExp(`/archive/${runId}`), { timeout: 10000 });
   });
 
   // VS-1 steps 3-5: change a story title, Save, verify edited title on /archive/:runId

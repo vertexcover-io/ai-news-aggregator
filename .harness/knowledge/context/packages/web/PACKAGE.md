@@ -2,7 +2,7 @@
 governs: packages/web/src/
 last_verified_sha: ad0153a
 sub_packages: [api, hooks, lib, layouts, pages, components/shell, components/archive-listing, components/review, components/dashboard, components/observability, components/eval, components/settings, components/sources, components/home, components/ui, components/built, pages/admin, components/admin/must-read]
-decisions: [D-001, D-002, D-003, D-004, D-005, D-006, D-007]
+decisions: [D-001, D-002, D-003, D-004, D-005, D-006, D-007, D-008, D-009, D-010]
 status: active
 ---
 
@@ -72,7 +72,7 @@ Two-audience React SPA: a PUBLIC Ledger-aesthetic archive listing + detail for r
 - **Review page navigation guard** (D-003): Uses `useBlocker` (react-router) + `beforeunload` to prevent losing unsaved changes. The blocker must be explicitly bypassed (`allowSaveNavigation.current = true`) before the post-save navigate or the user gets a spurious confirm dialog.
 - **Render-time hydration pattern** (D-004): Both `useReview` and `DigestMetaPanel` in `ReviewPage` use render-time state sync (`if completedKey !== hydratedId`) rather than `useEffect` cascading. This avoids React Strict Mode double-render issues where effects calling setState produce stale data.
 - **Settings form wipe on re-render** (D-005): `SettingsPage` keys `form.reset` on `dataUpdatedAt`, not `data`, to avoid wiping in-progress dynamic-array edits when `setQueryData` from an optimistic save produces a new value-equal reference each render.
-- **PoolSection total=0 hide** (D-006): When pool `total === 0` and not loading, `PoolSection` returns `null` — this prevents the pool UI from rendering when the backend says there are no pool items, avoiding confusion with empty-state messaging inside the pool.
+- **PoolSection total=0 hide** (D-006): When pool `total === 0` AND no active filter/search constraint AND no error, `PoolSection` returns `null` — this prevents the pool UI from rendering when the backend says there are genuinely no pool items. When a filter IS active, the section stays visible so the operator can clear the filter. Pool errors also stay visible with a Retry control.
 - **Cross-tab subscription sync** (D-007): `useIsSubscribed` listens to both the `storage` event (for cross-tab localStorage) and a custom `newsletter-subscription-change` event (for same-tab). Without the custom event, subscribing in the footer wouldn't update an inline subscribe card rendered in the same tab.
 
 ## Decisions
@@ -117,13 +117,37 @@ Two-audience React SPA: a PUBLIC Ledger-aesthetic archive listing + detail for r
 
 **Governs:** `pages/SettingsPage.tsx`
 
-### D-006: PoolSection null return on zero total
+### D-006: PoolSection null return only when unconstrained pool is empty
 
-**Why:** When the backend says `total: 0`, the pool is genuinely empty. Rendering the search/sort/filter chrome for an empty pool is misleading. Returning `null` keeps the review page clean.
+**Why:** Returning `null` keeps the review page clean when there are genuinely no pool items. However, when a filter is active and the filtered total is 0, the section must STAY rendered so the operator can see the active filter and clear it — otherwise they lose the only path to recovering normal pool view (the "filter UI vanishes" incident). The null-return gate now checks BOTH `total === 0` AND no active filter/search constraint.
 
-**Tradeoff:** The operator can't tell the difference between "pool is empty" and "pool failed to load" without checking the network tab. Acceptable — a failed load shows an error toast from the API layer.
+**Tradeoff:** The component must track filter-active state to suppress the null-return. Pool error state must also suppress null-return so errors are always surfaced (not silently hidden by the zero-total check).
 
 **Governs:** `components/review/PoolSection.tsx`
+
+### D-008: Pool filter stale-total prevention via key-tracked total
+
+**Why:** When the filter key changes (source, shortlist, search query), the react-query cache key changes and transitions through a loading state. The previous total must be suppressed during this transition — displaying a stale count next to a loading indicator confuses the operator about how many items exist.
+
+**Tradeoff:** `usePool` must track the "last settled total for this key" separately from the raw react-query `data.total`. This uses the render-time sync pattern (D-004): `if queryCacheKey !== currentKey then total = null`.
+
+**Governs:** `hooks/usePool.ts`, `components/review/PoolSection.tsx`
+
+### D-009: Dry-run archives bypass the regenerate-before-save gate
+
+**Why:** The regenerate-digest-meta API endpoint always returns 409 for dry-run archives (it's a preview-only feature for live runs). Blocking Save until Regenerate succeeds would permanently deadlock dry-run reviews. Dry-runs are test or ad-hoc archives — saving without fresh digest copy is acceptable.
+
+**Tradeoff:** Dry-run archives save with potentially stale digest copy (whatever was seeded at run time). The Regenerate button is disabled with an explanatory reason to avoid operator confusion.
+
+**Governs:** `pages/ReviewPage.tsx`, `components/review/DigestMetaPanel.tsx`
+
+### D-010: Digest-meta fields tracked as unsaved changes in SaveBar
+
+**Why:** Operators may spend time editing headline/summary/hook/twitter-summary/linkedin-post-body copy. Navigating away without saving should prompt for confirmation just as reordering does — these fields are first-class review outputs.
+
+**Tradeoff:** The digest-meta "dirty" state must be checked separately from the ranked-items dirty state. In `ReviewPage`, both are combined into a single `unsavedCount` fed to `SaveBar`. `useBlocker` uses `hasUnsavedChanges = unsavedCount > 0`.
+
+**Governs:** `pages/ReviewPage.tsx`, `components/review/DigestMetaPanel.tsx`, `components/review/SaveBar.tsx`
 
 ### D-007: Dual event listener for subscription state
 
