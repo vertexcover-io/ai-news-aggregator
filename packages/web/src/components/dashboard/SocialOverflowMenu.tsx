@@ -6,6 +6,7 @@ import {
   type ReactElement,
 } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
 import type { RunSummary } from "@newsletter/shared";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -112,6 +113,8 @@ export function SocialOverflowMenu({
       document.removeEventListener("keydown", handleKey);
     };
   }, [open]);
+
+  const editEligible = run.status === "completed" && run.reviewed;
 
   const linkedin = deriveChannelState(run, "linkedin");
   const twitter = deriveChannelState(run, "twitter");
@@ -239,6 +242,26 @@ export function SocialOverflowMenu({
                 style={{ top: menuPosition.top, right: menuPosition.right }}
                 className="fixed z-50 min-w-[12rem] rounded-md border bg-white shadow-md"
               >
+                {editEligible ? (
+                  <Link
+                    role="menuitem"
+                    to={`/admin/review/${run.runId}`}
+                    onClick={() => { setOpen(false); }}
+                    className="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+                  >
+                    Edit newsletter
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    aria-disabled="true"
+                    disabled
+                    className="block w-full px-3 py-2 text-left text-sm opacity-50 cursor-not-allowed"
+                  >
+                    Edit newsletter
+                  </button>
+                )}
                 {renderChannelItem("linkedin")}
                 {renderChannelItem("twitter")}
               </div>,
