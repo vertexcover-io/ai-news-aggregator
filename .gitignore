@@ -133,7 +133,7 @@ docs/spec/**
 !docs/spec/add-post-collector-resolver/verification/verification-stubs.md
 !docs/spec/add-post-collector-resolver/verification/live-probe.log
 
-.harness/
+.harness/runtime/
 .worktrees/
 
 # Playwright per-run output (traces, screenshots) — regenerates every run
