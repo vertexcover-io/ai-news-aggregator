@@ -1,9 +1,9 @@
 ---
 governs: packages/web/src/components/review/
-last_verified_sha: 5a2ff20
+last_verified_sha: e3449ebd5407a13ac525f5429f6ba31f8f6123aa
 key_files: [ReviewList.tsx, ReviewCard.tsx, PoolSection.tsx, PoolCard.tsx, ReviewToolbar.tsx, AddPostPanel.tsx, DigestMetaPanel.tsx, ExpandedPreview.tsx, SafeMarkdown.tsx, SaveBar.tsx, EditableField.tsx, EditableBulletList.tsx]
 flow_fns: [ReviewList.tsx::ReviewList, PoolSection.tsx::PoolSection, AddPostPanel.tsx::AddPostPanel, DigestMetaPanel.tsx::DigestMetaPanel]
-decisions: [D-012, D-013, D-014]
+decisions: [D-006, D-008, D-009, D-010, D-012, D-013, D-014]
 status: active
 ---
 
@@ -49,12 +49,16 @@ ReviewList → renders sortable list:
     └─ Failed promote placeholders ("Recap generation failed" red dashed + Retry button)
 
 PoolSection:
-  usePool({ runId, enabled: !isUnavailable }) → accumulated items
+  usePool({ runId, enabled: !isUnavailable }) → { items, total, isLoading, isError, refetch }
     ├─ Sync filters: selectedSources → pool.setSources, selectedSourceTypes → pool.setSourceTypes, shortlistedOnly → pool.setShortlisted (D-013)
     ├─ Search input → 300ms debounce → pool.setQ
     ├─ Sort toggle: Engagement / Recent → pool.setSort
     ├─ Filter out promotedIds + promotingIds → visibleItems
-    ├─ total === 0 && !isLoading → return null (D-006)
+    ├─ isUnavailable (null startedAt/sourceTypes) → "Pool unavailable for this run" (no toolbar)
+    ├─ isError → error message + Retry button + toolbar (D-006)
+    ├─ total === 0 && !isLoading && !isError && !hasActiveFilter → return null (D-006)
+    ├─ hasActiveFilter && visibleItems === 0 → "No items match the current filters." (D-006)
+    ├─ !hasActiveFilter && visibleItems === 0 → "All collected items are already ranked."
     └─ visibleItems → PoolCard list + loadMore button
 
 AddPostPanel:
@@ -77,6 +81,10 @@ DigestMetaPanel:
 - **DigestMetaPanel Regenerate always-overwrites** (D-014): The Regenerate button overwrites ALL four digest fields with the LLM response, even if the operator has manually edited some of them. This is by design — the regenerate flow is "synthesize fresh from current ranked items." The operator can re-edit after regeneration.
 - **Pool filters are server-side**: `selectedSources` and `selectedSourceTypes` trigger `pool.setSources`/`pool.setSourceTypes` which reset the pool offset and re-fetch. The pool API handles the filter server-side. The review page's ranked list is NOT filtered — only the pool is.
 - **ReviewCard uses `recap.title` as display title**: If an operator edits the title field, it updates `item.title` AND `item.recap.title`. The three-tier precedence is `ref.title > recap.title > sourceTitle`.
+- **PoolSection null-return guard checks filter state** (D-006): The zero-total null-return ONLY applies when no filter is active and no error is present. If a filter is active (shortlisted, source, or search query), the section MUST stay visible so the "Clear filters" path is available.
+- **ReviewToolbar Source dropdown: empty shortlist array = disabled** (F-13): `shortlistedItemIds=[]` is treated as null — the toggle is disabled because the server silently drops the shortlistedOnly filter when the ids array is empty.
+- **Dry-run Regenerate is always disabled** (D-009): DigestMetaPanel shows the Regenerate button as `disabled` with reason text when `archive.isDryRun === true`. The component receives `isDryRun` as a prop from ReviewPage.
+- **SaveBar tracks digest-meta dirty state** (D-010): DigestMetaPanel forwards per-field changes to ReviewPage via `onChange`. ReviewPage computes a `digestDirtyCount` (fields where current value ≠ hydrated value) and adds it to the ranked-items dirty count before feeding `unsavedCount` to SaveBar.
 
 ## Decisions
 
