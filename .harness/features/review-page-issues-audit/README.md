@@ -2,7 +2,7 @@
 
 > **Verification verdict:** PASS — [verification/proof-report.md](verification/proof-report.md)
 > **Quality gate:** PASS (9/9 checks)
-> **PR:** _pending_
+> **PR:** https://github.com/vertexcover-io/ai-news-aggregator/pull/262
 
 Fixes the two operator-reported review-page incidents and nine additional audit
 defects, all in `packages/web`: the Item Pool section no longer vanishes (toolbar
