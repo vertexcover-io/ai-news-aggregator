@@ -34,7 +34,8 @@ async function seedEditArchive(): Promise<SeededEditArchive> {
   await client.connect();
   try {
     await ensureUserSettings(client);
-    const futureBase = new Date(Date.UTC(2099, 6, 1));
+    // Use 2199 (not 2099) to stay ahead of any pre-existing 2099 test seed rows.
+    const futureBase = new Date(Date.UTC(2199, 11, 1));
     const t = (n: number): Date => new Date(futureBase.getTime() + n * 60_000);
 
     // Insert a raw_items row so hydrateRankedItems can find it
@@ -73,8 +74,8 @@ async function ensureUserSettings(client: Client): Promise<void> {
   );
   if (result.rows[0]?.count === "0") {
     await client.query(
-      `INSERT INTO user_settings (top_n, pipeline_time, schedule_timezone, email_time, linkedin_time, twitter_time, ranking_prompt, shortlist_prompt)
-       VALUES (5, '08:00', 'UTC', '08:00', '08:00', '08:00', 'rank these items', 'shortlist these items')`,
+      `INSERT INTO user_settings (top_n, pipeline_time, schedule_timezone, email_time, linkedin_time, twitter_time, ranking_prompt, shortlist_prompt, shortlist_size)
+       VALUES (5, '08:00', 'UTC', '08:00', '08:00', '08:00', 'rank these items', 'shortlist these items', 20)`,
     );
   }
 }
@@ -85,8 +86,9 @@ async function seedArchives(): Promise<SeededArchives> {
   try {
     await ensureUserSettings(client);
 
-    // Use far-future completed_at so our rows appear at the top of the dashboard
-    const futureBase = new Date(Date.UTC(2099, 5, 1));
+    // Use far-future completed_at so our rows appear at the top of the dashboard.
+    // Use 2199 (not 2099) to stay ahead of any pre-existing 2099 test seed rows.
+    const futureBase = new Date(Date.UTC(2199, 11, 1));
     const t = (n: number): Date => new Date(futureBase.getTime() + n * 60_000);
 
     const reviewedId = randomUUID();
