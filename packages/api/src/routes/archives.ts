@@ -162,6 +162,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
       const timezone = await getConfiguredTimezone(deps);
 
       // REQ-010: admin route includes shortlistedItemIds (admin-only, never public)
+      // REQ-003: admin route includes reviewed + publish timestamps (admin-only, never public)
       const state: RunState & {
         sourceTypes: string[] | null;
         digestHeadline: string | null;
@@ -171,6 +172,10 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         linkedinPostBody: string | null;
         isDryRun: boolean;
         shortlistedItemIds: number[] | null;
+        reviewed: boolean;
+        emailSentAt: string | null;
+        linkedinPostedAt: string | null;
+        twitterPostedAt: string | null;
       } = {
         id: runId,
         status: archive.status,
@@ -192,6 +197,10 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         twitterSummary: archive.twitterSummary,
         linkedinPostBody: archive.linkedinPostBody,
         isDryRun: archive.isDryRun,
+        reviewed: archive.reviewed,
+        emailSentAt: archive.emailSentAt?.toISOString() ?? null,
+        linkedinPostedAt: archive.linkedinPostedAt?.toISOString() ?? null,
+        twitterPostedAt: archive.twitterPostedAt?.toISOString() ?? null,
       };
 
       const reviewEditsRepo = deps.getReviewEditsRepo?.();
