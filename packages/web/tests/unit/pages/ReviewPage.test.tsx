@@ -384,6 +384,119 @@ describe("ReviewPage", () => {
     expect(screen.queryByTestId("dry-run-pill")).toBeNull();
   });
 
+  // REQ-005: reviewed archive → heading matches /^Edit · /
+  it("test_REQ_005_review_page_heading_edit_mode", async () => {
+    const response: RunStateResponse = {
+      id: "run-reviewed",
+      status: "completed",
+      stage: "completed",
+      topN: 10,
+      startedAt: "2026-04-14T08:00:00Z",
+      updatedAt: "2026-04-14T08:00:00Z",
+      completedAt: "2026-04-14T08:00:00Z",
+      sources: {},
+      rankedItems: [makeItem(1, "Story A")],
+      shortlistedItemIds: null,
+      warnings: [],
+      error: null,
+      reviewed: true,
+    };
+    vi.mocked(getAdminArchive).mockResolvedValue(response);
+    renderAt("run-reviewed");
+    await screen.findByText("Story A");
+
+    const heading = screen.getByRole("heading", { level: 2 });
+    expect(heading.textContent).toMatch(/^Edit · /);
+    // subtitle should mention edit mode
+    const subtitle = screen.getByTestId("review-page-subtitle");
+    expect(subtitle.textContent).toMatch(/update|edit/i);
+  });
+
+  // REQ-006: reviewed archive with sent channels → banner lists exactly those channels
+  it("test_REQ_006_published_channels_banner_lists_sent_channels", async () => {
+    const response: RunStateResponse = {
+      id: "run-sent",
+      status: "completed",
+      stage: "completed",
+      topN: 10,
+      startedAt: "2026-04-14T08:00:00Z",
+      updatedAt: "2026-04-14T08:00:00Z",
+      completedAt: "2026-04-14T08:00:00Z",
+      sources: {},
+      rankedItems: [makeItem(1, "Story B")],
+      shortlistedItemIds: null,
+      warnings: [],
+      error: null,
+      reviewed: true,
+      emailSentAt: "2026-04-14T09:00:00Z",
+      linkedinPostedAt: "2026-04-14T09:05:00Z",
+      twitterPostedAt: null,
+    };
+    vi.mocked(getAdminArchive).mockResolvedValue(response);
+    renderAt("run-sent");
+    await screen.findByText("Story B");
+
+    const banner = screen.getByTestId("published-channels-banner");
+    expect(banner.textContent).toContain("Email");
+    expect(banner.textContent).toContain("LinkedIn");
+    expect(banner.textContent).not.toContain("X");
+  });
+
+  // EDGE-005: reviewed + all timestamps null → Edit heading, no banner
+  it("test_EDGE_005_edit_heading_without_banner_when_unsent", async () => {
+    const response: RunStateResponse = {
+      id: "run-unsent",
+      status: "completed",
+      stage: "completed",
+      topN: 10,
+      startedAt: "2026-04-14T08:00:00Z",
+      updatedAt: "2026-04-14T08:00:00Z",
+      completedAt: "2026-04-14T08:00:00Z",
+      sources: {},
+      rankedItems: [makeItem(1, "Story C")],
+      shortlistedItemIds: null,
+      warnings: [],
+      error: null,
+      reviewed: true,
+      emailSentAt: null,
+      linkedinPostedAt: null,
+      twitterPostedAt: null,
+    };
+    vi.mocked(getAdminArchive).mockResolvedValue(response);
+    renderAt("run-unsent");
+    await screen.findByText("Story C");
+
+    const heading = screen.getByRole("heading", { level: 2 });
+    expect(heading.textContent).toMatch(/^Edit · /);
+    expect(screen.queryByTestId("published-channels-banner")).toBeNull();
+  });
+
+  // EDGE-006: unreviewed archive → heading stays /^Review · /, no banner
+  it("test_EDGE_006_unreviewed_archive_keeps_review_heading", async () => {
+    const response: RunStateResponse = {
+      id: "run-unreviewed",
+      status: "completed",
+      stage: "completed",
+      topN: 10,
+      startedAt: "2026-04-14T08:00:00Z",
+      updatedAt: "2026-04-14T08:00:00Z",
+      completedAt: "2026-04-14T08:00:00Z",
+      sources: {},
+      rankedItems: [makeItem(1, "Story D")],
+      shortlistedItemIds: null,
+      warnings: [],
+      error: null,
+      reviewed: false,
+    };
+    vi.mocked(getAdminArchive).mockResolvedValue(response);
+    renderAt("run-unreviewed");
+    await screen.findByText("Story D");
+
+    const heading = screen.getByRole("heading", { level: 2 });
+    expect(heading.textContent).toMatch(/^Review · /);
+    expect(screen.queryByTestId("published-channels-banner")).toBeNull();
+  });
+
   describe("regenerate-before-save gate", () => {
     function makeCompletedRun(): RunStateResponse {
       return {
