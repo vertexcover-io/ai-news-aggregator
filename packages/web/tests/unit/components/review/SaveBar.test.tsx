@@ -86,6 +86,57 @@ describe("SaveBar", () => {
     expect(screen.queryByTestId("save-disabled-tooltip")).toBeNull();
   });
 
+  it("opens a confirm dialog instead of saving when saveConfirmation is set", () => {
+    const onSave = vi.fn();
+    render(
+      <SaveBar
+        unsavedCount={1}
+        saving={false}
+        canSave
+        onSave={onSave}
+        onDiscard={vi.fn()}
+        saveConfirmation="The story order changed since the digest meta was last generated."
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /save & view archive/i }),
+    );
+    // Save did NOT fire; the dialog is showing the warning message
+    expect(onSave).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId("save-confirmation-message").textContent,
+    ).toContain("story order changed");
+    // Cancel closes without saving
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(screen.queryByTestId("save-confirmation-message")).toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+    // Re-open and confirm — now onSave fires exactly once
+    fireEvent.click(
+      screen.getByRole("button", { name: /save & view archive/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /save anyway/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves directly when saveConfirmation is null", () => {
+    const onSave = vi.fn();
+    render(
+      <SaveBar
+        unsavedCount={1}
+        saving={false}
+        canSave
+        onSave={onSave}
+        onDiscard={vi.fn()}
+        saveConfirmation={null}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /save & view archive/i }),
+    );
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("save-confirmation-message")).toBeNull();
+  });
+
   it("opens a confirm dialog with 'Discard all changes?' and only calls onDiscard after confirm (REQ-153)", () => {
     const onDiscard = vi.fn();
     render(

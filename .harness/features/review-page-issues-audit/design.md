@@ -75,7 +75,10 @@ No PRD — internal-facing change.
 - **F9** — WHEN a Regenerate attempt fails, Save SHALL unlock with the existing digest
   copy and the SaveBar SHALL show a non-blocking warning that the digest copy may not
   match the new story order. (Operator decision 2026-06-05: availability over forced
-  consistency.)
+  consistency. **Revised 2026-06-06:** the disabled-button gate was removed entirely —
+  ANY save with a stale digest signature now goes through a "Save without
+  regenerating?" confirm dialog ("Save anyway" / Cancel) instead of disabling Save;
+  the amber warning shows whenever the digest is stale, dry-run or not.)
 - **F10** — The archive-load failure state SHALL distinguish 404 ("This run was not
   found.") from transient errors, which show "Failed to load this run." plus a Retry
   control.

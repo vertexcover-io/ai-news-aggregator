@@ -59,8 +59,9 @@ ReviewPage (the most complex page):
     ├─ Ranked items: completedKey !== hydratedId → setInitial/setCurrent from query.data.rankedItems
     └─ Digest meta: digestCompletedKey !== digestHydratedId → setDigestMeta from query.data.digestHeadline/Summary/Hook/TwitterSummary/LinkedinPostBody
 
-  regenSignature: ranked item IDs at last sync → needsRegen = currentSignature !== regenSignature
-  canSave = current.length>0 && pending.length===0 && pendingPromotes.length===0 && !saving && !needsRegen
+  regenSignature: ranked item IDs at last sync → digestStale = currentSignature !== regenSignature
+  canSave = current.length>0 && pending.length===0 && pendingPromotes.length===0 && !saving
+  digestStale → SaveBar shows amber warning + Save opens a "Save anyway?" confirm dialog (never disabled)
 
   useBlocker: blocks navigation when isDirty, shows window.confirm
     └─ handleSave → allowSaveNavigation.current = true → navigate("/archive/:runId")
@@ -87,7 +88,7 @@ EvalIndexPage (SSE streaming):
 ## Gotchas / landmines
 
 - **ReviewPage digest-linkedIn body seeding** (D-022): When the archive loads, if `linkedinPostBody` is stored and non-empty, it's used as-is. Otherwise, `buildLinkedinPostBody(hook, items)` generates a default. When Regenerate is clicked, the LinkedIn body is REBUILT from `buildLinkedinPostBody(null, items)` — the hook is intentionally omitted so the operator can re-seed it.
-- **ReviewPage signature tracking** (D-023): `regenSignature` is the `"id1|id2|..."` string of ranked item IDs at the time the digest meta was last in sync. When the operator reorders/adds/removes items, `currentSignature !== regenSignature` → `needsRegen = true` → Save is disabled until the operator clicks Regenerate. This prevents saving digest meta that references an outdated ranked list.
+- **ReviewPage signature tracking** (D-023): `regenSignature` is the `"id1|id2|..."` string of ranked item IDs at the time the digest meta was last in sync. When the operator reorders/adds/removes items, `currentSignature !== regenSignature` → `digestStale = true` → an amber SaveBar warning appears and clicking Save opens a "Save without regenerating?" confirm dialog ("Save anyway" proceeds, Cancel aborts). Save is never disabled by staleness.
 - **SettingsPage form submit prevention**: The form's `onSubmit` handler explicitly calls `e.preventDefault()` BEFORE `handleSubmit` because if `handleSubmit` throws, the native form POST would fire, causing a full-page reload.
 - **EvalIndexPage SSE cleanup**: The `useEffect` cleanup calls `streamRef.current?.abort()` to abort any in-flight SSE stream when the component unmounts.
 
@@ -103,8 +104,8 @@ EvalIndexPage (SSE streaming):
 
 ### D-023: Digest meta regeneration signature tracking
 
-**Why:** The digest headline/summary/hook/twitterSummary are synthesized from a specific ranked list. If the operator reorders items after regeneration, the digest meta is stale. Tracking the signature prevents saving stale meta.
+**Why:** The digest headline/summary/hook/twitterSummary are synthesized from a specific ranked list. If the operator reorders items after regeneration, the digest meta is stale. Tracking the signature lets the UI warn before stale meta is saved.
 
-**Tradeoff:** The operator MUST click Regenerate after every reorder before they can Save. This is a friction point but a necessary correctness guard. Without it, the digest headline could reference items that are no longer in the ranked list.
+**Tradeoff:** Staleness is enforced as an informed confirmation, not a block (operator decision 2026-06-06; originally Save was disabled until Regenerate succeeded — that hard gate deadlocked dry-runs and LLM outages). The operator sees an amber warning and a "Save without regenerating?" dialog; "Save anyway" can knowingly ship digest copy that doesn't match the story order.
 
 **Governs:** `pages/ReviewPage.tsx`
