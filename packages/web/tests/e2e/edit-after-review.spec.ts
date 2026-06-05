@@ -284,11 +284,13 @@ test.describe("Edit-after-review page mode (Phase 3)", () => {
 
     // After deletion: Regenerate still disabled (dry-run), Save should be enabled
     await expect(regenBtn).toBeDisabled();
-    const saveBtn = page.getByRole("button", { name: /save/i });
+    const saveBtn = page.getByRole("button", { name: /save & view archive/i });
     await expect(saveBtn).toBeEnabled();
 
-    // Click Save
+    // Click Save — the stale-digest confirm dialog appears instead of saving directly
     await saveBtn.click();
+    await expect(page.getByTestId("save-confirmation-message")).toBeVisible();
+    await page.getByRole("button", { name: /save anyway/i }).click();
 
     // Should navigate to /archive/:runId after successful PATCH
     await expect(page).toHaveURL(new RegExp(`/archive/${runId}`), { timeout: 10000 });

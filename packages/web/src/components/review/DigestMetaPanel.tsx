@@ -30,8 +30,6 @@ interface DigestMetaPanelProps {
   onRegenerated?: () => void;
   /** When set, the Regenerate button is disabled with this reason shown in the title attribute. */
   regenerateDisabledReason?: string | null;
-  /** Called when the Regenerate mutation fails (after inline error is set). */
-  onRegenerateFailed?: () => void;
 }
 
 function CharCounter({
@@ -62,7 +60,6 @@ export function DigestMetaPanel({
   onChange,
   onRegenerated,
   regenerateDisabledReason = null,
-  onRegenerateFailed,
 }: DigestMetaPanelProps): ReactElement {
   const mutation = useMutation({
     mutationFn: () => regenerateDigestMeta(runId, items),
@@ -81,9 +78,6 @@ export function DigestMetaPanel({
         linkedinPostBody: rebuiltLinkedin,
       });
       onRegenerated?.();
-    },
-    onError: () => {
-      onRegenerateFailed?.();
     },
   });
 

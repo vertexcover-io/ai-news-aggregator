@@ -127,13 +127,9 @@ export function ReviewPage(): ReactElement {
   const [digestHydratedId, setDigestHydratedId] = useState<string | null>(null);
   // Signature (ordered list of ranked-item ids) at the time the digest meta
   // was last in sync with the ranked list — either when the archive loaded
-  // or when the user clicked Regenerate. If `current` drifts from this, the
-  // operator must regenerate before saving.
+  // or when the user clicked Regenerate. If `current` drifts from this,
+  // saving asks for confirmation instead of blocking.
   const [regenSignature, setRegenSignature] = useState<string | null>(null);
-  // Track the signature at the time of the last Regenerate failure.
-  // regenFailed = (lastFailedSignature === currentSignature).
-  // When the user reorders again (signature changes), gate re-engages automatically.
-  const [lastFailedSignature, setLastFailedSignature] = useState<string | null>(null);
   const [promotingIds, setPromotingIds] = useState<Set<number>>(
     () => new Set(),
   );
@@ -339,31 +335,28 @@ export function ReviewPage(): ReactElement {
 
   const currentSignature = state.current.map((it) => it.id).join("|");
 
-  // The regen gate: needs regen when signature drifted from last sync,
-  // UNLESS it's a dry-run (bypass) or the last failure was at this signature (unlock).
-  const regenFailed = lastFailedSignature === currentSignature;
-  const needsRegen =
-    regenSignature !== null &&
-    currentSignature !== regenSignature &&
-    !isDryRun &&
-    !regenFailed;
+  // The ranked list drifted from the signature the digest meta was last
+  // generated against. Saving stays enabled — the SaveBar asks for
+  // confirmation instead of blocking (operator decision 2026-06-06).
+  const digestStale =
+    regenSignature !== null && currentSignature !== regenSignature;
 
-  // Warning: shown when the ranked list changed but regen was skipped (dry-run or failed)
-  const saveWarning =
-    (isDryRun || regenFailed) &&
-    regenSignature !== null &&
-    currentSignature !== regenSignature
-      ? "Digest copy may not match the story order — regeneration was skipped."
-      : null;
+  // Ambient warning while the digest copy is out of sync with the story order.
+  const saveWarning = digestStale
+    ? isDryRun
+      ? "Digest copy may not match the story order — regeneration is unavailable for dry-runs."
+      : "Digest copy may not match the new story order — Regenerate to refresh it."
+    : null;
 
   const canSave =
     state.current.length > 0 &&
     state.pending.length === 0 &&
     state.pendingPromotes.length === 0 &&
-    !saving &&
-    !needsRegen;
-  const saveDisabledReason = needsRegen
-    ? "Regenerate the digest meta before saving — the ranked list has changed."
+    !saving;
+
+  // Save-time confirmation: shown as a dialog instead of disabling the button.
+  const saveConfirmation = digestStale
+    ? "The story order changed since the digest meta was last generated — the headline, summary, and social copy may not match the new order."
     : null;
 
   // Regenerate disabled reason for dry-runs
@@ -414,10 +407,6 @@ export function ReviewPage(): ReactElement {
     if (digestBaseline !== null) {
       setDigestMeta(digestBaseline);
     }
-    // A discarded session's failed-regen marker must not leak into the next
-    // edit — without this, re-making the same reorder would show the stale
-    // "digest copy may not match" warning before any new regen attempt.
-    setLastFailedSignature(null);
   }
 
   return (
@@ -481,12 +470,6 @@ export function ReviewPage(): ReactElement {
           onChange={setDigestMeta}
           onRegenerated={() => {
             setRegenSignature(currentSignature);
-            // Clear any failure marker on success
-            setLastFailedSignature(null);
-          }}
-          onRegenerateFailed={() => {
-            // Record the signature at which regen failed so Save unlocks at this signature
-            setLastFailedSignature(currentSignature);
           }}
           regenerateDisabledReason={regenerateDisabledReason}
         />
@@ -532,8 +515,8 @@ export function ReviewPage(): ReactElement {
         unsavedCount={unsavedCount}
         saving={saving}
         canSave={canSave}
-        disabledReason={saveDisabledReason}
         warning={saveWarning}
+        saveConfirmation={saveConfirmation}
         onSave={() => {
           void handleSave();
         }}
