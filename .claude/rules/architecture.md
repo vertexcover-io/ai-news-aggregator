@@ -2,7 +2,7 @@
 
 ## Spec documents are the source of truth
 
-Always check `docs/superpowers/specs/` before making architectural decisions. Don't contradict what's documented there. If a spec is outdated, flag it to the user rather than silently deviating.
+Always check `.harness/features/` before making architectural decisions. Don't contradict what's documented there. If a spec is outdated, flag it to the user rather than silently deviating.
 
 ## Monorepo package boundaries
 

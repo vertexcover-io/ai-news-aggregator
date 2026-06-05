@@ -52,7 +52,7 @@ function pickExternalUrl(entities: RettiwtRawEntities | undefined): string | und
 
 // The published rettiwt types declare `CursoredData.next: string`, but the live runtime
 // emits either a string or `{ value: string }` (observed in the probe at
-// docs/spec/add-twitter-x-collector/probes/rettiwt-api/probe-pagination.mjs). We accept
+// .harness/features/add-twitter-x-collector/probes/rettiwt-api/probe-pagination.mjs). We accept
 // either shape via a relaxed page type rather than narrowing to the published declaration.
 export interface RettiwtCursoredPage {
   list: RettiwtRawTweet[];

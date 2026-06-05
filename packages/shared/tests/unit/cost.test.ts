@@ -44,7 +44,7 @@ describe("computeCallCost (REQ-003)", () => {
 
 describe("extractAnthropicUsage (REQ-005, REQ-006, REQ-007, EDGE-007)", () => {
   it("maps live-probe usage + providerMetadata fixture exactly (REQ-005)", () => {
-    // Canonical fixture from docs/spec/admin-pipeline-cost-analysis/probes/usage-shape.live.log
+    // Canonical fixture from .harness/features/admin-pipeline-cost-analysis/probes/usage-shape.live.log
     const usage = {
       inputTokens: 699,
       outputTokens: 24,

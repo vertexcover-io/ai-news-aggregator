@@ -69,7 +69,7 @@ These must be manually verified on a device with a live DB, or via a seeded test
 
 ## Screenshots
 
-All screenshots saved under `docs/spec/mobile-friendly-frontend/verification/screenshots/`:
+All screenshots saved under `.harness/features/mobile-friendly-frontend/verification/screenshots/`:
 
 | Route | 375px | 768px | 1280px |
 |-------|-------|-------|--------|

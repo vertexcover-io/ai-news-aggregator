@@ -12,7 +12,7 @@ This applies to every dependency in the stack: Hono, Drizzle, BullMQ, Vite, Rese
 ## Validate approaches before proposing
 
 Before proposing a solution or architectural approach:
-1. Verify it fits the project scope by checking the spec docs in `docs/superpowers/specs/`
+1. Verify it fits the project scope by checking the spec docs in `.harness/features/`
 2. Cross-reference with web search results to confirm the approach is current and accurate
 3. If the approach involves a library or tool not already in the stack, research alternatives and justify the addition
 4. Never propose a solution based solely on general knowledge — back it with current documentation

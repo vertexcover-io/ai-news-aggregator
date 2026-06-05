@@ -625,7 +625,7 @@ test.describe("Run Observability page e2e", () => {
     await expect(page.getByTestId("debug-timeline")).toContainText("stage.result");
 
     await page.screenshot({
-      path: "../../docs/spec/run-observability-page/verification/screenshots/e2e-vs1-live.png",
+      path: "../../.harness/features/run-observability-page/verification/screenshots/e2e-vs1-live.png",
       fullPage: true,
     });
     expect(errors).toEqual([]);
@@ -669,7 +669,7 @@ test.describe("Run Observability page e2e", () => {
     await expect(page.getByTestId("log-row")).toHaveCount(3);
 
     await page.screenshot({
-      path: "../../docs/spec/run-observability-page/verification/screenshots/e2e-vs2-historical.png",
+      path: "../../.harness/features/run-observability-page/verification/screenshots/e2e-vs2-historical.png",
       fullPage: true,
     });
     expect(errors).toEqual([]);
@@ -707,7 +707,7 @@ test.describe("Run Observability page e2e", () => {
     await expect(stack).toContainText("rerank.ts:88:11");
 
     await page.screenshot({
-      path: "../../docs/spec/run-observability-page/verification/screenshots/e2e-vs3-failure.png",
+      path: "../../.harness/features/run-observability-page/verification/screenshots/e2e-vs3-failure.png",
       fullPage: true,
     });
     expect(errors).toEqual([]);
@@ -744,7 +744,7 @@ test.describe("Run Observability page e2e", () => {
     );
 
     await page.screenshot({
-      path: "../../docs/spec/run-observability-page/verification/screenshots/e2e-vs4-legacy.png",
+      path: "../../.harness/features/run-observability-page/verification/screenshots/e2e-vs4-legacy.png",
       fullPage: true,
     });
     expect(errors).toEqual([]);
@@ -802,7 +802,7 @@ test.describe("Run Observability page e2e", () => {
     await expect(page.getByTestId("source-log-strip")).toContainText("enrich.failed");
 
     await page.screenshot({
-      path: "../../docs/spec/telemetry-per-item-observability/verification/screenshots/e2e-phase4-expanded.png",
+      path: "../../.harness/features/telemetry-per-item-observability/verification/screenshots/e2e-phase4-expanded.png",
       fullPage: true,
     });
 
@@ -816,7 +816,7 @@ test.describe("Run Observability page e2e", () => {
     await expect(page.getByTestId("source-item-list")).toHaveCount(0);
 
     await page.screenshot({
-      path: "../../docs/spec/telemetry-per-item-observability/verification/screenshots/e2e-phase4-failed-source.png",
+      path: "../../.harness/features/telemetry-per-item-observability/verification/screenshots/e2e-phase4-failed-source.png",
       fullPage: true,
     });
     expect(errors).toEqual([]);

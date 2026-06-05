@@ -18,7 +18,7 @@ function isAuthFailure(entry: SourceTelemetryEntry): boolean {
   return AUTH_HINT_KEYWORDS.some((kw) => blob.includes(kw));
 }
 
-// Spec: docs/spec/twitter-cookies-admin-settings/spec.md REQ-008.
+// Spec: .harness/features/twitter-cookies-admin-settings/spec.md REQ-008.
 // Label collector auth failures clearly so an operator opening Slack sees
 // "twitter: skipped (missing cookies — set them at /admin/settings)" rather
 // than a stack trace fragment. Generalises across collectors: any source whose

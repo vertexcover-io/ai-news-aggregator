@@ -30,7 +30,7 @@ const P95_THRESHOLD_MS = 200;
 const API_BASE = process.env.API_BASE_URL ?? "http://localhost:3000";
 const REPORT_PATH = resolve(
   process.cwd(),
-  "../../docs/spec/add-archive-keyword-search/verification/perf-report.json",
+  "../../.harness/features/add-archive-keyword-search/verification/perf-report.json",
 );
 
 const TEST_TOKENS = [

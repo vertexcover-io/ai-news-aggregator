@@ -281,7 +281,7 @@ async function main(): Promise<void> {
   } catch {
     gitCommonDir = process.cwd();
   }
-  const dnsFile = resolve(gitCommonDir, "docs/spec/ver-85-newsletter-system/ses-dns-records.txt");
+  const dnsFile = resolve(gitCommonDir, ".harness/features/ver-85-newsletter-system/ses-dns-records.txt");
   mkdirSync(dirname(dnsFile), { recursive: true });
   writeFileSync(dnsFile, dnsLines.join("\n") + "\n", "utf8");
   console.log(`Step 8: DNS records saved to ${dnsFile}`);

@@ -13,127 +13,14 @@ runtime.env
 .turbo/
 docs/*
 !docs/plans/
-!docs/spec/
 !docs/mocks/
 !docs/mocks/**
-# docs/context: auto-generated context map — ship it, but not the per-run sync report
-!docs/context/
-!docs/context/**
-docs/context/.sync-report.md
 
-docs/spec/**
-!docs/spec/**/
-!docs/spec/**/spec.md
-!docs/spec/**/plan.md
-!docs/spec/**/REVIEW.md
-!docs/spec/**/quality-gate.md
-!docs/spec/**/e2e-report.json
-!docs/spec/**/ses-setup.md
-!docs/spec/**/ses-dns-records.txt
-!docs/spec/**/google-group-setup.md
-!docs/spec/**/verification/
-!docs/spec/**/verification/proof-report.md
-!docs/spec/**/verification/adversarial-findings.md
-!docs/spec/**/verification/verification-stubs.md
-!docs/spec/**/learnings.md
-!docs/spec/**/README.md
-!docs/spec/**/design.md
-!docs/spec/**/library-probe.md
-# VER-68: ship full audit trail (probes + library-probe + verification logs)
-!docs/spec/share-archive-on-social/probes/
-!docs/spec/share-archive-on-social/probes/*.sh
-!docs/spec/share-archive-on-social/probes/*.md
-!docs/spec/share-archive-on-social/verification/*.log
-!docs/spec/**/verification/*.png
-!docs/spec/**/verification/*.jpg
-!docs/spec/**/verification/screenshots/
-!docs/spec/**/verification/screenshots/*.png
-!docs/spec/**/verification/screenshots/*.jpg
-!docs/spec/**/verification/playwright-mcp-addendum.md
-# slack-notify-on-reviewed: ship design + library-probe + probes + live-run proof
-!docs/spec/slack-notify-on-reviewed/design.md
-!docs/spec/slack-notify-on-reviewed/library-probe.md
-!docs/spec/slack-notify-on-reviewed/probes/
-!docs/spec/slack-notify-on-reviewed/probes/*.mjs
-!docs/spec/slack-notify-on-reviewed/probes/*.md
-!docs/spec/slack-notify-on-reviewed/verification/verify-report.md
-!docs/spec/slack-notify-on-reviewed/verification/live-run-logs/
-!docs/spec/slack-notify-on-reviewed/verification/live-run-logs/*.log
-!docs/spec/slack-notify-on-reviewed/verification/live-run-logs/*.txt
-# cap-send-rate-and-raw-error: ship verification report + live-run proof
-!docs/spec/cap-send-rate-and-raw-error/verification/verify-report.md
-!docs/spec/cap-send-rate-and-raw-error/verification/live-run-logs/
-!docs/spec/cap-send-rate-and-raw-error/verification/live-run-logs/*.log
-# add-archive-keyword-search: ship full audit trail
-# (library-probe + probes + UI mock + plan + phases + reviews + verification + gate + baseline)
-!docs/spec/add-archive-keyword-search/library-probe.md
-!docs/spec/add-archive-keyword-search/mocks/
-!docs/spec/add-archive-keyword-search/mocks/*.html
-!docs/spec/add-archive-keyword-search/probes/
-!docs/spec/add-archive-keyword-search/probes/*.md
-!docs/spec/add-archive-keyword-search/probes/react-day-picker/
-!docs/spec/add-archive-keyword-search/probes/react-day-picker/*.mjs
-!docs/spec/add-archive-keyword-search/probes/react-day-picker/*.json
-!docs/spec/add-archive-keyword-search/probes/unaccent/
-!docs/spec/add-archive-keyword-search/probes/unaccent/*.sh
-!docs/spec/add-archive-keyword-search/probes/unaccent/*.json
-!docs/spec/add-archive-keyword-search/phase-*.md
-!docs/spec/add-archive-keyword-search/baseline.json
-!docs/spec/add-archive-keyword-search/REVIEW-*.md
-!docs/spec/add-archive-keyword-search/qg-*.log
-!docs/spec/add-archive-keyword-search/verification/
-!docs/spec/add-archive-keyword-search/verification/*.md
-!docs/spec/add-archive-keyword-search/verification/*.json
-!docs/spec/add-archive-keyword-search/verification/*.log
-# web-enrich-link-collectors: ship design + library-probe + live-run logs alongside spec
-!docs/spec/web-enrich-link-collectors/design.md
-!docs/spec/web-enrich-link-collectors/library-probe.md
-!docs/spec/web-enrich-link-collectors/verification/live-run-logs/
-!docs/spec/web-enrich-link-collectors/verification/live-run-logs/*.log
-!docs/spec/web-enrich-link-collectors/verification/live-run-logs/*.txt
-# admin-pipeline-cost-analysis: ship design + library-probe + probes + verification
-!docs/spec/admin-pipeline-cost-analysis/design.md
-!docs/spec/admin-pipeline-cost-analysis/library-probe.md
-!docs/spec/admin-pipeline-cost-analysis/probes/
-!docs/spec/admin-pipeline-cost-analysis/probes/*.md
-!docs/spec/admin-pipeline-cost-analysis/probes/*.mjs
-!docs/spec/admin-pipeline-cost-analysis/probes/*.ts
-!docs/spec/admin-pipeline-cost-analysis/verification/*.md
-!docs/spec/admin-pipeline-cost-analysis/verification/*.log
-# web-search-collector: ship full audit trail (design + library-probe + readme + learnings + adversarial findings + screenshots)
-!docs/spec/web-search-collector/README.md
-!docs/spec/web-search-collector/design.md
-!docs/spec/web-search-collector/library-probe.md
-!docs/spec/web-search-collector/learnings.md
-!docs/spec/web-search-collector/verification/adversarial-findings.md
-!docs/spec/web-search-collector/verification/screenshots/
-!docs/spec/web-search-collector/verification/screenshots/*.png
-
-!docs/spec/split-slack-notifications/README.md
-!docs/spec/split-slack-notifications/design.md
-!docs/spec/split-slack-notifications/library-probe.md
-!docs/spec/split-slack-notifications/learnings.md
-!docs/spec/split-slack-notifications/verification/adversarial-findings.md
-!docs/spec/split-slack-notifications/verification/verification-stubs.md
-.worktrees/
-# admin-ranking-prompt: ship design + library-probe + README + adversarial findings + screenshots
-!docs/spec/admin-ranking-prompt/design.md
-!docs/spec/admin-ranking-prompt/library-probe.md
-!docs/spec/admin-ranking-prompt/README.md
-!docs/spec/admin-ranking-prompt/verification/adversarial-findings.md
-!docs/spec/admin-ranking-prompt/verification/screenshots/
-!docs/spec/admin-ranking-prompt/verification/screenshots/*.png
-
-# add-post-collector-resolver: ship full audit trail
-!docs/spec/add-post-collector-resolver/README.md
-!docs/spec/add-post-collector-resolver/design.md
-!docs/spec/add-post-collector-resolver/library-probe.md
-!docs/spec/add-post-collector-resolver/learnings.md
-!docs/spec/add-post-collector-resolver/verification/adversarial-findings.md
-!docs/spec/add-post-collector-resolver/verification/verification-stubs.md
-!docs/spec/add-post-collector-resolver/verification/live-probe.log
-
+# Unified .harness layout: knowledge/ + features/ are committed; runtime/ is per-run scratch
 .harness/runtime/
+# per-run context-map sync report — regenerated every sync, never shipped
+.harness/knowledge/context/.sync-report.md
+
 .worktrees/
 
 # Playwright per-run output (traces, screenshots) — regenerates every run
@@ -141,26 +28,3 @@ packages/web/test-results/
 
 # ranking-eval-pipeline: LLM response cache is per-developer, never committed
 evals/ranking/cache/
-# ranking-eval-pipeline: ship reviewer index + design + library-probe
-!docs/spec/ranking-eval-pipeline/README.md
-!docs/spec/ranking-eval-pipeline/design.md
-!docs/spec/ranking-eval-pipeline/library-probe.md
-
-!docs/spec/dry-run-archive-access/design.md
-!docs/spec/dry-run-archive-access/library-probe.md
-
-!docs/spec/publishedat-newsletter-date/design.md
-!docs/spec/publishedat-newsletter-date/library-probe.md
-
-# web-collector-date-fix: ship design + library-probe alongside spec
-!docs/spec/web-collector-date-fix/design.md
-!docs/spec/web-collector-date-fix/library-probe.md
-
-# regenerate-digest-meta: ship full audit trail (design + library-probe + README + learnings + verification)
-!docs/spec/regenerate-digest-meta/design.md
-!docs/spec/regenerate-digest-meta/library-probe.md
-!docs/spec/regenerate-digest-meta/README.md
-!docs/spec/regenerate-digest-meta/learnings.md
-!docs/spec/regenerate-digest-meta/verification/adversarial-findings.md
-!docs/spec/regenerate-digest-meta/verification/screenshots/
-!docs/spec/regenerate-digest-meta/verification/screenshots/*.png

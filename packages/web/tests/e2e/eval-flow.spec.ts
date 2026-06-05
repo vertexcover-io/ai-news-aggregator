@@ -22,7 +22,7 @@ const DATABASE_URL =
   "postgresql://newsletter:newsletter@localhost:5433/newsletter";
 
 const SCREENSHOT_DIR =
-  "../../docs/spec/ranking-eval-pipeline/verification/screenshots";
+  "../../.harness/features/ranking-eval-pipeline/verification/screenshots";
 
 async function adminLogin(page: Page): Promise<void> {
   const res = await page.request.post("/api/admin/login", {

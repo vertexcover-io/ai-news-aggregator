@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-// VS-7, VS-8, VS-9 from docs/spec/add-archive-keyword-search/spec.md.
+// VS-7, VS-8, VS-9 from .harness/features/add-archive-keyword-search/spec.md.
 //
 // Prereqs (managed by functional-verify):
 //   - `pnpm infra:up` (Postgres + Redis)

@@ -471,7 +471,7 @@ afterAll(async () => {
 
   const reportPath = resolve(
     REPO_ROOT,
-    "docs/spec/auto-sources-page/e2e-report.json",
+    ".harness/features/auto-sources-page/e2e-report.json",
   );
   mkdirSync(dirname(reportPath), { recursive: true });
   const passed = scenarios.filter((s) => s.passed).length;

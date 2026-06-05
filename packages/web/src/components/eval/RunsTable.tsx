@@ -39,7 +39,7 @@ function pickNumber(value: unknown, path: readonly string[]): number | null {
 // Score breakdown shape (Mode B): { saved, draft } — no nDCG axis.
 // Cost breakdown shape: { totalUsd, perFixture?: [...] | saved?, draft? }
 // Sources of truth: packages/api/src/routes/admin-eval.ts (persist* helpers),
-// docs/spec/eval-runs-persistence-collectors/spec.md REQ-3.
+// .harness/features/eval-runs-persistence-collectors/spec.md REQ-3.
 function formatScore(breakdown: unknown): string {
   const v = pickNumber(breakdown, ["aggregate", "meanNdcgAt10"]);
   if (v === null) return "—";

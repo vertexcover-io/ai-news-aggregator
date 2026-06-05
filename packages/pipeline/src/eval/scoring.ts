@@ -35,7 +35,7 @@ function uniqueRankerIds(rankedItems: readonly RankedItem[]): void {
  *
  * IDCG is computed over the GROUND-TRUTH LABEL SET ONLY — items the ranker
  * returned but the labeler did not grade contribute rel = 0 to DCG and do
- * NOT enter IDCG. See `docs/spec/ranking-eval-pipeline/library-probe.md` §2.
+ * NOT enter IDCG. See `.harness/features/ranking-eval-pipeline/library-probe.md` §2.
  *
  * @throws if `k <= 0` or `rankedItems` contains a duplicate `rawItemId`.
  */
