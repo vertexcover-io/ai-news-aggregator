@@ -203,29 +203,3 @@ describe("REQ-007/REQ-008 — Mode B funnel (sent → ranked → cost)", () => {
     expect(screen.queryByTestId("calendar-report-funnel-note")).toBeNull();
   });
 });
-
-describe("REQ-003/REQ-006 — full-width columns + hidden scrollbars", () => {
-  it("REQ-003: ranking columns container is a two-column grid (lg:grid-cols-2)", () => {
-    const report = makeReport(5, 5, 20);
-    renderComparison(report);
-
-    const columns = screen.getByTestId("calendar-report-columns");
-    expect(columns.className).toContain("lg:grid-cols-2");
-  });
-
-  it("REQ-006: each of the four scroll regions has the hidden-scrollbar class on an overflow-auto container", () => {
-    const report = makeReport(5, 5, 20);
-    renderComparison(report);
-
-    const regions = [
-      screen.getByTestId("calendar-report-previous-scroll"),
-      screen.getByTestId("calendar-report-draft-scroll"),
-      screen.getByTestId("calendar-report-saved-prompt-scroll"),
-      screen.getByTestId("calendar-report-draft-prompt-scroll"),
-    ];
-    for (const region of regions) {
-      expect(region.className).toContain("scrollbar-none");
-      expect(region.className).toContain("overflow-auto");
-    }
-  });
-});

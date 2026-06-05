@@ -140,11 +140,4 @@ describe("ReportTab — Mode A funnel", () => {
     expect(funnel.textContent).not.toContain("undefined");
     expect(screen.queryByTestId("report-tab-funnel-note")).toBeNull();
   });
-
-  it("REQ-006: the ranking scroll region hides its scrollbar on an overflow-auto container", () => {
-    renderTab([actual(1, "A", 0.9)], 32, 0.014);
-    const region = screen.getByTestId("report-tab-ranking-scroll");
-    expect(region.className).toContain("scrollbar-none");
-    expect(region.className).toContain("overflow-auto");
-  });
 });

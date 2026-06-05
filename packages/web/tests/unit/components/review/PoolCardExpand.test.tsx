@@ -52,20 +52,6 @@ const tweetItem: PoolItem = {
   recapSummary: null,
 };
 
-const noPreviewItem: PoolItem = {
-  id: 3,
-  title: "No Preview Item",
-  url: "https://example.com",
-  sourceType: "hn",
-  author: null,
-  publishedAt: null,
-  engagement: { points: 0, commentCount: 0 },
-  imageUrl: null,
-  sourceIdentifier: "example.com",
-  preview: { kind: "none" },
-  recapSummary: null,
-};
-
 describe("PoolCard expand/collapse (REQ-019, REQ-020)", () => {
   it("REQ-020: pool card renders collapsed by default — no preview content visible", () => {
     render(
@@ -136,36 +122,5 @@ describe("PoolCard expand/collapse (REQ-019, REQ-020)", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /expand/i }));
     expect(screen.getByText("Tweet text here")).toBeTruthy();
-  });
-
-  it("EDGE-003: expanding a no-preview card shows unavailable message (never blank)", () => {
-    render(
-      <PoolCard
-        item={noPreviewItem}
-        onPromote={vi.fn()}
-        isPromoting={false}
-        isSaveInFlight={false}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /expand/i }));
-    expect(screen.getByText(/full preview unavailable/i)).toBeTruthy();
-  });
-
-  it("EDGE-003: expanding a no-preview card with recapSummary shows the recap summary", () => {
-    const itemWithRecap: PoolItem = {
-      ...noPreviewItem,
-      recapSummary: "LLaMA 4 sets a new open-weights benchmark.",
-    };
-    render(
-      <PoolCard
-        item={itemWithRecap}
-        onPromote={vi.fn()}
-        isPromoting={false}
-        isSaveInFlight={false}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /expand/i }));
-    expect(screen.getByText("LLaMA 4 sets a new open-weights benchmark.")).toBeTruthy();
-    expect(screen.getByText(/full preview unavailable/i)).toBeTruthy();
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it, afterEach, vi, beforeEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { DateRangePopover } from "../../../../src/components/archive-listing/DateRangePopover";
+import type { DateRangeValue } from "../../../../src/lib/dateRange";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -133,5 +134,53 @@ describe("DateRangePopover", () => {
     );
     fireEvent.mouseDown(screen.getByTestId("outside"));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("selecting a start then an end day in the grid passes the {from,to} range to onApply", () => {
+    const onApply = vi.fn<(range: DateRangeValue) => void>();
+    render(
+      <DateRangePopover
+        value={undefined}
+        onApply={onApply}
+        onClear={() => undefined}
+        onClose={() => undefined}
+      />,
+    );
+
+    // System time is 2026-05-07, so the first month grid is May 2026.
+    const [mayGrid] = screen.getAllByRole("grid");
+
+    // Day-cell buttons in react-day-picker render the day number as their text.
+    const dayButton = (day: string): HTMLElement => {
+      const cell = within(mayGrid)
+        .getAllByRole("gridcell")
+        .find((el) => el.textContent?.trim() === day);
+      if (cell === undefined) {
+        throw new Error(`could not find day cell "${day}" in the May grid`);
+      }
+      const button = cell.querySelector("button");
+      // Some rdp setups render the gridcell itself as the button.
+      return button ?? cell;
+    };
+
+    // Pick a start (the 10th) then an end (the 20th).
+    fireEvent.click(dayButton("10"));
+    fireEvent.click(dayButton("20"));
+
+    // Apply becomes enabled once both ends are chosen.
+    const apply = screen.getByRole<HTMLButtonElement>("button", { name: /Apply/i });
+    expect(apply.disabled).toBe(false);
+    fireEvent.click(apply);
+
+    expect(onApply).toHaveBeenCalledTimes(1);
+    const range = onApply.mock.calls[0][0];
+    const { from, to } = range;
+    if (!(from instanceof Date) || !(to instanceof Date)) {
+      throw new Error("expected onApply to receive a complete {from,to} range");
+    }
+    expect(from.getDate()).toBe(10);
+    expect(to.getDate()).toBe(20);
+    expect(from.getMonth()).toBe(4); // May (0-indexed)
+    expect(to.getMonth()).toBe(4);
   });
 });

@@ -8,35 +8,43 @@ beforeEach(() => {
 });
 
 describe("setMeta", () => {
-  it("creates a name= meta tag for non-og keys (REQ-fence)", () => {
-    setMeta("description", "X");
-    const named = document.head.querySelector('meta[name="description"]');
-    const propped = document.head.querySelector('meta[property="description"]');
-    expect(named?.getAttribute("content")).toBe("X");
-    expect(propped).toBeNull();
+  it.each([
+    {
+      desc: "creates a name= meta tag for non-og keys (REQ-fence)",
+      key: "description",
+      attr: "name",
+      otherAttr: "property",
+    },
+    {
+      desc: "creates a property= meta tag for og: keys (REQ-011)",
+      key: "og:title",
+      attr: "property",
+      otherAttr: "name",
+    },
+  ])("$desc", ({ key, attr, otherAttr }) => {
+    setMeta(key, "X");
+    const matched = document.head.querySelector(`meta[${attr}="${key}"]`);
+    const other = document.head.querySelector(`meta[${otherAttr}="${key}"]`);
+    expect(matched?.getAttribute("content")).toBe("X");
+    expect(other).toBeNull();
   });
 
-  it("creates a property= meta tag for og: keys (REQ-011)", () => {
-    setMeta("og:title", "X");
-    const propped = document.head.querySelector('meta[property="og:title"]');
-    const named = document.head.querySelector('meta[name="og:title"]');
-    expect(propped?.getAttribute("content")).toBe("X");
-    expect(named).toBeNull();
-  });
-
-  it("updates the existing property= og: tag rather than creating a duplicate", () => {
-    setMeta("og:title", "First");
-    setMeta("og:title", "Second");
-    const tags = document.head.querySelectorAll('meta[property="og:title"]');
+  it.each([
+    {
+      desc: "updates the existing property= og: tag rather than creating a duplicate",
+      key: "og:title",
+      attr: "property",
+    },
+    {
+      desc: "updates the existing name= description tag rather than duplicating",
+      key: "description",
+      attr: "name",
+    },
+  ])("$desc", ({ key, attr }) => {
+    setMeta(key, "First");
+    setMeta(key, "Second");
+    const tags = document.head.querySelectorAll(`meta[${attr}="${key}"]`);
     expect(tags.length).toBe(1);
     expect(tags[0].getAttribute("content")).toBe("Second");
-  });
-
-  it("updates the existing name= description tag rather than duplicating", () => {
-    setMeta("description", "A");
-    setMeta("description", "B");
-    const tags = document.head.querySelectorAll('meta[name="description"]');
-    expect(tags.length).toBe(1);
-    expect(tags[0].getAttribute("content")).toBe("B");
   });
 });

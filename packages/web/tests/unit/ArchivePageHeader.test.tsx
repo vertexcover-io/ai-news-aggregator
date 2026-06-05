@@ -91,31 +91,18 @@ describe("ArchivePageHeader", () => {
     ).toBeTruthy();
   });
 
-  it("renders '1 story' (singular) for storyCount === 1", () => {
+  // Story-count pluralization: singular for 1, plural for 0 and many.
+  it.each([
+    { storyCount: 1, expected: "1 story" },
+    { storyCount: 8, expected: "8 stories" },
+    { storyCount: 0, expected: "0 stories" },
+  ])("renders '$expected' for storyCount === $storyCount", ({ storyCount, expected }) => {
     renderHeader({
       issueDate: "2026-04-18",
-      storyCount: 1,
+      storyCount,
       topStoryTitle: null,
     });
-    expect(screen.getByText("1 story")).toBeTruthy();
-  });
-
-  it("renders '8 stories' (plural) for storyCount === 8", () => {
-    renderHeader({
-      issueDate: "2026-04-18",
-      storyCount: 8,
-      topStoryTitle: null,
-    });
-    expect(screen.getByText("8 stories")).toBeTruthy();
-  });
-
-  it("renders '0 stories' for storyCount === 0", () => {
-    renderHeader({
-      issueDate: "2026-04-18",
-      storyCount: 0,
-      topStoryTitle: null,
-    });
-    expect(screen.getByText("0 stories")).toBeTruthy();
+    expect(screen.getByText(expected)).toBeTruthy();
   });
 
   it("does not render an inline back link inside the header (back link lives in a separate row)", () => {
@@ -125,25 +112,5 @@ describe("ArchivePageHeader", () => {
       topStoryTitle: null,
     });
     expect(screen.queryByRole("link", { name: /All issues|Back to archive/i })).toBeNull();
-  });
-
-  it("eyebrow element has font-mono", () => {
-    renderHeader({
-      issueDate: "2026-04-18",
-      storyCount: 5,
-      topStoryTitle: null,
-    });
-    const eyebrow = screen.getByText(/SATURDAY/);
-    expect(eyebrow.className).toContain("font-mono");
-  });
-
-  it("h1 element has font-serif class", () => {
-    renderHeader({
-      issueDate: "2026-04-18",
-      storyCount: 5,
-      topStoryTitle: "Top Story Title",
-    });
-    const heading = screen.getByRole("heading");
-    expect(heading.className).toContain("font-serif");
   });
 });

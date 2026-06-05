@@ -214,60 +214,40 @@ describe("EDGE-009: null permalink renders non-link posted indicator", () => {
 
 // REQ-011: Ineligible states → items disabled
 describe("REQ-011: ineligible states disable menu items", () => {
-  it("unreviewed run → both items aria-disabled", () => {
-    renderTable(
-      makeRun({
-        runId: "run-unreviewed",
-        status: "completed",
-        reviewed: false,
-        isDryRun: false,
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
-    const li = screen.getByRole("menuitem", { name: /linkedin/i });
-    const xi = screen.getByRole("menuitem", { name: /\bx\b/i });
-    expect(li.getAttribute("aria-disabled")).toBe("true");
-    expect(xi.getAttribute("aria-disabled")).toBe("true");
-  });
-
-  it("dry-run → both items aria-disabled", () => {
-    renderTable(
-      makeRun({
-        runId: "run-dry",
-        status: "completed",
-        reviewed: true,
-        isDryRun: true,
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
-    const li = screen.getByRole("menuitem", { name: /linkedin/i });
-    expect(li.getAttribute("aria-disabled")).toBe("true");
-  });
-
-  it("running status → items aria-disabled", () => {
-    renderTable(
-      makeRun({
-        runId: "run-running",
-        status: "running",
-        reviewed: false,
-      }),
-    );
+  it.each<{
+    label: string;
+    overrides: Partial<RunSummary>;
+    checkX: boolean;
+  }>([
+    {
+      label: "unreviewed run",
+      overrides: { runId: "run-unreviewed", status: "completed", reviewed: false, isDryRun: false },
+      checkX: true,
+    },
+    {
+      label: "dry-run",
+      overrides: { runId: "run-dry", status: "completed", reviewed: true, isDryRun: true },
+      checkX: false,
+    },
+    {
+      label: "running status",
+      overrides: { runId: "run-running", status: "running", reviewed: false },
+      checkX: false,
+    },
+    {
+      label: "failed status",
+      overrides: { runId: "run-fail", status: "failed", reviewed: false },
+      checkX: false,
+    },
+  ])("$label → menu items aria-disabled", ({ overrides, checkX }) => {
+    renderTable(makeRun(overrides));
     fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
     const li = screen.getByRole("menuitem", { name: /linkedin/i });
     expect(li.getAttribute("aria-disabled")).toBe("true");
-  });
-
-  it("failed status → items aria-disabled", () => {
-    renderTable(
-      makeRun({
-        runId: "run-fail",
-        status: "failed",
-        reviewed: false,
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
-    const li = screen.getByRole("menuitem", { name: /linkedin/i });
-    expect(li.getAttribute("aria-disabled")).toBe("true");
+    if (checkX) {
+      const xi = screen.getByRole("menuitem", { name: /\bx\b/i });
+      expect(xi.getAttribute("aria-disabled")).toBe("true");
+    }
   });
 
   it("disabled items do not call mutate when clicked", () => {

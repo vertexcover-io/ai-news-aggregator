@@ -31,47 +31,23 @@ function makeRun(overrides: Partial<RunSummary>): RunSummary {
   };
 }
 
-describe("RunsTable observability link (REQ-031)", () => {
-  it("REQ-031: each row links Details to /admin/runs/:runId", () => {
+describe("observability Details link (REQ-031)", () => {
+  // Both the desktop table and the mobile card list expose a Details link to
+  // /admin/runs/:runId on every row, regardless of run status.
+  it.each<{
+    label: string;
+    Component: typeof RunsTable | typeof RunsCardList;
+    runId: string;
+    status: RunSummary["status"];
+  }>([
+    { label: "RunsTable completed row", Component: RunsTable, runId: "run-abc", status: "completed" },
+    { label: "RunsTable running row", Component: RunsTable, runId: "run-live", status: "running" },
+    { label: "RunsCardList failed card", Component: RunsCardList, runId: "run-xyz", status: "failed" },
+  ])("$label links Details to /admin/runs/:runId", ({ Component, runId, status }) => {
     render(
       <MemoryRouter>
-        <RunsTable
-          runs={[makeRun({ runId: "run-abc", status: "completed" })]}
-          onRetry={vi.fn()}
-          retrying={false}
-          onCancel={vi.fn()}
-          onDelete={vi.fn()}
-        />
-      </MemoryRouter>,
-    );
-    const link = screen.getByRole("link", { name: /details/i });
-    expect(link.getAttribute("href")).toBe("/admin/runs/run-abc");
-  });
-
-  it("REQ-031: running rows also expose a Details link", () => {
-    render(
-      <MemoryRouter>
-        <RunsTable
-          runs={[makeRun({ runId: "run-live", status: "running" })]}
-          onRetry={vi.fn()}
-          retrying={false}
-          onCancel={vi.fn()}
-          onDelete={vi.fn()}
-        />
-      </MemoryRouter>,
-    );
-    expect(
-      screen.getByRole("link", { name: /details/i }).getAttribute("href"),
-    ).toBe("/admin/runs/run-live");
-  });
-});
-
-describe("RunsCardList observability link (REQ-031)", () => {
-  it("REQ-031: each card links Details to /admin/runs/:runId", () => {
-    render(
-      <MemoryRouter>
-        <RunsCardList
-          runs={[makeRun({ runId: "run-xyz", status: "failed" })]}
+        <Component
+          runs={[makeRun({ runId, status })]}
           onRetry={vi.fn()}
           retrying={false}
           onCancel={vi.fn()}
@@ -81,6 +57,6 @@ describe("RunsCardList observability link (REQ-031)", () => {
     );
     expect(
       screen.getByRole("link", { name: /details/i }).getAttribute("href"),
-    ).toBe("/admin/runs/run-xyz");
+    ).toBe(`/admin/runs/${runId}`);
   });
 });

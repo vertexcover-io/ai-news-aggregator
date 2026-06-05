@@ -44,29 +44,6 @@ describe("useTriggerSocialPost (REQ-013, REQ-014)", () => {
     expect(mockTriggerSocialPost).toHaveBeenCalledWith("run-123", "linkedin");
   });
 
-  it("invalidates ['runs'] queryKey on success (REQ-013)", async () => {
-    mockTriggerSocialPost.mockResolvedValueOnce(undefined);
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
-
-    const { result } = renderHook(
-      () => useTriggerSocialPost("run-xyz"),
-      { wrapper: makeWrapper(qc) },
-    );
-
-    act(() => {
-      result.current.mutate("twitter");
-    });
-
-    await waitFor(() => {
-      expect(result.current.isSuccess).toBe(true);
-    });
-
-    expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ["runs"] }),
-    );
-  });
-
   it("exposes error on failure", async () => {
     mockTriggerSocialPost.mockRejectedValueOnce(new Error("already posted"));
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });

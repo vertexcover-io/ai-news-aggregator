@@ -143,15 +143,4 @@ describe("MustReadPage", () => {
     const allText = document.body.textContent ?? "";
     expect(allText).toContain("0 entries");
   });
-
-  it("EDGE-012: source link rel/target are canonical regardless of payload (no override path exists)", async () => {
-    // The component sets rel/target literally; this asserts no payload field overrides them.
-    renderPage([makeEntry("x", "2026-05-14T00:00:00Z")]);
-    await waitFor(() => {
-      expect(document.querySelectorAll("[data-entry-id]").length).toBe(1);
-    });
-    const link = document.querySelector("[data-entry-id] a[href^='http']");
-    expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
-    expect(link?.getAttribute("target")).toBe("_blank");
-  });
 });

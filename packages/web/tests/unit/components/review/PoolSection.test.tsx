@@ -107,13 +107,12 @@ describe("PoolSection", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("EDGE-006: renders 'Pool unavailable for this run' when startedAt is null", () => {
-    render(<PoolSection {...baseProps} startedAt={null} />);
-    expect(screen.getByText("Pool unavailable for this run")).toBeDefined();
-  });
-
-  it("EDGE-006: renders 'Pool unavailable for this run' when sourceTypes is null", () => {
-    render(<PoolSection {...baseProps} sourceTypes={null} />);
+  // EDGE-006: the pool is "unavailable" when either run-context prop is null.
+  it.each<{ field: "startedAt" | "sourceTypes" }>([
+    { field: "startedAt" },
+    { field: "sourceTypes" },
+  ])("EDGE-006: renders 'Pool unavailable for this run' when $field is null", ({ field }) => {
+    render(<PoolSection {...baseProps} {...{ [field]: null }} />);
     expect(screen.getByText("Pool unavailable for this run")).toBeDefined();
   });
 
