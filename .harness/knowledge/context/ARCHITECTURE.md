@@ -1,5 +1,5 @@
 ---
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 status: active
 ---
 
@@ -23,6 +23,7 @@ status: active
 ┌──────────────────────────────────────────────────────────┐
 │                  pipeline (BullMQ Workers)               │
 │    Collectors → Dedup → Shortlist → Rank → Publish       │
+│   (3 workers: collection, processing, collector-health)  │
 └──────────────────────────────────────────────────────────┘
         │                                  │
         └── shared (DB schema, types,     │
@@ -75,7 +76,7 @@ POST /api/runs/now →
     queue.add("processing", { name: "run-process", data: { runId, ... } }, { jobId: runId }) →
   pipeline Worker picks up job → handleRunProcessJob →
     4-stage pipeline: collect → dedup → shortlist → rank →
-    write run_archives → Slack notify → cost persist
+    finalizeRun (services/finalize-run.ts): write run_archives → Slack notify → cost persist
 ```
 
 ### Settings save → next job freshness
@@ -85,6 +86,8 @@ PUT /api/settings →
   userSettingsRepo.upsert(input: UserSettings) → PostgreSQL →
   reconcilePipelineSchedule(queue, settings):
     upsertJobScheduler for pipeline-run, social-health, email-send, linkedin-post, twitter-post →
+  reconcileCollectorHealthSchedule(collectorHealthQueue, settings):  (D-110: dedicated queue)
+    upsertJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY, pipelineTime − 30min) →
   next pipeline job: userSettingsRepo.get() → reads fresh rankingPrompt, shortlistPrompt
 ```
 

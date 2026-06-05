@@ -1,9 +1,9 @@
 ---
 governs: packages/pipeline/src/social/linkedin/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [index.ts, notifier.ts, api-client.ts, oauth.ts, little-text.ts, types.ts]
 flow_fns: [notifier.ts::createLinkedInNotifier.notifyArchiveReady, oauth.ts::refreshLinkedInToken]
-decisions: [D-110, D-111]
+decisions: [D-114, D-109]
 status: active
 ---
 
@@ -51,11 +51,11 @@ Posts the daily digest headline + story bullets to LinkedIn, then posts the arch
         └─ !200 / parse error → { ok: false, status, body }
 
 ## Gotchas / landmines
-- **LTF escaping is post-only**: `createPost` applies `escapeLittleText()` to the commentary. `createComment` does NOT escape because comment text is plain text, not Little Text Format. (D-110)
-- **Token refresh racing prevented by FOR UPDATE**: `withTokenLock` uses `SELECT ... FOR UPDATE` inside a transaction. Two concurrent jobs refreshing the same token serialize — the second sees the first's updated row. (D-111)
+- **LTF escaping is post-only**: `createPost` applies `escapeLittleText()` to the commentary. `createComment` does NOT escape because comment text is plain text, not Little Text Format. (D-114)
+- **Token refresh racing prevented by FOR UPDATE**: `withTokenLock` uses `SELECT ... FOR UPDATE` inside a transaction. Two concurrent jobs refreshing the same token serialize — the second sees the first's updated row. (D-109)
 - **No refresh_token → hard fail**: LinkedIn apps without "Programmatic refresh tokens" enabled never get a `refresh_token`. The notifier detects this (`row.refreshToken === ""`) and returns `"refresh_unavailable"` instead of calling the refresh endpoint with an empty string.
 - **Comment failure doesn't block post**: The archive link comment is best-effort. A failed comment logs a warning but the head post is still marked as posted.
 
 ## Decisions
-- **D-110**: LTF escaping in `createPost` only. Why: LinkedIn's Posts API parses commentary as Little Text Format; unescaped reserved chars (including `)` in `"1)"`) silently truncate the post. Comments use the `message.text` field which is plain text. Tradeoff: the escape function must stay in sync with LinkedIn's LTF spec. Governs: `social/linkedin/api-client.ts`, `social/linkedin/little-text.ts`.
-- **D-111**: FOR UPDATE row-level lock for token refresh. Why: without locking, two concurrent `linkedin-post` jobs could both read the same expired token, both refresh, and one's refresh token would be invalidated by the other's. Tradeoff: the lock scope is the transaction — callers must not hold it across external API calls (this notifier acquires, posts, releases). Governs: `repositories/social-tokens.ts::withTokenLock`.
+- **D-114**: LTF escaping in `createPost` only. Why: LinkedIn's Posts API parses commentary as Little Text Format; unescaped reserved chars (including `)` in `"1)"`) silently truncate the post. Comments use the `message.text` field which is plain text. Tradeoff: the escape function must stay in sync with LinkedIn's LTF spec. Governs: `social/linkedin/api-client.ts`, `social/linkedin/little-text.ts`. (renumbered from D-110 — that id is now the cross-package collector-health decision in root DECISIONS.md.)
+- **D-109**: FOR UPDATE row-level lock for token refresh. Why: without locking, two concurrent `linkedin-post` jobs could both read the same expired token, both refresh, and one's refresh token would be invalidated by the other's. Tradeoff: the lock scope is the transaction — callers must not hold it across external API calls (this notifier acquires, posts, releases). Governs: `repositories/social-tokens.ts::withTokenLock`. (renumbered from D-111 — that id is now the cross-package collector-health-Slack decision in root DECISIONS.md.)

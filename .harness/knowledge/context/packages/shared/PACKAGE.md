@@ -1,8 +1,8 @@
 ---
 governs: packages/shared/src/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 sub_packages: [db, types, constants, services, scheduling, slack, review-edits, utils]
-decisions: [D-100, D-101, D-102, D-103, D-104, D-105, D-106, D-107]
+decisions: [D-100, D-101, D-102, D-103, D-104, D-105, D-106, D-107, D-108, D-112, D-113]
 status: active
 ---
 
@@ -34,7 +34,7 @@ The `@newsletter/shared` package is the single source of truth for the monorepo'
 - MODEL_PRICING, computeCallCost, extractUsage (provider-aware token normalization), parseRunCostBreakdown
 
 ### Scheduling (scheduling/)
-- resolveScheduledPublishAt, selectImmediatePublishChannels, dateAtTzTime, publishDateForWindow, jobIdFor
+- resolveScheduledPublishAt, selectImmediatePublishChannels, dateAtTzTime, publishDateForWindow (completion-anchored, D-108), jobIdFor (`{channel}-{runId}` dash delimiter — bullmq rejects `:`, D-112)
 
 ### Services (services/)
 - getCredentialCipher (AES-256-GCM with HKDF from SESSION_SECRET)
@@ -80,6 +80,8 @@ Used by: @newsletter/api, @newsletter/pipeline, @newsletter/web (subpath imports
 3. **Credential cipher uses SESSION_SECRET as KEK.** Rotating SESSION_SECRET invalidates all stored encrypted credentials. (D-104)
 4. **deriveRawItemIdentifier JS↔SQL alignment.** Both implementations must produce identical identifiers. Case sensitivity and backslash escaping are classic divergence points. (D-106)
 5. **drizzle-kit generate can produce bare ADD COLUMN ... NOT NULL** on tables with rows. Always inspect migrations. (D-105)
+6. **Migration journal `when` must be monotonic.** A backdated entry (0035 shipped at 1748433600000) makes already-migrated DBs silently skip the file; fresh DBs are unaffected so CI passes. Heal via an idempotent re-apply migration (0037). (D-113)
+7. **jobIdFor uses `-`, not `:`.** bullmq ≥5.x rejects custom job ids containing `:`. (D-112, cross-package — body in root DECISIONS.md)
 
 ## Decisions
 - D-100: Web must use subpath imports from shared. Governs: packages/shared/tsup.config.ts
@@ -90,3 +92,6 @@ Used by: @newsletter/api, @newsletter/pipeline, @newsletter/web (subpath imports
 - D-105: Generated migrations must be inspected for NOT NULL adds on populated tables. Governs: packages/shared/src/db/
 - D-106: JS and SQL implementations of deriveRawItemIdentifier must stay aligned. Governs: packages/shared/src/services/source-identifier.ts
 - D-107: Slack notification idempotency via notification_state JSONB. Governs: packages/shared/src/slack/notifier.ts
+- D-108: publishDateForWindow anchors the publish day on the run-completion instant (rollover-safe). Governs: packages/shared/src/scheduling/tz.ts — full body in scheduling/PACKAGE.md
+- D-112: jobIdFor uses `-` delimiter (bullmq rejects `:` in custom job ids). Cross-package — full body in root DECISIONS.md
+- D-113: Migration journal timestamps must be monotonic; heal skipped migrations idempotently. Governs: packages/shared/src/db/migrations — full body in db/PACKAGE.md

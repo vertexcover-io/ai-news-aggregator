@@ -1,6 +1,6 @@
 ---
 governs: packages/pipeline/src/processors/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [dedup.ts, dedup-groups.ts, shortlist.ts, rank.ts, rank-prompts.ts, rank-body-loader.ts, recap.ts, digest-meta.ts]
 flow_fns: [dedup.ts::dedupCandidates, shortlist.ts::shortlistCandidates, rank.ts::rankCandidates, rank-body-loader.ts::loadBodiesForShortlist, recap.ts::generateRecap, digest-meta.ts::generateDigestMeta]
 decisions: [D-040, D-041, D-042]

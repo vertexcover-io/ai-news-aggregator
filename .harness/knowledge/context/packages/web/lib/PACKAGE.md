@@ -1,6 +1,6 @@
 ---
 governs: packages/web/src/lib/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [analytics.ts, dateRange.ts, formatTimestamp.ts, highlightTerms.tsx, meta.ts, readingTime.ts, shareLinks.ts, sourceDisplay.ts, subscriptionStorage.ts, utils.ts, dateSelectorTimezone.ts]
 flow_fns: [analytics.ts::initBrowserAnalytics]
 decisions: [D-024]
@@ -32,7 +32,7 @@ Stateless utility functions for formatting, analytics initialization, date math,
 | `truncateForX(text, reservedForUrl: 24)` → `string` | Truncates text to fit 280-char tweet limit |
 | `buildLinkedInShareUrl(archiveUrl)` → `string` | Builds LinkedIn share URL |
 | `buildXShareUrl(archiveUrl, shareText)` → `string` | Builds X/Twitter share URL with truncated text |
-| `SOURCE_LABELS`, `SOURCE_BADGE_CLASSES`, `SOURCE_ORDER` | SourceType → display label / Tailwind badge classes / canonical ordering |
+| `SOURCE_LABELS`, `SOURCE_BADGE_CLASSES` | SourceType → display label / Tailwind badge classes (the `SOURCE_ORDER` canonical-ordering const was removed as dead code in a844f41) |
 | `markSubscribed()` | Writes `"1"` to localStorage `newsletter_subscribed` key, dispatches `newsletter-subscription-change` event |
 | `readSubscribed()` → `boolean` | Reads localStorage `newsletter_subscribed` flag |
 | `configuredTimezone(tz)` → `string` | Wraps `safeTimezone` from shared |

@@ -1,6 +1,6 @@
 ---
 governs: packages/pipeline/src/eval/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [index.ts, replay.ts, scoring.ts, mode-b.ts, manual-fixture.ts, export-fixtures.ts, fixture-io.ts, cache.ts, run-eval-cli.ts, score-history.ts, cost-estimator.ts]
 flow_fns: [index.ts::runEval, mode-b.ts::runModeB, replay.ts::fixtureToCandidates, scoring.ts::ndcgAtK, export-fixtures.ts::exportFixtures]
 decisions: [D-130, D-131]

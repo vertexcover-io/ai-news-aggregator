@@ -1,7 +1,7 @@
 ---
 governs: packages/web/src/components/archive-listing/
-last_verified_sha: 5a2ff20
-key_files: [ArchiveRow.tsx, SearchBar.tsx, DateRangeChip.tsx, DateRangePopover.tsx, FilterTabs.tsx, MonthHeader.tsx, SubscribeInline.tsx, EmptyResults.tsx, ResultMeta.tsx, format.ts]
+last_verified_sha: ad0153a
+key_files: [ArchiveRow.tsx, SubscribeInline.tsx, DateRangePopover.tsx, DateRangeChip.tsx, SearchBar.tsx, FilterTabs.tsx, EmptyResults.tsx, ResultMeta.tsx, format.ts]
 flow_fns: [ArchiveRow.tsx::ArchiveRow, SearchBar.tsx::SearchBar]
 decisions: [D-021]
 status: active
@@ -17,21 +17,16 @@ Components for the public archive listing on the home page (`/`) and the archive
 
 | Component | Effect |
 |---|---|
-| `ArchiveRow({ item, issueNumber, featured, highlightTerms? })` | Single issue row: 3-column grid (date block | headline + dek | story count + "Read →"), linked to `/archive/:runId` when stories exist |
-| `SearchBar({ value, onChange, placeholder })` | Search input with magnifying glass icon and clear button |
-| `DateRangeChip({ range, onChange })` | Date range filter chip showing "ALL TIME" or formatted date range; opens `DateRangePopover` |
-| `DateRangePopover({ value, onChange, onApply })` | Calendar popover with preset buttons (Last 7/30/90 days, This year, All time) + custom date picker |
-| `FilterTabs({ months, selected, onSelect })` | Horizontal scrollable filter chips for month-based filtering |
-| `MonthHeader({ month, year, count })` | Month group header: "JANUARY 2026 · 14 issues" |
-| `SubscribeInline({ variant })` | Inline subscribe prompt rendered mid-archive or mid-issue |
-| `EmptyResults({ query, from, to })` | Empty state for search results with clear-filters suggestion |
-| `ResultMeta({ count, query })` | "14 results for 'agent'" meta line |
+| `ArchiveRow({ item, issueNumber, featured, highlightTerms? })` | **(live — consumed by `HomePage`)** Single issue row: 3-column grid (date block \| headline + dek \| story count + "Read →"), linked to `/archive/:runId` when stories exist |
+| `SubscribeInline({ variant })` | **(live — consumed by `ArchivePage`)** Inline subscribe prompt rendered mid-archive or mid-issue |
+| `DateRangePopover({ value, onChange, onApply })` | Calendar popover with presets (Last 7/30/90 days, This year, All time) + custom date picker — used only by `DateRangeChip` |
+| `SearchBar` / `DateRangeChip` / `FilterTabs` / `EmptyResults` / `ResultMeta` | **(ORPHANED — no page consumes them, see Gotchas)** search/date-range/month-filter listing UI from the old `listArchives`/`searchArchives` flow; still exported, no live consumer |
 | `format.ts` | `parseLocalDate(runDate)` — creates UTC Date from "YYYY-MM-DD" string |
 
 ## Depends on / used by
 
 - **Uses:** `lib/highlightTerms`, `lib/dateRange`
-- **Used by:** `pages/HomePage.tsx`, `pages/ArchivePage.tsx`
+- **Used by:** `pages/HomePage.tsx` (ArchiveRow only), `pages/ArchivePage.tsx` (SubscribeInline only). The home listing now sources from `GET /api/home` via `api/home.ts::getHome` + the `components/home/*` blocks — the search/filter components no longer have a consumer.
 
 ## Data flows
 
@@ -57,6 +52,7 @@ SearchBar → URL-synced search input:
 - **ArchiveRow empty run handling** (D-021): An archive run with `storyCount === 0` and `topItems.length === 0` renders "No stories" in mono instead of a serif headline, and the row is NOT a link. This handles edge cases like a run that completed but ranked zero items.
 - **Date parsing**: `parseLocalDate` creates a UTC date from `YYYY-MM-DD` (e.g., `2026-05-15` → `Date(2026,4,15,0,0,0,0,UTC)`). This is used for display formatting only (e.g., `Intl.DateTimeFormat`), not for calculations. The actual archive ordering uses the server's `runDate`.
 - **highlightTerms** is passed through from search results: the `ArchiveRow` can render with `<mark>` tags around matching terms when the row comes from a search query. The highlight function escapes regex special characters before building the pattern.
+- **`MonthHeader.tsx` was deleted** (dead-code removal a844f41) — month-group headers are no longer rendered on `/`. The home listing switched to `GET /api/home` (`HomePagePayload` + `components/home/*` blocks) and no longer does client-side month grouping/search/date-range filtering. The `SearchBar`/`DateRangeChip`/`FilterTabs`/`EmptyResults`/`ResultMeta` components survive as orphans (still exported, no consumer) — candidates for a future dead-code sweep.
 
 ## Decisions
 

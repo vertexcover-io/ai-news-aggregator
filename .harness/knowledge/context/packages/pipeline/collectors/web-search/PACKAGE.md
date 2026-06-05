@@ -1,6 +1,6 @@
 ---
 governs: packages/pipeline/src/collectors/web-search/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [index.ts, providers/types.ts, providers/tavily.ts, providers/index.ts]
 flow_fns: [index.ts::collectWebSearch, providers/tavily.ts::TavilyProvider.search]
 decisions: [D-030]

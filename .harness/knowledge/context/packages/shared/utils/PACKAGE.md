@@ -1,6 +1,6 @@
 ---
 governs: packages/shared/src/utils/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [prompt-hash.ts, reading-time.ts, timezone-date.ts]
 flow_fns: [timezone-date.ts::startOfDateInTimezone]
 decisions: []

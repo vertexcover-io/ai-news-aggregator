@@ -1,6 +1,6 @@
 ---
 governs: packages/api/src/lib/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [validate.ts, errors.ts, subscriber-token.ts, sns-verifier.ts, posthog.ts, posthog-config.ts, base-urls.ts, validate-must-read.ts, validate-social-credentials.ts]
 flow_fns: [subscriber-token.ts::verifySubscriberToken, sns-verifier.ts::verifySnsMessage, posthog.ts::captureAnalytics]
 decisions: [D-009]

@@ -1,6 +1,6 @@
 ---
 governs: packages/eslint-plugin/src/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [src/index.ts, src/rules/collector-return-shape.ts, src/rules/enforce-repository-access.ts, src/utils/create-rule.ts]
 flow_fns: [src/rules/collector-return-shape.ts::rule, src/rules/enforce-repository-access.ts::rule]
 decisions: []
@@ -21,7 +21,7 @@ Custom ESLint plugin (`@newsletter/eslint-plugin`) with two type-aware rules tha
 ### Rules
 
 - **`newsletter/collector-return-shape`** (severity: `error`) — type-aware rule that verifies every collector function returns `CollectorResult` (not a raw array). Flags functions whose return type is not assignable to `CollectorResult`. Applies only to files in `packages/pipeline/src/collectors/`.
-- **`newsletter/enforce-repository-access`** (severity: `error`) — value imports of `drizzle-orm` and `@newsletter/shared/db` are only allowed inside repository files. Applies to `packages/api/src/**` and `packages/pipeline/src/**`; exemptions for files in `repositories/` directories.
+- **`newsletter/enforce-repository-access`** (severity: `error`) — **value** imports of `drizzle-orm` / `@newsletter/shared/db` (and their subpaths `drizzle-orm/*`, `@newsletter/shared/db/*`) are only allowed inside repository modules. **Type-only imports are explicitly allowed everywhere** — the rule skips both `import type { … }` declarations (`node.importKind === "type"`) and declarations whose specifiers are all type-only. Applies to `packages/api/src/**` and `packages/pipeline/src/**`; exemptions for paths containing `/repositories/`, `/tests/`, or matching `*.test.ts(x)`. The report message names the package-correct expected repo dir (`packages/api/src/repositories/` vs `packages/pipeline/src/repositories/`).
 
 ## Depends on / used by
 
@@ -39,16 +39,22 @@ collector-return-shape rule:
           ├─ assignable → pass
           └─ not assignable → report: "Collector must return CollectorResult"
 
-enforce-repository-access rule:
-  ImportDeclaration → check import source
-    ├─ source is "drizzle-orm" or "@newsletter/shared/db"
-    │   → check if file is in repositories/ dir
-    │     ├─ yes → pass
-    │     └─ no → report: "drizzle-orm and @newsletter/shared/db can only be imported from repository files"
-    └─ not restricted → pass
+enforce-repository-access rule (src/rules/enforce-repository-access.ts::create):
+  ImportDeclaration(node) → source = node.source.value
+    ├─ !isRestrictedSource(source) → return (pass)   # not drizzle-orm[/*] / @newsletter/shared/db[/*]
+    ├─ node.importKind === "type" → return (whole `import type {…}` allowed)
+    ├─ every specifier is ImportSpecifier with importKind==="type" → return (all-type-only allowed)
+    └─ value import of restricted source →
+        filename includes "/repositories/" | "/tests/" | matches *.test.ts(x) → return (exempt)
+        else → expected = filename includes "/packages/api/"
+                 ? "packages/api/src/repositories/"
+                 : "packages/pipeline/src/repositories/"
+             → context.report(messageId: "repositoryOnly", data:{source, expected})
 ```
 
 ## Gotchas / landmines
 
 - **Rules are type-aware** — they require `parserOptions.project` in the ESLint config pointing to each package's `tsconfig.json`. Without this, the `createRule` factory throws at rule initialization.
-- **`enforce-repository-access` checks the file path, not the import kind.** Value imports are blocked but type-only imports could pass — the rule checks actual `ImportDeclaration` nodes, not `import type` vs `import`.
+- **`enforce-repository-access` deliberately exempts type-only imports.** The rule short-circuits on `node.importKind === "type"` AND on declarations whose specifiers are all `importKind === "type"`, so `import type { … } from "drizzle-orm"` is allowed everywhere — only *value* imports outside repository modules are reported. (The doc previously claimed the opposite; corrected ad0153a.)
+- **Restricted-source matching includes subpaths.** `isRestrictedSource` matches `@newsletter/shared/db`, `drizzle-orm`, and any `…/`-prefixed subpath of either — not just the bare specifier.
+- **`create-rule.ts` doc URL is hard-coded** to `github.com/vertexcover-io/newsletter/blob/main/packages/eslint-plugin/docs/rules/<name>.md` — rule names must have a matching markdown file under `packages/eslint-plugin/docs/rules/` for the generated link to resolve.

@@ -1,6 +1,6 @@
 ---
 governs: packages/pipeline/src/repositories/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [raw-items.ts, run-archives.ts, candidates.ts, run-logs.ts, eval-exports.ts, social-credentials.ts, social-tokens.ts, subscribers.ts, email-sends.ts, user-settings.ts]
 flow_fns: [run-archives.ts::createRunArchivesRepo.upsert, eval-exports.ts::createEvalExportsRepo.getCompletedRunDetail]
 decisions: [D-060, D-061]

@@ -1,6 +1,6 @@
 ---
 governs: packages/pipeline/src/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 sub_packages: [collectors, collectors/twitter, collectors/web-search, processors, workers, repositories, services, services/link-enrichment, services/web-fetch, social, social/linkedin, social/twitter, eval, lib]
 decisions: [D-001, D-002, D-003, D-004]
 status: active
@@ -12,7 +12,7 @@ status: active
 A standalone Node process that runs BullMQ workers to collect from 34+ AI news sources, deduplicate, shortlist, rank via Claude LLM, store recap content, and deliver the curated digest via email + social auto-posts. No HTTP framework.
 
 ## Public surface
-- `src/index.ts` — process entrypoint; boots collection + processing workers, validates env, handles SIGTERM/SIGINT shutdown
+- `src/index.ts` — process entrypoint; boots the collection, processing, AND collector-health workers (the collector-health worker gets its own `createRedisConnection()`, isolated from processing — D-110), validates env, handles SIGTERM/SIGINT shutdown
 - `src/add-post-entry.ts` — cross-package barrel for API to import add-post helpers without booting workers
 - `src/eval-entry.ts` — cross-package barrel for API to import eval pipeline primitives without booting workers
 - `getRunIdFromJobData(data)` → `string | undefined` — extracts runId from raw BullMQ job data
@@ -26,6 +26,7 @@ A standalone Node process that runs BullMQ workers to collect from 34+ AI news s
 - **Run process**: `handleRunProcessJob` → [collectors] concurrent in-process → [dedup] covered-link filter + URL-canonical → [shortlist] Claude Haiku top-N by title → [rank] Claude Sonnet rerank + recap generation → [finalize] write archive + Slack notify
 - **Email send**: `handleEmailSendJob` → resolve target archive → render newsletter HTML via React → paced send to subscribers → mark `email_sent_at` + Slack notify
 - **Social post**: `handleLinkedInPostJob` / `handleTwitterPostJob` → resolve target → compose message → post head + archive link comment/reply → mark posted + Slack notify
+- **Collector health check**: `POST /api/admin/collector-health/check` (manual writes `running` synchronously) enqueues to the dedicated `collector-health` queue → `handleCollectorHealthJob` (own Redis connection) runs each strategy under `Promise.allSettled` → persists `{status,…}` to Redis key `collector-health:<collector>` (no TTL) → ONE consolidated Slack message on any failure (no `notification_state` marker — D-110/D-111). Also auto-scheduled ~30 min before the daily run via a repeatable scheduler on the same queue. Detail: workers/PACKAGE.md § Data flows + services/PACKAGE.md § runCollectorHealthCheck
 - **Cancel**: `POST /api/runs/:runId/cancel` publishes to Redis `run:cancel:{runId}` → worker's `CancelSubscriber` aborts the run mid-stage → writes `cancelled` archive
 
 ## Sub-packages
@@ -46,10 +47,10 @@ A standalone Node process that runs BullMQ workers to collect from 34+ AI news s
 | eval | `src/eval/` | Offline ranking eval pipeline (fixture export, replay, scoring) |
 | lib | `src/lib/` | Low-level utilities (boot check, fetch wrappers, pacer, email provider) |
 
-### Thin files (no sub-package)
-- `queues/` (2 files): `collection.ts`, `processing.ts` — BullMQ `Queue` constructor singletons, thin
+### Thin files / sub-dirs without their own PACKAGE.md
+- `services/collector-health/` (2 files): `index.ts` (`runCollectorHealthCheck` per-collector probe strategies) + `classify.ts` (error→reason classifier) — covered by services/PACKAGE.md, not thin but co-documented there
 - `services/add-post/` (1 file): `dispatch.ts` — routes add-post URL to single-post fetcher
-- `scripts/` (5 files): CLI entrypoints, not part of the worker process
+- `scripts/` (4 files): CLI entrypoints, not part of the worker process
 - `types.ts` (root): Collector config interfaces, thin types
 - `types/turndown-plugin-gfm.d.ts`: Ambient declaration for turndown-plugin-gfm
 

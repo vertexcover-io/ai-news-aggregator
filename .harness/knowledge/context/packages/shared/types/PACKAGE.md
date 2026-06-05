@@ -1,6 +1,6 @@
 ---
 governs: packages/shared/src/types/
-last_verified_sha: 40c6b83
+last_verified_sha: ad0153a
 key_files: [index.ts, run.ts, settings.ts, observability.ts, eval-ranking.ts, eval-ranking-schemas.ts, cost-breakdown.ts, archive.ts, collector-health.ts]
 flow_fns: [index.ts::parseRetryAfter]
 decisions: [D-101]
@@ -20,7 +20,8 @@ Defines every shared interface, type alias, enum, and zod schema consumed by 2+ 
 - Observability: RunLogLevel, RunLogEvent, RunLogEntry, RunFunnel, RunObservability, ItemLifecycle, RunSourceItem
 - Eval: Fixture, GroundTruth, EvalResult, CalendarRunDetail, ~30 more types + full zod schema mirrors
 - Collector health: HealthCheckCollector (`hn|reddit|twitter|blog|web_search`), CollectorHealthStatus (`never|running|healthy|failed`), CollectorHealthTrigger (`manual|scheduled`), CollectorHealthResult, CollectorHealthSnapshot
-- Other: ArchiveListItem, HomePagePayload, SourcesSummaryResponse, Candidate, etc.
+- Archive: ArchiveListItem, ArchiveListResponse, AdminLoginRequest/Response, AdminMeResponse, PatchArchivePayload (shared curated-ranked-items patch body — used by BOTH the API server as the parsed request body and the web client as the PATCH body type, so the two never drift)
+- Other: HomePagePayload, SourcesSummaryResponse, Candidate, etc.
 
 ## Data flows
 parseRetryAfter(headerValue, now?) → number | null:

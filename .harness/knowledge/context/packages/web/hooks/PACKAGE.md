@@ -1,7 +1,7 @@
 ---
 governs: packages/web/src/hooks/
-last_verified_sha: 40c6b83
-key_files: [useReview.ts, usePool.ts, useReviewFilters.ts, useRunList.ts, useRunPolling.ts, useRunObservability.ts, useCollectorHealth.ts, useEvalRuns.ts, useGradingProgress.ts, useSettings.ts, useArchive.ts]
+last_verified_sha: ad0153a
+key_files: [useReview.ts, usePool.ts, useReviewFilters.ts, useRunList.ts, useRunPolling.ts, useRunObservability.ts, useCollectorHealth.ts, useRunSourceItems.ts, useSourceFacets.ts, useEvalRuns.ts, useGradingProgress.ts, useSettings.ts, useArchive.ts]
 flow_fns: [useReview.ts::useReview, usePool.ts::usePool, useRunList.ts::useRunList, useEvalRuns.ts::useEvalRuns]
 decisions: [D-009, D-010]
 status: active
@@ -26,11 +26,10 @@ Custom hooks that connect the typed API client to components via `@tanstack/reac
 | `useRunPolling(runId)` | Polls `GET /api/runs/:runId` every 2s until terminal status |
 | `useRunObservability(runId)` | Polls `GET /api/admin/runs/:runId/observability` every 2s until terminal; 404 → null |
 | `useCollectorHealth()` | `useQuery(["collector-health"], getCollectorHealthSnapshot)` — `refetchInterval` returns 2000ms while any collector is `status:"running"`, else `false` (stops polling at terminal, REQ-019); `retry:false` |
-| `useCollectorHealthTrigger()` | Mutation wrapping `triggerCollectorHealth(collector?)`; on success invalidates + refetches `["collector-health"]` (no optimistic update — running state arrives on the next refetch) |
+| `useCollectorHealthTrigger()` | Returns `{ trigger(collector?), isPending }` wrapping a mutation over `triggerCollectorHealth(collector?)`; on success invalidates + refetches `["collector-health"]` (no optimistic update — running state arrives on the next refetch) |
 | `useSettings()` | `useQuery(["settings"], getSettings)` — no poll, refetchOnWindowFocus: false |
 | `useSourceFacets(runId)` | `useQuery(["source-facets", runId], getSourceFacets)` |
-| `useRunSources({ runId, enabled })` | `useQuery(["run-sources", runId], getRunSources)` — stale for 30s |
-| `useRunSourceItems(runId, sourceKey, expanded)` | Lazy query enabled only when `expanded=true` |
+| `useRunSourceItems(runId, sourceKey, expanded)` | `useQuery(["run-source-items", runId, sourceKey], getRunSourceItems)` — lazy (`enabled: expanded`), `retry: false` |
 | `useDeleteArchive()` | Mutation that calls `deleteArchive` then invalidates `["runs"]` |
 | `useTriggerSocialPost(runId)` | Mutation wrapping `triggerSocialPost`; invalidates `["runs"]` on success |
 | `useEvalFixture(id)` | `useQuery(["eval","fixture", id], getEvalFixture)` |

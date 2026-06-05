@@ -1,6 +1,6 @@
 ---
 governs: packages/api/src/routes/
-last_verified_sha: 8d5cbd1
+last_verified_sha: ad0153a
 key_files: [subscribe.ts, archives.ts, runs.ts, settings.ts, admin-eval.ts, linkedin-oauth.ts, webhooks.ts, admin.ts, admin-runs.ts, admin-must-read.ts, admin-social-credentials.ts, collector-health.ts, archives-search.ts, home.ts, must-read.ts, sources.ts, analytics.ts, analytics-config.ts]
 flow_fns: [subscribe.ts::POST /subscribe, subscribe.ts::GET /confirm, archives.ts::PATCH /:runId, archives.ts::DELETE /:runId, runs.ts::POST /:runId/post/:channel, settings.ts::PUT /, webhooks.ts::POST /ses, linkedin-oauth.ts::POST /start, linkedin-oauth.ts::GET / (callback), collector-health.ts::POST /check, collector-health.ts::GET /]
 decisions: [D-001, D-004, D-007, D-110]

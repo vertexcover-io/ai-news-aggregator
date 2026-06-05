@@ -1,7 +1,7 @@
 ---
 governs: packages/web/src/components/eval/
-last_verified_sha: 5a2ff20
-key_files: [RunDetailDrawer.tsx, CalendarReportComparison.tsx, ReportTab.tsx, PromptDiffModal.tsx, PromptEditor.tsx, EvalResultsPanel.tsx, EvalAggregateHero.tsx, RunsTable.tsx, RunsFilterBar.tsx, RunsPagination.tsx, ManualFixturePipelinePanel.tsx]
+last_verified_sha: ad0153a
+key_files: [RunDetailDrawer.tsx, CalendarReportComparison.tsx, ReportTab.tsx, PromptDiffModal.tsx, EvalResultsPanel.tsx, EvalAggregateHero.tsx, RunsTable.tsx, RunsFilterBar.tsx, RunsPagination.tsx, ManualFixturePipelinePanel.tsx]
 flow_fns: [RunDetailDrawer.tsx::RunDetailDrawer, CalendarReportComparison.tsx::CalendarReportComparison]
 decisions: [D-019, D-020]
 status: active
@@ -17,13 +17,12 @@ UI for the ranking eval pipeline: prompt editor (Mode A Scored + Mode B Calendar
 
 | Component | Effect |
 |---|---|
-| `RunDetailDrawer({ runId, open, onClose })` | Modal with two tabs: **Prompt & Cost** (prompt snapshot + score-breakdown + cost-breakdown) and **Report** (full-width two-column rankings). Done runs with report data default to Report tab; running/failed/legacy runs default to Prompt & Cost. |
+| `RunDetailDrawer({ runId, onClose })` | Modal with two tabs: **Prompt & Cost** (prompt snapshot + score-breakdown + cost-breakdown) and **Report** (full-width two-column rankings). Visibility is driven by `runId !== null` (no `open` prop). Done runs with report data default to Report tab; running/failed/legacy runs default to Prompt & Cost. |
 | `CalendarReportComparison({ report, density })` | Mode B two-column comparison: Previous ranking (left) vs Draft-prompt ranking (right) + prompt panes. Exports `RankingFunnel` (3-cell: Sent for ranking → Ranked (top-N) → Cost, with "(sent − ranked) items considered" note). |
 | `ReportTab({ actualRanking, expectedRanking, scoreSheet, poolSize, costUsd })` | Mode A Expected-vs-Actual ranking comparison with score strip, reusing `RankingFunnel`. |
 | `EvalAggregateHero({ rows, totalUsd, running })` | Aggregate stats across all fixtures: mean nDCG@10, mean P@10, mean Recall, total cost. |
 | `EvalResultsPanel({ rows, onReport })` | Per-fixture results with progress indicators during a running eval. |
-| `PromptDiffModal({ open, current, draft, saving, onCancel, onConfirm })` | Diff view between saved prompt and draft before saving. |
-| `PromptEditor({ value, onChange, readOnly })` | Plain textarea for editing the ranking prompt. |
+| `PromptDiffModal({ open, current, draft, saving, onCancel, onConfirm })` | Diff view between saved prompt and draft before saving. (The standalone `PromptEditor.tsx` textarea was removed as dead code in a844f41 — prompt editing now lives inline in `pages/EvalIndexPage.tsx`.) |
 | `RunsTable({ runs, onView })` | Table of past eval runs with status/cost/report links. |
 | `RunsFilterBar({ filter, setFilter })` / `RunsPagination` | Filter controls and pagination for the eval runs listing. |
 | `ManualFixturePipelinePanel` / `ManualFixtureSourceMixPanel` | UI for creating manual eval fixtures from URLs. |

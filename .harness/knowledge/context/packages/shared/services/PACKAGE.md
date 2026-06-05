@@ -1,6 +1,6 @@
 ---
 governs: packages/shared/src/services/
-last_verified_sha: 40c6b83
+last_verified_sha: ad0153a
 key_files: [credential-cipher.ts, source-identifier.ts, url-safety.ts, static-page-fetcher.ts, item-lifecycle.ts, archive-search-text.ts, page-metadata.ts, summary-source.ts, collector-health-store.ts]
 flow_fns: [credential-cipher.ts::getCredentialCipher, source-identifier.ts::deriveRawItemIdentifier, url-safety.ts::canonicalizeFetchUrl, static-page-fetcher.ts::fetchPageStatic, item-lifecycle.ts::classifyItemLifecycle, archive-search-text.ts::serializeArchiveSearchText, collector-health-store.ts::createCollectorHealthStore]
 decisions: [D-104, D-106]

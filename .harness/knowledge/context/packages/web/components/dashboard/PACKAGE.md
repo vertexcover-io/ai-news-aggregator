@@ -1,6 +1,6 @@
 ---
 governs: packages/web/src/components/dashboard/
-last_verified_sha: 8d5cbd1
+last_verified_sha: ad0153a
 key_files: [RunsTable.tsx, RunsCardList.tsx, CostDialog.tsx, CostButton.tsx, SocialOverflowMenu.tsx, ScheduleBanner.tsx, EmptyState.tsx, cost-format.ts, run-status.tsx]
 flow_fns: [RunsTable.tsx::RunsTable, SocialOverflowMenu.tsx::SocialOverflowMenu]
 decisions: [D-017, D-018]

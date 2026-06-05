@@ -1,6 +1,6 @@
 ---
 governs: packages/web/src/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 sub_packages: [api, hooks, lib, layouts, pages, components/shell, components/archive-listing, components/review, components/dashboard, components/observability, components/eval, components/settings, components/sources, components/home, components/ui, components/built, pages/admin, components/admin/must-read]
 decisions: [D-001, D-002, D-003, D-004, D-005, D-006, D-007]
 status: active
@@ -36,6 +36,7 @@ Two-audience React SPA: a PUBLIC Ledger-aesthetic archive listing + detail for r
 - **Admin dashboard** (`DashboardPage`): polls `GET /api/runs` at 2s intervals while active runs exist → renders `RunsTable`/`RunsCardList` — see `components/dashboard/`
 - **Admin review** (`ReviewPage`): loads archive via `useReview`, renders DnD `ReviewList` + `PoolSection` (search/filter/promote) + `DigestMetaPanel` — see `components/review/`
 - **Admin settings** (SettingsPage): react-hook-form + zod validation → PUT `/api/settings`
+- **Collector health check** (SettingsSection): `SourcesSection` "Check"/"Check all" → `useCollectorHealthTrigger` → `POST /api/admin/collector-health/check` → `useCollectorHealth` polls `GET /api/admin/collector-health` every 2s while any collector is `running`, stops at terminal → `CollectorHealthModal` — see `components/settings/`
 - **Admin observability** (RunObservabilityPage): polls `GET /api/admin/runs/:runId/observability` every 2s until terminal — see `components/observability/`
 - **Ranking eval** (`EvalIndexPage`): prompt editor + scored/calendar eval modes with SSE streaming — see `components/eval/`
 - **Sources page** (`SourcesPage`): `GET /api/sources/summary` → renders `SourceCatalog` — see `components/sources/`
@@ -51,7 +52,7 @@ Two-audience React SPA: a PUBLIC Ledger-aesthetic archive listing + detail for r
 | `layouts/` | Route-level layout wrappers: PublicLayout, AdminLayout, RequireAdmin guard |
 | `pages/` | Route-level page components, thin composition of hooks + components |
 | `components/shell/` | Public site chrome: Masthead (nav + brand mark), Footer (subscribe + colophon) |
-| `components/archive-listing/` | Public listing components: ArchiveRow, SearchBar, DateRangeChip, FilterTabs |
+| `components/archive-listing/` | Public listing: ArchiveRow (live), SubscribeInline (live); SearchBar/DateRangeChip/FilterTabs now orphaned after the home listing moved to `GET /api/home` |
 | `components/review/` | Admin review UI: ReviewList (DnD), PoolSection, DigestMetaPanel, AddPostPanel |
 | `components/dashboard/` | Admin dashboard: RunsTable/RunsCardList, CostDialog, SocialOverflowMenu, ScheduleBanner |
 | `components/observability/` | Per-run telemetry: RunFunnel, StageTimingRail, DebugTimeline, SourceTelemetryTable |

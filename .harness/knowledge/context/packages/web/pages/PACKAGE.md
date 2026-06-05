@@ -1,7 +1,7 @@
 ---
 governs: packages/web/src/pages/
-last_verified_sha: 5a2ff20
-key_files: [DashboardPage.tsx, ReviewPage.tsx, SettingsPage.tsx, HomePage.tsx, ArchivePage.tsx, RunObservabilityPage.tsx, EvalIndexPage.tsx, SourcesPage.tsx, AdminLoginPage.tsx, EvalGradePage.tsx, EvalManualFixturePage.tsx, EvalRunsPage.tsx, SourcesPreviewPage.tsx, AnalyticsPage.tsx, SettingsPage.tsx]
+last_verified_sha: ad0153a
+key_files: [DashboardPage.tsx, ReviewPage.tsx, SettingsPage.tsx, settingsSchema.ts, HomePage.tsx, ArchivePage.tsx, RunObservabilityPage.tsx, EvalIndexPage.tsx, SourcesPage.tsx, AdminLoginPage.tsx, EvalGradePage.tsx, EvalManualFixturePage.tsx, EvalRunsPage.tsx, SourcesPreviewPage.tsx, AnalyticsPage.tsx]
 flow_fns: [ReviewPage.tsx::ReviewPage, DashboardPage.tsx::DashboardPage, EvalIndexPage.tsx::EvalIndexPage, SettingsPage.tsx::SettingsPage]
 decisions: [D-022, D-023]
 status: active
@@ -31,7 +31,7 @@ One component per route. Pages are thin — they compose hooks and components, h
 | `SourcesPage` (`/sources`) | Public: SourceCatalog with configured sources grouped by type + "How we pick" section |
 | `SourcesPreviewPage` (`/admin/sources/:runId`) | Admin: per-run source preview |
 | `AnalyticsPage` (`/admin/analytics`) | PostHog-powered analytics: DeliverabilityTab + SourcesTab |
-| `SettingsPage` exports `settingsSchema.ts` | Zod validation schema for the settings form |
+| `settingsSchema.ts` | Zod validation schema for the settings form (consumed by `SettingsPage` via `zodResolver`) |
 | `MustReadPage` (`/must-read`) | Public: list of Must Read entries |
 | `BuiltPage` (`/built`) | Public: static "How AgentLoop is built" page |
 | `NotFoundPage`, `PrivacyPolicyPage`, `TermsPage`, `UnsubscribePage`, `ConfirmPage` | Thin static/confirmation pages |

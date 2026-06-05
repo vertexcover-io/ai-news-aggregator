@@ -1,7 +1,7 @@
 ---
 governs: packages/pipeline/src/lib/
-last_verified_sha: 5a2ff20
-key_files: [boot.ts, cancelled-error.ts, abortable-fetch.ts, delay.ts, email-provider.ts, email-render.ts]
+last_verified_sha: ad0153a
+key_files: [boot.ts, cancelled-error.ts, abortable-fetch.ts, delay.ts, email-provider.ts, email-render.ts, email-send-common.ts]
 flow_fns: [email-render.ts::renderNewsletter, email-provider.ts::createEmailProvider]
 decisions: [D-140]
 status: active
@@ -19,6 +19,10 @@ Small, focused utility modules: process boot validation, abort-signal-aware fetc
 - `delay(ms, signal?)` → `Promise<void>` — cancellable delay (rejects on signal abort)
 - `createEmailProvider()` → `EmailProvider` — returns Resend or SES provider based on `EMAIL_PROVIDER` env
 - `renderNewsletter(props)` → `Promise<string>` — renders React email component to HTML string via `@react-email/components`
+- `email-send-common.ts` (shared by `email-send.ts` + deprecated `newsletter-send.ts`, extracted in refactor #250):
+  - `createSendPacer(rate, deps?)` → `SendPacer` — module-level token-bucket pacer (`acquire()` serializes ops at `rate`/s; the email-send worker holds ONE singleton across all jobs)
+  - `classifyDeliveryFailure(message)` → `string` — maps raw provider error → concise label (rate limit / recipient rejected / …) for the Slack top-3 summary
+  - `chunk(arr, size)` → `T[][]`, `htmlToPlainText(html)`, `formatArchiveDate(date)`, `issueUnsubToken(subscriberId, secret)` — send-loop helpers
 
 ## Depends on / used by
 - Uses: `@aws-sdk/client-sesv2`, `resend`, `@react-email/components`, `@newsletter/shared`
@@ -44,6 +48,7 @@ Small, focused utility modules: process boot validation, abort-signal-aware fetc
 - **Resend provider throws typed `EmailSendError`**: The wrapper classifies errors by `result.error.name` against `RETRYABLE_RESEND_CODES`. The `retryAfterMs` is parsed from the `retry-after` response header (delta-seconds or HTTP-date). The caller (email-send worker) uses these fields for retry decisions. (D-140)
 - **`assertChromiumInstalled` exits the process**: Called at startup before accepting any jobs. A missing Chromium binary is a fatal startup error, not a per-job failure.
 - **Email render is React SSR**: Uses `@react-email/components` which renders React to static HTML. No client-side JS in the output. Mobile responsiveness via `@media` queries in a `<style>` tag (Gmail/Apple Mail/Outlook iOS all honor media queries in `<head>`).
+- **`SendPacer` is a per-process singleton, not per-job**: The email-send worker constructs ONE `createSendPacer(EMAIL_SEND_RATE_PER_SECOND)` at module load and shares it across every `email-send` job invocation — a second back-to-back job does NOT reset the token bucket. This is the sole rate guard (NOT BullMQ `concurrency:1`, which would serialize all job types). See root D-001 + `.claude/rules/learnings/queue-concurrency-vs-in-process-pacer.md`.
 
 ## Decisions
 - **D-140**: `EmailSendError` as typed error with `retryable` and `retryAfterMs`. Why: the email-send retry loop needs structured signal from the provider (retryable vs non-retryable, when to retry). Throwing a typed error is simpler than a result union at the provider boundary. Tradeoff: the error is thrown synchronously from `send()` — callers must catch and inspect. Governs: `lib/email-provider.ts`, `@newsletter/shared/types`.

@@ -1,9 +1,9 @@
 ---
 governs: packages/pipeline/src/collectors/twitter/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [index.ts, map.ts, types.ts, clients/rettiwt.ts, clients/rettiwt-auth.ts]
 flow_fns: [index.ts::collectTwitter, clients/rettiwt.ts::createRettiwtClient, clients/rettiwt-auth.ts::refreshRettiwtCsrfToken, map.ts::tweetToRawItem]
-decisions: [D-020, D-021]
+decisions: [D-025, D-026]
 status: active
 ---
 
@@ -55,11 +55,11 @@ Collects tweets from Twitter/X lists and user timelines via the `rettiwt-api` li
         → RawItemInsert
 
 ## Gotchas / landmines
-- **Rettiwt pagination type mismatch**: Rettiwt's published types declare `CursoredData.next: string` but the live runtime emits `string | { value: string }`. The adapter accepts either shape. Upgrade `rettiwt-api` past 7.0.3 requires re-checking. (D-020)
-- **Quoted-tweet tombstone guard**: `denormalize()` guards against quoted tombstones (legacy-less tweets with `conversation_id_str` crash). A `patches/rettiwt-api@7.0.3.patch` exists; re-check on rettiwt upgrade. (D-021)
+- **Rettiwt pagination type mismatch**: Rettiwt's published types declare `CursoredData.next: string` but the live runtime emits `string | { value: string }`. The adapter accepts either shape. Upgrade `rettiwt-api` past 7.0.3 requires re-checking. (D-025)
+- **Quoted-tweet tombstone guard**: `denormalize()` guards against quoted tombstones (legacy-less tweets with `conversation_id_str` crash). A `patches/rettiwt-api@7.0.3.patch` exists; re-check on rettiwt upgrade. (D-026)
 - **Guest mode**: Rettiwt accepts `undefined` apiKey and runs in unauthenticated guest mode. The collector classifies the first auth failure as `auth` so the operator sees a clear skip reason in Slack.
 - **CSRF refresh persists to DB**: When `credentialSource === "db"`, the refreshed CSRF token is upserted back to `social_credentials` so it survives worker restarts. When sourced from env, the in-memory key is updated but not persisted.
 
 ## Decisions
-- **D-020**: Accept both `string` and `{ value: string }` cursor shapes. Why: Rettiwt runtime diverges from published types; narrowing to the declaration would drop pagination on every page boundary. Tradeoff: the adapter type is wider than the SDK type — an SDK fix would let us remove the union. Governs: `clients/rettiwt.ts`.
-- **D-021**: Guard quoted-tweet access against tombstones. Why: quoted tweets from deleted/protected accounts have no `legacy` field; accessing `conversation_id_str` crashes. Tradeoff: the patch is fragile across Rettiwt upgrades. Governs: `clients/rettiwt.ts`, `patches/rettiwt-api@7.0.3.patch`.
+- **D-025**: Accept both `string` and `{ value: string }` cursor shapes. Why: Rettiwt runtime diverges from published types; narrowing to the declaration would drop pagination on every page boundary. Tradeoff: the adapter type is wider than the SDK type — an SDK fix would let us remove the union. Governs: `clients/rettiwt.ts`.
+- **D-026**: Guard quoted-tweet access against tombstones. Why: quoted tweets from deleted/protected accounts have no `legacy` field; accessing `conversation_id_str` crashes. Tradeoff: the patch is fragile across Rettiwt upgrades. Governs: `clients/rettiwt.ts`, `patches/rettiwt-api@7.0.3.patch`.

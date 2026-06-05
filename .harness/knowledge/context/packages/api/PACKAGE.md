@@ -1,8 +1,8 @@
 ---
 governs: packages/api/src/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 sub_packages: [auth, lib, lib/email, lib/email/templates, repositories, routes, services]
-decisions: [D-001, D-002, D-003, D-004, D-005, D-006, D-007]
+decisions: [D-001, D-002, D-003, D-004, D-005, D-006, D-007, D-110]
 status: active
 ---
 
@@ -42,7 +42,8 @@ The API package is the HTTP boundary for the newsletter system. It serves public
 - **Observability**: `GET /api/admin/runs/:runId/observability` → branches live (Redis) vs historical (run_archives + run_logs) and composes one `RunObservability` payload
 - **SES webhook**: `POST /api/webhooks/ses` → SNS signature verification → SES event parse → upsert `ses_events` → bounce/complaint → update subscriber status → Slack notification
 - **LinkedIn OAuth**: `GET /api/admin/social-credentials/linkedin/oauth/callback` → validates CSRF state → exchanges code → fetches userinfo → encrypts + saves tokens → redirects
-- **Settings save**: `PUT /api/settings` → validates + resolves Twitter handles → upserts `user_settings` → reconciles BullMQ schedulers
+- **Settings save**: `PUT /api/settings` → validates + resolves Twitter handles → upserts `user_settings` → reconciles BullMQ schedulers (pipeline queue **and** the dedicated `collector-health` queue via `reconcileCollectorHealthSchedule`, D-110)
+- **Collector health**: `POST /api/admin/collector-health/check` → writes `running` synchronously per target → enqueues a job on the **dedicated** `collector-health` queue → `GET /api/admin/collector-health` returns the 5-entry snapshot (Redis-only, no DB). The auto-check cron is reconciled alongside the pipeline schedule at bootstrap + every settings save (D-110)
 
 ## Sub-packages
 

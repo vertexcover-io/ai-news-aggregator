@@ -1,6 +1,6 @@
 ---
 governs: packages/pipeline/src/social/twitter/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [index.ts, notifier.ts, api-client.ts, oauth.ts, types.ts]
 flow_fns: [notifier.ts::createTwitterNotifier.notifyArchiveReady, api-client.ts::createTwitterApiClient]
 decisions: [D-120]

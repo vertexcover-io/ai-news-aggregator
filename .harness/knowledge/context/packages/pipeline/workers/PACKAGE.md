@@ -1,6 +1,6 @@
 ---
 governs: packages/pipeline/src/workers/
-last_verified_sha: 8d5cbd1
+last_verified_sha: ad0153a
 key_files: [processing.ts, run-process.ts, daily-run.ts, email-send.ts, linkedin-post.ts, twitter-post.ts, social-health.ts, collector-health.ts, publish-target.ts, newsletter-send.ts]
 flow_fns: [processing.ts::createProcessingWorker, run-process.ts::handleRunProcessJob, daily-run.ts::handleDailyRunJob, email-send.ts::handleEmailSendJob, linkedin-post.ts::handleLinkedInPostJob, twitter-post.ts::handleTwitterPostJob, collector-health.ts::handleCollectorHealthJob, publish-target.ts::resolvePublishTarget]
 decisions: [D-050, D-051, D-052, D-110, D-111]

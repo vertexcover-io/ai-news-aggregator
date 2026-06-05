@@ -1,6 +1,6 @@
 ---
 governs: packages/shared/src/slack/
-last_verified_sha: 40c6b83
+last_verified_sha: ad0153a
 key_files: [notifier.ts, webhook-client.ts, message-builder.ts, types.ts, builders/_helpers.ts, builders/collector-health.ts]
 flow_fns: [notifier.ts::createSlackNotifier, webhook-client.ts::postToWebhook]
 decisions: [D-107, D-111]
@@ -17,7 +17,7 @@ Complete Slack notification layer: SlackNotifier interface with 11 methods, fact
 - postToWebhook({ url, blocks, fetchFn? }) → WebhookPostResult — POSTs blocks as JSON
 - Message builders: buildSourceDistributionMessage, buildEmailDeliveryMessage, buildLinkedinPostedMessage, buildTwitterPostedMessage, buildPublishFailedMessage, buildPublishUnavailableMessage, buildReviewPendingMessage, buildReviewWarningMessage, buildSubscriberConfirmedMessage, buildSubscriberRemovedMessage, buildReviewedMessage (deprecated)
 - buildCollectorHealthMessage({ failures, trigger }) → `{ blocks }` — ONE consolidated message: header `🔴 Collector health check failed (<scheduled|manual>)` + a single section block with one bullet per failed collector (`<collector>: <reason>`, each reason truncated to 120 chars). No archive context block, no `notification_state` marker — fires for both triggers every time (D-111). Posted directly via `postToWebhook` by the collector-health worker, NOT through `createSlackNotifier`'s idempotency path.
-- Builder helpers (_helpers.ts): headerBlock, sectionMarkdown, contextMarkdown, statusSuffix, truncate, renderPermalink, archiveContextLine
+- Builder helpers (_helpers.ts, exported): headerBlock, sectionMarkdown, statusSuffix, truncate (default max = ERROR_MESSAGE_MAX_LEN = 120), renderPermalink, archiveContextLine (`contextMarkdown` is module-private, not exported)
 
 ## Depends on / used by
 Uses: pino (Logger type only), @shared/types/notifications

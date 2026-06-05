@@ -1,6 +1,6 @@
 ---
 governs: packages/api/src/lib/email/templates/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [index.ts, confirmation.tsx, newsletter.tsx, welcome.tsx]
 flow_fns: []
 decisions: []

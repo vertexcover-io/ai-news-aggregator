@@ -3,7 +3,7 @@ id: S-pipeline
 applies_to: ["packages/pipeline/src/**"]
 enforced_by: eslint
 decisions: [D-051]
-last_verified_sha: 40c6b83
+last_verified_sha: ad0153a
 status: active
 ---
 

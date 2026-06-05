@@ -1,7 +1,7 @@
 ---
 governs: packages/web/src/components/ui/
-last_verified_sha: 5a2ff20
-key_files: [button.tsx, input.tsx, dialog.tsx, table.tsx, badge.tsx, card.tsx, form.tsx, label.tsx, select.tsx, separator.tsx, sonner.tsx, switch.tsx, tabs.tsx]
+last_verified_sha: ad0153a
+key_files: [button.tsx, input.tsx, dialog.tsx, table.tsx, badge.tsx, card.tsx, label.tsx, select.tsx, separator.tsx, sonner.tsx, switch.tsx, tabs.tsx]
 flow_fns: []
 decisions: []
 status: active
@@ -31,7 +31,6 @@ All components are standard shadcn patterns. Key ones:
 | `Separator` | `@radix-ui/react-separator` |
 | `Label` | `@radix-ui/react-label` |
 | `Toaster` / `sonner.tsx` | `sonner` toast notification wrapper |
-| `Form` (form.tsx) | react-hook-form integration: `FormField`, `FormItem`, `FormLabel`, `FormControl`, `FormMessage` |
 
 ## Depends on / used by
 

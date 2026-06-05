@@ -1,5 +1,5 @@
 ---
-last_verified_sha: 40c6b83
+last_verified_sha: ad0153a
 status: active
 ---
 
@@ -32,12 +32,13 @@ handleDailyRunJob (pipeline/workers/daily-run.ts)
         → rankCandidates(shortlist, { topN, systemPrompt, tracker })
           → Claude Haiku LLM: rerank + produce recap per item + digest headline/summary
         → updateRecapData → PostgreSQL raw_items.metadata.recap
-      Finalize:
+      Finalize: finalizeRun(deps, args) (pipeline/services/finalize-run.ts — extracted in 060ba1c)
         → archiveRepo.upsert → PostgreSQL run_archives
         → resolveScheduledPublishAt → run_archives.published_at
         → persistCost → run_archives.cost_breakdown
         → createSlackNotifier → notifySourceDistribution (idempotent via notification_state)
         → if !autoReview: notifyReviewPending
+        (failure/cancel paths: writeFailedArchive / pickArchiveDigest in services/run-archive-writer.ts)
   Detail: pipeline/workers/PACKAGE.md § Data flows, pipeline/processors/PACKAGE.md § Data flows
 ```
 

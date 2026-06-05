@@ -1,6 +1,6 @@
 ---
 governs: packages/pipeline/src/services/link-enrichment/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [index.ts, types.ts, cache.ts, fetcher.ts, url-classifier.ts]
 flow_fns: [index.ts::enrichRawItems, fetcher.ts::enrichOne, url-classifier.ts::shouldEnrich]
 decisions: [D-080]

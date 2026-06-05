@@ -3,7 +3,7 @@ id: S-api
 applies_to: ["packages/api/src/**"]
 enforced_by: eslint
 decisions: [D-004]
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 status: active
 ---
 

@@ -1,6 +1,6 @@
 ---
 governs: packages/api/src/repositories/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [run-archives.ts, raw-items.ts, subscribers.ts, social-credentials.ts, social-tokens.ts, user-settings.ts, must-read.ts, eval-runs.ts, email-sends.ts, ses-events.ts, analytics.ts, review-edits.ts, run-logs.ts]
 flow_fns: [run-archives.ts::searchReviewed, raw-items.ts::listRawItemsForRunWithEnrichment]
 decisions: [D-003, D-005, D-006, D-011, D-012]

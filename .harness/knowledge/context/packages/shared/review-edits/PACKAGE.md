@@ -1,6 +1,6 @@
 ---
 governs: packages/shared/src/review-edits/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [diff.ts, types.ts]
 flow_fns: [diff.ts::diffReview]
 decisions: []

@@ -1,6 +1,6 @@
 ---
 governs: packages/pipeline/src/social/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [types.ts, compose.ts, utils.ts, cli-helpers.ts]
 flow_fns: [compose.ts::composePosts]
 decisions: [D-100]

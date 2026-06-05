@@ -1,6 +1,6 @@
 ---
 governs: packages/pipeline/src/collectors/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [hn.ts, reddit.ts, web.ts, web-date.ts]
 flow_fns: [hn.ts::collectHn, reddit.ts::collectReddit, web.ts::collectWeb, web.ts::discoverPostUrls, web.ts::extractPostFields, web-date.ts::resolvePublishedDate]
 decisions: [D-010, D-011, D-012]

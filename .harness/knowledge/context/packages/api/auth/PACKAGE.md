@@ -1,6 +1,6 @@
 ---
 governs: packages/api/src/auth/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [session.ts, middleware.ts]
 flow_fns: [session.ts::verifyToken, middleware.ts::requireAdmin]
 decisions: [D-008]

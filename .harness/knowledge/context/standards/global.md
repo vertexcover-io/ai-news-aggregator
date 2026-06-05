@@ -3,7 +3,7 @@ id: S-global
 applies_to: ["**/*.ts", "**/*.tsx"]
 enforced_by: tsconfig
 decisions: []
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 status: active
 ---
 

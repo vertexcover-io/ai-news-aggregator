@@ -1,6 +1,6 @@
 ---
 governs: packages/web/src/api/
-last_verified_sha: 40c6b83
+last_verified_sha: ad0153a
 key_files: [client.ts, admin.ts, archives.ts, runs.ts, settings.ts, eval.ts, socialCredentials.ts, collector-health.ts, sources.ts, subscribe.ts, home.ts, must-read.ts, analytics.ts, analyticsConfig.ts]
 flow_fns: [client.ts::apiFetchAdmin, eval.ts::runEval]
 decisions: [D-008]
@@ -34,9 +34,8 @@ One file per backend API domain. Every function calls the base wrappers `apiFetc
 | `runs.ts::getRunSourceItems(runId, sourceKey)` | GET `/api/admin/runs/:runId/sources/:key/items` |
 | `collector-health.ts::triggerCollectorHealth(collector?)` | POST `/api/admin/collector-health/check` via `apiFetchAdmin`; body `{collector}` when given, else `{}` (Check all) → `{enqueued}` |
 | `collector-health.ts::getCollectorHealthSnapshot()` | GET `/api/admin/collector-health` via `apiFetchAdmin` → `CollectorHealthSnapshot` |
-| `archives.ts::listArchives()` | GET `/api/archives` → public, `ArchiveListResponse` |
-| `archives.ts::searchArchives(query)` | GET `/api/archives/search?q=&from=&to=` → FTS search |
-| `archives.ts::patchArchive(runId, body)` | PATCH `/api/admin/archives/:runId` |
+| `home.ts::getHome()` | GET `/api/home` → public `HomePagePayload` — the public archive listing + featured issue data (the old `listArchives`/`searchArchives` in `archives.ts` were removed as dead code in a844f41; the listing now sources from `/api/home`) |
+| `archives.ts::patchArchive(runId, body)` | PATCH `/api/admin/archives/:runId` (body type `PatchArchiveBody = PatchArchivePayload` re-exported from `@newsletter/shared`) |
 | `archives.ts::addPost(runId, body)` | POST `/api/admin/archives/:runId/add-post` → `RankedItem` |
 | `archives.ts::getPool(runId, query)` | GET `/api/admin/archives/:runId/pool?...` → `PoolResponse` |
 | `archives.ts::promoteItem(runId, body)` | POST `/api/admin/archives/:runId/promote` → `RankedItem` |
@@ -52,9 +51,10 @@ One file per backend API domain. Every function calls the base wrappers `apiFetc
 | `eval.ts::runEval(body)` → `EvalRunStream` | SSE stream: POST `/api/admin/eval/run`, returns `{ progress: AsyncIterable, abort: () => void }` |
 | `eval.ts::listCalendarRuns(date)` | GET `/api/admin/eval/calendar-runs?date=` |
 | `eval.ts::listEvalRuns(params)` | GET `/api/admin/eval/runs?page=&mode=&status=` |
-| `socialCredentials.ts::useSocialCredentialsStatus()` | React Query hook for social credential status |
-| `socialCredentials.ts::startLinkedInOAuth()` | POST `/api/admin/social-credentials/linkedin/oauth/start` → `{ authorizeUrl }` |
-| `socialCredentials.ts::fetchLinkedInOAuthStatus()` | GET `/api/admin/social-credentials/linkedin/oauth/status` |
+| `socialCredentials.ts::useSocialCredentialsStatus()` | React Query hook → `SocialCredentialsStatus` (linkedin/twitter/twitter-collector) |
+| `socialCredentials.ts::useSaveLinkedInCredentials()` / `useSaveTwitterCredentials()` / `useSaveTwitterCollectorCookie()` / `useDeleteSocialCredentials()` | React Query mutation hooks; each invalidates the credentials-status query on success |
+| `socialCredentials.ts::startLinkedInOAuth()` | POST `/api/admin/social-credentials/linkedin/oauth/start` → `{ authorizeUrl }` (plain async fn) |
+| `socialCredentials.ts::fetchLinkedInOAuthStatus()` / `useLinkedInOAuthStatus()` | GET `/api/admin/social-credentials/linkedin/oauth/status` (plain fn + a React Query hook wrapper) |
 | `subscribe.ts::postSubscribe(email)` | POST `/api/subscribe` → `{ ok: true }` or `{ error: string }` |
 
 ## Depends on / used by

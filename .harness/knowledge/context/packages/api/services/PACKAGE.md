@@ -1,6 +1,6 @@
 ---
 governs: packages/api/src/services/
-last_verified_sha: 8d5cbd1
+last_verified_sha: ad0153a
 key_files: [review.ts, run-observability.ts, run-source-items.ts, run-list.ts, sources-summary.ts, cancel-run.ts, rank-hydration.ts, runs.ts, scheduler.ts, linkedin-oauth.ts, linkedin-credential-resolver.ts, twitter-handle-resolver.ts, item-preview.ts, eval-report.ts, eval-run-orchestrator.ts]
 flow_fns: [review.ts::patchArchive, review.ts::promoteItem, review.ts::addPostToArchive, review.ts::regenerateDigestMeta, run-observability.ts::buildRunObservability, run-source-items.ts::buildRunSourceItems, run-list.ts::listRuns, sources-summary.ts::buildSourcesSummary, cancel-run.ts::cancelRun, rank-hydration.ts::hydrateRankedItems, scheduler.ts::reconcilePipelineSchedule, scheduler.ts::reconcileCollectorHealthSchedule, eval-report.ts::buildActualRanking, eval-report.ts::buildCalendarRanking, eval-run-orchestrator.ts::runEvalOrchestrator]
 decisions: [D-002, D-004, D-013, D-014, D-110]

@@ -1,6 +1,6 @@
 ---
 governs: packages/api/src/lib/email/
-last_verified_sha: 5a2ff20
+last_verified_sha: ad0153a
 key_files: [provider.ts, resend-provider.ts, ses-provider.ts]
 flow_fns: []
 decisions: [D-010]

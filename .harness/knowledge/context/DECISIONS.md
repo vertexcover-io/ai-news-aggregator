@@ -1,5 +1,5 @@
 ---
-last_verified_sha: 40c6b83
+last_verified_sha: ad0153a
 status: active
 ---
 
@@ -21,6 +21,18 @@ status: active
 | D-012 | Credentials encrypted at rest via CredentialCipher | packages/api/repositories/PACKAGE.md |
 | D-013 | Digest-meta presence detection uses "k" in input | packages/api/services/PACKAGE.md |
 | D-014 | Run cancellation uses Redis pub/sub not BullMQ | packages/api/services/PACKAGE.md |
+| D-015 | DebugTimeline dual empty states | packages/web/components/observability/PACKAGE.md |
+| D-016 | Source telemetry row disabled for failed/cancelled + zero items | packages/web/components/observability/PACKAGE.md |
+| D-017 | Dual publish/start date columns | packages/web/components/dashboard/PACKAGE.md |
+| D-018 | SocialOverflowMenu "✓ Posted" without permalink | packages/web/components/dashboard/PACKAGE.md |
+| D-019 | RunDetailDrawer tab default based on report data presence | packages/web/components/eval/PACKAGE.md |
+| D-020 | RankingFunnel graceful degradation on null poolSize | packages/web/components/eval/PACKAGE.md |
+| D-021 | ArchiveRow is not a link when no stories | packages/web/components/archive-listing/PACKAGE.md |
+| D-022 | LinkedIn body seeding from stored value or default | packages/web/pages/PACKAGE.md |
+| D-023 | Digest meta regeneration signature tracking | packages/web/pages/PACKAGE.md |
+| D-024 | PostHog init dedup by config key | packages/web/lib/PACKAGE.md |
+| D-025 | Accept both string and {value:string} rettiwt cursor shapes | packages/pipeline/collectors/twitter/PACKAGE.md |
+| D-026 | Guard quoted-tweet access against tombstones | packages/pipeline/collectors/twitter/PACKAGE.md |
 | D-030 | Web search provider resolved at worker startup | packages/pipeline/collectors/web-search/PACKAGE.md |
 | D-040 | Provider-aware extractUsage dispatches by model prefix | packages/pipeline/processors/PACKAGE.md |
 | D-041 | Drop rationale-axis validation from ranker | packages/pipeline/processors/PACKAGE.md |
@@ -30,7 +42,11 @@ status: active
 | D-052 | newsletter-send.ts kept for back-compat only | packages/pipeline/workers/PACKAGE.md |
 | D-060 | setCostBreakdown is UPDATE-only | packages/pipeline/repositories/PACKAGE.md |
 | D-061 | In-batch dedup in upsertItems | packages/pipeline/repositories/PACKAGE.md |
+| D-070 | Best-effort run-logger (telemetry never fails the run) | packages/pipeline/services/PACKAGE.md |
+| D-071 | Cost tracker merge is additive not idempotent | packages/pipeline/services/PACKAGE.md |
+| D-072 | In-process write serialization for run-state | packages/pipeline/services/PACKAGE.md |
 | D-080 | WEB_HTTP_PROXY routes web collector through 3 transport seams (fail-open, secret, undici pinned) | packages/pipeline/services/web-fetch/PACKAGE.md |
+| D-090 | Static-first fetch with health check + listing-link check for browser promotion | packages/pipeline/services/web-fetch/PACKAGE.md |
 | D-100 | Web must use subpath imports from shared | packages/shared/PACKAGE.md |
 | D-101 | Provider-aware token extraction with live-probe verification | packages/shared/PACKAGE.md |
 | D-102 | Schema definitions live only in shared | packages/shared/PACKAGE.md |
@@ -39,10 +55,27 @@ status: active
 | D-105 | Generated migrations must be inspected for NOT NULL adds | packages/shared/PACKAGE.md |
 | D-106 | JS and SQL implementations of deriveRawItemIdentifier must stay aligned | packages/shared/PACKAGE.md |
 | D-107 | Slack notification idempotency via notification_state JSONB | packages/shared/PACKAGE.md |
+| D-108 | publishDateForWindow anchors the publish day on the completion instant | packages/shared/scheduling/PACKAGE.md |
+| D-109 | FOR UPDATE row-level lock for LinkedIn token refresh | packages/pipeline/social/linkedin/PACKAGE.md |
 | D-110 | Collector health runs on a dedicated queue/worker, never processing concurrency:1 | DECISIONS.md (cross-package) |
 | D-111 | Collector-health Slack message has no notification_state marker (fires every failure) | DECISIONS.md (cross-package) |
+| D-112 | jobIdFor uses a dash delimiter, not colon | DECISIONS.md (cross-package) |
+| D-113 | Migration journal timestamps must be monotonic; heal skipped migrations idempotently | packages/shared/db/PACKAGE.md |
+| D-114 | LTF escaping in createPost only | packages/pipeline/social/linkedin/PACKAGE.md |
+| D-120 | Social-health worker for proactive credential validation | packages/pipeline/social/twitter/PACKAGE.md |
+| D-130 | Calendar mode uses run_id for pool attribution | packages/pipeline/eval/PACKAGE.md |
+| D-131 | Dedup at eval-read time, not at fixture-export time | packages/pipeline/eval/PACKAGE.md |
+| D-140 | EmailSendError as typed error with retryable + retryAfterMs | packages/pipeline/lib/PACKAGE.md |
 
 # Cross-package decisions (full bodies)
+
+## D-112 — jobIdFor uses a dash delimiter, not colon
+
+**Why:** bullmq ≥5.x `validateOptions` rejects custom job ids containing `:` (the Redis key delimiter), so `jobIdFor(channel, runId)` emits `${channel}-${runId}` instead of the original `${channel}:${runId}` (fix 2e44ab7). The `*_SCHEDULER_KEY` constants still carry `:` — they are exempt because BullMQ generates their internal job ids itself (`repeat:<key>:<ts>`); only custom ids passed to `Queue.add` are constrained.
+
+**Tradeoff:** Parsing a runId back out of a job id must split on the channel prefix, not a fixed `:`.
+
+**Governs:** packages/shared/src/scheduling/job-ids.ts, the api enqueue sites (routes/archives.ts, routes/runs.ts, services/scheduler.ts), and the pipeline workers that consume those job ids.
 
 ## D-110 — Collector health runs on a dedicated queue/worker, never processing concurrency:1
 
