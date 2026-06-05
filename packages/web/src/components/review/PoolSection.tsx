@@ -23,6 +23,8 @@ interface PoolSectionProps {
   shortlistedItemIds: number[] | null;
   facets: SourceFacetGroup[];
   facetsLoading: boolean;
+  facetsError: boolean;
+  onRetryFacets: () => void;
 }
 
 export function PoolSection({
@@ -43,6 +45,8 @@ export function PoolSection({
   shortlistedItemIds,
   facets,
   facetsLoading,
+  facetsError,
+  onRetryFacets,
 }: PoolSectionProps): ReactElement | null {
   const isUnavailable = !startedAt || !sourceTypes;
 
@@ -88,12 +92,24 @@ export function PoolSection({
     }, 300);
   }
 
-  // EDGE-002: hide entirely when total is 0 and not loading
-  if (!isUnavailable && pool.total === 0 && !pool.isLoading) {
-    return null;
+  // REQ-017: clear both the search input and the pool query when clearAll fires.
+  // Cancel any pending debounce so the cleared value propagates immediately.
+  function handleClearAll(): void {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSearchInput("");
+    pool.setQ("");
+    clearAll();
   }
 
-  // EDGE-006: pool unavailable for legacy runs
+  // ── Branch order (must not be reordered — each branch is exclusive) ──────────
+  // 1. unavailable (legacy run)           → "Pool unavailable for this run"
+  // 2. pool.isError                       → section + toolbar + error + Retry
+  // 3. zero-unconstrained (no error)      → return null (section hidden)
+  // 4. otherwise                          → section with toolbar + items/empty-state
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // Branch 1 — EDGE-003: pool is unavailable for legacy runs that pre-date the
+  // sourceTypes/startedAt fields.
   if (isUnavailable) {
     return (
       <section className="mt-8 border-t pt-6">
@@ -102,22 +118,80 @@ export function PoolSection({
     );
   }
 
-  // Filter out promoted items
+  // A "constraint" is any active filter or non-empty search that narrows the pool.
+  const hasConstraints =
+    isFiltered || searchInput.trim() !== "" || pool.q !== "";
+
+  // Branch 2 — REQ-003, EDGE-001: query error always renders (even when total === 0)
+  // so the operator can retry — never silently collapses to null.
+  if (pool.isError) {
+    return (
+      <section className="mt-8 border-t pt-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-gray-500">
+            Item Pool
+          </h2>
+        </div>
+
+        <ReviewToolbar
+          shortlistedOnly={shortlistedOnly}
+          toggleShortlisted={toggleShortlisted}
+          shortlistedItemIds={shortlistedItemIds}
+          sourceTypes={sourceTypes}
+          selectedSourceTypes={selectedSourceTypes}
+          toggleSourceType={toggleSourceType}
+          selectedSources={selectedSources}
+          toggleSource={toggleSource}
+          clearAll={handleClearAll}
+          facets={facets}
+          facetsLoading={facetsLoading}
+          facetsError={facetsError}
+          onRetryFacets={onRetryFacets}
+          poolTotalCount={pool.total}
+          isFiltered={isFiltered}
+        />
+
+        <div role="alert" className="rounded-md bg-red-50 border border-red-200 p-3 flex items-center justify-between gap-3">
+          <p className="text-sm text-red-700">Failed to load pool items.</p>
+          <button
+            type="button"
+            onClick={pool.refetch}
+            className="shrink-0 rounded-md bg-red-100 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-200 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  // Branch 3 — REQ-002: zero-unconstrained → unmount the section entirely.
+  // Only applies when there truly are no items AND no filter/search is active.
+  if (pool.total === 0 && !pool.isLoading && !hasConstraints) {
+    return null;
+  }
+
+  // Branch 4 — normal section (handles: loading, items present, zero-match-filtered)
   const visibleItems = pool.items.filter(
     (i) => !pool.promotedIds.has(i.id) && !promotingIds.has(i.id),
   );
 
-  // EDGE-001: all items ranked
   const showEmptyState = visibleItems.length === 0 && !pool.isLoading;
+  // REQ-006: context-aware empty message
+  const emptyMessage = hasConstraints
+    ? "No items match the current filters."
+    : "All collected items are already ranked.";
+
+  // Header count: "…" while a filter transition is in flight (total === null, REQ-005)
+  const headerCount =
+    pool.total === null ? "…" : `${String(pool.total)} items`;
 
   return (
     <section className="mt-8 border-t pt-6 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold uppercase tracking-wide text-gray-500">
           Item Pool{" "}
-          <span className="font-normal text-gray-400">
-            ({pool.total} items)
-          </span>
+          <span className="font-normal text-gray-400">({headerCount})</span>
         </h2>
       </div>
 
@@ -131,9 +205,11 @@ export function PoolSection({
         toggleSourceType={toggleSourceType}
         selectedSources={selectedSources}
         toggleSource={toggleSource}
-        clearAll={clearAll}
+        clearAll={handleClearAll}
         facets={facets}
         facetsLoading={facetsLoading}
+        facetsError={facetsError}
+        onRetryFacets={onRetryFacets}
         poolTotalCount={pool.total}
         isFiltered={isFiltered}
       />
@@ -184,9 +260,7 @@ export function PoolSection({
 
       {/* Items */}
       {showEmptyState ? (
-        <p className="text-sm text-gray-500 py-4 text-center">
-          All collected items are already ranked.
-        </p>
+        <p className="text-sm text-gray-500 py-4 text-center">{emptyMessage}</p>
       ) : (
         <div className="space-y-2">
           {visibleItems.map((item) => (
@@ -216,7 +290,11 @@ export function PoolSection({
             onClick={pool.loadMore}
             className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors"
           >
-            Show more ({pool.total - pool.items.length} remaining)
+            Show more (
+            {pool.total !== null
+              ? `${String(pool.total - pool.items.length)} remaining`
+              : "…"}
+            )
           </button>
         </div>
       )}

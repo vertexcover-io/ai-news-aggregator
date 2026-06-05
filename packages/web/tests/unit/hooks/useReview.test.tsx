@@ -394,6 +394,72 @@ describe("useReview", () => {
     expect(result.current.state.pendingPromotes).toHaveLength(0);
   });
 
+  // REQ-016: non-terminal status polls every 5s; terminal status stops polling
+  describe("test_REQ_016_non_terminal_status_polls_archive", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("polls at ~5s when status is non-terminal (running)", async () => {
+      const runningResponse: RunStateResponse = {
+        id: "run-running",
+        status: "running",
+        stage: "collecting",
+        topN: 10,
+        startedAt: "2026-04-14T00:00:00Z",
+        updatedAt: "2026-04-14T00:00:00Z",
+        completedAt: null,
+        sources: {},
+        rankedItems: null,
+        shortlistedItemIds: null,
+        warnings: [],
+        error: null,
+      };
+      vi.mocked(getAdminArchive).mockResolvedValue(runningResponse);
+
+      const { result } = renderHook(() => useReview("run-running"), {
+        wrapper: wrapper(),
+      });
+      await waitFor(() => {
+        expect(result.current.query.data).toBeDefined();
+      });
+      const callsAfterInit = vi.mocked(getAdminArchive).mock.calls.length;
+      await vi.advanceTimersByTimeAsync(5100);
+      expect(vi.mocked(getAdminArchive).mock.calls.length).toBeGreaterThan(callsAfterInit);
+    });
+
+    it("does NOT poll when status is completed", async () => {
+      vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
+
+      const { result } = renderHook(() => useReview("run-1"), {
+        wrapper: wrapper(),
+      });
+      await waitFor(() => {
+        expect(result.current.query.data).toBeDefined();
+      });
+      const callsAfterInit = vi.mocked(getAdminArchive).mock.calls.length;
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(vi.mocked(getAdminArchive).mock.calls.length).toBe(callsAfterInit);
+    });
+
+    it("does NOT poll when data is null (404)", async () => {
+      vi.mocked(getAdminArchive).mockResolvedValue(null);
+
+      const { result } = renderHook(() => useReview("run-404"), {
+        wrapper: wrapper(),
+      });
+      await waitFor(() => {
+        expect(result.current.query.status).not.toBe("pending");
+      });
+      const callsAfterInit = vi.mocked(getAdminArchive).mock.calls.length;
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(vi.mocked(getAdminArchive).mock.calls.length).toBe(callsAfterInit);
+    });
+  });
+
   it("isDirty is true when pendingPromotes is non-empty", async () => {
     vi.mocked(getAdminArchive).mockResolvedValue(completedResponse);
     const { result } = renderHook(() => useReview("run-1"), {

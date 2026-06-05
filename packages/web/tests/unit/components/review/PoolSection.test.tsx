@@ -12,6 +12,7 @@ const mockSetShortlisted = vi.fn();
 const mockSetQ = vi.fn();
 const mockLoadMore = vi.fn();
 const mockAddPromotedId = vi.fn();
+const mockRefetch = vi.fn();
 
 const defaultPoolReturn: UsePoolReturn = {
   items: [],
@@ -24,6 +25,7 @@ const defaultPoolReturn: UsePoolReturn = {
   q: "",
   offset: 0,
   isLoading: false,
+  isError: false,
   hasMore: false,
   promotedIds: new Set(),
   setSort: mockSetSort,
@@ -34,6 +36,7 @@ const defaultPoolReturn: UsePoolReturn = {
   setQ: mockSetQ,
   loadMore: mockLoadMore,
   addPromotedId: mockAddPromotedId,
+  refetch: mockRefetch,
 };
 
 let poolReturnOverride: Partial<UsePoolReturn> = {};
@@ -89,6 +92,8 @@ const baseProps = {
   shortlistedItemIds: null as number[] | null,
   facets: [],
   facetsLoading: false,
+  facetsError: false,
+  onRetryFacets: vi.fn(),
 };
 
 beforeEach(() => {
@@ -101,27 +106,143 @@ afterEach(() => {
 });
 
 describe("PoolSection", () => {
-  it("EDGE-002: renders nothing when total is 0 and not loading", () => {
+  // ── REQ-001: zero-match filter keeps toolbar ───────────────────────────────
+  it("test_REQ_001_zero_match_filter_keeps_toolbar", () => {
     poolReturnOverride = { items: [], total: 0, isLoading: false };
+    render(<PoolSection {...baseProps} isFiltered={true} />);
+    // Toolbar (Source button) must be present
+    expect(screen.getByText("Source")).toBeDefined();
+    // Context-aware message
+    expect(screen.getByText("No items match the current filters.")).toBeDefined();
+    // Section must NOT be absent (old EDGE-002 behaviour deliberately updated)
+  });
+
+  // ── REQ-002: unconstrained empty pool hides section ────────────────────────
+  it("test_REQ_002_unconstrained_empty_pool_hides_section", () => {
+    poolReturnOverride = { items: [], total: 0, isLoading: false };
+    // isFiltered=false (default), no search, no sourceType selection
     const { container } = render(<PoolSection {...baseProps} />);
     expect(container.innerHTML).toBe("");
   });
 
-  // EDGE-006: the pool is "unavailable" when either run-context prop is null.
-  it.each<{ field: "startedAt" | "sourceTypes" }>([
-    { field: "startedAt" },
-    { field: "sourceTypes" },
-  ])("EDGE-006: renders 'Pool unavailable for this run' when $field is null", ({ field }) => {
-    render(<PoolSection {...baseProps} {...{ [field]: null }} />);
-    expect(screen.getByText("Pool unavailable for this run")).toBeDefined();
+  // ── REQ-003: pool error shows retry alongside toolbar ─────────────────────
+  it("test_REQ_003_pool_error_shows_retry_with_toolbar", () => {
+    poolReturnOverride = { isError: true };
+    render(<PoolSection {...baseProps} />);
+    // Toolbar must still be present so filters can be changed (clears the error)
+    expect(screen.getByText("Source")).toBeDefined();
+    // Error alert and Retry button
+    expect(screen.getByRole("alert")).toBeDefined();
+    expect(screen.getByText("Failed to load pool items.")).toBeDefined();
+    const retryBtn = screen.getByRole("button", { name: "Retry" });
+    expect(retryBtn).toBeDefined();
+    fireEvent.click(retryBtn);
+    expect(mockRefetch).toHaveBeenCalledOnce();
   });
 
-  it("EDGE-001: renders empty state message when items are empty and not loading", () => {
-    poolReturnOverride = { items: [], total: 5, isLoading: false };
+  // ── REQ-005: no stale total during transition (null while key pending) ─────
+  // This behaviour is asserted at the hook level in usePool.test.tsx; here we
+  // verify that the PoolSection renders "…" in the header when total is null.
+  it("test_REQ_005_no_stale_total_during_transition", () => {
+    poolReturnOverride = { items: [], total: null, isLoading: true };
     render(<PoolSection {...baseProps} />);
+    // Header should show "…" (not a stale number)
+    expect(screen.getByText("(…)")).toBeDefined();
+  });
+
+  // ── REQ-006: empty-state message is context-aware ─────────────────────────
+  it("test_REQ_006_empty_state_message_context_aware", () => {
+    // Constrained (filtered): "No items match the current filters."
+    poolReturnOverride = { items: [], total: 5, isLoading: false };
+    const { unmount } = render(<PoolSection {...baseProps} isFiltered={true} />);
+    expect(screen.getByText("No items match the current filters.")).toBeDefined();
+    unmount();
+
+    // Unconstrained but total > 0 (all items already promoted out of visible list):
+    // "All collected items are already ranked."
+    poolReturnOverride = { items: [], total: 5, isLoading: false };
+    render(<PoolSection {...baseProps} isFiltered={false} />);
     expect(screen.getByText("All collected items are already ranked.")).toBeDefined();
   });
 
+  // ── REQ-017: clear filters also clears search input ───────────────────────
+  it("test_REQ_017_clear_filters_clears_search", () => {
+    poolReturnOverride = { items: sampleItems, total: 2 };
+    const clearAll = vi.fn();
+    render(<PoolSection {...baseProps} isFiltered={true} clearAll={clearAll} />);
+
+    // Type into the search input
+    const searchInput = screen.getByPlaceholderText("Search pool items...");
+    fireEvent.change(searchInput, { target: { value: "something" } });
+    expect((searchInput as HTMLInputElement).value).toBe("something");
+
+    // Click Clear filters
+    fireEvent.click(screen.getByText("Clear filters"));
+
+    // Input must be cleared
+    expect((searchInput as HTMLInputElement).value).toBe("");
+    // setQ must have been called with ""
+    expect(mockSetQ).toHaveBeenCalledWith("");
+    // The upstream clearAll must have been called
+    expect(clearAll).toHaveBeenCalled();
+  });
+
+  // ── EDGE-001: error wins over both empty states ────────────────────────────
+  it("test_EDGE_001_error_wins_over_empty_states", () => {
+    // Even with total === 0 and isFiltered === false, the error branch wins
+    poolReturnOverride = { isError: true, total: 0, isLoading: false };
+    const { container } = render(<PoolSection {...baseProps} />);
+    // Section must NOT be null
+    expect(container.innerHTML).not.toBe("");
+    // Error message present
+    expect(screen.getByText("Failed to load pool items.")).toBeDefined();
+  });
+
+  // ── EDGE-002 (deliberate update): filter change clears error via new key ───
+  // The new behaviour is that EDGE-002 no longer pins "hides on 0 total" for the
+  // constrained case — that was replaced by REQ-001. Instead, we verify that
+  // changing a filter while an error is displayed triggers the normal branch
+  // (because the new key re-fetches and isError becomes false with new data).
+  it("test_EDGE_002_filter_change_clears_error", () => {
+    // Start in error state with a filter active
+    poolReturnOverride = { isError: true, total: 0 };
+    const { rerender } = render(<PoolSection {...baseProps} isFiltered={true} />);
+    expect(screen.getByText("Failed to load pool items.")).toBeDefined();
+
+    // Simulate the filter change resolving: isError clears, new items arrive
+    poolReturnOverride = { isError: false, items: sampleItems, total: 2 };
+    rerender(<PoolSection {...baseProps} isFiltered={false} />);
+
+    // Error message gone, items rendered
+    expect(screen.queryByText("Failed to load pool items.")).toBeNull();
+    expect(screen.getByText("Post A")).toBeDefined();
+  });
+
+  // ── EDGE-003: legacy run unavailable branch unchanged ─────────────────────
+  it.each<{ field: "startedAt" | "sourceTypes" }>([
+    { field: "startedAt" },
+    { field: "sourceTypes" },
+  ])(
+    "test_EDGE_003_legacy_run_unavailable_branch_unchanged — $field is null",
+    ({ field }) => {
+      render(<PoolSection {...baseProps} {...{ [field]: null }} />);
+      expect(screen.getByText("Pool unavailable for this run")).toBeDefined();
+    },
+  );
+
+  // ── EDGE-005: rapid filter toggle — last key wins (no stale total rendered) -
+  // This is the PoolSection surface of the EDGE-005 behaviour; the hook-level
+  // assertion lives in usePool.test.tsx. Here we verify that total===null
+  // renders "…" and not a stale value.
+  it("test_EDGE_005_rapid_filter_toggle_last_key_wins", () => {
+    // Simulate mid-transition: total is null (key mismatch)
+    poolReturnOverride = { items: [], total: null, isLoading: true };
+    render(<PoolSection {...baseProps} />);
+    // The header must not render a stale number
+    expect(screen.getByText("(…)")).toBeDefined();
+  });
+
+  // ── Existing happy-path regressions ──────────────────────────────────────
   it("renders pool items", () => {
     poolReturnOverride = { items: sampleItems, total: 2 };
     render(<PoolSection {...baseProps} />);

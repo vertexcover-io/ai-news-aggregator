@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from "react";
+import { useState, useRef, useEffect, type ReactElement } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SourceFacetGroup } from "../../hooks/useSourceFacets";
@@ -22,7 +22,10 @@ interface ReviewToolbarProps {
   clearAll: () => void;
   facets: SourceFacetGroup[];
   facetsLoading: boolean;
-  poolTotalCount: number;
+  facetsError: boolean;
+  onRetryFacets: () => void;
+  /** `null` when the pool count is unavailable (filter transition in flight). */
+  poolTotalCount: number | null;
   isFiltered: boolean;
 }
 
@@ -38,13 +41,44 @@ export function ReviewToolbar({
   clearAll,
   facets,
   facetsLoading,
+  facetsError,
+  onRetryFacets,
   poolTotalCount,
   isFiltered,
 }: ReviewToolbarProps): ReactElement {
   const [sourceOpen, setSourceOpen] = useState(false);
   const [facetSearch, setFacetSearch] = useState("");
+  const dropdownContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const hasShortlist = shortlistedItemIds !== null;
+  // REQ-014: close dropdown on outside click or Escape key
+  useEffect(() => {
+    if (!sourceOpen) return;
+
+    function handleMouseDown(e: MouseEvent): void {
+      if (
+        dropdownContainerRef.current &&
+        !dropdownContainerRef.current.contains(e.target as Node)
+      ) {
+        setSourceOpen(false);
+      }
+    }
+
+    function handleKeyDown(e: KeyboardEvent): void {
+      if (e.key === "Escape") {
+        setSourceOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [sourceOpen]);
+
+  const hasShortlist =
+    shortlistedItemIds !== null && shortlistedItemIds.length > 0;
   const disabledTitle = hasShortlist
     ? undefined
     : "No shortlist data for this run";
@@ -143,7 +177,7 @@ export function ReviewToolbar({
       </div>
 
       {/* Source dropdown */}
-      <div className="relative">
+      <div className="relative" ref={dropdownContainerRef}>
         <button
           type="button"
           onClick={() => {
@@ -177,7 +211,22 @@ export function ReviewToolbar({
               {facetsLoading && (
                 <p className="text-xs text-gray-400 px-2 py-1">Loading...</p>
               )}
-              {!facetsLoading && (
+              {!facetsLoading && facetsError && (
+                <div
+                  role="alert"
+                  className="flex items-center justify-between gap-2 px-2 py-2"
+                >
+                  <p className="text-xs text-red-600">Failed to load sources.</p>
+                  <button
+                    type="button"
+                    onClick={onRetryFacets}
+                    className="shrink-0 rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200 transition-colors"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+              {!facetsLoading && !facetsError && (
                 <SourceCatalog
                   sections={filteredSections}
                   variant="menu"
@@ -240,9 +289,10 @@ export function ReviewToolbar({
         </button>
       )}
 
-      {/* Count */}
+      {/* Count — shows "…" while a filter transition is in flight (total is null) */}
       <div className="ml-auto text-xs text-gray-500 self-center">
-        {poolTotalCount} {isFiltered ? "matching" : "items"}
+        {poolTotalCount ?? "…"}{" "}
+        {isFiltered ? "matching" : "items"}
       </div>
     </div>
   );
