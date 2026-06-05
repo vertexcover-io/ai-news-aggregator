@@ -20,7 +20,8 @@ traceability.
 | REQ-008 | Event-driven | When Discard is confirmed, the digest-meta fields shall revert to their last hydrated/saved values. (F7) | After editing digest fields and confirming Discard, inputs equal the hydrated values | Must |
 | REQ-009 | State-driven | While the archive is a dry-run, the regenerate-before-save gate shall not block Save after ranked-list changes. (F8) | On a dry-run, reorder/remove → Save remains enabled (other `canSave` conditions held) | Must |
 | REQ-010 | State-driven | While the archive is a dry-run, the Regenerate control shall be disabled with a reason stating regeneration is unavailable for dry-runs. (F8) | Regenerate button disabled with explanatory title/text on dry-run | Should |
-| REQ-011 | Unwanted | If a Regenerate attempt fails after the ranked list changed, then Save shall become enabled and the SaveBar shall show a warning that the digest copy may not match the story order. (F9) | Failed regenerate → Save enabled + warning text visible; warning absent before failure | Must |
+| REQ-011 | Unwanted | If a Regenerate attempt fails after the ranked list changed, then Save shall remain enabled and the SaveBar shall show a warning that the digest copy may not match the story order. (F9) | Failed regenerate → Save enabled + warning text visible | Must |
+| REQ-018 | Event-driven | When Save is activated while the ranked list differs from the signature the digest meta was last generated against, a confirmation dialog shall present the staleness warning; saving proceeds only on "Save anyway" and is aborted on Cancel. (F9, revised 2026-06-06: confirm-dialog replaces the disabled-button gate) | Stale-digest Save click → dialog with warning; Cancel → no PATCH; "Save anyway" → PATCH issued; in-sync Save → no dialog | Must |
 | REQ-012 | Unwanted | If the archive load fails with a non-404 error, then the page shall render "Failed to load this run." with a Retry control, distinct from the 404 "This run was not found." view. (F10) | Thrown fetch error → failure view + Retry triggering refetch; 404 → not-found view without Retry | Must |
 | REQ-013 | Event-driven | When a ranked item that was promoted during the current session is removed from the ranked list, the item shall reappear in the pool list without a page reload. (F11) | Promote → remove → item visible in pool again | Must |
 | REQ-014 | Event-driven | When the user clicks outside the open Source dropdown or presses Escape, the dropdown shall close. (F12) | Outside click and Escape each close the menu | Should |
@@ -37,7 +38,7 @@ traceability.
 | EDGE-003 | Legacy run with null `startedAt`/`sourceTypes` | Unchanged "Pool unavailable for this run" branch; no toolbar, no error/empty taxonomy | REQ-002 |
 | EDGE-004 | Dry-run archive with only digest-field edits | Save permitted and PATCH issued (API accepts dry-runs) | REQ-009, REQ-007 |
 | EDGE-005 | Rapid successive filter toggles before responses resolve | Last filter key wins; no stale items or stale total rendered | REQ-005 |
-| EDGE-006 | Regenerate fails → user reorders again → Regenerate succeeds | Warning clears and the gate re-engages for subsequent reorders | REQ-011 |
+| EDGE-006 | Regenerate fails → Regenerate succeeds → user reorders again | Warning persists through the failure, clears on success, re-appears on new drift | REQ-011, REQ-018 |
 | EDGE-007 | A pool item whose promote failed (failure card shown) is retried | Existing retry path unchanged; pool-return-on-remove applies only to items present in the ranked list | REQ-013 |
 
 ## Verification Matrix
@@ -58,7 +59,8 @@ extra row is added stating the unique bug that test would catch.
 | REQ-008 | unit | test_REQ_008_discard_reverts_digest_fields | page-level state logic | |
 | REQ-009 | unit | test_REQ_009_dry_run_bypasses_regen_gate | page-level gate logic | |
 | REQ-010 | unit | test_REQ_010_dry_run_disables_regenerate | component render logic | |
-| REQ-011 | unit | test_REQ_011_regen_failure_unlocks_save_with_warning | page-level gate logic with mocked 502 | |
+| REQ-011 | unit | test_REQ_011_regen_failure_keeps_save_available_with_warning | page-level gate logic with mocked 502 | |
+| REQ-018 | unit | test confirm-dialog flow (`keeps save enabled and opens a confirm dialog…` + `confirming 'Save anyway' saves…` + SaveBar `saveConfirmation` contract tests) | component + page dialog logic | dialog also exercised live by EDGE-004 e2e |
 | REQ-012 | unit | test_REQ_012_load_error_distinct_from_not_found | mocked throw vs null in jsdom | |
 | REQ-013 | unit | test_REQ_013_removed_promoted_item_returns_to_pool | page-level state logic | |
 | REQ-014 | unit | test_REQ_014_dropdown_closes_outside_and_escape | DOM event handling in jsdom | |
