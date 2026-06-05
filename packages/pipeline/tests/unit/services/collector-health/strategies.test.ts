@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { runCollectorHealthCheck } from "@pipeline/services/collector-health/index.js";
-import type { HealthCheckDeps, HealthCheckSettings } from "@pipeline/services/collector-health/index.js";
+import type { HealthCheckDeps, HealthCheckSettings, CheckableCollector } from "@pipeline/services/collector-health/index.js";
 
 // ── Minimal settings factory ──────────────────────────────────────────────────
 
@@ -84,15 +84,6 @@ describe("runCollectorHealthCheck — hn", () => {
     expect(result.reason).toBe("rate limited by the source");
   });
 
-  it("REQ-020: timeout yields failed with timeout reason", async () => {
-    const fetchFn = vi.fn().mockImplementation(
-      () => new Promise<never>(() => undefined), // never resolves
-    );
-    const result = await runCollectorHealthCheck("hn", makeSettings(), makeDeps({ fetchFn }), { timeoutMs: 50 });
-    expect(result.status).toBe("failed");
-    expect(result.reason).toMatch(/timeout/i); // "timeout" appears in our reason string
-  });
-
   it("EDGE-012: 429 from HN Algolia yields rate-limit reason", async () => {
     const fetchFn = vi.fn().mockRejectedValue(new Error("HTTP error: 429"));
     const result = await runCollectorHealthCheck("hn", makeSettings(), makeDeps({ fetchFn }));
@@ -156,15 +147,6 @@ describe("runCollectorHealthCheck — reddit", () => {
     const result = await runCollectorHealthCheck("reddit", makeSettings(), makeDeps({ fetchFn }));
     expect(result.status).toBe("failed");
     expect(result.reason).toBeDefined();
-  });
-
-  it("REQ-020: timeout yields failed with timeout reason", async () => {
-    const fetchFn = vi.fn().mockImplementation(
-      () => new Promise<never>(() => undefined),
-    );
-    const result = await runCollectorHealthCheck("reddit", makeSettings(), makeDeps({ fetchFn }), { timeoutMs: 50 });
-    expect(result.status).toBe("failed");
-    expect(result.reason).toMatch(/timeout/i); // "timeout" appears in our reason string
   });
 });
 
@@ -245,26 +227,6 @@ describe("runCollectorHealthCheck — twitter", () => {
     expect(result.status).toBe("failed");
     expect(result.reason).toMatch(/rotate.*cookie|cookie.*rotate|admin\/settings/i);
   });
-
-  it("REQ-020: timeout yields failed with timeout reason", async () => {
-    const mockRettiwt = {
-      list: { tweets: vi.fn().mockImplementation(() => new Promise<never>(() => undefined)) },
-      user: { timeline: vi.fn() },
-    };
-    const rettiwtClientFactory = vi.fn().mockReturnValue(mockRettiwt);
-    const credentialResolver = {
-      resolveTwitterCollectorCookie: vi.fn().mockResolvedValue(fakeCookie),
-      tavilyApiKey: undefined,
-    };
-    const result = await runCollectorHealthCheck(
-      "twitter",
-      makeSettings(),
-      makeDeps({ rettiwtClientFactory, credentialResolver }),
-      { timeoutMs: 50 },
-    );
-    expect(result.status).toBe("failed");
-    expect(result.reason).toMatch(/timeout/i); // "timeout" appears in our reason string
-  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -323,15 +285,6 @@ describe("runCollectorHealthCheck — blog", () => {
     expect(result.status).toBe("failed");
     expect(result.reason).toBeDefined();
     expect(result.reason).not.toBeNull();
-  });
-
-  it("REQ-020: timeout yields failed with timeout reason", async () => {
-    const runWebCrawl = vi.fn().mockImplementation(
-      () => new Promise<never>(() => undefined),
-    );
-    const result = await runCollectorHealthCheck("blog", makeSettings(), makeDeps({ runWebCrawl }), { timeoutMs: 50 });
-    expect(result.status).toBe("failed");
-    expect(result.reason).toMatch(/timeout/i); // "timeout" appears in our reason string
   });
 });
 
@@ -413,21 +366,55 @@ describe("runCollectorHealthCheck — web_search", () => {
     expect(result.status).toBe("failed");
     expect(result.reason).toBe("rate limited by the source");
   });
+});
 
-  it("REQ-020: timeout yields failed with timeout reason", async () => {
-    const mockProvider = {
-      name: "tavily",
-      search: vi.fn().mockImplementation(() => new Promise<never>(() => undefined)),
-    };
-    const tavilyFactory = vi.fn().mockReturnValue(mockProvider);
-    const credentialResolver = {
-      resolveTwitterCollectorCookie: vi.fn().mockResolvedValue(null),
-      tavilyApiKey: "fake-tavily-key",
-    };
+// ═══════════════════════════════════════════════════════════════════════════════
+// REQ-020: timeout yields failed with timeout reason — symmetric across all
+// five collectors (each wires a never-resolving stub for its own dependency).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function neverResolves(): Promise<never> {
+  return new Promise<never>(() => undefined);
+}
+
+describe("runCollectorHealthCheck — REQ-020 timeout (all collectors)", () => {
+  const fakeCookie = { apiKey: "fake-key", source: "env" as const };
+
+  it.each<{ collector: CheckableCollector; deps: () => Partial<HealthCheckDeps> }>([
+    { collector: "hn", deps: () => ({ fetchFn: vi.fn().mockImplementation(neverResolves) }) },
+    { collector: "reddit", deps: () => ({ fetchFn: vi.fn().mockImplementation(neverResolves) }) },
+    {
+      collector: "twitter",
+      deps: () => ({
+        rettiwtClientFactory: vi.fn().mockReturnValue({
+          list: { tweets: vi.fn().mockImplementation(neverResolves) },
+          user: { timeline: vi.fn() },
+        }),
+        credentialResolver: {
+          resolveTwitterCollectorCookie: vi.fn().mockResolvedValue(fakeCookie),
+          tavilyApiKey: undefined,
+        },
+      }),
+    },
+    { collector: "blog", deps: () => ({ runWebCrawl: vi.fn().mockImplementation(neverResolves) }) },
+    {
+      collector: "web_search",
+      deps: () => ({
+        tavilyFactory: vi.fn().mockReturnValue({
+          name: "tavily",
+          search: vi.fn().mockImplementation(neverResolves),
+        }),
+        credentialResolver: {
+          resolveTwitterCollectorCookie: vi.fn().mockResolvedValue(null),
+          tavilyApiKey: "fake-tavily-key",
+        },
+      }),
+    },
+  ])("$collector: timeout yields failed with timeout reason", async ({ collector, deps }) => {
     const result = await runCollectorHealthCheck(
-      "web_search",
+      collector,
       makeSettings(),
-      makeDeps({ tavilyFactory, credentialResolver }),
+      makeDeps(deps()),
       { timeoutMs: 50 },
     );
     expect(result.status).toBe("failed");

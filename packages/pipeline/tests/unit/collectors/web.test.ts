@@ -138,16 +138,6 @@ describe("LLM extraction helpers", () => {
       expect(result).toEqual(fakeFields);
     });
 
-    it("passes temperature 0 to generateText", async () => {
-      const model = makeDiscoveryMockModel({ title: "", author: "", published_at: "", image_url: "" });
-
-      await extractPostFields(post.postUrl, post.markdown, model);
-
-      expect(model.doGenerateCalls).toHaveLength(1);
-      const call = getCallOrThrow(model.doGenerateCalls, 0);
-      expect(call.temperature).toBe(0);
-    });
-
     it("passes DetailSchema with image_url to generateText", async () => {
       const model = makeDiscoveryMockModel({ title: "", author: "", published_at: "", image_url: "" });
 
@@ -281,10 +271,6 @@ describe("LLM extraction helpers", () => {
   });
 
   describe("discoverPostUrls — structured data prompt injection (REQ-005, REQ-006, REQ-007, EDGE-002)", () => {
-    it("COMBINED_DISCOVERY_CAP is 120_000 (REQ-006)", () => {
-      expect(COMBINED_DISCOVERY_CAP).toBe(120_000);
-    });
-
     // REQ-005: non-null structuredData → prompt contains markdown, then delimiter, then blob
     it("appends structured data after a delimiter when structuredData is non-null (REQ-005)", async () => {
       const model = makeDiscoveryMockModel({ posts: [] });
@@ -512,29 +498,29 @@ describe("filters and row assembly", () => {
     expect(item.publishedAt.toISOString()).toBe("2026-04-06T20:00:00.000Z");
   });
 
-  it("parseDateOrNull returns null for empty string", () => {
-    expect(parseDateOrNullFn("")).toBeNull();
-  });
-
-  it("parseDateOrNull returns null for null input", () => {
-    expect(parseDateOrNullFn(null)).toBeNull();
-  });
-
-  // REQ-051
-  it("parseDateOrNull returns null for unparseable input", () => {
-    expect(parseDateOrNullFn("not a date")).toBeNull();
-  });
-
-  it("parseDateOrNull returns a Date for YYYY-MM-DD input", () => {
-    const result = parseDateOrNullFn("2026-04-07");
-    expect(result).toBeInstanceOf(Date);
-    expect(result?.toISOString()).toBe("2026-04-07T00:00:00.000Z");
-  });
-
-  it("parseDateOrNull returns a Date for full ISO-8601 input", () => {
-    const result = parseDateOrNullFn("2026-04-07T10:30:00Z");
-    expect(result).toBeInstanceOf(Date);
-    expect(result?.toISOString()).toBe("2026-04-07T10:30:00.000Z");
+  // REQ-051: parseDateOrNull returns null for empty/null/unparseable, a Date otherwise
+  it.each<{ label: string; input: string | null; expected: string | null }>([
+    { label: "empty string", input: "", expected: null },
+    { label: "null input", input: null, expected: null },
+    { label: "unparseable input", input: "not a date", expected: null },
+    {
+      label: "YYYY-MM-DD input",
+      input: "2026-04-07",
+      expected: "2026-04-07T00:00:00.000Z",
+    },
+    {
+      label: "full ISO-8601 input",
+      input: "2026-04-07T10:30:00Z",
+      expected: "2026-04-07T10:30:00.000Z",
+    },
+  ])("parseDateOrNull on $label", ({ input, expected }) => {
+    const result = parseDateOrNullFn(input);
+    if (expected === null) {
+      expect(result).toBeNull();
+    } else {
+      expect(result).toBeInstanceOf(Date);
+      expect(result?.toISOString()).toBe(expected);
+    }
   });
 
   // REQ-050

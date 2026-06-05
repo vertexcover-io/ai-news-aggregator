@@ -11,68 +11,68 @@ function expectDate(value: Date | null): Date {
   return value;
 }
 
+type Expectation =
+  | { kind: "null" }
+  | { kind: "relativeHours"; hours: number }
+  | { kind: "relativeDays"; days: number }
+  | { kind: "calendar"; year: number; month: number; date: number }
+  | { kind: "iso"; iso: string };
+
+interface ResolveCase {
+  label: string;
+  input: string | null | undefined;
+  expected: Expectation;
+}
+
 describe("resolvePublishedDate — REQ-006", () => {
-  // --- Relative inputs ---
+  // Relative, natural-language-absolute, ISO, and garbage inputs all flow
+  // through the same resolver. EDGE-004/EDGE-005 (garbage/empty/null/undefined)
+  // → null; EDGE-009 date-only strings anchor to local ToD so calendar cases
+  // assert the calendar date only.
+  const cases: ResolveCase[] = [
+    { label: '"4 hours ago" → ref − 4h', input: "4 hours ago", expected: { kind: "relativeHours", hours: 4 } },
+    { label: '"2 days ago" → ref − 2d', input: "2 days ago", expected: { kind: "relativeDays", days: 2 } },
+    { label: '"yesterday" → one day before ref', input: "yesterday", expected: { kind: "relativeDays", days: 1 } },
+    { label: '"May 25, 2026" → 2026-05-25 (EDGE-009)', input: "May 25, 2026", expected: { kind: "calendar", year: 2026, month: 4, date: 25 } },
+    { label: '"25 May 2026" → 2026-05-25', input: "25 May 2026", expected: { kind: "calendar", year: 2026, month: 4, date: 25 } },
+    { label: "ISO string round-trips exactly via Date.parse fallback", input: "2026-05-25T09:00:00.000Z", expected: { kind: "iso", iso: "2026-05-25T09:00:00.000Z" } },
+    { label: "garbage string → null", input: "not a date at all xyz", expected: { kind: "null" } },
+    { label: "empty string → null", input: "", expected: { kind: "null" } },
+    { label: "null input → null", input: null, expected: { kind: "null" } },
+    { label: "undefined input → null", input: undefined, expected: { kind: "null" } },
+  ];
 
-  it('resolves "4 hours ago" to ref − 4h', () => {
-    const result = expectDate(resolvePublishedDate("4 hours ago", REF));
-    const diffHours = (REF.getTime() - result.getTime()) / (1000 * 60 * 60);
-    expect(diffHours).toBeCloseTo(4, 0);
-  });
+  it.each(cases)("resolves $label", ({ input, expected }) => {
+    const raw = resolvePublishedDate(input, REF);
 
-  it('resolves "2 days ago" to ref − 2d', () => {
-    const result = expectDate(resolvePublishedDate("2 days ago", REF));
-    const diffDays = (REF.getTime() - result.getTime()) / (1000 * 60 * 60 * 24);
-    expect(diffDays).toBeCloseTo(2, 0);
-  });
+    if (expected.kind === "null") {
+      expect(raw).toBeNull();
+      return;
+    }
 
-  it('resolves "yesterday" to a date one day before ref', () => {
-    const result = expectDate(resolvePublishedDate("yesterday", REF));
-    expect(result.getUTCFullYear()).toBe(2026);
-    expect(result.getUTCMonth()).toBe(4); // May = 4
-    expect(result.getUTCDate()).toBe(25);
-  });
-
-  // --- Natural-language absolute (EDGE-009: date-only strings anchor to local ToD — assert calendar date only) ---
-
-  it('resolves "May 25, 2026" to calendar date 2026-05-25 (EDGE-009)', () => {
-    const result = expectDate(resolvePublishedDate("May 25, 2026", REF));
-    expect(result.getFullYear()).toBe(2026);
-    expect(result.getMonth()).toBe(4); // May
-    expect(result.getDate()).toBe(25);
-  });
-
-  it('resolves "25 May 2026" to calendar date 2026-05-25', () => {
-    const result = expectDate(resolvePublishedDate("25 May 2026", REF));
-    expect(result.getFullYear()).toBe(2026);
-    expect(result.getMonth()).toBe(4);
-    expect(result.getDate()).toBe(25);
-  });
-
-  // --- ISO passthrough ---
-
-  it("ISO string round-trips exactly via Date.parse fallback", () => {
-    const iso = "2026-05-25T09:00:00.000Z";
-    const result = expectDate(resolvePublishedDate(iso, REF));
-    expect(result.toISOString()).toBe(iso);
-  });
-
-  // --- Garbage / empty inputs (EDGE-004, EDGE-005) ---
-
-  it("returns null for garbage string", () => {
-    expect(resolvePublishedDate("not a date at all xyz", REF)).toBeNull();
-  });
-
-  it("returns null for empty string", () => {
-    expect(resolvePublishedDate("", REF)).toBeNull();
-  });
-
-  it("returns null for null input", () => {
-    expect(resolvePublishedDate(null, REF)).toBeNull();
-  });
-
-  it("returns null for undefined input", () => {
-    expect(resolvePublishedDate(undefined, REF)).toBeNull();
+    const result = expectDate(raw);
+    switch (expected.kind) {
+      case "relativeHours": {
+        const diffHours = (REF.getTime() - result.getTime()) / (1000 * 60 * 60);
+        expect(diffHours).toBeCloseTo(expected.hours, 0);
+        break;
+      }
+      case "relativeDays": {
+        const diffDays = (REF.getTime() - result.getTime()) / (1000 * 60 * 60 * 24);
+        expect(diffDays).toBeCloseTo(expected.days, 0);
+        break;
+      }
+      case "calendar": {
+        expect(result.getFullYear()).toBe(expected.year);
+        expect(result.getMonth()).toBe(expected.month);
+        expect(result.getDate()).toBe(expected.date);
+        break;
+      }
+      case "iso": {
+        expect(result.toISOString()).toBe(expected.iso);
+        break;
+      }
+    }
   });
 
   // --- Determinism (EDGE-008): two different referenceDates yield correspondingly different results ---

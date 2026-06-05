@@ -77,140 +77,62 @@ describe("createResendProvider — VS-0.1: rate_limit_exceeded error shape", () 
   });
 });
 
-describe("createResendProvider — VS-0.2: retryable vs non-retryable codes", () => {
-  it("marks application_error as retryable", async () => {
-    setupResendMock({
-      data: null,
-      error: { name: "application_error", message: "App error", statusCode: 500 },
-      headers: null,
-    });
-    const provider = createEmailProvider();
-    try {
-      await provider.send({ to: ["t@e.com"], from: "f@e.com", subject: "S", html: "<p>h</p>", text: "t" });
-      expect.fail("should have thrown");
-    } catch (err) {
-      expect(err).toBeInstanceOf(EmailSendError);
-      expect((err as EmailSendError).retryable).toBe(true);
-    }
-  });
+// Sends an email expecting it to throw, and returns the narrowed EmailSendError.
+async function sendExpectingError(): Promise<EmailSendError> {
+  const provider = createEmailProvider();
+  try {
+    await provider.send({ to: ["t@e.com"], from: "f@e.com", subject: "S", html: "<p>h</p>", text: "t" });
+  } catch (err) {
+    if (err instanceof EmailSendError) return err;
+    throw new Error(`expected EmailSendError, got ${String(err)}`, { cause: err });
+  }
+  throw new Error("expected provider.send to throw");
+}
 
-  it("marks internal_server_error as retryable", async () => {
+// VS-0.2 + EDGE-006: each Resend error name maps to a fixed retryable verdict.
+describe("createResendProvider — retryable vs non-retryable codes", () => {
+  it.each<{ name: string; retryable: boolean }>([
+    { name: "rate_limit_exceeded", retryable: true },
+    { name: "application_error", retryable: true },
+    { name: "internal_server_error", retryable: true },
+    { name: "validation_error", retryable: false },
+    { name: "some_unknown_code", retryable: false },
+  ])("marks $name as retryable=$retryable", async ({ name, retryable }) => {
     setupResendMock({
       data: null,
-      error: { name: "internal_server_error", message: "ISE", statusCode: 500 },
+      error: { name, message: `${name} occurred`, statusCode: 500 },
       headers: null,
     });
-    const provider = createEmailProvider();
-    try {
-      await provider.send({ to: ["t@e.com"], from: "f@e.com", subject: "S", html: "<p>h</p>", text: "t" });
-      expect.fail("should have thrown");
-    } catch (err) {
-      expect(err).toBeInstanceOf(EmailSendError);
-      expect((err as EmailSendError).retryable).toBe(true);
-    }
-  });
 
-  it("marks validation_error as non-retryable", async () => {
-    setupResendMock({
-      data: null,
-      error: { name: "validation_error", message: "Invalid email", statusCode: 422 },
-      headers: null,
-    });
-    const provider = createEmailProvider();
-    try {
-      await provider.send({ to: ["t@e.com"], from: "f@e.com", subject: "S", html: "<p>h</p>", text: "t" });
-      expect.fail("should have thrown");
-    } catch (err) {
-      expect(err).toBeInstanceOf(EmailSendError);
-      expect((err as EmailSendError).retryable).toBe(false);
-    }
+    const err = await sendExpectingError();
+    expect(err.retryable).toBe(retryable);
   });
 });
 
-describe("createResendProvider — EDGE-002: retry-after as HTTP-date", () => {
-  it("parses a future HTTP-date to positive ms", async () => {
-    const futureDate = new Date(Date.now() + 5000).toUTCString();
+// EDGE-002/EDGE-003: retry-after header parses to ms (clamped non-negative), or
+// null when absent/garbage. A future HTTP-date asserts >0 (exact ms drifts);
+// every other case asserts an exact ms value.
+describe("createResendProvider — retry-after parsing", () => {
+  const FUTURE_HTTP_DATE = new Date(Date.now() + 5000).toUTCString();
+
+  it.each<{ label: string; retryAfter: string | undefined; expected: number | null | "positive" }>([
+    { label: "future HTTP-date → positive ms", retryAfter: FUTURE_HTTP_DATE, expected: "positive" },
+    { label: "garbage string → null", retryAfter: "not-a-date-or-number", expected: null },
+    { label: "'0' clamps to 0", retryAfter: "0", expected: 0 },
+    { label: "'-5' clamps to 0", retryAfter: "-5", expected: 0 },
+    { label: "absent header → null", retryAfter: undefined, expected: null },
+  ])("$label", async ({ retryAfter, expected }) => {
     setupResendMock({
       data: null,
       error: { name: "rate_limit_exceeded", message: "Rate limited", statusCode: 429 },
-      headers: { "retry-after": futureDate },
+      headers: retryAfter === undefined ? null : { "retry-after": retryAfter },
     });
-    const provider = createEmailProvider();
-    try {
-      await provider.send({ to: ["t@e.com"], from: "f@e.com", subject: "S", html: "<p>h</p>", text: "t" });
-      expect.fail("should have thrown");
-    } catch (err) {
-      expect(err).toBeInstanceOf(EmailSendError);
-      expect((err as EmailSendError).retryAfterMs).toBeGreaterThan(0);
-    }
-  });
 
-  it("returns null retryAfterMs for a garbage retry-after string (EDGE-002 garbage)", async () => {
-    setupResendMock({
-      data: null,
-      error: { name: "rate_limit_exceeded", message: "Rate limited", statusCode: 429 },
-      headers: { "retry-after": "not-a-date-or-number" },
-    });
-    const provider = createEmailProvider();
-    try {
-      await provider.send({ to: ["t@e.com"], from: "f@e.com", subject: "S", html: "<p>h</p>", text: "t" });
-      expect.fail("should have thrown");
-    } catch (err) {
-      expect(err).toBeInstanceOf(EmailSendError);
-      expect((err as EmailSendError).retryAfterMs).toBeNull();
-    }
-  });
-});
-
-describe("createResendProvider — EDGE-003: retry-after zero and negative", () => {
-  it("clamps retry-after '0' to retryAfterMs=0", async () => {
-    setupResendMock({
-      data: null,
-      error: { name: "rate_limit_exceeded", message: "Rate limited", statusCode: 429 },
-      headers: { "retry-after": "0" },
-    });
-    const provider = createEmailProvider();
-    try {
-      await provider.send({ to: ["t@e.com"], from: "f@e.com", subject: "S", html: "<p>h</p>", text: "t" });
-      expect.fail("should have thrown");
-    } catch (err) {
-      expect(err).toBeInstanceOf(EmailSendError);
-      expect((err as EmailSendError).retryAfterMs).toBe(0);
-    }
-  });
-
-  it("clamps retry-after '-5' to retryAfterMs=0", async () => {
-    setupResendMock({
-      data: null,
-      error: { name: "rate_limit_exceeded", message: "Rate limited", statusCode: 429 },
-      headers: { "retry-after": "-5" },
-    });
-    const provider = createEmailProvider();
-    try {
-      await provider.send({ to: ["t@e.com"], from: "f@e.com", subject: "S", html: "<p>h</p>", text: "t" });
-      expect.fail("should have thrown");
-    } catch (err) {
-      expect(err).toBeInstanceOf(EmailSendError);
-      expect((err as EmailSendError).retryAfterMs).toBe(0);
-    }
-  });
-});
-
-describe("createResendProvider — EDGE-006: no Resend error name (null headers)", () => {
-  it("throws EmailSendError with retryable=false when name is unknown", async () => {
-    setupResendMock({
-      data: null,
-      error: { name: "some_unknown_code", message: "Unknown error", statusCode: 500 },
-      headers: null,
-    });
-    const provider = createEmailProvider();
-    try {
-      await provider.send({ to: ["t@e.com"], from: "f@e.com", subject: "S", html: "<p>h</p>", text: "t" });
-      expect.fail("should have thrown");
-    } catch (err) {
-      expect(err).toBeInstanceOf(EmailSendError);
-      expect((err as EmailSendError).retryable).toBe(false);
-      expect((err as EmailSendError).retryAfterMs).toBeNull();
+    const err = await sendExpectingError();
+    if (expected === "positive") {
+      expect(err.retryAfterMs).toBeGreaterThan(0);
+    } else {
+      expect(err.retryAfterMs).toBe(expected);
     }
   });
 });
@@ -231,5 +153,19 @@ describe("createResendProvider — successful send", () => {
       text: "t",
     });
     expect(result.messageId).toBe("msg-abc-123");
+  });
+
+  // ADD: Resend returns neither data nor error (the module-level default mock's
+  // shape). The provider only branches on a non-null error, then reads
+  // `result.data.id` — so this edge throws while dereferencing null data rather
+  // than returning a usable messageId. Asserting the rejection documents the
+  // gap and guards against a regression that silently emits an empty messageId.
+  it("rejects (does not return a messageId) when Resend returns data:null and error:null", async () => {
+    setupResendMock({ data: null, error: null, headers: null });
+
+    const provider = createEmailProvider();
+    await expect(
+      provider.send({ to: ["t@e.com"], from: "f@e.com", subject: "S", html: "<p>h</p>", text: "t" }),
+    ).rejects.toThrow();
   });
 });

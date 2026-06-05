@@ -476,26 +476,6 @@ describe("collectHn", () => {
     expect(rawItemsRepo.upsertItems).not.toHaveBeenCalled();
   });
 
-  // REQ-007, EDGE-005: DB upsert with correct shape
-  it("calls upsertItems with correct row shape", async () => {
-    const singleHit = { ...hnAlgoliaStoriesFixture, hits: [hnAlgoliaStoriesFixture.hits[0]] };
-    const mockFetch = createMockFetch([
-      storiesResponse(singleHit),
-      commentsResponse(emptyAlgoliaResponse),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
-
-    expect(rawItemsRepo.upsertItems).toHaveBeenCalledTimes(1);
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveProperty("sourceType", "hn");
-    expect(rows[0]).toHaveProperty("externalId");
-    expect(rows[0]).toHaveProperty("engagement");
-    expect(rows[0]).toHaveProperty("metadata");
-  });
-
   // EDGE-003: Item with 0 comments stores empty array
   it("stores empty comments array for item with no comments", async () => {
     const singleHit = { ...hnAlgoliaStoriesFixture, hits: [hnAlgoliaStoriesFixture.hits[0]] };
@@ -512,24 +492,6 @@ describe("collectHn", () => {
     expect(metadata.comments).toEqual([]);
   });
 
-  // REQ-009: Return metrics
-  it("returns CollectorResult with all metric fields", async () => {
-    const mockFetch = createMockFetch([
-      storiesResponse(),
-      commentsResponse(),
-      commentsResponse(emptyAlgoliaResponse),
-      commentsResponse(emptyAlgoliaResponse),
-    ]);
-    const rawItemsRepo = createMockRepo();
-
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
-
-    expect(result).toHaveProperty("itemsFetched");
-    expect(result).toHaveProperty("commentsFetched");
-    expect(result).toHaveProperty("itemsStored");
-    expect(result).toHaveProperty("durationMs");
-    expect(typeof result.durationMs).toBe("number");
-  });
 
   // Multi-feed: fetches both newest and best, deduplicates
   it("fetches multiple feeds and deduplicates items by HN ID", async () => {

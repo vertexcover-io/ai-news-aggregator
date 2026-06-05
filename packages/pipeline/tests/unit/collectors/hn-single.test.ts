@@ -75,11 +75,12 @@ describe("parseHnItemIdFromUrl", () => {
 });
 
 describe("fetchHnPost", () => {
-  it("returns a RawItemInsert for a valid HN story URL", async () => {
+  it("returns a RawItemInsert for a valid HN story URL and forwards the AbortSignal", async () => {
     const fetchFn = makeFetch([{ ok: true, status: 200, body: HN_STORY }]);
+    const ac = new AbortController();
     const result = await fetchHnPost(
       "https://news.ycombinator.com/item?id=12345",
-      { fetchFn },
+      { fetchFn, signal: ac.signal },
     );
     expect(result.sourceType).toBe("hn");
     expect(result.externalId).toBe("12345");
@@ -87,6 +88,9 @@ describe("fetchHnPost", () => {
     expect(result.url).toBe("https://example.com/thing");
     expect(result.author).toBe("alice");
     expect(result.engagement).toEqual({ points: 42, commentCount: 7 });
+    // The run-level cancellation signal must reach the underlying fetch.
+    const init = fetchFn.mock.calls[0]?.[1];
+    expect(init?.signal).toBe(ac.signal);
   });
 
   it("returns a RawItemInsert for a valid Algolia story URL", async () => {
@@ -130,24 +134,5 @@ describe("fetchHnPost", () => {
     await expect(
       fetchHnPost("https://news.ycombinator.com/item?id=99999", { fetchFn }),
     ).rejects.toThrow();
-  });
-
-  it("forwards AbortSignal to the underlying fetch call", async () => {
-    const fetchFn = vi.fn((_url: string, init?: RequestInit) =>
-      Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve(HN_STORY),
-        init,
-      }),
-    );
-    const ac = new AbortController();
-    await fetchHnPost("https://news.ycombinator.com/item?id=12345", {
-      fetchFn: fetchFn as unknown as typeof fetch,
-      signal: ac.signal,
-    });
-    expect(fetchFn).toHaveBeenCalledOnce();
-    const init = fetchFn.mock.calls[0]?.[1];
-    expect(init?.signal).toBe(ac.signal);
   });
 });

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PipelineRunArchiveRow, RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { SlackNotifier } from "@newsletter/shared";
+import type { SocialResult } from "@pipeline/social/types.js";
 import { handleLinkedInPostJob } from "@pipeline/workers/linkedin-post.js";
 import { handleTwitterPostJob } from "@pipeline/workers/twitter-post.js";
 
@@ -154,72 +155,18 @@ describe("linkedin-post notifyLinkedinPosted (Phase 2 VS-6, VS-7)", () => {
   });
 
   // VS-7 / REQ-007: skip cases — notifyLinkedinPosted NOT called
-  it("VS-7a: does not call notifyLinkedinPosted when result is skipped", async () => {
+  it.each<{ name: string; result: SocialResult }>([
+    { name: "VS-7a: result is skipped (already_posted)", result: { status: "skipped", reason: "already_posted" } },
+    { name: "VS-7b: result is skipped (no_headline)", result: { status: "skipped", reason: "no_headline" } },
+    { name: "VS-7c: result is failed", result: { status: "failed", reason: "API error" } },
+    { name: "VS-7d: result is posted with null permalink", result: { status: "posted", permalink: null } },
+  ])("does not call notifyLinkedinPosted when $name", async ({ result }) => {
     const archive = makeArchive();
     const archiveRepo = makeRepo(archive);
     const notifyLinkedinPosted = vi.fn(() => Promise.resolve());
     const slackNotifier: SlackNotifier = { ...makeSlack(), notifyLinkedinPosted };
     const linkedinNotifier = {
-      notifyArchiveReady: vi.fn(() =>
-        Promise.resolve({ status: "skipped" as const, reason: "already_posted" as const }),
-      ),
-    };
-
-    await handleLinkedInPostJob(
-      { archiveRepo, linkedinNotifier, slackNotifier },
-      { name: "linkedin-post", id: "job-1", data: {} },
-    );
-
-    expect(notifyLinkedinPosted).not.toHaveBeenCalled();
-  });
-
-  it("VS-7b: does not call notifyLinkedinPosted when result is already_posted skipped", async () => {
-    const archive = makeArchive();
-    const archiveRepo = makeRepo(archive);
-    const notifyLinkedinPosted = vi.fn(() => Promise.resolve());
-    const slackNotifier: SlackNotifier = { ...makeSlack(), notifyLinkedinPosted };
-    const linkedinNotifier = {
-      notifyArchiveReady: vi.fn(() =>
-        Promise.resolve({ status: "skipped" as const, reason: "no_headline" as const }),
-      ),
-    };
-
-    await handleLinkedInPostJob(
-      { archiveRepo, linkedinNotifier, slackNotifier },
-      { name: "linkedin-post", id: "job-1", data: {} },
-    );
-
-    expect(notifyLinkedinPosted).not.toHaveBeenCalled();
-  });
-
-  it("VS-7c: does not call notifyLinkedinPosted when result is failed", async () => {
-    const archive = makeArchive();
-    const archiveRepo = makeRepo(archive);
-    const notifyLinkedinPosted = vi.fn(() => Promise.resolve());
-    const slackNotifier: SlackNotifier = { ...makeSlack(), notifyLinkedinPosted };
-    const linkedinNotifier = {
-      notifyArchiveReady: vi.fn(() =>
-        Promise.resolve({ status: "failed" as const, reason: "API error" }),
-      ),
-    };
-
-    await handleLinkedInPostJob(
-      { archiveRepo, linkedinNotifier, slackNotifier },
-      { name: "linkedin-post", id: "job-1", data: {} },
-    );
-
-    expect(notifyLinkedinPosted).not.toHaveBeenCalled();
-  });
-
-  it("VS-7d: does not call notifyLinkedinPosted when result is posted with null permalink", async () => {
-    const archive = makeArchive();
-    const archiveRepo = makeRepo(archive);
-    const notifyLinkedinPosted = vi.fn(() => Promise.resolve());
-    const slackNotifier: SlackNotifier = { ...makeSlack(), notifyLinkedinPosted };
-    const linkedinNotifier = {
-      notifyArchiveReady: vi.fn(() =>
-        Promise.resolve({ status: "posted" as const, permalink: null }),
-      ),
+      notifyArchiveReady: vi.fn(() => Promise.resolve(result)),
     };
 
     await handleLinkedInPostJob(
@@ -265,53 +212,17 @@ describe("twitter-post notifyTwitterPosted (Phase 2 VS-8, VS-9)", () => {
   });
 
   // VS-9 / REQ-009: skip cases — notifyTwitterPosted NOT called
-  it("VS-9a: does not call notifyTwitterPosted when result is skipped", async () => {
+  it.each<{ name: string; result: SocialResult }>([
+    { name: "VS-9a: result is skipped", result: { status: "skipped", reason: "already_posted" } },
+    { name: "VS-9b: result is failed", result: { status: "failed", reason: "API error" } },
+    { name: "VS-9c: result is posted with null permalink", result: { status: "posted", permalink: null } },
+  ])("does not call notifyTwitterPosted when $name", async ({ result }) => {
     const archive = makeArchive();
     const archiveRepo = makeRepo(archive);
     const notifyTwitterPosted = vi.fn(() => Promise.resolve());
     const slackNotifier: SlackNotifier = { ...makeSlack(), notifyTwitterPosted };
     const twitterNotifier = {
-      notifyArchiveReady: vi.fn(() =>
-        Promise.resolve({ status: "skipped" as const, reason: "already_posted" as const }),
-      ),
-    };
-
-    await handleTwitterPostJob(
-      { archiveRepo, twitterNotifier, slackNotifier },
-      { name: "twitter-post", id: "job-1", data: {} },
-    );
-
-    expect(notifyTwitterPosted).not.toHaveBeenCalled();
-  });
-
-  it("VS-9b: does not call notifyTwitterPosted when result is failed", async () => {
-    const archive = makeArchive();
-    const archiveRepo = makeRepo(archive);
-    const notifyTwitterPosted = vi.fn(() => Promise.resolve());
-    const slackNotifier: SlackNotifier = { ...makeSlack(), notifyTwitterPosted };
-    const twitterNotifier = {
-      notifyArchiveReady: vi.fn(() =>
-        Promise.resolve({ status: "failed" as const, reason: "API error" }),
-      ),
-    };
-
-    await handleTwitterPostJob(
-      { archiveRepo, twitterNotifier, slackNotifier },
-      { name: "twitter-post", id: "job-1", data: {} },
-    );
-
-    expect(notifyTwitterPosted).not.toHaveBeenCalled();
-  });
-
-  it("VS-9c: does not call notifyTwitterPosted when result is posted with null permalink", async () => {
-    const archive = makeArchive();
-    const archiveRepo = makeRepo(archive);
-    const notifyTwitterPosted = vi.fn(() => Promise.resolve());
-    const slackNotifier: SlackNotifier = { ...makeSlack(), notifyTwitterPosted };
-    const twitterNotifier = {
-      notifyArchiveReady: vi.fn(() =>
-        Promise.resolve({ status: "posted" as const, permalink: null }),
-      ),
+      notifyArchiveReady: vi.fn(() => Promise.resolve(result)),
     };
 
     await handleTwitterPostJob(

@@ -346,49 +346,33 @@ describe("createTwitterNotifier", () => {
     expect(result).toEqual({ status: "failed", reason: "unexpected" });
   });
 
-  it("apiClient returns 401 → records auth_failed without retrying", async () => {
-    const { notifier, deps } = build({
-      archive: makeArchive(),
-    });
-    deps.apiClient.createPost.mockResolvedValueOnce({
-      ok: false,
-      status: 401,
-      body: '{"title":"Unauthorized"}',
-    });
+  it.each([
+    { status: 401, body: '{"title":"Unauthorized"}' },
+    { status: 403, body: '{"title":"Forbidden"}' },
+  ])(
+    "apiClient returns $status → records auth_failed without retrying",
+    async ({ status, body }) => {
+      const { notifier, deps } = build({
+        archive: makeArchive(),
+      });
+      deps.apiClient.createPost.mockResolvedValueOnce({
+        ok: false,
+        status,
+        body,
+      });
 
-    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
+      const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
 
-    expect(result).toEqual({ status: "failed", reason: "auth_failed" });
-    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(1);
-    expect(deps.archives.recordSocialFailure).toHaveBeenCalledWith(
-      RUN_ID,
-      "twitter",
-      '401:{"title":"Unauthorized"}',
-    );
-    expect(deps.archives.markTwitterPosted).not.toHaveBeenCalled();
-  });
-
-  it("apiClient returns 403 → records auth_failed without retrying", async () => {
-    const { notifier, deps } = build({
-      archive: makeArchive(),
-    });
-    deps.apiClient.createPost.mockResolvedValueOnce({
-      ok: false,
-      status: 403,
-      body: '{"title":"Forbidden"}',
-    });
-
-    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
-
-    expect(result).toEqual({ status: "failed", reason: "auth_failed" });
-    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(1);
-    expect(deps.archives.recordSocialFailure).toHaveBeenCalledWith(
-      RUN_ID,
-      "twitter",
-      '403:{"title":"Forbidden"}',
-    );
-    expect(deps.archives.markTwitterPosted).not.toHaveBeenCalled();
-  });
+      expect(result).toEqual({ status: "failed", reason: "auth_failed" });
+      expect(deps.apiClient.createPost).toHaveBeenCalledTimes(1);
+      expect(deps.archives.recordSocialFailure).toHaveBeenCalledWith(
+        RUN_ID,
+        "twitter",
+        `${status}:${body}`,
+      );
+      expect(deps.archives.markTwitterPosted).not.toHaveBeenCalled();
+    },
+  );
 
   it("reply tweet failure: head still treated as posted, no recordSocialFailure, only head tweetId stored", async () => {
     const { notifier, deps } = build({

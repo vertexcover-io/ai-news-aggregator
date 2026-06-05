@@ -4,7 +4,7 @@ import type { PipelineRunArchiveRow } from "@pipeline/repositories/run-archives.
 import type { SubscriberSelect } from "@newsletter/shared";
 import { EmailSendError } from "@newsletter/shared";
 
-const { handleEmailSendJob, resolveSendRate, getSharedPacer, resetSharedPacerForTests } = await import("@pipeline/workers/email-send.js");
+const { handleEmailSendJob, resolveSendRate, getSharedPacer, resetSharedPacerForTests, createSendPacer } = await import("@pipeline/workers/email-send.js");
 
 function makeSubscriber(overrides: Partial<SubscriberSelect> = {}): SubscriberSelect {
   return {
@@ -646,6 +646,66 @@ describe("handleEmailSendJob — per-recipient retry", () => {
     expect(deps.emailSendsRepo.create).toHaveBeenCalledTimes(1);
   });
 
+  // A plain (non-EmailSendError) network/timeout throw is matched by the
+  // worker's untyped retry heuristic (timeout/ETIMEDOUT/ECONNRESET) — this is
+  // the SES/fetch path that the EmailSendError-based retry tests never cover.
+  // It must retry once, succeed, create exactly one email_sends row, and honor
+  // the 2-attempt cap.
+  it("retries a plain network Error('connect ETIMEDOUT') once then succeeds (2-attempt cap)", async () => {
+    const archive = makeArchive();
+    const sleepSpy = makeSleepSpy();
+    const sendSpy = vi.fn()
+      .mockRejectedValueOnce(new Error("connect ETIMEDOUT 1.2.3.4:443"))
+      .mockResolvedValueOnce({ messageId: "msg-ok" });
+
+    const notifyEmailDelivery = vi.fn(() => Promise.resolve());
+    const deps = makeDeps(archive, {
+      emailProvider: { send: sendSpy },
+      sleep: sleepSpy,
+      slackNotifier: makeSlackNotifier({ notifyEmailDelivery }),
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    // Exactly 2 attempts (one retry), capped at 2 — not 3.
+    expect(sendSpy).toHaveBeenCalledTimes(2);
+    expect(sleepSpy).toHaveBeenCalledOnce();
+    // The retry-then-success creates exactly one email_sends row.
+    expect(deps.emailSendsRepo.create).toHaveBeenCalledTimes(1);
+    // Delivery summary reflects the eventual success.
+    expect(notifyEmailDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        delivery: expect.objectContaining({ attempted: 1, sent: 1, failed: 0 }),
+      }),
+    );
+  });
+
+  // Companion boundary: a plain Error whose message does NOT match the
+  // network/timeout heuristic (e.g. a generic SES rejection) is NOT retried —
+  // send is called exactly once and the recipient is counted failed.
+  it("does NOT retry a plain non-network Error('SES error') — single attempt, counted failed", async () => {
+    const archive = makeArchive();
+    const sleepSpy = makeSleepSpy();
+    const sendSpy = vi.fn().mockRejectedValue(new Error("SES error"));
+
+    const notifyEmailDelivery = vi.fn(() => Promise.resolve());
+    const deps = makeDeps(archive, {
+      emailProvider: { send: sendSpy },
+      sleep: sleepSpy,
+      slackNotifier: makeSlackNotifier({ notifyEmailDelivery }),
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    expect(sleepSpy).not.toHaveBeenCalled();
+    expect(notifyEmailDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        delivery: expect.objectContaining({ failed: 1, sent: 0 }),
+      }),
+    );
+  });
+
   // REQ-002/EDGE-001: shared pacer persists across two sequential jobs
   it("REQ-002/EDGE-001: shared pacer is the same instance across two job runs", async () => {
     resetSharedPacerForTests();
@@ -674,5 +734,40 @@ describe("handleEmailSendJob — per-recipient retry", () => {
 
     // Acquire called once per job (one subscriber each)
     expect(acquireSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ─── createSendPacer fixed-interval pacing proof ─────────────────────────────
+
+describe("createSendPacer (fixed-interval pacing)", () => {
+  it("paces acquisitions so no 1-sec window exceeds the rate and successive sends are >= 200ms apart", async () => {
+    let virtualNow = 1_000_000;
+    const fakeNow = (): number => virtualNow;
+    const fakeSleep = (ms: number): Promise<void> => {
+      virtualNow += ms;
+      return Promise.resolve();
+    };
+
+    const pacer = createSendPacer(5, { now: fakeNow, sleep: fakeSleep });
+
+    const sendTimestamps: number[] = [];
+    // 12 serialized acquisitions; record the virtual clock at each grant.
+    for (let i = 0; i < 12; i += 1) {
+      await pacer.acquire();
+      sendTimestamps.push(virtualNow);
+    }
+
+    // Sliding-window guarantee: no rolling 1000ms contains more than 5 sends.
+    for (const t of sendTimestamps) {
+      const within = sendTimestamps.filter((s) => s <= t && t - s < 1000).length;
+      expect(within).toBeLessThanOrEqual(5);
+    }
+    // Stronger guarantee from fixed-interval pacing: successive sends are
+    // spaced by at least ceil(1000 / 5) = 200 ms. This is what prevents the
+    // provider from seeing a burst at the window boundary.
+    for (let i = 1; i < sendTimestamps.length; i += 1) {
+      const gap = sendTimestamps[i] - sendTimestamps[i - 1];
+      expect(gap).toBeGreaterThanOrEqual(200);
+    }
   });
 });

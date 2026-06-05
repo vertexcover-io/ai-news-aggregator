@@ -43,25 +43,15 @@ vi.mock("@pipeline/lib/boot.js", () => ({
 import { getRunIdFromJobData } from "../../../src/index.js";
 
 describe("getRunIdFromJobData", () => {
-  it("returns runId string when present", () => {
-    expect(getRunIdFromJobData({ runId: "abc-123" })).toBe("abc-123");
-  });
-
-  it("returns undefined when runId is missing", () => {
-    expect(getRunIdFromJobData({ other: "value" })).toBeUndefined();
-  });
-
-  it("returns undefined when runId is not a string", () => {
-    expect(getRunIdFromJobData({ runId: 123 })).toBeUndefined();
-    expect(getRunIdFromJobData({ runId: null })).toBeUndefined();
-  });
-
-  it("returns undefined for null input", () => {
-    expect(getRunIdFromJobData(null)).toBeUndefined();
-  });
-
-  it("returns undefined for non-object input", () => {
-    expect(getRunIdFromJobData("string")).toBeUndefined();
-    expect(getRunIdFromJobData(42)).toBeUndefined();
+  it.each<{ name: string; input: unknown; expected: string | undefined }>([
+    { name: "runId string is present", input: { runId: "abc-123" }, expected: "abc-123" },
+    { name: "runId is missing", input: { other: "value" }, expected: undefined },
+    { name: "runId is a number", input: { runId: 123 }, expected: undefined },
+    { name: "runId is null", input: { runId: null }, expected: undefined },
+    { name: "input is null", input: null, expected: undefined },
+    { name: "input is a string", input: "string", expected: undefined },
+    { name: "input is a number", input: 42, expected: undefined },
+  ])("returns $expected when $name", ({ input, expected }) => {
+    expect(getRunIdFromJobData(input)).toBe(expected);
   });
 });

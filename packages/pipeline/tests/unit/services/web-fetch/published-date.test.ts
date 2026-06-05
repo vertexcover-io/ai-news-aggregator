@@ -225,54 +225,20 @@ describe("extractPublishedAt — EDGE-003: <time> without datetime attribute", (
 
 // EDGE-010: alternate meta selectors
 describe("extractPublishedAt — EDGE-010: alternate meta selectors", () => {
-  it("matches og:published_time", () => {
+  it.each([
+    { selector: "og:published_time", metaTag: `<meta property="og:published_time" content="2026-08-01T00:00:00Z">`, month: 7, date: 1 },
+    { selector: "meta[itemprop=datePublished]", metaTag: `<meta itemprop="datePublished" content="2026-09-15T00:00:00Z">`, month: 8, date: 15 },
+    { selector: "meta[name=parsely-pub-date]", metaTag: `<meta name="parsely-pub-date" content="2026-10-31T00:00:00Z">`, month: 9, date: 31 },
+    { selector: "meta[name=date]", metaTag: `<meta name="date" content="2026-11-11T00:00:00Z">`, month: 10, date: 11 },
+    { selector: "meta[name=dc.date.issued]", metaTag: `<meta name="dc.date.issued" content="2026-12-25T00:00:00Z">`, month: 11, date: 25 },
+  ])("matches $selector", ({ metaTag, month, date }) => {
     const doc = makeDoc(`<!DOCTYPE html><html><head>
-      <meta property="og:published_time" content="2026-08-01T00:00:00Z">
+      ${metaTag}
     </head><body><article><p>body text</p></article></body></html>`);
     const result = extractPublishedAt(doc);
     expect(result).not.toBeNull();
-    expect(result?.getMonth()).toBe(7); // August = index 7
-    expect(result?.getDate()).toBe(1);
-  });
-
-  it("matches meta[itemprop=datePublished]", () => {
-    const doc = makeDoc(`<!DOCTYPE html><html><head>
-      <meta itemprop="datePublished" content="2026-09-15T00:00:00Z">
-    </head><body><article><p>body text</p></article></body></html>`);
-    const result = extractPublishedAt(doc);
-    expect(result).not.toBeNull();
-    expect(result?.getMonth()).toBe(8); // September = index 8
-    expect(result?.getDate()).toBe(15);
-  });
-
-  it("matches meta[name=parsely-pub-date]", () => {
-    const doc = makeDoc(`<!DOCTYPE html><html><head>
-      <meta name="parsely-pub-date" content="2026-10-31T00:00:00Z">
-    </head><body><article><p>body text</p></article></body></html>`);
-    const result = extractPublishedAt(doc);
-    expect(result).not.toBeNull();
-    expect(result?.getMonth()).toBe(9); // October = index 9
-    expect(result?.getDate()).toBe(31);
-  });
-
-  it("matches meta[name=date]", () => {
-    const doc = makeDoc(`<!DOCTYPE html><html><head>
-      <meta name="date" content="2026-11-11T00:00:00Z">
-    </head><body><article><p>body text</p></article></body></html>`);
-    const result = extractPublishedAt(doc);
-    expect(result).not.toBeNull();
-    expect(result?.getMonth()).toBe(10); // November = index 10
-    expect(result?.getDate()).toBe(11);
-  });
-
-  it("matches meta[name=dc.date.issued]", () => {
-    const doc = makeDoc(`<!DOCTYPE html><html><head>
-      <meta name="dc.date.issued" content="2026-12-25T00:00:00Z">
-    </head><body><article><p>body text</p></article></body></html>`);
-    const result = extractPublishedAt(doc);
-    expect(result).not.toBeNull();
-    expect(result?.getMonth()).toBe(11); // December = index 11
-    expect(result?.getDate()).toBe(25);
+    expect(result?.getMonth()).toBe(month);
+    expect(result?.getDate()).toBe(date);
   });
 });
 
