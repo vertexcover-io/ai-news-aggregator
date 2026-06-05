@@ -1,6 +1,6 @@
 ---
 governs: packages/web/src/pages/
-last_verified_sha: ad0153a
+last_verified_sha: 3ad3477b859f71536aeca7cae4436ef4b490aabf
 key_files: [DashboardPage.tsx, ReviewPage.tsx, SettingsPage.tsx, settingsSchema.ts, HomePage.tsx, ArchivePage.tsx, RunObservabilityPage.tsx, EvalIndexPage.tsx, SourcesPage.tsx, AdminLoginPage.tsx, EvalGradePage.tsx, EvalManualFixturePage.tsx, EvalRunsPage.tsx, SourcesPreviewPage.tsx, AnalyticsPage.tsx]
 flow_fns: [ReviewPage.tsx::ReviewPage, DashboardPage.tsx::DashboardPage, EvalIndexPage.tsx::EvalIndexPage, SettingsPage.tsx::SettingsPage]
 decisions: [D-022, D-023]
@@ -18,7 +18,7 @@ One component per route. Pages are thin — they compose hooks and components, h
 | Page (route) | Effect |
 |---|---|
 | `DashboardPage` (`/admin`) | Runs list (RunsTable/RunsCardList) + ScheduleBanner + Run Now split button + EmptyState for no settings |
-| `ReviewPage` (`/admin/review/:runId`) | Curation UI: ReviewList (DnD) + AddPostPanel + DigestMetaPanel + PoolSection + SaveBar with useBlocker navigation guard |
+| `ReviewPage` (`/admin/review/:runId`) | Curation UI: ReviewList (DnD) + AddPostPanel + DigestMetaPanel + PoolSection + SaveBar with useBlocker navigation guard. When `archive.reviewed === true`, heading switches to "Edit · <date>" and a published-channels banner appears listing channels with non-null sent timestamps (email/linkedin/twitter). |
 | `SettingsPage` (`/admin/settings`) | react-hook-form with zodResolver: SourcesSection, ScheduleSection, AnalyticsSection, Shortlist, RankingPrompt, SocialCredentialsPanel + SaveBar |
 | `HomePage` (`/`) | Public: Hero + TodaysIssueBlock + FromTheCanonBlock + recent issues ArchiveRow list + InlineSubscribeCard + ElsewhereStrip |
 | `ArchivePage` (`/archive/:runId`) | Public: BackToArchive + ArchivePageHeader + ArchiveShareRow + ArchiveStoryCard list + SubscribeInline interlude |
@@ -49,6 +49,11 @@ ReviewPage (the most complex page):
   useReview(runId) → { query, state, isDirty, reorder, remove, addPending, resolvePending, failPending, promotePending, ...updateItemField }
   useReviewFilters() → { shortlistedOnly, toggleShortlisted, selectedSources, toggleSource, ...isFiltered }
   useSourceFacets(runId) → { facets }
+
+  isEdit = query.data.reviewed === true  →  "Edit · <date>" heading (else "Review · <date>")
+  publishedChannels: ["Email" if emailSentAt, "LinkedIn" if linkedinPostedAt, "X" if twitterPostedAt]
+    → isEdit && publishedChannels.length > 0 → amber banner (data-testid="published-channels-banner")
+      "Already published: <channels> — edits won't change those."
 
   Render-time hydration (D-004):
     ├─ Ranked items: completedKey !== hydratedId → setInitial/setCurrent from query.data.rankedItems

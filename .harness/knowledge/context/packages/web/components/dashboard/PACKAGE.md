@@ -1,9 +1,9 @@
 ---
 governs: packages/web/src/components/dashboard/
-last_verified_sha: ad0153a
+last_verified_sha: 3ad3477b859f71536aeca7cae4436ef4b490aabf
 key_files: [RunsTable.tsx, RunsCardList.tsx, CostDialog.tsx, CostButton.tsx, SocialOverflowMenu.tsx, ScheduleBanner.tsx, EmptyState.tsx, cost-format.ts, run-status.tsx]
 flow_fns: [RunsTable.tsx::RunsTable, SocialOverflowMenu.tsx::SocialOverflowMenu]
-decisions: [D-017, D-018]
+decisions: [D-017, D-018, D-027]
 status: active
 ---
 
@@ -21,7 +21,7 @@ Components for the admin dashboard (`/admin`): runs table with dual responsive r
 | `RunsCardList({ runs, onRetry, retrying, onCancel, onDelete })` | Card-based runs list (<640px): stacked cards with same info, shorter format |
 | `CostButton({ costBreakdown, runId })` | Button showing `Cost: $X.XXX`, `Cost: ?` (null breakdown), or plain `Cost` (pre-feature null). Opens `CostDialog` on click. |
 | `CostDialog({ costBreakdown, open, onClose })` | Table: Stage / Calls / In tok / Out tok / Cached / Thinking / Model / Cost columns with stage-aggregate + per-model sub-rows |
-| `SocialOverflowMenu({ run, onLinkedInPost, onTwitterPost })` | ⋮ overflow menu per run row: enabled trigger for unposted eligible runs, "View post ↗" link for posted runs, "✓ Posted" non-link for posted-without-permalink, disabled items for ineligible runs. Confirm dialog on trigger click. |
+| `SocialOverflowMenu({ run, onLinkedInPost, onTwitterPost })` | ⋮ overflow menu per run row: "Edit newsletter" link (enabled for completed+reviewed; includes dry-run); per-channel LinkedIn/X items (enabled trigger for unposted eligible runs, "View post ↗" for posted-with-permalink, "✓ Posted" for posted-without-permalink, disabled for ineligible). Confirm dialog on social trigger click. (D-027) |
 | `ScheduleBanner({ scheduleTime, scheduleTimezone })` | Info banner showing next scheduled run time |
 | `EmptyState()` | "No settings yet — configure your newsletter to get started" CTA |
 | `cost-format.ts` | `formatCostUsd(n)`, `formatTokens(n)` — pure formatting |
@@ -51,11 +51,14 @@ RunsTable → renders tabular run list:
     └─ Cancel (running/cancelling) / Delete (terminal) action
 
 SocialOverflowMenu → per-row social actions:
-  Eligibility: run.status === "completed" && run.reviewed && !run.isDryRun
+  editEligible: run.status === "completed" && run.reviewed (includes dry-run)  (D-027)
+    ├─ editEligible → "Edit newsletter" as enabled <a href="/admin/review/:runId">
+    └─ !editEligible → "Edit newsletter" as disabled menuitem (aria-disabled="true", no href)
+  socialEligible: run.status === "completed" && run.reviewed && !run.isDryRun
     ├─ Per channel (linkedin, twitter):
     │    ├─ channelPostedAt set → "View post ↗" (if permalink) or "✓ Posted" (if no permalink)  (D-018)
-    │    ├─ eligible && !channelPostedAt → enabled trigger → confirm dialog → useTriggerSocialPost mutation
-    │    └─ !eligible → disabled item with reason text
+    │    ├─ socialEligible && !channelPostedAt → enabled trigger → confirm dialog → useTriggerSocialPost mutation
+    │    └─ !socialEligible → disabled item with reason text
     └─ Menu: ⋮ button → dropdown (Portal to body for z-index)
 ```
 
@@ -75,6 +78,14 @@ SocialOverflowMenu → per-row social actions:
 **Tradeoff:** Two date columns take space. Collapsed on mobile to "Started" / "Publish date" lines. Acceptable.
 
 **Governs:** `components/dashboard/RunsTable.tsx`, `components/dashboard/RunsCardList.tsx`
+
+### D-027: Edit newsletter gate includes dry-run; social gate excludes it
+
+**Why:** Editing a dry-run archive (correcting copy, reordering stories) is always safe — the pipeline never sends email or posts social for dry runs. Excluding dry-run from Edit would make the operator manually navigate to the review URL. Social post triggers (LinkedIn, X) are excluded from dry-run by design since the workers check `is_dry_run` before posting.
+
+**Tradeoff:** The "Edit newsletter" item appears in the same overflow menu as social triggers but uses a different eligibility predicate. The asymmetry is intentional and visible in code: `editEligible` omits `!run.isDryRun`; `socialEligible` includes it.
+
+**Governs:** `components/dashboard/SocialOverflowMenu.tsx`
 
 ### D-018: SocialOverflowMenu "✓ Posted" without permalink
 

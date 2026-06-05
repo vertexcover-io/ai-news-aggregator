@@ -1,6 +1,6 @@
 ---
 governs: packages/api/src/routes/
-last_verified_sha: ad0153a
+last_verified_sha: 3ad3477b859f71536aeca7cae4436ef4b490aabf
 key_files: [subscribe.ts, archives.ts, runs.ts, settings.ts, admin-eval.ts, linkedin-oauth.ts, webhooks.ts, admin.ts, admin-runs.ts, admin-must-read.ts, admin-social-credentials.ts, collector-health.ts, archives-search.ts, home.ts, must-read.ts, sources.ts, analytics.ts, analytics-config.ts]
 flow_fns: [subscribe.ts::POST /subscribe, subscribe.ts::GET /confirm, archives.ts::PATCH /:runId, archives.ts::DELETE /:runId, runs.ts::POST /:runId/post/:channel, settings.ts::PUT /, webhooks.ts::POST /ses, linkedin-oauth.ts::POST /start, linkedin-oauth.ts::GET / (callback), collector-health.ts::POST /check, collector-health.ts::GET /]
 decisions: [D-001, D-004, D-007, D-110]
@@ -24,7 +24,7 @@ Route handlers are thin: validate input with zod → call a service or repo → 
 - `analytics.ts` — admin-gated analytics metrics
 - `collector-health.ts` — admin-gated `POST /check` (trigger) + `GET /` (snapshot); mounted under `/api/admin/collector-health` (REQ-023)
 - `archives-search.ts` — public FTS search over archives
-- `archives.ts` — public listing + detail, admin review PATCH, add-post, pool, promote, regenerate-digest-meta, force-send, delete
+- `archives.ts` — public listing + detail (omits admin-only fields), admin review PATCH, add-post, pool, promote, regenerate-digest-meta, force-send, delete. Admin GET (`GET /api/admin/archives/:runId`) additionally exposes `reviewed`, `emailSentAt`, `linkedinPostedAt`, `twitterPostedAt` — these are absent from the public route.
 - `home.ts` — public home page composite (today's issue + featured canon + recent)
 - `linkedin-oauth.ts` — admin POST /start, admin GET /status, public GET /callback
 - `must-read.ts` — public must-read listing
