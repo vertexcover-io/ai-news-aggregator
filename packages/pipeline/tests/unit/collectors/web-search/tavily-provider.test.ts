@@ -74,6 +74,18 @@ describe("TavilyProvider", () => {
     expect(results[0].snippet).toBe(CANNED_RESULT.content);
   });
 
+  // ADD: a query that yields no results must return [] without throwing — the
+  // empty-results path at this provider boundary is otherwise uncovered, and a
+  // mapping bug there would silently drop an entire query's contribution.
+  it("returns [] (no throw) when the SDK responds with an empty results array", async () => {
+    mockSearch.mockResolvedValueOnce({ ...CANNED_RESPONSE, results: [] });
+    const provider = new TavilyProvider({ apiKey: "test-key" });
+
+    const results = await provider.search(BASE_INPUT);
+
+    expect(results).toEqual([]);
+  });
+
   it("maps score → rawScore", async () => {
     mockSearch.mockResolvedValueOnce(CANNED_RESPONSE);
     const provider = new TavilyProvider({ apiKey: "test-key" });

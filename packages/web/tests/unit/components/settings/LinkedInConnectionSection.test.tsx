@@ -175,30 +175,17 @@ describe("LinkedIn Connection section", () => {
       });
     });
 
-    it("renders connectedAs name", () => {
-      renderPanel();
-      expect(screen.getByTestId("linkedin-conn-status")).toBeTruthy();
-      expect(screen.getByTestId("linkedin-conn-status").textContent).toContain("Alice Smith");
-    });
-
-    it("renders expiresAt date", () => {
+    it("renders connectedAs name, expiry, refresh-token ✓, and an enabled Reconnect button", () => {
       renderPanel();
       const status = screen.getByTestId("linkedin-conn-status");
-      // Should contain something date-like from the expiry
-      expect(status.textContent).toContain("2026");
-    });
-
-    it("renders refresh token present indicator (✓)", () => {
-      renderPanel();
-      const status = screen.getByTestId("linkedin-conn-status");
-      expect(status.textContent).toContain("✓");
-    });
-
-    it("renders Reconnect button (not disabled)", () => {
-      renderPanel();
+      expect(status.textContent).toContain("Alice Smith");
+      expect(status.textContent).toContain("2026"); // expiry date
+      expect(status.textContent).toContain("✓"); // refresh token present
       const btn = screen.getByTestId("linkedin-connect-btn");
-      expect(btn).toBeTruthy();
-      expect((btn as HTMLButtonElement).disabled).toBe(false);
+      if (!(btn instanceof HTMLButtonElement)) {
+        throw new Error("expected the connect button to be a <button>");
+      }
+      expect(btn.disabled).toBe(false);
     });
   });
 

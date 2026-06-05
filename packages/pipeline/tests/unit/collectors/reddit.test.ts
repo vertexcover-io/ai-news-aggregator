@@ -243,7 +243,7 @@ describe("collectReddit RSS", () => {
     expect(rows[0].content).toBe("I've been experimenting with local LLM setups. Here are my findings.");
   });
 
-  it("does not fetch per-post RSS comments even when commentsPerItem is configured", async () => {
+  it("ignores configured commentsPerItem: no per-post RSS comment fetch, empty comments stored", async () => {
     const listing = atomFeed(
       postEntry({
         id: "post001",
@@ -251,27 +251,6 @@ describe("collectReddit RSS", () => {
       }),
     );
     const mockFetch = createMockFetch([rssResponse(listing)]);
-    const rawItemsRepo = createMockRepo();
-
-    const result = await collectReddit(
-      { rawItemsRepo, fetchFn: mockFetch },
-      { subreddits: ["MachineLearning"], commentsPerItem: 2, sinceDays: 7 },
-    );
-
-    expect(result.commentsFetched).toBe(0);
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    expect(rows[0].metadata).toEqual({
-      comments: [],
-      sourceUnit: { identifier: "r/machinelearning", displayName: "r/machinelearning" },
-    });
-  });
-
-  it("ignores stale commentsPerItem config and avoids comment request failures", async () => {
-    const listing = atomFeed(postEntry({ id: "post001", title: "New open-source LLM beats GPT-4 on benchmarks" }));
-    const mockFetch = createMockFetch([
-      rssResponse(listing),
-    ]);
     const rawItemsRepo = createMockRepo();
 
     const result = await collectReddit(

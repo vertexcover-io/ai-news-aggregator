@@ -41,25 +41,17 @@ describe("presetRange", () => {
     vi.useRealTimers();
   });
 
-  it("returns last 7 days range ending today", () => {
-    const r = presetRange("last-7-days");
+  it.each<{ preset: Parameters<typeof presetRange>[0]; days: number }>([
+    { preset: "last-7-days", days: 7 },
+    { preset: "last-30-days", days: 30 },
+    { preset: "last-90-days", days: 90 },
+  ])("returns a $days-day range ending today for $preset", ({ preset, days }) => {
+    const r = presetRange(preset);
     if (!r?.from || !r.to) throw new Error("expected range");
-    const days = Math.round((r.to.getTime() - r.from.getTime()) / (1000 * 60 * 60 * 24));
-    expect(days).toBe(7);
-  });
-
-  it("returns last 30 days range", () => {
-    const r = presetRange("last-30-days");
-    if (!r?.from || !r.to) throw new Error("expected range");
-    const days = Math.round((r.to.getTime() - r.from.getTime()) / (1000 * 60 * 60 * 24));
-    expect(days).toBe(30);
-  });
-
-  it("returns last 90 days range", () => {
-    const r = presetRange("last-90-days");
-    if (!r?.from || !r.to) throw new Error("expected range");
-    const days = Math.round((r.to.getTime() - r.from.getTime()) / (1000 * 60 * 60 * 24));
-    expect(days).toBe(90);
+    const actual = Math.round(
+      (r.to.getTime() - r.from.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    expect(actual).toBe(days);
   });
 
   it("returns this-year range from Jan 1 to today", () => {

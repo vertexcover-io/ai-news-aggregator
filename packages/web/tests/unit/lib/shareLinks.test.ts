@@ -43,22 +43,33 @@ describe("buildXShareUrl", () => {
 });
 
 describe("truncateForX", () => {
-  it("returns input unchanged when well within budget", () => {
-    expect(truncateForX("AI news - May 6, 2026", 24)).toBe("AI news - May 6, 2026");
-  });
-
-  it("returns input unchanged at the boundary (length === budget)", () => {
-    const s = "a".repeat(256);
-    expect(truncateForX(s, 24)).toBe(s);
-  });
-
-  it("returns slice(0, budget-1) + ellipsis when over budget", () => {
-    const result = truncateForX("a".repeat(257), 24);
-    expect(result).toBe("a".repeat(255) + "…");
-    expect(result.length).toBe(256);
-  });
-
-  it("returns empty string for empty input", () => {
-    expect(truncateForX("", 24)).toBe("");
+  it.each<{ desc: string; input: string; expected: string; expectedLength?: number }>([
+    {
+      desc: "returns input unchanged when well within budget",
+      input: "AI news - May 6, 2026",
+      expected: "AI news - May 6, 2026",
+    },
+    {
+      desc: "returns input unchanged at the boundary (length === budget)",
+      input: "a".repeat(256),
+      expected: "a".repeat(256),
+    },
+    {
+      desc: "returns slice(0, budget-1) + ellipsis when over budget",
+      input: "a".repeat(257),
+      expected: "a".repeat(255) + "…",
+      expectedLength: 256,
+    },
+    {
+      desc: "returns empty string for empty input",
+      input: "",
+      expected: "",
+    },
+  ])("$desc", ({ input, expected, expectedLength }) => {
+    const result = truncateForX(input, 24);
+    expect(result).toBe(expected);
+    if (expectedLength !== undefined) {
+      expect(result.length).toBe(expectedLength);
+    }
   });
 });

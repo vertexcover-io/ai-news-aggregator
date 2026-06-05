@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { buildTwitterPostedMessage } from "@shared/slack/builders/twitter-posted.js";
 
+function sectionTexts(blocks: unknown[]): string[] {
+  return (blocks as { type: string; text?: { text?: string } }[])
+    .filter((b) => b.type === "section")
+    .map((b) => b.text?.text ?? "");
+}
+
 describe("buildTwitterPostedMessage", () => {
   // VS-8: Twitter posted builder
   it("renders header block with correct text", () => {
@@ -30,20 +36,20 @@ describe("buildTwitterPostedMessage", () => {
     expect(headlineSection?.text.text).toBe("*Big AI week*");
   });
 
-  it("omits headline section when headline is null", () => {
+  it("omits the bolded headline section that the same input renders when a headline is present", () => {
+    const withHeadline = buildTwitterPostedMessage({
+      runId: "run-1",
+      headline: "Big AI week",
+      permalink: "https://x.com/user/status/123",
+    });
+    expect(sectionTexts(withHeadline.blocks)).toContain("*Big AI week*");
+
     const { blocks } = buildTwitterPostedMessage({
       runId: "run-1",
       headline: null,
       permalink: "https://x.com/user/status/123",
     });
-    const sections = blocks.filter(
-      (b) => (b as { type: string }).type === "section",
-    ) as { type: string; text: { text: string } }[];
-    // No section should look like a headline (short bold text)
-    const headlineSection = sections.find((s) =>
-      s.text.text.startsWith("*") && s.text.text.endsWith("*") && s.text.text.length < 60,
-    );
-    expect(headlineSection).toBeUndefined();
+    expect(sectionTexts(blocks)).not.toContain("*Big AI week*");
   });
 
   it("renders permalink as X URL in section block", () => {

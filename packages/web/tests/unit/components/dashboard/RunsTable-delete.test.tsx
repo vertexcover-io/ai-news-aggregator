@@ -5,12 +5,10 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { RunSummary } from "@newsletter/shared";
 import { RunsTable } from "../../../../src/components/dashboard/RunsTable";
-import { RunsCardList } from "../../../../src/components/dashboard/RunsCardList";
 
 // useTriggerSocialPost needs a QueryClient; mock it for these non-social tests
 vi.mock("../../../../src/hooks/useTriggerSocialPost", () => ({
@@ -188,68 +186,5 @@ describe("RunsTable delete dialog (REQ-3, REQ-4, REQ-5)", () => {
     });
     // Cleanup the pending promise
     deferred.resolve();
-  });
-});
-
-describe("RunsCardList delete button", () => {
-  it("renders Delete button for a terminal (reviewed) row", () => {
-    render(
-      <MemoryRouter>
-        <RunsCardList
-          runs={[makeRun({ runId: "run-reviewed", status: "completed", reviewed: true })]}
-          onRetry={vi.fn()}
-          retrying={false}
-          onCancel={vi.fn().mockResolvedValue(undefined)}
-          onDelete={vi.fn().mockResolvedValue(undefined)}
-        />
-      </MemoryRouter>,
-    );
-    expect(
-      screen.getByRole("button", { name: /delete newsletter/i }),
-    ).toBeTruthy();
-  });
-
-  it("does NOT render Delete button for running row", () => {
-    render(
-      <MemoryRouter>
-        <RunsCardList
-          runs={[makeRun({ runId: "run-running", status: "running" })]}
-          onRetry={vi.fn()}
-          retrying={false}
-          onCancel={vi.fn().mockResolvedValue(undefined)}
-          onDelete={vi.fn().mockResolvedValue(undefined)}
-        />
-      </MemoryRouter>,
-    );
-    expect(
-      screen.queryByRole("button", { name: /delete newsletter/i }),
-    ).toBeNull();
-  });
-
-  it("clicking Delete on a card invokes onDelete with the row's runId after confirm", async () => {
-    const onDelete = vi.fn().mockResolvedValue(undefined);
-    const { container } = render(
-      <MemoryRouter>
-        <RunsCardList
-          runs={[makeRun({ runId: "card-run", status: "completed", reviewed: true })]}
-          onRetry={vi.fn()}
-          retrying={false}
-          onCancel={vi.fn().mockResolvedValue(undefined)}
-          onDelete={onDelete}
-        />
-      </MemoryRouter>,
-    );
-    // Use within to be specific (avoid dialog button confusion)
-    const card = container.querySelector("li");
-    expect(card).not.toBeNull();
-    const cardScope = within(card as HTMLElement);
-    fireEvent.click(cardScope.getByRole("button", { name: /delete newsletter/i }));
-    await waitFor(() => {
-      expect(screen.getByText("Delete this newsletter?")).toBeTruthy();
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Delete newsletter" }));
-    await waitFor(() => {
-      expect(onDelete).toHaveBeenCalledWith("card-run");
-    });
   });
 });

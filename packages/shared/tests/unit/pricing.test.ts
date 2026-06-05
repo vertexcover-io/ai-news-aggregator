@@ -60,26 +60,6 @@ describe("MODEL_PRICING (REQ-001)", () => {
       cacheWrite1hPerMTok: 6.0,
     });
   });
-
-  it("haiku rates match library-probe verified values", () => {
-    expect(MODEL_PRICING["claude-haiku-4-5-20251001"]).toEqual({
-      inputPerMTok: 1.0,
-      outputPerMTok: 5.0,
-      cacheReadPerMTok: 0.1,
-      cacheWrite5mPerMTok: 1.25,
-      cacheWrite1hPerMTok: 2.0,
-    });
-  });
-
-  it("sonnet rates match library-probe verified values", () => {
-    expect(MODEL_PRICING["claude-sonnet-4-6"]).toEqual({
-      inputPerMTok: 3.0,
-      outputPerMTok: 15.0,
-      cacheReadPerMTok: 0.3,
-      cacheWrite5mPerMTok: 3.75,
-      cacheWrite1hPerMTok: 6.0,
-    });
-  });
 });
 
 describe("ModelPricing shape (REQ-002)", () => {

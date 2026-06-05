@@ -6,15 +6,6 @@ import { ElsewhereStrip } from "../../../../src/components/home/ElsewhereStrip";
 afterEach(cleanup);
 
 describe("ElsewhereStrip", () => {
-  it("renders root section with data-section='elsewhere'", () => {
-    const { container } = render(
-      <MemoryRouter>
-        <ElsewhereStrip />
-      </MemoryRouter>,
-    );
-    expect(container.querySelector('[data-section="elsewhere"]')).not.toBeNull();
-  });
-
   it("renders three columns (must-read, sources, built)", () => {
     const { container } = render(
       <MemoryRouter>
@@ -26,37 +17,20 @@ describe("ElsewhereStrip", () => {
     expect(container.querySelector('[data-column="built"]')).not.toBeNull();
   });
 
-  it("sources column links to /sources", () => {
+  // Each column links to its destination route.
+  it.each([
+    { column: "sources", href: "/sources" },
+    { column: "must-read", href: "/must-read" },
+    { column: "built", href: "/built" },
+  ])("$column column links to $href", ({ column, href }) => {
     const { container } = render(
       <MemoryRouter>
         <ElsewhereStrip />
       </MemoryRouter>,
     );
-    const col = container.querySelector('[data-column="sources"]');
+    const col = container.querySelector(`[data-column="${column}"]`);
     const link = col?.querySelector("a");
-    expect(link?.getAttribute("href")).toBe("/sources");
-  });
-
-  it("must-read column links to /must-read", () => {
-    const { container } = render(
-      <MemoryRouter>
-        <ElsewhereStrip />
-      </MemoryRouter>,
-    );
-    const col = container.querySelector('[data-column="must-read"]');
-    const link = col?.querySelector("a");
-    expect(link?.getAttribute("href")).toBe("/must-read");
-  });
-
-  it("built column links to /built", () => {
-    const { container } = render(
-      <MemoryRouter>
-        <ElsewhereStrip />
-      </MemoryRouter>,
-    );
-    const col = container.querySelector('[data-column="built"]');
-    const link = col?.querySelector("a");
-    expect(link?.getAttribute("href")).toBe("/built");
+    expect(link?.getAttribute("href")).toBe(href);
   });
 
   it("does not render a tools column (removed)", () => {

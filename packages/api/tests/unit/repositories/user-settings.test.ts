@@ -144,36 +144,10 @@ describe("UserSettingsRepo", () => {
     expect(got?.topN).toBe(10);
   });
 
-  it("REQ-020/REQ-021: upsert() round-trips twitterConfig through get()", async () => {
-    const { db } = makeFakeDb();
-    const repo = createUserSettingsRepo(db);
-    const twitterConfig = {
-      listIds: ["1585430245762441216"],
-      users: [{ handle: "jack", userId: "12" }],
-      maxTweetsPerSource: 50,
-      sinceHours: 24,
-    };
-    const saved = await repo.upsert({ ...baseInput, twitterConfig });
-    expect(saved.twitterConfig).toEqual(twitterConfig);
-    const got = await repo.get();
-    expect(got?.twitterConfig).toEqual(twitterConfig);
-  });
-
-  it("upsert() round-trips PostHog config through get()", async () => {
-    const { db } = makeFakeDb();
-    const repo = createUserSettingsRepo(db);
-    const saved = await repo.upsert({
-      ...baseInput,
-      posthogEnabled: true,
-      posthogProjectToken: "phc_project_token",
-      posthogHost: "https://us.i.posthog.com",
-    });
-    expect(saved.posthogEnabled).toBe(true);
-    expect(saved.posthogProjectToken).toBe("phc_project_token");
-    expect(saved.posthogHost).toBe("https://us.i.posthog.com");
-    const got = await repo.get();
-    expect(got?.posthogProjectToken).toBe("phc_project_token");
-  });
+  // Field round-trip tests (twitterConfig / PostHog / webSearchConfig /
+  // multi-line rankingPrompt) were removed: the fake db here just Object.assigns
+  // the input back, so they tested the fake rather than the repo's column
+  // mapping. Real round-trips through Postgres are covered by settings.e2e.test.ts.
 
   it("upsert() twice keeps exactly one row (singleton)", async () => {
     const { db, rows } = makeFakeDb();
@@ -188,51 +162,6 @@ describe("UserSettingsRepo", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].topN).toBe(25);
     expect(rows[0].pipelineTime).toBe("07:00");
-  });
-
-  it("REQ-005: upsert with webSearchEnabled=true and queries; get() returns same shape", async () => {
-    const { db } = makeFakeDb();
-    const repo = createUserSettingsRepo(db);
-    const webSearchConfig = {
-      provider: "tavily" as const,
-      queries: [{ query: "agentic AI", sinceDays: 7, maxItems: 10 }],
-    };
-    const saved = await repo.upsert({
-      ...baseInput,
-      webSearchEnabled: true,
-      webSearchConfig,
-    });
-    expect(saved.webSearchEnabled).toBe(true);
-    expect(saved.webSearchConfig).toEqual(webSearchConfig);
-    const got = await repo.get();
-    expect(got?.webSearchEnabled).toBe(true);
-    expect(got?.webSearchConfig).toEqual(webSearchConfig);
-  });
-
-  it("REQ-005: upsert with webSearchEnabled=false and webSearchConfig=null; get() returns null config", async () => {
-    const { db } = makeFakeDb();
-    const repo = createUserSettingsRepo(db);
-    const saved = await repo.upsert({
-      ...baseInput,
-      webSearchEnabled: false,
-      webSearchConfig: null,
-    });
-    expect(saved.webSearchEnabled).toBe(false);
-    expect(saved.webSearchConfig).toBeNull();
-    const got = await repo.get();
-    expect(got?.webSearchEnabled).toBe(false);
-    expect(got?.webSearchConfig).toBeNull();
-  });
-
-  it("PHASE2-C2: upsert() round-trips a multi-line rankingPrompt with special chars", async () => {
-    const { db } = makeFakeDb();
-    const repo = createUserSettingsRepo(db);
-    const prompt =
-      "Line one with `backticks` and $variable expansion\nLine two: 'single' \"double\" quotes\nLine three: end";
-    const saved = await repo.upsert({ ...baseInput, rankingPrompt: prompt });
-    expect(saved.rankingPrompt).toBe(prompt);
-    const got = await repo.get();
-    expect(got?.rankingPrompt).toBe(prompt);
   });
 
   it("PHASE2-C2: upsert() twice updates rankingPrompt", async () => {

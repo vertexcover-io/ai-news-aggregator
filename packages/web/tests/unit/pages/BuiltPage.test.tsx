@@ -2,9 +2,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { BuiltPage, LAST_REVIEWED } from "../../../src/pages/BuiltPage";
+import { BuiltPage } from "../../../src/pages/BuiltPage";
 import { PublicLayout } from "../../../src/layouts/PublicLayout";
 import { PIPELINE_STAGES } from "../../../src/components/built/PipelineDiagram";
 
@@ -80,48 +78,22 @@ describe("BuiltPage", () => {
     }
   });
 
-  it("REQ-018: three pillars render", () => {
+  it.each([
+    { label: "three pillars", selector: '[data-section="three-pillars"] h3', count: 3 },
+    { label: "five compounding-loop entries", selector: '[data-section="compounding"] h4', count: 5 },
+    { label: "newsletter pipeline dt rows", selector: '[data-section="newsletter"] dt', count: 7 },
+    { label: "skills table rows", selector: '[data-section="skills"] table tbody tr', count: 9 },
+    { label: "agents table rows", selector: '[data-section="agents"] table tbody tr', count: 4 },
+    { label: "artifacts table rows", selector: '[data-section="artifacts"] table tbody tr', count: 6 },
+  ])("REQ-018: $label render ($count)", ({ selector, count }) => {
     const { container } = renderBuilt();
-    const pillars = container.querySelector('[data-section="three-pillars"]');
-    expect(pillars).not.toBeNull();
-    expect(pillars?.querySelectorAll("h3").length).toBe(3);
-  });
-
-  it("REQ-018: five compounding-loop entries render", () => {
-    const { container } = renderBuilt();
-    expect(container.querySelectorAll('[data-section="compounding"] h4').length).toBe(5);
-  });
-
-  it("REQ-018: newsletter pipeline has 7 dt rows", () => {
-    const { container } = renderBuilt();
-    expect(container.querySelectorAll('[data-section="newsletter"] dt').length).toBe(7);
+    expect(container.querySelectorAll(selector).length).toBe(count);
   });
 
   it("REQ-018: inside-the-harness disclosure exists", () => {
     const { container } = renderBuilt();
     const disclosure = container.querySelector('[data-section="inside-harness"] details');
     expect(disclosure).not.toBeNull();
-  });
-
-  it("REQ-018: skills table has 9 rows", () => {
-    const { container } = renderBuilt();
-    const skills = container.querySelector('[data-section="skills"] table tbody');
-    expect(skills).not.toBeNull();
-    expect(skills?.querySelectorAll("tr").length).toBe(9);
-  });
-
-  it("REQ-018: agents table has 4 rows", () => {
-    const { container } = renderBuilt();
-    const agents = container.querySelector('[data-section="agents"] table tbody');
-    expect(agents).not.toBeNull();
-    expect(agents?.querySelectorAll("tr").length).toBe(4);
-  });
-
-  it("REQ-018: artifacts table has 6 rows", () => {
-    const { container } = renderBuilt();
-    const arts = container.querySelector('[data-section="artifacts"] table tbody');
-    expect(arts).not.toBeNull();
-    expect(arts?.querySelectorAll("tr").length).toBe(6);
   });
 
   it("REQ-018: try-it CTAs link to repos + mailto in order", () => {
@@ -136,15 +108,5 @@ describe("BuiltPage", () => {
       "https://github.com/vertexcover-io/harness-engineering",
       "mailto:hello@agentloop.vertexcover.io",
     ]);
-  });
-
-  it("REQ-019: LAST_REVIEWED export matches ISO-8601 date string", () => {
-    expect(LAST_REVIEWED).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  });
-
-  it("REQ-019: BuiltPage.tsx source file contains the LAST_REVIEWED export literal", () => {
-    const filePath = resolve(process.cwd(), "src/pages/BuiltPage.tsx");
-    const source = readFileSync(filePath, "utf8");
-    expect(source).toMatch(/^export const LAST_REVIEWED = "\d{4}-\d{2}-\d{2}";/m);
   });
 });

@@ -328,28 +328,32 @@ describe("rankCandidates", () => {
     expect(result.rankedItems.map((r) => r.rawItemId).sort()).toEqual([1, 2]);
   });
 
-  it("multiplies LLM score by recencyDecay for a 48h-old item (REQ-066)", async () => {
-    const publishedAt = new Date("2026-04-05T00:00:00Z");
-    const now = new Date("2026-04-07T00:00:00Z"); // 48 h later
-    const candidate = makeCandidate(1, { publishedAt });
+  // REQ-066, REQ-071: a 48h-old item at halfLife 48 has its LLM score multiplied by e^-1
+  it.each([{ score: 90 }, { score: 80 }])(
+    "multiplies LLM score $score by recencyDecay for a 48h-old item",
+    async ({ score }) => {
+      const publishedAt = new Date("2026-04-05T00:00:00Z");
+      const now = new Date("2026-04-07T00:00:00Z"); // 48 h later
+      const candidate = makeCandidate(1, { publishedAt });
 
-    const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 90, rationale: "strong Developer-relevance" })],
-    });
+      const generateObject = makeGenerate({
+        ranked: [makeRankedEntry({ id: 1, score, rationale: "strong Developer-relevance" })],
+      });
 
-    const result = await rankCandidates([candidate], {
-      topN: 5,
-      systemPrompt: TEST_SYSTEM_PROMPT,
-      halfLifeHours: 48,
-      generateObject,
-      loadBodies: stubLoadBodies,
-      now,
-    });
+      const result = await rankCandidates([candidate], {
+        topN: 5,
+        systemPrompt: TEST_SYSTEM_PROMPT,
+        halfLifeHours: 48,
+        generateObject,
+        loadBodies: stubLoadBodies,
+        now,
+      });
 
-    expect(result.rankedItems).toHaveLength(1);
-    const expected = 90 * Math.exp(-1);
-    expect(result.rankedItems[0]?.score).toBeCloseTo(expected, 5);
-  });
+      expect(result.rankedItems).toHaveLength(1);
+      const expected = score * Math.exp(-1);
+      expect(result.rankedItems[0]?.score).toBeCloseTo(expected, 5);
+    },
+  );
 
   it("validates output shape with zod (REQ-067)", async () => {
     const generateObject = vi.fn((args: GenerateArgs) => {
@@ -370,28 +374,6 @@ describe("rankCandidates", () => {
       generateObject,
       loadBodies: stubLoadBodies,
     });
-  });
-
-  it("applies recency decay (REQ-071)", async () => {
-    const publishedAt = new Date("2026-04-05T00:00:00Z");
-    const now = new Date("2026-04-07T00:00:00Z");
-    const candidate = makeCandidate(1, { publishedAt });
-
-    const generateObject = makeGenerate({
-      ranked: [makeRankedEntry({ id: 1, score: 80, rationale: "strong Developer-relevance" })],
-    });
-
-    const result = await rankCandidates([candidate], {
-      topN: 5,
-      systemPrompt: TEST_SYSTEM_PROMPT,
-      halfLifeHours: 48,
-      generateObject,
-      loadBodies: stubLoadBodies,
-      now,
-    });
-
-    const expected = 80 * Math.exp(-1);
-    expect(result.rankedItems[0]?.score).toBeCloseTo(expected, 5);
   });
 
   it("rethrows generateObject failures with informative error (EDGE-011)", async () => {

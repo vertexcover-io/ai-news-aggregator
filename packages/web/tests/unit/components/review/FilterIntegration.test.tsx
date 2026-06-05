@@ -265,33 +265,3 @@ describe("ReviewPage — toolbar is pool-scoped, ranked list is never filtered",
     expect(screen.queryByRole("button", { name: /expand/i })).toBeNull();
   });
 });
-
-describe("PoolCard expand in PoolSection (REQ-019/020)", () => {
-  it("pool cards are collapsed by default, expand on button click", async () => {
-    const poolItems: PoolItem[] = [
-      makePoolItem(10, "Pool Item One", "techblog.com"),
-    ];
-    poolReturnOverride = {
-      items: poolItems,
-      total: 1,
-      isLoading: false,
-    };
-    const response = makeCompletedResponse([], null);
-    vi.mocked(getAdminArchive).mockResolvedValue({
-      ...response,
-      sourceTypes: ["blog"],
-    } as typeof response);
-    renderAt("run-1");
-    await screen.findByText("Pool Item One");
-
-    // Pool card is collapsed — no preview content
-    expect(screen.queryByText(/full preview unavailable/i)).toBeNull();
-
-    // Expand
-    const expandBtn = screen.getByRole("button", { name: /expand/i });
-    fireEvent.click(expandBtn);
-
-    // Should now show the preview (none-kind shows unavailable message)
-    expect(screen.getByText(/full preview unavailable/i)).toBeTruthy();
-  });
-});

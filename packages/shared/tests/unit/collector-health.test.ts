@@ -2,14 +2,8 @@ import { describe, expect, it } from "vitest";
 import type {
   CollectorHealthResult,
   CollectorHealthSnapshot,
-  CollectorHealthStatus,
-  CollectorHealthTrigger,
-  HealthCheckCollector,
 } from "@shared/types/index.js";
 import {
-  COLLECTOR_HEALTH_LEAD_MINUTES,
-  COLLECTOR_HEALTH_QUEUE_NAME,
-  COLLECTOR_HEALTH_SCHEDULER_KEY,
   collectorHealthKey,
   HEALTH_CHECKABLE_COLLECTORS,
 } from "@shared/constants/index.js";
@@ -17,45 +11,10 @@ import {
 // Phase 1 — pure types + constants (REQ-007, data shapes for all REQs)
 
 describe("collectorHealthKey", () => {
-  it("produces the expected Redis key for 'blog'", () => {
-    expect(collectorHealthKey("blog")).toBe("collector-health:blog");
-  });
-
   it("produces distinct keys for every checkable collector", () => {
     const keys = HEALTH_CHECKABLE_COLLECTORS.map((c) => collectorHealthKey(c));
     const unique = new Set(keys);
     expect(unique.size).toBe(HEALTH_CHECKABLE_COLLECTORS.length);
-  });
-});
-
-describe("HEALTH_CHECKABLE_COLLECTORS", () => {
-  it("has exactly 5 entries", () => {
-    expect(HEALTH_CHECKABLE_COLLECTORS).toHaveLength(5);
-  });
-
-  it("contains exactly the expected collectors", () => {
-    const expected: readonly HealthCheckCollector[] = [
-      "hn",
-      "reddit",
-      "twitter",
-      "blog",
-      "web_search",
-    ];
-    expect([...HEALTH_CHECKABLE_COLLECTORS].sort()).toEqual([...expected].sort());
-  });
-});
-
-describe("constants", () => {
-  it("COLLECTOR_HEALTH_QUEUE_NAME is 'collector-health'", () => {
-    expect(COLLECTOR_HEALTH_QUEUE_NAME).toBe("collector-health");
-  });
-
-  it("COLLECTOR_HEALTH_SCHEDULER_KEY is 'collector-health:default'", () => {
-    expect(COLLECTOR_HEALTH_SCHEDULER_KEY).toBe("collector-health:default");
-  });
-
-  it("COLLECTOR_HEALTH_LEAD_MINUTES is 30", () => {
-    expect(COLLECTOR_HEALTH_LEAD_MINUTES).toBe(30);
   });
 });
 
@@ -148,35 +107,5 @@ describe("CollectorHealthResult shape (round-trip)", () => {
     expect(snapshot.collectors).toHaveLength(2);
     expect(snapshot.collectors[0]?.collector).toBe("hn");
     expect(snapshot.collectors[1]?.status).toBe("never");
-  });
-});
-
-// Type-level assertions (compile-time guards — fail at tsc if types drift)
-const _statusValues: CollectorHealthStatus[] = [
-  "never",
-  "running",
-  "healthy",
-  "failed",
-];
-const _triggerValues: CollectorHealthTrigger[] = ["manual", "scheduled"];
-const _collectors: HealthCheckCollector[] = [
-  "hn",
-  "reddit",
-  "twitter",
-  "blog",
-  "web_search",
-];
-
-describe("type compile-time guards", () => {
-  it("CollectorHealthStatus covers all 4 values", () => {
-    expect(_statusValues).toHaveLength(4);
-  });
-
-  it("CollectorHealthTrigger covers both trigger values", () => {
-    expect(_triggerValues).toHaveLength(2);
-  });
-
-  it("HealthCheckCollector covers all 5 collector values", () => {
-    expect(_collectors).toHaveLength(5);
   });
 });

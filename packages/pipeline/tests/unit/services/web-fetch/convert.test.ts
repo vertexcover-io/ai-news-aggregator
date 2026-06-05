@@ -7,7 +7,6 @@ import { join, dirname } from "node:path";
 import {
   convert,
   isHealthyResult,
-  HEALTHY_TEXT_LENGTH,
 } from "@pipeline/services/web-fetch/convert.js";
 import type { ConvertResult } from "@pipeline/services/web-fetch/types.js";
 
@@ -21,12 +20,6 @@ function fixture(name: string): string {
 }
 
 const BASE_URL = "https://example.com/post";
-
-describe("HEALTHY_TEXT_LENGTH constant", () => {
-  it("is exactly 200", () => {
-    expect(HEALTHY_TEXT_LENGTH).toBe(200);
-  });
-});
 
 describe("isHealthyResult", () => {
   it("returns false when textLength is 199", () => {

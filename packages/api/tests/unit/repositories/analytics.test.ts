@@ -37,66 +37,73 @@ function makeFakeDb(counts: [number, number, number, number, number, number, num
 const from = new Date("2026-01-01");
 const to = new Date("2026-02-01");
 
-describe("AnalyticsRepo.getMetrics — empty DB", () => {
-  it("REQ-AR01: returns 0 for all counts when DB is empty", async () => {
-    const db = makeFakeDb([0, 0, 0, 0, 0, 0, 0]);
-    const repo = createAnalyticsRepo(db);
-    const result = await repo.getMetrics({ from, to });
-    expect(result.totalSubscriptions).toBe(0);
-    expect(result.totalUnsubscriptions).toBe(0);
-    expect(result.emailsSent).toBe(0);
-    expect(result.bounces).toBe(0);
-    expect(result.complaints).toBe(0);
-    expect(result.opens).toBe(0);
-    expect(result.clicks).toBe(0);
-  });
-});
+interface MetricsCase {
+  readonly name: string;
+  readonly counts: [number, number, number, number, number, number, number];
+  readonly expected: {
+    totalSubscriptions: number;
+    totalUnsubscriptions: number;
+    emailsSent: number;
+    bounces: number;
+    complaints: number;
+    opens: number;
+    clicks: number;
+  };
+}
 
-describe("AnalyticsRepo.getMetrics — with data", () => {
-  it("REQ-AR02: maps counts to correct metric fields in order", async () => {
-    const db = makeFakeDb([5, 2, 10, 3, 1, 20, 8]);
-    const repo = createAnalyticsRepo(db);
-    const result = await repo.getMetrics({ from, to });
-    expect(result.totalSubscriptions).toBe(5);
-    expect(result.totalUnsubscriptions).toBe(2);
-    expect(result.emailsSent).toBe(10);
-    expect(result.bounces).toBe(3);
-    expect(result.complaints).toBe(1);
-    expect(result.opens).toBe(20);
-    expect(result.clicks).toBe(8);
-  });
+describe("AnalyticsRepo.getMetrics — positional count mapping", () => {
+  // The 7 parallel count queries map positionally onto the metric fields.
+  // Empty / typical / large-count are one mapping behavior over different
+  // inputs; the old "exactly 7 queries" test asserted an implementation detail.
+  const cases: MetricsCase[] = [
+    {
+      name: "empty DB → all zeros",
+      counts: [0, 0, 0, 0, 0, 0, 0],
+      expected: {
+        totalSubscriptions: 0,
+        totalUnsubscriptions: 0,
+        emailsSent: 0,
+        bounces: 0,
+        complaints: 0,
+        opens: 0,
+        clicks: 0,
+      },
+    },
+    {
+      name: "typical counts map to fields in order",
+      counts: [5, 2, 10, 3, 1, 20, 8],
+      expected: {
+        totalSubscriptions: 5,
+        totalUnsubscriptions: 2,
+        emailsSent: 10,
+        bounces: 3,
+        complaints: 1,
+        opens: 20,
+        clicks: 8,
+      },
+    },
+    {
+      name: "large counts without overflow",
+      counts: [1000000, 500000, 999999, 100, 50, 800000, 300000],
+      expected: {
+        totalSubscriptions: 1000000,
+        totalUnsubscriptions: 500000,
+        emailsSent: 999999,
+        bounces: 100,
+        complaints: 50,
+        opens: 800000,
+        clicks: 300000,
+      },
+    },
+  ];
 
-  it("REQ-AR03: returns all zeros when all counts are zero", async () => {
-    const db = makeFakeDb([0, 0, 0, 0, 0, 0, 0]);
-    const repo = createAnalyticsRepo(db);
-    const result = await repo.getMetrics({ from, to });
-    expect(Object.values(result).every((v) => v === 0)).toBe(true);
-  });
-
-  it("REQ-AR04: handles large counts without overflow", async () => {
-    const db = makeFakeDb([1000000, 500000, 999999, 100, 50, 800000, 300000]);
-    const repo = createAnalyticsRepo(db);
-    const result = await repo.getMetrics({ from, to });
-    expect(result.totalSubscriptions).toBe(1000000);
-    expect(result.emailsSent).toBe(999999);
-    expect(result.opens).toBe(800000);
-  });
-
-  it("REQ-AR05: runs exactly 7 parallel count queries", async () => {
-    let callCount = 0;
-    const db = {
-      select: () => ({
-        from: () => ({
-          where: () => {
-            callCount++;
-            return Promise.resolve([{ value: 0 }] as CountResult);
-          },
-        }),
-      }),
-    } as unknown as Pick<AppDb, "select">;
-
-    const repo = createAnalyticsRepo(db);
-    await repo.getMetrics({ from, to });
-    expect(callCount).toBe(7);
-  });
+  it.each(cases)(
+    "REQ-AR01/02/04: $name",
+    async ({ counts, expected }) => {
+      const db = makeFakeDb(counts);
+      const repo = createAnalyticsRepo(db);
+      const result = await repo.getMetrics({ from, to });
+      expect(result).toEqual(expected);
+    },
+  );
 });

@@ -2,6 +2,12 @@ import { describe, it, expect } from "vitest";
 import { buildEmailDeliveryMessage } from "@shared/slack/builders/email-delivery.js";
 import type { DeliveryCounts } from "@shared/slack/types.js";
 
+function sectionTexts(blocks: unknown[]): string[] {
+  return (blocks as { type: string; text?: { text?: string } }[])
+    .filter((b) => b.type === "section")
+    .map((b) => b.text?.text ?? "");
+}
+
 describe("buildEmailDeliveryMessage", () => {
   // VS-4: email delivery builder
   it("renders header block with correct text", () => {
@@ -39,25 +45,19 @@ describe("buildEmailDeliveryMessage", () => {
     expect(headlineSection?.text.text).toBe("*Today in AI*");
   });
 
-  it("omits headline section when headline is null", () => {
+  it("omits the bolded headline section that the same input renders when a headline is present", () => {
     const delivery: DeliveryCounts = {
       attempted: 5,
       sent: 5,
       failed: 0,
     };
-    const { blocks } = buildEmailDeliveryMessage({
-      runId: "run-1",
-      headline: null,
-      delivery,
-    });
-    const sections = blocks.filter(
-      (b) => (b as { type: string }).type === "section",
-    ) as { type: string; text: { text: string } }[];
-    // No section should start with * and end with * (a headline) — only distribution and context expected
-    const headlineLikeSection = sections.find((s) =>
-      s.text.text.startsWith("*") && s.text.text.endsWith("*") && s.text.text.length < 60,
-    );
-    expect(headlineLikeSection).toBeUndefined();
+    // Render once WITH a headline to capture the exact bolded section text,
+    // then assert that exact section is absent when the headline is null.
+    const withHeadline = buildEmailDeliveryMessage({ runId: "run-1", headline: "Today in AI", delivery });
+    expect(sectionTexts(withHeadline.blocks)).toContain("*Today in AI*");
+
+    const { blocks } = buildEmailDeliveryMessage({ runId: "run-1", headline: null, delivery });
+    expect(sectionTexts(blocks)).not.toContain("*Today in AI*");
   });
 
   it("renders 'Sent to X/Y subscribers (Z failed)' when there are failures", () => {

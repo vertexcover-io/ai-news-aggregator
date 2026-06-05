@@ -67,21 +67,10 @@ describe("reconcileCollectorHealthSchedule", () => {
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
   });
 
-  it("REQ-011: changing pipelineTime changes the cron pattern", async () => {
-    const queue1 = makeQueue();
-    await reconcileCollectorHealthSchedule(queue1, baseSettings({ pipelineTime: "09:30" }));
-    const call1 = queue1.upsertJobScheduler.mock.calls[0];
-    const pattern1 = (call1[1] as { pattern: string }).pattern;
-
-    const queue2 = makeQueue();
-    await reconcileCollectorHealthSchedule(queue2, baseSettings({ pipelineTime: "14:00" }));
-    const call2 = queue2.upsertJobScheduler.mock.calls[0];
-    const pattern2 = (call2[1] as { pattern: string }).pattern;
-
-    expect(pattern1).not.toBe(pattern2);
-    expect(pattern1).toBe(toCronMinusMinutes("09:30", COLLECTOR_HEALTH_LEAD_MINUTES));
-    expect(pattern2).toBe(toCronMinusMinutes("14:00", COLLECTOR_HEALTH_LEAD_MINUTES));
-  });
+  // "changing pipelineTime changes the cron pattern" was removed: it asserted
+  // pattern1 !== pattern2 and then re-derived both via the same
+  // toCronMinusMinutes — tautological and redundant with the explicit-pattern
+  // cases (REQ-011 above and EDGE-007 below).
 
   it("REQ-012: scheduleEnabled=false -> removeJobScheduler, no upsert", async () => {
     const queue = makeQueue();

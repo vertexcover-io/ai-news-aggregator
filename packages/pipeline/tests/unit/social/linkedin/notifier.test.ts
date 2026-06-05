@@ -416,50 +416,35 @@ describe("createLinkedInNotifier", () => {
     expect(deps.archives.markLinkedInPosted).not.toHaveBeenCalled();
   });
 
-  it("apiClient returns 401 then ok → forces refresh, retry succeeds, marks posted", async () => {
-    const { notifier, deps } = build({
-      archive: makeArchive(),
-      tokenRow: makeTokenRow(), // DB says still-valid (FUTURE)
-    });
-    deps.apiClient.createPost
-      .mockResolvedValueOnce({ ok: false, status: 401, body: "unauthorized" })
-      .mockResolvedValueOnce({ ok: true, postUrn: "urn:li:share:retry-1" });
+  it.each([
+    { status: 401, body: "unauthorized", postUrn: "urn:li:share:retry-1" },
+    { status: 403, body: "forbidden", postUrn: "urn:li:share:retry-2" },
+  ])(
+    "apiClient returns $status then ok → forces refresh, retry succeeds, marks posted",
+    async ({ status, body, postUrn }) => {
+      const { notifier, deps } = build({
+        archive: makeArchive(),
+        tokenRow: makeTokenRow(), // DB says still-valid (FUTURE)
+      });
+      deps.apiClient.createPost
+        .mockResolvedValueOnce({ ok: false, status, body })
+        .mockResolvedValueOnce({ ok: true, postUrn });
 
-    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
+      const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
 
-    expect(result).toEqual({
-      status: "posted",
-      permalink: "urn:li:share:retry-1",
-    });
-    expect(deps.refreshFn).toHaveBeenCalledTimes(1);
-    expect(deps.apiClient.createPost).toHaveBeenCalledTimes(2);
-    expect(deps.apiClient.createPost.mock.calls[0][0].accessToken).toBe(
-      "access-1",
-    );
-    expect(deps.apiClient.createPost.mock.calls[1][0].accessToken).toBe(
-      "access-2",
-    );
-    expect(deps.archives.markLinkedInPosted).toHaveBeenCalledTimes(1);
-    expect(deps.archives.recordSocialFailure).not.toHaveBeenCalled();
-  });
-
-  it("apiClient returns 403 then ok → same retry path", async () => {
-    const { notifier, deps } = build({
-      archive: makeArchive(),
-      tokenRow: makeTokenRow(),
-    });
-    deps.apiClient.createPost
-      .mockResolvedValueOnce({ ok: false, status: 403, body: "forbidden" })
-      .mockResolvedValueOnce({ ok: true, postUrn: "urn:li:share:retry-2" });
-
-    const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
-
-    expect(result).toEqual({
-      status: "posted",
-      permalink: "urn:li:share:retry-2",
-    });
-    expect(deps.refreshFn).toHaveBeenCalledTimes(1);
-  });
+      expect(result).toEqual({ status: "posted", permalink: postUrn });
+      expect(deps.refreshFn).toHaveBeenCalledTimes(1);
+      expect(deps.apiClient.createPost).toHaveBeenCalledTimes(2);
+      expect(deps.apiClient.createPost.mock.calls[0][0].accessToken).toBe(
+        "access-1",
+      );
+      expect(deps.apiClient.createPost.mock.calls[1][0].accessToken).toBe(
+        "access-2",
+      );
+      expect(deps.archives.markLinkedInPosted).toHaveBeenCalledTimes(1);
+      expect(deps.archives.recordSocialFailure).not.toHaveBeenCalled();
+    },
+  );
 
   it("apiClient returns non-auth error (500) → no retry", async () => {
     const { notifier, deps } = build({

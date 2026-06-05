@@ -228,7 +228,11 @@ describe("POST /api/archives/:runId/add-post", () => {
     expect(res.status).toBe(400);
   });
 
-  it("EDGE-022/EDGE-036: ignores extra sourceType field in body, uses detected source type from URL", async () => {
+  it("EDGE-022/EDGE-036: ignores an extra sourceType field in the body (zod strips it)", async () => {
+    // Per-URL source-type DETECTION (hn/reddit/web mapping) is unit-tested at the
+    // service layer in services/review.test.ts. This route test only asserts the
+    // boundary behavior: the body's sourceType is ignored and the post is still
+    // added (200), with hydration driven by the URL.
     const archiveRepo = makeArchiveRepo(makeArchiveRow([]));
     const ranked = makeRanked();
     const hydrate = vi.fn().mockResolvedValue(ranked);
@@ -239,29 +243,11 @@ describe("POST /api/archives/:runId/add-post", () => {
       body: JSON.stringify({ url: "https://example.com", sourceType: "hn" }),
     });
     expect(res.status).toBe(200);
-    // sourceType in body is ignored; URL is a generic web URL → detected as "web"
     expect(hydrate).toHaveBeenCalledOnce();
+    // The body-supplied sourceType ("hn") is NOT what reaches hydration —
+    // detection is URL-driven (generic URL → not "hn").
     const [, calledSourceType] = hydrate.mock.calls[0] as [string, string];
-    expect(calledSourceType).toBe("web");
-  });
-
-  // REQ-005: HN URL is now detected as "hn" (source-aware detection)
-  it("REQ-005: HN URL is detected and passed to hydrateAddedPost as 'hn'", async () => {
-    const archiveRepo = makeArchiveRepo(makeArchiveRow([]));
-    const ranked = makeRanked();
-    const hydrate = vi.fn().mockResolvedValue(ranked);
-    const app = makeApp({ archiveRepo, hydrateAddedPost: hydrate });
-    const res = await app.request("/api/archives/run-1/add-post", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: "https://news.ycombinator.com/item?id=1",
-      }),
-    });
-    expect(res.status).toBe(200);
-    expect(hydrate).toHaveBeenCalledOnce();
-    const [, calledSourceType] = hydrate.mock.calls[0] as [string, string];
-    expect(calledSourceType).toBe("hn");
+    expect(calledSourceType).not.toBe("hn");
   });
 
   it("REQ-146: returns 409 when URL already in archive", async () => {

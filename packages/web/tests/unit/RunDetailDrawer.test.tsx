@@ -145,47 +145,35 @@ describe("RunDetailDrawer", () => {
     expect(panel.contains(costTable)).toBe(true);
   });
 
-  it("REQ-005: a running run defaults to the Prompt & Cost tab", async () => {
-    getEvalRunMock.mockResolvedValue(
-      makeRun({
-        status: "running",
-        finishedAt: null,
+  // REQ-005: runs without report data default to the Prompt & Cost tab,
+  // whether they are running, failed, or a legacy done run.
+  it.each<{ label: string; overrides: Partial<EvalRun> }>([
+    {
+      label: "running run",
+      overrides: { status: "running", finishedAt: null, scoreBreakdown: null, costBreakdown: null },
+    },
+    {
+      label: "failed run",
+      overrides: {
+        status: "failed",
+        finishedAt: "2026-05-21T19:14:30.000Z",
         scoreBreakdown: null,
         costBreakdown: null,
-      }),
-    );
+        errorMessage: "rerank stage threw",
+      },
+    },
+    {
+      label: "legacy done run with no report data",
+      overrides: {},
+    },
+  ])("REQ-005: a $label defaults to the Prompt & Cost tab", async ({ overrides }) => {
+    getEvalRunMock.mockResolvedValue(makeRun(overrides));
     renderDrawer();
     const tab = await screen.findByTestId("drawer-tab-prompt-cost");
     await waitFor(() => {
       expect(tab.getAttribute("aria-selected")).toBe("true");
     });
     await screen.findByTestId("drawer-tab-panel-prompt-cost");
-  });
-
-  it("REQ-005: a failed run defaults to the Prompt & Cost tab", async () => {
-    getEvalRunMock.mockResolvedValue(
-      makeRun({
-        status: "failed",
-        finishedAt: "2026-05-21T19:14:30.000Z",
-        scoreBreakdown: null,
-        costBreakdown: null,
-        errorMessage: "rerank stage threw",
-      }),
-    );
-    renderDrawer();
-    const tab = await screen.findByTestId("drawer-tab-prompt-cost");
-    await waitFor(() => {
-      expect(tab.getAttribute("aria-selected")).toBe("true");
-    });
-  });
-
-  it("REQ-005: a legacy done run with no report data defaults to the Prompt & Cost tab", async () => {
-    getEvalRunMock.mockResolvedValue(makeRun());
-    renderDrawer();
-    const tab = await screen.findByTestId("drawer-tab-prompt-cost");
-    await waitFor(() => {
-      expect(tab.getAttribute("aria-selected")).toBe("true");
-    });
   });
 
   it("shows running placeholders for a running run", async () => {

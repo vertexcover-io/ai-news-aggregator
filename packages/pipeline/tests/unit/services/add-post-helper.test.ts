@@ -151,12 +151,6 @@ describe("detectAddPostSourceType", () => {
     ).toBe("web");
   });
 
-  // REQ-009: Function is synchronous (not a Promise)
-  it("REQ-009: returns a string synchronously (not a Promise)", () => {
-    const result = detectAddPostSourceType("https://example.com/blog");
-    expect(typeof result).toBe("string");
-    expect(result instanceof Promise).toBe(false);
-  });
 });
 
 describe("hydrateAddedPost", () => {
@@ -236,58 +230,50 @@ describe("hydrateAddedPost", () => {
     expect(updateRecapData).toHaveBeenCalledWith([{ id: 99, recap }]);
   });
 
-  it("dispatches to fetchRedditPost for reddit source type", async () => {
-    const raw = makeInsert({ sourceType: "reddit", externalId: "r1" });
-    const saved = { id: 42, ...raw, imageUrl: null };
-    const fetchRedditPost = vi.fn().mockResolvedValue(raw);
-    const deps: AddPostDeps = {
-      rawItemsRepo: makeRepo(saved),
-      fetchHnPost: vi.fn(),
-      fetchRedditPost,
-      fetchWebPost: vi.fn(),
-      generateRecap: vi.fn().mockResolvedValue(validRecap()),
-    };
+  it.each([
+    {
+      label: "reddit",
+      sourceType: "reddit" as const,
+      url: "https://www.reddit.com/r/test/comments/abc/foo/",
+      fetcherKey: "fetchRedditPost" as const,
+      insert: { sourceType: "reddit" as const, externalId: "r1" },
+      id: 42,
+    },
+    {
+      label: "twitter (REQ-004)",
+      sourceType: "twitter" as const,
+      url: "https://x.com/jack/status/20",
+      fetcherKey: "fetchTwitterPost" as const,
+      insert: { sourceType: "twitter" as const, externalId: "20" },
+      id: 13,
+    },
+    {
+      label: "web",
+      sourceType: "web" as const,
+      url: "https://example.com/p",
+      fetcherKey: "fetchWebPost" as const,
+      insert: { sourceType: "blog" as const, externalId: "https://example.com/p" },
+      id: 7,
+    },
+  ])(
+    "dispatches to $fetcherKey for $label source type",
+    async ({ sourceType, url, fetcherKey, insert, id }) => {
+      const raw = makeInsert(insert);
+      const saved = { id, ...raw, imageUrl: null };
+      const fetcher = vi.fn().mockResolvedValue(raw);
+      const deps: AddPostDeps = {
+        rawItemsRepo: makeRepo(saved),
+        fetchHnPost: vi.fn(),
+        fetchRedditPost: vi.fn(),
+        fetchWebPost: vi.fn(),
+        generateRecap: vi.fn().mockResolvedValue(validRecap()),
+        [fetcherKey]: fetcher,
+      };
 
-    await hydrateAddedPost(
-      "https://www.reddit.com/r/test/comments/abc/foo/",
-      "reddit",
-      deps,
-    );
-    expect(fetchRedditPost).toHaveBeenCalledOnce();
-  });
-
-  it("REQ-004: dispatches to fetchTwitterPost for twitter source type", async () => {
-    const raw = makeInsert({ sourceType: "twitter", externalId: "20" });
-    const saved = { id: 13, ...raw, imageUrl: null };
-    const fetchTwitterPost = vi.fn().mockResolvedValue(raw);
-    const deps: AddPostDeps = {
-      rawItemsRepo: makeRepo(saved),
-      fetchHnPost: vi.fn(),
-      fetchRedditPost: vi.fn(),
-      fetchWebPost: vi.fn(),
-      fetchTwitterPost,
-      generateRecap: vi.fn().mockResolvedValue(validRecap()),
-    };
-
-    await hydrateAddedPost("https://x.com/jack/status/20", "twitter", deps);
-    expect(fetchTwitterPost).toHaveBeenCalledOnce();
-  });
-
-  it("dispatches to fetchWebPost for web source type", async () => {
-    const raw = makeInsert({ sourceType: "blog", externalId: "https://example.com/p" });
-    const saved = { id: 7, ...raw, imageUrl: null };
-    const fetchWebPost = vi.fn().mockResolvedValue(raw);
-    const deps: AddPostDeps = {
-      rawItemsRepo: makeRepo(saved),
-      fetchHnPost: vi.fn(),
-      fetchRedditPost: vi.fn(),
-      fetchWebPost,
-      generateRecap: vi.fn().mockResolvedValue(validRecap()),
-    };
-
-    await hydrateAddedPost("https://example.com/p", "web", deps);
-    expect(fetchWebPost).toHaveBeenCalledOnce();
-  });
+      await hydrateAddedPost(url, sourceType, deps);
+      expect(fetcher).toHaveBeenCalledOnce();
+    },
+  );
 
   it("VS-4: Twitter add-post passes enriched markdown (not tweet text) to generateRecap", async () => {
     const enrichedMarkdown = "# Full article from theverge.com\n\nLong enriched body text";

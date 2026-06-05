@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { buildLinkedinPostedMessage } from "@shared/slack/builders/linkedin-posted.js";
 
+function sectionTexts(blocks: unknown[]): string[] {
+  return (blocks as { type: string; text?: { text?: string } }[])
+    .filter((b) => b.type === "section")
+    .map((b) => b.text?.text ?? "");
+}
+
 describe("buildLinkedinPostedMessage", () => {
   // VS-6: LinkedIn posted builder
   it("renders header block with correct text", () => {
@@ -30,20 +36,20 @@ describe("buildLinkedinPostedMessage", () => {
     expect(headlineSection?.text.text).toBe("*LLMs Take Over Enterprise*");
   });
 
-  it("omits headline section when headline is null", () => {
+  it("omits the bolded headline section that the same input renders when a headline is present", () => {
+    const withHeadline = buildLinkedinPostedMessage({
+      runId: "run-1",
+      headline: "LLMs Take Over Enterprise",
+      permalink: "urn:li:share:123",
+    });
+    expect(sectionTexts(withHeadline.blocks)).toContain("*LLMs Take Over Enterprise*");
+
     const { blocks } = buildLinkedinPostedMessage({
       runId: "run-1",
       headline: null,
       permalink: "urn:li:share:123",
     });
-    const sections = blocks.filter(
-      (b) => (b as { type: string }).type === "section",
-    ) as { type: string; text: { text: string } }[];
-    // No section should look like a headline (short bold text)
-    const headlineSection = sections.find((s) =>
-      s.text.text.startsWith("*") && s.text.text.endsWith("*") && s.text.text.length < 60,
-    );
-    expect(headlineSection).toBeUndefined();
+    expect(sectionTexts(blocks)).not.toContain("*LLMs Take Over Enterprise*");
   });
 
   it("renders permalink as LinkedIn URL in section block", () => {

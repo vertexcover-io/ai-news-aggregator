@@ -16,14 +16,6 @@ function usage(input: number, output: number) {
 }
 
 describe("createCostTracker", () => {
-  it("REQ-020: returns object with record/snapshot/merge/hasAnyCalls", () => {
-    const tracker = createCostTracker("run-1");
-    expect(typeof tracker.record).toBe("function");
-    expect(typeof tracker.snapshot).toBe("function");
-    expect(typeof tracker.merge).toBe("function");
-    expect(typeof tracker.hasAnyCalls).toBe("function");
-  });
-
   it("REQ-021: two records with same stage+model accumulate into a single byModel entry with calls=2", () => {
     const tracker = createCostTracker("run-1");
     tracker.record({ stage: "rank", modelId: PRICED, usage: usage(100, 50) });

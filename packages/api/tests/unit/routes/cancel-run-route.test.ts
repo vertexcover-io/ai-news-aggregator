@@ -121,47 +121,28 @@ describe("POST /api/runs/:runId/cancel", () => {
     expect(redis.publish).not.toHaveBeenCalled();
   });
 
-  it("REQ-03: returns 409 with { error, status } when run is 'completed'", async () => {
-    const runId = "run-xyz";
-    const state = seededRunState({ id: runId, status: "completed" });
-    const redis = makeRedis({ [runKey(runId)]: JSON.stringify(state) });
-    const app = buildApp({ redis });
+  it.each<{ status: RunState["status"] }>([
+    { status: "completed" },
+    { status: "failed" },
+    { status: "cancelled" },
+  ])(
+    "REQ-03: returns 409 with { error, status } when run is '$status'",
+    async ({ status }) => {
+      const runId = "run-xyz";
+      const state = seededRunState({ id: runId, status });
+      const redis = makeRedis({ [runKey(runId)]: JSON.stringify(state) });
+      const app = buildApp({ redis });
 
-    const res = await app.request(`/api/runs/${runId}/cancel`, {
-      method: "POST",
-    });
+      const res = await app.request(`/api/runs/${runId}/cancel`, {
+        method: "POST",
+      });
 
-    expect(res.status).toBe(409);
-    const body = (await res.json()) as { error: string; status: string };
-    expect(body.error).toBe("run is not cancellable");
-    expect(body.status).toBe("completed");
-  });
-
-  it("REQ-03: returns 409 when run is 'failed'", async () => {
-    const runId = "run-xyz";
-    const state = seededRunState({ id: runId, status: "failed" });
-    const redis = makeRedis({ [runKey(runId)]: JSON.stringify(state) });
-    const app = buildApp({ redis });
-
-    const res = await app.request(`/api/runs/${runId}/cancel`, {
-      method: "POST",
-    });
-
-    expect(res.status).toBe(409);
-  });
-
-  it("REQ-03: returns 409 when run is 'cancelled'", async () => {
-    const runId = "run-xyz";
-    const state = seededRunState({ id: runId, status: "cancelled" });
-    const redis = makeRedis({ [runKey(runId)]: JSON.stringify(state) });
-    const app = buildApp({ redis });
-
-    const res = await app.request(`/api/runs/${runId}/cancel`, {
-      method: "POST",
-    });
-
-    expect(res.status).toBe(409);
-  });
+      expect(res.status).toBe(409);
+      const body = (await res.json()) as { error: string; status: string };
+      expect(body.error).toBe("run is not cancellable");
+      expect(body.status).toBe(status);
+    },
+  );
 
   it("REQ-04: returns 404 for unknown runId (no Redis key, no DB archive)", async () => {
     const redis = makeRedis();

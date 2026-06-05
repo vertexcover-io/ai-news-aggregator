@@ -861,6 +861,31 @@ describe("PATCH /api/archives/:runId", () => {
     expect(res.status).toBe(200);
     expect(processingQueue.add).not.toHaveBeenCalled();
   });
+
+  it("surfaces a 5xx (not 2xx/4xx) when the repo write fails at the DB layer", async () => {
+    // Real integration-point failure: the archive + raw_items exist and the body
+    // validates, but the persisting write rejects (e.g. Postgres is down). A
+    // generic write failure must NOT be masked as a 200 or downgraded to a 4xx —
+    // it propagates so Hono returns a 5xx and the operator sees the save failed.
+    const archiveRepo = makeArchiveRepo(makeRow());
+    archiveRepo.updateRankedItems = vi.fn(() =>
+      Promise.reject(new Error("connection terminated unexpectedly")),
+    );
+
+    const app = makeApp({
+      archiveRepo,
+      repo: makeRepo([makeRawForId(1)]),
+    });
+
+    const res = await app.request("/api/archives/run-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: patchBody(),
+    });
+
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect(res.status).toBeLessThan(600);
+  });
 });
 
 describe("POST /api/archives/:runId/regenerate-digest-meta", () => {

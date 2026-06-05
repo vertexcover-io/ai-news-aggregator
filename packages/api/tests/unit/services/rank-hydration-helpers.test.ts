@@ -115,4 +115,34 @@ describe("resolveEnrichedSource", () => {
     const result = resolveEnrichedSource(row, false);
     expect(result).toEqual({ hostname: "example.com", url: "https://example.com/post" });
   });
+
+  it("strips a leading www. from the hostname", () => {
+    const row = makeRow({
+      status: "ok",
+      url: "https://www.example.com/post/123",
+      markdown: "Content",
+    });
+    expect(resolveEnrichedSource(row, false)?.hostname).toBe("example.com");
+  });
+
+  it.each([
+    {
+      name: "status=skipped → null",
+      enrichedLink: {
+        status: "skipped",
+        url: "https://twitter.com/foo/status/1",
+        skipReason: "same-platform",
+      },
+    },
+    {
+      name: "status=ok but empty markdown → null",
+      enrichedLink: { status: "ok", url: "https://theverge.com/a", markdown: "" },
+    },
+    {
+      name: "status=ok but malformed url → null (defensive)",
+      enrichedLink: { status: "ok", url: "::::not-a-url", markdown: "some content" },
+    },
+  ])("$name", ({ enrichedLink }) => {
+    expect(resolveEnrichedSource(makeRow(enrichedLink), false)).toBeNull();
+  });
 });

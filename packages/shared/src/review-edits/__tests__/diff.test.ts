@@ -273,7 +273,11 @@ describe("diffReview", () => {
     };
     const result = diffReview(snapshot, patch);
 
-    expect(result.filter((r) => r.editType === "reorder").length).toBeGreaterThan(0);
+    // 10 (0→2) and 20 (1→0) both moved; 99 is an add, 30 a remove → exactly 2 reorders.
+    const reorders = result.filter((r) => r.editType === "reorder");
+    expect(reorders).toHaveLength(2);
+    expect(reorders.find((r) => r.rawItemId === 20)?.positionAfter).toBe(0);
+    expect(reorders.find((r) => r.rawItemId === 10)?.positionAfter).toBe(2);
     expect(result.filter((r) => r.editType === "add")).toHaveLength(1);
     expect(result.filter((r) => r.editType === "remove")).toHaveLength(1);
     expect(result.filter((r) => r.editType === "text_edit" && r.rawItemId === 10)).toHaveLength(1);

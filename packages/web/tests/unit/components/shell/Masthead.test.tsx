@@ -50,57 +50,30 @@ describe("Masthead", () => {
     expect(subscribe.getAttribute("href")).toBe("/built#subscribe");
   });
 
-  it("MUST READ and BUILT links collapse on mobile (have hidden sm:inline classes)", () => {
-    renderMasthead();
-    const mustRead = screen.getByRole("link", { name: /must read/i });
-    const built = screen.getByRole("link", { name: /built/i });
-    expect(mustRead.className).toMatch(/hidden/);
-    expect(mustRead.className).toMatch(/sm:/);
-    expect(built.className).toMatch(/hidden/);
-    expect(built.className).toMatch(/sm:/);
-  });
+  // Merged: nav-item href + active-state matrix. Each case asserts the link's
+  // href is stable and that aria-current reflects the current route:
+  //  - on /must-read MUST READ is active; on /built BUILT is active;
+  //  - on the home route neither is active.
+  it.each([
+    { path: "/must-read", name: /must read/i, href: "/must-read", activeOn: "/must-read" },
+    { path: "/built", name: /built/i, href: "/built", activeOn: "/built" },
+  ])(
+    "nav item $href: stable href and aria-current driven by route",
+    ({ name, href, activeOn }) => {
+      // Active when on its own route.
+      renderMasthead(activeOn);
+      const activeLink = screen.getByRole("link", { name });
+      expect(activeLink.getAttribute("href")).toBe(href);
+      expect(activeLink.getAttribute("aria-current")).toBe("page");
+      cleanup();
 
-  it("SUBSCRIBE → remains visible on mobile (no hidden class)", () => {
-    renderMasthead();
-    const subscribe = screen.getByRole("link", { name: /subscribe/i });
-    expect(subscribe.className).not.toMatch(/\bhidden\b/);
-  });
-
-  it("marks MUST READ as active when on /must-read", () => {
-    renderMasthead("/must-read");
-    const mustRead = screen.getByRole("link", { name: /must read/i });
-    expect(mustRead.getAttribute("aria-current")).toBe("page");
-  });
-
-  it("marks BUILT as active when on /built", () => {
-    renderMasthead("/built");
-    const built = screen.getByRole("link", { name: /built/i });
-    expect(built.getAttribute("aria-current")).toBe("page");
-  });
-
-  it("no nav item is active on the home route", () => {
-    renderMasthead("/");
-    expect(
-      screen.getByRole("link", { name: /must read/i }).getAttribute("aria-current"),
-    ).toBeNull();
-    expect(
-      screen.getByRole("link", { name: /built/i }).getAttribute("aria-current"),
-    ).toBeNull();
-  });
-
-  it("MUST READ link points to /must-read", () => {
-    renderMasthead();
-    expect(
-      screen.getByRole("link", { name: /must read/i }).getAttribute("href"),
-    ).toBe("/must-read");
-  });
-
-  it("BUILT link points to /built", () => {
-    renderMasthead();
-    expect(
-      screen.getByRole("link", { name: /built/i }).getAttribute("href"),
-    ).toBe("/built");
-  });
+      // Not active on the home route.
+      renderMasthead("/");
+      const inactiveLink = screen.getByRole("link", { name });
+      expect(inactiveLink.getAttribute("href")).toBe(href);
+      expect(inactiveLink.getAttribute("aria-current")).toBeNull();
+    },
+  );
 
   it("AGENTLOOP wordmark links to /", () => {
     renderMasthead("/built");

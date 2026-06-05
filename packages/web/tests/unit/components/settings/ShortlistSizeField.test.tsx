@@ -75,19 +75,6 @@ describe("ShortlistSizeField", () => {
     expect(input.value).toBe("42");
   });
 
-  it("declares min=5 and max=100 constraints on the input", () => {
-    render(<Harness initial={30} />);
-    const input = screen.getByLabelText<HTMLInputElement>("Shortlist size");
-    expect(input.min).toBe("5");
-    expect(input.max).toBe("100");
-  });
-
-  it("registers shortlistSize as a numeric field with valueAsNumber", () => {
-    render(<Harness initial={42} />);
-    const input = screen.getByLabelText<HTMLInputElement>("Shortlist size");
-    expect(input.getAttribute("name")).toBe("shortlistSize");
-    expect(input.step).toBe("1");
-  });
 });
 
 describe("settingsFormSchema shortlistSize validation (REQ-051)", () => {

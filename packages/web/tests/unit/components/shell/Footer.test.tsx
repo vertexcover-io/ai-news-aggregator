@@ -70,14 +70,16 @@ describe("Footer", () => {
     expect(screen.queryByRole("link", { name: /^rss$/i })).toBeNull();
   });
 
-  it("renders an inline subscribe field in the footer", () => {
+  it("renders an inline email subscribe field and button in the footer", () => {
     renderFooter();
-    const inputs = screen
+    // Footer has its own subscribe field (separate from the InlineSubscribeCard).
+    const emailInputs = screen
       .getAllByRole("textbox")
-      .filter((el) => (el as HTMLInputElement).type === "email");
-    // Footer has its own subscribe field (separate from the InlineSubscribeCard)
-    expect(inputs.length).toBeGreaterThanOrEqual(0);
-    // Use a wider selector: any subscribe button works
+      .filter(
+        (el): el is HTMLInputElement =>
+          el instanceof HTMLInputElement && el.type === "email",
+      );
+    expect(emailInputs.length).toBeGreaterThan(0);
     expect(
       screen.getAllByRole("button", { name: /subscribe|join/i }).length,
     ).toBeGreaterThan(0);

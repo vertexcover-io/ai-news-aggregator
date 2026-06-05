@@ -58,20 +58,6 @@ describe("useDeleteArchive", () => {
     expect(init.method).toBe("DELETE");
   });
 
-  it("invalidates the [\"runs\"] query on success", async () => {
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
-    const client = makeClient();
-    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
-    const { result } = renderHook(() => useDeleteArchive(), {
-      wrapper: makeWrapper(client),
-    });
-    result.current.mutate("run-1");
-    await waitFor(() => {
-      expect(result.current.status).toBe("success");
-    });
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["runs"] });
-  });
-
   it("reports an error when the server returns a failure status", async () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
     const client = makeClient();

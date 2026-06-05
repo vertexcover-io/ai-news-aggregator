@@ -173,18 +173,6 @@ const byId =
   (id: string): Pred =>
   (r) =>
     r.id === id;
-const byMode =
-  (m: "scored" | "ab"): Pred =>
-  (r) =>
-    r.mode === m;
-const byStatus =
-  (s: "running" | "done" | "failed"): Pred =>
-  (r) =>
-    r.status === s;
-const byFixture =
-  (f: string): Pred =>
-  (r) =>
-    r.fixtureId === f;
 
 describe("eval-runs repository", () => {
   it("INSERT then getById returns the row with status='running'", async () => {
@@ -269,76 +257,8 @@ describe("eval-runs repository", () => {
     expect(sample && "draftPromptSnapshot" in sample).toBe(false);
   });
 
-  it("list with mode='scored' excludes 'ab' rows", async () => {
-    const fake = makeFakeDb();
-    const repo = createEvalRunsRepo(fake.db);
-    await repo.insert(baseInput({ mode: "scored" }));
-    await repo.insert(baseInput({ mode: "ab", fixtureId: null }));
-    await repo.insert(baseInput({ mode: "scored" }));
-
-    fake.pushPred(byMode("scored")); // rows query
-    fake.pushPred(byMode("scored")); // count query
-    const result = await repo.list({ page: 1, perPage: 10, mode: "scored" });
-    expect(result.runs.length).toBe(2);
-    expect(result.total).toBe(2);
-    expect(result.runs.every((r) => r.mode === "scored")).toBe(true);
-  });
-
-  it("list with status='done' excludes 'running'", async () => {
-    const fake = makeFakeDb();
-    const repo = createEvalRunsRepo(fake.db);
-    const { id: a } = await repo.insert(baseInput());
-    await repo.insert(baseInput());
-    fake.pushPred(byId(a));
-    await repo.updateFinish(a, { scoreBreakdown: {}, costBreakdown: {} });
-
-    fake.pushPred(byStatus("done"));
-    fake.pushPred(byStatus("done"));
-    const result = await repo.list({ page: 1, perPage: 10, status: "done" });
-    expect(result.runs.length).toBe(1);
-    expect(result.total).toBe(1);
-    expect(result.runs[0]?.status).toBe("done");
-  });
-
-  it("list with fixtureId='fx-1' excludes other fixtures", async () => {
-    const fake = makeFakeDb();
-    const repo = createEvalRunsRepo(fake.db);
-    await repo.insert(baseInput({ fixtureId: "fx-1" }));
-    await repo.insert(baseInput({ fixtureId: "fx-2" }));
-    await repo.insert(baseInput({ fixtureId: "fx-1" }));
-
-    fake.pushPred(byFixture("fx-1"));
-    fake.pushPred(byFixture("fx-1"));
-    const result = await repo.list({
-      page: 1,
-      perPage: 10,
-      fixtureId: "fx-1",
-    });
-    expect(result.runs.length).toBe(2);
-    expect(result.total).toBe(2);
-    expect(result.runs.every((r) => r.fixtureId === "fx-1")).toBe(true);
-  });
-
-  it("list combining 2 filters AND-composes", async () => {
-    const fake = makeFakeDb();
-    const repo = createEvalRunsRepo(fake.db);
-    await repo.insert(baseInput({ mode: "scored", fixtureId: "fx-1" }));
-    await repo.insert(baseInput({ mode: "ab", fixtureId: "fx-1" }));
-    await repo.insert(baseInput({ mode: "scored", fixtureId: "fx-2" }));
-
-    const conjunction: Pred = (r) =>
-      r.mode === "scored" && r.fixtureId === "fx-1";
-    fake.pushPred(conjunction); // rows
-    fake.pushPred(conjunction); // count
-    const result = await repo.list({
-      page: 1,
-      perPage: 10,
-      mode: "scored",
-      fixtureId: "fx-1",
-    });
-    expect(result.runs.length).toBe(1);
-    expect(result.total).toBe(1);
-    expect(result.runs[0]?.mode).toBe("scored");
-    expect(result.runs[0]?.fixtureId).toBe("fx-1");
-  });
+  // The list-filter cases (mode/status/fixtureId/AND-compose) were tautological:
+  // the WHERE predicate was supplied by the test via fake.pushPred(...), so they
+  // asserted the test's own predicate rather than the repo's generated SQL.
+  // Real filter behavior is exercised against Postgres in the eval e2e suite.
 });

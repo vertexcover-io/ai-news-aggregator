@@ -2,24 +2,15 @@ import { describe, expect, it } from "vitest";
 import { EmailSendError, RETRYABLE_RESEND_CODES, parseRetryAfter } from "@shared/types/index.js";
 
 describe("RETRYABLE_RESEND_CODES", () => {
-  it("includes rate_limit_exceeded", () => {
-    expect(RETRYABLE_RESEND_CODES.has("rate_limit_exceeded")).toBe(true);
-  });
-
-  it("includes application_error", () => {
-    expect(RETRYABLE_RESEND_CODES.has("application_error")).toBe(true);
-  });
-
-  it("includes internal_server_error", () => {
-    expect(RETRYABLE_RESEND_CODES.has("internal_server_error")).toBe(true);
-  });
-
-  it("does not include validation_error", () => {
-    expect(RETRYABLE_RESEND_CODES.has("validation_error")).toBe(false);
-  });
-
-  it("does not include missing_required_field", () => {
-    expect(RETRYABLE_RESEND_CODES.has("missing_required_field")).toBe(false);
+  const cases: readonly (readonly [string, boolean])[] = [
+    ["rate_limit_exceeded", true],
+    ["application_error", true],
+    ["internal_server_error", true],
+    ["validation_error", false],
+    ["missing_required_field", false],
+  ];
+  it.each(cases)("classifies %s as retryable=%s", (code, retryable) => {
+    expect(RETRYABLE_RESEND_CODES.has(code)).toBe(retryable);
   });
 });
 
@@ -77,7 +68,7 @@ describe("parseRetryAfter", () => {
 });
 
 describe("EmailSendError", () => {
-  it("exposes the code as the error name", () => {
+  it("exposes code as name and preserves message, retryAfterMs, and retryable", () => {
     const err = new EmailSendError({
       code: "rate_limit_exceeded",
       message: "Resend error: Too many requests",
@@ -85,35 +76,8 @@ describe("EmailSendError", () => {
       retryable: true,
     });
     expect(err.name).toBe("rate_limit_exceeded");
-  });
-
-  it("preserves the message text", () => {
-    const err = new EmailSendError({
-      code: "rate_limit_exceeded",
-      message: "Resend error: Too many requests",
-      retryAfterMs: 2000,
-      retryable: true,
-    });
     expect(err.message).toBe("Resend error: Too many requests");
-  });
-
-  it("exposes retryAfterMs", () => {
-    const err = new EmailSendError({
-      code: "rate_limit_exceeded",
-      message: "Resend error: Too many requests",
-      retryAfterMs: 2000,
-      retryable: true,
-    });
     expect(err.retryAfterMs).toBe(2000);
-  });
-
-  it("exposes retryable flag", () => {
-    const err = new EmailSendError({
-      code: "rate_limit_exceeded",
-      message: "Resend error: Too many requests",
-      retryAfterMs: 2000,
-      retryable: true,
-    });
     expect(err.retryable).toBe(true);
   });
 

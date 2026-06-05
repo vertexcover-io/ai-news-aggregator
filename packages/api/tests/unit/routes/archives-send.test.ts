@@ -85,29 +85,10 @@ function buildApp(opts: {
   return app;
 }
 
-describe("PATCH /api/admin/archives/:runId", () => {
-  it("saves a reviewed archive without scheduling per-archive publish jobs", async () => {
-    const archiveRow = makeArchiveRow([{ rawItemId: 1, score: 0.9, rationale: "" }]);
-    const archiveRepo = makeArchiveRepo(archiveRow);
-    const { queue, addSpy } = makeProcessingQueue();
-    const app = buildApp({
-      archiveRepo,
-      rawRepo: makeRawRepo([1]),
-      processingQueue: queue,
-    });
-
-    const res = await app.request("/api/admin/archives/run-1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rankedItems: [{ id: 1, sourceType: "hn" }],
-      }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(addSpy).not.toHaveBeenCalled();
-  });
-});
+// The "PATCH saves a reviewed archive without scheduling publish jobs" test was
+// removed: PATCH-with-no-past-due-channels → no-enqueue is covered by
+// archives-route.test.ts and the immediate-publish suite
+// (archives-immediate-publish.test.ts). This file scopes to the /send route.
 
 describe("POST /api/admin/archives/:runId/send", () => {
   it("REQ-010: returns 202 and enqueues email-send job", async () => {

@@ -193,7 +193,7 @@ describe("collection worker dispatch", () => {
   });
 
   // EDGE-008: Unknown job names throw descriptive errors
-  it("throws a descriptive error for unknown job names", async () => {
+  it("throws a descriptive error for unknown job names and invokes no collector", async () => {
     const { deps } = makeDeps();
     await expect(
       handleCollectionJob(
@@ -201,31 +201,8 @@ describe("collection worker dispatch", () => {
         deps,
       ),
     ).rejects.toThrow("Unknown collector: twitter-collect");
-  });
-
-  it("does not call collectHn for unknown job names", async () => {
-    const { deps } = makeDeps();
-    try {
-      await handleCollectionJob(
-        { name: "unknown-source", data: { config: {} } },
-        deps,
-      );
-    } catch {
-      // expected
-    }
+    // The unknown-name guard must not dispatch to any real collector.
     expect(mockCollectHn).not.toHaveBeenCalled();
-  });
-
-  it("does not call collectReddit for unknown job names", async () => {
-    const { deps } = makeDeps();
-    try {
-      await handleCollectionJob(
-        { name: "unknown-source", data: { config: {} } },
-        deps,
-      );
-    } catch {
-      // expected
-    }
     expect(mockCollectReddit).not.toHaveBeenCalled();
   });
 

@@ -46,18 +46,10 @@ const noPreview: ItemPreview = {
 };
 
 describe("ExpandedPreview", () => {
-  it("tweet kind: renders handle", () => {
+  it("tweet kind: renders handle, tweet text, and 'view on X' link", () => {
     render(<ExpandedPreview preview={tweetPreview} recapSummary={null} />);
     expect(screen.getByText("@karpathy")).toBeTruthy();
-  });
-
-  it("tweet kind: renders tweet text", () => {
-    render(<ExpandedPreview preview={tweetPreview} recapSummary={null} />);
     expect(screen.getByText("New model is amazing")).toBeTruthy();
-  });
-
-  it("tweet kind: renders 'view on X' link", () => {
-    render(<ExpandedPreview preview={tweetPreview} recapSummary={null} />);
     const link = screen.getByRole("link", { name: /view on x/i });
     expect(link.getAttribute("href")).toBe("https://x.com/karpathy/status/1");
   });
@@ -68,26 +60,14 @@ describe("ExpandedPreview", () => {
     expect(screen.getByText("Original tweet text")).toBeTruthy();
   });
 
-  it("link kind: renders title", () => {
+  it("link kind: renders title, domain, markdown excerpt, and open-source link", () => {
     render(<ExpandedPreview preview={linkPreview} recapSummary={null} />);
     expect(screen.getByText("Great Article Title")).toBeTruthy();
-  });
-
-  it("link kind: renders domain", () => {
-    render(<ExpandedPreview preview={linkPreview} recapSummary={null} />);
     expect(screen.getByText("example.com")).toBeTruthy();
-  });
-
-  it("link kind: renders markdown excerpt via SafeMarkdown", () => {
-    render(<ExpandedPreview preview={linkPreview} recapSummary={null} />);
-    // Bold text from markdownExcerpt
+    // Bold text from markdownExcerpt (rendered via SafeMarkdown).
     const strong = document.querySelector("strong");
     expect(strong).not.toBeNull();
     expect(strong?.textContent).toBe("Key points");
-  });
-
-  it("link kind: renders open source link", () => {
-    render(<ExpandedPreview preview={linkPreview} recapSummary={null} />);
     const link = screen.getByRole("link", { name: /open source/i });
     expect(link.getAttribute("href")).toBe("https://example.com/great-article");
   });

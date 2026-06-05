@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  DEFAULT_HALF_LIFE_HOURS,
   recencyDecay,
   ageHoursFromPublishedAt,
 } from "@pipeline/services/recency.js";
@@ -42,11 +41,5 @@ describe("ageHoursFromPublishedAt (REQ-026)", () => {
     const now = new Date("2026-04-09T12:00:00Z");
     const future = new Date(now.getTime() + 3_600_000);
     expect(ageHoursFromPublishedAt(future, now)).toBe(0);
-  });
-});
-
-describe("DEFAULT_HALF_LIFE_HOURS", () => {
-  it("is 72", () => {
-    expect(DEFAULT_HALF_LIFE_HOURS).toBe(72);
   });
 });

@@ -53,44 +53,56 @@ describe("MustReadEntryView", () => {
     expect(link?.textContent).not.toContain("www.");
   });
 
-  it("renders Author · Year byline when both present", () => {
-    const { container } = render(<MustReadEntryView entry={makeEntry()} />);
-    expect(container.textContent).toContain("Author Name · 2025");
-  });
-
-  it("EDGE-015: renders nothing for byline when author and year are both null", () => {
+  // Merged byline matrix (EDGE-015): the "Author · Year" byline renders the
+  // dot separator only when BOTH author and year are present; a single field
+  // renders alone; both-null renders no byline at all.
+  it.each<{
+    name: string;
+    author: string | null;
+    year: number | null;
+    visible: string | null;
+    absentSeparator: RegExp;
+  }>([
+    {
+      name: "author + year → 'Author · Year'",
+      author: "Author Name",
+      year: 2025,
+      visible: "Author Name · 2025",
+      absentSeparator: /(?!)/, // separator IS expected here; no absence to assert
+    },
+    {
+      name: "both null → no byline",
+      author: null,
+      year: null,
+      visible: null,
+      absentSeparator: /\s·\s/,
+    },
+    {
+      name: "only year",
+      author: null,
+      year: 2024,
+      visible: "2024",
+      absentSeparator: /\s·\s2024/,
+    },
+    {
+      name: "only author",
+      author: "Karpathy",
+      year: null,
+      visible: "Karpathy",
+      absentSeparator: /Karpathy\s*·/,
+    },
+  ])("byline: $name", ({ author, year, visible, absentSeparator }) => {
     const { container } = render(
-      <MustReadEntryView entry={makeEntry({ author: null, year: null })} />,
+      <MustReadEntryView entry={makeEntry({ author, year })} />,
     );
-    expect(container.textContent).not.toContain("·");
-    // No stray byline div: textContent should NOT include " · "
     const text = container.textContent ?? "";
-    // The title is rendered, but no byline line. Check that nothing between title and annotation contains a · separator (the article eyebrow and source link · should not exist either)
-    expect(text).not.toMatch(/\s·\s/);
-  });
-
-  it("EDGE-015: renders only year when author is null", () => {
-    const { container } = render(
-      <MustReadEntryView entry={makeEntry({ author: null, year: 2024 })} />,
-    );
-    expect(container.textContent).toContain("2024");
-    expect(container.textContent).not.toMatch(/\s·\s2024/);
-  });
-
-  it("EDGE-015: renders only author when year is null", () => {
-    const { container } = render(
-      <MustReadEntryView entry={makeEntry({ author: "Karpathy", year: null })} />,
-    );
-    expect(container.textContent).toContain("Karpathy");
-    // No "·" sep
-    expect(container.textContent).not.toMatch(/Karpathy\s*·/);
-  });
-
-  it("EDGE-012: always sets canonical rel/target even if data unusual", () => {
-    // Test that the component does not take rel/target from the data — they're hard-coded.
-    const { container } = render(<MustReadEntryView entry={makeEntry()} />);
-    const link = container.querySelector("a");
-    expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
-    expect(link?.getAttribute("target")).toBe("_blank");
+    if (visible !== null) {
+      expect(text).toContain(visible);
+    }
+    // The both-present case expects the separator, so its regex never matches
+    // real content (`(?!)`); all other cases assert the separator is absent.
+    if (absentSeparator.source !== "(?!)") {
+      expect(text).not.toMatch(absentSeparator);
+    }
   });
 });

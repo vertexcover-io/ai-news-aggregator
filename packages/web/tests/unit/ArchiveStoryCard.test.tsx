@@ -38,25 +38,16 @@ describe("ArchiveStoryCard (Mock-A layout)", () => {
     cleanup();
   });
 
-  it("renders an <article>", () => {
-    render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    expect(screen.getAllByRole("article").length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("Mock-A: does not render a numbered rail (no 'N°' eyebrow)", () => {
-    render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    expect(screen.queryByText("N°")).toBeNull();
-  });
-
-  it("Mock-A: does not render a LEAD STORY tag", () => {
-    render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    expect(screen.queryByText(/LEAD STORY/)).toBeNull();
-  });
-
-  it("Mock-A: does not render engagement metrics in the markup (no ▲ / COMMENTS)", () => {
+  // Mock-A layout removed the numbered rail, LEAD STORY tag, inline engagement
+  // metrics, and the "READ THE ORIGINAL" button (replaced by the source-line
+  // link). Verify none of those elements render.
+  it("Mock-A: omits the numbered rail, LEAD STORY tag, engagement metrics, and READ THE ORIGINAL button", () => {
     const { container } = render(<ArchiveStoryCard item={baseItem} rank={1} />);
+    expect(screen.queryByText("N°")).toBeNull();
+    expect(screen.queryByText(/LEAD STORY/)).toBeNull();
     expect(container.textContent).not.toContain("▲");
     expect(container.textContent).not.toContain("COMMENTS");
+    expect(screen.queryByText(/READ THE ORIGINAL/i)).toBeNull();
   });
 
   it("headline is wrapped in an anchor pointing to item.url with target=_blank", () => {
@@ -137,11 +128,6 @@ describe("ArchiveStoryCard (Mock-A layout)", () => {
     expect(container.textContent).toContain(
       "This article covers key reasoning improvements",
     );
-  });
-
-  it("does not render a 'READ THE ORIGINAL' button (replaced by source line link)", () => {
-    render(<ArchiveStoryCard item={baseItem} rank={1} />);
-    expect(screen.queryByText(/READ THE ORIGINAL/i)).toBeNull();
   });
 
   // VS-6: enriched source — chip shows hostname, link targets enriched URL, verb is "Read on <hostname>"

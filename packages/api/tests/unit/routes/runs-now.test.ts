@@ -154,25 +154,26 @@ describe("POST /api/runs/now", () => {
     expect(q.calls[0].name).toBe("run-process");
   });
 
-  it("Phase 2: empty body → live run (dryRun field absent on job payload)", async () => {
-    const { app, q } = buildApp({ settings: baseSettings });
-    const res = await app.request("/api/runs/now", { method: "POST" });
-    expect(res.status).toBe(202);
-    expect(q.calls).toHaveLength(1);
-    expect(q.calls[0].data.dryRun).toBeUndefined();
-  });
-
-  it("Phase 2: { dryRun: false } body → live run (dryRun field absent on job payload)", async () => {
-    const { app, q } = buildApp({ settings: baseSettings });
-    const res = await app.request("/api/runs/now", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dryRun: false }),
-    });
-    expect(res.status).toBe(202);
-    expect(q.calls).toHaveLength(1);
-    expect(q.calls[0].data.dryRun).toBeUndefined();
-  });
+  it.each<{ name: string; init: RequestInit }>([
+    { name: "empty body", init: { method: "POST" } },
+    {
+      name: "{ dryRun: false } body",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dryRun: false }),
+      },
+    },
+  ])(
+    "Phase 2: $name → live run (dryRun field absent on job payload)",
+    async ({ init }) => {
+      const { app, q } = buildApp({ settings: baseSettings });
+      const res = await app.request("/api/runs/now", init);
+      expect(res.status).toBe(202);
+      expect(q.calls).toHaveLength(1);
+      expect(q.calls[0].data.dryRun).toBeUndefined();
+    },
+  );
 
   it("Phase 2: { dryRun: true } body → dry-run job payload carries dryRun: true", async () => {
     const { app, q } = buildApp({ settings: baseSettings });

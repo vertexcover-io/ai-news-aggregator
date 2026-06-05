@@ -6,87 +6,31 @@ import {
 
 // VS-0a / REQ-001: buildAuthorizeUrl produces a correctly shaped LinkedIn authorize URL.
 describe("buildAuthorizeUrl", () => {
-  it("produces a URL with response_type=code", () => {
+  const redirectUri =
+    "https://agentloop.vertexcover.io/api/admin/social-credentials/linkedin/oauth/callback";
+
+  it("builds the full LinkedIn authorize URL with all expected params", () => {
     const url = new URL(
       buildAuthorizeUrl({
         clientId: "test-client-id",
-        redirectUri: "https://example.com/callback",
-        state: "random-state-value",
-      }),
-    );
-    expect(url.searchParams.get("response_type")).toBe("code");
-  });
-
-  it("embeds client_id", () => {
-    const url = new URL(
-      buildAuthorizeUrl({
-        clientId: "my-client-id",
-        redirectUri: "https://example.com/callback",
-        state: "s1",
-      }),
-    );
-    expect(url.searchParams.get("client_id")).toBe("my-client-id");
-  });
-
-  it("embeds the exact redirect_uri", () => {
-    const redirectUri =
-      "https://agentloop.vertexcover.io/api/admin/social-credentials/linkedin/oauth/callback";
-    const url = new URL(
-      buildAuthorizeUrl({
-        clientId: "cid",
         redirectUri,
-        state: "s1",
-      }),
-    );
-    expect(url.searchParams.get("redirect_uri")).toBe(redirectUri);
-  });
-
-  it("embeds the scope openid profile email w_member_social", () => {
-    const url = new URL(
-      buildAuthorizeUrl({
-        clientId: "cid",
-        redirectUri: "https://example.com/cb",
-        state: "s1",
-      }),
-    );
-    expect(url.searchParams.get("scope")).toBe(
-      "openid profile email w_member_social",
-    );
-  });
-
-  it("embeds the provided state", () => {
-    const url = new URL(
-      buildAuthorizeUrl({
-        clientId: "cid",
-        redirectUri: "https://example.com/cb",
         state: "csrf-token-abc123",
       }),
     );
-    expect(url.searchParams.get("state")).toBe("csrf-token-abc123");
-  });
-
-  it("sets prompt=login so Reconnect re-runs login/consent (account switch)", () => {
-    const url = new URL(
-      buildAuthorizeUrl({
-        clientId: "cid",
-        redirectUri: "https://example.com/cb",
-        state: "s1",
-      }),
-    );
-    expect(url.searchParams.get("prompt")).toBe("login");
-  });
-
-  it("uses the LinkedIn authorization endpoint as the base URL", () => {
-    const url = new URL(
-      buildAuthorizeUrl({
-        clientId: "cid",
-        redirectUri: "https://example.com/cb",
-        state: "s1",
-      }),
-    );
+    // Base endpoint.
     expect(url.origin + url.pathname).toBe(
       "https://www.linkedin.com/oauth/v2/authorization",
     );
+    // Each query param echoed verbatim from the inputs / fixed scope+prompt.
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("client_id")).toBe("test-client-id");
+    expect(url.searchParams.get("redirect_uri")).toBe(redirectUri);
+    expect(url.searchParams.get("scope")).toBe(
+      "openid profile email w_member_social",
+    );
+    expect(url.searchParams.get("state")).toBe("csrf-token-abc123");
+    // prompt=login so Reconnect re-runs login/consent (account switch).
+    expect(url.searchParams.get("prompt")).toBe("login");
   });
 });
 
@@ -127,18 +71,12 @@ describe("parseTokenResponse", () => {
     expect(result.refreshToken).toBeNull();
   });
 
-  it("missing access_token → returns an error object", () => {
-    const result = parseTokenResponse({ expires_in: 3600 });
-    expect("error" in result).toBe(true);
-  });
-
-  it("non-object input → returns an error object", () => {
-    const result = parseTokenResponse("not-an-object");
-    expect("error" in result).toBe(true);
-  });
-
-  it("missing expires_in → returns an error object", () => {
-    const result = parseTokenResponse({ access_token: "at" });
+  it.each<{ name: string; input: unknown }>([
+    { name: "missing access_token", input: { expires_in: 3600 } },
+    { name: "non-object input", input: "not-an-object" },
+    { name: "missing expires_in", input: { access_token: "at" } },
+  ])("$name → returns an error object", ({ input }) => {
+    const result = parseTokenResponse(input);
     expect("error" in result).toBe(true);
   });
 });

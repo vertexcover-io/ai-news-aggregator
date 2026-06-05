@@ -119,65 +119,95 @@ describe("ArchiveRow", () => {
     expect(link.getAttribute("href")).toBe("/archive/abc-123");
   });
 
-  // VER-96: featured row prefers digestSummary over leadSummary
-  it("VER-96: featured row prefers digestSummary over leadSummary", () => {
-    renderRow(
-      makeItem({
-        leadSummary: "Lead summary fallback text",
-        digestSummary: "Digest summary describing today's stories",
-      }),
-      1,
-      true,
-    );
-    expect(screen.getByText("Digest summary describing today's stories")).toBeTruthy();
-    expect(screen.queryByText("Lead summary fallback text")).toBeNull();
-  });
-
-  // REQ-017: featured=true with leadSummary still renders dek when digestSummary is null
-  it("REQ-017: featured=true with leadSummary set renders dek when digestSummary is null", () => {
-    const { container } = renderRow(
-      makeItem({
-        leadSummary: "This is the lead summary text",
-        digestSummary: null,
-      }),
-      1,
-      true,
-    );
-    const row = container.querySelector("li");
-    expect(row?.getAttribute("data-featured")).toBe("true");
-    expect(screen.getByText("This is the lead summary text")).toBeTruthy();
-  });
-
-  // VER-96: non-featured row renders dek when digestSummary present
-  it("VER-96: non-featured row renders dek when digestSummary is set", () => {
-    renderRow(
-      makeItem({
-        digestSummary: "Day's digest summary visible on non-featured rows",
-      }),
-      2,
-      false,
-    );
-    expect(
-      screen.getByText("Day's digest summary visible on non-featured rows"),
-    ).toBeTruthy();
-  });
-
-  // REQ-017: featured=false with only leadSummary → no dek (preserves original hierarchy)
-  it("REQ-017: featured=false with only leadSummary set → no dek rendered", () => {
-    const { container } = renderRow(
-      makeItem({
-        leadSummary: "Lead summary that should not appear here",
-        digestSummary: null,
-      }),
-      2,
-      false,
-    );
-    const row = container.querySelector("li");
-    expect(row?.getAttribute("data-featured")).toBeNull();
-    expect(
-      screen.queryByText("Lead summary that should not appear here"),
-    ).toBeNull();
-  });
+  // Merged dek-precedence matrix (VER-96 / REQ-017 / EDGE-005 / EDGE-006).
+  // The dek is the digestSummary when non-empty; on a FEATURED row it falls
+  // back to a non-empty leadSummary; an empty-string digestSummary suppresses
+  // the dek (it does NOT fall back to leadSummary); a non-featured row never
+  // shows leadSummary as a dek.
+  it.each<{
+    name: string;
+    featured: boolean;
+    leadSummary: string | null;
+    digestSummary: string | null;
+    visibleDek: string | null;
+    absentText: string | null;
+  }>([
+    {
+      name: "featured prefers digestSummary over leadSummary",
+      featured: true,
+      leadSummary: "Lead summary fallback text",
+      digestSummary: "Digest summary describing today's stories",
+      visibleDek: "Digest summary describing today's stories",
+      absentText: "Lead summary fallback text",
+    },
+    {
+      name: "featured falls back to leadSummary when digestSummary is null",
+      featured: true,
+      leadSummary: "This is the lead summary text",
+      digestSummary: null,
+      visibleDek: "This is the lead summary text",
+      absentText: null,
+    },
+    {
+      name: "non-featured renders dek when digestSummary is set",
+      featured: false,
+      leadSummary: null,
+      digestSummary: "Day's digest summary visible on non-featured rows",
+      visibleDek: "Day's digest summary visible on non-featured rows",
+      absentText: null,
+    },
+    {
+      name: "non-featured with only leadSummary → no dek",
+      featured: false,
+      leadSummary: "Lead summary that should not appear here",
+      digestSummary: null,
+      visibleDek: null,
+      absentText: "Lead summary that should not appear here",
+    },
+    {
+      name: "featured with empty leadSummary + null digestSummary → no dek",
+      featured: true,
+      leadSummary: "",
+      digestSummary: null,
+      visibleDek: null,
+      absentText: null,
+    },
+    {
+      name: "featured with both summaries null → no dek",
+      featured: true,
+      leadSummary: null,
+      digestSummary: null,
+      visibleDek: null,
+      absentText: null,
+    },
+    {
+      name: "featured with empty-string digestSummary → no dek (no leadSummary fallback)",
+      featured: true,
+      leadSummary: "Should not appear because digestSummary is set (empty)",
+      digestSummary: "",
+      visibleDek: null,
+      absentText: "Should not appear because digestSummary is set (empty)",
+    },
+  ])(
+    "dek precedence: $name",
+    ({ featured, leadSummary, digestSummary, visibleDek, absentText }) => {
+      const { container } = renderRow(
+        makeItem({ leadSummary, digestSummary }),
+        1,
+        featured,
+      );
+      const row = container.querySelector("li");
+      expect(row?.getAttribute("data-featured")).toBe(featured ? "true" : null);
+      if (visibleDek === null) {
+        expect(container.querySelector("[data-slot='dek']")).toBeNull();
+      } else {
+        expect(screen.getByText(visibleDek)).toBeTruthy();
+      }
+      if (absentText !== null) {
+        expect(screen.queryByText(absentText)).toBeNull();
+      }
+    },
+  );
 
   // REQ-029: storyCount=0, topItems=[] → "No stories", no Read link
   it("REQ-029: storyCount=0 renders 'No stories' and no Read link", () => {
@@ -188,28 +218,6 @@ describe("ArchiveRow", () => {
     );
     expect(screen.getByText("No stories")).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Read/i })).toBeNull();
-  });
-
-  // EDGE-005: featured=true with leadSummary="" and digestSummary=null — no dek paragraph in body slot
-  it("EDGE-005: no dek rendered when featured=true but both summaries are empty/null", () => {
-    const { container } = renderRow(
-      makeItem({ leadSummary: "", digestSummary: null }),
-      1,
-      true,
-    );
-    const row = container.querySelector("li");
-    expect(row?.getAttribute("data-featured")).toBe("true");
-    expect(container.querySelector("[data-slot='dek']")).toBeNull();
-  });
-
-  // EDGE-006: featured=true, leadSummary=null, digestSummary=null — no dek
-  it("EDGE-006: no dek rendered when featured=true but both summaries are null", () => {
-    const { container } = renderRow(
-      makeItem({ leadSummary: null, digestSummary: null }),
-      1,
-      true,
-    );
-    expect(container.querySelector("[data-slot='dek']")).toBeNull();
   });
 
   // EDGE-007 / EDGE-013: topItems=[], storyCount>0 → headline falls back to topItems[0]?.title (undefined → "—"), Read link present
@@ -227,19 +235,6 @@ describe("ArchiveRow", () => {
     const h3 = screen.getByRole("heading", { level: 3 });
     expect(h3.textContent).toBe("—"); // em dash
     expect(screen.getByRole("link", { name: /Read/i })).toBeTruthy();
-  });
-
-  // VER-96: empty-string digestSummary suppresses dek (does not fall back to leadSummary)
-  it("VER-96: empty-string digestSummary renders no dek on featured row", () => {
-    const { container } = renderRow(
-      makeItem({
-        digestSummary: "",
-        leadSummary: "Should not appear because digestSummary is set (empty)",
-      }),
-      1,
-      true,
-    );
-    expect(container.querySelector("[data-slot='dek']")).toBeNull();
   });
 
   it("highlights terms in the first story headline", () => {
