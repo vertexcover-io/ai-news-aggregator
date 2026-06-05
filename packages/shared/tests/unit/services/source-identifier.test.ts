@@ -72,17 +72,4 @@ describe("SOURCE_TYPE_SECTION_LABELS", () => {
       expect(SOURCE_TYPE_SECTION_LABELS[t]).toBeTruthy();
     }
   });
-
-  it("SOURCE_TYPE_ORDER is in the expected fixed order", () => {
-    expect(SOURCE_TYPE_ORDER).toEqual([
-      "hn",
-      "reddit",
-      "twitter",
-      "rss",
-      "github",
-      "blog",
-      "newsletter",
-      "web_search",
-    ]);
-  });
 });

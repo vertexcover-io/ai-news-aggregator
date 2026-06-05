@@ -5,7 +5,9 @@ import type {
   NotifierArchiveAccess,
   NotifierArchiveView,
   NotifierTopRankedTitle,
+  SlackNotifier,
 } from "@shared/slack/types.js";
+import type { NotificationKey } from "@shared/types/notifications.js";
 import type { RunSourceTelemetry } from "@shared/types/run.js";
 
 interface LogCall {
@@ -517,44 +519,6 @@ describe("notifySourceDistribution (VS-1, VS-2, VS-10, VS-11, VS-12, VS-13)", ()
     await expect(notifier.notifySourceDistribution({ runId: "run-1" })).resolves.toBeUndefined();
     expect(archives.markNotification).not.toHaveBeenCalled();
   });
-
-  // VS-12: dry-run skip
-  it("skips when archive is a dry run (VS-12)", async () => {
-    const { calls, logger } = makeCapturedLogger();
-    const archive = makeArchive({ sourceTelemetry: baseTelemetry, isDryRun: true, notificationState: {} });
-    const archives = makeArchives(archive);
-    const fetchFn = vi.fn();
-    const notifier = createSlackNotifier({
-      webhookUrl: SECRET_URL,
-      archives,
-      resolveTopRankedTitle: resolveTitle,
-      logger,
-      fetchFn: fetchFn as unknown as typeof fetch,
-    });
-    await notifier.notifySourceDistribution({ runId: "run-1" });
-    expect(fetchFn).not.toHaveBeenCalled();
-    const skipped = calls.find(
-      (c) => (c.obj as { event?: string } | undefined)?.event === "publish.skipped_dry_run",
-    );
-    expect(skipped).toBeDefined();
-  });
-
-  // VS-13: webhook unset
-  it("is a no-op when webhook is unset (VS-13)", async () => {
-    const { logger } = makeCapturedLogger();
-    const archives = makeArchives(makeArchive({ sourceTelemetry: baseTelemetry }));
-    const fetchFn = vi.fn();
-    const notifier = createSlackNotifier({
-      webhookUrl: undefined,
-      archives,
-      resolveTopRankedTitle: resolveTitle,
-      logger,
-      fetchFn: fetchFn as unknown as typeof fetch,
-    });
-    await notifier.notifySourceDistribution({ runId: "run-1" });
-    expect(fetchFn).not.toHaveBeenCalled();
-    expect(archives.findById).not.toHaveBeenCalled();
-  });
 });
 
 describe("notifyEmailDelivery (VS-4, VS-10, VS-11, VS-12, VS-13)", () => {
@@ -636,43 +600,6 @@ describe("notifyEmailDelivery (VS-4, VS-10, VS-11, VS-12, VS-13)", () => {
     await expect(notifier.notifyEmailDelivery({ runId: "run-1", delivery })).resolves.toBeUndefined();
     expect(archives.markNotification).not.toHaveBeenCalled();
   });
-
-  // VS-12: dry-run skip
-  it("skips when archive is a dry run (VS-12)", async () => {
-    const { calls, logger } = makeCapturedLogger();
-    const archives = makeArchives(makeArchive({ isDryRun: true, notificationState: {} }));
-    const fetchFn = vi.fn();
-    const notifier = createSlackNotifier({
-      webhookUrl: SECRET_URL,
-      archives,
-      resolveTopRankedTitle: resolveTitle,
-      logger,
-      fetchFn: fetchFn as unknown as typeof fetch,
-    });
-    await notifier.notifyEmailDelivery({ runId: "run-1", delivery });
-    expect(fetchFn).not.toHaveBeenCalled();
-    const skipped = calls.find(
-      (c) => (c.obj as { event?: string } | undefined)?.event === "publish.skipped_dry_run",
-    );
-    expect(skipped).toBeDefined();
-  });
-
-  // VS-13: webhook unset
-  it("is a no-op when webhook is unset (VS-13)", async () => {
-    const { logger } = makeCapturedLogger();
-    const archives = makeArchives(makeArchive());
-    const fetchFn = vi.fn();
-    const notifier = createSlackNotifier({
-      webhookUrl: undefined,
-      archives,
-      resolveTopRankedTitle: resolveTitle,
-      logger,
-      fetchFn: fetchFn as unknown as typeof fetch,
-    });
-    await notifier.notifyEmailDelivery({ runId: "run-1", delivery });
-    expect(fetchFn).not.toHaveBeenCalled();
-    expect(archives.findById).not.toHaveBeenCalled();
-  });
 });
 
 describe("notifyLinkedinPosted (VS-6, VS-10, VS-11, VS-12, VS-13)", () => {
@@ -749,43 +676,6 @@ describe("notifyLinkedinPosted (VS-6, VS-10, VS-11, VS-12, VS-13)", () => {
     await expect(notifier.notifyLinkedinPosted({ runId: "run-1", permalink })).resolves.toBeUndefined();
     expect(archives.markNotification).not.toHaveBeenCalled();
   });
-
-  // VS-12: dry-run skip
-  it("skips when archive is a dry run (VS-12)", async () => {
-    const { calls, logger } = makeCapturedLogger();
-    const archives = makeArchives(makeArchive({ isDryRun: true, notificationState: {} }));
-    const fetchFn = vi.fn();
-    const notifier = createSlackNotifier({
-      webhookUrl: SECRET_URL,
-      archives,
-      resolveTopRankedTitle: resolveTitle,
-      logger,
-      fetchFn: fetchFn as unknown as typeof fetch,
-    });
-    await notifier.notifyLinkedinPosted({ runId: "run-1", permalink });
-    expect(fetchFn).not.toHaveBeenCalled();
-    const skipped = calls.find(
-      (c) => (c.obj as { event?: string } | undefined)?.event === "publish.skipped_dry_run",
-    );
-    expect(skipped).toBeDefined();
-  });
-
-  // VS-13: webhook unset
-  it("is a no-op when webhook is unset (VS-13)", async () => {
-    const { logger } = makeCapturedLogger();
-    const archives = makeArchives(makeArchive());
-    const fetchFn = vi.fn();
-    const notifier = createSlackNotifier({
-      webhookUrl: undefined,
-      archives,
-      resolveTopRankedTitle: resolveTitle,
-      logger,
-      fetchFn: fetchFn as unknown as typeof fetch,
-    });
-    await notifier.notifyLinkedinPosted({ runId: "run-1", permalink });
-    expect(fetchFn).not.toHaveBeenCalled();
-    expect(archives.findById).not.toHaveBeenCalled();
-  });
 });
 
 describe("notifyTwitterPosted (VS-8, VS-10, VS-11, VS-12, VS-13)", () => {
@@ -861,43 +751,6 @@ describe("notifyTwitterPosted (VS-8, VS-10, VS-11, VS-12, VS-13)", () => {
     await expect(notifier.notifyTwitterPosted({ runId: "run-1", permalink })).resolves.toBeUndefined();
     expect(archives.markNotification).not.toHaveBeenCalled();
   });
-
-  // VS-12: dry-run skip
-  it("skips when archive is a dry run (VS-12)", async () => {
-    const { calls, logger } = makeCapturedLogger();
-    const archives = makeArchives(makeArchive({ isDryRun: true, notificationState: {} }));
-    const fetchFn = vi.fn();
-    const notifier = createSlackNotifier({
-      webhookUrl: SECRET_URL,
-      archives,
-      resolveTopRankedTitle: resolveTitle,
-      logger,
-      fetchFn: fetchFn as unknown as typeof fetch,
-    });
-    await notifier.notifyTwitterPosted({ runId: "run-1", permalink });
-    expect(fetchFn).not.toHaveBeenCalled();
-    const skipped = calls.find(
-      (c) => (c.obj as { event?: string } | undefined)?.event === "publish.skipped_dry_run",
-    );
-    expect(skipped).toBeDefined();
-  });
-
-  // VS-13: webhook unset
-  it("is a no-op when webhook is unset (VS-13)", async () => {
-    const { logger } = makeCapturedLogger();
-    const archives = makeArchives(makeArchive());
-    const fetchFn = vi.fn();
-    const notifier = createSlackNotifier({
-      webhookUrl: undefined,
-      archives,
-      resolveTopRankedTitle: resolveTitle,
-      logger,
-      fetchFn: fetchFn as unknown as typeof fetch,
-    });
-    await notifier.notifyTwitterPosted({ runId: "run-1", permalink });
-    expect(fetchFn).not.toHaveBeenCalled();
-    expect(archives.findById).not.toHaveBeenCalled();
-  });
 });
 
 // VS-14: NotificationKey type exhaustiveness
@@ -913,6 +766,133 @@ describe("NotificationKey type (VS-14)", () => {
     await archives.markNotification("run-1", "linkedinPosted", now);
     await archives.markNotification("run-1", "twitterPosted", now);
     expect(archives.markNotification).toHaveBeenCalledTimes(4);
+  });
+});
+
+// Shared no-op / dry-run families across the four marker-keyed notify methods.
+// Each entry pairs a method label with an invoker so the identical VS-12/VS-13
+// assertions run once per method without copy-pasted bodies.
+const markerNotifiers: readonly (readonly [string, (n: SlackNotifier) => Promise<void>])[] = [
+  ["notifySourceDistribution", (n) => n.notifySourceDistribution({ runId: "run-1" })],
+  [
+    "notifyEmailDelivery",
+    (n) =>
+      n.notifyEmailDelivery({
+        runId: "run-1",
+        delivery: { attempted: 5, sent: 4, failed: 1, failureReasons: [{ reason: "bounce", count: 1 }] },
+      }),
+  ],
+  ["notifyLinkedinPosted", (n) => n.notifyLinkedinPosted({ runId: "run-1", permalink: "urn:li:share:12345" })],
+  ["notifyTwitterPosted", (n) => n.notifyTwitterPosted({ runId: "run-1", permalink: "https://x.com/x/status/1" })],
+];
+
+describe("marker-keyed notifiers — dry-run skip (VS-12)", () => {
+  it.each(markerNotifiers)("%s skips when archive is a dry run", async (_label, invoke) => {
+    const { calls, logger } = makeCapturedLogger();
+    const archives = makeArchives(
+      makeArchive({ sourceTelemetry: baseTelemetry, isDryRun: true, notificationState: {} }),
+    );
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await invoke(notifier);
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(archives.markNotification).not.toHaveBeenCalled();
+    const skipped = calls.find(
+      (c) => (c.obj as { event?: string } | undefined)?.event === "publish.skipped_dry_run",
+    );
+    expect(skipped).toBeDefined();
+  });
+});
+
+describe("marker-keyed notifiers — webhook unset (VS-13)", () => {
+  it.each(markerNotifiers)("%s is a no-op when webhook is unset", async (_label, invoke) => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ sourceTelemetry: baseTelemetry }));
+    const fetchFn = vi.fn();
+    const notifier = createSlackNotifier({
+      webhookUrl: undefined,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    await invoke(notifier);
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(archives.findById).not.toHaveBeenCalled();
+  });
+});
+
+describe("notifyPublishFailed — retry-safety (re-alert on webhook failure)", () => {
+  const failureKeyByChannel: readonly (readonly [
+    "linkedin-post" | "twitter-post",
+    NotificationKey,
+  ])[] = [
+    ["linkedin-post", "linkedinFailure"],
+    ["twitter-post", "twitterFailure"],
+  ];
+
+  it.each(failureKeyByChannel)(
+    "%s does NOT write the %s marker when the webhook returns non-2xx",
+    async (channel) => {
+      const { logger } = makeCapturedLogger();
+      const archives = makeArchives(makeArchive({ notificationState: {} }));
+      const fetchFn = vi.fn(() => Promise.resolve(new Response("error", { status: 500 })));
+      const notifier = createSlackNotifier({
+        webhookUrl: SECRET_URL,
+        archives,
+        resolveTopRankedTitle: resolveTitle,
+        logger,
+        fetchFn: fetchFn as unknown as typeof fetch,
+      });
+      await expect(
+        notifier.notifyPublishFailed({ runId: "run-1", channel, reason: "http_401" }),
+      ).resolves.toBeUndefined();
+      // Marker un-written → a later run can re-alert once the platform recovers.
+      expect(archives.markNotification).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(failureKeyByChannel)(
+    "%s does NOT write the %s marker when the webhook fetch throws",
+    async (channel) => {
+      const { logger } = makeCapturedLogger();
+      const archives = makeArchives(makeArchive({ notificationState: {} }));
+      const fetchFn = vi.fn(() => Promise.reject(new TypeError("fetch failed")));
+      const notifier = createSlackNotifier({
+        webhookUrl: SECRET_URL,
+        archives,
+        resolveTopRankedTitle: resolveTitle,
+        logger,
+        fetchFn: fetchFn as unknown as typeof fetch,
+      });
+      await expect(
+        notifier.notifyPublishFailed({ runId: "run-1", channel, reason: "http_401" }),
+      ).resolves.toBeUndefined();
+      expect(archives.markNotification).not.toHaveBeenCalled();
+    },
+  );
+
+  it("writes the marker exactly once on a successful publish-failed alert", async () => {
+    const { logger } = makeCapturedLogger();
+    const archives = makeArchives(makeArchive({ notificationState: {} }));
+    const fetchFn = vi.fn(() => Promise.resolve(new Response("ok", { status: 200 })));
+    const fixedNow = new Date("2026-05-21T10:00:00Z");
+    const notifier = createSlackNotifier({
+      webhookUrl: SECRET_URL,
+      archives,
+      resolveTopRankedTitle: resolveTitle,
+      logger,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      now: () => fixedNow,
+    });
+    await notifier.notifyPublishFailed({ runId: "run-1", channel: "linkedin-post", reason: "http_401" });
+    expect(archives.markNotification).toHaveBeenCalledWith("run-1", "linkedinFailure", fixedNow);
   });
 });
 
