@@ -16,7 +16,6 @@ interface CapturedCrawlerOptions {
   requestHandler?: (ctx: unknown) => Promise<void>;
   failedRequestHandler?: (ctx: unknown, error: Error) => void;
   resultChecker?: (result: unknown) => boolean;
-  proxyConfiguration?: unknown;
 }
 
 interface MockCrawlerInstance {
@@ -45,13 +44,8 @@ function getInstance(): MockCrawlerInstance {
   return lastMockInstance;
 }
 
-vi.mock("crawlee", async () => {
-  // Use the real ProxyConfiguration (cheap to construct, no network) so tests
-  // can assert a genuine instance is wired when WEB_HTTP_PROXY is set, while
-  // keeping the crawler itself stubbed.
-  const actual = await vi.importActual<typeof import("crawlee")>("crawlee");
+vi.mock("crawlee", () => {
   return {
-    ProxyConfiguration: actual.ProxyConfiguration,
     Configuration: vi.fn().mockImplementation(() => ({})),
     AdaptivePlaywrightCrawler: vi.fn().mockImplementation(
       (options: CapturedCrawlerOptions) => {
@@ -534,61 +528,6 @@ describe("runWebCrawl", () => {
       ],
     };
     expect(checker(unhealthyResult)).toBe(false);
-  });
-
-  // ── WEB_HTTP_PROXY → ProxyConfiguration (REQ-004, REQ-005, REQ-007) ────────
-  describe("WEB_HTTP_PROXY proxyConfiguration wiring", () => {
-    it("passes a defined proxyConfiguration when WEB_HTTP_PROXY is set (REQ-004)", async () => {
-      vi.stubEnv("WEB_HTTP_PROXY", "http://u:p@h:1");
-      const jobs: CrawlJob[] = [
-        { kind: "listing", sourceName: "s", url: "https://a.com" },
-      ];
-      await runWebCrawl(jobs);
-
-      const { proxyConfiguration } = getInstance().options;
-      expect(proxyConfiguration).toBeDefined();
-      expect(proxyConfiguration).not.toBeNull();
-    });
-
-    it("leaves proxyConfiguration undefined when WEB_HTTP_PROXY is unset (REQ-005, EDGE-005)", async () => {
-      // Ensure the env var is absent for this test.
-      vi.stubEnv("WEB_HTTP_PROXY", "");
-      const jobs: CrawlJob[] = [
-        { kind: "listing", sourceName: "s", url: "https://a.com" },
-      ];
-      await runWebCrawl(jobs);
-
-      expect(getInstance().options.proxyConfiguration).toBeUndefined();
-    });
-
-    it("never emits the proxy URL in the crawler.stats log fields (REQ-007)", async () => {
-      vi.stubEnv("WEB_HTTP_PROXY", "http://secret-user:secret-pass@proxy.example:5863");
-      const fakeLogger = {
-        debug: vi.fn().mockResolvedValue(undefined),
-        info: vi.fn().mockResolvedValue(undefined),
-        warn: vi.fn().mockResolvedValue(undefined),
-        error: vi.fn().mockResolvedValue(undefined),
-      };
-      const jobs: CrawlJob[] = [
-        { kind: "listing", sourceName: "s", url: "https://a.com" },
-      ];
-      await runWebCrawl(jobs, { runLogger: fakeLogger });
-
-      const infoCall = fakeLogger.info.mock.calls.find(
-        (c) => (c[0] as { event?: string }).event === "crawler.stats",
-      );
-      expect(infoCall).toBeDefined();
-      if (!infoCall) throw new Error("no crawler.stats info call");
-      const fields = infoCall[0] as Record<string, unknown>;
-      // No proxy-named field, and no field value carrying the proxy URL.
-      expect(Object.keys(fields)).not.toContain("proxy");
-      expect(Object.keys(fields)).not.toContain("proxyConfiguration");
-      expect(Object.keys(fields)).not.toContain("proxyUrl");
-      const serialized = JSON.stringify(fields);
-      expect(serialized).not.toContain("secret-user");
-      expect(serialized).not.toContain("secret-pass");
-      expect(serialized).not.toContain("proxy.example");
-    });
   });
 
   // ── VS-5: level mapping for crawler.stats (REQ-002 + REQ-009) ──────────────

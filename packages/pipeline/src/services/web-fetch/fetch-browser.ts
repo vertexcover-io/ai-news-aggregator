@@ -2,29 +2,14 @@ import { chromium } from "playwright-core";
 import type { LaunchOptions } from "playwright-core";
 import type { ConvertResult, FetchMode } from "@pipeline/services/web-fetch/types.js";
 import { convert } from "@pipeline/services/web-fetch/convert.js";
-import { resolveWebProxyUrl } from "@pipeline/services/web-fetch/proxy.js";
 
 export interface FetchBrowserOptions {
   signal?: AbortSignal;
 }
 
-export interface PlaywrightProxy {
-  server: string;
-  username?: string;
-  password?: string;
-}
-
 export function resolveChromiumExecutablePath(): string | undefined {
   const p = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim();
   return p === "" ? undefined : p;
-}
-
-export function parseProxyForPlaywright(url: string): PlaywrightProxy {
-  const u = new URL(url);
-  const proxy: PlaywrightProxy = { server: `${u.protocol}//${u.host}` };
-  if (u.username) proxy.username = decodeURIComponent(u.username);
-  if (u.password) proxy.password = decodeURIComponent(u.password);
-  return proxy;
 }
 
 export async function fetchBrowser(
@@ -38,13 +23,11 @@ export async function fetchBrowser(
       : new Error("aborted");
   }
 
-  const proxyUrl = resolveWebProxyUrl();
   const launchOpts: LaunchOptions = {
     headless: true,
     executablePath: resolveChromiumExecutablePath(),
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   };
-  if (proxyUrl) launchOpts.proxy = parseProxyForPlaywright(proxyUrl);
 
   const browser = await chromium.launch(launchOpts);
   try {

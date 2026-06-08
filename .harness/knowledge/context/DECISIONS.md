@@ -46,7 +46,6 @@ status: active
 | D-070 | Best-effort run-logger (telemetry never fails the run) | packages/pipeline/services/PACKAGE.md |
 | D-071 | Cost tracker merge is additive not idempotent | packages/pipeline/services/PACKAGE.md |
 | D-072 | In-process write serialization for run-state | packages/pipeline/services/PACKAGE.md |
-| D-080 | WEB_HTTP_PROXY routes web collector through 3 transport seams (fail-open, secret, undici pinned) | packages/pipeline/services/web-fetch/PACKAGE.md |
 | D-090 | Static-first fetch with health check + listing-link check for browser promotion | packages/pipeline/services/web-fetch/PACKAGE.md |
 | D-100 | Web must use subpath imports from shared | packages/shared/PACKAGE.md |
 | D-101 | Provider-aware token extraction with live-probe verification | packages/shared/PACKAGE.md |

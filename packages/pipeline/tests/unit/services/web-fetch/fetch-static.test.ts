@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ConvertResult } from "@pipeline/services/web-fetch/types.js";
 
 // Mock the convert module before importing fetch-static
@@ -111,85 +111,5 @@ describe("fetchStatic", () => {
     });
 
     spy.mockRestore();
-  });
-});
-
-describe("fetchStatic proxy dispatcher (REQ-002/005/006/010)", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.restoreAllMocks();
-  });
-
-  it("attaches a dispatcher on the default fetch path when WEB_HTTP_PROXY is set (REQ-002)", async () => {
-    vi.stubEnv("WEB_HTTP_PROXY", "http://u:p@h:1");
-
-    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve("<html></html>"),
-    } as unknown as Response);
-
-    await fetchStatic("https://example.com/post", "article");
-
-    const init = spy.mock.calls[0]?.[1] as
-      | (RequestInit & { dispatcher?: unknown })
-      | undefined;
-    expect(init?.dispatcher).toBeTypeOf("object");
-    expect(init?.dispatcher).not.toBeNull();
-  });
-
-  it("does NOT attach a dispatcher when a fetchFn is injected (REQ-006)", async () => {
-    vi.stubEnv("WEB_HTTP_PROXY", "http://u:p@h:1");
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve("<html></html>"),
-    } as unknown as Response);
-
-    await fetchStatic("https://example.com/post", "article", {
-      fetchFn: mockFetch,
-    });
-
-    const init = mockFetch.mock.calls[0]?.[1] as
-      | (RequestInit & { dispatcher?: unknown })
-      | undefined;
-    expect(init).toBeDefined();
-    expect(init?.dispatcher).toBeUndefined();
-  });
-
-  it("does NOT attach a dispatcher when WEB_HTTP_PROXY is unset (REQ-005)", async () => {
-    vi.stubEnv("WEB_HTTP_PROXY", "");
-
-    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve("<html></html>"),
-    } as unknown as Response);
-
-    await fetchStatic("https://example.com/post", "article");
-
-    const init = spy.mock.calls[0]?.[1] as
-      | (RequestInit & { dispatcher?: unknown })
-      | undefined;
-    expect(init).toBeDefined();
-    expect(init?.dispatcher).toBeUndefined();
-  });
-
-  it("still aborts/throws with the proxy dispatcher present (REQ-010, EDGE-003)", async () => {
-    vi.stubEnv("WEB_HTTP_PROXY", "http://u:p@h:1");
-
-    const ac = new AbortController();
-    const abortError = new DOMException("aborted", "AbortError");
-    const spy = vi.spyOn(globalThis, "fetch").mockRejectedValue(abortError);
-
-    await expect(
-      fetchStatic("https://example.com/post", "article", {
-        signal: ac.signal,
-      }),
-    ).rejects.toThrow("aborted");
-
-    const init = spy.mock.calls[0]?.[1] as
-      | (RequestInit & { dispatcher?: unknown; signal?: AbortSignal })
-      | undefined;
-    expect(init?.dispatcher).toBeTypeOf("object");
-    expect(init?.signal).toBe(ac.signal);
   });
 });

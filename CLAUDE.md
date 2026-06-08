@@ -60,7 +60,7 @@ Pre-commit hooks (Husky + lint-staged) run lint + typecheck on staged files auto
 
 Required for a full run: `DATABASE_URL`, `REDIS_URL`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `ADMIN_PASSWORD`, `SESSION_SECRET` (≥32 bytes; doubles as HKDF KEK for credential encryption at rest).
 
-Optional integrations (each disabled when unset): `SLACK_WEBHOOK_URL`, `PUBLIC_BASE_URL`, `TAVILY_API_KEY`, `WEB_HTTP_PROXY`, `RETTIWT_API_KEY`, LinkedIn (`LINKEDIN_CLIENT_ID/SECRET/API_VERSION`), Twitter OAuth 1.0a (`TWITTER_API_KEY/SECRET/ACCESS_TOKEN/ACCESS_TOKEN_SECRET`), `RANKING_MODEL`, `SHORTLIST_MODEL`, `WEB_CRAWLER_CONCURRENCY`, `EMAIL_SEND_RATE_PER_SECOND`.
+Optional integrations (each disabled when unset): `SLACK_WEBHOOK_URL`, `PUBLIC_BASE_URL`, `TAVILY_API_KEY`, `RETTIWT_API_KEY`, LinkedIn (`LINKEDIN_CLIENT_ID/SECRET/API_VERSION`), Twitter OAuth 1.0a (`TWITTER_API_KEY/SECRET/ACCESS_TOKEN/ACCESS_TOKEN_SECRET`), `RANKING_MODEL`, `SHORTLIST_MODEL`, `WEB_CRAWLER_CONCURRENCY`, `EMAIL_SEND_RATE_PER_SECOND`.
 
 Social/collector credentials saved at `/admin/settings` are stored encrypted in the DB and shadow env vars — resolved DB-first per pipeline job.
 

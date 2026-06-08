@@ -3,7 +3,7 @@ governs: packages/pipeline/src/services/
 last_verified_sha: ad0153a
 key_files: [run-state.ts, run-logger.ts, cost-tracker.ts, candidate-loader.ts, credential-resolver.ts, source-telemetry.ts, cancel-subscriber.ts, recency.ts, web-crawler.ts, add-post-helper.ts, build-pre-review-snapshot.ts, collector-health/index.ts, collector-health/classify.ts, run-archive-writer.ts, finalize-run.ts]
 flow_fns: [run-state.ts::createRunStateService, run-logger.ts::createRunLogger, cost-tracker.ts::createCostTracker, credential-resolver.ts::resolveLinkedInCredentials, cancel-subscriber.ts::createCancelSubscriber, web-crawler.ts::runWebCrawl, add-post-helper.ts::hydrateAddedPost, collector-health/index.ts::runCollectorHealthCheck, run-archive-writer.ts::writeFailedArchive, run-archive-writer.ts::pickArchiveDigest, finalize-run.ts::finalizeRun]
-decisions: [D-070, D-071, D-072, D-080]
+decisions: [D-070, D-071, D-072]
 status: active
 ---
 
@@ -51,8 +51,7 @@ Services own state management (Redis run-state, cost tracking), candidate loadin
 
 ### runWebCrawl(jobs, opts) → Map<string, CrawlResult>
   jobs → filter isCrawlableUrl → pre-fill results with sentinels
-    → resolveWebProxyUrl() → proxyConfiguration: url ? new ProxyConfiguration({proxyUrls:[url]}) : undefined  (D-080)
-    → AdaptivePlaywrightCrawler (maxConcurrency, 3 retries, domcontentloaded + 4s networkidle chase, proxyConfiguration covers static + adaptive-browser sub-paths)
+    → AdaptivePlaywrightCrawler (maxConcurrency, 3 retries, domcontentloaded + 4s networkidle chase)
       ├─ requestHandler: parseWithCheerio → convert(html, baseUrl, mode) → pushData
       ├─ failedRequestHandler: record error
       └─ resultChecker: isHealthyResult + hasListingPostLinks (listing mode)
