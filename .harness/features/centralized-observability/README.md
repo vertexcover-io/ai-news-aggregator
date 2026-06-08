@@ -2,7 +2,7 @@
 
 > **Verification:** ✅ PASSED — see [verification/proof-report.md](verification/proof-report.md)
 > **Quality gate:** ✅ PASS (11/11 checks, mutation 4/4 killed)
-> **PR:** _(filled in below)_
+> **PR:** https://github.com/vertexcover-io/ai-news-aggregator/pull/267
 
 ## What was built
 
