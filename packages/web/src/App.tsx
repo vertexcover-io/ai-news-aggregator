@@ -12,6 +12,7 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 import { SourcesPage } from "./pages/SourcesPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { ConfirmPage } from "./pages/ConfirmPage";
+import { FeedbackPage } from "./pages/FeedbackPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { EvalManualFixturePage } from "./pages/EvalManualFixturePage";
 import { EvalGradePage } from "./pages/EvalGradePage";
@@ -36,6 +37,7 @@ export const routes: RouteObject[] = [
       { path: "/archive/:runId", element: <ArchivePage /> },
       { path: "/sources", element: <SourcesPage /> },
       { path: "/confirm", element: <ConfirmPage /> },
+      { path: "/feedback", element: <FeedbackPage /> },
       { path: "/unsubscribe", element: <UnsubscribePage /> },
       { path: "/privacy", element: <PrivacyPolicyPage /> },
       { path: "/terms", element: <TermsPage /> },

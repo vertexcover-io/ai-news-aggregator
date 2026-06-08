@@ -28,6 +28,22 @@ describe("issueSubscriberToken + verifySubscriberToken", () => {
     });
   });
 
+  it("round-trips correctly for feedback type", () => {
+    const token = issueSubscriberToken(SUBSCRIBER_ID, "feedback", SECRET);
+    const result = verifySubscriberToken(token, "feedback", SECRET);
+    expect(result).toEqual({
+      valid: true,
+      subscriberId: SUBSCRIBER_ID,
+      type: "feedback",
+    });
+  });
+
+  it("rejects a feedback token verified as confirm with wrong-type", () => {
+    const token = issueSubscriberToken(SUBSCRIBER_ID, "feedback", SECRET);
+    const result = verifySubscriberToken(token, "confirm", SECRET);
+    expect(result).toEqual({ valid: false, reason: "wrong-type" });
+  });
+
   it("returns expired when expiresAt is in the past", () => {
     const pastDate = new Date(Date.now() - 1000);
     const token = issueSubscriberToken(SUBSCRIBER_ID, "confirm", SECRET, pastDate);

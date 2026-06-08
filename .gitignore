@@ -28,3 +28,7 @@ packages/web/test-results/
 
 # ranking-eval-pipeline: LLM response cache is per-developer, never committed
 evals/ranking/cache/
+
+# Reader-feedback campaign recipient exports (PII — never commit)
+/confirmed_subscribers.txt
+/subscribers_with_names.csv

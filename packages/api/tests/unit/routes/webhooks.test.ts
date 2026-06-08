@@ -91,6 +91,7 @@ function makeSlackNotifier() {
     notifyTwitterPosted: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
     notifySubscriberConfirmed: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
     notifySubscriberRemoved: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+    notifyFeedbackReceived: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
   } satisfies SlackNotifier;
 }
 

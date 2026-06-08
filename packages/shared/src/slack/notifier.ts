@@ -9,6 +9,8 @@ import { buildLinkedinPostedMessage } from "./builders/linkedin-posted.js";
 import { buildTwitterPostedMessage } from "./builders/twitter-posted.js";
 import { buildSubscriberConfirmedMessage } from "./builders/subscriber-confirmed.js";
 import { buildSubscriberRemovedMessage } from "./builders/subscriber-removed.js";
+import { buildFeedbackReceivedMessage } from "./builders/feedback-received.js";
+import type { FeedbackRating } from "../db/schema.js";
 import type {
   NotifyNewsletterSentInput,
   SlackNotifier,
@@ -51,6 +53,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
       notifyTwitterPosted: (): Promise<void> => Promise.resolve(),
       notifySubscriberConfirmed: (): Promise<void> => Promise.resolve(),
       notifySubscriberRemoved: (): Promise<void> => Promise.resolve(),
+      notifyFeedbackReceived: (): Promise<void> => Promise.resolve(),
     };
   }
 
@@ -478,6 +481,34 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
             error: err instanceof Error ? err.message : String(err),
           },
           "slack subscriber removed notification threw unexpectedly",
+        );
+      }
+    },
+
+    async notifyFeedbackReceived(input: {
+      readonly email: string;
+      readonly rating: FeedbackRating;
+    }): Promise<void> {
+      try {
+        const { blocks } = buildFeedbackReceivedMessage(input);
+        const result = await postToWebhook({ url: webhookUrl, blocks, fetchFn: deps.fetchFn });
+        if (!result.ok) {
+          logger.warn(
+            {
+              event: "slack.feedback_received.failed",
+              status: result.status,
+              responseBody: result.error,
+            },
+            "slack feedback received notification failed",
+          );
+        }
+      } catch (err) {
+        logger.warn(
+          {
+            event: "slack.feedback_received.failed",
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "slack feedback received notification threw unexpectedly",
         );
       }
     },

@@ -1,9 +1,36 @@
 import { describe, it, expect, vi } from "vitest";
 import { Hono } from "hono";
 import type { SubscriberSelect, SubscriberInsert, SubscriberStatus, SlackNotifier } from "@newsletter/shared";
+import type { FeedbackEventInsert, FeedbackEventSelect, FeedbackRating } from "@newsletter/shared";
 import { createSubscribeRouter } from "@api/routes/subscribe.js";
 import type { SubscribersRepo, SubscriberStatusUpdateResult } from "@api/repositories/subscribers.js";
+import type { FeedbackEventsRepo } from "@api/repositories/feedback-events.js";
 import { issueSubscriberToken } from "@api/lib/subscriber-token.js";
+
+const FEEDBACK_CAMPAIGN = "2026-06-reading-check";
+const SUBSCRIBER_ID = "00000000-0000-0000-0000-000000000001";
+
+function makeFeedbackRepo(opts: { hasPrior?: boolean } = {}): FeedbackEventsRepo & {
+  inserted: FeedbackEventInsert[];
+} {
+  const inserted: FeedbackEventInsert[] = [];
+  const repo: FeedbackEventsRepo = {
+    insertEvent: vi.fn((insert: FeedbackEventInsert): Promise<FeedbackEventSelect> => {
+      inserted.push(insert);
+      return Promise.resolve({
+        id: "feedback-event-id",
+        subscriberId: insert.subscriberId,
+        campaign: insert.campaign,
+        rating: insert.rating,
+        userAgent: insert.userAgent ?? null,
+        ip: insert.ip ?? null,
+        createdAt: new Date(),
+      });
+    }),
+    hasPriorEvent: vi.fn(() => Promise.resolve(opts.hasPrior ?? false)),
+  };
+  return Object.assign(repo, { inserted });
+}
 
 const SECRET = "test-secret";
 const BASE_URL = "https://example.com";
@@ -36,6 +63,7 @@ function makeSlackNotifier() {
     notifyTwitterPosted: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
     notifySubscriberConfirmed: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
     notifySubscriberRemoved: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
+    notifyFeedbackReceived: vi.fn<[], Promise<void>>().mockResolvedValue(undefined),
   } satisfies SlackNotifier;
 }
 
@@ -87,6 +115,7 @@ function makeLogger(): Record<"info" | "warn" | "error" | "debug", ReturnType<ty
 
 function buildApp(opts: {
   repo: SubscribersRepo;
+  feedbackRepo?: FeedbackEventsRepo;
   slackNotifier?: SlackNotifier;
   sendConfirmationEmail?: (email: string, confirmUrl: string) => Promise<void>;
   sendNewsletterToSubscriber?: (runId: string, subscriberId: string) => Promise<void>;
@@ -96,6 +125,8 @@ function buildApp(opts: {
   const app = new Hono();
   const router = createSubscribeRouter({
     subscribersRepo: opts.repo,
+    feedbackEventsRepo: opts.feedbackRepo ?? makeFeedbackRepo(),
+    feedbackCampaign: FEEDBACK_CAMPAIGN,
     sessionSecret: SECRET,
     baseUrl: BASE_URL,
     webBaseUrl: BASE_URL,
@@ -444,5 +475,74 @@ describe("VS-6: Slack webhook throws — confirm still succeeds and logs the fai
       }),
       expect.any(String),
     );
+  });
+});
+
+describe("GET /api/feedback", () => {
+  function feedbackToken(): string {
+    return issueSubscriberToken(SUBSCRIBER_ID, "feedback", SECRET);
+  }
+
+  it("records the rating, redirects to the thanks page, and fires Slack on the first tap", async () => {
+    const repo = makeRepo({ existing: makeSubscriber({ status: "confirmed", email: "reader@example.com" }) });
+    const feedbackRepo = makeFeedbackRepo({ hasPrior: false });
+    const slackNotifier = makeSlackNotifier();
+    const app = buildApp({ repo, feedbackRepo, slackNotifier });
+
+    const res = await app.request(`/api/feedback?token=${feedbackToken()}&v=love`);
+
+    expect(res.status).toBe(302);
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("/feedback?status=ok");
+    expect(location).toContain("v=love");
+
+    expect(feedbackRepo.inserted).toHaveLength(1);
+    expect(feedbackRepo.inserted[0]).toMatchObject({
+      subscriberId: SUBSCRIBER_ID,
+      campaign: FEEDBACK_CAMPAIGN,
+      rating: "love" satisfies FeedbackRating,
+    });
+    expect(slackNotifier.notifyFeedbackReceived).toHaveBeenCalledWith({
+      email: "reader@example.com",
+      rating: "love",
+    });
+  });
+
+  it("records a repeat tap but does NOT fire Slack again (prefetch / second click)", async () => {
+    const repo = makeRepo({ existing: makeSubscriber({ status: "confirmed", email: "reader@example.com" }) });
+    const feedbackRepo = makeFeedbackRepo({ hasPrior: true });
+    const slackNotifier = makeSlackNotifier();
+    const app = buildApp({ repo, feedbackRepo, slackNotifier });
+
+    const res = await app.request(`/api/feedback?token=${feedbackToken()}&v=meh`);
+
+    expect(res.status).toBe(302);
+    expect(feedbackRepo.inserted).toHaveLength(1);
+    expect(slackNotifier.notifyFeedbackReceived).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown rating value without recording anything", async () => {
+    const repo = makeRepo({ existing: makeSubscriber({ status: "confirmed" }) });
+    const feedbackRepo = makeFeedbackRepo();
+    const app = buildApp({ repo, feedbackRepo });
+
+    const res = await app.request(`/api/feedback?token=${feedbackToken()}&v=bogus`);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location") ?? "").toContain("status=invalid");
+    expect(feedbackRepo.inserted).toHaveLength(0);
+  });
+
+  it("redirects expired tokens to the thanks page as expired without recording", async () => {
+    const repo = makeRepo({ existing: makeSubscriber({ status: "confirmed" }) });
+    const feedbackRepo = makeFeedbackRepo();
+    const expired = issueSubscriberToken(SUBSCRIBER_ID, "feedback", SECRET, new Date(Date.now() - 1000));
+    const app = buildApp({ repo, feedbackRepo });
+
+    const res = await app.request(`/api/feedback?token=${expired}&v=love`);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location") ?? "").toContain("status=expired");
+    expect(feedbackRepo.inserted).toHaveLength(0);
   });
 });
