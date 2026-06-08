@@ -166,6 +166,55 @@ describe("SaveBar", () => {
     expect(screen.getByRole("button", { name: /save & view archive/i })).toBeTruthy();
   });
 
+  it("routes Save draft through the confirm dialog when saveConfirmation is set, then fires onSaveDraft on confirm", () => {
+    const onSave = vi.fn();
+    const onSaveDraft = vi.fn();
+    render(
+      <SaveBar
+        unsavedCount={1}
+        saving={false}
+        canSave
+        onSave={onSave}
+        onDiscard={vi.fn()}
+        onSaveDraft={onSaveDraft}
+        saveConfirmation="The story order changed since the digest meta was last generated."
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    // Draft did NOT fire; the dialog is showing the warning message
+    expect(onSaveDraft).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId("save-confirmation-message").textContent,
+    ).toContain("story order changed");
+    // Cancel closes without saving
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(screen.queryByTestId("save-confirmation-message")).toBeNull();
+    expect(onSaveDraft).not.toHaveBeenCalled();
+    // Re-open and confirm — onSaveDraft fires once, the publish path never runs
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save anyway/i }));
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("saves the draft directly when saveConfirmation is null", () => {
+    const onSaveDraft = vi.fn();
+    render(
+      <SaveBar
+        unsavedCount={1}
+        saving={false}
+        canSave
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        onSaveDraft={onSaveDraft}
+        saveConfirmation={null}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("save-confirmation-message")).toBeNull();
+  });
+
   it("test_EDGE_006_draft_save_error_preserves_state — draftSaving flag disables Save draft button while in flight", () => {
     const onSaveDraft = vi.fn();
     render(

@@ -49,6 +49,11 @@ export function SaveBar({
 }: SaveBarProps): ReactElement {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
+  // Which action opened the "Save without regenerating?" dialog, so confirming
+  // routes to the matching callback (draft vs publish).
+  const [pendingAction, setPendingAction] = useState<"publish" | "draft">(
+    "publish",
+  );
 
   function handleConfirmDiscard(): void {
     setConfirmOpen(false);
@@ -57,15 +62,29 @@ export function SaveBar({
 
   function handleSaveClick(): void {
     if (saveConfirmation !== null) {
+      setPendingAction("publish");
       setConfirmSaveOpen(true);
       return;
     }
     onSave();
   }
 
+  function handleSaveDraftClick(): void {
+    if (saveConfirmation !== null) {
+      setPendingAction("draft");
+      setConfirmSaveOpen(true);
+      return;
+    }
+    onSaveDraft?.();
+  }
+
   function handleConfirmSave(): void {
     setConfirmSaveOpen(false);
-    onSave();
+    if (pendingAction === "draft") {
+      onSaveDraft?.();
+    } else {
+      onSave();
+    }
   }
 
   return (
@@ -88,7 +107,7 @@ export function SaveBar({
           <Button
             type="button"
             variant="outline"
-            onClick={onSaveDraft}
+            onClick={handleSaveDraftClick}
             disabled={!canSave || draftSaving || saving}
             aria-disabled={!canSave || draftSaving || saving}
             className="min-h-[44px] px-4"
