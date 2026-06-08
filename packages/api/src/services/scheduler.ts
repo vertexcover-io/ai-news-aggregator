@@ -126,8 +126,6 @@ export async function reconcileAlertDeliverySchedule(
   );
 }
 
-export { ALERT_DELIVERY_SCHEDULER_KEY };
-
 export async function removeLegacySchedulers(
   queue: Pick<Queue, "removeJobScheduler">,
 ): Promise<void> {

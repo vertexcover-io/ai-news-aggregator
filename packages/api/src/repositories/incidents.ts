@@ -8,7 +8,7 @@
  * Mirrors packages/pipeline/src/repositories/incidents.ts exactly for the
  * shared methods (same convention as run-logs existing in both packages).
  */
-import { sql, and, eq, isNull, lt, inArray, desc } from "drizzle-orm";
+import { sql, and, eq, isNull, lt, inArray, desc, type SQL } from "drizzle-orm";
 import { incidents } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import { fingerprintFor } from "@newsletter/shared/alerting";
@@ -53,6 +53,8 @@ export function createIncidentRepo(db: AppDb): IncidentRepository {
         status: string;
         is_new: boolean;
         should_notify: boolean;
+        occurrences: number;
+        delivery_attempts: number;
       }>(sql`
         WITH
           pre AS (
@@ -89,12 +91,16 @@ export function createIncidentRepo(db: AppDb): IncidentRepository {
             RETURNING
               id,
               status,
+              occurrences,
+              delivery_attempts,
               (xmax = 0) AS is_new
           )
         SELECT
           u.id,
           u.status,
           u.is_new,
+          u.occurrences,
+          u.delivery_attempts,
           (
             u.is_new
             OR (
@@ -109,6 +115,11 @@ export function createIncidentRepo(db: AppDb): IncidentRepository {
         LEFT JOIN pre p ON true
       `);
 
+      if (rows.length === 0) {
+        // INSERT ... ON CONFLICT ... RETURNING always yields one row in Postgres;
+        // guard anyway so a driver/mock anomaly never throws past the repo boundary.
+        throw new Error("upsertByFingerprint: no row returned");
+      }
       const row = rows[0];
 
       return {
@@ -116,6 +127,8 @@ export function createIncidentRepo(db: AppDb): IncidentRepository {
         isNew: row.is_new,
         shouldNotify: row.should_notify,
         status: row.status as UpsertResult["status"],
+        occurrences: row.occurrences,
+        deliveryAttempts: row.delivery_attempts,
       };
     },
 
@@ -171,7 +184,7 @@ export function createIncidentRepo(db: AppDb): IncidentRepository {
      * Order: last_seen_at DESC (newest first).
      */
     async list(filter?: IncidentListFilter): Promise<Incident[]> {
-      const conditions = [];
+      const conditions: SQL[] = [];
       if (filter?.status !== undefined) {
         conditions.push(eq(incidents.status, filter.status));
       }

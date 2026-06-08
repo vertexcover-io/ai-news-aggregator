@@ -4,6 +4,7 @@ import type {
   CaptureIncidentInput,
   Incident,
   IncidentRepository,
+  UpsertResult,
 } from "../types/incident.js";
 import { INCIDENT_ALERT_COOLDOWN_MS } from "../constants/index.js";
 import { fingerprintFor } from "./fingerprint.js";
@@ -92,10 +93,19 @@ export function createAlertDispatcher(deps: AlertDispatcherDeps): AlertDispatche
   };
 }
 
+/**
+ * Build the Incident view passed to a channel for rendering.
+ *
+ * `occurrences` / `deliveryAttempts` come from the upsert result so a deduped,
+ * post-cooldown alert reports the REAL event frequency (not a hardcoded 1).
+ * `firstSeenAt` / `lastSeenAt` are approximated to now() for the payload — the
+ * channel only needs them for display, and the authoritative timestamps live in
+ * the DB row.
+ */
 function buildIncidentFromInput(
   input: CaptureIncidentInput,
   id: string,
-  upsertResult: { isNew: boolean; status: import("../types/incident.js").IncidentStatus },
+  upsertResult: UpsertResult,
 ): Incident {
   const now = new Date();
   return {
@@ -109,8 +119,8 @@ function buildIncidentFromInput(
     runId: input.runId ?? null,
     context: input.context ?? {},
     status: upsertResult.status,
-    occurrences: 1,
-    deliveryAttempts: 0,
+    occurrences: upsertResult.occurrences,
+    deliveryAttempts: upsertResult.deliveryAttempts,
     firstSeenAt: now,
     lastSeenAt: now,
     notifiedAt: null,

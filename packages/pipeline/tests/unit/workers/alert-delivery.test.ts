@@ -46,8 +46,8 @@ function makeFakeRepo(undelivered: Incident[]): IncidentRepository & {
   return {
     deliveredIds,
     incrementedIds,
-    upsertByFingerprint(): Promise<{ id: string; isNew: boolean; shouldNotify: boolean; status: "open" }> {
-      return Promise.resolve({ id: "x", isNew: true, shouldNotify: true, status: "open" });
+    upsertByFingerprint(): Promise<{ id: string; isNew: boolean; shouldNotify: boolean; status: "open"; occurrences: number; deliveryAttempts: number }> {
+      return Promise.resolve({ id: "x", isNew: true, shouldNotify: true, status: "open", occurrences: 1, deliveryAttempts: 0 });
     },
     markDelivered(id: string): Promise<void> {
       deliveredIds.push(id);

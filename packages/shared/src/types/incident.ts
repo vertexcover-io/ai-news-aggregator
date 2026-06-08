@@ -80,6 +80,10 @@ export interface UpsertResult {
   shouldNotify: boolean;
   /** Current status of the incident (used for mute-gating in dispatcher). */
   status: IncidentStatus;
+  /** Post-upsert occurrence count — so the Slack alert reports the real frequency. */
+  occurrences: number;
+  /** Post-upsert delivery-attempt count. */
+  deliveryAttempts: number;
 }
 
 /** Filter options for `IncidentRepository.list`. */

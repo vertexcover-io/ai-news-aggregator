@@ -13,6 +13,8 @@ function makeUpsertResult(overrides: Partial<UpsertResult> = {}): UpsertResult {
     isNew: true,
     shouldNotify: true,
     status: "open",
+    occurrences: 1,
+    deliveryAttempts: 0,
     ...overrides,
   };
 }

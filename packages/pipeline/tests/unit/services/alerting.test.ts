@@ -68,6 +68,8 @@ function makeFakeRepo(
         isNew: true,
         shouldNotify: true,
         status: "open" as const,
+        occurrences: 1,
+        deliveryAttempts: 0,
         ...opts.upsertResult,
       });
     },
