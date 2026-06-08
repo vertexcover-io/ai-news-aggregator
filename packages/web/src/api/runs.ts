@@ -1,7 +1,6 @@
 import type {
   RankedItem,
   RunState,
-  RunSourcesResponse,
   RunSummary,
 } from "@newsletter/shared";
 import type { RunObservability, RunSourceItemsResponse } from "@newsletter/shared/types";
@@ -24,17 +23,6 @@ export type RunStateResponse = Omit<RunState, "rankedItems"> & {
 
 interface ApiErrorBody {
   error?: string;
-}
-
-async function getRunSources(
-  runId: string,
-): Promise<RunSourcesResponse> {
-  const res = await apiFetchAdmin(`/api/admin/runs/${runId}/sources`);
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
-    throw new Error(body.error ?? "Failed to fetch run sources");
-  }
-  return (await res.json()) as RunSourcesResponse;
 }
 
 export async function getRun(runId: string): Promise<RunStateResponse | null> {

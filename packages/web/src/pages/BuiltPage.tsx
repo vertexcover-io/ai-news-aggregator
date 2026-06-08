@@ -5,8 +5,6 @@ import { PipelineDiagram } from "../components/built/PipelineDiagram";
 import { DefinitionTable } from "../components/built/DefinitionTable";
 import { InlineSubscribeCard } from "../components/shell/InlineSubscribeCard";
 
-const LAST_REVIEWED = "2026-05-24";
-
 const SKILLS = [
   { term: "brainstorm", def: "Structured problem exploration before any code." },
   {
