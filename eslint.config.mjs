@@ -10,6 +10,7 @@ export default tseslint.config(
       "**/node_modules/",
       "**/*.config.*",
       "**/scripts/",
+      "**/tests/e2e/*.mjs",
       ".worktrees/",
     ],
   },
