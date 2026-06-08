@@ -86,7 +86,7 @@ function feedbackText(r: { firstName: string; loveUrl: string; mehUrl: string; n
   return [
     `Hey ${name},`,
     "",
-    "You've been getting the AgentLoop AI digest from us for a few weeks now, and we wanted to check in. We read every reply ourselves, so this goes straight to the people building it.",
+    "You've been getting the AgentLoop AI digest from us for a few days now, and we wanted to check in. We read every reply ourselves, so this goes straight to the people building it.",
     "",
     "One tap, that's the whole ask. How's it landing for you?",
     "",
