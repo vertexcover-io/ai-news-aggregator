@@ -1,5 +1,7 @@
 # Save newsletter review as draft
 
+**PR:** [vertexcover-io/ai-news-aggregator#266](https://github.com/vertexcover-io/ai-news-aggregator/pull/266)
+
 **Verification verdict:** PASS — [verification/proof-report.md](verification/proof-report.md) (23 claims proven, all 10 UI claims with independent Playwright MCP screenshots; quality gate 11/11 PASS — [.harness/runtime/save-newsletter-draft/gate-report-post-tdd-001.md](../../runtime/save-newsletter-draft/gate-report-post-tdd-001.md))
 
 The admin can now **Save draft** from the review page of any not-yet-reviewed run. Draft save persists ranked items + digest meta, leaves `reviewed = false`, stamps `draft_saved_at`, and enqueues nothing — the run stays invisible in the public archive and shows a violet **Draft** badge (not "Ready to review") on the dashboard with a Review CTA. A second visit rehydrates the saved state. Clicking **Save & publish** (now explicitly labelled) triggers the existing publish path unchanged. An already-reviewed run's review page shows only a single Save action with no draft button, preventing accidental de-publish. Backend: one new nullable column (`draft_saved_at`), a `publish` flag on the existing PATCH endpoint (default `true` — fully backward-compatible), and an F7 guard rejecting draft saves against already-reviewed archives.
