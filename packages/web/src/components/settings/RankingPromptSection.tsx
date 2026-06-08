@@ -62,6 +62,7 @@ export function RankingPromptSection(): ReactElement {
             type="button"
             variant="outline"
             size="sm"
+            data-testid="ranking-prompt-reset"
             onClick={handleReset}
           >
             Reset to default

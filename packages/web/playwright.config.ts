@@ -1,14 +1,60 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Ports + URLs are provisioned by tests/e2e/run-e2e.mjs (the `test:e2e`
+// entrypoint), which brings up Postgres/Redis and exports these before
+// invoking Playwright. Running `playwright test` directly is unsupported.
+const apiBase = process.env.E2E_API_BASE;
+const webBase = process.env.PLAYWRIGHT_BASE_URL;
+const apiPort = process.env.API_PORT;
+const webPort = process.env.WEB_PORT;
+
+if (!apiBase || !webBase || !apiPort || !webPort) {
+  throw new Error("e2e env not provisioned — run `pnpm --filter @newsletter/web test:e2e` (not `playwright test` directly)");
+}
+
 export default defineConfig({
   testDir: "./tests/e2e",
-  timeout: 360_000,
+  timeout: 30_000,
+  expect: { timeout: 5_000 },
+  globalTimeout: 600_000,
   retries: 0,
+  // All specs share ONE hermetic Postgres/Redis, and several seed/truncate
+  // global tables (run_archives, user_settings) in their hooks. Running spec
+  // files concurrently lets one spec's teardown clobber another's seeded data,
+  // so execute serially — these specs were written for a single shared stack.
+  workers: 1,
+  fullyParallel: false,
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173",
+    baseURL: webBase,
     headless: true,
   },
-  projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+  webServer: [
+    {
+      command: "pnpm --filter @newsletter/api dev",
+      url: `${apiBase}/health`,
+      timeout: 30_000,
+      reuseExistingServer: false,
+      env: {
+        API_PORT: apiPort,
+        DATABASE_URL: process.env.DATABASE_URL ?? "",
+        REDIS_URL: process.env.REDIS_URL ?? "",
+        ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ?? "",
+        // Must match the secret the specs use to forge subscriber tokens;
+        // dotenv leaves an already-set env var intact, so this wins over .env.
+        SESSION_SECRET: process.env.SESSION_SECRET ?? "",
+        // Redirect confirm/unsubscribe/feedback flows at the hermetic web server.
+        NEWSLETTER_BASE_URL: webBase,
+      },
+    },
+    {
+      command: `pnpm --filter @newsletter/web exec vite --port ${webPort} --strictPort`,
+      url: webBase,
+      timeout: 30_000,
+      reuseExistingServer: false,
+      env: {
+        VITE_API_TARGET: apiBase,
+      },
+    },
   ],
+  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });

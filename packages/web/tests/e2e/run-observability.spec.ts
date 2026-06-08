@@ -18,12 +18,8 @@ import { test, expect, type Page } from "@playwright/test";
 import { Client } from "pg";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
 
-const API_BASE = process.env.E2E_API_BASE ?? "http://localhost:3000";
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "aman2005";
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  "postgresql://newsletter:newsletter@localhost:5433/newsletter";
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
 
 // ---------------------------------------------------------------------------
@@ -44,7 +40,7 @@ const seededRedisKeys = new Set<string>();
 const seededRawExternalIds = new Set<string>();
 
 async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
   try {
     return await fn(client);
@@ -520,7 +516,7 @@ async function seedPerItemObservabilityRun(): Promise<string> {
       {
         level: "info",
         stage: "collecting",
-        source: "r/AI_Agents",
+        source: "r/ai_agents",
         event: "source.completed",
         message: "collect.ok",
         context: { fetched: 3, durationMs: 1700 },
@@ -528,7 +524,7 @@ async function seedPerItemObservabilityRun(): Promise<string> {
       {
         level: "warn",
         stage: "enriching",
-        source: "r/AI_Agents",
+        source: "r/ai_agents",
         event: "enrichment.summary",
         message: "enrich.failed",
         context: { reason: "fetch timeout after 15000ms" },

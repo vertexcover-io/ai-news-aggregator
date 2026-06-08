@@ -8,11 +8,8 @@
 import { test, expect } from "@playwright/test";
 import { Client } from "pg";
 import { createHmac, randomUUID } from "node:crypto";
+import { API_BASE, makeDbClient } from "./_infra";
 
-const API_BASE = "http://localhost:3000";
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  "postgresql://newsletter:newsletter@localhost:5433/newsletter";
 const SESSION_SECRET =
   process.env.SESSION_SECRET ??
   "test-session-secret-32-bytes-minimum-abcdef1234567890";
@@ -30,7 +27,7 @@ function issueSubscriberToken(
 }
 
 async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
   try {
     return await fn(client);

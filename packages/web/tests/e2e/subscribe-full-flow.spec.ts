@@ -13,12 +13,8 @@
  * `EMAIL_PROVIDER=resend`) succeeds without a verified domain.
  */
 import { test, expect } from "@playwright/test";
-import { Client } from "pg";
+import { API_BASE, makeDbClient } from "./_infra";
 
-const API_BASE = "http://localhost:3000";
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  "postgresql://newsletter:newsletter@localhost:5433/newsletter";
 
 interface SubscriberRow {
   id: string;
@@ -28,7 +24,7 @@ interface SubscriberRow {
 }
 
 async function findSubscriberByEmail(email: string): Promise<SubscriberRow | null> {
-  const c = new Client({ connectionString: DATABASE_URL });
+  const c = makeDbClient();
   await c.connect();
   try {
     const r = await c.query<SubscriberRow>(
@@ -47,11 +43,13 @@ test.describe("subscribe full flow — UI -> API -> token -> confirm (REQ-003 + 
     const email = `delivered+e2e-flow-${unique}@resend.dev`;
 
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: /Get the daily AI digest in your inbox/i })).toBeVisible();
+    const card = page.locator('[data-section="inline-subscribe"]');
+    await expect(
+      card.getByRole("heading", { name: /Read AgentLoop every morning/i }),
+    ).toBeVisible();
 
-    await page.getByPlaceholder("Your email").fill(email);
-    await page.getByRole("checkbox").check();
-    const submit = page.getByRole("button", { name: /^Subscribe$/i });
+    await card.getByPlaceholder("you@company.com").fill(email);
+    const submit = card.getByRole("button", { name: /Subscribe/i });
     await expect(submit).toBeEnabled();
     await submit.click();
 

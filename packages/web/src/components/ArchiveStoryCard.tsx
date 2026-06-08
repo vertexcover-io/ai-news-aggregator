@@ -10,11 +10,13 @@ interface Props {
 export function ArchiveStoryCard({ item, rank }: Props): ReactElement {
   const [imgError, setImgError] = useState(false);
 
+  // Legacy archives (pre-enriched-summary) and seeded snapshots may omit
+  // enrichedSource entirely, so guard against undefined as well as null.
   const enriched = item.enrichedSource;
-  const sourceLabel = enriched !== null ? enriched.hostname : getPlatformLabel(item.sourceType);
-  const sourceUrl = enriched !== null ? enriched.url : item.url;
+  const sourceLabel = enriched != null ? enriched.hostname : getPlatformLabel(item.sourceType);
+  const sourceUrl = enriched != null ? enriched.url : item.url;
   const readVerb =
-    enriched !== null
+    enriched != null
       ? `Read on ${enriched.hostname}`
       : item.sourceType === "github"
         ? "Read repo"

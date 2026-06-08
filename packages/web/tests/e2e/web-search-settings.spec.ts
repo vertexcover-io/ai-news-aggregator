@@ -7,11 +7,30 @@
  *   - web dev server on :5174 (Playwright baseURL override)
  */
 import { test, expect, type Page } from "@playwright/test";
+import { ADMIN_PASSWORD, makeDbClient } from "./_infra";
 
-// Login goes through Vite proxy (same origin as the page) so the session
-// cookie is scoped to localhost:5174 and sent on subsequent PUT /api/* calls.
-const WEB_BASE = "http://localhost:5174";
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "aman2005";
+// The settings form requires non-empty ranking/shortlist prompts to save. Seed
+// a valid singleton row so Save fires a PUT regardless of prior DB state.
+async function resetSettings(): Promise<void> {
+  const client = makeDbClient();
+  await client.connect();
+  try {
+    await client.query(`DELETE FROM user_settings WHERE singleton = true`);
+    // Email/LinkedIn/Twitter times must differ from the pipeline time or the
+    // settings form's superRefine rejects the save before it issues a PUT.
+    await client.query(
+      `INSERT INTO user_settings (top_n, shortlist_size, ranking_prompt, shortlist_prompt, pipeline_time, schedule_timezone, email_time, linkedin_time, twitter_time)
+       VALUES (5, 50, 'seed ranking prompt', 'seed shortlist prompt', '08:00', 'UTC', '09:00', '10:00', '11:00')`,
+    );
+  } finally {
+    await client.end();
+  }
+}
+
+// Login goes through the Vite proxy (same origin as the page) so the session
+// cookie is scoped to the web origin and sent on subsequent PUT /api/* calls.
+// The hermetic runner provisions PLAYWRIGHT_BASE_URL with the ephemeral port.
+const WEB_BASE = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5173";
 
 async function adminLogin(page: Page): Promise<void> {
   const res = await page.request.post(`${WEB_BASE}/api/admin/login`, {
@@ -21,6 +40,10 @@ async function adminLogin(page: Page): Promise<void> {
 }
 
 test.describe("Web Search settings round-trip (VS-0.5)", () => {
+  test.beforeEach(async () => {
+    await resetSettings();
+  });
+
   test("enable web search, add a query, save, reload — query persists", async ({
     page,
   }) => {

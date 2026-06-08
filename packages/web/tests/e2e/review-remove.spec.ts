@@ -1,12 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
+import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
 
-const API_BASE = "http://localhost:3000";
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "aman2005";
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  "postgresql://newsletter:newsletter@localhost:5433/newsletter";
 
 interface SeededReview {
   readonly runId: string;
@@ -57,7 +53,7 @@ async function seedRawItem(
 }
 
 async function seedReviewArchive(): Promise<SeededReview> {
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
   try {
     const runId = randomUUID();
@@ -103,7 +99,7 @@ async function seedReviewArchive(): Promise<SeededReview> {
 
 async function cleanupReviewArchive(seed: SeededReview | null): Promise<void> {
   if (seed === null) return;
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
   try {
     await client.query("DELETE FROM run_archives WHERE id = $1", [seed.runId]);
@@ -146,9 +142,15 @@ test.describe("review remove e2e", () => {
       .getByRole("button", { name: /save & view archive/i })
       .click();
 
+    // Removing an item drifts the ranked list from the digest signature, so the
+    // SaveBar asks to confirm saving without regenerating the digest copy.
+    await page.getByRole("button", { name: /save anyway/i }).click();
+
     await expect(page).toHaveURL(new RegExp(`/archive/${seeded.runId}$`));
+    // The archive story heading appends a "↗" affordance to the link text, so
+    // match on a substring rather than an exact accessible name.
     await expect(
-      page.getByRole("heading", { name: seeded.keptTitle, exact: true }),
+      page.getByRole("heading", { name: seeded.keptTitle }),
     ).toBeVisible();
     await expect(page.getByText(seeded.removedTitle)).toHaveCount(0);
   });

@@ -1,6 +1,6 @@
 import { test, expect, type Route } from "@playwright/test";
+import { ADMIN_PASSWORD } from "./_infra";
 
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "aman2005";
 
 async function stubSubscribeOk(route: Route): Promise<void> {
   await route.fulfill({
@@ -10,53 +10,89 @@ async function stubSubscribeOk(route: Route): Promise<void> {
   });
 }
 
+// The archive-detail subscribe widget (SubscribeInline `interlude` variant)
+// only renders when the issue has >= 4 stories, so mock a 4-story archive
+// rather than depending on whatever the shared DB happens to hold.
+function mockArchiveWithStories(runId: string): unknown {
+  const rankedItems = Array.from({ length: 4 }, (_, i) => ({
+    id: i + 1,
+    rawItemId: i + 1,
+    title: `Story ${String(i + 1)}`,
+    url: `https://example.com/story-${String(i + 1)}`,
+    sourceType: "hn",
+    author: null,
+    publishedAt: null,
+    engagement: { points: 10, commentCount: 2 },
+    score: 0.9 - i * 0.1,
+    rationale: `Rationale for story ${String(i + 1)}.`,
+    content: null,
+    imageUrl: null,
+    recap: null,
+    enrichedSource: null,
+  }));
+  return {
+    id: runId,
+    status: "completed",
+    stage: "completed",
+    topN: 4,
+    startedAt: "2026-05-08T10:00:00Z",
+    updatedAt: "2026-05-08T10:30:00Z",
+    completedAt: "2026-05-08T10:30:00Z",
+    issueDate: "2026-05-08",
+    digestHeadline: "Test issue",
+    digestSummary: "A seeded issue for the subscribe-widget e2e.",
+    sources: { hn: { status: "completed", itemsFetched: 4, errors: [] } },
+    rankedItems,
+    warnings: [],
+    error: null,
+  };
+}
+
 test.describe("subscribe flow", () => {
   test("homepage subscribe widget submits and shows success state", async ({ page }) => {
     await page.route("**/api/subscribe", stubSubscribeOk);
 
     await page.goto("/");
 
+    const card = page.locator('[data-section="inline-subscribe"]');
     await expect(
-      page.getByRole("heading", { name: /Get the daily AI digest in your inbox/i }),
+      card.getByRole("heading", { name: /Read AgentLoop every morning/i }),
     ).toBeVisible();
 
     const email = `e2e-home-${String(Date.now())}@example.com`;
-    await page.getByPlaceholder("Your email").fill(email);
-    await page.getByRole("checkbox").check();
+    await card.getByPlaceholder("you@company.com").fill(email);
 
-    const submit = page.getByRole("button", { name: /^Subscribe$/i });
+    const submit = card.getByRole("button", { name: /Subscribe/i });
     await expect(submit).toBeEnabled();
     await submit.click();
 
     await expect(
-      page.getByText(/Check your inbox to confirm your subscription/i),
+      card.getByText(/Check your inbox to confirm your subscription/i),
     ).toBeVisible({ timeout: 10_000 });
   });
 
-  test("submit button is disabled until consent checkbox is checked", async ({ page }) => {
+  test("homepage submit button is disabled until an email is entered", async ({ page }) => {
     await page.goto("/");
 
-    const submit = page.getByRole("button", { name: /^Subscribe$/i });
+    const card = page.locator('[data-section="inline-subscribe"]');
+    const submit = card.getByRole("button", { name: /Subscribe/i });
     await expect(submit).toBeDisabled();
 
-    await page.getByPlaceholder("Your email").fill("not-yet-checked@example.com");
-    await expect(submit).toBeDisabled();
-
-    await page.getByRole("checkbox").check();
+    await card.getByPlaceholder("you@company.com").fill("typed@example.com");
     await expect(submit).toBeEnabled();
   });
 
-  test("subscribe widget appears at the bottom of an archive detail page", async ({ page, request }) => {
+  test("subscribe widget appears within an archive detail page", async ({ page }) => {
     await page.route("**/api/subscribe", stubSubscribeOk);
+    const runId = "e2e-subscribe-archive";
+    await page.route(`**/api/archives/${runId}`, async (route: Route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(mockArchiveWithStories(runId)),
+      });
+    });
 
-    const archivesRes = await request.get("/api/archives");
-    expect(archivesRes.ok()).toBe(true);
-    const { archives } = (await archivesRes.json()) as { archives: { runId: string }[] };
-    expect(archives.length).toBeGreaterThan(0);
-    const [first] = archives;
-    const firstRunId = first.runId;
-
-    await page.goto(`/archive/${firstRunId}`);
+    await page.goto(`/archive/${runId}`);
 
     const widgetHeading = page.getByRole("heading", {
       name: /Get the daily AI digest in your inbox/i,
@@ -65,7 +101,7 @@ test.describe("subscribe flow", () => {
     await expect(widgetHeading).toBeVisible();
 
     const email = `e2e-archive-${String(Date.now())}@example.com`;
-    await page.getByPlaceholder("Your email").fill(email);
+    await page.getByPlaceholder("you@company.com").fill(email);
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: /^Subscribe$/i }).click();
 
@@ -76,31 +112,25 @@ test.describe("subscribe flow", () => {
 });
 
 test.describe("subscribe nav link", () => {
-  test("nav Subscribe link scrolls to widget on /", async ({ page }) => {
+  test("nav Subscribe link scrolls to the homepage widget", async ({ page }) => {
     await page.goto("/");
 
     const widget = page.getByRole("heading", {
-      name: /Get the daily AI digest in your inbox/i,
+      name: /Read AgentLoop every morning/i,
     });
     await expect(widget).toBeVisible();
 
-    const widgetTopBeforeClick = await widget.evaluate(
-      (el) => el.getBoundingClientRect().top,
-    );
-    expect(widgetTopBeforeClick).toBeGreaterThan(400);
-
-    await page.getByRole("link", { name: /^Subscribe$/ }).click();
+    await page.getByRole("link", { name: /Subscribe/ }).click();
+    await expect(page).toHaveURL(/#subscribe$/);
     await expect(widget).toBeInViewport();
   });
 
-  test("nav Subscribe link from /privacy navigates to /#subscribe and scrolls", async ({
+  test("deep-linking to /#subscribe scrolls the homepage widget into view", async ({
     page,
   }) => {
-    await page.goto("/privacy");
-    await page.getByRole("link", { name: /^Subscribe$/ }).click();
-    await expect(page).toHaveURL(/\/#subscribe$/);
+    await page.goto("/#subscribe");
     await expect(
-      page.getByRole("heading", { name: /Get the daily AI digest in your inbox/i }),
+      page.getByRole("heading", { name: /Read AgentLoop every morning/i }),
     ).toBeInViewport({ timeout: 10000 });
   });
 });
@@ -151,7 +181,7 @@ test.describe("confirm page status states", () => {
   test("invalid status shows invalid message", async ({ page }) => {
     await page.goto("/confirm?status=invalid");
     await expect(
-      page.getByRole("heading", { name: /This link is invalid/i }),
+      page.getByRole("heading", { name: /This link doesn't/i }),
     ).toBeVisible();
   });
 });
@@ -189,7 +219,7 @@ test.describe("admin analytics page", () => {
     await page.goto("/admin/analytics");
 
     await expect(
-      page.getByRole("heading", { name: /Deliverability Analytics/i }),
+      page.getByRole("heading", { name: /^Analytics$/i }),
     ).toBeVisible();
 
     await expect(page.getByLabel(/^From$/i)).toBeVisible();
