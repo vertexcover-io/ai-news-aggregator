@@ -8,8 +8,8 @@ severity: medium
 status: implemented
 applies_to: ["packages/web/tests/e2e/**/*.ts", "packages/web/tests/unit/**/*.tsx"]
 stage: [code, review]
-evidence_count: 1
-last_validated: 2026-06-05
+evidence_count: 2
+last_validated: 2026-06-08
 source: review-fix@admin-edit-after-review
 related: []
 ---
@@ -54,3 +54,30 @@ The component source (`packages/web/src/components/ArchiveStoryCard.tsx:34`) con
 - **If the level doesn't matter for the test's purpose, omit the `level` option.** `getByRole("heading", { name: editedTitle })` matches any heading level and is more resilient to markup refactors.
 - **Signal that the level is wrong:** the test times out with a "locator was not visible" message — not a type error, not a helpful "heading found but at wrong level" message. If your heading assertion times out on a page where the text is definitely present, the `level` value is the first suspect.
 - **After writing any heading assertion, run the test once against a known-good state** to confirm it passes before relying on it as a gate.
+
+---
+
+## Addendum: `getByText` in strict mode fails when the same text appears in multiple elements
+
+*Added 2026-06-08 — incidents page e2e.*
+
+If a page renders the same text string in two DOM elements (e.g. a title rendered in a `<span>` inside one cell AND in a dedicated source cell), `page.getByText(text)` throws in strict mode:
+
+```
+Error: strict mode violation: getByText('collector-agent') resolved to 2 elements
+```
+
+**Fix:** use a more specific locator that targets the DOM role and context, not just text content:
+
+```ts
+// WRONG — ambiguous when same text appears multiple times:
+await page.getByText('collector-agent').click();
+
+// CORRECT — scope to the cell role for uniqueness:
+await page.getByRole('cell', { name: 'collector-agent', exact: true }).click();
+
+// Or scope to a parent container:
+await page.locator('tr').filter({ hasText: 'collector-agent' }).getByRole('button').click();
+```
+
+If the text appearing twice is a component bug (duplicate render), fix the component instead of working around it in the test.

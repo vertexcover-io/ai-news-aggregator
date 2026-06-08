@@ -1,9 +1,9 @@
 ---
 governs: packages/pipeline/src/services/
-last_verified_sha: ad0153a
-key_files: [run-state.ts, run-logger.ts, cost-tracker.ts, candidate-loader.ts, credential-resolver.ts, source-telemetry.ts, cancel-subscriber.ts, recency.ts, web-crawler.ts, add-post-helper.ts, build-pre-review-snapshot.ts, collector-health/index.ts, collector-health/classify.ts, run-archive-writer.ts, finalize-run.ts]
+last_verified_sha: 8f2bc3411177651bbd5e223a7aba4b77be130474
+key_files: [run-state.ts, run-logger.ts, cost-tracker.ts, candidate-loader.ts, credential-resolver.ts, source-telemetry.ts, cancel-subscriber.ts, recency.ts, web-crawler.ts, add-post-helper.ts, build-pre-review-snapshot.ts, collector-health/index.ts, collector-health/classify.ts, run-archive-writer.ts, finalize-run.ts, alerting.ts]
 flow_fns: [run-state.ts::createRunStateService, run-logger.ts::createRunLogger, cost-tracker.ts::createCostTracker, credential-resolver.ts::resolveLinkedInCredentials, cancel-subscriber.ts::createCancelSubscriber, web-crawler.ts::runWebCrawl, add-post-helper.ts::hydrateAddedPost, collector-health/index.ts::runCollectorHealthCheck, run-archive-writer.ts::writeFailedArchive, run-archive-writer.ts::pickArchiveDigest, finalize-run.ts::finalizeRun]
-decisions: [D-070, D-071, D-072, D-080]
+decisions: [D-070, D-071, D-072, D-080, D-115, D-116]
 status: active
 ---
 
@@ -88,7 +88,8 @@ Services own state management (Redis run-state, cost tracking), candidate loadin
 ## New services (added: refactor #249 + duplication #250)
 
 - `run-archive-writer.ts` — extracted from `run-process.ts`: `writeFailedArchive(runId, reason, deps)` → writes a failed/cancelled archive row with partial cost; `pickArchiveDigest(ranked)` → picks digest headline/summary from ranked items; `nonEmptyText(s)` → null-coalesces empty strings.
-- `finalize-run.ts` — extracted from `run-process.ts`: `finalizeRun(deps, args)` → the success finalize block: digest selection → `serializeArchiveSearchText` → `resolveScheduledPublishAt` → archive upsert → cost persist → Slack `notifySourceDistribution` + conditional `notifyReviewPending` → run.completed log. Per D-051, receives already-resolved deps.
+- `finalize-run.ts` — extracted from `run-process.ts`: `finalizeRun(deps, args)` → the success finalize block: digest selection → `serializeArchiveSearchText` → `resolveScheduledPublishAt` → archive upsert → cost persist → Slack `notifySourceDistribution` + conditional `notifyReviewPending` → run.completed log → **`evaluateRunHealth(runId, collectorOutcomes, { alertDispatcher, logger })`** (best-effort incident capture; errors swallowed, D-116). Per D-051, receives already-resolved deps.
+- `alerting.ts` — `createPipelineAlertingDeps(db, options?)` → `{ alertDispatcher, incidentsRepo }` — wires the concrete `IncidentRepository` + `SlackAlertChannel` + `createAlertDispatcher` for the pipeline context.
 
 ## Gotchas / landmines
 - **Run-logger is best-effort**: `repo.append` failure is caught and logged to stdout — it never throws. A DB outage during a run loses telemetry but doesn't crash the pipeline. (D-070)

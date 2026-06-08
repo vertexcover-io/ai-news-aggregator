@@ -1,9 +1,9 @@
 ---
 governs: packages/pipeline/src/workers/
-last_verified_sha: ad0153a
-key_files: [processing.ts, run-process.ts, daily-run.ts, email-send.ts, linkedin-post.ts, twitter-post.ts, social-health.ts, collector-health.ts, publish-target.ts, newsletter-send.ts]
-flow_fns: [processing.ts::createProcessingWorker, run-process.ts::handleRunProcessJob, daily-run.ts::handleDailyRunJob, email-send.ts::handleEmailSendJob, linkedin-post.ts::handleLinkedInPostJob, twitter-post.ts::handleTwitterPostJob, collector-health.ts::handleCollectorHealthJob, publish-target.ts::resolvePublishTarget]
-decisions: [D-050, D-051, D-052, D-110, D-111]
+last_verified_sha: 8f2bc3411177651bbd5e223a7aba4b77be130474
+key_files: [processing.ts, run-process.ts, daily-run.ts, email-send.ts, linkedin-post.ts, twitter-post.ts, social-health.ts, collector-health.ts, publish-target.ts, newsletter-send.ts, alert-delivery.ts]
+flow_fns: [processing.ts::createProcessingWorker, run-process.ts::handleRunProcessJob, daily-run.ts::handleDailyRunJob, email-send.ts::handleEmailSendJob, linkedin-post.ts::handleLinkedInPostJob, twitter-post.ts::handleTwitterPostJob, collector-health.ts::handleCollectorHealthJob, publish-target.ts::resolvePublishTarget, alert-delivery.ts::runAlertDeliverySweep]
+decisions: [D-050, D-051, D-052, D-110, D-111, D-117]
 status: active
 ---
 
@@ -27,6 +27,9 @@ Each worker file exports a handler function called by the dispatching `processin
 - `handleNewsletterSendJob(deps, job)` → `void` — **@deprecated** legacy combined email+social send; kept for back-compat
 - `resolvePublishTarget(deps, input)` → `PipelineRunArchiveRow | null` — resolves the archive to publish (by runId or latest terminal), validates reviewed/non-dry-run
 - `handleCollectionJob(job, deps?)` → `CollectorResult` — **legacy** per-source collection worker (kept for rollback)
+- `createAlertDeliveryWorker(options?)` → `Worker` — **dedicated** worker on `ALERT_DELIVERY_QUEUE_NAME` (own Redis connection, separate from processing; D-117); never set to `concurrency:1`
+- `runAlertDeliverySweep(deps)` → `void` — processes all `listUndelivered()` incidents; calls send per channel; `Promise.allSettled` (one failure never blocks others); marks delivered or increments attempts; never throws
+- `scheduleAlertDeliverySweep(connection)` → `void` — idempotent upsert of repeatable scheduler `ALERT_DELIVERY_SCHEDULER_KEY` at pipeline startup (deliberate redundancy alongside API registration; D-117)
 
 ## Depends on / used by
 - Uses: all processors, all collectors, all repositories, all services, `bullmq`, `@newsletter/shared`
@@ -65,7 +68,9 @@ Each worker file exports a handler function called by the dispatching `processin
                 ├─ archiveRepo.upsert (completed, rankedItems, runFunnel, shortlistedItemIds, preReviewSnapshot)
                 ├─ persistCost
                 ├─ slackNotifier.notifySourceDistribution (idempotent)
-                └─ if !autoReview → slackNotifier.notifyReviewPending
+                ├─ if !autoReview → slackNotifier.notifyReviewPending
+                └─ evaluateRunHealth(runId, collectorOutcomes, alertingDeps)  (best-effort; D-116/NF1)
+                    → alertDispatcher.capture per failed/degraded → incidents table
     → catch CancelledError: writeFailedArchive (services/run-archive-writer.ts) + persistCost
     → catch other: writeFailedArchive + runLog.error + re-throw
     → finally: subscriber.close()
@@ -125,6 +130,7 @@ Each worker file exports a handler function called by the dispatching `processin
 - **Collector-health worker is dedicated, not the processing worker** (D-110): `createCollectorHealthWorker` runs on the `collector-health` queue with its own `createRedisConnection()`. Do NOT route health checks through the processing worker or set it to `concurrency:1` — that anti-pattern (`queue-concurrency-vs-in-process-pacer.md`) would serialize every job type behind a multi-minute run.
 - **Manual vs scheduled `running` ownership** (AD-3): the API route writes `running` synchronously for a manual check before enqueue; the worker only writes `running` for the `scheduled` trigger. A `buildHealthCheckDeps` throw after `setRunning` writes `failed` for all targets so nothing is stuck `running`.
 - **Health-check Slack has no idempotency marker** (D-111): unlike run-bearing Slack (D-107), the consolidated collector-health failure message fires every time on both manual and scheduled failures — there is no `notification_state` (no run to attach it to). A re-checked still-broken collector re-alerts; this is intended.
+- **Alert-delivery worker is dedicated, not the processing worker** (D-117): `createAlertDeliveryWorker` runs on `ALERT_DELIVERY_QUEUE_NAME` with its own `createRedisConnection()`. Do NOT route alert sweeps through the processing worker.
 
 ## Decisions
 - **D-050**: `email_sent_at` is the broadcast idempotency marker, not per-recipient. Why: per-recipient dedup belongs on the `email_sends` table. A targeted send stamping `email_sent_at` would poison the next broadcast. Tradeoff: two dedup mechanisms (archive-level for broadcast, send-level for per-recipient). Governs: `workers/email-send.ts`.

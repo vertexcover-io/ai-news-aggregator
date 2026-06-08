@@ -2,7 +2,7 @@
 
 Drizzle DB schema, shared types, constants, utils, and cross-cutting services (credential crypto, Slack, scheduling). Single source of truth for the data layer — every other package depends on it.
 
-Detailed surface, data flows, and decisions: `.harness/knowledge/context/packages/shared/PACKAGE.md` (+ sub-package docs for `db/`, `types/`, `scheduling/`, `slack/`, …).
+Detailed surface, data flows, and decisions: `.harness/knowledge/context/packages/shared/PACKAGE.md` (+ sub-package docs for `db/`, `types/`, `scheduling/`, `slack/`, `alerting/`, …).
 
 ## Rules
 - This package defines tables — no other package should
@@ -13,6 +13,7 @@ Detailed surface, data flows, and decisions: `.harness/knowledge/context/package
 - Web code must use subpath imports (`@newsletter/shared/<sub>`) — the root barrel leaks the DB client into the browser
 - Rotating `SESSION_SECRET` invalidates all encrypted credentials at rest (it is the HKDF KEK for the credential cipher)
 - New `MODEL_PRICING` entries must include all five rate fields (`inputPerMTok`, `outputPerMTok`, `cacheReadPerMTok`, `cacheWrite5mPerMTok`, `cacheWrite1hPerMTok`); thinking tokens bill at the output rate
+- `src/alerting/` must never import `drizzle-orm` or `@newsletter/shared/db` — it is imported by web via the `@newsletter/shared/alerting` subpath and any DB import breaks the Vite bundle (same rule as the root barrel)
 
 ## Commands
 pnpm drizzle-kit generate   # Generate migration from schema changes

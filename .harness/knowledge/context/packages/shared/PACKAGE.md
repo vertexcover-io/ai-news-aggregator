@@ -1,8 +1,8 @@
 ---
 governs: packages/shared/src/
-last_verified_sha: ad0153a
-sub_packages: [db, types, constants, services, scheduling, slack, review-edits, utils]
-decisions: [D-100, D-101, D-102, D-103, D-104, D-105, D-106, D-107, D-108, D-112, D-113]
+last_verified_sha: 8f2bc3411177651bbd5e223a7aba4b77be130474
+sub_packages: [db, types, constants, services, scheduling, slack, review-edits, utils, alerting]
+decisions: [D-100, D-101, D-102, D-103, D-104, D-105, D-106, D-107, D-108, D-112, D-113, D-115, D-116, D-118]
 status: active
 ---
 
@@ -46,6 +46,14 @@ The `@newsletter/shared` package is the single source of truth for the monorepo'
 - createSlackNotifier — factory returning 11 notification methods with idempotency and dry-run gating
 - postToWebhook — POST Slack blocks to webhook URL
 
+### Alerting (alerting/)
+- `createAlertDispatcher(deps)` → `AlertDispatcher` — durable-first incident capture facade; never throws (D-116/NF1)
+- `fingerprintFor(category, source, signature)` → `string` — produces `category:domain:signature` dedup key (D-115)
+- `evaluateRunHealth(runId, outcomes, deps)` → captures incidents for failed/degraded runs; called from `finalizeRun`
+- `AlertChannel` interface — `{ enabled: boolean, send(incident): Promise<boolean> }`
+- `SlackAlertChannel` — concrete impl wrapping `postToWebhook`; constructed from `SLACK_WEBHOOK_URL` env
+- Re-exports `IncidentSeverity`, `IncidentCategory`, `IncidentStatus`, `IncidentRepository`, `Incident` from types
+
 ### Review edits (review-edits/)
 - diffReview(snapshot, patch) → ReviewEditRow[] — computes add/remove/reorder/text_edit rows
 
@@ -73,6 +81,7 @@ Used by: @newsletter/api, @newsletter/pipeline, @newsletter/web (subpath imports
 | slack | src/slack/ | Slack notification system (notifier, builders, webhook) |
 | review-edits | src/review-edits/ | Review diff computation |
 | utils | src/utils/ | Prompt hashing, reading time, timezone formatting |
+| alerting | src/alerting/ | Incident capture dispatcher, fingerprinting, run-health evaluator, alert channels |
 
 ## Gotchas / landmines
 1. **Root barrel leaks DB into browser.** Never import from @newsletter/shared in web code. Use subpath imports. (D-100)
@@ -82,6 +91,8 @@ Used by: @newsletter/api, @newsletter/pipeline, @newsletter/web (subpath imports
 5. **drizzle-kit generate can produce bare ADD COLUMN ... NOT NULL** on tables with rows. Always inspect migrations. (D-105)
 6. **Migration journal `when` must be monotonic.** A backdated entry (0035 shipped at 1748433600000) makes already-migrated DBs silently skip the file; fresh DBs are unaffected so CI passes. Heal via an idempotent re-apply migration (0037). (D-113)
 7. **jobIdFor uses `-`, not `:`.** bullmq ≥5.x rejects custom job ids containing `:`. (D-112, cross-package — body in root DECISIONS.md)
+8. **Alert dispatcher is best-effort / never-throws.** `createAlertDispatcher().capture(input)` wraps every step in try/catch; on any error it logs fatal and returns — it NEVER throws into the caller. (D-116/NF1)
+9. **shared/alerting has zero drizzle-orm imports.** The `IncidentRepository` interface is defined in types; concrete implementations live in api and pipeline repos. Importing drizzle-orm into alerting/ would break the Vite browser bundle (same root-barrel issue as D-100). (D-116)
 
 ## Decisions
 - D-100: Web must use subpath imports from shared. Governs: packages/shared/tsup.config.ts
@@ -95,3 +106,6 @@ Used by: @newsletter/api, @newsletter/pipeline, @newsletter/web (subpath imports
 - D-108: publishDateForWindow anchors the publish day on the run-completion instant (rollover-safe). Governs: packages/shared/src/scheduling/tz.ts — full body in scheduling/PACKAGE.md
 - D-112: jobIdFor uses `-` delimiter (bullmq rejects `:` in custom job ids). Cross-package — full body in root DECISIONS.md
 - D-113: Migration journal timestamps must be monotonic; heal skipped migrations idempotently. Governs: packages/shared/src/db/migrations — full body in db/PACKAGE.md
+- D-115: Incident fingerprint = category:domain:signature. Parallel to D-107 but at incident level, not run level. Full body in root DECISIONS.md
+- D-116: shared/alerting never imports drizzle-orm; IncidentRepository is interface-only. Full body in root DECISIONS.md
+- D-118: shouldNotify computed from pre-update notified_at; notified_at advanced only on successful send. Full body in root DECISIONS.md

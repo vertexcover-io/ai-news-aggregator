@@ -1,5 +1,5 @@
 ---
-last_verified_sha: 3ad3477b859f71536aeca7cae4436ef4b490aabf
+last_verified_sha: 8f2bc3411177651bbd5e223a7aba4b77be130474
 status: active
 ---
 
@@ -67,6 +67,10 @@ status: active
 | D-130 | Calendar mode uses run_id for pool attribution | packages/pipeline/eval/PACKAGE.md |
 | D-131 | Dedup at eval-read time, not at fixture-export time | packages/pipeline/eval/PACKAGE.md |
 | D-140 | EmailSendError as typed error with retryable + retryAfterMs | packages/pipeline/lib/PACKAGE.md |
+| D-115 | Incident fingerprint uses category+source(domain)+signature (own dedup, parallel to D-107/D-111) | DECISIONS.md (cross-package) |
+| D-116 | Alert dispatcher is injected-interface-only; shared alerting module never imports drizzle-orm | DECISIONS.md (cross-package) |
+| D-117 | Alert-delivery queue follows D-110 pattern; pipeline self-registers sweep scheduler idempotently at startup | DECISIONS.md (cross-package) |
+| D-118 | cooldown uses PRE-UPDATE notified_at; notified_at advanced only on send attempt | DECISIONS.md (cross-package) |
 
 # Cross-package decisions (full bodies)
 
@@ -133,3 +137,35 @@ status: active
 **Tradeoff:** If the pub/sub message is lost (network partition), cancellation silently fails. The operator retries via the API — the cancel endpoint is idempotent.
 
 **Governs:** packages/api/src/services/cancel-run.ts, packages/pipeline/src/workers/run-process.ts
+
+## D-115 — Incident fingerprint: category + source-domain + signature
+
+**Why:** Incidents from different sources (API crash on api.vertexcover.com vs enrichment failure on a single domain) must dedup independently. A fingerprint of `category:domain:signature` mirrors the D-107 per-run idempotency pattern but operates at the incident level, not the run level. The source field is normalised to its domain (via `new URL(source).hostname`) so URL paths and query params don't produce phantom duplicates.
+
+**Tradeoff:** A single host serving multiple logically distinct sources (rare in practice) will dedup incidents that should be separate. Accepted for MVP — the alternative (finer-grained signatures per source type) adds complexity without a real use case yet.
+
+**Governs:** packages/shared/src/alerting/fingerprint.ts, packages/shared/src/db/schema.ts (incidents.fingerprint unique index), packages/shared/src/types/incident.ts
+
+## D-116 — Alert dispatcher is pure interface injection; shared/alerting never imports drizzle-orm
+
+**Why:** `@newsletter/shared/alerting` is imported by web (browser bundle) via the subpath-import mechanism (D-100). Any drizzle-orm or postgres import in that module would break the Vite build the same way the root barrel does. The `IncidentRepository` interface is defined in `types/incident.ts`; concrete implementations live in `packages/api/src/repositories/incidents.ts` and `packages/pipeline/src/repositories/incidents.ts`. The dispatcher (`createAlertDispatcher`) receives the repo as an injected dependency — it has zero drizzle-orm imports.
+
+**Tradeoff:** Every caller must wire the concrete repo at instantiation. Justifiable: callers already wire repos for everything else; the pattern is consistent with D-051.
+
+**Governs:** packages/shared/src/alerting/ (entire subpackage), packages/api/src/repositories/incidents.ts, packages/pipeline/src/repositories/incidents.ts
+
+## D-117 — Alert-delivery sweep: dedicated queue, pipeline self-registers idempotently at startup
+
+**Why:** The alert-delivery sweep (retry undelivered incidents over Slack/email) must run independently of the main `processing` queue for the same reason D-110 isolates collector-health: a multi-minute run job must not block or be blocked by a sweep. The pipeline entrypoint (`src/index.ts`) upserts the repeatable scheduler (`reconcileAlertDeliverySchedule`) unconditionally on startup. The API also calls `reconcileAlertDeliverySchedule` at bootstrap — deliberate redundancy so the sweep job exists even when the pipeline hasn't started yet.
+
+**Tradeoff:** Two callers upsert the same scheduler key; both are idempotent (`upsertJobScheduler` is repeat-upsert-safe), so there is no double-fire risk. Extra wiring cost is one queue + worker + Redis connection at pipeline startup.
+
+**Governs:** packages/pipeline/src/index.ts, packages/pipeline/src/workers/alert-delivery.ts, packages/api/src/services/scheduler.ts (reconcileAlertDeliverySchedule), packages/shared/src/constants/index.ts (ALERT_DELIVERY_QUEUE_NAME, ALERT_DELIVERY_SCHEDULER_KEY, ALERT_SWEEP_INTERVAL_MS)
+
+## D-118 — Cooldown check uses pre-update notified_at; notified_at is advanced only on send attempt
+
+**Why:** `shouldNotify` (the cooldown gate) must be computed BEFORE `upsertByFingerprint` advances `notified_at`. If the upsert updated `notified_at` first, the first notification after a cooldown window would always be suppressed — the pre-update value is the only one that reflects "has this been notified recently?" The repository's `upsertByFingerprint` returns `{ incident, shouldNotify }` where `shouldNotify = (preUpdateNotifiedAt === null || now - preUpdateNotifiedAt >= COOLDOWN_MS)`. `notified_at` is then advanced (by `markDelivered`) only when a send actually succeeds.
+
+**Tradeoff:** A failed send attempt does NOT advance `notified_at` — the cooldown window re-opens on the next sweep. This is the desired behavior (same pattern as D-107: failed delivery = no idempotency marker).
+
+**Governs:** packages/shared/src/alerting/dispatcher.ts, packages/shared/src/types/incident.ts (UpsertResult.shouldNotify), packages/api/src/repositories/incidents.ts, packages/pipeline/src/repositories/incidents.ts

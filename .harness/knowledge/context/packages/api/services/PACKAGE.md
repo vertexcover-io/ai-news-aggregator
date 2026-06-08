@@ -1,9 +1,9 @@
 ---
 governs: packages/api/src/services/
-last_verified_sha: ad0153a
+last_verified_sha: 8f2bc3411177651bbd5e223a7aba4b77be130474
 key_files: [review.ts, run-observability.ts, run-source-items.ts, run-list.ts, sources-summary.ts, cancel-run.ts, rank-hydration.ts, runs.ts, scheduler.ts, linkedin-oauth.ts, linkedin-credential-resolver.ts, twitter-handle-resolver.ts, item-preview.ts, eval-report.ts, eval-run-orchestrator.ts]
-flow_fns: [review.ts::patchArchive, review.ts::promoteItem, review.ts::addPostToArchive, review.ts::regenerateDigestMeta, run-observability.ts::buildRunObservability, run-source-items.ts::buildRunSourceItems, run-list.ts::listRuns, sources-summary.ts::buildSourcesSummary, cancel-run.ts::cancelRun, rank-hydration.ts::hydrateRankedItems, scheduler.ts::reconcilePipelineSchedule, scheduler.ts::reconcileCollectorHealthSchedule, eval-report.ts::buildActualRanking, eval-report.ts::buildCalendarRanking, eval-run-orchestrator.ts::runEvalOrchestrator]
-decisions: [D-002, D-004, D-013, D-014, D-110]
+flow_fns: [review.ts::patchArchive, review.ts::promoteItem, review.ts::addPostToArchive, review.ts::regenerateDigestMeta, run-observability.ts::buildRunObservability, run-source-items.ts::buildRunSourceItems, run-list.ts::listRuns, sources-summary.ts::buildSourcesSummary, cancel-run.ts::cancelRun, rank-hydration.ts::hydrateRankedItems, scheduler.ts::reconcilePipelineSchedule, scheduler.ts::reconcileCollectorHealthSchedule, scheduler.ts::reconcileAlertDeliverySchedule, eval-report.ts::buildActualRanking, eval-report.ts::buildCalendarRanking, eval-run-orchestrator.ts::runEvalOrchestrator]
+decisions: [D-002, D-004, D-013, D-014, D-110, D-117, D-118]
 status: active
 ---
 
@@ -30,6 +30,7 @@ Service functions implement multi-step business operations that span repositorie
 - `reconcilePipelineSchedule(queue, settings) → void` — upserts/removes BullMQ job schedulers based on settings
 - `reconcileCollectorHealthSchedule(collectorHealthQueue, settings) → void` — sibling reconcile on the **dedicated** `collector-health` queue (D-110): `scheduleEnabled=false` → `removeJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY)`; else `upsertJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY, { pattern: toCronMinusMinutes(pipelineTime, COLLECTOR_HEALTH_LEAD_MINUTES=30), tz: scheduleTimezone })`. Called everywhere `reconcilePipelineSchedule` is (bootstrap + `PUT /api/settings`), kept separate because it targets a different queue.
 - `toCronMinusMinutes(hhmm, minutesBefore) → string` — subtracts N minutes from an HH:MM and returns a daily cron (wraps midnight: `00:15` − 30 → `45 23 * * *`, EDGE-007)
+- `reconcileAlertDeliverySchedule(alertDeliveryQueue) → void` — **unconditional** upsert of `ALERT_DELIVERY_SCHEDULER_KEY` repeatable job on the dedicated alert-delivery queue; registered REGARDLESS of `scheduleEnabled` — alerting must sweep even when the daily newsletter schedule is off (D-118)
 - `resolveLinkedInClient(deps) → LinkedInClientCreds | null` — DB-first credential resolution with env fallback
 - `resolveTwitterHandles(handles, deps) → ResolvedHandle[]` — calls rettiwt API to resolve @handle → userId
 
@@ -108,6 +109,7 @@ reconcileCollectorHealthSchedule(collectorHealthQueue, settings) → void:
 - **`addPostToArchive` has a 30s timeout.** Adjust `ADD_POST_TIMEOUT_MS` if web crawling is consistently slow.
 - **`cancelRun` publishes to Redis pub/sub, not BullMQ.** The pipeline worker subscribes to `run:cancel:<runId>` directly for mid-stage abort. (D-014)
 - **`reconcileCollectorHealthSchedule` is a sibling, not folded into `reconcilePipelineSchedule`.** It targets the dedicated `collector-health` queue (D-110); both must be called together at bootstrap and on every settings save so the auto-check cron tracks `pipelineTime`. Folding them would conflate two different queues' ownership.
+- **`reconcileAlertDeliverySchedule` is called unconditionally** — it does NOT check `scheduleEnabled`. The alert sweep is an operational heartbeat; disabling the daily digest schedule must not disable incident re-delivery. (D-117/D-118)
 
 ## Decisions
 

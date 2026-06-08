@@ -1,9 +1,9 @@
 ---
 governs: packages/api/src/repositories/
-last_verified_sha: ad0153a
-key_files: [run-archives.ts, raw-items.ts, subscribers.ts, social-credentials.ts, social-tokens.ts, user-settings.ts, must-read.ts, eval-runs.ts, email-sends.ts, ses-events.ts, analytics.ts, review-edits.ts, run-logs.ts]
+last_verified_sha: 8f2bc3411177651bbd5e223a7aba4b77be130474
+key_files: [run-archives.ts, raw-items.ts, subscribers.ts, social-credentials.ts, social-tokens.ts, user-settings.ts, must-read.ts, eval-runs.ts, email-sends.ts, ses-events.ts, analytics.ts, review-edits.ts, run-logs.ts, incidents.ts]
 flow_fns: [run-archives.ts::searchReviewed, raw-items.ts::listRawItemsForRunWithEnrichment]
-decisions: [D-003, D-005, D-006, D-011, D-012]
+decisions: [D-003, D-005, D-006, D-011, D-012, D-115, D-118]
 status: active
 ---
 
@@ -28,6 +28,7 @@ One repository factory per DB table or logical domain group. Every repository is
 - `createAnalyticsRepo(db) → AnalyticsRepo` — aggregated metrics in date range
 - `createReviewEditsRepo(db) → ReviewEditsRepo` — `replaceForRun()` (delete-all + insert batch), `listForRun()`
 - `createRunLogRepo(db) → RunLogRepo` — `listForRun()` ordered by id ASC
+- `createIncidentsRepo(db) → IncidentRepository` — `upsertByFingerprint` (ON CONFLICT fingerprint, returns `{ incident, shouldNotify }` with pre-update `notified_at` check; D-118), `markDelivered`, `incrementDeliveryAttempts`, `listUndelivered`, `list` (with status/severity filter), `setStatus`
 
 ## Depends on / used by
 

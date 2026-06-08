@@ -23,7 +23,7 @@ status: active
 ┌──────────────────────────────────────────────────────────┐
 │                  pipeline (BullMQ Workers)               │
 │    Collectors → Dedup → Shortlist → Rank → Publish       │
-│   (3 workers: collection, processing, collector-health)  │
+│   (4 workers: collection, processing, collector-health, alert-delivery)  │
 └──────────────────────────────────────────────────────────┘
         │                                  │
         └── shared (DB schema, types,     │

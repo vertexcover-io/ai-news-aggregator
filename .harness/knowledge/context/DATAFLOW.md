@@ -1,5 +1,5 @@
 ---
-last_verified_sha: ad0153a
+last_verified_sha: 8f2bc3411177651bbd5e223a7aba4b77be130474
 status: active
 ---
 
@@ -38,6 +38,8 @@ handleDailyRunJob (pipeline/workers/daily-run.ts)
         → persistCost → run_archives.cost_breakdown
         → createSlackNotifier → notifySourceDistribution (idempotent via notification_state)
         → if !autoReview: notifyReviewPending
+        → evaluateRunHealth(runId, collectorOutcomes, alertingDeps) (best-effort; D-116/NF1)
+            → alertDispatcher.capture per failed/degraded collector → PostgreSQL incidents
         (failure/cancel paths: writeFailedArchive / pickArchiveDigest in services/run-archive-writer.ts)
   Detail: pipeline/workers/PACKAGE.md § Data flows, pipeline/processors/PACKAGE.md § Data flows
 ```
@@ -131,6 +133,45 @@ PUT /api/settings (api/routes/settings.ts)
     → !scheduleEnabled → removeJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY)
     → scheduleEnabled → upsertJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY, cron = pipelineTime − 30min, tz)
   Detail: api/routes/PACKAGE.md § Data flows, api/services/PACKAGE.md § Data flows
+```
+
+## Incident capture + alert delivery
+
+```
+[capture path — triggered at pipeline finalize]
+evaluateRunHealth(runId, collectorOutcomes, deps) (shared/alerting/run-health.ts)
+  → for each failed/degraded collector outcome:
+      alertDispatcher.capture({ category, source, signature, severity, title, ... })
+        → incidentsRepo.upsertByFingerprint(fingerprint, input) → PostgreSQL incidents
+            (ON CONFLICT fingerprint: increment occurrences, update last_seen; D-115)
+            → returns { incident, shouldNotify }  (shouldNotify from pre-update notified_at; D-118)
+          ├─ severity=info OR status=muted → return (no send)
+          ├─ !shouldNotify (within cooldown) → return
+          └─ channel.enabled → channel.send(incident)
+              ├─ ok → incidentsRepo.markDelivered(id, now) (advances notified_at; D-118)
+              └─ fail → incidentsRepo.incrementDeliveryAttempts(id)
+        (wrapped in try/catch — NEVER throws; D-116/NF1)
+  Detail: shared/alerting/PACKAGE.md § Data flows, pipeline/services/PACKAGE.md
+
+[sweep path — BullMQ repeatable ALERT_DELIVERY_SCHEDULER_KEY, every ALERT_SWEEP_INTERVAL_MS]
+runAlertDeliverySweep(deps) (pipeline/workers/alert-delivery.ts)
+  → incidentsRepo.listUndelivered() → PostgreSQL incidents (status=open, delivered_at=null)
+  → Promise.allSettled over undelivered:
+      channel.send(incident)
+        ├─ ok → incidentsRepo.markDelivered(id, now)
+        └─ fail → incidentsRepo.incrementDeliveryAttempts(id)
+  → never throws (errors logged, swallowed; D-117)
+  Detail: pipeline/workers/PACKAGE.md § Data flows
+
+[admin UI path]
+GET /api/admin/incidents (api/routes/admin-incidents.ts)  [admin-gated]
+  → incidentsRepo.list({ status?, severity? }) → PostgreSQL incidents
+  → 200 [Incident[]]
+PATCH /api/admin/incidents/:id/status (api/routes/admin-incidents.ts)  [admin-gated]
+  → z.enum(["resolved","muted"]).parse(body.status)  (SQL-injection guard)
+  → incidentsRepo.setStatus(id, status) → PostgreSQL incidents
+  → queryClient.invalidateQueries(["admin","incidents"]) (web/pages/AdminIncidentsPage.tsx)
+  Detail: api/routes/PACKAGE.md, web/pages/PACKAGE.md
 ```
 
 ## Collector health check (manual + scheduled)

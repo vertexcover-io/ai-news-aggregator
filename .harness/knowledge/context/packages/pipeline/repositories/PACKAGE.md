@@ -1,9 +1,9 @@
 ---
 governs: packages/pipeline/src/repositories/
-last_verified_sha: ad0153a
-key_files: [raw-items.ts, run-archives.ts, candidates.ts, run-logs.ts, eval-exports.ts, social-credentials.ts, social-tokens.ts, subscribers.ts, email-sends.ts, user-settings.ts]
+last_verified_sha: 8f2bc3411177651bbd5e223a7aba4b77be130474
+key_files: [raw-items.ts, run-archives.ts, candidates.ts, run-logs.ts, eval-exports.ts, social-credentials.ts, social-tokens.ts, subscribers.ts, email-sends.ts, user-settings.ts, incidents.ts]
 flow_fns: [run-archives.ts::createRunArchivesRepo.upsert, eval-exports.ts::createEvalExportsRepo.getCompletedRunDetail]
-decisions: [D-060, D-061]
+decisions: [D-060, D-061, D-115, D-118]
 status: active
 ---
 
@@ -23,6 +23,7 @@ Factory functions that create repository objects wrapping Drizzle ORM calls. Eac
 - `createPipelineSubscribersRepo(db)` → `PipelineSubscribersRepo` — listConfirmed, findByIds, countConfirmed
 - `createPipelineEmailSendsRepo(db)` → `PipelineEmailSendsRepo` — create, findSentSubscriberIds
 - `createUserSettingsRepo(db)` → `UserSettingsRepo` — get (singleton row)
+- `createIncidentsRepo(db)` → `IncidentRepository` — same interface as api/repositories/incidents.ts; concrete Drizzle implementation for the pipeline context (D-116)
 
 ## Depends on / used by
 - Uses: `drizzle-orm`, `@newsletter/shared/db` (schema, types), `@newsletter/shared/services/credential-cipher`
