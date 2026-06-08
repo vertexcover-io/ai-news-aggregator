@@ -15,6 +15,8 @@ import { toEnrichmentTelemetry } from "@pipeline/services/link-enrichment/index.
 import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
 import type { RunLogger } from "@pipeline/services/run-logger.js";
 import { nonEmptyText, pickArchiveDigest } from "@pipeline/services/run-archive-writer.js";
+import { evaluateRunHealth } from "@newsletter/shared/alerting";
+import type { AlertDispatcher } from "@newsletter/shared/alerting";
 
 export interface FinalizeRunInput {
   readonly runId: string;
@@ -36,6 +38,8 @@ export interface FinalizeRunInput {
   readonly startedTimestamp: number;
   /** Called after the archive row is successfully written. */
   readonly persistCost: () => Promise<void>;
+  /** Optional alert dispatcher — if present, captures run-health incidents (REQ-006). */
+  readonly alertDispatcher?: AlertDispatcher;
 }
 
 export interface FinalizeRunResult {
@@ -47,7 +51,7 @@ export async function finalizeRun(input: FinalizeRunInput): Promise<FinalizeRunR
     runId, topN, sourceTypes, dryRun, runStartedAt, runLog, logger,
     archiveRepo, rawItemsRepo, slackNotifier,
     settings, rankResult, collectingOutcomes, enrichmentCtx, funnel, shortlistIds,
-    startedTimestamp, persistCost,
+    startedTimestamp, persistCost, alertDispatcher,
   } = input;
 
   const autoReviewed = settings?.autoReview === true;
@@ -131,6 +135,29 @@ export async function finalizeRun(input: FinalizeRunInput): Promise<FinalizeRunR
 
   if (archiveWritten) {
     await persistCost();
+  }
+
+  // REQ-006: evaluate run health and capture any degradation incidents (best-effort, NF1)
+  // Zero-yield rule (REQ-007) requires historical source data — deferred to Phase 4 e2e.
+  if (archiveWritten) {
+    const dispatcher = alertDispatcher;
+    if (dispatcher !== undefined) {
+      const healthIncidents = evaluateRunHealth({
+        enrichmentTelemetry: {
+          attempted: enrichmentTelemetry.attempted,
+          ok: enrichmentTelemetry.ok,
+          failed: enrichmentTelemetry.failed,
+        },
+        sourceTelemetry: null, // zero-yield check deferred (requires historical data)
+        isDryRun: dryRun,
+      });
+
+      for (const incident of healthIncidents) {
+        void dispatcher.capture({ ...incident, runId }).catch(() => {
+          // NF1: never throw into a run
+        });
+      }
+    }
   }
 
   if (archiveWritten) {

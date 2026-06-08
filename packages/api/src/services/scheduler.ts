@@ -7,8 +7,10 @@ import {
   LINKEDIN_POST_SCHEDULER_KEY,
   PIPELINE_RUN_SCHEDULER_KEY,
   TWITTER_POST_SCHEDULER_KEY,
+  ALERT_SWEEP_INTERVAL_MS,
   type UserSettings,
 } from "@newsletter/shared";
+import { ALERT_DELIVERY_SCHEDULER_KEY } from "@newsletter/shared/scheduling";
 
 export const SOCIAL_HEALTH_SCHEDULER_KEY = "social-health:default";
 const SOCIAL_HEALTH_LEAD_MINUTES = 15;
@@ -106,6 +108,25 @@ export async function reconcileCollectorHealthSchedule(
     { name: "collector-health", data: { trigger: "scheduled" } },
   );
 }
+
+/**
+ * Register the alert-delivery repeatable scheduler UNCONDITIONALLY (D-110).
+ *
+ * The API owns the alert-delivery Queue; the pipeline worker (Phase 2) consumes it.
+ * Alerting must keep sweeping even when the daily schedule is off — register
+ * unconditionally at startup (no enable/disable guard).
+ */
+export async function reconcileAlertDeliverySchedule(
+  queue: Pick<Queue, "upsertJobScheduler">,
+): Promise<void> {
+  await queue.upsertJobScheduler(
+    ALERT_DELIVERY_SCHEDULER_KEY,
+    { every: ALERT_SWEEP_INTERVAL_MS },
+    { name: "alert-delivery", data: {} },
+  );
+}
+
+export { ALERT_DELIVERY_SCHEDULER_KEY };
 
 export async function removeLegacySchedulers(
   queue: Pick<Queue, "removeJobScheduler">,

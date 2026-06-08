@@ -22,3 +22,9 @@ export const TWITTER_POST_SCHEDULER_KEY = "twitter-post:default";
 export function jobIdFor(channel: ScheduledChannel, runId: string): string {
   return `${channel}-${runId}`;
 }
+
+/**
+ * Scheduler key for the alert delivery sweep (D-112: colon is allowed for
+ * scheduler keys — BullMQ generates their internal job ids as repeat:<key>:<ts>).
+ */
+export const ALERT_DELIVERY_SCHEDULER_KEY = "alert-delivery:default";

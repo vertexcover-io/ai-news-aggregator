@@ -20,6 +20,7 @@ import { EvalIndexPage } from "./pages/EvalIndexPage";
 import { EvalRunsPage } from "./pages/EvalRunsPage";
 import { AdminMustReadListPage } from "./pages/admin/AdminMustReadListPage";
 import { AdminMustReadEditPage } from "./pages/admin/AdminMustReadEditPage";
+import { AdminIncidentsPage } from "./pages/admin/AdminIncidentsPage";
 import { UnsubscribePage } from "./pages/UnsubscribePage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { TermsPage } from "./pages/TermsPage";
@@ -65,6 +66,7 @@ export const routes: RouteObject[] = [
           { path: "must-read", element: <AdminMustReadListPage /> },
           { path: "must-read/new", element: <AdminMustReadEditPage /> },
           { path: "must-read/:id", element: <AdminMustReadEditPage /> },
+          { path: "incidents", element: <AdminIncidentsPage /> },
         ],
       },
     ],

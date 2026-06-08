@@ -123,6 +123,7 @@ function makeApp(
     linkedInOAuthRouter: new Hono(),
     linkedInOAuthCallbackRouter: new Hono(),
     collectorHealthRouter: new Hono(),
+    adminIncidentsRouter: new Hono(),
   });
 }
 

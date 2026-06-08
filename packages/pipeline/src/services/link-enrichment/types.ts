@@ -1,6 +1,7 @@
 import type { EnrichedLinkContent } from "@newsletter/shared";
 import type { Logger } from "@newsletter/shared/logger";
 import type { RunLogger } from "@pipeline/services/run-logger.js";
+import type { AlertDispatcher } from "@newsletter/shared/alerting";
 
 export interface EnrichmentCounters {
   attempted: number;
@@ -18,6 +19,8 @@ export interface EnrichmentContext {
   cache: Map<string, EnrichedLinkContent>;
   counters: EnrichmentCounters;
   runLogger?: RunLogger;
+  /** Optional alert dispatcher — if present, enrichment failures capture an incident (REQ-004). */
+  alertDispatcher?: AlertDispatcher;
 }
 
 export function newCounters(): EnrichmentCounters {

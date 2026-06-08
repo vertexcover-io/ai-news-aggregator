@@ -33,22 +33,36 @@ function logEnrichmentFailure(
   item: RawItemInsert,
   failureReason: string,
 ): void {
-  if (!ctx.runLogger) return;
   const hostname = hostnameOf(item.url);
-  void ctx.runLogger.error(
-    {
-      stage: "enrich",
-      source: item.sourceType,
-      event: "link_enrichment.failed",
-      url: item.url,
-      externalId: item.externalId,
-      step: "enrich",
-      error: failureReason,
-      failureReason,
-      originatingCollector: item.sourceType,
-    },
-    `link enrichment failed: ${hostname} — ${failureReason}`,
-  );
+  if (ctx.runLogger) {
+    void ctx.runLogger.error(
+      {
+        stage: "enrich",
+        source: item.sourceType,
+        event: "link_enrichment.failed",
+        url: item.url,
+        externalId: item.externalId,
+        step: "enrich",
+        error: failureReason,
+        failureReason,
+        originatingCollector: item.sourceType,
+      },
+      `link enrichment failed: ${hostname} — ${failureReason}`,
+    );
+  }
+  // REQ-004: capture enrichment_failed incident (domain-scoped, best-effort, NF1)
+  if (ctx.alertDispatcher) {
+    void ctx.alertDispatcher.capture({
+      severity: "warning",
+      category: "enrichment_failed",
+      title: `Link enrichment failed: ${hostname}`,
+      message: failureReason,
+      source: hostname,
+      context: { url: item.url, failureReason, sourceType: item.sourceType },
+    }).catch(() => {
+      // NF1: never throw into the enrichment loop
+    });
+  }
 }
 
 export async function enrichRawItems(

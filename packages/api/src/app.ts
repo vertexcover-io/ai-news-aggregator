@@ -40,6 +40,13 @@ export interface BuildAppDeps {
   linkedInOAuthCallbackRouter: Hono;
   /** Admin-gated collector health check trigger + snapshot routes. */
   collectorHealthRouter: Hono;
+  /** Admin-gated incidents list + status update routes (REQ-020, REQ-021, REQ-023). */
+  adminIncidentsRouter: Hono;
+  /**
+   * Best-effort 5xx incident capture function (REQ-005 / NF1).
+   * Called in onError — NEVER throws back into the error handler.
+   */
+  capture5xx?: (method: string, path: string, message: string) => void;
 }
 
 const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
@@ -63,6 +70,16 @@ const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
  */
 export function buildApp(deps: BuildAppDeps): Hono {
   const app = new Hono();
+
+  // REQ-005: 5xx error middleware — captures api_5xx incident best-effort.
+  // capture5xx is a void fire-and-forget: never blocks the response (NF1).
+  if (deps.capture5xx !== undefined) {
+    const capture5xx = deps.capture5xx;
+    app.onError((err, c) => {
+      capture5xx(c.req.method, c.req.path, err instanceof Error ? err.message : String(err));
+      return c.json({ error: "internal" }, 500);
+    });
+  }
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
@@ -123,6 +140,7 @@ export function buildApp(deps: BuildAppDeps): Hono {
   adminApp.route("/must-read", deps.adminMustReadRouter);
   adminApp.route("/analytics", deps.analyticsRouter);
   adminApp.route("/collector-health", deps.collectorHealthRouter);
+  adminApp.route("/incidents", deps.adminIncidentsRouter);
   app.route("/api/admin", adminApp);
 
   app.route("/api/runs", gatedWrap(gate, deps.runsRouter));

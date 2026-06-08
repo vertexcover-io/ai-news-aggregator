@@ -21,6 +21,7 @@ import type {
 import type { RunCostBreakdown } from "@shared/types/cost-breakdown.js";
 import type { EncryptedBlob } from "@shared/services/credential-cipher.js";
 import type { EditType, PreReviewSnapshot } from "@shared/review-edits/types.js";
+import type { IncidentCategory, IncidentContext, IncidentSeverity, IncidentStatus } from "@shared/types/incident.js";
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter" | "web_search";
 
@@ -324,3 +325,39 @@ export const reviewEdits = pgTable("review_edits", {
 
 export type ReviewEditInsert = typeof reviewEdits.$inferInsert;
 export type ReviewEditSelect = typeof reviewEdits.$inferSelect;
+
+/**
+ * incidents — centralized observability store (D-102, D-103).
+ *
+ * Deduplication key: `fingerprint` (unique index).
+ * Indexes:
+ *  - (status, severity) — for the admin UI filter and sweep selection
+ *  - (notified_at) — for the delivery sweep (undelivered = NULL)
+ */
+export const incidents = pgTable(
+  "incidents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    fingerprint: text("fingerprint").notNull().unique(),
+    severity: text("severity").$type<IncidentSeverity>().notNull(),
+    category: text("category").$type<IncidentCategory>().notNull(),
+    title: text("title").notNull(),
+    message: text("message").notNull(),
+    source: text("source"),                       // domain / queue / null
+    runId: uuid("run_id"),                         // nullable, no hard FK
+    context: jsonb("context").$type<IncidentContext>().notNull().default({}),
+    status: text("status").$type<IncidentStatus>().notNull().default("open"),
+    occurrences: integer("occurrences").notNull().default(1),
+    deliveryAttempts: integer("delivery_attempts").notNull().default(0),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),  // nullable — null means undelivered
+  },
+  (t) => [
+    index("incidents_status_severity_idx").on(t.status, t.severity),
+    index("incidents_notified_at_idx").on(t.notifiedAt),
+  ],
+);
+
+export type IncidentInsert = typeof incidents.$inferInsert;
+export type IncidentRow = typeof incidents.$inferSelect;

@@ -29,6 +29,8 @@ export default defineConfig((options) => ({
     "src/services/page-metadata.ts",
     "src/services/summary-source.ts",
     "src/review-edits/index.ts",
+    "src/alerting/index.ts",
+    "src/types/incident.ts",
   ],
   format: ["esm"],
   dts: true,

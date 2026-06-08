@@ -34,6 +34,8 @@ import { createSocialCredentialsRepo } from "@api/repositories/social-credential
 import { createSocialTokensRepo } from "@api/repositories/social-tokens.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createDefaultAdminMustReadRouter } from "@api/routes/admin-must-read.js";
+import { createDefaultAdminIncidentsRouter } from "@api/routes/admin-incidents.js";
+import { createIncidentRepo } from "@api/repositories/incidents.js";
 import { createAdminRouter } from "@api/routes/admin.js";
 import { requireAdmin } from "@api/auth/middleware.js";
 import { buildApp } from "@api/app.js";
@@ -54,6 +56,7 @@ import { resolveBaseUrls } from "@api/lib/base-urls.js";
 import {
   reconcileCollectorHealthSchedule,
   reconcilePipelineSchedule,
+  reconcileAlertDeliverySchedule,
   removeLegacySchedulers,
 } from "@api/services/scheduler.js";
 import { configurePostHog, shutdownAnalytics } from "@api/lib/posthog.js";
@@ -90,11 +93,25 @@ const { baseUrl: apiBaseUrl, webBaseUrl: newsletterBaseUrl } = resolveBaseUrls(p
 
 const { Queue: BullQueue } = await import("bullmq");
 const { createRedisConnection } = await import("@newsletter/shared/redis");
-const { COLLECTOR_HEALTH_QUEUE_NAME } = await import("@newsletter/shared");
+const { COLLECTOR_HEALTH_QUEUE_NAME, ALERT_DELIVERY_QUEUE_NAME } = await import("@newsletter/shared");
+const { createAlertDispatcher, createSlackAlertChannel } = await import("@newsletter/shared/alerting");
 const processingQueue = new BullQueue("processing", { connection: createRedisConnection() });
 const collectorHealthQueue = new BullQueue(COLLECTOR_HEALTH_QUEUE_NAME, { connection: createRedisConnection() });
+// API owns the alert-delivery Queue (D-110); pipeline alert-delivery worker consumes it.
+const alertDeliveryQueue = new BullQueue(ALERT_DELIVERY_QUEUE_NAME, { connection: createRedisConnection() });
 // Shared Redis connection for OAuth state storage (SET/GET/DEL — not a BullMQ queue).
 const oauthRedis = createRedisConnection();
+
+// Alert dispatcher for 5xx capture and crash handling.
+const incidentRepo = createIncidentRepo(getDb());
+const alertChannel = createSlackAlertChannel({
+  webhookUrl: process.env.SLACK_WEBHOOK_URL,
+});
+const alertDispatcher = createAlertDispatcher({
+  repo: incidentRepo,
+  channels: [alertChannel],
+  logger: createLogger("alerting"),
+});
 
 const settingsRepoForBootstrap = createUserSettingsRepo(getDb());
 await removeLegacySchedulers(processingQueue);
@@ -103,6 +120,8 @@ if (settingsForBootstrap !== null) {
   await reconcilePipelineSchedule(processingQueue, settingsForBootstrap);
   await reconcileCollectorHealthSchedule(collectorHealthQueue, settingsForBootstrap);
 }
+// Register alert-delivery scheduler unconditionally (D-110 — alerting always sweeps).
+await reconcileAlertDeliverySchedule(alertDeliveryQueue);
 
 const runArchivesRepoForSubscribe = createRunArchivesRepo(getDb());
 configurePostHog(async () => createUserSettingsRepo(getDb()).get());
@@ -177,6 +196,7 @@ const app = buildApp({
   adminEvalRouter: createDefaultAdminEvalRouter(),
   adminSocialCredentialsRouter: createDefaultAdminSocialCredentialsRouter(),
   adminMustReadRouter: createDefaultAdminMustReadRouter(),
+  adminIncidentsRouter: createDefaultAdminIncidentsRouter(),
   runsRouter: createDefaultRunsRouter(),
   settingsRouter: createDefaultSettingsRouter(),
   collectorHealthRouter: createDefaultCollectorHealthRouter(),
@@ -199,6 +219,17 @@ const app = buildApp({
   analyticsConfigRouter: createDefaultAnalyticsConfigRouter(),
   linkedInOAuthRouter: createLinkedInOAuthRouter(linkedInOAuthDeps),
   linkedInOAuthCallbackRouter: createLinkedInOAuthCallbackRouter(linkedInOAuthDeps),
+  // REQ-005: best-effort 5xx capture — never blocks the response (NF1).
+  capture5xx: (method, path, message) => {
+    void alertDispatcher.capture({
+      severity: "error",
+      category: "api_5xx",
+      source: path,
+      title: `API 5xx: ${method} ${path}`,
+      message,
+      context: { path, method },
+    });
+  },
 });
 
 const port = Number(process.env.API_PORT ?? 3000);
@@ -210,3 +241,29 @@ serve({ fetch: app.fetch, port }, (info) => {
 const shutdown = () => { void shutdownAnalytics().then(() => process.exit(0)); };
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+/**
+ * REQ-001 / REQ-002: Crash handlers — capture an api_crash incident then exit(1).
+ * Uses a bounded timeout to ensure process exits even if DB is down.
+ * Must NOT double-record errors already captured by the 5xx middleware (REQ-005
+ * handles handled request errors; these only fire for top-level unhandled throws).
+ */
+function handleCrash(err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  logger.fatal({ err }, "api_crash");
+  const capturePromise = alertDispatcher.capture({
+    severity: "critical",
+    category: "api_crash",
+    source: "api",
+    title: "API process crash",
+    message,
+    context: { type: err instanceof Error ? err.constructor.name : "unknown" },
+  });
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, 5_000));
+  void Promise.race([capturePromise, timeout]).finally(() => {
+    process.exit(1);
+  });
+}
+
+process.on("uncaughtException", handleCrash);
+process.on("unhandledRejection", handleCrash);
