@@ -1,6 +1,6 @@
 ---
 governs: packages/web/src/pages/
-last_verified_sha: 3ad3477b859f71536aeca7cae4436ef4b490aabf
+last_verified_sha: 76d7e84
 key_files: [DashboardPage.tsx, ReviewPage.tsx, SettingsPage.tsx, settingsSchema.ts, HomePage.tsx, ArchivePage.tsx, RunObservabilityPage.tsx, EvalIndexPage.tsx, SourcesPage.tsx, AdminLoginPage.tsx, EvalGradePage.tsx, EvalManualFixturePage.tsx, EvalRunsPage.tsx, SourcesPreviewPage.tsx, AnalyticsPage.tsx]
 flow_fns: [ReviewPage.tsx::ReviewPage, DashboardPage.tsx::DashboardPage, EvalIndexPage.tsx::EvalIndexPage, SettingsPage.tsx::SettingsPage]
 decisions: [D-022, D-023]
