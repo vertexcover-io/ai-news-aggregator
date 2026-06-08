@@ -7,13 +7,8 @@
  *   - web dev server on :5173 (Playwright baseURL)
  */
 import { test, expect, type Page } from "@playwright/test";
-import { Client } from "pg";
+import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
 
-const API_BASE = "http://localhost:3000";
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "aman2005";
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  "postgresql://newsletter:newsletter@localhost:5433/newsletter";
 
 async function adminLogin(page: Page): Promise<void> {
   const res = await page.request.post(`${API_BASE}/api/admin/login`, {
@@ -23,7 +18,7 @@ async function adminLogin(page: Page): Promise<void> {
 }
 
 async function resetCredentials(): Promise<void> {
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
   try {
     await client.query(`DELETE FROM social_credentials`);
@@ -201,7 +196,7 @@ test.describe("Twitter collector cookies card (VS-7)", () => {
 
     // Verify the DB column is encrypted (not plaintext) and that the trimmed
     // value round-trips through the cipher.
-    const client = new Client({ connectionString: DATABASE_URL });
+    const client = makeDbClient();
     await client.connect();
     try {
       const row = await client.query<{

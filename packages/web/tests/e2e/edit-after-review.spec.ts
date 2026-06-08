@@ -12,12 +12,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Client } from "pg";
 import { randomUUID } from "node:crypto";
+import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
 
-const API_BASE = "http://localhost:3000";
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "vertexcover@123";
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  "postgresql://newsletter:newsletter@localhost:5434/newsletter";
 
 interface SeededArchives {
   reviewedRunId: string;
@@ -31,7 +27,7 @@ interface SeededEditArchive {
 }
 
 async function seedEditArchive(): Promise<SeededEditArchive> {
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
   try {
     await ensureUserSettings(client);
@@ -82,7 +78,7 @@ async function ensureUserSettings(client: Client): Promise<void> {
 }
 
 async function seedArchives(): Promise<SeededArchives> {
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
   try {
     await ensureUserSettings(client);
@@ -120,7 +116,7 @@ async function seedArchives(): Promise<SeededArchives> {
 }
 
 async function seedDryRunWithItems(): Promise<{ runId: string }> {
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
   try {
     await ensureUserSettings(client);

@@ -6,14 +6,9 @@
  * page renders the expected metric counts.
  */
 import { test, expect } from "@playwright/test";
-import { Client } from "pg";
 import { randomUUID } from "node:crypto";
+import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
 
-const API_BASE = "http://localhost:3000";
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "aman2005";
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  "postgresql://newsletter:newsletter@localhost:5433/newsletter";
 
 interface SeedIds {
   archiveId: string;
@@ -26,7 +21,7 @@ interface SeedIds {
 
 async function seedAnalyticsData(): Promise<SeedIds> {
   const marker = `e2e-analytics-${String(Date.now())}-${Math.random().toString(36).slice(2, 6)}`;
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
 
   // Use noon today UTC as anchor — definitely between a midnight from and a
@@ -149,7 +144,7 @@ test.describe("admin analytics — seeded non-zero data (REQ-029)", () => {
     // Set the date range as query params to skip waiting for the inputs to
     // hydrate; the AnalyticsPage reads useState defaults so we drive via the
     // URL after navigating + filling inputs.
-    await page.goto(`${API_BASE.replace(":3000", ":5173")}/admin/analytics`);
+    await page.goto(`/admin/analytics`);
 
     // Fill the From input with today's start, To with tomorrow (api uses
     // exclusive `lt` on `to`).
@@ -224,7 +219,7 @@ test.describe("admin analytics — seeded non-zero data (REQ-029)", () => {
 
   test("granularity selector switches without breaking render (REQ-029)", async ({ page }) => {
     await adminLogin(page);
-    await page.goto(`${API_BASE.replace(":3000", ":5173")}/admin/analytics`);
+    await page.goto(`/admin/analytics`);
     await page.locator("#analytics-granularity").selectOption("weekly");
     await expect(page.getByText("Emails Sent")).toBeVisible();
     await page.locator("#analytics-granularity").selectOption("monthly");

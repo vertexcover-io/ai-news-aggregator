@@ -9,12 +9,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Client } from "pg";
 import { randomUUID } from "node:crypto";
+import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
 
-const API_BASE = "http://localhost:3000";
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "aman2005";
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  "postgresql://newsletter:newsletter@localhost:5433/newsletter";
 
 interface SeededRun {
   runId: string;
@@ -107,14 +103,14 @@ interface SeedResult {
 
 async function ensureUserSettings(client: Client): Promise<void> {
   await client.query(
-    `INSERT INTO user_settings (top_n, pipeline_time, schedule_timezone, email_time, linkedin_time, twitter_time)
-     VALUES (5, '08:00', 'UTC', '08:00', '08:00', '08:00')
+    `INSERT INTO user_settings (top_n, shortlist_size, ranking_prompt, shortlist_prompt, pipeline_time, schedule_timezone, email_time, linkedin_time, twitter_time)
+     VALUES (5, 50, 'seed ranking prompt', 'seed shortlist prompt', '08:00', 'UTC', '08:00', '08:00', '08:00')
      ON CONFLICT (singleton) DO NOTHING`,
   );
 }
 
 async function seedAll(): Promise<SeedResult> {
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
   try {
     await ensureUserSettings(client);

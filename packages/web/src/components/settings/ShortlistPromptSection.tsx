@@ -63,6 +63,7 @@ export function ShortlistPromptSection(): ReactElement {
             type="button"
             variant="outline"
             size="sm"
+            data-testid="shortlist-prompt-reset"
             onClick={handleReset}
           >
             Reset to default

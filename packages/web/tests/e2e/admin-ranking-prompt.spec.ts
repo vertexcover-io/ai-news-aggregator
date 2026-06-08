@@ -12,13 +12,9 @@
  * `user_settings` doesn't have to be mirrored in this test.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { Client } from "pg";
 import { DEFAULT_RANKING_PROMPT } from "@newsletter/shared/constants";
+import { ADMIN_PASSWORD, makeDbClient } from "./_infra";
 
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "aman2005";
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  "postgresql://newsletter:newsletter@localhost:5433/newsletter";
 
 async function adminLogin(page: Page): Promise<void> {
   // Use the Vite proxy so the session cookie is scoped to the page origin.
@@ -29,7 +25,7 @@ async function adminLogin(page: Page): Promise<void> {
 }
 
 async function readPromptFromDb(): Promise<string | null> {
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
   try {
     const res = await client.query<{ ranking_prompt: string }>(
@@ -42,7 +38,7 @@ async function readPromptFromDb(): Promise<string | null> {
 }
 
 async function cleanupSingleton(): Promise<void> {
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
   try {
     await client.query(`DELETE FROM user_settings WHERE singleton = true`);
@@ -57,7 +53,7 @@ async function seedDefaultViaUi(page: Page): Promise<void> {
   await page.goto("/admin/settings");
   // Reset fills the textarea with DEFAULT_RANKING_PROMPT — guarantees a valid
   // non-empty value that satisfies the API schema regardless of prior state.
-  await page.getByRole("button", { name: "Reset to default" }).click();
+  await page.getByTestId("ranking-prompt-reset").click();
   const savePut = page.waitForResponse(
     (r) => r.url().includes("/api/settings") && r.request().method() === "PUT",
     { timeout: 15_000 },
@@ -166,7 +162,7 @@ test.describe("Admin ranking prompt (VS-1..VS-4)", () => {
     await expect(page.locator("#rankingPrompt")).toHaveValue(knownShort);
 
     // Reset populates the textarea with DEFAULT_RANKING_PROMPT (client-only).
-    await page.getByRole("button", { name: "Reset to default" }).click();
+    await page.getByTestId("ranking-prompt-reset").click();
     await expect(page.locator("#rankingPrompt")).toHaveValue(
       DEFAULT_RANKING_PROMPT,
     );

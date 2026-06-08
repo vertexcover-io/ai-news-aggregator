@@ -158,64 +158,10 @@ async function mockApi(page: Page): Promise<void> {
   });
 }
 
-test.describe("Redesign — listing page", () => {
-  test("renders hero, search, filter tabs, month group, and rows", async ({ page }) => {
-    await mockApi(page);
-    await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1, name: "The Daily Read" })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Made by Vertexcover Labs/i })).toBeVisible();
-    await expect(page.getByLabel(/Search the archive/i)).toBeVisible();
-    await expect(page.getByRole("button", { name: /All time/i })).toBeVisible();
-    await expect(page.getByRole("heading", { level: 2 }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: /Read issue from 2026-05-08/i })).toBeVisible();
-    await page.screenshot({
-      path: path.join(ARTIFACT_DIR, "listing-desktop.png"),
-      fullPage: true,
-    });
-  });
-
-  test("⌘K focuses search input", async ({ page }) => {
-    await mockApi(page);
-    await page.goto("/");
-    await expect(page.getByLabel(/Search the archive/i)).toBeVisible();
-    const isMac = process.platform === "darwin";
-    await page.keyboard.press(isMac ? "Meta+k" : "Control+k");
-    await expect(page.getByLabel(/Search the archive/i)).toBeFocused();
-  });
-
-  test("typing into search filters the list", async ({ page }) => {
-    await mockApi(page);
-    await page.goto("/");
-    await page.getByLabel(/Search the archive/i).fill("flow-maps");
-    // Only the April 30 issue mentions flow-maps
-    await expect(page.getByRole("link", { name: /Read issue from 2026-04-30/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Read issue from 2026-05-08/i })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: /Read issue from 2026-05-07/i })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: /Read issue from 2026-05-06/i })).toHaveCount(0);
-  });
-
-  test("date filter 'Last 30 days' filters out the April 30 issue when current date is far enough", async ({ page }) => {
-    await mockApi(page);
-    await page.goto("/");
-    await page.getByRole("button", { name: /Last 30 days/i }).click();
-    await expect(page.getByRole("button", { name: /Last 30 days/i })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-  });
-
-  test("listing renders correctly on mobile (375 wide)", async ({ page }) => {
-    await mockApi(page);
-    await page.setViewportSize({ width: 375, height: 800 });
-    await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1, name: "The Daily Read" })).toBeVisible();
-    await expect(page.getByLabel(/Search the archive/i)).toBeVisible();
-    await page.screenshot({
-      path: path.join(ARTIFACT_DIR, "listing-mobile.png"),
-      fullPage: true,
-    });
-  });
-});
+// The "listing page" redesign (homepage search / filter tabs / date filter)
+// was removed in 621a502 when the home route became the AgentLoop front page.
+// Those specs targeted orphaned components and were deleted; the detail-page
+// suite below still exercises the live /archive/:runId redesign.
 
 test.describe("Redesign — detail page", () => {
   test("renders back link, header, share row, stories, footer", async ({ page }) => {

@@ -7,13 +7,8 @@
  *   - web dev server on :5173 (Playwright baseURL)
  */
 import { test, expect, type Page } from "@playwright/test";
-import { Client } from "pg";
+import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
 
-const API_BASE = "http://localhost:3000";
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "aman2005";
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  "postgresql://newsletter:newsletter@localhost:5433/newsletter";
 
 async function adminLogin(page: Page): Promise<void> {
   const res = await page.request.post(`${API_BASE}/api/admin/login`, {
@@ -40,13 +35,16 @@ async function seedSettings(page: Page): Promise<void> {
       pipelineTime: "08:00",
       scheduleTimezone: "UTC",
       scheduleEnabled: false,
+      rankingPrompt: "seed ranking prompt",
+      shortlistPrompt: "seed shortlist prompt",
+      shortlistSize: 50,
     },
   });
   expect(res.ok()).toBe(true);
 }
 
 async function truncate(): Promise<void> {
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
   try {
     await client.query(`DELETE FROM email_sends`);

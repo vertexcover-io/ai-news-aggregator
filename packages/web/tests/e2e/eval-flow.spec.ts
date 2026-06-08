@@ -13,13 +13,9 @@
  * exercised end-to-end against the real api server.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { Client } from "pg";
 import { DEFAULT_RANKING_PROMPT } from "@newsletter/shared/constants";
+import { ADMIN_PASSWORD, makeDbClient } from "./_infra";
 
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "aman2005";
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  "postgresql://newsletter:newsletter@localhost:5433/newsletter";
 
 const SCREENSHOT_DIR =
   "../../.harness/features/ranking-eval-pipeline/verification/screenshots";
@@ -34,7 +30,7 @@ async function adminLogin(page: Page): Promise<void> {
 async function seedDefaultViaUi(page: Page): Promise<void> {
   await adminLogin(page);
   await page.goto("/admin/settings");
-  await page.getByRole("button", { name: "Reset to default" }).click();
+  await page.getByTestId("ranking-prompt-reset").click();
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Settings saved")).toBeVisible({
     timeout: 10_000,
@@ -42,7 +38,7 @@ async function seedDefaultViaUi(page: Page): Promise<void> {
 }
 
 async function cleanupSingleton(): Promise<void> {
-  const client = new Client({ connectionString: DATABASE_URL });
+  const client = makeDbClient();
   await client.connect();
   try {
     await client.query(`DELETE FROM user_settings WHERE singleton = true`);
@@ -75,9 +71,9 @@ test.describe("eval index page", () => {
       fullPage: true,
     });
 
-    // Tabs render.
-    await expect(page.getByRole("tab", { name: /Mode A/ })).toBeVisible();
-    await expect(page.getByRole("tab", { name: /Mode B/ })).toBeVisible();
+    // Mode toggle renders (rendered as buttons, not ARIA tabs).
+    await expect(page.getByRole("button", { name: /Mode A · Scored/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Mode B · Calendar/ })).toBeVisible();
 
     // Stub the SSE run endpoint with three SSE events (progress, aggregate, done).
     await page.route("**/api/admin/eval/run", async (route) => {
