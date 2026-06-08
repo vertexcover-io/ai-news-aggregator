@@ -101,3 +101,31 @@ describe("RunsCardList publish date (REQ-011)", () => {
     expect(screen.getByText("Publish date")).toBeTruthy();
   });
 });
+
+describe("RunsCardList draft status (Phase 2)", () => {
+  it("test_REQ_012_draft_row_links_to_review — draft card shows Review link to /admin/review/:runId", () => {
+    render(
+      <MemoryRouter>
+        <RunsCardList
+          runs={[
+            makeRun({
+              runId: "run-draft",
+              status: "completed",
+              reviewed: false,
+              draftSavedAt: "2026-06-08T10:00:00Z",
+            }),
+          ]}
+          onRetry={vi.fn()}
+          retrying={false}
+          onCancel={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    // Draft badge is rendered
+    expect(screen.getByText("Draft")).toBeTruthy();
+    // CTA links to the review page (same as ready-to-review)
+    const link = screen.getByRole("link", { name: /review/i });
+    expect(link.getAttribute("href")).toBe("/admin/review/run-draft");
+  });
+});

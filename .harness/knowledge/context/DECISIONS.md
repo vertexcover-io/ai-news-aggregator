@@ -1,5 +1,5 @@
 ---
-last_verified_sha: 3ad3477b859f71536aeca7cae4436ef4b490aabf
+last_verified_sha: 226dc6e8b93a852b425cc426ef9dc4a27505bdf4
 status: active
 ---
 
@@ -67,6 +67,8 @@ status: active
 | D-130 | Calendar mode uses run_id for pool attribution | packages/pipeline/eval/PACKAGE.md |
 | D-131 | Dedup at eval-read time, not at fixture-export time | packages/pipeline/eval/PACKAGE.md |
 | D-140 | EmailSendError as typed error with retryable + retryAfterMs | packages/pipeline/lib/PACKAGE.md |
+| D-115 | publish flag on existing PATCH endpoint (not a separate /draft endpoint) | DECISIONS.md (cross-package) |
+| D-116 | draft_saved_at nullable column drives deriveStatus "draft" derived status | DECISIONS.md (cross-package) |
 
 # Cross-package decisions (full bodies)
 
@@ -125,6 +127,22 @@ status: active
 **Tradeoff:** One DB read per job for social credentials (acceptable — once per job, not per item). The credential resolver is DB-first with env-fallback caching within the job.
 
 **Governs:** packages/pipeline/src/workers/processing.ts::buildDefaultPublishDeps
+
+## D-115 — publish flag on the existing PATCH endpoint, not a separate /draft endpoint
+
+**Why:** A separate `/draft` endpoint would duplicate the entire ranked-items validation, review-edits diff, and digest-meta logic with no benefit (`S-global-03`). Adding an optional `publish?: boolean` (default `true`) to `archivePatchSchema` / `PatchArchivePayload` makes the route derive `reviewed = publish` and gate enqueue on `publish`. Fully backward-compatible: existing callers that omit `publish` keep publishing (D-006 pattern: omit → default → unchanged behavior). The F7 guard (reject `publish=false` on an already-reviewed run) lives in `patchArchive` as a server-side safeguard in addition to the UI rule.
+
+**Tradeoff:** Both intents flow through one endpoint; validation must distinguish "persist only" from "persist + publish". Client-side code must set `publish: false` explicitly for draft intent. The alternative (client-side "don't navigate" hack without server changes) was rejected because the server unconditionally set `reviewed=true` and enqueued today.
+
+**Governs:** `packages/shared/src/types/archive.ts` (PatchArchivePayload.publish), `packages/api/src/lib/validate.ts` (archivePatchSchema), `packages/api/src/services/review.ts` (patchArchive draft guard), `packages/api/src/routes/archives.ts` (enqueue gate on publish), `packages/web/src/pages/ReviewPage.tsx` (handleSaveDraft sends publish:false)
+
+## D-116 — draft_saved_at nullable column drives the "draft" derived status
+
+**Why:** A completed run that is `reviewed=false` exists in two distinct states: (a) never touched after completion ("ready to review"), (b) partially edited and saved ("draft"). Both were previously `reviewed=false` with no way to distinguish them. A nullable `run_archives.draft_saved_at` timestamp, stamped on every draft PATCH, is the minimal discriminant. `deriveStatus` checks `reviewed` first (covers published-after-draft — EC2), then `draftSavedAt != null` → "draft", else "ready-to-review". Legacy rows with `draft_saved_at=null` degrade naturally to "ready-to-review" (EC3). The column follows the established additive-nullable-column pattern (like `published_at`, `shortlisted_item_ids`, `run_funnel`).
+
+**Tradeoff:** When `patchArchive` is called with `publish=true` (Save & publish), `draftSavedAt` is passed as `null` to the repo so it is NOT cleared — the existing draft timestamp stays on published rows. `deriveStatus` never reads `draftSavedAt` for a `reviewed=true` run, so the stale value causes no UI inconsistency (EC2 verified). Clearing it on publish would require an extra SET in the UPDATE — not worth the complexity.
+
+**Governs:** `packages/shared/src/db/schema.ts` (runArchives.draftSavedAt), `packages/shared/src/db/migrations/0039_narrow_silver_samurai.sql`, `packages/shared/src/types/settings.ts` (RunSummary.draftSavedAt), `packages/api/src/repositories/run-archives.ts` (UpdateRankedItemsContext.draftSavedAt), `packages/api/src/services/run-list.ts` (serialized to RunSummary), `packages/web/src/components/dashboard/run-status.tsx` (deriveStatus "draft" branch)
 
 ## D-014 — Run cancellation uses Redis pub/sub, not BullMQ job control
 

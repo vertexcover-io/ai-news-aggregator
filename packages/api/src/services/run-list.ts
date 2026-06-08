@@ -71,6 +71,7 @@ export async function listRuns(
       twitterPostedAt: null,
       linkedinPermalink: null,
       twitterPermalink: null,
+      draftSavedAt: null,
     });
   }
 
@@ -97,6 +98,7 @@ export async function listRuns(
       twitterPostedAt: row.twitterPostedAt?.toISOString() ?? null,
       linkedinPermalink: row.socialMetadata?.linkedinPermalink ?? null,
       twitterPermalink: row.socialMetadata?.twitterPermalink ?? null,
+      draftSavedAt: row.draftSavedAt?.toISOString() ?? null,
     };
   });
 

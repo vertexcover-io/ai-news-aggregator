@@ -1,9 +1,9 @@
 ---
 governs: packages/api/src/services/
-last_verified_sha: ad0153a
+last_verified_sha: 226dc6e8b93a852b425cc426ef9dc4a27505bdf4
 key_files: [review.ts, run-observability.ts, run-source-items.ts, run-list.ts, sources-summary.ts, cancel-run.ts, rank-hydration.ts, runs.ts, scheduler.ts, linkedin-oauth.ts, linkedin-credential-resolver.ts, twitter-handle-resolver.ts, item-preview.ts, eval-report.ts, eval-run-orchestrator.ts]
 flow_fns: [review.ts::patchArchive, review.ts::promoteItem, review.ts::addPostToArchive, review.ts::regenerateDigestMeta, run-observability.ts::buildRunObservability, run-source-items.ts::buildRunSourceItems, run-list.ts::listRuns, sources-summary.ts::buildSourcesSummary, cancel-run.ts::cancelRun, rank-hydration.ts::hydrateRankedItems, scheduler.ts::reconcilePipelineSchedule, scheduler.ts::reconcileCollectorHealthSchedule, eval-report.ts::buildActualRanking, eval-report.ts::buildCalendarRanking, eval-run-orchestrator.ts::runEvalOrchestrator]
-decisions: [D-002, D-004, D-013, D-014, D-110]
+decisions: [D-002, D-004, D-013, D-014, D-110, D-115, D-116]
 status: active
 ---
 
@@ -15,7 +15,7 @@ Service functions implement multi-step business operations that span repositorie
 
 ## Public surface
 
-- `patchArchive(runId, input, deps) → RunArchiveRow` — validates IDs, computes review diff, atomically updates archive + review_edits
+- `patchArchive(runId, input, deps) → RunArchiveRow` — validates IDs, guards draft-on-reviewed (F7/D-115), computes review diff, atomically updates archive + review_edits; `input.publish` (default `true`) governs `reviewed` and `draftSavedAt`
 - `promoteItem(runId, input, deps) → RankedItem` — fetches raw item, calls generateRecap, returns hydrated RankedItem
 - `addPostToArchive(runId, input, deps) → RankedItem` — detects source type, fetches + hydrates single post
 - `regenerateDigestMeta(runId, input, deps) → DigestMeta` — validates input, calls LLM via generateDigestMeta
@@ -43,10 +43,13 @@ Service functions implement multi-step business operations that span repositorie
 ```
 patchArchive(runId, input, deps) → RunArchiveRow:
   → archiveRepo.findById(runId) → null → throw NotFoundError
+  → publish = input.publish ?? true                                            (D-115)
+  → !publish && archive.reviewed → throw ValidationError("cannot save an already-published archive as a draft")  (F7 guard)
   → rawItemsRepo.findByIds(input.rankedItems[].id) → missing IDs → throw ValidationError
   → build RankedItemRef[] from input (with optional field overrides)
   → build digestMeta from keys present in input ("k" in input check) (D-013)
   → compute effectiveHeadline/effectiveSummary (post-patch values for searchText)
+  → updateCtx: reviewed=publish, draftSavedAt=(publish ? null : new Date())   (D-116)
   → if reviewEditsRepo configured AND archive.preReviewSnapshot:
       → diffReview(snapshot, new state) → edit rows
       → runTransaction(tx => editsRepo.replaceForRun + archiveRepo.updateRankedItemsInTx)

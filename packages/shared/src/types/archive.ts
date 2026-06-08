@@ -51,4 +51,7 @@ export interface PatchArchivePayload {
   hook?: string | null;
   twitterSummary?: string | null;
   linkedinPostBody?: string | null;
+  /** When false, persists edits as a draft without publishing (reviewed stays
+   * false, no channels enqueued). Absent means true (backward-compatible). */
+  publish?: boolean;
 }

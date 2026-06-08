@@ -1,9 +1,9 @@
 ---
 governs: packages/shared/src/types/
-last_verified_sha: ad0153a
+last_verified_sha: 226dc6e8b93a852b425cc426ef9dc4a27505bdf4
 key_files: [index.ts, run.ts, settings.ts, observability.ts, eval-ranking.ts, eval-ranking-schemas.ts, cost-breakdown.ts, archive.ts, collector-health.ts]
 flow_fns: [index.ts::parseRetryAfter]
-decisions: [D-101]
+decisions: [D-101, D-115, D-116]
 status: active
 ---
 
@@ -15,12 +15,12 @@ Defines every shared interface, type alias, enum, and zod schema consumed by 2+ 
 ## Public surface
 - Core: RawItemEngagement, RawItemComment, RecapContent, EnrichedLinkContent, RawItemMetadata, CollectorResult, EmailSendError, parseRetryAfter, RETRYABLE_RESEND_CODES
 - Run: RankedItem, RankedItemRef, PoolItem, RunState, ItemPreview (TweetPreview | LinkPreview | NoPreview)
-- Settings: UserSettings, RunSummary
+- Settings: UserSettings, RunSummary (includes `draftSavedAt?: string | null` — ISO string from `draft_saved_at`, D-116)
 - Cost: CostStage, CostComponents, ModelStageCost, StageCost, RunCostBreakdown
 - Observability: RunLogLevel, RunLogEvent, RunLogEntry, RunFunnel, RunObservability, ItemLifecycle, RunSourceItem
 - Eval: Fixture, GroundTruth, EvalResult, CalendarRunDetail, ~30 more types + full zod schema mirrors
 - Collector health: HealthCheckCollector (`hn|reddit|twitter|blog|web_search`), CollectorHealthStatus (`never|running|healthy|failed`), CollectorHealthTrigger (`manual|scheduled`), CollectorHealthResult, CollectorHealthSnapshot
-- Archive: ArchiveListItem, ArchiveListResponse, AdminLoginRequest/Response, AdminMeResponse, PatchArchivePayload (shared curated-ranked-items patch body — used by BOTH the API server as the parsed request body and the web client as the PATCH body type, so the two never drift)
+- Archive: ArchiveListItem, ArchiveListResponse, AdminLoginRequest/Response, AdminMeResponse, PatchArchivePayload (shared curated-ranked-items patch body — used by BOTH the API server as the parsed request body and the web client as the PATCH body type, so the two never drift; includes `publish?: boolean` defaulting to `true` — D-115)
 - Other: HomePagePayload, SourcesSummaryResponse, Candidate, etc.
 
 ## Data flows

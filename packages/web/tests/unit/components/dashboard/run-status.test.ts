@@ -87,3 +87,36 @@ describe("canViewSources", () => {
     expect(canViewSources(makeRun({ status: "failed" }))).toBe(false);
   });
 });
+
+describe("deriveStatus — draft support (Phase 2)", () => {
+  it("test_REQ_009_derive_status_draft — completed, not reviewed, draftSavedAt set → 'draft'", () => {
+    expect(
+      deriveStatus(makeRun({ status: "completed", reviewed: false, draftSavedAt: "2026-06-08T10:00:00Z" })),
+    ).toBe("draft");
+  });
+
+  it("test_REQ_010_derive_status_ready_to_review — completed, not reviewed, draftSavedAt null → 'ready-to-review'", () => {
+    expect(
+      deriveStatus(makeRun({ status: "completed", reviewed: false, draftSavedAt: null })),
+    ).toBe("ready-to-review");
+  });
+
+  it("test_REQ_011_derive_status_reviewed_overrides_draft — reviewed=true overrides draftSavedAt → 'reviewed'", () => {
+    expect(
+      deriveStatus(makeRun({ status: "completed", reviewed: true, draftSavedAt: "2026-06-08T10:00:00Z" })),
+    ).toBe("reviewed");
+  });
+
+  it("test_EDGE_002_published_after_draft_is_reviewed — reviewed=true ignores draftSavedAt → 'reviewed'", () => {
+    expect(
+      deriveStatus(makeRun({ status: "completed", reviewed: true, draftSavedAt: "2026-06-08T09:00:00Z" })),
+    ).toBe("reviewed");
+  });
+
+  it("test_EDGE_003_legacy_null_draft_ready_to_review — legacy run with no draftSavedAt field → 'ready-to-review'", () => {
+    // draftSavedAt is undefined (legacy row, field not present)
+    const run = makeRun({ status: "completed", reviewed: false });
+    delete (run as Partial<typeof run>).draftSavedAt;
+    expect(deriveStatus(run)).toBe("ready-to-review");
+  });
+});

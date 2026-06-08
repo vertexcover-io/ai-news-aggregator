@@ -8,6 +8,7 @@ export type DerivedStatus =
   | "cancelling"
   | "cancelled"
   | "ready-to-review"
+  | "draft"
   | "reviewed"
   | "failed";
 
@@ -16,7 +17,9 @@ export function deriveStatus(run: RunSummary): DerivedStatus {
   if (run.status === "cancelling") return "cancelling";
   if (run.status === "cancelled") return "cancelled";
   if (run.status === "failed") return "failed";
-  return run.reviewed ? "reviewed" : "ready-to-review";
+  if (run.reviewed) return "reviewed";
+  if (run.draftSavedAt != null) return "draft";
+  return "ready-to-review";
 }
 
 const STATUS_MAP: Record<DerivedStatus, { label: string; className: string }> = {
@@ -35,6 +38,10 @@ const STATUS_MAP: Record<DerivedStatus, { label: string; className: string }> = 
   "ready-to-review": {
     label: "Ready to review",
     className: "bg-amber-100 text-amber-700 border-transparent",
+  },
+  draft: {
+    label: "Draft",
+    className: "bg-violet-100 text-violet-700 border-transparent",
   },
   reviewed: {
     label: "Reviewed",

@@ -1143,3 +1143,343 @@ describe("POST /api/archives/:runId/regenerate-digest-meta", () => {
     expect(generateDigestMeta).toHaveBeenCalledTimes(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PATCH /api/archives/:runId — draft save (publish=false) tests
+// REQ-001..008, REQ-016, EDGE-004, EDGE-005, EDGE-007
+// ---------------------------------------------------------------------------
+describe("PATCH /api/archives/:runId — draft vs publish (Phase 1)", () => {
+  const date = new Date("2026-04-10T00:00:00Z");
+
+  function makeBaseRow(overrides: Partial<RunArchiveRow> = {}): RunArchiveRow {
+    return {
+      id: "run-1",
+      status: "completed",
+      rankedItems: [],
+      topN: 5,
+      reviewed: false,
+      completedAt: date,
+      createdAt: date,
+      startedAt: null,
+      sourceTypes: null,
+      emailSentAt: null,
+      linkedinPostedAt: null,
+      twitterPostedAt: null,
+      notificationState: {},
+      isDryRun: false,
+      draftSavedAt: null,
+      ...overrides,
+    } as RunArchiveRow;
+  }
+
+  function makeRawForId(id: number): RawItemRow {
+    return {
+      id,
+      sourceType: "hn",
+      title: `t${id}`,
+      url: `https://example.com/${id}`,
+      author: null,
+      publishedAt: null,
+      engagement: { points: 0, commentCount: 0 },
+      content: null,
+      imageUrl: null,
+      metadata: { comments: [] },
+    };
+  }
+
+  function makePatchBody(extra: Record<string, unknown> = {}): string {
+    return JSON.stringify({ rankedItems: [{ id: 1, sourceType: "hn" }], ...extra });
+  }
+
+  function makeProcessingQueue(): Pick<Queue, "add"> & { add: ReturnType<typeof vi.fn> } {
+    const add = vi.fn().mockResolvedValue({ id: "job-1" });
+    return { add } as Pick<Queue, "add"> & { add: ReturnType<typeof vi.fn> };
+  }
+
+  function makeSettingsRepo(enabled: { email?: boolean; linkedin?: boolean; twitter?: boolean } = {}): Pick<UserSettingsRepo, "get"> {
+    return {
+      get: vi.fn(() => Promise.resolve({
+        scheduleTimezone: "UTC",
+        scheduleEnabled: true,
+        pipelineTime: "06:00",
+        emailEnabled: enabled.email ?? true,
+        linkedinEnabled: enabled.linkedin ?? false,
+        twitterPostEnabled: enabled.twitter ?? false,
+        emailTime: "08:00",
+        linkedinTime: "08:00",
+        twitterTime: "08:00",
+      } as Awaited<ReturnType<UserSettingsRepo["get"]>>)),
+    };
+  }
+
+  function makeAdminApp(opts: {
+    archiveRepo: RunArchivesRepo;
+    rawItemsRepo?: RawItemsRepo;
+    processingQueue?: Pick<Queue, "add">;
+    settingsRepo?: Pick<UserSettingsRepo, "get">;
+  }): Hono {
+    const app = new Hono();
+    const router = createArchivesRouter({
+      getRawItemsRepo: () => opts.rawItemsRepo ?? makeRepo([makeRawForId(1)]),
+      getArchiveRepo: () => opts.archiveRepo,
+      processingQueue: opts.processingQueue,
+      ...(opts.settingsRepo === undefined ? {} : { getSettingsRepo: () => opts.settingsRepo }),
+    });
+    app.route("/api/archives", router);
+    return app;
+  }
+
+  it("test_REQ_001_draft_persists_ranked_items: publish=false PATCH calls updateRankedItems with the provided items", async () => {
+    const updatedRow = makeBaseRow({ rankedItems: [{ rawItemId: 1, score: 0, rationale: "" }] });
+    const archiveRepo = makeArchiveRepo(makeBaseRow());
+    archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(updatedRow));
+    const app = makeAdminApp({ archiveRepo });
+
+    const res = await app.request("/api/archives/run-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: makePatchBody({ publish: false, digestHeadline: "My headline" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(archiveRepo.updateRankedItems).toHaveBeenCalledOnce();
+    const [, items] = (archiveRepo.updateRankedItems as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown[], unknown];
+    expect(Array.isArray(items)).toBe(true);
+    expect((items as { rawItemId: number }[])[0].rawItemId).toBe(1);
+  });
+
+  it("test_REQ_002_draft_keeps_reviewed_false: publish=false → updateRankedItemsContext has reviewed=false", async () => {
+    const updatedRow = makeBaseRow({ rankedItems: [{ rawItemId: 1, score: 0, rationale: "" }] });
+    const archiveRepo = makeArchiveRepo(makeBaseRow());
+    archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(updatedRow));
+    const app = makeAdminApp({ archiveRepo });
+
+    await app.request("/api/archives/run-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: makePatchBody({ publish: false }),
+    });
+
+    expect(archiveRepo.updateRankedItems).toHaveBeenCalledOnce();
+    const [, , ctx] = (archiveRepo.updateRankedItems as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown[], { reviewed: boolean }];
+    expect(ctx.reviewed).toBe(false);
+  });
+
+  it("test_REQ_003_draft_does_not_enqueue: publish=false → processingQueue.add NOT called", async () => {
+    const updatedRow = makeBaseRow({ rankedItems: [{ rawItemId: 1, score: 0, rationale: "" }] });
+    const archiveRepo = makeArchiveRepo(makeBaseRow());
+    archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(updatedRow));
+    const processingQueue = makeProcessingQueue();
+    const app = makeAdminApp({ archiveRepo, processingQueue, settingsRepo: makeSettingsRepo({ email: true }) });
+
+    const res = await app.request("/api/archives/run-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: makePatchBody({ publish: false }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(processingQueue.add).not.toHaveBeenCalled();
+  });
+
+  it("test_REQ_004_draft_sets_draft_saved_at: publish=false → ctx.draftSavedAt is a Date", async () => {
+    const updatedRow = makeBaseRow({ rankedItems: [{ rawItemId: 1, score: 0, rationale: "" }] });
+    const archiveRepo = makeArchiveRepo(makeBaseRow());
+    archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(updatedRow));
+    const app = makeAdminApp({ archiveRepo });
+
+    await app.request("/api/archives/run-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: makePatchBody({ publish: false }),
+    });
+
+    const [, , ctx] = (archiveRepo.updateRankedItems as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown[], { draftSavedAt: unknown }];
+    expect(ctx.draftSavedAt).toBeInstanceOf(Date);
+  });
+
+  it("test_REQ_005_publish_sets_reviewed_and_enqueues: publish=true → reviewed=true + queue.add called for past-due channels", async () => {
+    const pastDate = new Date("2026-01-01T00:00:00Z");
+    const updatedRow = makeBaseRow({ rankedItems: [{ rawItemId: 1, score: 0, rationale: "" }], reviewed: true, completedAt: pastDate });
+    const archiveRepo = makeArchiveRepo(makeBaseRow({ completedAt: pastDate }));
+    archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(updatedRow));
+    const processingQueue = makeProcessingQueue();
+    const app = makeAdminApp({
+      archiveRepo,
+      processingQueue,
+      settingsRepo: makeSettingsRepo({ email: true }),
+    });
+
+    const res = await app.request("/api/archives/run-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: makePatchBody({ publish: true }),
+    });
+
+    expect(res.status).toBe(200);
+    const [, , ctx] = (archiveRepo.updateRankedItems as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown[], { reviewed: boolean }];
+    expect(ctx.reviewed).toBe(true);
+    expect(processingQueue.add).toHaveBeenCalled();
+  });
+
+  it("test_REQ_006_absent_publish_defaults_true: body omitting publish → behaves as publish=true (reviewed=true)", async () => {
+    const updatedRow = makeBaseRow({ rankedItems: [{ rawItemId: 1, score: 0, rationale: "" }], reviewed: true });
+    const archiveRepo = makeArchiveRepo(makeBaseRow());
+    archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(updatedRow));
+    const app = makeAdminApp({ archiveRepo });
+
+    const res = await app.request("/api/archives/run-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rankedItems: [{ id: 1, sourceType: "hn" }] }),
+    });
+
+    expect(res.status).toBe(200);
+    const [, , ctx] = (archiveRepo.updateRankedItems as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown[], { reviewed: boolean }];
+    expect(ctx.reviewed).toBe(true);
+  });
+
+  it("test_REQ_007_publish_skips_already_sent_channels: channel with emailSentAt set → not re-enqueued", async () => {
+    const pastDate = new Date("2026-01-01T00:00:00Z");
+    const alreadySentAt = new Date("2026-01-02T00:00:00Z");
+    const updatedRow = makeBaseRow({
+      rankedItems: [{ rawItemId: 1, score: 0, rationale: "" }],
+      reviewed: true,
+      completedAt: pastDate,
+      emailSentAt: alreadySentAt,
+    });
+    const archiveRepo = makeArchiveRepo(makeBaseRow({ completedAt: pastDate, emailSentAt: alreadySentAt }));
+    archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(updatedRow));
+    const processingQueue = makeProcessingQueue();
+    const app = makeAdminApp({
+      archiveRepo,
+      processingQueue,
+      settingsRepo: makeSettingsRepo({ email: true }),
+    });
+
+    await app.request("/api/archives/run-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: makePatchBody({ publish: true }),
+    });
+
+    // email-send must NOT have been enqueued (already sent)
+    const emailJobCalls = (processingQueue.add as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (call: unknown[]) => call[0] === "email-send",
+    );
+    expect(emailJobCalls).toHaveLength(0);
+  });
+
+  it("test_REQ_008_draft_on_reviewed_rejected: publish=false on reviewed=true → 400, updateRankedItems NOT called", async () => {
+    const archiveRepo = makeArchiveRepo(makeBaseRow({ reviewed: true }));
+    archiveRepo.updateRankedItems = vi.fn();
+    const app = makeAdminApp({ archiveRepo });
+
+    const res = await app.request("/api/archives/run-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: makePatchBody({ publish: false }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(archiveRepo.updateRankedItems).not.toHaveBeenCalled();
+  });
+
+  it("test_EDGE_001_draft_on_reviewed_no_change: publish=false on already-reviewed run → 400, no DB change", async () => {
+    const originalRow = makeBaseRow({ reviewed: true, draftSavedAt: null });
+    const archiveRepo = makeArchiveRepo(originalRow);
+    archiveRepo.updateRankedItems = vi.fn();
+    const app = makeAdminApp({ archiveRepo });
+
+    const res = await app.request("/api/archives/run-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: makePatchBody({ publish: false }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(archiveRepo.updateRankedItems).not.toHaveBeenCalled();
+  });
+
+  it("test_EDGE_004_republish_no_duplicate_send: re-publish with some channels already sent → only unsent enqueued", async () => {
+    const pastDate = new Date("2026-01-01T00:00:00Z");
+    const alreadySentAt = new Date("2026-01-02T00:00:00Z");
+    // email already sent, linkedin not sent
+    const updatedRow = makeBaseRow({
+      rankedItems: [{ rawItemId: 1, score: 0, rationale: "" }],
+      reviewed: true,
+      completedAt: pastDate,
+      emailSentAt: alreadySentAt,
+      linkedinPostedAt: null,
+    });
+    const archiveRepo = makeArchiveRepo(makeBaseRow({
+      completedAt: pastDate,
+      emailSentAt: alreadySentAt,
+      linkedinPostedAt: null,
+      reviewed: true,  // already reviewed (editing a published archive)
+    }));
+    archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(updatedRow));
+    const processingQueue = makeProcessingQueue();
+    const app = makeAdminApp({
+      archiveRepo,
+      processingQueue,
+      settingsRepo: makeSettingsRepo({ email: true, linkedin: true }),
+    });
+
+    await app.request("/api/archives/run-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: makePatchBody({ publish: true }),
+    });
+
+    const emailCalls = (processingQueue.add as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (call: unknown[]) => call[0] === "email-send",
+    );
+    const linkedinCalls = (processingQueue.add as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (call: unknown[]) => call[0] === "linkedin-post",
+    );
+    expect(emailCalls).toHaveLength(0); // already sent
+    expect(linkedinCalls.length).toBeGreaterThanOrEqual(1); // not yet sent
+  });
+
+  it("test_EDGE_005_dry_run_draft_allowed: dry-run + publish=false → 200, reviewed=false", async () => {
+    const updatedRow = makeBaseRow({ isDryRun: true, rankedItems: [{ rawItemId: 1, score: 0, rationale: "" }] });
+    const archiveRepo = makeArchiveRepo(makeBaseRow({ isDryRun: true }));
+    archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(updatedRow));
+    const app = makeAdminApp({ archiveRepo });
+
+    const res = await app.request("/api/archives/run-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: makePatchBody({ publish: false }),
+    });
+
+    expect(res.status).toBe(200);
+    const [, , ctx] = (archiveRepo.updateRankedItems as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown[], { reviewed: boolean }];
+    expect(ctx.reviewed).toBe(false);
+  });
+
+  it("test_EDGE_007_double_draft_idempotent: two draft PATCHes → both keep reviewed=false, draftSavedAt is a Date", async () => {
+    const firstDraftAt = new Date("2026-04-10T01:00:00Z");
+    const updatedRow = makeBaseRow({
+      rankedItems: [{ rawItemId: 1, score: 0, rationale: "" }],
+      reviewed: false,
+      draftSavedAt: firstDraftAt,
+    });
+    const archiveRepo = makeArchiveRepo(makeBaseRow({ draftSavedAt: firstDraftAt, reviewed: false }));
+    archiveRepo.updateRankedItems = vi.fn(() => Promise.resolve(updatedRow));
+    const app = makeAdminApp({ archiveRepo });
+
+    // Second draft save
+    const res = await app.request("/api/archives/run-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: makePatchBody({ publish: false }),
+    });
+
+    expect(res.status).toBe(200);
+    const [, , ctx] = (archiveRepo.updateRankedItems as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown[], { reviewed: boolean; draftSavedAt: unknown }];
+    expect(ctx.reviewed).toBe(false);
+    expect(ctx.draftSavedAt).toBeInstanceOf(Date);
+  });
+});

@@ -58,4 +58,7 @@ export interface RunSummary {
   twitterPostedAt?: string | null;
   linkedinPermalink?: string | null;
   twitterPermalink?: string | null;
+  /** ISO timestamp when the review was last saved as a draft, or null for
+   * runs that were never drafted (legacy rows, in-progress runs). */
+  draftSavedAt?: string | null;
 }

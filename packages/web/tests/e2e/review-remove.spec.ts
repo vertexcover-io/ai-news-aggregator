@@ -139,7 +139,7 @@ test.describe("review remove e2e", () => {
 
     await expect(page.getByText(seeded.keptTitle)).toBeVisible();
     await page
-      .getByRole("button", { name: /save & view archive/i })
+      .getByRole("button", { name: /save & publish/i })
       .click();
 
     // Removing an item drifts the ranked list from the digest signature, so the

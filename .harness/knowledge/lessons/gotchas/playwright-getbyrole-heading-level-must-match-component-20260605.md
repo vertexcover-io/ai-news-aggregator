@@ -8,8 +8,8 @@ severity: medium
 status: implemented
 applies_to: ["packages/web/tests/e2e/**/*.ts", "packages/web/tests/unit/**/*.tsx"]
 stage: [code, review]
-evidence_count: 1
-last_validated: 2026-06-05
+evidence_count: 2
+last_validated: 2026-06-08
 source: review-fix@admin-edit-after-review
 related: []
 ---

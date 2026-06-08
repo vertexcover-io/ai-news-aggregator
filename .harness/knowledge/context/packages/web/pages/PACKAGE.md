@@ -1,9 +1,9 @@
 ---
 governs: packages/web/src/pages/
-last_verified_sha: 3ad3477b859f71536aeca7cae4436ef4b490aabf
+last_verified_sha: 226dc6e8b93a852b425cc426ef9dc4a27505bdf4
 key_files: [DashboardPage.tsx, ReviewPage.tsx, SettingsPage.tsx, settingsSchema.ts, HomePage.tsx, ArchivePage.tsx, RunObservabilityPage.tsx, EvalIndexPage.tsx, SourcesPage.tsx, AdminLoginPage.tsx, EvalGradePage.tsx, EvalManualFixturePage.tsx, EvalRunsPage.tsx, SourcesPreviewPage.tsx, AnalyticsPage.tsx]
 flow_fns: [ReviewPage.tsx::ReviewPage, DashboardPage.tsx::DashboardPage, EvalIndexPage.tsx::EvalIndexPage, SettingsPage.tsx::SettingsPage]
-decisions: [D-022, D-023]
+decisions: [D-022, D-023, D-115, D-116]
 status: active
 ---
 
@@ -18,7 +18,7 @@ One component per route. Pages are thin — they compose hooks and components, h
 | Page (route) | Effect |
 |---|---|
 | `DashboardPage` (`/admin`) | Runs list (RunsTable/RunsCardList) + ScheduleBanner + Run Now split button + EmptyState for no settings |
-| `ReviewPage` (`/admin/review/:runId`) | Curation UI: ReviewList (DnD) + AddPostPanel + DigestMetaPanel + PoolSection + SaveBar with useBlocker navigation guard. When `archive.reviewed === true`, heading switches to "Edit · <date>" and a published-channels banner appears listing channels with non-null sent timestamps (email/linkedin/twitter). |
+| `ReviewPage` (`/admin/review/:runId`) | Curation UI: ReviewList (DnD) + AddPostPanel + DigestMetaPanel + PoolSection + SaveBar with useBlocker navigation guard. When `archive.reviewed === false`: SaveBar renders both "Save draft" + "Save & publish"; when `archive.reviewed === true`: only "Save & view archive". "Save draft" calls `handleSaveDraft` (publish=false, toast + full state reset, stay on page — REQ-015; resets `reset()` + `setDigestBaseline` + `setRegenSignature` — L1). When reviewed, heading = "Edit · <date>" + published-channels banner. |
 | `SettingsPage` (`/admin/settings`) | react-hook-form with zodResolver: SourcesSection, ScheduleSection, AnalyticsSection, Shortlist, RankingPrompt, SocialCredentialsPanel + SaveBar |
 | `HomePage` (`/`) | Public: Hero + TodaysIssueBlock + FromTheCanonBlock + recent issues ArchiveRow list + InlineSubscribeCard + ElsewhereStrip |
 | `ArchivePage` (`/archive/:runId`) | Public: BackToArchive + ArchivePageHeader + ArchiveShareRow + ArchiveStoryCard list + SubscribeInline interlude |
@@ -51,6 +51,7 @@ ReviewPage (the most complex page):
   useSourceFacets(runId) → { facets }
 
   isEdit = query.data.reviewed === true  →  "Edit · <date>" heading (else "Review · <date>")
+  onSaveDraft = reviewed ? undefined : () => handleSaveDraft()   (controls SaveBar two-vs-one)
   publishedChannels: ["Email" if emailSentAt, "LinkedIn" if linkedinPostedAt, "X" if twitterPostedAt]
     → isEdit && publishedChannels.length > 0 → amber banner (data-testid="published-channels-banner")
       "Already published: <channels> — edits won't change those."
@@ -65,6 +66,17 @@ ReviewPage (the most complex page):
 
   useBlocker: blocks navigation when isDirty, shows window.confirm
     └─ handleSave → allowSaveNavigation.current = true → navigate("/archive/:runId")
+
+  handleSaveDraft() → void (draft save — REQ-015, D-115):
+    → setDraftSaving(true)
+    → patchArchive(runId, {...rankedItems, ...digestMeta, publish: false})
+      ├─ success → reset(state.current)         (clears react-hook-form dirty; L1)
+      │            setRegenSignature(newSig)     (L1: currentSignature === regenSignature → digestStale=false)
+      │            setDigestBaseline(digestMeta) (L1: baseline matches saved state → unsaved count = 0)
+      │            toast.success("Draft saved")
+      │            (NO navigate — stay on review page)
+      └─ error   → toast.error(message); state stays dirty (EDGE-006)
+    → setDraftSaving(false)
 
 DashboardPage:
   useRunList() → runs[] (polls every 2s while active runs exist)
@@ -91,6 +103,7 @@ EvalIndexPage (SSE streaming):
 - **ReviewPage signature tracking** (D-023): `regenSignature` is the `"id1|id2|..."` string of ranked item IDs at the time the digest meta was last in sync. When the operator reorders/adds/removes items, `currentSignature !== regenSignature` → `digestStale = true` → an amber SaveBar warning appears and clicking Save opens a "Save without regenerating?" confirm dialog ("Save anyway" proceeds, Cancel aborts). Save is never disabled by staleness.
 - **SettingsPage form submit prevention**: The form's `onSubmit` handler explicitly calls `e.preventDefault()` BEFORE `handleSubmit` because if `handleSubmit` throws, the native form POST would fire, causing a full-page reload.
 - **EvalIndexPage SSE cleanup**: The `useEffect` cleanup calls `streamRef.current?.abort()` to abort any in-flight SSE stream when the component unmounts.
+- **ReviewPage draft save MUST reset ALL derived state** (L1): `handleSaveDraft` must call `reset(state.current)` (react-hook-form) AND `setRegenSignature` AND `setDigestBaseline` after a successful draft PATCH. Resetting only one of these leaves the unsaved counter non-zero. The pattern: set a new `regenSignature` = current item IDs joined; set `digestBaseline` = current digestMeta; call `reset()`. Any future extension of the dirty-state calculation MUST also be cleared here or the counter will drift.
 
 ## Decisions
 

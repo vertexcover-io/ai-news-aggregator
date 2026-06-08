@@ -44,6 +44,12 @@ export default defineConfig({
         SESSION_SECRET: process.env.SESSION_SECRET ?? "",
         // Redirect confirm/unsubscribe/feedback flows at the hermetic web server.
         NEWSLETTER_BASE_URL: webBase,
+        // E2E must never send real external messages. Force-blank SLACK_WEBHOOK_URL
+        // (hard "" — not a passthrough) so dotenv cannot load a real webhook from
+        // .env and the notifier no-ops (createSlackNotifier disables on "").
+        // Any new e2e that exercises a Slack-triggering path asserts intent via
+        // logs/DB state, never a live send. See packages/web/CLAUDE.md (E2E rules).
+        SLACK_WEBHOOK_URL: "",
       },
     },
     {

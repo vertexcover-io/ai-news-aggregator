@@ -32,6 +32,7 @@ function makeArchive(overrides: Partial<RunArchiveRow> = {}): RunArchiveRow {
     reviewed: false,
     completedAt: new Date("2026-05-25T00:10:00.000Z"),
     publishedAt: null,
+    draftSavedAt: null,
     createdAt: new Date("2026-05-25T00:00:00.000Z"),
     startedAt: new Date("2026-05-25T00:00:00.000Z"),
     sourceTypes: ["reddit", "hn"],

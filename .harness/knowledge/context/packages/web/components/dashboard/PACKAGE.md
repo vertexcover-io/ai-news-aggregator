@@ -1,9 +1,9 @@
 ---
 governs: packages/web/src/components/dashboard/
-last_verified_sha: 3ad3477b859f71536aeca7cae4436ef4b490aabf
+last_verified_sha: 226dc6e8b93a852b425cc426ef9dc4a27505bdf4
 key_files: [RunsTable.tsx, RunsCardList.tsx, CostDialog.tsx, CostButton.tsx, SocialOverflowMenu.tsx, ScheduleBanner.tsx, EmptyState.tsx, cost-format.ts, run-status.tsx]
 flow_fns: [RunsTable.tsx::RunsTable, SocialOverflowMenu.tsx::SocialOverflowMenu]
-decisions: [D-017, D-018, D-027]
+decisions: [D-017, D-018, D-027, D-116]
 status: active
 ---
 
@@ -25,7 +25,7 @@ Components for the admin dashboard (`/admin`): runs table with dual responsive r
 | `ScheduleBanner({ scheduleTime, scheduleTimezone })` | Info banner showing next scheduled run time |
 | `EmptyState()` | "No settings yet — configure your newsletter to get started" CTA |
 | `cost-format.ts` | `formatCostUsd(n)`, `formatTokens(n)` — pure formatting |
-| `run-status.tsx` | `RunStatusBadge({ status, stage? })` — extracted from RunsTable; renders colored status pill with optional stage annotation. Tested independently. |
+| `run-status.tsx` | `RunStatusBadge({ status, stage? })` + `deriveStatus(run)` — maps `RunSummary` to `DerivedStatus` ("running" \| "cancelling" \| "cancelled" \| "ready-to-review" \| "draft" \| "reviewed" \| "failed"). Draft: `reviewed=false && draftSavedAt!=null` → violet "Draft" badge; reviewed overrides draftSavedAt (D-116). |
 
 ## Depends on / used by
 
@@ -36,15 +36,15 @@ Components for the admin dashboard (`/admin`): runs table with dual responsive r
 
 ```
 RunsTable → renders tabular run list:
-  deriveStatus(run): running/cancelling/cancelled → status badge
-    | reviewed → "Reviewed" | otherwise → "Ready to review"
+  deriveStatus(run): reviewed → "Reviewed" | draftSavedAt!=null → "Draft" | else → "Ready to review"  (D-116)
+    | running/cancelling/cancelled/failed handled first
   Row structure:
     ├─ Date column: run.startedAt formatted
     ├─ Publish date column: run.issueDate (which is publishedAt ?? completedAt)         (D-017)
     ├─ Digest headline: run.digestHeadline ?? run.topItems[0]?.title
-    ├─ Status badge: coloured pill from deriveStatus
+    ├─ Status badge: coloured pill from deriveStatus; "Draft" = violet bg-violet-100
     ├─ Item count: run.itemCount (0 if null)
-    ├─ Review link: "/admin/review/:runId" (shown when reviewed OR ready-to-review and status==completed)
+    ├─ Review link: "/admin/review/:runId" (shown for "ready-to-review" AND "draft" — data-run-id attr for test targeting)
     ├─ Details link: "/admin/runs/:runId" (observability page)
     ├─ Cost button: opens CostDialog
     ├─ Social overflow menu: per-channel LinkedIn/X items

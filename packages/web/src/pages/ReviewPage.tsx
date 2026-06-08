@@ -113,6 +113,7 @@ export function ReviewPage(): ReactElement {
     updateItemField,
   } = useReview(runId);
   const [saving, setSaving] = useState(false);
+  const [draftSaving, setDraftSaving] = useState(false);
   const emptyDigest: DigestMetaValues = {
     headline: "",
     summary: "",
@@ -384,6 +385,7 @@ export function ReviewPage(): ReactElement {
         hook: digestMeta.hook,
         twitterSummary: digestMeta.twitterSummary,
         linkedinPostBody: digestMeta.linkedinPostBody,
+        publish: true,
       });
       allowSaveNavigation.current = true;
       reset(state.current);
@@ -398,6 +400,45 @@ export function ReviewPage(): ReactElement {
       toast.error(message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveDraft(): Promise<void> {
+    setDraftSaving(true);
+    try {
+      await patchArchive(runId, {
+        rankedItems: state.current.map((it) => ({
+          id: it.id,
+          sourceType: it.sourceType,
+          title: it.title,
+          ...(it.recap !== null && {
+            summary: it.recap.summary,
+            bullets: it.recap.bullets,
+            bottomLine: it.recap.bottomLine,
+          }),
+          imageUrl: it.imageUrl,
+        })),
+        digestHeadline: digestMeta.headline,
+        digestSummary: digestMeta.summary,
+        hook: digestMeta.hook,
+        twitterSummary: digestMeta.twitterSummary,
+        linkedinPostBody: digestMeta.linkedinPostBody,
+        publish: false,
+      });
+      // Reset ALL derived state so unsaved count returns to 0 (L1)
+      reset(state.current);
+      const newSig = state.current.map((it) => it.id).join("|");
+      setRegenSignature(newSig);
+      setDigestBaseline(digestMeta);
+      toast.success("Draft saved");
+      // Do NOT navigate — stay on the review page (REQ-015)
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Failed to save draft";
+      toast.error(message);
+      // Leave state dirty on failure (EDGE-006)
+    } finally {
+      setDraftSaving(false);
     }
   }
 
@@ -521,6 +562,10 @@ export function ReviewPage(): ReactElement {
           void handleSave();
         }}
         onDiscard={handleDiscard}
+        {...(!isEdit && {
+          onSaveDraft: () => { void handleSaveDraft(); },
+          draftSaving,
+        })}
       />
     </div>
   );
