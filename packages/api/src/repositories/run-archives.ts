@@ -42,6 +42,12 @@ export interface UpdateRankedItemsContext {
     twitterSummary?: string | null;
     linkedinPostBody?: string | null;
   };
+  /** Whether to mark this save as reviewed (publish). When false, the archive
+   * stays un-reviewed (draft save). Defaults to true (backward-compatible). */
+  reviewed?: boolean;
+  /** Timestamp to write to draft_saved_at. null means do not update the
+   * column (preserve existing value). Defaults to null. */
+  draftSavedAt?: Date | null;
 }
 
 export interface RunArchiveRow {
@@ -52,6 +58,7 @@ export interface RunArchiveRow {
   reviewed: boolean;
   completedAt: Date;
   publishedAt: Date | null;
+  draftSavedAt: Date | null;
   createdAt: Date;
   startedAt: Date | null;
   sourceTypes: SourceType[] | null;
@@ -255,6 +262,7 @@ export function createRunArchivesRepo(
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
           publishedAt: runArchives.publishedAt,
+          draftSavedAt: runArchives.draftSavedAt,
           createdAt: runArchives.createdAt,
           startedAt: runArchives.startedAt,
           sourceTypes: runArchives.sourceTypes,
@@ -380,6 +388,7 @@ export function createRunArchivesRepo(
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
           publishedAt: runArchives.publishedAt,
+          draftSavedAt: runArchives.draftSavedAt,
           createdAt: runArchives.createdAt,
           startedAt: runArchives.startedAt,
           sourceTypes: runArchives.sourceTypes,
@@ -537,6 +546,7 @@ export function createRunArchivesRepo(
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
           publishedAt: runArchives.publishedAt,
+          draftSavedAt: runArchives.draftSavedAt,
           createdAt: runArchives.createdAt,
           startedAt: runArchives.startedAt,
           sourceTypes: runArchives.sourceTypes,
@@ -583,10 +593,13 @@ export function createRunArchivesRepo(
       });
       const setValues: Partial<typeof runArchives.$inferInsert> = {
         rankedItems: items,
-        reviewed: true,
+        reviewed: ctx.reviewed ?? true,
         searchText,
         updatedAt: new Date(),
       };
+      if (ctx.draftSavedAt != null) {
+        setValues.draftSavedAt = ctx.draftSavedAt;
+      }
       if (meta) {
         if ("digestHeadline" in meta) setValues.digestHeadline = meta.digestHeadline ?? null;
         if ("digestSummary" in meta) setValues.digestSummary = meta.digestSummary ?? null;
@@ -606,6 +619,7 @@ export function createRunArchivesRepo(
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
           publishedAt: runArchives.publishedAt,
+          draftSavedAt: runArchives.draftSavedAt,
           createdAt: runArchives.createdAt,
           startedAt: runArchives.startedAt,
           sourceTypes: runArchives.sourceTypes,
@@ -648,10 +662,13 @@ export function createRunArchivesRepo(
       });
       const setValues: Partial<typeof runArchives.$inferInsert> = {
         rankedItems: items,
-        reviewed: true,
+        reviewed: ctx.reviewed ?? true,
         searchText,
         updatedAt: new Date(),
       };
+      if (ctx.draftSavedAt != null) {
+        setValues.draftSavedAt = ctx.draftSavedAt;
+      }
       if (meta) {
         if ("digestHeadline" in meta) setValues.digestHeadline = meta.digestHeadline ?? null;
         if ("digestSummary" in meta) setValues.digestSummary = meta.digestSummary ?? null;
@@ -670,6 +687,7 @@ export function createRunArchivesRepo(
           reviewed: runArchives.reviewed,
           completedAt: runArchives.completedAt,
           publishedAt: runArchives.publishedAt,
+          draftSavedAt: runArchives.draftSavedAt,
           createdAt: runArchives.createdAt,
           startedAt: runArchives.startedAt,
           sourceTypes: runArchives.sourceTypes,

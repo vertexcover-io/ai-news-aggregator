@@ -363,6 +363,9 @@ export const archivePatchSchema = z
     hook: z.string().nullable().optional(),
     twitterSummary: z.string().nullable().optional(),
     linkedinPostBody: z.string().nullable().optional(),
+    /** When false, saves a draft (reviewed stays false, no channels enqueued).
+     * Absent means true — backward-compatible with existing "Save & publish". */
+    publish: z.boolean().optional(),
   });
 
 

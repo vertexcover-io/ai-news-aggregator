@@ -533,6 +533,61 @@ describe("listRuns", () => {
     expect(result[0].twitterPermalink).toBeNull();
   });
 
+  it("test_REQ_016_run_summary_includes_draft_saved_at: archive row with draftSavedAt maps to ISO string in RunSummary", async () => {
+    const draftSavedAt = new Date("2026-04-10T05:00:00.000Z");
+    const archiveRows: RunArchiveRow[] = [
+      {
+        id: "draft-run",
+        status: "completed",
+        rankedItems: [],
+        topN: 10,
+        reviewed: false,
+        completedAt: new Date("2026-04-10T04:00:00.000Z"),
+        publishedAt: null,
+        createdAt: new Date("2026-04-10T04:00:00.000Z"),
+        isDryRun: false,
+        costBreakdown: null,
+        linkedinPostedAt: null,
+        twitterPostedAt: null,
+        socialMetadata: null,
+        draftSavedAt,
+      } as unknown as RunArchiveRow,
+    ];
+    const result = await listRuns(10, {
+      redis: makeRedis(new Map()) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo(archiveRows),
+    });
+    expect(result[0].runId).toBe("draft-run");
+    expect(result[0].draftSavedAt).toBe(draftSavedAt.toISOString());
+  });
+
+  it("test_REQ_016_run_summary_null_draft_saved_at: archive row with draftSavedAt=null maps to null in RunSummary", async () => {
+    const archiveRows: RunArchiveRow[] = [
+      {
+        id: "no-draft-run",
+        status: "completed",
+        rankedItems: [],
+        topN: 10,
+        reviewed: false,
+        completedAt: new Date("2026-04-10T04:00:00.000Z"),
+        publishedAt: null,
+        createdAt: new Date("2026-04-10T04:00:00.000Z"),
+        isDryRun: false,
+        costBreakdown: null,
+        linkedinPostedAt: null,
+        twitterPostedAt: null,
+        socialMetadata: null,
+        draftSavedAt: null,
+      } as unknown as RunArchiveRow,
+    ];
+    const result = await listRuns(10, {
+      redis: makeRedis(new Map()) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo(archiveRows),
+    });
+    expect(result[0].runId).toBe("no-draft-run");
+    expect(result[0].draftSavedAt).toBeNull();
+  });
+
   it("REQ-007: redis-only live summary carries all four social fields as null", async () => {
     const redisEntries = new Map<string, RedisEntry>([
       [

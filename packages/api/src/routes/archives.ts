@@ -242,6 +242,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     if (!parsed.success) {
       return c.json({ error: parsed.error.message }, 400);
     }
+    const publish = parsed.data.publish ?? true;
     try {
       const updated = await patchArchive(runId, parsed.data, {
         archiveRepo: deps.getArchiveRepo(),
@@ -249,7 +250,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         reviewEditsRepo: deps.getReviewEditsRepo?.(),
       });
       logger.info(
-        { event: "archive.patched", runId, count: parsed.data.rankedItems.length },
+        { event: "archive.patched", runId, count: parsed.data.rankedItems.length, publish },
         "archive.patched",
       );
       void captureAnalytics({
@@ -257,7 +258,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         event: "archive_reviewed",
         properties: { run_id: runId, item_count: parsed.data.rankedItems.length },
       });
-      if (deps.processingQueue && deps.getSettingsRepo) {
+      if (publish && deps.processingQueue && deps.getSettingsRepo) {
         const settings = await deps.getSettingsRepo().get();
         if (settings) {
           const channels = selectImmediatePublishChannels({

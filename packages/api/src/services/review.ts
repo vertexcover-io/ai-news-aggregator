@@ -97,6 +97,12 @@ export async function patchArchive(
   const archive = await deps.archiveRepo.findById(runId);
   if (!archive) throw new NotFoundError(`archive not found: ${runId}`);
 
+  // F7 guard (REQ-008/EDGE-001): cannot save as draft an already-reviewed archive
+  const publish = input.publish ?? true;
+  if (!publish && archive.reviewed) {
+    throw new ValidationError("cannot save an already-published archive as a draft");
+  }
+
   const ids = input.rankedItems.map((i) => i.id);
   const found = await deps.rawItemsRepo.findByIds(ids);
   const foundIds = new Set(found.map((r) => r.id));
@@ -141,6 +147,10 @@ export async function patchArchive(
     digestHeadline: effectiveHeadline,
     digestSummary: effectiveSummary,
     digestMeta: Object.keys(digestMeta).length > 0 ? digestMeta : undefined,
+    reviewed: publish,
+    // When drafting: stamp with current time. When publishing: pass null so
+    // the repo does not overwrite the existing draftSavedAt column value.
+    draftSavedAt: publish ? null : new Date(),
   };
 
   // REQ-003 / REQ-007: compute diff when snapshot is present, skip when NULL.
