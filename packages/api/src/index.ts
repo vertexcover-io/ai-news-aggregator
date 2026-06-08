@@ -39,6 +39,7 @@ import { requireAdmin } from "@api/auth/middleware.js";
 import { buildApp } from "@api/app.js";
 import { createSubscribeRouter } from "@api/routes/subscribe.js";
 import { createSubscribersRepo } from "@api/repositories/subscribers.js";
+import { createFeedbackEventsRepo } from "@api/repositories/feedback-events.js";
 import { createRunArchivesRepo } from "@api/repositories/run-archives.js";
 import { createUserSettingsRepo } from "@api/repositories/user-settings.js";
 import { createEmailProvider } from "@api/lib/email/provider.js";
@@ -116,6 +117,8 @@ const slackNotifier = createSlackNotifier({
 
 const subscribeRouter = createSubscribeRouter({
   subscribersRepo: createSubscribersRepo(getDb()),
+  feedbackEventsRepo: createFeedbackEventsRepo(getDb()),
+  feedbackCampaign: process.env.FEEDBACK_CAMPAIGN ?? "2026-06-reading-check",
   sessionSecret,
   baseUrl: apiBaseUrl,
   webBaseUrl: newsletterBaseUrl,

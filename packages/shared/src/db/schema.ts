@@ -243,6 +243,28 @@ export const emailSends = pgTable("email_sends", {
 export type EmailSendInsert = typeof emailSends.$inferInsert;
 export type EmailSendSelect = typeof emailSends.$inferSelect;
 
+export type FeedbackRating = "love" | "meh" | "nah";
+
+// Append-only log of reader-feedback clicks (one-tap emoji links in feedback
+// campaigns). Multiple rows per subscriber are expected and fine — a scanner
+// prefetching all three links shows up as a burst of conflicting ratings within
+// seconds, which the read-side resolver discards. The clean tally is derived,
+// never upserted in place.
+export const feedbackEvents = pgTable("feedback_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  subscriberId: uuid("subscriber_id").notNull().references(() => subscribers.id),
+  campaign: text("campaign").notNull(),
+  rating: text("rating").$type<FeedbackRating>().notNull(),
+  userAgent: text("user_agent"),
+  ip: text("ip"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("feedback_events_subscriber_campaign_idx").on(t.subscriberId, t.campaign),
+]);
+
+export type FeedbackEventInsert = typeof feedbackEvents.$inferInsert;
+export type FeedbackEventSelect = typeof feedbackEvents.$inferSelect;
+
 export type SesEventType = "delivery" | "bounce" | "complaint" | "open" | "click" | "reject";
 
 export const sesEvents = pgTable("ses_events", {

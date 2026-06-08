@@ -3,8 +3,46 @@ import {
   renderConfirmation,
   renderNewsletter,
   renderWelcome,
+  renderFeedback,
 } from "@api/lib/email/templates/index.js";
 import type { NewsletterStory } from "@api/lib/email/templates/index.js";
+
+describe("renderFeedback (AgentLoop reader-feedback campaign)", () => {
+  const urls = {
+    loveUrl: "https://api.example.com/api/feedback?token=tok&v=love",
+    mehUrl: "https://api.example.com/api/feedback?token=tok&v=meh",
+    nahUrl: "https://api.example.com/api/feedback?token=tok&v=nah",
+  };
+
+  it("renders all three one-tap rating links", async () => {
+    const html = await renderFeedback({ firstName: "Aman", ...urls });
+    // react-email HTML-escapes the ampersands in href attributes; normalize
+    // before asserting the links are present.
+    const decoded = html.replace(/&amp;/g, "&");
+    expect(decoded).toContain(urls.loveUrl);
+    expect(decoded).toContain(urls.mehUrl);
+    expect(decoded).toContain(urls.nahUrl);
+  });
+
+  it("greets the reader by first name and uses AgentLoop branding", async () => {
+    const html = await renderFeedback({ firstName: "Aman", ...urls });
+    expect(html).toContain("Hey Aman");
+    expect(html).toContain("AgentLoop");
+  });
+
+  it("falls back to a warm greeting when no first name is given", async () => {
+    const html = await renderFeedback({ ...urls });
+    expect(html).toContain("Hey there");
+  });
+
+  it("shows the AgentLoop logo and uses an em dash only in the sign-off", async () => {
+    const html = await renderFeedback({ firstName: "Aman", ...urls });
+    expect(html).toContain("agentloop-mark.png");
+    // The only em dash allowed is the signature line; never in the prose (AI slop).
+    expect(html).toContain("— The Vertexcover team");
+    expect((html.match(/—/g) ?? []).length).toBe(1);
+  });
+});
 
 const baseUrl = "https://newsletter.vertexcover.io";
 

@@ -1,8 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+export type SubscriberTokenType = "confirm" | "unsub" | "feedback";
+
 export function issueSubscriberToken(
   subscriberId: string,
-  type: "confirm" | "unsub",
+  type: SubscriberTokenType,
   secret: string,
   expiresAt?: Date,
 ): string {
@@ -13,12 +15,12 @@ export function issueSubscriberToken(
 }
 
 export type VerifyResult =
-  | { valid: true; subscriberId: string; type: "confirm" | "unsub" }
+  | { valid: true; subscriberId: string; type: SubscriberTokenType }
   | { valid: false; reason: "invalid" | "expired" | "wrong-type" };
 
 export function verifySubscriberToken(
   token: string,
-  expectedType: "confirm" | "unsub",
+  expectedType: SubscriberTokenType,
   secret: string,
 ): VerifyResult {
   const dotIndex = token.indexOf(".");
@@ -60,7 +62,9 @@ export function verifySubscriberToken(
   const [subscriberId, type, expiresStr] = parts;
   if (!subscriberId || !type || !expiresStr) return { valid: false, reason: "invalid" };
 
-  if (type !== "confirm" && type !== "unsub") return { valid: false, reason: "invalid" };
+  if (type !== "confirm" && type !== "unsub" && type !== "feedback") {
+    return { valid: false, reason: "invalid" };
+  }
 
   if (type !== expectedType) return { valid: false, reason: "wrong-type" };
 

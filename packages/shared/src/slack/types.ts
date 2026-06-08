@@ -1,4 +1,5 @@
 import type { Logger } from "pino";
+import type { FeedbackRating } from "../db/schema.js";
 import type { NotificationKey, NotificationState } from "../types/notifications.js";
 import type { RunSourceTelemetry } from "../types/run.js";
 import type { PublishChannel } from "../scheduling/job-ids.js";
@@ -40,6 +41,10 @@ export interface SlackNotifier {
     readonly email: string;
     readonly via: "unsubscribe-link" | "one-click" | "bounce" | "complaint";
     readonly totalConfirmed: number;
+  }): Promise<void>;
+  notifyFeedbackReceived(input: {
+    readonly email: string;
+    readonly rating: FeedbackRating;
   }): Promise<void>;
 }
 

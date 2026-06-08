@@ -1,13 +1,23 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { createLogger } from "@newsletter/shared";
-import type { SlackNotifier } from "@newsletter/shared";
+import type { FeedbackRating, SlackNotifier } from "@newsletter/shared";
 import { issueSubscriberToken, verifySubscriberToken } from "@api/lib/subscriber-token.js";
 import type { SubscribersRepo } from "@api/repositories/subscribers.js";
+import type { FeedbackEventsRepo } from "@api/repositories/feedback-events.js";
 import { captureAnalytics } from "@api/lib/posthog.js";
+
+const FEEDBACK_RATINGS: readonly FeedbackRating[] = ["love", "meh", "nah"];
+
+function parseRating(value: string | undefined): FeedbackRating | null {
+  return FEEDBACK_RATINGS.find((r) => r === value) ?? null;
+}
 
 export interface SubscribeRouterDeps {
   subscribersRepo: SubscribersRepo;
+  feedbackEventsRepo: FeedbackEventsRepo;
+  /** Campaign id stamped on every feedback event (one-time reader-feedback send). */
+  feedbackCampaign: string;
   sessionSecret: string;
   baseUrl: string;
   webBaseUrl: string;
@@ -314,6 +324,77 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
     }
 
     return c.json({ ok: true });
+  });
+
+  // One-tap reader feedback. Each emoji link in a feedback campaign is a signed
+  // GET link; clicking it lands here, records an append-only event, and bounces
+  // the reader to the web thank-you page. Slack fires only on a subscriber's
+  // first tap per campaign so an email-client prefetch of all three links can't
+  // spam the channel (the clean tally is derived from the event log).
+  app.get("/feedback", async (c) => {
+    const token = c.req.query("token") ?? "";
+    const rating = parseRating(c.req.query("v"));
+    const result = verifySubscriberToken(token, "feedback", deps.sessionSecret);
+
+    if (!result.valid) {
+      logger.warn(
+        { event: "feedback.invalid_token", reason: result.reason },
+        "feedback: invalid/expired token",
+      );
+      const status = result.reason === "expired" ? "expired" : "invalid";
+      return c.redirect(`${deps.webBaseUrl}/feedback?status=${status}`);
+    }
+
+    if (rating === null) {
+      logger.warn(
+        { event: "feedback.invalid_rating", subscriberId: result.subscriberId },
+        "feedback: unknown rating value",
+      );
+      return c.redirect(`${deps.webBaseUrl}/feedback?status=invalid`);
+    }
+
+    const subscriber = await deps.subscribersRepo.findById(result.subscriberId);
+    if (!subscriber) {
+      logger.warn(
+        { event: "feedback.subscriber_missing", subscriberId: result.subscriberId },
+        "feedback: token valid but subscriber not found",
+      );
+      return c.redirect(`${deps.webBaseUrl}/feedback?status=invalid`);
+    }
+
+    const isFirstTap = !(await deps.feedbackEventsRepo.hasPriorEvent(
+      result.subscriberId,
+      deps.feedbackCampaign,
+    ));
+
+    await deps.feedbackEventsRepo.insertEvent({
+      subscriberId: result.subscriberId,
+      campaign: deps.feedbackCampaign,
+      rating,
+      userAgent: c.req.header("user-agent") ?? null,
+      ip: c.req.header("x-forwarded-for") ?? null,
+    });
+
+    logger.info(
+      { event: "feedback.recorded", subscriberId: result.subscriberId, rating, firstTap: isFirstTap },
+      "feedback: rating recorded",
+    );
+
+    if (isFirstTap) {
+      void deps.slackNotifier
+        .notifyFeedbackReceived({ email: subscriber.email, rating })
+        .catch((err: unknown) => {
+          logger.warn(
+            {
+              event: "slack.feedback_received.unexpected_throw",
+              error: err instanceof Error ? err.message : String(err),
+            },
+            "slack: unexpected throw from notifyFeedbackReceived",
+          );
+        });
+    }
+
+    return c.redirect(`${deps.webBaseUrl}/feedback?status=ok&v=${rating}`);
   });
 
   return app;
