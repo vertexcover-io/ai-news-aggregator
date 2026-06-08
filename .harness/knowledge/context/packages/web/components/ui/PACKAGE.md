@@ -1,6 +1,6 @@
 ---
 governs: packages/web/src/components/ui/
-last_verified_sha: ad0153a
+last_verified_sha: 76d7e84
 key_files: [button.tsx, input.tsx, dialog.tsx, table.tsx, badge.tsx, card.tsx, label.tsx, select.tsx, separator.tsx, sonner.tsx, switch.tsx, tabs.tsx]
 flow_fns: []
 decisions: []

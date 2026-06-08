@@ -1,6 +1,6 @@
 ---
 governs: packages/pipeline/src/workers/
-last_verified_sha: ad0153a
+last_verified_sha: 76d7e84
 key_files: [processing.ts, run-process.ts, daily-run.ts, email-send.ts, linkedin-post.ts, twitter-post.ts, social-health.ts, collector-health.ts, publish-target.ts, newsletter-send.ts]
 flow_fns: [processing.ts::createProcessingWorker, run-process.ts::handleRunProcessJob, daily-run.ts::handleDailyRunJob, email-send.ts::handleEmailSendJob, linkedin-post.ts::handleLinkedInPostJob, twitter-post.ts::handleTwitterPostJob, collector-health.ts::handleCollectorHealthJob, publish-target.ts::resolvePublishTarget]
 decisions: [D-050, D-051, D-052, D-110, D-111]
@@ -23,7 +23,6 @@ Each worker file exports a handler function called by the dispatching `processin
 - `handleSocialHealthJob(deps, job)` → `void` — validates Twitter credentials, alerts Slack on failure
 - `createCollectorHealthWorker(options?)` → `Worker` — **dedicated** worker on the `collector-health` queue (own Redis connection), separate from the processing worker (D-110); never set to `concurrency:1`
 - `handleCollectorHealthJob(deps, job)` → `void` — resolves targets (payload collectors, or all enabled from settings), runs each strategy under `Promise.allSettled` (one failure never aborts others, REQ-010), persists per-collector terminal result to Redis, posts ONE consolidated Slack message on any failure (D-111)
-- `buildDefaultCollectorHealthDeps()` → `CollectorHealthJobDeps` — wires the default deps incl. the per-job `buildHealthCheckDeps` factory (D-051 pattern — Twitter cookie + Tavily key resolved per job, never at worker construction)
 - `handleNewsletterSendJob(deps, job)` → `void` — **@deprecated** legacy combined email+social send; kept for back-compat
 - `resolvePublishTarget(deps, input)` → `PipelineRunArchiveRow | null` — resolves the archive to publish (by runId or latest terminal), validates reviewed/non-dry-run
 - `handleCollectionJob(job, deps?)` → `CollectorResult` — **legacy** per-source collection worker (kept for rollback)

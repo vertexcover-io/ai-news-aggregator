@@ -6,7 +6,7 @@ import { gfm } from "turndown-plugin-gfm";
 import type { ConvertInput, ConvertResult } from "@pipeline/services/web-fetch/types.js";
 import { extractPublishedAt } from "@pipeline/services/web-fetch/published-date.js";
 
-export const HEALTHY_TEXT_LENGTH = 200;
+const HEALTHY_TEXT_LENGTH = 200;
 
 // Silent virtual console: JSDOM's default forwards CSS parse errors and
 // unsupported-feature warnings to stdout/stderr, which floods our logs with

@@ -1,6 +1,6 @@
 ---
 governs: packages/api/src/services/
-last_verified_sha: ad0153a
+last_verified_sha: 76d7e84
 key_files: [review.ts, run-observability.ts, run-source-items.ts, run-list.ts, sources-summary.ts, cancel-run.ts, rank-hydration.ts, runs.ts, scheduler.ts, linkedin-oauth.ts, linkedin-credential-resolver.ts, twitter-handle-resolver.ts, item-preview.ts, eval-report.ts, eval-run-orchestrator.ts]
 flow_fns: [review.ts::patchArchive, review.ts::promoteItem, review.ts::addPostToArchive, review.ts::regenerateDigestMeta, run-observability.ts::buildRunObservability, run-source-items.ts::buildRunSourceItems, run-list.ts::listRuns, sources-summary.ts::buildSourcesSummary, cancel-run.ts::cancelRun, rank-hydration.ts::hydrateRankedItems, scheduler.ts::reconcilePipelineSchedule, scheduler.ts::reconcileCollectorHealthSchedule, eval-report.ts::buildActualRanking, eval-report.ts::buildCalendarRanking, eval-run-orchestrator.ts::runEvalOrchestrator]
 decisions: [D-002, D-004, D-013, D-014, D-110]
@@ -99,7 +99,7 @@ reconcileCollectorHealthSchedule(collectorHealthQueue, settings) → void:
 
 ## New services (added: refactor #249)
 
-- `eval-report.ts` — extracted from `admin-eval.ts` route: `buildActualRanking`, `buildExpectedRanking`, `buildCalendarRanking`, `buildCalendarRunFixture`, `truncateSnapshot`, `TIER_ORDER`. HTTP-free — no Hono imports.
+- `eval-report.ts` — extracted from `admin-eval.ts` route: `buildActualRanking`, `buildExpectedRanking`, `buildCalendarRanking`, `buildCalendarRunFixture`, `truncateSnapshot`. HTTP-free — no Hono imports.
 - `eval-run-orchestrator.ts` — extracted SSE orchestration loop: `runEvalOrchestrator(deps, args, emit)` encapsulates the Mode A (scored) + Mode B (calendar) branching logic; route POST /run becomes a thin relay. CC reduced from 23 (inline arrow) to an explicit service function.
 
 ## Gotchas / landmines

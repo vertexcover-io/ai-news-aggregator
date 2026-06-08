@@ -388,7 +388,7 @@ export function createCollectorHealthWorker(
   );
 }
 
-export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
+function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
   const db = getDb();
 
   return {

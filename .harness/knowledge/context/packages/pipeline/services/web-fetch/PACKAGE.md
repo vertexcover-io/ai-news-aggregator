@@ -1,6 +1,6 @@
 ---
 governs: packages/pipeline/src/services/web-fetch/
-last_verified_sha: ad0153a
+last_verified_sha: 76d7e84
 key_files: [index.ts, types.ts, convert.ts, fetch-adaptive.ts, fetch-static.ts, fetch-browser.ts, published-date.ts, proxy.ts]
 flow_fns: [fetch-adaptive.ts::fetchAdaptive, convert.ts::convert, proxy.ts::resolveWebProxyUrl]
 decisions: [D-090, D-080]

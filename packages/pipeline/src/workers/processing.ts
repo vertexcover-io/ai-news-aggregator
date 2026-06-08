@@ -363,7 +363,7 @@ function warnInvalidTwitterConfig(
   );
 }
 
-export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
+async function buildDefaultPublishDeps(): Promise<PublishDeps> {
   const db = getDb();
   const archiveRepo = createRunArchivesRepo(db);
   const rawItemsRepo = createRawItemsRepo(db);

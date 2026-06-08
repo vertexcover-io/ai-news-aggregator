@@ -1,6 +1,6 @@
 ---
 governs: packages/web/src/api/
-last_verified_sha: ad0153a
+last_verified_sha: 76d7e84
 key_files: [client.ts, admin.ts, archives.ts, runs.ts, settings.ts, eval.ts, socialCredentials.ts, collector-health.ts, sources.ts, subscribe.ts, home.ts, must-read.ts, analytics.ts, analyticsConfig.ts]
 flow_fns: [client.ts::apiFetchAdmin, eval.ts::runEval]
 decisions: [D-008]

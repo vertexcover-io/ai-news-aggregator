@@ -18,7 +18,6 @@ import {
 } from "@pipeline/lib/email-send-common.js";
 
 export type { SendPacer };
-export { createSendPacer };
 
 const logger = createLogger("worker:newsletter-send");
 

@@ -11,7 +11,7 @@ export interface HnCollectConfig {
   sinceDays?: number;
 }
 
-export interface HnCollectJobData {
+interface HnCollectJobData {
   config: HnCollectConfig;
 }
 
