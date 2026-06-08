@@ -346,7 +346,7 @@ describe("ReviewPage", () => {
       });
     });
 
-    const saveButton = screen.getByRole("button", { name: /^save/i });
+    const saveButton = screen.getByRole("button", { name: /save & publish/i });
     act(() => {
       fireEvent.click(saveButton);
     });
@@ -670,7 +670,7 @@ describe("ReviewPage", () => {
       });
 
       // Save button should remain enabled (no regen gate for dry-runs)
-      const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
+      const saveBtn = screen.getByRole("button", { name: /save & publish/i });
       expect(saveBtn.hasAttribute("disabled")).toBe(false);
     });
 
@@ -689,7 +689,7 @@ describe("ReviewPage", () => {
 
       // Save stays enabled (the gate is a confirm dialog now, not a disable)
       expect(
-        screen.getByRole("button", { name: /save & view archive/i }).hasAttribute("disabled"),
+        screen.getByRole("button", { name: /save & publish/i }).hasAttribute("disabled"),
       ).toBe(false);
       // Ambient stale-digest warning is visible
       expect(screen.getByTestId("save-warning").textContent).toMatch(/may not match/i);
@@ -703,7 +703,7 @@ describe("ReviewPage", () => {
       });
 
       // After failure: Save still enabled, warning persists (digest still stale)
-      const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
+      const saveBtn = screen.getByRole("button", { name: /save & publish/i });
       expect(saveBtn.hasAttribute("disabled")).toBe(false);
       const warning = screen.getByTestId("save-warning");
       expect(warning.textContent).toMatch(/digest|may not match/i);
@@ -740,7 +740,7 @@ describe("ReviewPage", () => {
       });
       expect(screen.getByTestId("save-warning")).toBeTruthy();
       expect(
-        screen.getByRole("button", { name: /save & view archive/i }).hasAttribute("disabled"),
+        screen.getByRole("button", { name: /save & publish/i }).hasAttribute("disabled"),
       ).toBe(false);
 
       // Second regenerate succeeds → signature syncs, warning clears
@@ -902,7 +902,7 @@ describe("ReviewPage", () => {
       vi.mocked(getAdminArchive).mockResolvedValue(makeCompletedRun());
       renderAt("run-regen");
       await screen.findByText("First");
-      const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
+      const saveBtn = screen.getByRole("button", { name: /save & publish/i });
       expect(saveBtn.hasAttribute("disabled")).toBe(false);
       expect(screen.queryByTestId("save-disabled-tooltip")).toBeNull();
     });
@@ -922,7 +922,7 @@ describe("ReviewPage", () => {
       });
 
       // Save stays enabled — no disable, no tooltip
-      const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
+      const saveBtn = screen.getByRole("button", { name: /save & publish/i });
       expect(saveBtn.hasAttribute("disabled")).toBe(false);
       expect(screen.queryByTestId("save-disabled-tooltip")).toBeNull();
 
@@ -956,7 +956,7 @@ describe("ReviewPage", () => {
       });
 
       act(() => {
-        fireEvent.click(screen.getByRole("button", { name: /save & view archive/i }));
+        fireEvent.click(screen.getByRole("button", { name: /save & publish/i }));
       });
       await act(async () => {
         fireEvent.click(screen.getByRole("button", { name: /save anyway/i }));
@@ -997,7 +997,7 @@ describe("ReviewPage", () => {
       });
 
       // Signature is back in sync — Save goes straight through, no dialog
-      const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
+      const saveBtn = screen.getByRole("button", { name: /save & publish/i });
       expect(saveBtn.hasAttribute("disabled")).toBe(false);
       await act(async () => {
         fireEvent.click(saveBtn);
@@ -1033,7 +1033,7 @@ describe("ReviewPage", () => {
         await Promise.resolve();
       });
 
-      const saveBtn = screen.getByRole("button", { name: /save & view archive/i });
+      const saveBtn = screen.getByRole("button", { name: /save & publish/i });
       await act(async () => {
         fireEvent.click(saveBtn);
         await Promise.resolve();
@@ -1044,5 +1044,94 @@ describe("ReviewPage", () => {
       const [, body] = vi.mocked(patchArchive).mock.calls[0];
       expect(body.digestHeadline).toBe("Fresh headline");
     });
+  });
+
+  // ─── Phase 2 unit tests (save-newsletter-draft) ──────────────────────────
+
+  function makeUnreviewedResponse(): RunStateResponse {
+    return {
+      id: "run-unrev",
+      status: "completed",
+      stage: "completed",
+      topN: 10,
+      startedAt: "2026-04-14T00:00:00Z",
+      updatedAt: "2026-04-14T00:00:00Z",
+      completedAt: "2026-04-14T00:00:00Z",
+      sources: {},
+      rankedItems: [makeItem(1, "Story A"), makeItem(2, "Story B")],
+      shortlistedItemIds: null,
+      warnings: [],
+      error: null,
+      reviewed: false,
+    };
+  }
+
+  function makeReviewedResponse(): RunStateResponse {
+    return {
+      id: "run-rev",
+      status: "completed",
+      stage: "completed",
+      topN: 10,
+      startedAt: "2026-04-14T00:00:00Z",
+      updatedAt: "2026-04-14T00:00:00Z",
+      completedAt: "2026-04-14T00:00:00Z",
+      sources: {},
+      rankedItems: [makeItem(1, "Story A")],
+      shortlistedItemIds: null,
+      warnings: [],
+      error: null,
+      reviewed: true,
+    };
+  }
+
+  it("test_REQ_013_unreviewed_shows_two_buttons — unreviewed run renders 'Save draft' and 'Save & publish'", async () => {
+    vi.mocked(getAdminArchive).mockResolvedValue(makeUnreviewedResponse());
+    renderAt("run-unrev");
+    await screen.findByText("Story A");
+
+    expect(screen.getByRole("button", { name: /save draft/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /save & publish/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /save & view archive/i })).toBeNull();
+  });
+
+  it("test_REQ_014_reviewed_shows_single_button — reviewed run renders only 'Save & view archive', no draft button", async () => {
+    vi.mocked(getAdminArchive).mockResolvedValue(makeReviewedResponse());
+    renderAt("run-rev");
+    await screen.findByText("Story A");
+
+    expect(screen.queryByRole("button", { name: /save draft/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /save & view archive/i })).toBeTruthy();
+  });
+
+  it("test_EDGE_006_draft_save_error_preserves_state — failed draft save shows error toast and preserves unsaved count ≥ 1", async () => {
+    vi.mocked(getAdminArchive).mockResolvedValue(makeUnreviewedResponse());
+    vi.mocked(patchArchive).mockRejectedValue(new Error("Network error"));
+
+    renderAt("run-unrev");
+    await screen.findByText("Story A");
+
+    // Make the page dirty (delete an item)
+    const deleteButtons = await screen.findAllByRole("button", { name: /delete|remove/i });
+    act(() => {
+      fireEvent.click(deleteButtons[0]);
+    });
+
+    // Verify there's at least 1 unsaved change before clicking Save draft
+    const saveBarBefore = screen.getByText(/unsaved change/i);
+    const countBefore = parseInt(/^(\d+)/.exec(saveBarBefore.textContent ?? "")?.[1] ?? "0", 10);
+    expect(countBefore).toBeGreaterThanOrEqual(1);
+
+    // Click Save draft
+    const draftBtn = screen.getByRole("button", { name: /save draft/i });
+    await act(async () => {
+      fireEvent.click(draftBtn);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Unsaved count should still be ≥ 1 (state preserved on error)
+    const saveBarAfter = screen.getByText(/unsaved change/i);
+    const countAfter = parseInt(/^(\d+)/.exec(saveBarAfter.textContent ?? "")?.[1] ?? "0", 10);
+    expect(countAfter).toBeGreaterThanOrEqual(1);
   });
 });

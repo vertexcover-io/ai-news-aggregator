@@ -137,6 +137,53 @@ describe("SaveBar", () => {
     expect(screen.queryByTestId("save-confirmation-message")).toBeNull();
   });
 
+  it("test_REQ_013_unreviewed_shows_two_buttons — when onSaveDraft provided, renders both 'Save draft' and 'Save & publish'", () => {
+    render(
+      <SaveBar
+        unsavedCount={1}
+        saving={false}
+        canSave
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        onSaveDraft={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /save draft/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /save & publish/i })).toBeTruthy();
+  });
+
+  it("test_REQ_014_reviewed_shows_single_button — when onSaveDraft not provided, only 'Save & view archive' appears", () => {
+    render(
+      <SaveBar
+        unsavedCount={0}
+        saving={false}
+        canSave
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /save draft/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /save & view archive/i })).toBeTruthy();
+  });
+
+  it("test_EDGE_006_draft_save_error_preserves_state — draftSaving flag disables Save draft button while in flight", () => {
+    const onSaveDraft = vi.fn();
+    render(
+      <SaveBar
+        unsavedCount={1}
+        saving={false}
+        canSave
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        onSaveDraft={onSaveDraft}
+        draftSaving={true}
+      />,
+    );
+    // When draftSaving=true, the button label changes to "Saving..." and is disabled
+    const draftBtn = screen.getByRole("button", { name: /^saving\.\.\./i });
+    expect(draftBtn.hasAttribute("disabled")).toBe(true);
+  });
+
   it("opens a confirm dialog with 'Discard all changes?' and only calls onDiscard after confirm (REQ-153)", () => {
     const onDiscard = vi.fn();
     render(

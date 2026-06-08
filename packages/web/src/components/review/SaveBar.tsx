@@ -25,6 +25,14 @@ interface SaveBarProps {
    * onSave only fires after the user confirms with "Save anyway".
    */
   saveConfirmation?: string | null;
+  /**
+   * When provided, renders a secondary "Save draft" button to the left of the
+   * primary button. The primary label becomes "Save & publish" instead of
+   * "Save & view archive".
+   */
+  onSaveDraft?: () => void;
+  /** True while the draft save is in flight — disables the Save draft button. */
+  draftSaving?: boolean;
 }
 
 export function SaveBar({
@@ -36,6 +44,8 @@ export function SaveBar({
   disabledReason = null,
   warning = null,
   saveConfirmation = null,
+  onSaveDraft,
+  draftSaving = false,
 }: SaveBarProps): ReactElement {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
@@ -74,6 +84,18 @@ export function SaveBar({
         ) : null}
       </div>
       <div className="flex items-center gap-2">
+        {onSaveDraft !== undefined ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onSaveDraft}
+            disabled={!canSave || draftSaving || saving}
+            aria-disabled={!canSave || draftSaving || saving}
+            className="min-h-[44px] px-4"
+          >
+            {draftSaving ? "Saving..." : "Save draft"}
+          </Button>
+        ) : null}
         <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <DialogTrigger asChild>
             <Button type="button" variant="outline" disabled={saving} className="min-h-[44px] px-4">
@@ -144,7 +166,7 @@ export function SaveBar({
             title={disabledReason ?? undefined}
             className="bg-black text-white hover:bg-black/90 min-h-[44px] px-4"
           >
-            {saving ? "Saving..." : "Save & view archive"}
+            {saving ? "Saving..." : onSaveDraft !== undefined ? "Save & publish" : "Save & view archive"}
             <ArrowRight />
           </Button>
           {disabledReason !== null && !canSave && !saving ? (

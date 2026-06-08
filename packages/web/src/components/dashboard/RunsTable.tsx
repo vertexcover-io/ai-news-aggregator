@@ -55,7 +55,7 @@ function renderPrimaryAction({
   retrying: boolean;
   onCancelClick: () => void;
 }): ReactElement | null {
-  if (derived === "ready-to-review") {
+  if (derived === "ready-to-review" || derived === "draft") {
     return (
       <Button asChild size="sm">
         <Link to={`/admin/review/${run.runId}`}>
@@ -141,6 +141,7 @@ function RunActionCell({
   });
   const showDelete =
     derived === "ready-to-review" ||
+    derived === "draft" ||
     derived === "reviewed" ||
     derived === "failed" ||
     derived === "cancelled";

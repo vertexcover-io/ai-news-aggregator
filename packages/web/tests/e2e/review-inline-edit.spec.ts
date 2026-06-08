@@ -134,7 +134,7 @@ test.describe("review inline edit e2e", () => {
 
     await expect(page.getByText(seeded.editedTitle)).toBeVisible();
     await page
-      .getByRole("button", { name: /save & view archive/i })
+      .getByRole("button", { name: /save & publish/i })
       .click();
 
     await expect(page).toHaveURL(new RegExp(`/archive/${seeded.runId}$`));

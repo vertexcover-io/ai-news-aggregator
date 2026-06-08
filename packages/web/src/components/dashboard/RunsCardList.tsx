@@ -47,7 +47,7 @@ function RunCardActions({
   retrying: boolean;
   onCancelClick: () => void;
 }): ReactElement | null {
-  if (derived === "ready-to-review") {
+  if (derived === "ready-to-review" || derived === "draft") {
     return (
       <Button asChild size="sm" className="min-h-[44px] px-3">
         <Link to={`/admin/review/${run.runId}`}>
@@ -101,6 +101,7 @@ function RunCardActions({
 function showDeleteFor(status: DerivedStatus): boolean {
   return (
     status === "ready-to-review" ||
+    status === "draft" ||
     status === "reviewed" ||
     status === "failed" ||
     status === "cancelled"
