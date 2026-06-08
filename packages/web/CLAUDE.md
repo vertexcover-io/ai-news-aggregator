@@ -22,8 +22,12 @@ Page/component/hook surface and decisions: `.harness/knowledge/context/packages/
 - The dashboard runs list uses a two-representation pattern: `RunsTable` at `sm:` and above, `RunsCardList` below 640 px — both receive the same `runs` prop
 - DnD lists register `TouchSensor` with `activationConstraint: { delay: 250, tolerance: 5 }` so mobile users can scroll without dragging; drag handles need a ≥44×44 px touch target
 
+## E2E rules
+- **No real external sends (S-web-04).** E2E must never fire a real Slack/email/LinkedIn/X message. The API e2e server's env is an explicit allowlist in `playwright.config.ts`; `SLACK_WEBHOOK_URL` is force-blanked there (`""`) so dotenv can't load a real webhook and the notifier no-ops. Any new e2e touching a notify path inherits this — assert intent via logs / DB (`slackNotifiedAt`), never a live send. Never add a real webhook URL or live key to the e2e env.
+
 ## Commands
 pnpm dev          # Start Vite dev server
 pnpm build        # Production build
 pnpm typecheck    # Type check
 pnpm test:unit    # Run unit tests (vitest + jsdom)
+pnpm test:e2e     # Run hermetic e2e (Playwright; private PG/Redis on ephemeral ports)

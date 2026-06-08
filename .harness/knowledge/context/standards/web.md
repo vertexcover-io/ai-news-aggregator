@@ -1,6 +1,6 @@
 ---
 id: S-web
-applies_to: ["packages/web/src/**"]
+applies_to: ["packages/web/src/**", "packages/web/tests/e2e/**", "packages/web/playwright.config.ts"]
 enforced_by: convention
 decisions: [D-100]
 last_verified_sha: 5a2ff20
@@ -32,3 +32,11 @@ status: active
 **Enforced by:** convention (not linted)
 
 **Smell:** A page component with >50 lines of inline data fetching or state management logic.
+
+## S-web-04 — E2E sends no real external messages
+
+**Rule:** E2E tests must never trigger a real outbound message to a third-party service (Slack, email, LinkedIn, X). The hermetic harness neutralizes these at the API `webServer.env` allowlist in `packages/web/playwright.config.ts` by force-blanking the relevant env var (e.g. `SLACK_WEBHOOK_URL: ""`). Because the API runs `dotenv.config()`, which leaves already-set keys intact, pre-setting the key to `""` in the webServer env wins over `.env` and the integration self-disables (`createSlackNotifier` no-ops on `""`/undefined). To assert that a path *would* trigger Slack, check logs or DB state (`slack.notify.*` events, `slackNotifiedAt`), never a live webhook. New e2e specs that touch a notify path inherit this automatically — never add a real webhook URL or live API key to the e2e env to "test" it.
+
+**Enforced by:** convention (the webServer env allowlist in `playwright.config.ts` + code review of new e2e specs)
+
+**Smell:** a real `https://hooks.slack.com/...` URL or live API key reaching an e2e-spawned server; a passthrough (`SLACK_WEBHOOK_URL: process.env.SLACK_WEBHOOK_URL ?? ""`) instead of a hard `""` in `playwright.config.ts`.
