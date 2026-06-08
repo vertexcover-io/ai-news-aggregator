@@ -3,7 +3,7 @@ id: S-web
 applies_to: ["packages/web/src/**", "packages/web/tests/e2e/**", "packages/web/playwright.config.ts"]
 enforced_by: convention
 decisions: [D-100]
-last_verified_sha: 5a2ff20
+last_verified_sha: 226dc6e8b93a852b425cc426ef9dc4a27505bdf4
 status: active
 ---
 

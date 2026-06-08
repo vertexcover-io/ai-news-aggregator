@@ -1,9 +1,9 @@
 ---
 governs: packages/shared/src/db/
-last_verified_sha: ad0153a
+last_verified_sha: 226dc6e8b93a852b425cc426ef9dc4a27505bdf4
 key_files: [schema.ts, client.ts, redis.ts]
 flow_fns: []
-decisions: [D-102, D-103, D-105, D-113]
+decisions: [D-102, D-103, D-105, D-113, D-116]
 status: active
 ---
 
@@ -17,6 +17,7 @@ Defines every database table via Drizzle ORM, the Postgres client singleton, and
 - createRedisConnection(opts?) → IORedis — creates Redis client with maxRetriesPerRequest: null for BullMQ
 - Tables: rawItems, runArchives, runLogs, userSettings, socialCredentials, socialTokens, subscribers, emailSends, sesEvents, evalRuns, reviewEdits, mustReadEntries
 - runArchives.preReviewSnapshot jsonb (`$type<PreReviewSnapshot | null>()`, migration 0035) — captured pre-edit state for the review-edits diff; reviewEdits is the append-only event log (id bigserial, run_id uuid FK → run_archives ON DELETE CASCADE, edit_type, raw_item_id, field, before/after jsonb, position_before/after, created_at), indexed on (run_id) and (edit_type)
+- runArchives.draftSavedAt timestamptz nullable (migration 0039) — stamped when admin saves draft (`publish=false`); null for legacy rows and never-drafted runs; drives `deriveStatus` "draft" in web (D-116)
 
 ## Depends on / used by
 Uses: drizzle-orm, postgres, ioredis

@@ -12,7 +12,7 @@ Built for internal use by the [Vertexcover](https://vertexcover.io) team.
 2. **Deduplicate** — near-duplicate items are collapsed before ranking
 3. **Shortlist (Stage 1)** — candidates are shortlisted by recency decay
 4. **Rerank (Stage 2)** — Claude Haiku reranks the shortlist using a 3-axis prompt (Novelty, Signal-vs-hype, Actionability) and writes a structured recap (summary, bullets, bottom line) per item
-5. **Review** — you drag-to-reorder, remove, or add items on the review page, then save
+5. **Review** — you drag-to-reorder, remove, or add items on the review page, then either **Save draft** (persists work-in-progress, keeps the run out of the public archive) or **Save & publish** (marks the run reviewed and triggers email/social delivery)
 6. **Archive** — the curated run is stored and accessible as a beautiful recap-style archive
 7. **Send & cross-post** — after the digest emails go out, the pipeline auto-posts the day's headline + archive link to LinkedIn and X/Twitter (each opt-in via OAuth in admin settings; idempotent, failures don't block the send)
 
@@ -161,7 +161,7 @@ Turborepo starts all packages in parallel:
 Once the run completes:
 - Click **View Archive** to browse the AI-generated recap
 - Click **Review** to curate the issue — drag to reorder, remove items, or paste a URL to add a post manually
-- **Save** the review to publish the curated archive
+- Click **Save draft** to persist progress without publishing (the run stays out of the public archive and shows a **Draft** badge on the dashboard), or **Save & publish** to publish the curated archive and trigger email/social delivery
 
 ---
 
