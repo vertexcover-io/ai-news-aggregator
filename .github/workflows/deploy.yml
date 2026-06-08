@@ -138,8 +138,6 @@ jobs:
           TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
           TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
           AUTO_REVIEW: ${{ secrets.AUTO_REVIEW }}
-          REDDIT_HTTP_PROXY: ${{ secrets.REDDIT_HTTP_PROXY }}
-          WEB_HTTP_PROXY: ${{ secrets.WEB_HTTP_PROXY }}
           GHCR_REPO_OWNER: ${{ secrets.GHCR_REPO_OWNER }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
@@ -185,8 +183,6 @@ jobs:
               "TWITTER_ACCESS_TOKEN",
               "TWITTER_ACCESS_TOKEN_SECRET",
               "AUTO_REVIEW",
-              "REDDIT_HTTP_PROXY",
-              "WEB_HTTP_PROXY",
           ]
           names = required + optional
           template = Path("deployment/.env.prod.example").read_text()
