@@ -1,6 +1,6 @@
 ---
 governs: packages/web/src/components/eval/
-last_verified_sha: ad0153a
+last_verified_sha: 76d7e84
 key_files: [RunDetailDrawer.tsx, CalendarReportComparison.tsx, ReportTab.tsx, PromptDiffModal.tsx, EvalResultsPanel.tsx, EvalAggregateHero.tsx, RunsTable.tsx, RunsFilterBar.tsx, RunsPagination.tsx, ManualFixturePipelinePanel.tsx]
 flow_fns: [RunDetailDrawer.tsx::RunDetailDrawer, CalendarReportComparison.tsx::CalendarReportComparison]
 decisions: [D-019, D-020]

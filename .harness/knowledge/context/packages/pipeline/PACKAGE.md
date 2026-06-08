@@ -1,6 +1,6 @@
 ---
 governs: packages/pipeline/src/
-last_verified_sha: ad0153a
+last_verified_sha: 76d7e84
 sub_packages: [collectors, collectors/twitter, collectors/web-search, processors, workers, repositories, services, services/link-enrichment, services/web-fetch, social, social/linkedin, social/twitter, eval, lib]
 decisions: [D-001, D-002, D-003, D-004]
 status: active

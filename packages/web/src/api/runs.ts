@@ -26,7 +26,7 @@ interface ApiErrorBody {
   error?: string;
 }
 
-export async function getRunSources(
+async function getRunSources(
   runId: string,
 ): Promise<RunSourcesResponse> {
   const res = await apiFetchAdmin(`/api/admin/runs/${runId}/sources`);

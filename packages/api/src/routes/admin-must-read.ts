@@ -17,7 +17,7 @@ import {
   previewSchema,
 } from "@api/lib/validate-must-read.js";
 
-export interface PreviewSuccess {
+interface PreviewSuccess {
   status: "extracted";
   suggested: {
     title: string;
@@ -26,7 +26,7 @@ export interface PreviewSuccess {
   };
 }
 
-export interface PreviewFailure {
+interface PreviewFailure {
   status: "extraction_failed";
   error: string;
 }

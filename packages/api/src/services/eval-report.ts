@@ -19,7 +19,7 @@ export function truncateSnapshot(prompt: string): string {
     TRUNCATION_SUFFIX;
 }
 
-export const TIER_ORDER: Record<Tier, number> = { must: 0, nice: 1, drop: 2 };
+const TIER_ORDER: Record<Tier, number> = { must: 0, nice: 1, drop: 2 };
 
 /**
  * Join the ranker's per-item output with fixture-pool metadata to produce the

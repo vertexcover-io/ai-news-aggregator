@@ -1,8 +1,8 @@
 import type { ReactElement } from "react";
 
-export type SourceBucket = "hn" | "reddit" | "twitter" | "web";
+type SourceBucket = "hn" | "reddit" | "twitter" | "web";
 
-export interface SourceMix {
+interface SourceMix {
   hn: number;
   reddit: number;
   twitter: number;
