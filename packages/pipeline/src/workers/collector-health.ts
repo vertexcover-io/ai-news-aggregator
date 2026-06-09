@@ -4,6 +4,7 @@ import type { Job } from "bullmq";
 import { getDb } from "@newsletter/shared";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { createLogger } from "@newsletter/shared/logger";
+import { capturePipelineEvent } from "@pipeline/lib/posthog.js";
 import {
   COLLECTOR_HEALTH_QUEUE_NAME,
   HEALTH_CHECKABLE_COLLECTORS,
@@ -61,6 +62,8 @@ export interface CollectorHealthJobDeps {
   buildHealthCheckDeps: () => Promise<HealthCheckDeps>;
   slackWebhookUrl: string | undefined;
   postToWebhook: PostToWebhookFn;
+  /** Emits one `collector_preflight_failed` PostHog event per failed collector. Silent no-op when PostHog is unconfigured. */
+  capturePipelineEvent: (event: string, properties?: Record<string, unknown>) => void;
   logger: {
     info(fields: Record<string, unknown>, msg: string): void;
     warn(fields: Record<string, unknown>, msg: string): void;
@@ -160,6 +163,24 @@ export async function handleCollectorHealthJob(
   const log = deps.logger;
   const trigger = job.data.trigger;
 
+  // Emit one `collector_preflight_failed` PostHog event per failed collector so pre-flight
+  // failures are searchable + alertable in PostHog. Silent no-op when PostHog is unconfigured
+  // (capturePipelineEvent's contract). severity is constant "error" — a failed pre-flight
+  // collector produces a thin/empty digest.
+  const emitPreflightFailed = (
+    collector: HealthCheckCollector,
+    reason: string | null,
+    durationMs: number | null,
+  ): void => {
+    deps.capturePipelineEvent("collector_preflight_failed", {
+      collector,
+      reason: reason ?? "unknown",
+      trigger,
+      durationMs,
+      severity: "error",
+    });
+  };
+
   // Targets resolved before the try/catch so we can write "failed" for them on error.
   // For an explicit single-collector check the targets come from the payload; for
   // scheduled/all-enabled checks we derive them from settings — but settings.get()
@@ -204,6 +225,7 @@ export async function handleCollectorHealthJob(
           }),
         ),
       );
+      for (const c of payloadCollectors) emitPreflightFailed(c, msg, null);
     }
     throw err;
   }
@@ -260,6 +282,7 @@ export async function handleCollectorHealthJob(
         }),
       ),
     );
+    for (const c of targets) emitPreflightFailed(c, msg, null);
     throw err;
   }
 
@@ -305,13 +328,14 @@ export async function handleCollectorHealthJob(
     }),
   );
 
-  // Collect failures for Slack notification
+  // Collect failures for Slack notification + PostHog emit
   const failures: { collector: HealthCheckCollector; reason: string }[] = [];
   for (const result of results) {
     if (result.status === "fulfilled") {
       const { collector, outcome } = result.value;
       if (outcome.status === "failed") {
         failures.push({ collector, reason: outcome.reason ?? "unknown" });
+        emitPreflightFailed(collector, outcome.reason, outcome.durationMs);
       }
     }
     // allSettled means "rejected" shouldn't happen (we catch above), but handle defensively
@@ -420,6 +444,7 @@ export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
     },
     slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
     postToWebhook,
+    capturePipelineEvent,
     logger: createLogger("worker:collector-health"),
   };
 }

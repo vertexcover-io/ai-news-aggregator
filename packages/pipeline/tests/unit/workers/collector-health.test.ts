@@ -169,6 +169,7 @@ vi.mock("@pipeline/processors/shortlist.js", () => ({ shortlistCandidates: vi.fn
 vi.mock("@pipeline/lib/email-render.js", () => ({ renderNewsletter: vi.fn() }));
 vi.mock("@pipeline/lib/email-provider.js", () => ({ createEmailProvider: vi.fn(() => ({})) }));
 vi.mock("@pipeline/services/web-crawler.js", () => ({ runWebCrawl: vi.fn() }));
+vi.mock("@pipeline/lib/posthog.js", () => ({ capturePipelineEvent: vi.fn() }));
 vi.mock("rettiwt-api", () => ({ Rettiwt: vi.fn() }));
 
 import {
@@ -284,6 +285,7 @@ function makeDeps(overrides: Partial<CollectorHealthJobDeps> = {}): CollectorHea
     buildHealthCheckDeps: vi.fn().mockResolvedValue(makeFakeHealthCheckDeps()),
     slackWebhookUrl: undefined,
     postToWebhook: vi.fn().mockResolvedValue({ ok: true, status: 200 }),
+    capturePipelineEvent: vi.fn(),
     logger: makeLogger(),
     ...overrides,
   };
@@ -623,6 +625,122 @@ describe("handleCollectorHealthJob", () => {
     // store.set must have been called with "failed" for "hn"
     const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
     expect(setCalls.some((c) => c[0].collector === "hn" && c[0].status === "failed")).toBe(true);
+  });
+});
+
+// ─── PostHog collector_preflight_failed emit ─────────────────────────────────
+
+describe("handleCollectorHealthJob — PostHog emit (collector_preflight_failed)", () => {
+  type CaptureCall = [string, Record<string, unknown>];
+
+  it("F1/F2/F3: one collector_preflight_failed event per failed collector with collector/reason/trigger/durationMs/severity", async () => {
+    const capturePipelineEvent = vi.fn();
+    const runCheck = makeRunCollectorHealthCheck({
+      hn: { status: "failed", durationMs: 120, reason: "HN auth failed", detail: null },
+      reddit: { status: "failed", durationMs: 80, reason: "reddit unreachable", detail: null },
+    });
+    const deps = makeDeps({ runCollectorHealthCheck: runCheck, capturePipelineEvent });
+
+    await handleCollectorHealthJob(deps, {
+      name: "collector-health",
+      id: "emit-1",
+      data: { collectors: ["hn", "reddit"], trigger: "scheduled" },
+    });
+
+    const calls = capturePipelineEvent.mock.calls as CaptureCall[];
+    const preflight = calls.filter((c) => c[0] === "collector_preflight_failed");
+    expect(preflight).toHaveLength(2);
+    for (const [, props] of preflight) {
+      expect(props.trigger).toBe("scheduled");
+      expect(props.severity).toBe("error");
+      expect(typeof props.collector).toBe("string");
+      expect(typeof props.reason).toBe("string");
+    }
+    const byCollector = Object.fromEntries(preflight.map(([, p]) => [p.collector, p]));
+    expect(byCollector.hn).toMatchObject({ reason: "HN auth failed", durationMs: 120 });
+    expect(byCollector.reddit).toMatchObject({ reason: "reddit unreachable", durationMs: 80 });
+  });
+
+  it("NF2: all collectors healthy → no collector_preflight_failed emit", async () => {
+    const capturePipelineEvent = vi.fn();
+    const deps = makeDeps({ capturePipelineEvent });
+
+    await handleCollectorHealthJob(deps, {
+      name: "collector-health",
+      id: "emit-2",
+      data: { collectors: ["hn"], trigger: "manual" },
+    });
+
+    const calls = capturePipelineEvent.mock.calls as CaptureCall[];
+    expect(calls.filter((c) => c[0] === "collector_preflight_failed")).toHaveLength(0);
+  });
+
+  it("F1: emits only for the failed collectors in a mixed result", async () => {
+    const capturePipelineEvent = vi.fn();
+    const runCheck = makeRunCollectorHealthCheck({
+      hn: makeHealthOutcome("healthy"),
+      reddit: { status: "failed", durationMs: 50, reason: "reddit down", detail: null },
+    });
+    const deps = makeDeps({ runCollectorHealthCheck: runCheck, capturePipelineEvent });
+
+    await handleCollectorHealthJob(deps, {
+      name: "collector-health",
+      id: "emit-3",
+      data: { collectors: ["hn", "reddit"], trigger: "manual" },
+    });
+
+    const preflight = (capturePipelineEvent.mock.calls as CaptureCall[]).filter(
+      (c) => c[0] === "collector_preflight_failed",
+    );
+    expect(preflight).toHaveLength(1);
+    expect(preflight[0][1]).toMatchObject({ collector: "reddit", trigger: "manual" });
+  });
+
+  it("E2: deps-build failure path emits collector_preflight_failed for each forced-failed target before rethrow", async () => {
+    const capturePipelineEvent = vi.fn();
+    const deps = makeDeps({
+      capturePipelineEvent,
+      buildHealthCheckDeps: vi.fn().mockRejectedValue(new Error("credential DB failure")),
+    });
+
+    await expect(
+      handleCollectorHealthJob(deps, {
+        name: "collector-health",
+        id: "emit-4",
+        data: { collectors: ["hn", "reddit"], trigger: "scheduled" },
+      }),
+    ).rejects.toThrow("credential DB failure");
+
+    const preflight = (capturePipelineEvent.mock.calls as CaptureCall[]).filter(
+      (c) => c[0] === "collector_preflight_failed",
+    );
+    expect(preflight.map(([, p]) => p.collector).sort()).toEqual(["hn", "reddit"]);
+    for (const [, props] of preflight) {
+      expect(props.reason).toBe("credential DB failure");
+      expect(props.severity).toBe("error");
+    }
+  });
+
+  it("E2: settings-load failure path (manual) emits collector_preflight_failed for explicit targets before rethrow", async () => {
+    const capturePipelineEvent = vi.fn();
+    const deps = makeDeps({
+      capturePipelineEvent,
+      userSettingsRepo: { get: vi.fn().mockRejectedValue(new Error("DB unavailable")) },
+    });
+
+    await expect(
+      handleCollectorHealthJob(deps, {
+        name: "collector-health",
+        id: "emit-5",
+        data: { collectors: ["hn"], trigger: "manual" },
+      }),
+    ).rejects.toThrow("DB unavailable");
+
+    const preflight = (capturePipelineEvent.mock.calls as CaptureCall[]).filter(
+      (c) => c[0] === "collector_preflight_failed",
+    );
+    expect(preflight).toHaveLength(1);
+    expect(preflight[0][1]).toMatchObject({ collector: "hn", reason: "DB unavailable" });
   });
 });
 
