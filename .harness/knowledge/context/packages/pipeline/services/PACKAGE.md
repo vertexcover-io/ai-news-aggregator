@@ -87,7 +87,8 @@ Services own state management (Redis run-state, cost tracking), candidate loadin
 ## New services (added: refactor #249 + duplication #250)
 
 - `run-archive-writer.ts` — extracted from `run-process.ts`: `writeFailedArchive(runId, reason, deps)` → writes a failed/cancelled archive row with partial cost; `pickArchiveDigest(ranked)` → picks digest headline/summary from ranked items; `nonEmptyText(s)` → null-coalesces empty strings.
-- `finalize-run.ts` — extracted from `run-process.ts`: `finalizeRun(deps, args)` → the success finalize block: digest selection → `serializeArchiveSearchText` → `resolveScheduledPublishAt` → archive upsert → cost persist → Slack `notifySourceDistribution` + conditional `notifyReviewPending` → run.completed log. Per D-051, receives already-resolved deps.
+- `finalize-run.ts` — extracted from `run-process.ts`: `finalizeRun(deps, args)` → the success finalize block: digest selection → `serializeArchiveSearchText` → `resolveScheduledPublishAt` → archive upsert → cost persist → **`emitRunHealthEvents` (PostHog degradation events, REQ-011)** → Slack `notifySourceDistribution` + conditional `notifyReviewPending` → run.completed log. Per D-051, receives already-resolved deps.
+- `emitRunHealthEvents(input, capture, logger)` — exported helper: calls `evaluateRunHealth(input)` → emits one `pipeline_run_degraded` PostHog event per finding; swallows all errors internally so emission never affects run completion (REQ-011).
 
 ## Gotchas / landmines
 - **Run-logger is best-effort**: `repo.append` failure is caught and logged to stdout — it never throws. A DB outage during a run loses telemetry but doesn't crash the pipeline. (D-070)

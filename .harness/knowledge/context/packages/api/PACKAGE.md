@@ -1,8 +1,8 @@
 ---
 governs: packages/api/src/
-last_verified_sha: ad0153a
+last_verified_sha: abbc2469ab05df29b744dde2701d59a7803124e9
 sub_packages: [auth, lib, lib/email, lib/email/templates, repositories, routes, services]
-decisions: [D-001, D-002, D-003, D-004, D-005, D-006, D-007, D-110]
+decisions: [D-001, D-002, D-003, D-004, D-005, D-006, D-007, D-110, D-141]
 status: active
 ---
 
@@ -59,6 +59,8 @@ The API package is the HTTP boundary for the newsletter system. It serves public
 
 ## Gotchas / landmines
 
+- **`app.onError` captures ≥500 errors only.** A handled `HTTPException` with status < 500 (404, 401) is NOT captured — this guard is in `app.ts::onError`. A thrown non-`HTTPException` defaults to 500 and IS captured. Do not add global try/catch around routes that would prevent Hono from reaching `onError` for 5xx errors.
+- **`uncaughtException` / `unhandledRejection` handlers are registered in `index.ts`.** They call `captureException`, then await a bounded `shutdownAnalytics()` flush (2s timeout via `Promise.race`), then `process.exit(1)`. Adding an additional handler for these signals without the bounded flush risks losing the last captured event.
 - **LinkedIn OAuth callback is not admin-gated.** LinkedIn's browser redirect cannot carry the `admin_session` cookie, so this single route is mounted BEFORE `adminApp` in `app.ts` and secured only by the Redis-stored CSRF state token. (D-001)
 - **`rettiwt-api` is imported in `services/twitter-handle-resolver.ts` only.** This is the single architectural exception. (D-002)
 - **`search_text` must be recomputed when digest headline/summary changes.** `patchArchive` computes the effective post-patch headline/summary and passes them to `serializeArchiveSearchText`. (D-003)

@@ -1,8 +1,8 @@
 ---
 governs: packages/pipeline/src/
-last_verified_sha: ad0153a
+last_verified_sha: abbc2469ab05df29b744dde2701d59a7803124e9
 sub_packages: [collectors, collectors/twitter, collectors/web-search, processors, workers, repositories, services, services/link-enrichment, services/web-fetch, social, social/linkedin, social/twitter, eval, lib]
-decisions: [D-001, D-002, D-003, D-004]
+decisions: [D-001, D-002, D-003, D-004, D-143]
 status: active
 ---
 
@@ -66,3 +66,4 @@ A standalone Node process that runs BullMQ workers to collect from 34+ AI news s
 - **D-002**: Social/email publish deps are built per-job (not at worker startup). Why: the design doc promises credential changes take effect on next job without restart. Tradeoff: each job incurs a DB read for credentials (acceptable — once per job, not per item). Governs: `workers/processing.ts::buildDefaultPublishDeps`.
 - **D-003**: `setCostBreakdown` is a bare `UPDATE` with no row-existence guard. Why: the archive row is created earlier on all paths now. Tradeoff: if a new caller omits the upsert-before-update pattern, cost data is silently lost. Governs: `repositories/run-archives.ts::setCostBreakdown`.
 - **D-004**: `email_sent_at`, `linkedin_posted_at`, `twitter_posted_at` are broadcast idempotency markers only. Why: per-recipient sends (welcome, back-issue) must not stamp the broadcast guard. Tradeoff: per-recipient dedup belongs on `email_sends` table. Governs: `workers/email-send.ts`, `workers/linkedin-post.ts`, `workers/twitter-post.ts`.
+- **D-143**: Pipeline PostHog client is process-level (env-resolved), not per-job. Cross-package — full body in packages/pipeline/lib/PACKAGE.md.

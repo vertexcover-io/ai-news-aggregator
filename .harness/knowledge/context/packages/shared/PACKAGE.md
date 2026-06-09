@@ -1,8 +1,8 @@
 ---
 governs: packages/shared/src/
-last_verified_sha: ad0153a
-sub_packages: [db, types, constants, services, scheduling, slack, review-edits, utils]
-decisions: [D-100, D-101, D-102, D-103, D-104, D-105, D-106, D-107, D-108, D-112, D-113]
+last_verified_sha: abbc2469ab05df29b744dde2701d59a7803124e9
+sub_packages: [db, types, constants, services, scheduling, slack, review-edits, utils, analytics]
+decisions: [D-100, D-101, D-102, D-103, D-104, D-105, D-106, D-107, D-108, D-112, D-113, D-141, D-142]
 status: active
 ---
 
@@ -35,6 +35,11 @@ The `@newsletter/shared` package is the single source of truth for the monorepo'
 
 ### Scheduling (scheduling/)
 - resolveScheduledPublishAt, selectImmediatePublishChannels, dateAtTzTime, publishDateForWindow (completion-anchored, D-108), jobIdFor (`{channel}-{runId}` dash delimiter — bullmq rejects `:`, D-112)
+
+### Analytics (analytics/)
+- `resolvePostHogConfig(settings, env?) → PublicPostHogConfig` — pure config resolver; DB-settings-first, env fallback (`POSTHOG_PROJECT_TOKEN`/`POSTHOG_API_KEY`/`POSTHOG_HOST`/`POSTHOG_ENABLED`); `enabled:false` when token absent. Moved here from `packages/api/src/lib/posthog-config.ts` (D-141). Exported as `@newsletter/shared/analytics` subpath.
+- `evaluateRunHealth(input: RunHealthInput) → RunHealthFinding[]` — pure run-health degradation evaluator; computes three signal types: enrichment failure rate over threshold, zero-yield sources (historically-yielding sources with 0 collected), partial publish (≥1 ok AND ≥1 failed channel). Returns `[]` for dry runs or null telemetry. No IO.
+- `ENRICHMENT_FAILURE_RATE_THRESHOLD = 0.3` — default threshold constant
 
 ### Services (services/)
 - getCredentialCipher (AES-256-GCM with HKDF from SESSION_SECRET)
@@ -73,6 +78,7 @@ Used by: @newsletter/api, @newsletter/pipeline, @newsletter/web (subpath imports
 | slack | src/slack/ | Slack notification system (notifier, builders, webhook) |
 | review-edits | src/review-edits/ | Review diff computation |
 | utils | src/utils/ | Prompt hashing, reading time, timezone formatting |
+| analytics | src/analytics/ | Pure PostHog config resolver + run-health degradation evaluator (server-safe subpath; no DB/browser imports) |
 
 ## Gotchas / landmines
 1. **Root barrel leaks DB into browser.** Never import from @newsletter/shared in web code. Use subpath imports. (D-100)
@@ -95,3 +101,5 @@ Used by: @newsletter/api, @newsletter/pipeline, @newsletter/web (subpath imports
 - D-108: publishDateForWindow anchors the publish day on the run-completion instant (rollover-safe). Governs: packages/shared/src/scheduling/tz.ts — full body in scheduling/PACKAGE.md
 - D-112: jobIdFor uses `-` delimiter (bullmq rejects `:` in custom job ids). Cross-package — full body in root DECISIONS.md
 - D-113: Migration journal timestamps must be monotonic; heal skipped migrations idempotently. Governs: packages/shared/src/db/migrations — full body in db/PACKAGE.md
+- D-141: resolvePostHogConfig moved to shared/analytics (single source, two consumers). Cross-package — full body in root DECISIONS.md
+- D-142: evaluateRunHealth is a pure function in shared/analytics; degradation signals are emitted as PostHog custom events, not thrown exceptions. Cross-package — full body in root DECISIONS.md
