@@ -1,6 +1,7 @@
 import { createLogger } from "@newsletter/shared/logger";
 import type { EmailProvider, RankedItemRef, RecapContent, SlackNotifier, SubscriberSelect } from "@newsletter/shared";
 import { EmailSendError } from "@newsletter/shared";
+import { withUtmSource } from "@newsletter/shared/utils";
 import type { PipelineSubscribersRepo } from "@pipeline/repositories/subscribers.js";
 import type { PipelineEmailSendsRepo } from "@pipeline/repositories/email-sends.js";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
@@ -256,7 +257,7 @@ export async function handleEmailSendJob(
             issueNumber: 1,
             unsubscribeUrl: unsubUrl,
             baseUrl: deps.baseUrl,
-            archiveUrl: `${deps.baseUrl}/archive/${runId}`,
+            archiveUrl: withUtmSource(`${deps.baseUrl}/archive/${runId}`, "email"),
             replyToEmail: deps.replyToEmail,
             digestHeadline: archive.digestHeadline,
             digestSummary: archive.digestSummary,

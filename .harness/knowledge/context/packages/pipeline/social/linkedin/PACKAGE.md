@@ -1,9 +1,9 @@
 ---
 governs: packages/pipeline/src/social/linkedin/
-last_verified_sha: ad0153a
+last_verified_sha: f7d27361d5e1390adf9561d55d413e75457b584c
 key_files: [index.ts, notifier.ts, api-client.ts, oauth.ts, little-text.ts, types.ts]
 flow_fns: [notifier.ts::createLinkedInNotifier.notifyArchiveReady, oauth.ts::refreshLinkedInToken]
-decisions: [D-114, D-109]
+decisions: [D-114, D-109, D-121]
 status: active
 ---
 
@@ -19,7 +19,7 @@ Posts the daily digest headline + story bullets to LinkedIn, then posts the arch
 - `escapeLittleText(text)` → `string` — escapes reserved LTF characters (from `little-text.ts`)
 
 ## Depends on / used by
-- Uses: `@pipeline/repositories/run-archives`, `@pipeline/repositories/raw-items`, `@pipeline/repositories/social-tokens`, `@pipeline/social/compose`, `@pipeline/social/types`
+- Uses: `@pipeline/repositories/run-archives`, `@pipeline/repositories/raw-items`, `@pipeline/repositories/social-tokens`, `@pipeline/social/compose`, `@pipeline/social/types`, `@newsletter/shared/utils` (withUtmSource)
 - Used by: `workers/processing.ts::buildDefaultPublishDeps`, `workers/linkedin-post.ts`
 
 ## Data flows
@@ -28,6 +28,7 @@ Posts the daily digest headline + story bullets to LinkedIn, then posts the arch
   runId → archives.findById
     ├─ null / already posted (linkedinPostedAt !== null) → skip
     └─ ok → buildStories (resolve recap titles/summaries) → composePosts
+        → withUtmSource(baseUrl/archive/runId, "linkedin") → archiveUrl  (D-121)
         → token acquisition:
           tokens.withTokenLock("linkedin") → FOR UPDATE row lock
             ├─ no token → skip "no_token"

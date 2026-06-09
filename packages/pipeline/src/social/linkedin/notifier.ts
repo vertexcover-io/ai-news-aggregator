@@ -1,4 +1,5 @@
 import type { Logger } from "@newsletter/shared/logger";
+import { withUtmSource } from "@newsletter/shared/utils";
 
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -125,7 +126,7 @@ export function createLinkedInNotifier(
           );
           return { status: "skipped", reason: "no_headline" };
         }
-        const archiveUrl = `${stripTrailingSlash(config.publicArchiveBaseUrl)}/archive/${runId}`;
+        const archiveUrl = withUtmSource(`${stripTrailingSlash(config.publicArchiveBaseUrl)}/archive/${runId}`, "linkedin");
         const composed = composePosts({
           hook,
           linkedinPostBody,

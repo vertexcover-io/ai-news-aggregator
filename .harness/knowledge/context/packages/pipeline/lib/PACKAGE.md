@@ -1,9 +1,9 @@
 ---
 governs: packages/pipeline/src/lib/
-last_verified_sha: abbc2469ab05df29b744dde2701d59a7803124e9
+last_verified_sha: f7d27361d5e1390adf9561d55d413e75457b584c
 key_files: [boot.ts, cancelled-error.ts, abortable-fetch.ts, delay.ts, email-provider.ts, email-render.ts, email-send-common.ts, posthog.ts, worker-failure.ts, crash-handlers.ts]
 flow_fns: [email-render.ts::renderNewsletter, email-provider.ts::createEmailProvider, posthog.ts::captureException, crash-handlers.ts::createFatalHandler]
-decisions: [D-140, D-143]
+decisions: [D-140, D-121, D-143]
 status: active
 ---
 
@@ -63,6 +63,7 @@ Small, focused utility modules: process boot validation, abort-signal-aware fetc
       → HTML string with inline styles + <style> mobile breakpoints
   (stories rendered as StoryBlock components: title link, optional image, summary lede, bullets, BOTTOM LINE pull-quote)
   (archive ribbon inserted after story N; closer CTA + footer with unsubscribe link at bottom)
+  (archiveUrl is passed pre-tagged with utm_source=email by the caller; footer home link is tagged via withUtmSource(baseUrl, "email") inside the renderer — D-121)
 
 ### createEmailProvider() → EmailProvider
   process.env.EMAIL_PROVIDER:
