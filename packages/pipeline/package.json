@@ -33,6 +33,7 @@
     "@tavily/core": "0.7.3",
     "ai": "5.0.169",
     "bullmq": "5.78.0",
+    "posthog-node": "5.34.2",
     "chrono-node": "2.9.1",
     "crawlee": "3.13.3",
     "dotenv": "16.5.0",

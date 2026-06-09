@@ -1,18 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  captureAnalytics,
-  resetAnalyticsForTest,
-  shutdownAnalytics,
-} from "@api/lib/posthog.js";
-import { resolvePostHogConfig } from "@newsletter/shared/analytics";
+  resolvePostHogConfig,
+} from "../../../src/analytics/posthog-config.js";
 
-afterEach(async () => {
-  await shutdownAnalytics();
-  resetAnalyticsForTest();
-});
-
-describe("resolvePostHogConfig", () => {
-  it("uses settings before env fallback", () => {
+describe("test_REQ_001_shared_resolve_posthog_config_single_source", () => {
+  it("uses DB settings when present", () => {
     expect(
       resolvePostHogConfig(
         {
@@ -44,12 +36,18 @@ describe("resolvePostHogConfig", () => {
       posthogHost: "https://env.example.com",
     });
   });
-});
 
-describe("captureAnalytics", () => {
-  it("no-ops when analytics is disabled", async () => {
-    await expect(
-      captureAnalytics({ distinctId: "admin", event: "test_event" }),
-    ).resolves.toBeUndefined();
+  it("returns disabled when POSTHOG_ENABLED=false", () => {
+    expect(
+      resolvePostHogConfig(null, {
+        POSTHOG_PROJECT_TOKEN: "phc_env",
+        POSTHOG_HOST: "https://env.example.com",
+        POSTHOG_ENABLED: "false",
+      }),
+    ).toEqual({
+      posthogEnabled: false,
+      posthogProjectToken: null,
+      posthogHost: null,
+    });
   });
 });

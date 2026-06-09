@@ -4,7 +4,7 @@ import {
   createUserSettingsRepo,
   type UserSettingsRepo,
 } from "@api/repositories/user-settings.js";
-import { resolvePostHogConfig } from "@api/lib/posthog-config.js";
+import { resolvePostHogConfig } from "@newsletter/shared/analytics";
 
 export interface AnalyticsConfigRouterDeps {
   getSettingsRepo: () => UserSettingsRepo;

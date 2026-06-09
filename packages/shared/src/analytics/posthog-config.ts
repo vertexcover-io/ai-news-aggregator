@@ -1,4 +1,4 @@
-import type { UserSettings } from "@newsletter/shared";
+import type { UserSettings } from "../types/settings.js";
 
 export interface PublicPostHogConfig {
   posthogEnabled: boolean;
@@ -11,7 +11,7 @@ export type PostHogSettings = Pick<
   "posthogEnabled" | "posthogProjectToken" | "posthogHost"
 >;
 
-const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
+export const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 
 function clean(value: string | null | undefined): string | null {
   const trimmed = value?.trim() ?? "";
@@ -46,4 +46,3 @@ export function resolvePostHogConfig(
     posthogHost: enabled ? host : null,
   };
 }
-

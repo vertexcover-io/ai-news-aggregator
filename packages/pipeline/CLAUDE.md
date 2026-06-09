@@ -13,6 +13,7 @@ Collector/processor/worker/service surface and decisions: `.harness/knowledge/co
 - Do NOT set worker-level `concurrency: 1` on the processing worker — it dispatches 6+ job types and would serialize them all; in-process pacers (e.g. the email `SendPacer`) are the rate guards. See `.claude/rules/learnings/queue-concurrency-vs-in-process-pacer.md`
 - Publish/credential deps are built **per job** (not at worker startup) so admin saves at `/admin/settings` take effect on the next job without a restart — preserve this pattern
 - `ANTHROPIC_API_KEY` is validated at worker startup (not per job); `RANKING_MODEL` defaults to `claude-haiku-4-5-20251001`
+- PostHog error-tracking client (`lib/posthog.ts`) is **process-level** (env-resolved once at first use), not per-job — crash/failed-listener errors occur outside any job's settings scope. Do not move it to per-job `buildPublishDeps`.
 - **Archive-level idempotency markers are broadcast-only.** `run_archives.email_sent_at` / `linkedin_posted_at` / `twitter_posted_at` and every `notification_state` key are written ONLY from the canonical scheduled/broadcast path. Targeted/per-recipient/manual variants MUST short-circuit before stamping them (per-recipient dedup belongs on `email_sends`) — see commit 60d748b
 - On a Slack/webhook failure, never write the notification idempotency marker — that is what allows a retry to re-alert
 

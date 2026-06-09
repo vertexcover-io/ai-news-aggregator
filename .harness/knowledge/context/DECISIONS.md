@@ -69,6 +69,9 @@ status: active
 | D-140 | EmailSendError as typed error with retryable + retryAfterMs | packages/pipeline/lib/PACKAGE.md |
 | D-115 | publish flag on existing PATCH endpoint (not a separate /draft endpoint) | DECISIONS.md (cross-package) |
 | D-116 | draft_saved_at nullable column drives deriveStatus "draft" derived status | DECISIONS.md (cross-package) |
+| D-141 | resolvePostHogConfig moved to shared/analytics (single source, two consumers) | DECISIONS.md (cross-package) |
+| D-142 | evaluateRunHealth is pure in shared/analytics; degradation signals emitted as PostHog custom events | DECISIONS.md (cross-package) |
+| D-143 | Pipeline PostHog client is process-level (env-resolved), not per-job (settings-backed) | packages/pipeline/lib/PACKAGE.md |
 
 # Cross-package decisions (full bodies)
 
@@ -143,6 +146,22 @@ status: active
 **Tradeoff:** When `patchArchive` is called with `publish=true` (Save & publish), `draftSavedAt` is passed as `null` to the repo so it is NOT cleared — the existing draft timestamp stays on published rows. `deriveStatus` never reads `draftSavedAt` for a `reviewed=true` run, so the stale value causes no UI inconsistency (EC2 verified). Clearing it on publish would require an extra SET in the UPDATE — not worth the complexity.
 
 **Governs:** `packages/shared/src/db/schema.ts` (runArchives.draftSavedAt), `packages/shared/src/db/migrations/0039_narrow_silver_samurai.sql`, `packages/shared/src/types/settings.ts` (RunSummary.draftSavedAt), `packages/api/src/repositories/run-archives.ts` (UpdateRankedItemsContext.draftSavedAt), `packages/api/src/services/run-list.ts` (serialized to RunSummary), `packages/web/src/components/dashboard/run-status.tsx` (deriveStatus "draft" branch)
+
+## D-141 — resolvePostHogConfig moved to shared/analytics (single source, two consumers)
+
+**Why:** Both `packages/api` and `packages/pipeline` need to resolve the PostHog project token and host identically (DB-settings-first for api, env-only for pipeline). Keeping the resolver in `packages/api/src/lib/posthog-config.ts` (the old location) meant the pipeline would either import from api (forbidden by layer rules) or duplicate the logic. Moving it to a server-safe `@newsletter/shared/analytics` subpath makes it importable by both packages without duplication or layer violations. This is the one duplication that would genuinely drift — config precedence rules must match exactly between runtimes. (D-100 subpath convention applies: the subpath is never imported in web code.)
+
+**Tradeoff:** Any future change to config resolution logic has one canonical place — the `@newsletter/shared` package rebuild must precede api+pipeline typecheck/test. The `packages/api/src/lib/posthog-config.ts` file is deleted; any import of `@api/lib/posthog-config` is now an error.
+
+**Governs:** `packages/shared/src/analytics/posthog-config.ts`, `packages/shared/tsup.config.ts` (exports `./analytics`), `packages/api/src/lib/posthog.ts` (import site), `packages/pipeline/src/lib/posthog.ts` (import site).
+
+## D-142 — evaluateRunHealth is pure in shared/analytics; degradation signals emitted as PostHog custom events, not thrown exceptions
+
+**Why:** Run-health degradation (high enrichment failure rate, zero-yield sources, partial publish) is a *judgement about a completed run*, not a thrown exception. Collapsing it into `captureException` (e.g. by throwing a synthetic Error) would pollute the PostHog *issues* view with non-bugs and prevent operators from setting meaningful spike-detection alerts on this dimension. Keeping degradation as a distinct PostHog *custom event* (`pipeline_run_degraded`) lets operators build insights + spike alerts independently of the exceptions stream. The evaluator is pure (no IO) so it is testable in isolation and callable from any context.
+
+**Tradeoff:** Two different capture paths to understand (captureException for bugs vs capturePipelineEvent for domain degradation). Mitigated by the clear naming convention and the fact that the evaluator and emitter are co-located in `finalize-run.ts`.
+
+**Governs:** `packages/shared/src/analytics/run-health.ts`, `packages/pipeline/src/services/finalize-run.ts::emitRunHealthEvents`, `packages/pipeline/src/lib/posthog.ts::capturePipelineEvent`.
 
 ## D-014 — Run cancellation uses Redis pub/sub, not BullMQ job control
 
