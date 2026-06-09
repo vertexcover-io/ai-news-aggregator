@@ -121,11 +121,12 @@ export async function runWebCrawl(
     postNavigationHooks: [
       async (ctx) => {
         if (ctx.page) {
-          await ctx.page
-            .waitForLoadState("networkidle", { timeout: 4_000 })
-            .catch(() => {
-              // Networkidle never fires on chatty pages — proceed anyway.
-            });
+          try {
+            await ctx.page.waitForLoadState("networkidle", { timeout: 4_000 });
+          } catch (err) {
+            // chatty pages — proceed anyway, but re-throw non-timeout errors
+            if (!(err instanceof Error && err.name === "TimeoutError")) throw err;
+          }
         }
       },
     ],
