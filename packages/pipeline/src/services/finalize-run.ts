@@ -3,6 +3,8 @@ import type { SlackNotifier, UserSettings, RunFunnel } from "@newsletter/shared"
 import { createLogger } from "@newsletter/shared/logger";
 import { resolveScheduledPublishAt } from "@newsletter/shared/scheduling";
 import type { SourceType } from "@newsletter/shared/db";
+import { evaluateRunHealth } from "@newsletter/shared/analytics";
+import type { RunHealthInput } from "@newsletter/shared/analytics";
 import type { RankResult } from "@pipeline/processors/rank.js";
 import { buildPreReviewSnapshot } from "@pipeline/services/build-pre-review-snapshot.js";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
@@ -15,6 +17,44 @@ import { toEnrichmentTelemetry } from "@pipeline/services/link-enrichment/index.
 import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
 import type { RunLogger } from "@pipeline/services/run-logger.js";
 import { nonEmptyText, pickArchiveDigest } from "@pipeline/services/run-archive-writer.js";
+import { capturePipelineEvent } from "@pipeline/lib/posthog.js";
+
+export interface RunHealthEmitInput extends RunHealthInput {
+  readonly runId: string;
+}
+
+/**
+ * Evaluates run health and emits one `pipeline_run_degraded` PostHog event per finding.
+ * Exported for isolated unit testing — does not touch DB or Redis.
+ * Swallows all errors (emission must never affect run completion).
+ */
+export function emitRunHealthEvents(
+  input: RunHealthEmitInput,
+  capture: (event: string, properties?: Record<string, unknown>) => void,
+  logger: Pick<ReturnType<typeof createLogger>, "warn">,
+): void {
+  const { runId, ...healthInput } = input;
+  try {
+    const findings = evaluateRunHealth(healthInput);
+    for (const f of findings) {
+      capture("pipeline_run_degraded", {
+        runId,
+        kind: f.kind,
+        severity: f.severity,
+        ...f.detail,
+      });
+    }
+  } catch (err) {
+    logger.warn(
+      {
+        event: "run_health.emit_failed",
+        runId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      "run_health.emit_failed",
+    );
+  }
+}
 
 export interface FinalizeRunInput {
   readonly runId: string;
@@ -131,6 +171,33 @@ export async function finalizeRun(input: FinalizeRunInput): Promise<FinalizeRunR
 
   if (archiveWritten) {
     await persistCost();
+  }
+
+  if (archiveWritten) {
+    // Emit run-health degradation events to PostHog. emitRunHealthEvents swallows all
+    // errors internally (and capturePipelineEvent no-ops when PostHog is unconfigured),
+    // so emission can never affect run completion — no outer try/catch needed here.
+    emitRunHealthEvents(
+      {
+        runId,
+        enrichment: { ok: enrichmentTelemetry.ok, failed: enrichmentTelemetry.failed },
+        // historicalYield: collectingOutcomes carries no historical-yield signal, so we
+        // set false for all sources.  zero_yield_source requires historicalYield=true to
+        // fire, so that rule is effectively disabled at this call site (YAGNI — no new DB
+        // reads added; can be enabled when historical data is available).
+        sources: sourceTelemetry.sources.map((s) => ({
+          source: s.identifier,
+          collected: s.itemsFetched,
+          historicalYield: false,
+        })),
+        // publish: finalizeRun on main does not publish — publish happens in separate
+        // scheduled workers, so partial_publish cannot be evaluated here.
+        publish: null,
+        isDryRun: dryRun,
+      },
+      capturePipelineEvent,
+      logger,
+    );
   }
 
   if (archiveWritten) {

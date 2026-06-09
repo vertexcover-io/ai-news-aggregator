@@ -10,6 +10,9 @@ import { createCollectorHealthWorker } from "@pipeline/workers/collector-health.
 import { createLogger } from "@newsletter/shared/logger";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { createRunStateService } from "@pipeline/services/run-state.js";
+import { captureException, shutdownPostHog } from "@pipeline/lib/posthog.js";
+import { handleWorkerFailure } from "@pipeline/lib/worker-failure.js";
+import { createFatalHandler } from "@pipeline/lib/crash-handlers.js";
 
 // REQ-09: disable on-disk Crawlee storage; never write ./storage/
 Configuration.getGlobalConfig().set("persistStorage", false);
@@ -60,11 +63,16 @@ const shutdown = async (): Promise<void> => {
   logger.info({ queue: "collector-health" }, "worker shutting down");
   await collectorHealthWorker.close();
   logger.info({ queue: "collector-health" }, "worker shut down");
+  await shutdownPostHog(); // REQ-015: flush PostHog on graceful shutdown
   process.exit(0);
 };
 
 process.on("SIGTERM", () => void shutdown());
 process.on("SIGINT", () => void shutdown());
+
+// REQ-009: capture fatal crashes then flush before exit
+process.on("uncaughtException", (err) => void createFatalHandler("uncaughtException")(err));
+process.on("unhandledRejection", (err) => void createFatalHandler("unhandledRejection")(err));
 
 collectionWorker.on("ready", () => {
   logger.info({ queue: "collection" }, "worker ready");
@@ -76,6 +84,7 @@ collectionWorker.on("completed", (job: Job<CollectionJobData>) => {
 
 collectionWorker.on("failed", (job: Job<CollectionJobData> | undefined, err: Error) => {
   logger.error({ jobId: job?.id, jobName: job?.name, error: err.message }, "job failed");
+  handleWorkerFailure("collection", job, err, captureException);
 });
 
 processingWorker.on("ready", () => {
@@ -104,6 +113,7 @@ processingWorker.on("failed", (job: Job | undefined, err: Error) => {
       });
     }
   }
+  handleWorkerFailure("processing", job, err, captureException);
 });
 
 processingWorker.on("stalled", (jobId: string) => {
@@ -127,4 +137,5 @@ collectorHealthWorker.on("failed", (job: Job | undefined, err: Error) => {
     { jobId: job?.id, jobName: job?.name, error: err.message },
     "job failed",
   );
+  handleWorkerFailure("collector-health", job, err, captureException);
 });
