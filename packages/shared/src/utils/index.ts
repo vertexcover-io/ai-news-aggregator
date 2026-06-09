@@ -7,3 +7,4 @@ export {
   safeTimezone,
   startOfDateInTimezone,
 } from "./timezone-date.js";
+export { withUtmSource, type UtmSource } from "./utm.js";

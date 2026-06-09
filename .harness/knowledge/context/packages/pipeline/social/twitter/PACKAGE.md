@@ -1,9 +1,9 @@
 ---
 governs: packages/pipeline/src/social/twitter/
-last_verified_sha: ad0153a
+last_verified_sha: f7d27361d5e1390adf9561d55d413e75457b584c
 key_files: [index.ts, notifier.ts, api-client.ts, oauth.ts, types.ts]
 flow_fns: [notifier.ts::createTwitterNotifier.notifyArchiveReady, api-client.ts::createTwitterApiClient]
-decisions: [D-120]
+decisions: [D-120, D-121]
 status: active
 ---
 
@@ -19,7 +19,7 @@ Posts the daily digest summary as a tweet, then posts the archive URL as a reply
 - `TwitterOAuth1Credentials` interface — `{ appKey, appSecret, accessToken, accessSecret }`
 
 ## Depends on / used by
-- Uses: `twitter-api-v2`, `@pipeline/repositories/run-archives`, `@pipeline/repositories/raw-items`, `@pipeline/social/compose`, `@pipeline/social/types`
+- Uses: `twitter-api-v2`, `@pipeline/repositories/run-archives`, `@pipeline/repositories/raw-items`, `@pipeline/social/compose`, `@pipeline/social/types`, `@newsletter/shared/utils` (withUtmSource)
 - Used by: `workers/processing.ts::buildDefaultPublishDeps`, `workers/twitter-post.ts`, `workers/social-health.ts`
 
 ## Data flows

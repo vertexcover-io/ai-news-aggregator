@@ -212,6 +212,28 @@ describe("renderNewsletter (editorial layout)", () => {
     const html = await renderNewsletter({ ...baseProps, stories: withImage });
     expect(html).toContain("https://cdn.example.com/img.jpg");
   });
+
+  it("test_REQ_003_email_archive_links_tagged_email", async () => {
+    // Both the archive ribbon href and the "Browse every issue →" home CTA href
+    // must carry utm_source=email. The archiveUrl passed in already carries it
+    // (from email-send.ts) — but we tag the home CTA inside email-render itself.
+    const archiveUrl = `${baseUrl}/archive/run-123?utm_source=email`;
+    const html = await renderNewsletter({ ...baseProps, archiveUrl });
+    // Archive ribbon CTA ("Open archive") links to archiveUrl with utm_source=email
+    expect(html).toContain(`${baseUrl}/archive/run-123?utm_source=email`);
+    // "Browse every issue →" home CTA href also carries utm_source=email
+    // Note: URL API normalizes bare origins to add a trailing slash.
+    expect(html).toContain(`${baseUrl}/?utm_source=email`);
+  });
+
+  it("test_EDGE_003_external_item_links_untagged", async () => {
+    // Per-item story.url must appear in the HTML WITHOUT utm_source.
+    const html = await renderNewsletter(baseProps);
+    // story.url for first story is https://openai.com/gpt5 — must appear as-is
+    expect(html).toContain("https://openai.com/gpt5");
+    expect(html).not.toContain("https://openai.com/gpt5?utm_source");
+    expect(html).not.toContain("https://openai.com/gpt5&utm_source");
+  });
 });
 
 // ---------------------------------------------------------------------------

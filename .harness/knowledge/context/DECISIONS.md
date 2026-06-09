@@ -1,5 +1,5 @@
 ---
-last_verified_sha: 226dc6e8b93a852b425cc426ef9dc4a27505bdf4
+last_verified_sha: f7d27361d5e1390adf9561d55d413e75457b584c
 status: active
 ---
 
@@ -63,6 +63,7 @@ status: active
 | D-113 | Migration journal timestamps must be monotonic; heal skipped migrations idempotently | packages/shared/db/PACKAGE.md |
 | D-114 | LTF escaping in createPost only | packages/pipeline/social/linkedin/PACKAGE.md |
 | D-120 | Social-health worker for proactive credential validation | packages/pipeline/social/twitter/PACKAGE.md |
+| D-121 | Single shared withUtmSource helper for all notifiers | packages/shared/utils/PACKAGE.md |
 | D-130 | Calendar mode uses run_id for pool attribution | packages/pipeline/eval/PACKAGE.md |
 | D-131 | Dedup at eval-read time, not at fixture-export time | packages/pipeline/eval/PACKAGE.md |
 | D-140 | EmailSendError as typed error with retryable + retryAfterMs | packages/pipeline/lib/PACKAGE.md |

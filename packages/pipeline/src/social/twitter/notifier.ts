@@ -1,4 +1,5 @@
 import type { Logger } from "@newsletter/shared/logger";
+import { withUtmSource } from "@newsletter/shared/utils";
 
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -114,7 +115,7 @@ export function createTwitterNotifier(
         const stories = config.twitterIsPremium === true
           ? await buildStories(archive, rawItems)
           : [];
-        const archiveUrl = `${stripTrailingSlash(config.publicArchiveBaseUrl)}/archive/${runId}`;
+        const archiveUrl = withUtmSource(`${stripTrailingSlash(config.publicArchiveBaseUrl)}/archive/${runId}`, "twitter");
         const composed = composePosts({
           heading: archive.digestHeadline,
           hook: archive.hook,
