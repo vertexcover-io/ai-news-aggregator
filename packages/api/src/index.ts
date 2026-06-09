@@ -56,7 +56,7 @@ import {
   reconcilePipelineSchedule,
   removeLegacySchedulers,
 } from "@api/services/scheduler.js";
-import { configurePostHog, shutdownAnalytics } from "@api/lib/posthog.js";
+import { captureException, configurePostHog, shutdownAnalytics } from "@api/lib/posthog.js";
 
 const logger = createLogger("api");
 
@@ -210,3 +210,16 @@ serve({ fetch: app.fetch, port }, (info) => {
 const shutdown = () => { void shutdownAnalytics().then(() => process.exit(0)); };
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+const onFatal = (label: string) => (err: unknown) => {
+  void (async () => {
+    await captureException(err, { fatal: true, source: label });
+    await Promise.race([
+      shutdownAnalytics(),
+      new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+    ]);
+    process.exit(1);
+  })();
+};
+process.on("uncaughtException", onFatal("uncaughtException"));
+process.on("unhandledRejection", onFatal("unhandledRejection"));

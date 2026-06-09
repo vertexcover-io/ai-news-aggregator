@@ -4,7 +4,7 @@ import {
   resetAnalyticsForTest,
   shutdownAnalytics,
 } from "@api/lib/posthog.js";
-import { resolvePostHogConfig } from "@api/lib/posthog-config.js";
+import { resolvePostHogConfig } from "@newsletter/shared/analytics";
 
 afterEach(async () => {
   await shutdownAnalytics();

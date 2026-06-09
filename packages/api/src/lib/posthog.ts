@@ -1,6 +1,6 @@
 import { PostHog } from "posthog-node";
 import type { UserSettings } from "@newsletter/shared";
-import { resolvePostHogConfig, type PublicPostHogConfig } from "./posthog-config.js";
+import { resolvePostHogConfig, type PublicPostHogConfig } from "@newsletter/shared/analytics";
 
 export interface AnalyticsCapture {
   distinctId: string;
@@ -69,6 +69,26 @@ function getClient(config: PublicPostHogConfig): PostHog | null {
   });
   clientKey = nextKey;
   return client;
+}
+
+export interface ExceptionContext {
+  distinctId?: string;
+  [k: string]: unknown;
+}
+
+export async function captureException(
+  error: unknown,
+  context?: ExceptionContext,
+): Promise<void> {
+  try {
+    const posthog = getClient(await loadConfig());
+    if (posthog === null) return; // REQ-012 no-op when disabled
+    const err = error instanceof Error ? error : new Error(String(error));
+    const { distinctId, ...props } = context ?? {};
+    posthog.captureException(err, distinctId ?? "api-server", props);
+  } catch {
+    console.warn("[analytics] captureException failed — misconfigured or network error"); // REQ-013/EDGE-001
+  }
 }
 
 export async function captureAnalytics(event: AnalyticsCapture): Promise<void> {
