@@ -210,7 +210,7 @@ describe("createLinkedInNotifier", () => {
     expect(commentArg.postUrn).toBe("urn:li:share:1234");
     expect(commentArg.apiVersion).toBe("202511");
     expect(commentArg.text).toBe(
-      `https://news.example.com/archive/${RUN_ID}`,
+      `https://news.example.com/archive/${RUN_ID}?utm_source=linkedin`,
     );
 
     expect(deps.archives.markLinkedInPosted).toHaveBeenCalledWith(
@@ -483,5 +483,20 @@ describe("createLinkedInNotifier", () => {
     const result = await notifier.notifyArchiveReady({ runId: RUN_ID });
 
     expect(result).toEqual({ status: "failed", reason: "unexpected" });
+  });
+
+  it("test_REQ_004_linkedin_url_tagged_linkedin", async () => {
+    const { notifier, deps } = build({
+      archive: makeArchive(),
+      tokenRow: makeTokenRow(),
+      postResult: { ok: true, postUrn: "urn:li:share:tagged" },
+    });
+
+    await notifier.notifyArchiveReady({ runId: RUN_ID });
+
+    const commentArg = deps.apiClient.createComment.mock.calls[0][0];
+    expect(commentArg.text).toBe(
+      `https://news.example.com/archive/${RUN_ID}?utm_source=linkedin`,
+    );
   });
 });

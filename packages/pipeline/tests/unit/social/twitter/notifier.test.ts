@@ -205,7 +205,7 @@ describe("createTwitterNotifier", () => {
     expect(headCall.replyToTweetId).toBeUndefined();
 
     const replyCall = deps.apiClient.createPost.mock.calls[1][0];
-    expect(replyCall.text).toBe(`https://news.example.com/archive/${RUN_ID}`);
+    expect(replyCall.text).toBe(`https://news.example.com/archive/${RUN_ID}?utm_source=twitter`);
     expect(replyCall.replyToTweetId).toBe("1234");
 
     expect(deps.archives.markTwitterPosted).toHaveBeenCalledWith(
@@ -425,7 +425,7 @@ describe("createTwitterNotifier", () => {
     await notifier.notifyArchiveReady({ runId: RUN_ID });
 
     const replyCall = deps.apiClient.createPost.mock.calls[1][0];
-    expect(replyCall.text).toBe(`https://news.example.com/archive/${RUN_ID}`);
+    expect(replyCall.text).toBe(`https://news.example.com/archive/${RUN_ID}?utm_source=twitter`);
     expect(replyCall.replyToTweetId).toBe("head-2");
   });
 
@@ -443,5 +443,29 @@ describe("createTwitterNotifier", () => {
 
     expect(result).toEqual({ status: "failed", reason: "http_402" });
     expect(deps.apiClient.createPost).toHaveBeenCalledTimes(1);
+  });
+
+  it("test_REQ_005_twitter_url_tagged_twitter", async () => {
+    const { notifier, deps } = build({
+      archive: makeArchive(),
+    });
+    deps.apiClient.createPost
+      .mockResolvedValueOnce({
+        ok: true,
+        tweetId: "head-utm",
+        tweetUrl: "https://x.com/i/status/head-utm",
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tweetId: "reply-utm",
+        tweetUrl: "https://x.com/i/status/reply-utm",
+      });
+
+    await notifier.notifyArchiveReady({ runId: RUN_ID });
+
+    const replyCall = deps.apiClient.createPost.mock.calls[1][0];
+    expect(replyCall.text).toBe(
+      `https://news.example.com/archive/${RUN_ID}?utm_source=twitter`,
+    );
   });
 });

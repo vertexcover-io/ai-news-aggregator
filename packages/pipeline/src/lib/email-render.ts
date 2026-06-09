@@ -14,7 +14,7 @@ import {
   Preview,
 } from "@react-email/components";
 import type { NewsletterRenderProps, NewsletterStory } from "@pipeline/workers/email-send.js";
-import { readingTimeMinutes } from "@newsletter/shared/utils";
+import { readingTimeMinutes, withUtmSource } from "@newsletter/shared/utils";
 
 // No render-time cap on stories — the curator picks the count during review.
 // The archive ribbon stays at index RIBBON_AFTER_INDEX (after story 2) for
@@ -614,7 +614,7 @@ function NewsletterEmail({
             Link,
             {
               className: "closer-cta",
-              href: baseUrl,
+              href: withUtmSource(baseUrl, "email"),
               target: "_blank",
               style: {
                 display: "inline-block",
