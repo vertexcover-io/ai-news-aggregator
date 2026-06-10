@@ -272,7 +272,7 @@ describe("PUT /api/settings/features", () => {
     });
   });
 
-  it("rejects missing fields", async () => {
+  it("accepts partial updates (only canon)", async () => {
     const app = makeFeaturesRouter();
 
     const res = await app.request("/api/settings/features", {
@@ -280,10 +280,10 @@ describe("PUT /api/settings/features", () => {
       headers: { ...authedHeaders(), "content-type": "application/json" },
       body: JSON.stringify({
         featureCanon: true,
-        // missing featureDeliverability and featureEval
+        // partial update — featureDeliverability and featureEval omitted
       }),
     });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
   });
 });

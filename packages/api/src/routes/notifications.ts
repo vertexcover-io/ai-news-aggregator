@@ -16,14 +16,15 @@ function isSlackWebhookUrl(v: string | null): boolean {
 }
 
 const putSchema = z.object({
-  notifyEmail: z.email().nullable(),
+  notifyEmail: z.email().nullable().optional(),
   slackWebhook: z
     .url()
     .nullable()
-    .refine(isSlackWebhookUrl, {
+    .optional()
+    .refine((v) => v === null || v === undefined || isSlackWebhookUrl(v), {
       message: "slackWebhook must be a hooks.slack.com URL or null",
     }),
-});
+}).partial();
 
 export interface NotificationsRouterDeps {
   getTenantsRepo: () => TenantsRepo;

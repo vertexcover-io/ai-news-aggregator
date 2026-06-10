@@ -79,7 +79,7 @@ function makeApp(deps: MakeAppDeps = {}): Hono {
 
   const app = new Hono();
   app.use("*", setTenantCtxMiddleware());
-  app.route("/api/settings", router);
+  app.route("/api/settings/domain", router);
   return app;
 }
 

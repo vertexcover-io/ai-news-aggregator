@@ -3,10 +3,10 @@ import { z } from "zod";
 import type { TenantsRepo } from "@api/repositories/tenants.js";
 
 const putSchema = z.object({
-  featureCanon: z.boolean(),
-  featureDeliverability: z.boolean(),
-  featureEval: z.boolean(),
-});
+  featureCanon: z.boolean().optional(),
+  featureDeliverability: z.boolean().optional(),
+  featureEval: z.boolean().optional(),
+}).partial();
 
 export interface FeaturesRouterDeps {
   getTenantsRepo: () => TenantsRepo;
