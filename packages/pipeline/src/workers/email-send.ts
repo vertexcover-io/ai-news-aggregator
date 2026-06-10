@@ -1,11 +1,13 @@
 import { createLogger } from "@newsletter/shared/logger";
 import type { EmailProvider, RankedItemRef, RecapContent, SlackNotifier, SubscriberSelect } from "@newsletter/shared";
 import { EmailSendError } from "@newsletter/shared";
+import type { DomainVerificationStatus } from "@newsletter/shared/types";
 import { withUtmSource } from "@newsletter/shared/utils";
 import type { PipelineSubscribersRepo } from "@pipeline/repositories/subscribers.js";
 import type { PipelineEmailSendsRepo } from "@pipeline/repositories/email-sends.js";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { RawItemsRepo, RawItemRow } from "@pipeline/repositories/raw-items.js";
+import type { PipelineTenantsRepo } from "@pipeline/repositories/tenants.js";
 import { delay } from "@pipeline/lib/delay.js";
 import { resolvePublishTarget } from "./publish-target.js";
 import { pickSummarySource, getPlatformLabel } from "@newsletter/shared/services";
@@ -91,6 +93,10 @@ export interface EmailSendDeps {
   slackNotifier?: SlackNotifier;
   sendPacer?: SendPacer;
   sleep?: (ms: number) => Promise<void>;
+  /** Optional repo for per-tenant sending-domain gate. Broadcasts proceed if omitted. */
+  tenantsRepo?: PipelineTenantsRepo;
+  /** Optional tenant ID for domain gate check. Defaults to process.env.TENANT_ID. */
+  tenantId?: string;
 }
 
 export interface EmailSendJobLike {
@@ -175,6 +181,31 @@ export async function handleEmailSendJob(
 
   const { runId: explicitRunId, subscriberIds = "all" } = job.data;
   const isBroadcast = subscriberIds === "all";
+
+  // ── Broadcast gate: block if tenant sending domain is not verified ──
+  // REQ-053 / EDGE-006: broadcast requires a verified sending domain.
+  // Transactional email (targeted sends, confirmations, etc.) is unaffected.
+  if (isBroadcast && deps.tenantsRepo) {
+    const tid = deps.tenantId ?? process.env.TENANT_ID;
+    if (tid) {
+      const domainInfo = await deps.tenantsRepo.getDomainStatus(tid);
+      if (!domainInfo || domainInfo.status !== "verified") {
+        logger.warn(
+          {
+            event: "email-send.broadcast_blocked",
+            tenantId: tid,
+            domainStatus: domainInfo?.status ?? "none",
+            domainName: domainInfo?.domainName ?? null,
+            reason: "sending domain not verified",
+            runId: explicitRunId,
+            jobId: job.id,
+          },
+          "Broadcast blocked: tenant sending domain not verified",
+        );
+        return;
+      }
+    }
+  }
 
   const archive = await resolvePublishTarget(deps, {
     channel: "email-send",

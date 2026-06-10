@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Inference — the daily read</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500&family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     Faithful reproduction of the EXISTING AGENTLOOP public
+     homepage (HomePage.tsx + Masthead/Footer/blocks).
+     Layout is IDENTICAL — only the slots marked
+     [tenant-configured] differ per tenant: logo, name,
+     hero headline, topic strip, subtagline.
+     ============================================================ */
+  :root{
+    --cream:#fafaf7; --ink:#14110d; --ink-2:#2a261f; --mute:#6b6557; --mute-2:#8a8472;
+    --line:#e7e2d6; --rust:#8c3a1e;
+    --serif:"Newsreader",ui-serif,Georgia,serif; --mono:"Geist Mono",ui-monospace,monospace; --sans:"Inter",-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  a{color:inherit;}
+  .wrap{max-width:960px;margin:0 auto;padding:28px 16px 72px;}
+  @media(min-width:640px){.wrap{padding-left:24px;padding-right:24px;}}
+  @media(min-width:768px){.wrap{padding-left:80px;padding-right:80px;}}
+  .rule2{border:0;border-top:2px solid var(--ink);margin:0;}
+  .rule1{border:0;border-top:1px solid var(--line);margin:0;}
+
+  /* ---- masthead ---- */
+  .mast{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:10px 16px;padding-bottom:36px;}
+  .mast a.brand{display:flex;align-items:center;gap:11px;text-decoration:none;}
+  .mast .logo{ /* [tenant-configured] logo */ width:36px;height:36px;border-radius:8px;background:#2a261f;display:grid;place-items:center;color:#e98f6e;font-size:18px;flex-shrink:0;}
+  .mast .wm{ /* [tenant-configured] newsletter name */ font-family:var(--mono);font-weight:600;letter-spacing:.12em;text-transform:uppercase;font-size:30px;color:var(--ink);line-height:1;}
+  .mast .tag{margin-top:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--mute);}
+  .mast nav{display:flex;align-items:baseline;font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.18em;}
+  .mast nav a{text-decoration:none;color:var(--ink);}
+  .mast nav a:hover{color:var(--rust);}
+  .mast nav .sep{margin:0 12px;color:var(--mute);}
+  .mast nav .sub{color:var(--rust);}
+
+  /* ---- hero ---- */
+  .hero{padding:64px 0 56px;text-align:center;}
+  .hero h1{ /* [tenant-configured] headline */ font-family:var(--serif);font-weight:500;font-size:clamp(40px,6.4vw,68px);line-height:1.02;letter-spacing:-0.018em;margin:0 auto;max-width:16ch;color:var(--ink);}
+  .hero h1 em{color:var(--rust);font-style:italic;}
+  .hero .strip{ /* [tenant-configured] topic strip */ margin:36px auto 0;font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink);max-width:820px;line-height:2;}
+  .hero .strip .d{color:var(--rust);margin:0 10px;}
+  .hero .subtag{ /* [tenant-configured] subtagline */ margin:20px auto 0;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute);max-width:760px;}
+
+  /* ---- today's issue ---- */
+  .today{padding:56px 0;}
+  .today .grid{display:grid;grid-template-columns:1.5fr 1fr;gap:56px;align-items:start;}
+  .today .date{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--rust);margin-bottom:22px;}
+  .today h2{font-family:var(--serif);font-weight:500;font-size:clamp(32px,4vw,48px);line-height:1.05;letter-spacing:-0.014em;color:var(--ink);margin:0 0 22px;}
+  .today .dek{font-family:var(--serif);font-style:italic;font-size:19px;line-height:1.55;color:var(--mute);margin:0 0 32px;max-width:56ch;}
+  .today .cta{display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.2em;font-size:11px;font-weight:500;color:var(--rust);padding:12px 18px;border-top:1px solid var(--rust);border-bottom:1px solid var(--rust);text-decoration:none;transition:background .15s,color .15s;}
+  .today .cta:hover{background:var(--rust);color:var(--cream);}
+  .plate{position:relative;width:100%;aspect-ratio:4/5;background:var(--rust);overflow:hidden;}
+  .plate .pd{position:absolute;top:18px;left:18px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.22em;font-size:10px;color:rgba(250,250,247,.78);}
+  .plate .glyph{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:var(--serif);font-style:italic;font-size:clamp(80px,12vw,140px);line-height:1;color:rgba(250,250,247,.94);letter-spacing:-0.02em;}
+  .plate .pl{position:absolute;left:18px;right:18px;bottom:16px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.18em;font-size:10px;color:rgba(250,250,247,.92);}
+
+  /* ---- inline subscribe ---- */
+  .sub{padding:64px 0;text-align:center;}
+  .sub h3{font-family:var(--serif);font-weight:500;font-size:clamp(28px,3.4vw,40px);line-height:1.1;letter-spacing:-0.014em;margin:0 0 14px;color:var(--ink);}
+  .sub .st{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.2em;color:var(--mute);margin-bottom:32px;}
+  .sub form{display:flex;max-width:480px;margin:0 auto;border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);}
+  .sub input{flex:1;min-width:0;background:transparent;border:0;padding:16px 14px;font-family:var(--serif);font-size:17px;color:var(--ink);outline:none;}
+  .sub input::placeholder{color:var(--mute);font-style:italic;}
+  .sub button{background:var(--rust);color:#fafaf7;border:0;padding:0 22px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.22em;font-size:11px;font-weight:500;cursor:pointer;transition:background .15s;}
+  .sub button:hover{background:var(--ink);}
+
+  /* ---- recent issues ---- */
+  .recent{padding:28px 0;}
+  .recent .rh{display:flex;align-items:center;justify-content:space-between;padding-bottom:16px;}
+  .recent .rh .l{font-family:var(--mono);text-transform:uppercase;letter-spacing:.22em;font-size:11px;color:var(--ink);}
+  .recent .rh .c{font-family:var(--mono);text-transform:uppercase;letter-spacing:.2em;font-size:10.5px;color:var(--mute);}
+  .row{display:grid;grid-template-columns:110px 1fr 92px;gap:28px;align-items:center;padding:26px 16px;border-bottom:1px solid var(--line);border-radius:6px;transition:background .15s;text-decoration:none;}
+  .row:hover{background:rgba(20,17,13,.025);}
+  .dateblock{display:flex;flex-direction:column;gap:8px;line-height:1;font-family:var(--serif);}
+  .dateblock .dow{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.18em;color:var(--mute);}
+  .dateblock .md{font-size:28px;font-weight:500;letter-spacing:-0.012em;color:var(--ink);}
+  .dateblock .yr{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--mute-2);}
+  .row h3{font-family:var(--serif);font-weight:500;line-height:1.22;letter-spacing:-0.005em;color:var(--ink);font-size:22px;margin:0 0 8px;}
+  .row .dek{font-size:14.5px;line-height:1.55;color:var(--ink-2);margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .row .meta{display:flex;flex-direction:column;align-items:flex-end;gap:14px;font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--mute);}
+  .row .read{display:inline-flex;align-items:center;gap:6px;border-bottom:1px solid var(--ink);padding-bottom:1px;font-size:11px;letter-spacing:.14em;color:var(--ink);}
+
+  /* ---- elsewhere (per-tenant: only enabled columns) ---- */
+  .elsewhere{padding:80px 0;}
+  .elsewhere .l{font-family:var(--mono);text-transform:uppercase;font-size:12px;letter-spacing:.2em;color:var(--mute);margin-bottom:32px;}
+  .elsewhere .cols{display:grid;grid-template-columns:repeat(3,1fr);}
+  .elsewhere .col{padding:4px 0;}
+  .elsewhere h4{margin:0 0 14px;font-family:var(--serif);font-weight:500;font-size:23px;line-height:1.15;letter-spacing:-0.012em;color:var(--ink);}
+  .elsewhere p{margin:0 0 18px;font-family:var(--serif);font-style:italic;font-size:15.5px;line-height:1.55;color:var(--mute);}
+  .elsewhere a{font-family:var(--mono);text-transform:uppercase;font-size:11.5px;letter-spacing:.18em;color:var(--rust);text-decoration:none;}
+
+  /* ---- footer ---- */
+  footer{margin-top:72px;}
+  .foot{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:32px;align-items:center;padding:24px 0 8px;}
+  .foot .b{font-family:var(--mono);text-transform:uppercase;font-size:10.5px;letter-spacing:.22em;color:var(--mute);}
+  .foot .b .nmln{display:flex;align-items:center;gap:8px;}
+  .foot .b .lg{width:18px;height:18px;border-radius:5px;background:#2a261f;display:grid;place-items:center;color:#e98f6e;font-size:11px;}
+  .foot .subf{display:flex;align-items:center;border-bottom:1px solid var(--ink);}
+  .foot .subf input{flex:1;min-width:0;background:transparent;border:0;padding:8px 4px;font-family:var(--serif);font-style:italic;font-size:14px;color:var(--ink);outline:none;}
+  .foot .subf button{background:transparent;border:0;padding:8px 2px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.22em;font-size:10.5px;color:var(--rust);cursor:pointer;}
+  .foot .links{text-align:right;}
+  .foot .links a{text-decoration:none;color:var(--mute);}
+  .copy{padding:20px 0;text-align:center;font-family:var(--mono);text-transform:uppercase;font-size:10px;letter-spacing:.22em;color:var(--mute);}
+  @media(max-width:760px){
+    .today .grid{grid-template-columns:1fr;gap:32px;}
+    .row{grid-template-columns:1fr;gap:12px;}
+    .row .meta{flex-direction:row;align-items:baseline;}
+    .elsewhere .cols{grid-template-columns:1fr;}
+    .foot{grid-template-columns:1fr;}
+    .foot .links{text-align:left;}
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+
+    <!-- MASTHEAD — identical to AGENTLOOP; logo + name are tenant-configured.
+         Nav is per-tenant: Sources always; Must Read only if Canon on (off here); Built only tenant-0. -->
+    <header class="mast">
+      <div>
+        <a class="brand" href="#">
+          <span class="logo">✦</span>
+          <span class="wm">The Inference</span>
+        </a>
+        <div class="tag">A daily on shipping LLM inference</div>
+      </div>
+      <nav>
+        <a href="#">Sources</a>
+        <span class="sep">·</span>
+        <a class="sub" href="#subscribe">Subscribe&nbsp;→</a>
+      </nav>
+    </header>
+
+    <hr class="rule2">
+
+    <!-- HERO — same structure; headline, strip, subtagline are tenant-configured -->
+    <section class="hero">
+      <h1>The daily read for people building with <em>inference.</em></h1>
+      <div class="strip">
+        SERVING <span class="d">·</span> QUANTIZATION <span class="d">·</span> LATENCY <span class="d">·</span> COST
+      </div>
+      <div class="subtag">No funding rounds. No leaderboards. No discourse. Just the runtime.</div>
+    </section>
+
+    <hr class="rule2">
+
+    <!-- TODAY'S ISSUE — pipeline data, same block -->
+    <section class="today">
+      <div class="grid">
+        <div>
+          <div class="date">MONDAY · JUNE 9</div>
+          <h2>vLLM 0.5 lands prefix caching, and it’s a bigger deal than the changelog admits</h2>
+          <p class="dek">Three items worth your morning: a real-world prefix-cache benchmark, a teardown of speculative decoding tradeoffs at batch size 1, and a quietly excellent post on KV-cache eviction.</p>
+          <a class="cta" href="#">Read today <span>→</span></a>
+        </div>
+        <div>
+          <div class="plate">
+            <div class="pd">2026-06-09</div>
+            <div class="glyph">§</div>
+            <div class="pl">Today.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule1">
+
+    <!-- FROM THE CANON — hidden: Canon feature is OFF for this tenant -->
+
+    <!-- INLINE SUBSCRIBE — same block; name is tenant-configured -->
+    <section class="sub" id="subscribe">
+      <h3>Read The Inference every morning.</h3>
+      <div class="st">What we read so you don’t have to. Daily, free.</div>
+      <form>
+        <input type="email" placeholder="you@company.com">
+        <button type="submit">Subscribe →</button>
+      </form>
+    </section>
+
+    <hr class="rule1">
+
+    <!-- RECENT ISSUES — same ArchiveRow list -->
+    <section class="recent">
+      <div class="rh"><div class="l">Recent issues</div><div class="c">5 issues</div></div>
+
+      <a class="row" href="#">
+        <div class="dateblock"><span class="dow">SUN</span><span class="md">Jun 8</span><span class="yr">2026</span></div>
+        <div><h3>Continuous batching, revisited — and why your p99 still lies to you</h3><p class="dek">A careful look at what tail latency hides when you average across a batched serving queue.</p></div>
+        <div class="meta"><span>9 stories</span><span class="read">Read <span>→</span></span></div>
+      </a>
+      <a class="row" href="#">
+        <div class="dateblock"><span class="dow">SAT</span><span class="md">Jun 7</span><span class="yr">2026</span></div>
+        <div><h3>The quantization roundup: AWQ vs GPTQ vs FP8 in production</h3><p class="dek">Accuracy deltas, kernel support, and where each one actually pays off under load.</p></div>
+        <div class="meta"><span>11 stories</span><span class="read">Read <span>→</span></span></div>
+      </a>
+      <a class="row" href="#">
+        <div class="dateblock"><span class="dow">FRI</span><span class="md">Jun 6</span><span class="yr">2026</span></div>
+        <div><h3>Serving Llama on a budget — a cost teardown</h3><p class="dek">From spot GPUs to batch sizing, the levers that move dollars per million tokens.</p></div>
+        <div class="meta"><span>8 stories</span><span class="read">Read <span>→</span></span></div>
+      </a>
+      <a class="row" href="#">
+        <div class="dateblock"><span class="dow">THU</span><span class="md">Jun 5</span><span class="yr">2026</span></div>
+        <div><h3>Tokenizers are still the bottleneck</h3><p class="dek">Why preprocessing keeps eating your throughput, and three fixes that helped.</p></div>
+        <div class="meta"><span>10 stories</span><span class="read">Read <span>→</span></span></div>
+      </a>
+    </section>
+
+    <hr class="rule1">
+
+    <!-- ELSEWHERE — per-tenant: Must Read (Canon, off) and Built (tenant-0 only) are omitted; Sources always shows -->
+    <section class="elsewhere">
+      <div class="l">Elsewhere</div>
+      <div class="cols">
+        <div class="col">
+          <h4>Sources</h4>
+          <p>The places we read every morning to produce the daily digest. With live counts.</p>
+          <a href="#">See the list →</a>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule1">
+
+    <!-- FOOTER — colophon ("how it's built") omitted for non-tenant-0; nav per-tenant (Sources) -->
+    <footer>
+      <div class="foot">
+        <div class="b"><span class="nmln"><span class="lg">✦</span><strong style="color:var(--ink);letter-spacing:.16em">THE INFERENCE</strong></span></div>
+        <form class="subf"><input placeholder="Your email, every morning"><button>Subscribe →</button></form>
+        <div class="b links"><a href="#">SOURCES</a></div>
+      </div>
+      <div class="copy">© 2026 The Inference · powered by AGENTLOOP</div>
+    </footer>
+
+  </div>
+</body>
+</html>

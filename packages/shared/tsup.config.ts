@@ -30,6 +30,8 @@ export default defineConfig((options) => ({
     "src/services/summary-source.ts",
     "src/review-edits/index.ts",
     "src/analytics/index.ts",
+    "src/types/tenant.ts",
+    "src/constants/tenant-slugs.ts",
   ],
   format: ["esm"],
   dts: true,

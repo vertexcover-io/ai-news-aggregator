@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Impersonation Banner Mock</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+  <!-- Impersonation banner — app-wide, rendered when impersonating=true -->
+  <div id="impersonation-banner" class="bg-amber-600 text-white px-4 py-2 flex items-center justify-between text-sm font-medium" role="alert">
+    <div class="flex items-center gap-2">
+      <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd" />
+      </svg>
+      <span id="impersonation-text">You are impersonating <strong id="impersonation-tenant-name">Tenant Name</strong></span>
+    </div>
+    <button
+      id="impersonation-exit-btn"
+      class="ml-4 px-3 py-1 bg-amber-800 hover:bg-amber-900 rounded text-xs uppercase tracking-wider transition-colors min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
+      type="button"
+    >
+      Exit impersonation
+    </button>
+  </div>
+
+  <!-- Dashboard mock (rest of page below the banner) -->
+  <div class="p-8">
+    <h1 class="text-2xl font-bold mb-4">Admin Dashboard</h1>
+    <p class="text-gray-600">The impersonation banner appears at the top of every page when impersonating.</p>
+  </div>
+
+  <script>
+    // Simulate banner visibility — in production, this is driven by the
+    // /api/admin/me response which includes impersonating=true
+    const banner = document.getElementById('impersonation-banner');
+    const exitBtn = document.getElementById('impersonation-exit-btn');
+
+    exitBtn.addEventListener('click', () => {
+      fetch('/api/super/impersonate/exit', { method: 'POST' })
+        .then(() => {
+          window.location.reload();
+        })
+        .catch((err) => {
+          console.error('Exit impersonation failed:', err);
+        });
+    });
+  </script>
+</body>
+</html>

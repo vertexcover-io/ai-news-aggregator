@@ -136,7 +136,8 @@ describe("GET /api/admin/me behind requireAdmin", () => {
       headers: { cookie: `${COOKIE_NAME}=${token}` },
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ admin: true });
+    const body = await res.json();
+    expect(body).toMatchObject({ admin: true });
   });
 
   it("returns 401 with a tampered cookie", async () => {

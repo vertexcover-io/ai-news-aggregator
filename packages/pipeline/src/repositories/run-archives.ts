@@ -1,3 +1,4 @@
+import { isAllTenants, type ScopedTenantContext } from "@newsletter/shared/services";
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import { runArchives, rawItems } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
@@ -84,7 +85,7 @@ export interface RunArchivesRepo {
 }
 
 export function createRunArchivesRepo(
-  db: Pick<AppDb, "insert" | "select" | "update">,
+  db: Pick<AppDb, "insert" | "select" | "update">, scoped: ScopedTenantContext,
 ): RunArchivesRepo {
   const selectArchiveRow = {
     id: runArchives.id,

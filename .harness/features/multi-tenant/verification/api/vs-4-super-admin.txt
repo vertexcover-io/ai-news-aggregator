@@ -1,0 +1,20 @@
+--- Legacy admin login (pre-phase-3) ---
+COMMAND: curl -s -X POST -H 'Content-Type: application/json' -d '{"password":"vertexcover@123"}' -c /tmp/admin-cookies.txt http://localhost:3000/api/admin/login
+STATUS: 200
+BODY: {"ok":true}
+VERDICT: PASSED (legacy path)
+
+--- Admin me (pre-phase-3) ---
+COMMAND: curl -s -b /tmp/admin-cookies.txt http://localhost:3000/api/admin/me
+STATUS: 200
+BODY: {"admin":true,"role":"tenant_admin"}
+VERDICT: PASSED -- session cookie works
+
+--- New auth login (Phase 3) ---
+COMMAND: curl -s -X POST http://localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@agentloop.dev","password":"vertexcover@123"}'
+STATUS: 404 Not Found
+BODY: 404 Not Found
+VERDICT: FAILED -- auth routes not mounted (D-1)
+
+--- Super admin tenant list ---
+CANNOT TEST: Requires working super_admin login (D-1)

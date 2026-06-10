@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { UserSettings } from "@newsletter/shared";
+import { tenantPipelineRunSchedulerKey } from "@newsletter/shared/scheduling";
 import {
   DAILY_RUN_SCHEDULER_KEY,
   EMAIL_SEND_SCHEDULER_KEY,
@@ -9,6 +10,7 @@ import {
   TWITTER_POST_SCHEDULER_KEY,
   reconcilePipelineSchedule,
   reconcileDailyRunSchedule,
+  reconcileAllTenantsPipelineSchedules,
   toCronMinusMinutes,
   toCron,
 } from "@api/services/scheduler.js";
@@ -188,4 +190,81 @@ describe("reconcileDailyRunSchedule", () => {
   // timezone engine, not the scheduler. The scheduler only emits the tz-naive
   // cron string (tested by toCron) + the IANA tz string (passed through to
   // upsertJobScheduler), both covered above.
+});
+
+describe("reconcilePipelineSchedule (per-tenant)", () => {
+  const tenantId = "tenant-a";
+
+  it("upserts pipeline-run scheduler keyed by tenantId (D-112 ':' delimiter)", async () => {
+    const queue = makeQueue();
+    await reconcilePipelineSchedule(queue, baseSettings(), tenantId);
+
+    const expectedKey = tenantPipelineRunSchedulerKey(tenantId);
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      expectedKey,
+      { pattern: "30 9 * * *", tz: "America/New_York" },
+      { name: "pipeline-run", data: { tenantId } },
+    );
+  });
+
+  it("removes tenant-scoped schedulers when schedule is disabled", async () => {
+    const queue = makeQueue();
+    await reconcilePipelineSchedule(queue, baseSettings({ scheduleEnabled: false }), tenantId);
+
+    const expectedKey = tenantPipelineRunSchedulerKey(tenantId);
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(expectedKey);
+  });
+
+  it("uses PIPELINE_RUN_SCHEDULER_KEY as default when no tenantId", async () => {
+    const queue = makeQueue();
+    await reconcilePipelineSchedule(queue, baseSettings());
+
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      PIPELINE_RUN_SCHEDULER_KEY,
+      { pattern: "30 9 * * *", tz: "America/New_York" },
+      { name: "pipeline-run", data: {} },
+    );
+  });
+
+  it("reconcileAllTenantsPipelineSchedules upserts per-tenant keys for each active tenant", async () => {
+    const queue = makeQueue();
+    const t1 = baseSettings({ ...baseSettings(), id: "s1" });
+    const t2 = baseSettings({ ...baseSettings(), id: "s2", pipelineTime: "14:00" });
+
+    await reconcileAllTenantsPipelineSchedules(queue, [
+      { tenantId: "t1", settings: t1 },
+      { tenantId: "t2", settings: t2 },
+    ]);
+
+    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(4); // 2 x pipeline + 2 x social-health
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      `pipeline-run:t1`,
+      { pattern: "30 9 * * *", tz: "America/New_York" },
+      { name: "pipeline-run", data: { tenantId: "t1" } },
+    );
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      `pipeline-run:t2`,
+      { pattern: "0 14 * * *", tz: "America/New_York" },
+      { name: "pipeline-run", data: { tenantId: "t2" } },
+    );
+  });
+
+  it("reconcileAllTenantsPipelineSchedules removes missing tenants and disabled ones", async () => {
+    const queue = makeQueue();
+    const t1 = baseSettings({ ...baseSettings(), id: "s1" });
+    const disabled = baseSettings({ ...baseSettings(), id: "s2", scheduleEnabled: false });
+
+    await reconcileAllTenantsPipelineSchedules(queue, [
+      { tenantId: "t1", settings: t1 },
+      { tenantId: "t2", settings: disabled },
+    ]);
+
+    // t1 gets upserted (2 calls: pipeline + social-health), t2 gets removed
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      `pipeline-run:t1`,
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(`pipeline-run:t2`);
+  });
 });

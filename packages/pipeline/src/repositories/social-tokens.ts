@@ -1,4 +1,5 @@
-import { eq } from "drizzle-orm";
+import { isAllTenants, type ScopedTenantContext } from "@newsletter/shared/services";
+import { and, eq } from "drizzle-orm";
 import { socialTokens } from "@newsletter/shared/db";
 import type { AppDb, SocialTokenEncryptedFields } from "@newsletter/shared/db";
 import type { SocialTokenMetadata } from "@newsletter/shared";
@@ -62,14 +63,17 @@ async function upsertToken(
   platform: SocialPlatform,
   input: SaveSocialTokenInput,
   cipher: CredentialCipher,
+  scoped: ScopedTenantContext,
 ): Promise<void> {
   const encryptedFields: SocialTokenEncryptedFields = {
     accessToken: cipher.encrypt(input.accessToken),
     refreshToken: cipher.encrypt(input.refreshToken),
   };
+  const tenantId = scoped.ctx.tenantId;
   await db
     .insert(socialTokens)
     .values({
+      tenantId,
       platform,
       encryptedFields,
       expiresAt: input.expiresAt,
@@ -77,7 +81,7 @@ async function upsertToken(
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
-      target: socialTokens.platform,
+      target: [socialTokens.tenantId, socialTokens.platform],
       set: {
         encryptedFields,
         expiresAt: input.expiresAt,
@@ -87,16 +91,26 @@ async function upsertToken(
     });
 }
 
+function tenantWhere(scoped: ScopedTenantContext) {
+  return isAllTenants(scoped)
+    ? undefined
+    : eq(socialTokens.tenantId, scoped.ctx.tenantId);
+}
+
 export function createSocialTokensRepo(
-  db: Pick<AppDb, "select" | "insert" | "transaction">,
+  db: Pick<AppDb, "select" | "insert" | "transaction">, scoped: ScopedTenantContext,
   cipher: CredentialCipher,
 ): SocialTokensRepo {
+  const tWhere = tenantWhere(scoped);
+
   return {
     async getToken(platform: SocialPlatform): Promise<SocialTokenRow | null> {
+      const conditions = [eq(socialTokens.platform, platform)];
+      if (tWhere) conditions.push(tWhere);
       const rows = await db
         .select()
         .from(socialTokens)
-        .where(eq(socialTokens.platform, platform))
+        .where(and(...conditions))
         .limit(1);
       if (rows.length === 0) return null;
       try {
@@ -112,7 +126,7 @@ export function createSocialTokensRepo(
       platform: SocialPlatform,
       input: SaveSocialTokenInput,
     ): Promise<void> {
-      await upsertToken(db, platform, input, cipher);
+      await upsertToken(db, platform, input, cipher, scoped);
     },
 
     async withTokenLock<T>(
@@ -135,7 +149,7 @@ export function createSocialTokensRepo(
         }
         const txApi: SocialTokensTx = {
           async saveToken(p, inp) {
-            await upsertToken(tx, p, inp, cipher);
+            await upsertToken(tx, p, inp, cipher, scoped);
           },
         };
         return fn(row, txApi);

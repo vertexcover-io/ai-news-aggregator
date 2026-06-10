@@ -5,6 +5,7 @@ import {
   type UserSettingsRepo,
 } from "@api/repositories/user-settings.js";
 import { resolvePostHogConfig } from "@newsletter/shared/analytics";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 
 export interface AnalyticsConfigRouterDeps {
   getSettingsRepo: () => UserSettingsRepo;
@@ -25,7 +26,7 @@ export function createAnalyticsConfigRouter(
 
 export function createDefaultAnalyticsConfigRouter(): Hono {
   return createAnalyticsConfigRouter({
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
   });
 }
 

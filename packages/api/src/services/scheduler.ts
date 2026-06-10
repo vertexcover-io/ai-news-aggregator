@@ -9,6 +9,7 @@ import {
   TWITTER_POST_SCHEDULER_KEY,
   type UserSettings,
 } from "@newsletter/shared";
+import { tenantPipelineRunSchedulerKey } from "@newsletter/shared/scheduling";
 
 export const SOCIAL_HEALTH_SCHEDULER_KEY = "social-health:default";
 const SOCIAL_HEALTH_LEAD_MINUTES = 15;
@@ -47,13 +48,29 @@ export function toCronMinusMinutes(hhmm: string, minutesBefore: number): string 
   return `${minute} ${hour} * * *`;
 }
 
+/**
+ * Reconcile pipeline schedule for a single tenant.
+ *
+ * When `tenantId` is provided, the pipeline-run scheduler key is scoped:
+ * `pipeline-run:<tenantId>` (D-112: `:` delimiter).
+ *
+ * When `tenantId` is undefined (backwards compat / bootstrap), the default
+ * `pipeline-run:default` key is used.
+ *
+ * REQ-063: Only reconciled on that tenant's settings save.
+ */
 export async function reconcilePipelineSchedule(
   queue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">,
   settings: UserSettings,
+  tenantId?: string,
 ): Promise<void> {
+  const pipelineRunKey = tenantId !== undefined
+    ? tenantPipelineRunSchedulerKey(tenantId)
+    : PIPELINE_RUN_SCHEDULER_KEY;
+  const pipelineData = tenantId !== undefined ? { tenantId } : {};
   const pipelineTime = settings.pipelineTime;
   if (!settings.scheduleEnabled) {
-    await queue.removeJobScheduler(PIPELINE_RUN_SCHEDULER_KEY);
+    await queue.removeJobScheduler(pipelineRunKey);
     await queue.removeJobScheduler(SOCIAL_HEALTH_SCHEDULER_KEY);
     for (const scheduler of PUBLISH_SCHEDULERS) {
       await queue.removeJobScheduler(scheduler.key);
@@ -61,9 +78,9 @@ export async function reconcilePipelineSchedule(
     return;
   }
   await queue.upsertJobScheduler(
-    PIPELINE_RUN_SCHEDULER_KEY,
+    pipelineRunKey,
     { pattern: toCron(pipelineTime), tz: settings.scheduleTimezone },
-    { name: "pipeline-run", data: {} },
+    { name: "pipeline-run", data: pipelineData },
   );
   await queue.upsertJobScheduler(
     SOCIAL_HEALTH_SCHEDULER_KEY,
@@ -111,6 +128,52 @@ export async function removeLegacySchedulers(
   queue: Pick<Queue, "removeJobScheduler">,
 ): Promise<void> {
   await queue.removeJobScheduler(LEGACY_DAILY_RUN_SCHEDULER_KEY);
+}
+
+/**
+ * Per-tenant pair: tenantId + its settings.
+ */
+export interface TenantSettingsEntry {
+  readonly tenantId: string;
+  readonly settings: UserSettings;
+}
+
+/**
+ * Reconcile pipeline schedules for all active tenants.
+ *
+ * Upserts a per-tenant `pipeline-run:<tenantId>` scheduler for each entry.
+ * Any currently active tenant not in the list is removed.
+ * Disabled tenants are removed instead of upserted.
+ */
+export async function reconcileAllTenantsPipelineSchedules(
+  queue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">,
+  tenants: readonly TenantSettingsEntry[],
+): Promise<void> {
+  const activeKeys = new Set<string>();
+  for (const { tenantId, settings } of tenants) {
+    if (settings.scheduleEnabled) {
+      const pipelineRunKey = tenantPipelineRunSchedulerKey(tenantId);
+      await queue.upsertJobScheduler(
+        pipelineRunKey,
+        { pattern: toCron(settings.pipelineTime), tz: settings.scheduleTimezone },
+        { name: "pipeline-run", data: { tenantId } },
+      );
+      await queue.upsertJobScheduler(
+        SOCIAL_HEALTH_SCHEDULER_KEY,
+        {
+          pattern: toCronMinusMinutes(settings.pipelineTime, SOCIAL_HEALTH_LEAD_MINUTES),
+          tz: settings.scheduleTimezone,
+        },
+        { name: "social-health", data: {} },
+      );
+      activeKeys.add(pipelineRunKey);
+    } else {
+      await queue.removeJobScheduler(tenantPipelineRunSchedulerKey(tenantId));
+    }
+  }
+
+  // Remove publish channel schedulers that aren't managed per-tenant:
+  // they remain global (D-110 sibling pattern for now).
 }
 
 export {

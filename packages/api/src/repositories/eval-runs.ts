@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { isAllTenants, type ScopedTenantContext, BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import { evalRuns } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type {
@@ -121,7 +122,7 @@ function toSummary(run: EvalRun): EvalRunSummary {
 }
 
 export function createEvalRunsRepo(
-  db: Pick<AppDb, "insert" | "select" | "update">,
+  db: Pick<AppDb, "insert" | "select" | "update">, scoped: ScopedTenantContext,
 ): EvalRunsRepo {
   return {
     async insert(input: EvalRunInsertInput): Promise<{ id: string }> {

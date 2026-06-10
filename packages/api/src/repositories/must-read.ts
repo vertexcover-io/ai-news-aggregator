@@ -1,4 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
+import { isAllTenants, type ScopedTenantContext, BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import { mustReadEntries } from "@newsletter/shared/db";
 import type { AppDb, MustReadEntry } from "@newsletter/shared/db";
 import type { PublicMustReadEntry } from "@newsletter/shared/types";
@@ -44,10 +45,11 @@ export interface MustReadRepo {
 }
 
 export function createMustReadRepo(
-  db: Pick<AppDb, "select" | "insert" | "update" | "delete" | "execute">,
+  db: Pick<AppDb, "select" | "insert" | "update" | "delete" | "execute">, scoped: ScopedTenantContext,
 ): MustReadRepo {
   const publicColumns = {
     id: mustReadEntries.id,
+    tenantId: mustReadEntries.tenantId,
     url: mustReadEntries.url,
     title: mustReadEntries.title,
     author: mustReadEntries.author,

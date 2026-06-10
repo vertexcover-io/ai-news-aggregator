@@ -5,6 +5,7 @@ import { parseArgs } from "node:util";
 config({ path: resolve(import.meta.dirname, "../../../../.env") });
 
 import { getDb } from "@newsletter/shared/db";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import { createEvalExportsRepo } from "@pipeline/repositories/eval-exports.js";
 import { exportFixtures } from "@pipeline/eval/export-fixtures.js";
 
@@ -41,7 +42,7 @@ function parseCliArgs(argv: string[]): ParsedCliArgs {
 async function main(): Promise<number> {
   const args = parseCliArgs(process.argv.slice(2));
   const db = getDb();
-  const repo = createEvalExportsRepo(db);
+  const repo = createEvalExportsRepo(db, BOOTSTRAP_CONTEXT);
 
   const result = await exportFixtures({
     days: args.days,

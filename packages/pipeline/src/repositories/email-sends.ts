@@ -1,3 +1,4 @@
+import { isAllTenants, type ScopedTenantContext } from "@newsletter/shared/services";
 import { eq } from "drizzle-orm";
 import { emailSends } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
@@ -10,6 +11,7 @@ export interface PipelineEmailSendsRepo {
 
 export function createPipelineEmailSendsRepo(
   db: Pick<AppDb, "select" | "insert">,
+  scoped: ScopedTenantContext,
 ): PipelineEmailSendsRepo {
   return {
     async create(insert: EmailSendInsert): Promise<EmailSendSelect> {

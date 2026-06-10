@@ -38,6 +38,7 @@ import {
   type EvalRunsRepo,
 } from "@api/repositories/eval-runs.js";
 import { runEvalOrchestrator, type RunEvalFn } from "@api/services/eval-run-orchestrator.js";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 
 const listRunsQuerySchema = z.object({
   page: z.coerce
@@ -400,14 +401,14 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
 
 export function createDefaultAdminEvalRouter(): Hono {
   return createAdminEvalRouter({
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
-    getEvalRunsRepo: () => createEvalRunsRepo(defaultGetDb()),
+    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
+    getEvalRunsRepo: () => createEvalRunsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
     listCalendarRunsByDate: async (dateISO, timezone) => {
-      const repo = createEvalExportsRepo(defaultGetDb());
+      const repo = createEvalExportsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT);
       return repo.listCompletedRunsByDate(dateISO, timezone);
     },
     getCalendarRunDetail: async (runId) => {
-      const repo = createEvalExportsRepo(defaultGetDb());
+      const repo = createEvalExportsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT);
       return repo.getCompletedRunDetail(runId);
     },
   });

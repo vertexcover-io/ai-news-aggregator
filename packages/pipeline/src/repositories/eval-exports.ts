@@ -1,3 +1,4 @@
+import { isAllTenants, type ScopedTenantContext } from "@newsletter/shared/services";
 import { and, asc, between, desc, eq, gte, sql } from "drizzle-orm";
 import { rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
@@ -183,7 +184,7 @@ async function loadDedupedPool(
 }
 
 export function createEvalExportsRepo(
-  db: Pick<AppDb, "select">,
+  db: Pick<AppDb, "select">, scoped: ScopedTenantContext,
 ): EvalExportsRepo {
   return {
     async listCompletedArchives({ since, runId }) {

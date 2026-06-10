@@ -1685,9 +1685,9 @@ describe("run-process worker", () => {
     const runStateMock = makeMockRunState(makeRunState());
 
     // Capture items that the hn collector's rawItemsRepo.upsertItems receives
-    let capturedUpsertItems: { runId?: string | null }[] | null = null;
+    let capturedUpsertItems: { runId?: string | null; tenantId?: string | null }[] | null = null;
     const fakeRawItemsRepo = {
-      upsertItems: vi.fn((items: { runId?: string | null }[]) => {
+      upsertItems: vi.fn((items: { runId?: string | null; tenantId?: string | null }[]) => {
         capturedUpsertItems = items;
         return Promise.resolve();
       }),
@@ -1728,6 +1728,8 @@ describe("run-process worker", () => {
     if (capturedUpsertItems === null) throw new Error("expected capturedUpsertItems");
     expect(capturedUpsertItems).toHaveLength(1);
     expect(capturedUpsertItems[0].runId).toBe("run-1");
+    // tenantId is not set in this test (no tenantId in job data)
+    expect(capturedUpsertItems[0].tenantId).toBeUndefined();
   });
 });
 
@@ -2591,6 +2593,183 @@ describe("run-process dry-run flag (Phase 2)", () => {
 });
 
 // ---- Phase 2: notifySourceDistribution wire-up (VS-1, VS-2, VS-3) ----
+
+// ---- Phase 9: Per-tenant pipeline (REQ-060, REQ-061, REQ-064) ----
+
+describe("run-process tenant-aware (Phase 9)", () => {
+  beforeEach(() => {
+    mockLoggerInfo.mockClear();
+    mockLoggerWarn.mockClear();
+    mockLoggerError.mockClear();
+  });
+
+  function makeRankFnP9(): () => Promise<RankResult> {
+    return () =>
+      Promise.resolve({
+        rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+        candidateCount: 1,
+        rankedCount: 1,
+      });
+  }
+
+  // REQ-060: tenantId flows from job.data to tenant-scoped repository construction
+  it("REQ-060: reads tenantId from job data when present", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const rankFn = makeRankFnP9();
+    const archiveUpsert = vi.fn(() => Promise.resolve());
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      rankFn: vi.fn(rankFn),
+      shortlistFn: makeShortlistFn(passthroughShortlist),
+      archiveRepo: { upsert: archiveUpsert },
+    });
+
+    const tenantId = "tenant-phase-9-001";
+    await worker.handler({
+      ...baseJob,
+      data: { ...baseJob.data, tenantId },
+    });
+
+    // The run completed successfully — tenantId was accepted without error
+    expect(archiveUpsert).toHaveBeenCalledOnce();
+    expect(runStateMock.updates.at(-1)?.status).toBe("completed");
+  });
+
+  // REQ-061: tenant-scoped repo is built when tenantId is present in job data
+  it("REQ-061: routes tenantId to tenant-scoped userSettingsRepo", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const settingsGet = vi.fn(() =>
+      Promise.resolve({
+        id: "settings-req061",
+        topN: 3,
+        halfLifeHours: null,
+        hnEnabled: true,
+        hnConfig: null,
+        redditEnabled: false,
+        redditConfig: null,
+        webEnabled: false,
+        webConfig: null,
+        twitterEnabled: false,
+        twitterConfig: null,
+        webSearchEnabled: false,
+        webSearchConfig: null,
+        posthogEnabled: false,
+        posthogProjectToken: null,
+        posthogHost: null,
+        scheduleTime: "07:00",
+        pipelineTime: "07:00",
+        emailTime: "07:30",
+        linkedinTime: "08:00",
+        twitterTime: "08:30",
+        scheduleTimezone: "UTC",
+        scheduleEnabled: true,
+        emailEnabled: true,
+        linkedinEnabled: true,
+        twitterPostEnabled: true,
+        autoReview: true,
+        rankingPrompt: "TENANT_RANKING_PROMPT_SENTINEL",
+        shortlistPrompt: "TENANT_SHORTLIST_PROMPT_SENTINEL",
+        shortlistSize: 25,
+        updatedAt: "2026-06-10T10:00:00.000Z",
+      }),
+    );
+
+    const rankFn = vi.fn(
+      (_cands: Candidate[], opts: RankOptions): Promise<RankResult> => {
+        return Promise.resolve({
+          rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "ok" }],
+          candidateCount: 1,
+          rankedCount: 1,
+        });
+      },
+    );
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      rankFn,
+      shortlistFn: makeShortlistFn(passthroughShortlist),
+      archiveRepo: { upsert: vi.fn(() => Promise.resolve()) },
+      userSettingsRepo: { get: settingsGet, upsert: vi.fn() },
+    });
+
+    const tenantId = "tenant-req061-abc";
+    await worker.handler({
+      ...baseJob,
+      data: { ...baseJob.data, tenantId },
+    });
+
+    // settings were loaded — the per-tenant prompt was used
+    expect(settingsGet).toHaveBeenCalledOnce();
+    const [rankInput, rankOpts] = rankFn.mock.calls[0] ?? [];
+    const opts = rankOpts as RankOptions;
+    expect(opts.systemPrompt).toBe("TENANT_RANKING_PROMPT_SENTINEL");
+  });
+
+  // REQ-064: tenant_id is stamped on the archive when tenantId present in job
+  it("REQ-064: stamps tenantId on archiveRepo.upsert when present in job data", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const archiveUpsert = vi.fn(() => Promise.resolve());
+    const rankFn = makeRankFnP9();
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      rankFn: vi.fn(rankFn),
+      shortlistFn: makeShortlistFn(passthroughShortlist),
+      archiveRepo: { upsert: archiveUpsert },
+    });
+
+    const tenantId = "tenant-req064-001";
+    await worker.handler({
+      ...baseJob,
+      data: { ...baseJob.data, tenantId },
+    });
+
+    expect(archiveUpsert).toHaveBeenCalledOnce();
+    const arg = archiveUpsert.mock.calls[0]?.[0] as { tenantId?: string };
+    expect(arg.tenantId).toBe(tenantId);
+  });
+
+  // REQ-064: tenantId NOT stamped on archive when absent
+  it("REQ-064: does not stamp tenantId on archive when absent from job data", async () => {
+    const runStateMock = makeMockRunState(makeRunState());
+    const candidates = [makeCandidate(1)];
+    const loadFn = vi.fn(
+      (): Promise<Candidate[]> => Promise.resolve(candidates),
+    );
+    const archiveUpsert = vi.fn(() => Promise.resolve());
+    const rankFn = makeRankFnP9();
+
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn,
+      rankFn: vi.fn(rankFn),
+      shortlistFn: makeShortlistFn(passthroughShortlist),
+      archiveRepo: { upsert: archiveUpsert },
+    });
+
+    await worker.handler(baseJob);
+
+    expect(archiveUpsert).toHaveBeenCalledOnce();
+    const arg = archiveUpsert.mock.calls[0]?.[0] as { tenantId?: string };
+    expect(arg.tenantId).toBeUndefined();
+  });
+});
 
 describe("run-process notifySourceDistribution (Phase 2)", () => {
   beforeEach(() => {

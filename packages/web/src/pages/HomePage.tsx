@@ -7,39 +7,57 @@ import { TodaysIssueBlock } from "../components/home/TodaysIssueBlock";
 import { FromTheCanonBlock } from "../components/home/FromTheCanonBlock";
 import { ElsewhereStrip } from "../components/home/ElsewhereStrip";
 import { InlineSubscribeCard } from "../components/shell/InlineSubscribeCard";
+import { TenantBrandingProvider } from "../context/TenantBrandingContext";
+import type { TenantBranding } from "@newsletter/shared/types";
 
-const TAGLINE = "The daily read for people who ship with agents.";
+const DEFAULT_TAGLINE = "The daily read for people who ship with agents.";
 
-function Hero(): ReactElement {
+function Hero({ branding }: { branding: TenantBranding }): ReactElement {
+  const headline = branding.headline ?? DEFAULT_TAGLINE;
+  const strip = branding.topicStrip;
+  const subtag = branding.subtagline;
+
   return (
     <section className="pt-16 pb-14 text-center">
       <h1 className="font-serif font-medium text-[clamp(40px,6.4vw,68px)] leading-[1.02] tracking-[-0.018em] m-0 mx-auto max-w-[14ch] text-[#14110d]">
-        The daily read for people who ship with{" "}
-        <span className="text-[#8c3a1e] italic font-medium">agents.</span>
+        {headline}
       </h1>
-      <div className="mt-9 mx-auto font-mono text-[11px] tracking-[0.22em] uppercase text-[#14110d] max-w-[820px] leading-[2]">
-        AGENTIC&nbsp;CODING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> HARNESS&nbsp;ENGINEERING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> CONTEXT&nbsp;ENGINEERING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> THE&nbsp;SOFTWARE&nbsp;FACTORY
-      </div>
-      <div className="mt-5 mx-auto font-mono text-[10.5px] tracking-[0.16em] uppercase text-[#6b6557] max-w-[760px]">
-        No model releases. No benchmarks. No discourse. Just the craft.
-      </div>
+      {strip ? (
+        <div className="mt-9 mx-auto font-mono text-[11px] tracking-[0.22em] uppercase text-[#14110d] max-w-[820px] leading-[2]">
+          {strip}
+        </div>
+      ) : null}
+      {subtag ? (
+        <div className="mt-5 mx-auto font-mono text-[10.5px] tracking-[0.16em] uppercase text-[#6b6557] max-w-[760px]">
+          {subtag}
+        </div>
+      ) : null}
     </section>
   );
 }
 
 export function HomePage(): ReactElement {
-  useEffect(() => {
-    document.title = "AgentLoop — The daily read for people who ship with agents.";
-    setMeta("description", TAGLINE);
-  }, []);
-
   const { data } = useQuery({
     queryKey: ["home"],
     queryFn: getHome,
   });
+
+  const branding: TenantBranding = data?.branding ?? {
+    name: "AGENTLOOP",
+    headline: null,
+    topicStrip: null,
+    subtagline: null,
+    logoUrl: null,
+    flags: { canon: true, isTenantZero: true },
+  };
+
+  const title =
+    branding.headline ?? `${branding.name} — ${DEFAULT_TAGLINE}`;
+
+  useEffect(() => {
+    document.title = title;
+    setMeta("description", branding.subtagline ?? DEFAULT_TAGLINE);
+  }, [title, branding.subtagline]);
 
   const todaysIssue = data?.todaysIssue ?? null;
   const featuredCanon = data?.featuredCanon ?? null;
@@ -50,9 +68,9 @@ export function HomePage(): ReactElement {
       : recentIssuesRaw.filter((r) => r.runId !== todaysIssue.runId);
 
   return (
-    <>
+    <TenantBrandingProvider branding={branding}>
       <hr className="border-0 border-t-2 border-[#14110d] m-0" />
-      <Hero />
+      <Hero branding={branding} />
       <hr className="border-0 border-t-2 border-[#14110d] m-0" />
 
       {todaysIssue ? <TodaysIssueBlock issue={todaysIssue} /> : null}
@@ -94,6 +112,6 @@ export function HomePage(): ReactElement {
 
       <hr className="border-0 border-t border-[#e7e2d6] m-0" />
       <ElsewhereStrip />
-    </>
+    </TenantBrandingProvider>
   );
 }

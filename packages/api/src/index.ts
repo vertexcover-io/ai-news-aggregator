@@ -1,10 +1,6 @@
 import { config } from "dotenv";
 config({ path: "../../.env" });
 
-if (!process.env.ADMIN_PASSWORD) {
-  console.error("ADMIN_PASSWORD is required");
-  process.exit(1);
-}
 if (!process.env.SESSION_SECRET) {
   console.error("SESSION_SECRET is required");
   process.exit(1);
@@ -25,18 +21,29 @@ import { createDefaultPublicMustReadRouter } from "@api/routes/must-read.js";
 import { createDefaultPublicSourcesRouter } from "@api/routes/sources.js";
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
 import { createDefaultCollectorHealthRouter } from "@api/routes/collector-health.js";
+import { createDefaultSourcesAdminRouter } from "@api/routes/sources-admin.js";
 import { createDefaultAdminSocialCredentialsRouter } from "@api/routes/admin-social-credentials.js";
+import { createSuperAppCredentialsRouter } from "@api/routes/super-app-credentials.js";
+import { createSuperAdminRouter } from "@api/routes/super-admin.js";
+import { createAppCredentialsRepo } from "@api/repositories/app-credentials.js";
 import {
   createLinkedInOAuthRouter,
   createLinkedInOAuthCallbackRouter,
 } from "@api/routes/linkedin-oauth.js";
+import {
+  createTwitterOAuthRouter,
+  createTwitterOAuthCallbackRouter,
+} from "@api/routes/twitter-oauth.js";
 import { createSocialCredentialsRepo } from "@api/repositories/social-credentials.js";
 import { createSocialTokensRepo } from "@api/repositories/social-tokens.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createDefaultAdminMustReadRouter } from "@api/routes/admin-must-read.js";
 import { createAdminRouter } from "@api/routes/admin.js";
-import { requireAdmin } from "@api/auth/middleware.js";
+import { requireAuth } from "@api/auth/middleware.js";
 import { buildApp } from "@api/app.js";
+import { createResolveTenant } from "@api/middleware/resolve-tenant.js";
+import { createTenantsRepo } from "@api/repositories/tenants.js";
+import { APP_HOST, CUSTOM_DOMAIN_MAP, ROOT_DOMAIN } from "@api/config/domains.js";
 import { createSubscribeRouter } from "@api/routes/subscribe.js";
 import { createSubscribersRepo } from "@api/repositories/subscribers.js";
 import { createFeedbackEventsRepo } from "@api/repositories/feedback-events.js";
@@ -57,6 +64,16 @@ import {
   removeLegacySchedulers,
 } from "@api/services/scheduler.js";
 import { captureException, configurePostHog, shutdownAnalytics } from "@api/lib/posthog.js";
+import { createOnboardingRouter } from "@api/routes/onboarding.js";
+import { createLogoRouter } from "@api/routes/logo.js";
+import { createSendingDomainRouter } from "@api/routes/sending-domain.js";
+import { createNotificationsRouter } from "@api/routes/notifications.js";
+import { createFeaturesRouter } from "@api/routes/features.js";
+import { Resend } from "resend";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
+import { createUsersRepo } from "@api/repositories/users.js";
+import { createAuthRouter } from "@api/routes/auth.js";
+import { hashPassword, verifyPassword } from "@api/services/password.js";
 
 const logger = createLogger("api");
 
@@ -96,7 +113,7 @@ const collectorHealthQueue = new BullQueue(COLLECTOR_HEALTH_QUEUE_NAME, { connec
 // Shared Redis connection for OAuth state storage (SET/GET/DEL — not a BullMQ queue).
 const oauthRedis = createRedisConnection();
 
-const settingsRepoForBootstrap = createUserSettingsRepo(getDb());
+const settingsRepoForBootstrap = createUserSettingsRepo(getDb(), BOOTSTRAP_CONTEXT);
 await removeLegacySchedulers(processingQueue);
 const settingsForBootstrap = await settingsRepoForBootstrap.get();
 if (settingsForBootstrap !== null) {
@@ -104,8 +121,8 @@ if (settingsForBootstrap !== null) {
   await reconcileCollectorHealthSchedule(collectorHealthQueue, settingsForBootstrap);
 }
 
-const runArchivesRepoForSubscribe = createRunArchivesRepo(getDb());
-configurePostHog(async () => createUserSettingsRepo(getDb()).get());
+const runArchivesRepoForSubscribe = createRunArchivesRepo(getDb(), BOOTSTRAP_CONTEXT);
+configurePostHog(async () => createUserSettingsRepo(getDb(), BOOTSTRAP_CONTEXT).get());
 
 const slackNotifier = createSlackNotifier({
   webhookUrl: process.env.SLACK_WEBHOOK_URL,
@@ -116,8 +133,8 @@ const slackNotifier = createSlackNotifier({
 });
 
 const subscribeRouter = createSubscribeRouter({
-  subscribersRepo: createSubscribersRepo(getDb()),
-  feedbackEventsRepo: createFeedbackEventsRepo(getDb()),
+  subscribersRepo: createSubscribersRepo(getDb(), BOOTSTRAP_CONTEXT),
+  feedbackEventsRepo: createFeedbackEventsRepo(getDb(), BOOTSTRAP_CONTEXT),
   feedbackCampaign: process.env.FEEDBACK_CAMPAIGN ?? "2026-06-reading-check",
   sessionSecret,
   baseUrl: apiBaseUrl,
@@ -148,9 +165,9 @@ const subscribeRouter = createSubscribeRouter({
 });
 
 const webhooksRouter = createWebhooksRouter({
-  sesEventsRepo: createSesEventsRepo(getDb()),
-  emailSendsRepo: createEmailSendsRepo(getDb()),
-  subscribersRepo: createSubscribersRepo(getDb()),
+  sesEventsRepo: createSesEventsRepo(getDb(), BOOTSTRAP_CONTEXT),
+  emailSendsRepo: createEmailSendsRepo(getDb(), BOOTSTRAP_CONTEXT),
+  subscribersRepo: createSubscribersRepo(getDb(), BOOTSTRAP_CONTEXT),
   verifySns: verifySnsMessage,
   slackNotifier,
   logger,
@@ -158,15 +175,49 @@ const webhooksRouter = createWebhooksRouter({
 
 const linkedInOAuthDeps = {
   getCredRepo: () =>
-    createSocialCredentialsRepo(getDb(), getCredentialCipher()),
+    createSocialCredentialsRepo(getDb(), getCredentialCipher(), BOOTSTRAP_CONTEXT),
   getTokenRepo: () =>
-    createSocialTokensRepo(getDb(), getCredentialCipher()),
+    createSocialTokensRepo(getDb(), BOOTSTRAP_CONTEXT, getCredentialCipher()),
   redis: oauthRedis,
   env: process.env,
 };
 
+// Twitter OAuth2 resolves app-level client id/secret from app_credentials (super-admin managed).
+const twitterOAuthDeps = {
+  getCredRepo: () =>
+    createSocialCredentialsRepo(getDb(), getCredentialCipher(), BOOTSTRAP_CONTEXT),
+  getTokenRepo: () =>
+    createSocialTokensRepo(getDb(), BOOTSTRAP_CONTEXT, getCredentialCipher()),
+  redis: oauthRedis,
+  env: process.env,
+  resolveTwitterOAuth2App: async () => {
+    const repo = createAppCredentialsRepo(getDb(), getCredentialCipher());
+    const tw = await repo.getTwitter();
+    if (tw) return { clientId: tw.clientId, clientSecret: tw.clientSecret };
+    // Env fallback
+    const clientId = process.env.TWITTER_OAUTH2_CLIENT_ID;
+    const clientSecret = process.env.TWITTER_OAUTH2_CLIENT_SECRET;
+    if (clientId && clientSecret) return { clientId, clientSecret };
+    return null;
+  },
+};
+
 const app = buildApp({
   sessionSecret,
+  authRouter: createAuthRouter({
+    usersRepo: createUsersRepo(getDb()),
+    tenantsRepo: createTenantsRepo(getDb()),
+    sessionSecret,
+    logger,
+    hashPassword,
+    verifyPassword,
+  }),
+  resolveTenant: createResolveTenant({
+    tenantsRepo: createTenantsRepo(getDb()),
+    appHost: APP_HOST,
+    rootDomain: ROOT_DOMAIN,
+    customDomainMap: CUSTOM_DOMAIN_MAP,
+  }),
   publicArchivesRouter: createDefaultPublicArchivesRouter(),
   publicHomeRouter: createDefaultPublicHomeRouter(),
   publicMustReadRouter: createDefaultPublicMustReadRouter(),
@@ -179,7 +230,30 @@ const app = buildApp({
   adminMustReadRouter: createDefaultAdminMustReadRouter(),
   runsRouter: createDefaultRunsRouter(),
   settingsRouter: createDefaultSettingsRouter(),
+  sendingDomainRouter: createSendingDomainRouter({
+    getTenantsRepo: () => createTenantsRepo(getDb()),
+    getResendClient: () => new Resend(process.env.RESEND_API_KEY),
+    getResendFullAccessKey: () => process.env.RESEND_FULL_ACCESS_KEY ?? process.env.RESEND_API_KEY,
+  }),
   collectorHealthRouter: createDefaultCollectorHealthRouter(),
+  sourcesAdminRouter: createDefaultSourcesAdminRouter(),
+  onboardingRouter: createOnboardingRouter({
+    getTenantsRepo: () => createTenantsRepo(getDb()),
+    generatePrompts: async (blurb: string) => {
+      // TODO(P11): real Anthropic-powered prompt generation
+      logger.warn({ blurb }, "generatePrompts placeholder called");
+      return {
+        ranking: `Ranking prompt: prioritize content about ${blurb}`,
+        shortlist: `Shortlist prompt: select items relevant to ${blurb}`,
+      };
+    },
+    discoverSources: async (blurb: string) => {
+      // TODO(P11): real LLM + Tavily source discovery
+      logger.warn({ blurb }, "discoverSources placeholder called");
+      return [];
+    },
+    onActivate: () => Promise.resolve(),
+  }),
   adminRouter: createAdminRouter({
     adminPassword,
     sessionSecret,
@@ -192,13 +266,31 @@ const app = buildApp({
       },
     },
   }),
-  requireAdminFactory: requireAdmin,
+  requireAdminFactory: requireAuth,
   subscribeRouter,
   webhooksRouter,
   analyticsRouter: createDefaultAnalyticsRouter(),
   analyticsConfigRouter: createDefaultAnalyticsConfigRouter(),
   linkedInOAuthRouter: createLinkedInOAuthRouter(linkedInOAuthDeps),
   linkedInOAuthCallbackRouter: createLinkedInOAuthCallbackRouter(linkedInOAuthDeps),
+  twitterOAuthRouter: createTwitterOAuthRouter(twitterOAuthDeps),
+  twitterOAuthCallbackRouter: createTwitterOAuthCallbackRouter(twitterOAuthDeps),
+  superAppCredentialsRouter: createSuperAppCredentialsRouter({
+    getRepo: () => createAppCredentialsRepo(getDb(), getCredentialCipher()),
+  }),
+  superAdminRouter: createSuperAdminRouter({
+    getTenantsRepo: () => createTenantsRepo(getDb()),
+  }),
+  publicLogoRouter: createLogoRouter({
+    getTenantsRepo: () => createTenantsRepo(getDb()),
+  }),
+  notificationsRouter: createNotificationsRouter({
+    getTenantsRepo: () => createTenantsRepo(getDb()),
+    getCipher: () => getCredentialCipher(),
+  }),
+  featuresRouter: createFeaturesRouter({
+    getTenantsRepo: () => createTenantsRepo(getDb()),
+  }),
 });
 
 const port = Number(process.env.API_PORT ?? 3000);

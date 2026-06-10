@@ -23,9 +23,16 @@ import { AdminMustReadEditPage } from "./pages/admin/AdminMustReadEditPage";
 import { UnsubscribePage } from "./pages/UnsubscribePage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { TermsPage } from "./pages/TermsPage";
+import { SuperAdminTenantsPage } from "./pages/SuperAdminTenantsPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
 import { PublicLayout } from "./layouts/PublicLayout";
 import { AdminLayout } from "./layouts/AdminLayout";
 import { RequireAdmin } from "./layouts/RequireAdmin";
+import { RequireSuperAdmin } from "./layouts/RequireSuperAdmin";
+import { RequireOnboarding } from "./layouts/RequireOnboarding";
+import { SignupPage } from "./pages/SignupPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 
 export const routes: RouteObject[] = [
   {
@@ -39,32 +46,50 @@ export const routes: RouteObject[] = [
       { path: "/confirm", element: <ConfirmPage /> },
       { path: "/feedback", element: <FeedbackPage /> },
       { path: "/unsubscribe", element: <UnsubscribePage /> },
+      { path: "/signup", element: <SignupPage /> },
+      { path: "/forgot-password", element: <ForgotPasswordPage /> },
+      { path: "/reset-password", element: <ResetPasswordPage /> },
       { path: "/privacy", element: <PrivacyPolicyPage /> },
       { path: "/terms", element: <TermsPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },
   { path: "/admin/login", element: <AdminLoginPage /> },
+  { path: "/admin/onboarding", element: <OnboardingPage /> },
   {
     path: "/admin",
     element: <RequireAdmin />,
     children: [
+      // Super-admin routes (REQ-100): guarded so only super_admin can access
       {
-        element: <AdminLayout />,
+        path: "super",
+        element: <RequireSuperAdmin />,
         children: [
-          { index: true, element: <DashboardPage /> },
-          { path: "runs/:runId", element: <RunObservabilityPage /> },
-          { path: "review/:runId", element: <ReviewPage /> },
-          { path: "sources/:runId", element: <SourcesPreviewPage /> },
-          { path: "settings", element: <SettingsPage /> },
-          { path: "analytics", element: <AnalyticsPage /> },
-          { path: "eval", element: <EvalIndexPage /> },
-          { path: "eval/runs", element: <EvalRunsPage /> },
-          { path: "eval/fixtures/new", element: <EvalManualFixturePage /> },
-          { path: "eval/grade/:fixtureId", element: <EvalGradePage /> },
-          { path: "must-read", element: <AdminMustReadListPage /> },
-          { path: "must-read/new", element: <AdminMustReadEditPage /> },
-          { path: "must-read/:id", element: <AdminMustReadEditPage /> },
+          { path: "tenants", element: <SuperAdminTenantsPage /> },
+        ],
+      },
+      // Tenant admin routes, gated by onboarding check
+      {
+        element: <RequireOnboarding />,
+        children: [
+          {
+            element: <AdminLayout />,
+            children: [
+              { index: true, element: <DashboardPage /> },
+              { path: "runs/:runId", element: <RunObservabilityPage /> },
+              { path: "review/:runId", element: <ReviewPage /> },
+              { path: "sources/:runId", element: <SourcesPreviewPage /> },
+              { path: "settings", element: <SettingsPage /> },
+              { path: "analytics", element: <AnalyticsPage /> },
+              { path: "eval", element: <EvalIndexPage /> },
+              { path: "eval/runs", element: <EvalRunsPage /> },
+              { path: "eval/fixtures/new", element: <EvalManualFixturePage /> },
+              { path: "eval/grade/:fixtureId", element: <EvalGradePage /> },
+              { path: "must-read", element: <AdminMustReadListPage /> },
+              { path: "must-read/new", element: <AdminMustReadEditPage /> },
+              { path: "must-read/:id", element: <AdminMustReadEditPage /> },
+            ],
+          },
         ],
       },
     ],

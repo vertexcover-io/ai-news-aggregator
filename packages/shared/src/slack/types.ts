@@ -117,6 +117,14 @@ export type NotifierTopRankedTitle = (
   archive: NotifierArchiveView,
 ) => Promise<string | null>;
 
+/** Resolved per-tenant notification configuration for a pipeline job. */
+export interface TenantNotificationConfig {
+  /** Email address to notify on review-ready/error events, or null if none configured. */
+  notifyEmail: string | null;
+  /** Decrypted Slack incoming webhook URL, or null if none configured. */
+  slackWebhook: string | null;
+}
+
 export interface SlackNotifierDeps {
   webhookUrl: string | undefined;
   archives: NotifierArchiveAccess;
@@ -125,4 +133,6 @@ export interface SlackNotifierDeps {
   fetchFn?: typeof fetch;
   now?: () => Date;
   publicArchiveBaseUrl?: string;
+  /** Per-tenant notification config, resolved per job. Overrides webhookUrl for Slack sends. */
+  tenantNotificationConfig?: TenantNotificationConfig | null;
 }

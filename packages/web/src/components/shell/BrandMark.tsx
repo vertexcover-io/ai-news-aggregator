@@ -23,7 +23,7 @@ export function BrandMark({
       viewBox="0 0 100 100"
       fill="none"
       role="img"
-      aria-label="AGENTLOOP"
+      aria-label="Logo"
       className={className}
     >
       <circle

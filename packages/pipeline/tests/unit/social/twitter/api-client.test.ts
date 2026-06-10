@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TwitterApi } from "twitter-api-v2";
 
-import { createTwitterApiClient } from "../../../../src/social/twitter/api-client.js";
+import { createTwitterApiClient, createTwitterOAuth2ApiClient } from "../../../../src/social/twitter/api-client.js";
 
 const INPUT = { accessToken: "tok", text: "hello world" };
 const CREDENTIALS = {
@@ -156,6 +156,61 @@ describe("createTwitterApiClient", () => {
       ok: false,
       status: 403,
       body: '{"title":"Forbidden"}',
+    });
+  });
+});
+
+describe("createTwitterOAuth2ApiClient", () => {
+  it("constructs a client with the OAuth2 access token and posts via v2.tweet", async () => {
+    const v2: StubV2 = {
+      tweet: vi.fn().mockResolvedValue({ data: { id: "999", text: "hello" } }),
+    };
+    const TwitterApiCtor = makeCtor(v2);
+
+    const client = createTwitterOAuth2ApiClient("oauth2-access-token", { TwitterApiCtor });
+    const result = await client.createPost({ text: "hello from oauth2" });
+
+    expect(TwitterApiCtor).toHaveBeenCalledWith("oauth2-access-token");
+    expect(result).toEqual({
+      ok: true,
+      tweetId: "999",
+      tweetUrl: "https://x.com/i/status/999",
+    });
+    expect(v2.tweet).toHaveBeenCalledWith("hello from oauth2");
+  });
+
+  it("posts replies with in_reply_to_tweet_id", async () => {
+    const v2: StubV2 = {
+      tweet: vi.fn().mockResolvedValue({ data: { id: "888", text: "reply" } }),
+    };
+    const TwitterApiCtor = makeCtor(v2);
+
+    const client = createTwitterOAuth2ApiClient("oauth2-token", { TwitterApiCtor });
+    const result = await client.createPost({ text: "reply text", replyToTweetId: "777" });
+
+    expect(result).toEqual({
+      ok: true,
+      tweetId: "888",
+      tweetUrl: "https://x.com/i/status/888",
+    });
+    expect(v2.tweet).toHaveBeenCalledWith("reply text", {
+      reply: { in_reply_to_tweet_id: "777" },
+    });
+  });
+
+  it("returns ok:false with status and body on 401 error", async () => {
+    const v2: StubV2 = {
+      tweet: vi.fn().mockRejectedValue({ code: 401, data: { title: "Unauthorized" } }),
+    };
+    const TwitterApiCtor = makeCtor(v2);
+
+    const client = createTwitterOAuth2ApiClient("expired-token", { TwitterApiCtor });
+    const result = await client.createPost({ text: "test" });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 401,
+      body: '{"title":"Unauthorized"}',
     });
   });
 });

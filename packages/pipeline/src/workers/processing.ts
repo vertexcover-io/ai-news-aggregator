@@ -41,10 +41,11 @@ import {
 import { createLinkedInApiClient } from "@pipeline/social/linkedin/api-client.js";
 import {
   createTwitterApiClient,
+  createTwitterOAuth2ApiClient,
   type TwitterOAuth1Credentials,
 } from "@pipeline/social/twitter/api-client.js";
 import { createLinkedInNotifier } from "@pipeline/social/linkedin/notifier.js";
-import { createTwitterNotifier } from "@pipeline/social/twitter/notifier.js";
+import { type TwitterNotifier, createTwitterNotifier } from "@pipeline/social/twitter/notifier.js";
 import {
   createSocialTokensRepo,
   type SocialTokensRepo,
@@ -53,11 +54,17 @@ import {
   createSocialCredentialsRepo,
   type SocialCredentialsRepo,
 } from "@pipeline/repositories/social-credentials.js";
+import {
+  createAppCredentialsRepo,
+  type AppCredentialsRepo,
+} from "@pipeline/repositories/app-credentials.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import {
   resolveLinkedInCredentials,
   resolveTwitterCollectorCookie,
   resolveTwitterOAuth1Credentials,
+  resolveTwitterOAuth2Token,
 } from "@pipeline/services/credential-resolver.js";
 import {
   createRunStateService,
@@ -217,11 +224,11 @@ export function createProcessingWorker(
 function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   const db = getDb();
   const runState: RunStateService = createRunStateService(connection);
-  const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db);
-  const candidatesRepo: CandidatesRepo = createCandidatesRepo(db);
-  const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db);
-  const runLogRepo = createRunLogRepo(db);
-  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db);
+  const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db, BOOTSTRAP_CONTEXT);
+  const candidatesRepo: CandidatesRepo = createCandidatesRepo(db, BOOTSTRAP_CONTEXT);
+  const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db, BOOTSTRAP_CONTEXT);
+  const runLogRepo = createRunLogRepo(db, BOOTSTRAP_CONTEXT);
+  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db, BOOTSTRAP_CONTEXT);
   const loadFn: LoadCandidatesFn = loadCandidatesSince;
   // TAVILY_API_KEY resolved at worker startup. Env-driven only (no DB equivalent),
   // so process-startup resolution is correct — no per-job refresh needed.
@@ -241,10 +248,12 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   // job without a worker restart. Rettiwt accepts an undefined apiKey (guest
   // mode); the collector itself classifies the first auth failure as `auth`,
   // which the Slack notice surfaces.
-  const credentialsRepo = getSharedSocialCredentialsRepo();
+  const appCredentialsRepo = getSharedAppCredentialsRepo();
+  const socialCredentialsRepo = getSharedSocialCredentialsRepo();
   const twitterClient = async (): Promise<TwitterClient> => {
     const cookie = await resolveTwitterCollectorCookie({
-      repo: credentialsRepo,
+      appRepo: appCredentialsRepo,
+      socialRepo: socialCredentialsRepo,
       env: process.env,
     });
     const rettiwt = new Rettiwt({ apiKey: cookie?.apiKey });
@@ -255,7 +264,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
             refreshCsrfToken: () =>
               refreshRettiwtCsrfToken({
                 rettiwt,
-                repo: credentialsRepo,
+                repo: socialCredentialsRepo,
                 credentialSource: cookie.source,
               }),
           }
@@ -295,7 +304,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
 
 function buildDefaultDailyRunDeps(connection: IORedis): DailyRunDeps {
   const db = getDb();
-  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db);
+  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db, BOOTSTRAP_CONTEXT);
   const queue = new Queue<RunProcessJobPayload>("processing", { connection });
   return {
     redis: connection,
@@ -365,10 +374,11 @@ function warnInvalidTwitterConfig(
 
 export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
   const db = getDb();
-  const archiveRepo = createRunArchivesRepo(db);
-  const rawItemsRepo = createRawItemsRepo(db);
+  const archiveRepo = createRunArchivesRepo(db, BOOTSTRAP_CONTEXT);
+  const rawItemsRepo = createRawItemsRepo(db, BOOTSTRAP_CONTEXT);
   const socialTokensRepo = getSharedSocialTokensRepo();
   const socialCredentialsRepo = getSharedSocialCredentialsRepo();
+  const appCredentialsRepo = getSharedAppCredentialsRepo();
   const slackNotifier = createSlackNotifier({
     webhookUrl: process.env.SLACK_WEBHOOK_URL,
     archives: archiveRepo,
@@ -387,7 +397,8 @@ export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
     process.env.PUBLIC_BASE_URL ?? process.env.NEWSLETTER_BASE_URL ?? "";
 
   const linkedinCreds = await resolveLinkedInCredentials({
-    repo: socialCredentialsRepo,
+    appRepo: appCredentialsRepo,
+    socialRepo: socialCredentialsRepo,
     env: process.env,
   });
   const linkedinNotifier =
@@ -408,45 +419,72 @@ export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
       : null;
 
   const twitterLogger = createLogger("social.twitter");
-  const twitterCreds = await resolveTwitterOAuth1Credentials({
-    repo: socialCredentialsRepo,
+
+  // REQ-081: Prefer OAuth2 per-tenant tokens. Fall back to OAuth1a (legacy).
+  let twitterNotifier: TwitterNotifier | null = null;
+
+  // Try OAuth2 first — per-tenant tokens from social_tokens.
+  const oauth2Token = await resolveTwitterOAuth2Token({
+    appRepo: appCredentialsRepo,
+    socialRepo: socialCredentialsRepo,
+    tokensRepo: socialTokensRepo,
     env: process.env,
-  });
-  // Preserve the "partial env config" warning behavior when DB is empty:
-  // the resolver returns null on partial env, but operators expect a hint
-  // about which keys are missing. Only emit the warning when there's no DB row.
-  if (twitterCreds === null) {
-    const dbRow = await socialCredentialsRepo.getTwitter();
-    if (dbRow === null) {
-      const envConfig = readTwitterOAuth1Config();
-      if (envConfig.status === "partial") {
-        warnInvalidTwitterConfig(twitterLogger, envConfig.missing);
+  }).catch(() => null);
+  if (oauth2Token) {
+    twitterNotifier = createTwitterNotifier({
+      apiClient: createTwitterOAuth2ApiClient(oauth2Token.accessToken),
+      archives: archiveRepo,
+      rawItems: rawItemsRepo,
+      config: {
+        publicArchiveBaseUrl,
+        twitterIsPremium: process.env.TWITTER_IS_PREMIUM === "true",
+      },
+      logger: twitterLogger,
+    });
+  }
+
+  // Fall back to OAuth1a if no OAuth2 token is available.
+  if (!twitterNotifier) {
+    const twitterCreds = await resolveTwitterOAuth1Credentials({
+      appRepo: appCredentialsRepo,
+      socialRepo: socialCredentialsRepo,
+      env: process.env,
+    });
+    // Preserve the "partial env config" warning behavior when DB is empty:
+    // the resolver returns null on partial env, but operators expect a hint
+    // about which keys are missing. Only emit the warning when there's no DB row.
+    if (twitterCreds === null) {
+      const dbRow = await socialCredentialsRepo.getTwitter();
+      if (dbRow === null) {
+        const envConfig = readTwitterOAuth1Config();
+        if (envConfig.status === "partial") {
+          warnInvalidTwitterConfig(twitterLogger, envConfig.missing);
+        }
       }
     }
+    if (twitterCreds !== null) {
+      twitterNotifier = createTwitterNotifier({
+        apiClient: createTwitterApiClient({
+          appKey: twitterCreds.appKey,
+          appSecret: twitterCreds.appSecret,
+          accessToken: twitterCreds.accessToken,
+          accessSecret: twitterCreds.accessSecret,
+        }),
+        archives: archiveRepo,
+        rawItems: rawItemsRepo,
+        config: {
+          publicArchiveBaseUrl,
+          twitterIsPremium: process.env.TWITTER_IS_PREMIUM === "true",
+        },
+        logger: twitterLogger,
+      });
+    }
   }
-  const twitterNotifier =
-    twitterCreds !== null
-      ? createTwitterNotifier({
-          apiClient: createTwitterApiClient({
-            appKey: twitterCreds.appKey,
-            appSecret: twitterCreds.appSecret,
-            accessToken: twitterCreds.accessToken,
-            accessSecret: twitterCreds.accessSecret,
-          }),
-          archives: archiveRepo,
-          rawItems: rawItemsRepo,
-          config: {
-            publicArchiveBaseUrl,
-            twitterIsPremium: process.env.TWITTER_IS_PREMIUM === "true",
-          },
-          logger: twitterLogger,
-        })
-      : null;
 
   return {
     emailProvider: createEmailProvider(),
-    subscribersRepo: createPipelineSubscribersRepo(db),
-    emailSendsRepo: createPipelineEmailSendsRepo(db),
+    subscribersRepo: createPipelineSubscribersRepo(db, BOOTSTRAP_CONTEXT),
+    emailSendsRepo: createPipelineEmailSendsRepo(db, BOOTSTRAP_CONTEXT),
     archiveRepo,
     rawItemsRepo,
     renderNewsletter,
@@ -481,7 +519,7 @@ function buildDefaultSocialHealthDeps(): SocialHealthDeps {
 
 let cachedSocialTokensRepo: SocialTokensRepo | undefined;
 function getSharedSocialTokensRepo(): SocialTokensRepo {
-  cachedSocialTokensRepo ??= createSocialTokensRepo(getDb(), getCredentialCipher());
+  cachedSocialTokensRepo ??= createSocialTokensRepo(getDb(), BOOTSTRAP_CONTEXT, getCredentialCipher());
   return cachedSocialTokensRepo;
 }
 
@@ -490,7 +528,17 @@ function getSharedSocialCredentialsRepo(): SocialCredentialsRepo {
   cachedSocialCredentialsRepo ??= createSocialCredentialsRepo(
     getDb(),
     getCredentialCipher(),
+    BOOTSTRAP_CONTEXT,
   );
   return cachedSocialCredentialsRepo;
+}
+
+let cachedAppCredentialsRepo: AppCredentialsRepo | undefined;
+function getSharedAppCredentialsRepo(): AppCredentialsRepo {
+  cachedAppCredentialsRepo ??= createAppCredentialsRepo(
+    getDb(),
+    getCredentialCipher(),
+  );
+  return cachedAppCredentialsRepo;
 }
 

@@ -355,6 +355,46 @@ describe("startRun", () => {
     expect(payload.sourceTypes).not.toContain("web_search");
   });
 
+  // REQ-060: tenantId flows from settings to job payload
+  it("REQ-060: includes tenantId on payload when tenantId is provided in deps", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "req060-tenant-00000000-0001";
+    const tenantId = "tenant-abc-123";
+
+    await startRun(
+      baseSettings,
+      {
+        redis: redis as unknown as IORedis,
+        queue: q.queue,
+        runId: () => fixedId,
+        tenantId,
+      },
+    );
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as RunProcessJobPayload;
+    expect(payload.tenantId).toBe(tenantId);
+  });
+
+  // REQ-060: tenantId is omitted when deps doesn't provide one (degenerate / backward-compat)
+  it("REQ-060: omits tenantId from payload when tenantId is not provided", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "req060-no-tenant-00000001";
+
+    await startRun(baseSettings, {
+      redis: redis as unknown as IORedis,
+      queue: q.queue,
+      runId: () => fixedId,
+    });
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as RunProcessJobPayload;
+    expect(payload.tenantId).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(payload, "tenantId")).toBe(false);
+  });
+
   it("generates a uuid for runId when no generator is injected", async () => {
     const redis = makeRedis();
     const q = makeQueue();

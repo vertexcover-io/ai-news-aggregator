@@ -102,7 +102,8 @@ export function createDefaultCollectorHealthRouter(): Hono {
       // to honour the "takes effect without restart" freshness promise.
       const { createUserSettingsRepo } = await import("@api/repositories/user-settings.js");
       const { getDb } = await import("@newsletter/shared");
-      return createUserSettingsRepo(getDb()).get();
+      const { BOOTSTRAP_CONTEXT } = await import("@newsletter/shared/services");
+      return createUserSettingsRepo(getDb(), BOOTSTRAP_CONTEXT).get();
     },
   });
 }

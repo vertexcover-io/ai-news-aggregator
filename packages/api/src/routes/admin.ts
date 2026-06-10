@@ -68,7 +68,19 @@ export function createAdminRouter(opts: AdminRouterOptions): Hono {
     return c.json({ ok: true });
   });
 
-  app.get("/me", (c) => c.json({ admin: true }));
+  app.get("/me", (c) => {
+    const ctx = c.get("tenantCtx") as { role?: string; impersonating?: boolean; originalRole?: string } | undefined;
+    const role = ctx?.role ?? "tenant_admin";
+    if (ctx?.impersonating) {
+      // Phase 6: return impersonation info so the frontend can show the banner
+      return c.json({
+        admin: true,
+        role,
+        impersonating: true,
+      });
+    }
+    return c.json({ admin: true, role });
+  });
 
   return app;
 }

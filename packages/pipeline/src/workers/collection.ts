@@ -1,6 +1,7 @@
 import { Worker } from "bullmq";
 import { createRedisConnection } from "@newsletter/shared/redis";
-import { getDb } from "@newsletter/shared";
+import { getDb } from "@newsletter/shared"
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import { createLogger } from "@newsletter/shared/logger";
 import type { CollectorResult } from "@newsletter/shared";
 import { collectHn } from "@pipeline/collectors/hn.js";
@@ -42,7 +43,7 @@ let defaultDepsInstance: CollectionWorkerDeps | null = null;
 
 function getDefaultDeps(): CollectionWorkerDeps {
   defaultDepsInstance ??= {
-    rawItemsRepo: createRawItemsRepo(getDb()),
+    rawItemsRepo: createRawItemsRepo(getDb(), BOOTSTRAP_CONTEXT),
     runState: createRunStateService(createRedisConnection()),
   };
   return defaultDepsInstance;

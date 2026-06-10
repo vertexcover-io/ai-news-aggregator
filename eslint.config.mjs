@@ -161,4 +161,15 @@ export default tseslint.config(
     plugins: { newsletter },
     rules: { "newsletter/enforce-repository-access": "error" },
   },
+  // newsletter/enforce-tenant-scope: queries against tenant-owned tables in
+  // repository files must include a tenant scope filter. Only applies within
+  // repositories/ since that's the only layer allowed to access DB tables.
+  {
+    files: [
+      "packages/api/src/repositories/**/*.ts",
+      "packages/pipeline/src/repositories/**/*.ts",
+    ],
+    plugins: { newsletter },
+    rules: { "newsletter/enforce-tenant-scope": "warn" },
+  },
 );

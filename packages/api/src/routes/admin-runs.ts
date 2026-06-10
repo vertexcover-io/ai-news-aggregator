@@ -26,6 +26,7 @@ import {
   InvalidSourceKeyError,
 } from "@api/services/run-source-items.js";
 import { NotFoundError } from "@api/lib/errors.js";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -122,8 +123,8 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
 export function createDefaultAdminRunsRouter(): Hono {
   return createAdminRunsRouter({
     redis: createRedisConnection(),
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getRunLogRepo: () => createRunLogRepo(defaultGetDb()),
+    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
+    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
+    getRunLogRepo: () => createRunLogRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
   });
 }

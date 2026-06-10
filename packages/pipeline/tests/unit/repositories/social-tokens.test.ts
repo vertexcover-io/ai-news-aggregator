@@ -11,6 +11,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import {
   createSocialTokensRepo,
   type SaveSocialTokenInput,
@@ -143,7 +144,7 @@ function cipherB() {
 describe("SocialTokensRepo (cipher-aware) -- encrypt->save->read round-trip (REQ-006)", () => {
   it("getToken returns the original plaintext access and refresh tokens after saveToken", async () => {
     const handle = makeFakeDb();
-    const repo = createSocialTokensRepo(handle.db, cipherA());
+    const repo = createSocialTokensRepo(handle.db, BOOTSTRAP_CONTEXT, cipherA());
 
     const expiresAt = new Date("2026-12-01T00:00:00Z");
     const input: SaveSocialTokenInput = {
@@ -167,7 +168,7 @@ describe("SocialTokensRepo (cipher-aware) -- encrypt->save->read round-trip (REQ
 
   it("withTokenLock callback receives decrypted accessToken and refreshToken", async () => {
     const handle = makeFakeDb();
-    const repo = createSocialTokensRepo(handle.db, cipherA());
+    const repo = createSocialTokensRepo(handle.db, BOOTSTRAP_CONTEXT, cipherA());
 
     await repo.saveToken("linkedin", {
       accessToken: "lock-access-token",
@@ -175,7 +176,7 @@ describe("SocialTokensRepo (cipher-aware) -- encrypt->save->read round-trip (REQ
       expiresAt: new Date("2026-12-01T00:00:00Z"),
     });
 
-    const repo2 = createSocialTokensRepo(handle.db, cipherA());
+    const repo2 = createSocialTokensRepo(handle.db, BOOTSTRAP_CONTEXT, cipherA());
 
     let observedAccessToken: string | null = null;
     let observedRefreshToken: string | null = null;
@@ -198,7 +199,7 @@ describe("SocialTokensRepo (cipher-aware) -- encrypt->save->read round-trip (REQ
 describe("SocialTokensRepo (cipher-aware) -- raw DB value is ciphertext (REQ-006)", () => {
   it("the raw encryptedFields stored in the DB contains no plaintext token substring", async () => {
     const handle = makeFakeDb();
-    const repo = createSocialTokensRepo(handle.db, cipherA());
+    const repo = createSocialTokensRepo(handle.db, BOOTSTRAP_CONTEXT, cipherA());
 
     const accessToken = "super-secret-access-token-12345";
     const refreshToken = "ultra-secret-refresh-token-67890";
@@ -233,7 +234,7 @@ describe("SocialTokensRepo (cipher-aware) -- wrong SESSION_SECRET returns null o
   it("getToken returns null when trying to decrypt with a different SESSION_SECRET", async () => {
     const handle = makeFakeDb();
 
-    const repoA = createSocialTokensRepo(handle.db, cipherA());
+    const repoA = createSocialTokensRepo(handle.db, BOOTSTRAP_CONTEXT, cipherA());
     await repoA.saveToken("linkedin", {
       accessToken: "secret-at",
       refreshToken: "secret-rt",
@@ -242,14 +243,14 @@ describe("SocialTokensRepo (cipher-aware) -- wrong SESSION_SECRET returns null o
 
     // A rotated SESSION_SECRET should cause the pipeline to treat the token as
     // missing (return null) so jobs skip gracefully rather than crashing.
-    const repoB = createSocialTokensRepo(handle.db, cipherB());
+    const repoB = createSocialTokensRepo(handle.db, BOOTSTRAP_CONTEXT, cipherB());
     await expect(repoB.getToken("linkedin")).resolves.toBeNull();
   });
 
   it("withTokenLock passes null to callback when the stored token was encrypted with a different SESSION_SECRET", async () => {
     const handle = makeFakeDb();
 
-    const repoA = createSocialTokensRepo(handle.db, cipherA());
+    const repoA = createSocialTokensRepo(handle.db, BOOTSTRAP_CONTEXT, cipherA());
     await repoA.saveToken("twitter", {
       accessToken: "secret-at",
       refreshToken: "secret-rt",
@@ -258,7 +259,7 @@ describe("SocialTokensRepo (cipher-aware) -- wrong SESSION_SECRET returns null o
 
     // A rotated SESSION_SECRET should cause the pipeline to treat the token as
     // missing (null row) so the job skips gracefully.
-    const repoB = createSocialTokensRepo(handle.db, cipherB());
+    const repoB = createSocialTokensRepo(handle.db, BOOTSTRAP_CONTEXT, cipherB());
     let observedRow: unknown = "untouched";
     await repoB.withTokenLock("twitter", (row) => {
       observedRow = row;
@@ -275,13 +276,13 @@ describe("SocialTokensRepo (cipher-aware) -- wrong SESSION_SECRET returns null o
 describe("SocialTokensRepo (cipher-aware) -- null row handling", () => {
   it("getToken returns null when no row exists", async () => {
     const handle = makeFakeDb();
-    const repo = createSocialTokensRepo(handle.db, cipherA());
+    const repo = createSocialTokensRepo(handle.db, BOOTSTRAP_CONTEXT, cipherA());
     expect(await repo.getToken("linkedin")).toBeNull();
   });
 
   it("withTokenLock passes null to callback when no row exists", async () => {
     const handle = makeFakeDb();
-    const repo = createSocialTokensRepo(handle.db, cipherA());
+    const repo = createSocialTokensRepo(handle.db, BOOTSTRAP_CONTEXT, cipherA());
     let observedRow: unknown = "untouched";
     await repo.withTokenLock("linkedin", (row) => {
       observedRow = row;
@@ -298,7 +299,7 @@ describe("SocialTokensRepo (cipher-aware) -- null row handling", () => {
 describe("SocialTokensRepo (cipher-aware) -- withTokenLock saves encrypted tokens", () => {
   it("token saved inside withTokenLock callback is encrypted at rest", async () => {
     const handle = makeFakeDb();
-    const repo = createSocialTokensRepo(handle.db, cipherA());
+    const repo = createSocialTokensRepo(handle.db, BOOTSTRAP_CONTEXT, cipherA());
 
     const newAccessToken = "fresh-access-plaintext";
     const newRefreshToken = "fresh-refresh-plaintext";
