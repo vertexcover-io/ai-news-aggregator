@@ -49,6 +49,15 @@ function renderPage(entries: PublicMustReadEntry[]): ReturnType<typeof render> {
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   qc.setQueryData(["must-read", "list"], entries);
+  qc.setQueryData(["tenant", "branding"], {
+    name: "AgentLoop",
+    headline: "Your daily AI briefing",
+    topicStrip: null,
+    subtagline: null,
+    logoVersion: 0,
+    hasLogo: false,
+    nav: { sources: true, mustRead: true, built: true },
+  });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={["/must-read"]}>

@@ -6,6 +6,7 @@ import {
 } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { BrandMark } from "./BrandMark";
+import { useBrand } from "../../context/TenantBrandingContext";
 import { postSubscribe } from "../../api/subscribe";
 import { captureBrowserEvent } from "../../lib/analytics";
 import { markSubscribed } from "../../lib/subscriptionStorage";
@@ -79,7 +80,9 @@ function FooterSubscribeField(): ReactElement {
 
 export function Footer(): ReactElement {
   const { pathname } = useLocation();
-  const showColophon = pathname !== "/built";
+  const brand = useBrand();
+  const isCanonTenant = brand.nav.built;
+  const showColophon = isCanonTenant && pathname !== "/built";
   return (
     <footer className="mt-18">
       {showColophon ? (
@@ -87,8 +90,8 @@ export function Footer(): ReactElement {
           <hr className="border-0 border-t border-[#e7e2d6] m-0" />
           <div className="py-12 text-center">
             <p className="font-serif italic font-normal text-[22px] leading-[1.5] text-[#14110d] mx-auto max-w-[58ch] tracking-[-0.006em] m-0">
-              AgentLoop is built by agents — using the same harness engineering
-              practices it covers.{" "}
+              {brand.name} is built by agents — using the same harness
+              engineering practices it covers.{" "}
               <Link
                 to="/built"
                 className="text-[#8c3a1e] border-b border-[#8c3a1e]"
@@ -103,49 +106,77 @@ export function Footer(): ReactElement {
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_1.2fr_1fr] gap-4 sm:gap-8 items-center pt-6 pb-2">
         <div className="font-mono uppercase text-[10.5px] tracking-[0.22em] text-[#6b6557]">
           <span className="flex items-center gap-2">
-            <BrandMark size={18} className="shrink-0 text-[#8c3a1e]" />
+            <BrandMark
+              size={18}
+              logoUrl={brand.logoUrl}
+              label={brand.name}
+              className="shrink-0 text-[#8c3a1e]"
+            />
             <strong className="text-[#14110d] font-semibold tracking-[0.16em]">
-              AGENTLOOP
+              {brand.name}
             </strong>
           </span>
-          A{" "}
-          <a
-            href="https://blog.vertexcover.io"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
-          >
-            Vertexcover Labs
-          </a>{" "}
-          publication
+          {isCanonTenant ? (
+            <>
+              A{" "}
+              <a
+                href="https://blog.vertexcover.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
+              >
+                Vertexcover Labs
+              </a>{" "}
+              publication
+            </>
+          ) : null}
         </div>
         <div>
           <FooterSubscribeField />
         </div>
         <div className="font-mono uppercase text-[10.5px] tracking-[0.22em] text-[#6b6557] text-left sm:text-right">
-          <Link to="/must-read" className="text-[#6b6557] hover:text-[#8c3a1e]">
-            MUST READ
-          </Link>
-          <span className="mx-2 text-[#e7e2d6]">·</span>
+          {brand.nav.mustRead ? (
+            <>
+              <Link
+                to="/must-read"
+                className="text-[#6b6557] hover:text-[#8c3a1e]"
+              >
+                MUST READ
+              </Link>
+              <span className="mx-2 text-[#e7e2d6]">·</span>
+            </>
+          ) : null}
           <Link to="/sources" className="text-[#6b6557] hover:text-[#8c3a1e]">
             SOURCES
           </Link>
-          <span className="mx-2 text-[#e7e2d6]">·</span>
-          <Link to="/built" className="text-[#6b6557] hover:text-[#8c3a1e]">
-            HOW IT&apos;S BUILT
-          </Link>
+          {isCanonTenant ? (
+            <>
+              <span className="mx-2 text-[#e7e2d6]">·</span>
+              <Link
+                to="/built"
+                className="text-[#6b6557] hover:text-[#8c3a1e]"
+              >
+                HOW IT&apos;S BUILT
+              </Link>
+            </>
+          ) : null}
         </div>
       </div>
       <div className="py-5 text-center font-mono uppercase text-[10px] tracking-[0.22em] text-[#6b6557]">
-        © {new Date().getFullYear()}{" "}
-        <a
-          href="https://blog.vertexcover.io"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
-        >
-          Vertexcover Labs
-        </a>
+        © {new Date().getFullYear()} {brand.name}
+        {isCanonTenant ? (
+          <>
+            {" "}
+            <a
+              href="https://blog.vertexcover.io"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
+            >
+              Vertexcover Labs
+            </a>
+          </>
+        ) : null}
       </div>
     </footer>
   );

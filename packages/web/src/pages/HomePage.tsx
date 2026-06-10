@@ -2,39 +2,62 @@ import { useEffect, type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getHome } from "../api/home";
 import { setMeta } from "../lib/meta";
+import { useBrand } from "../context/TenantBrandingContext";
 import { ArchiveRow } from "../components/archive-listing/ArchiveRow";
 import { TodaysIssueBlock } from "../components/home/TodaysIssueBlock";
 import { FromTheCanonBlock } from "../components/home/FromTheCanonBlock";
 import { ElsewhereStrip } from "../components/home/ElsewhereStrip";
 import { InlineSubscribeCard } from "../components/shell/InlineSubscribeCard";
 
-const TAGLINE = "The daily read for people who ship with agents.";
+const DEFAULT_TOPICS = [
+  "AGENTIC CODING",
+  "HARNESS ENGINEERING",
+  "CONTEXT ENGINEERING",
+  "THE SOFTWARE FACTORY",
+];
+const DEFAULT_SUBTAGLINE =
+  "No model releases. No benchmarks. No discourse. Just the craft.";
+
+function splitTopics(strip: string | null): string[] {
+  if (strip === null) return DEFAULT_TOPICS;
+  const items = strip
+    .split("·")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return items.length > 0 ? items : DEFAULT_TOPICS;
+}
 
 function Hero(): ReactElement {
+  const brand = useBrand();
+  const headline = brand.headline;
+  const topics = splitTopics(brand.topicStrip);
+  const subtagline = brand.subtagline ?? DEFAULT_SUBTAGLINE;
   return (
     <section className="pt-16 pb-14 text-center">
       <h1 className="font-serif font-medium text-[clamp(40px,6.4vw,68px)] leading-[1.02] tracking-[-0.018em] m-0 mx-auto max-w-[14ch] text-[#14110d]">
-        The daily read for people who ship with{" "}
-        <span className="text-[#8c3a1e] italic font-medium">agents.</span>
+        {headline}
       </h1>
       <div className="mt-9 mx-auto font-mono text-[11px] tracking-[0.22em] uppercase text-[#14110d] max-w-[820px] leading-[2]">
-        AGENTIC&nbsp;CODING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> HARNESS&nbsp;ENGINEERING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> CONTEXT&nbsp;ENGINEERING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> THE&nbsp;SOFTWARE&nbsp;FACTORY
+        {topics.map((topic, idx) => (
+          <span key={topic}>
+            {idx > 0 ? <span className="text-[#8c3a1e] mx-2.5">·</span> : null}
+            {topic.replace(/ /g, " ")}
+          </span>
+        ))}
       </div>
       <div className="mt-5 mx-auto font-mono text-[10.5px] tracking-[0.16em] uppercase text-[#6b6557] max-w-[760px]">
-        No model releases. No benchmarks. No discourse. Just the craft.
+        {subtagline}
       </div>
     </section>
   );
 }
 
 export function HomePage(): ReactElement {
+  const brand = useBrand();
   useEffect(() => {
-    document.title = "AgentLoop — The daily read for people who ship with agents.";
-    setMeta("description", TAGLINE);
-  }, []);
+    document.title = `${brand.name} — ${brand.headline}`;
+    setMeta("description", brand.headline);
+  }, [brand.name, brand.headline]);
 
   const { data } = useQuery({
     queryKey: ["home"],

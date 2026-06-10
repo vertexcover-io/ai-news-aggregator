@@ -4,18 +4,37 @@ interface BrandMarkProps {
   /** Rendered size in px (square). */
   size?: number;
   className?: string;
+  /** Tenant logo URL (versioned). When set, renders the uploaded logo. */
+  logoUrl?: string | null;
+  /** Accessible label / alt text for the mark (tenant name). */
+  label?: string;
 }
 
 /**
- * The AGENTLOOP loop mark: a hairline rust ring broken at the lower-right
- * (the day's loop closes when the issue ships) wrapped around a solid focal
- * dot (many sources converge to one curated digest). Stroke uses currentColor
- * so callers can recolor it via text color; defaults to the rust accent.
+ * The newsletter mark. When the tenant has uploaded a logo (`logoUrl`), it is
+ * rendered as a square image; otherwise we fall back to the default loop glyph:
+ * a hairline rust ring broken at the lower-right wrapped around a solid focal
+ * dot. The glyph's stroke uses currentColor so callers can recolor it via text
+ * color; defaults to the rust accent.
  */
 export function BrandMark({
   size = 28,
   className,
+  logoUrl = null,
+  label = "Newsletter",
 }: BrandMarkProps): ReactElement {
+  if (logoUrl !== null) {
+    return (
+      <img
+        src={logoUrl}
+        width={size}
+        height={size}
+        alt={label}
+        className={className}
+        style={{ width: size, height: size, objectFit: "contain" }}
+      />
+    );
+  }
   return (
     <svg
       width={size}
@@ -23,7 +42,7 @@ export function BrandMark({
       viewBox="0 0 100 100"
       fill="none"
       role="img"
-      aria-label="AGENTLOOP"
+      aria-label={label}
       className={className}
     >
       <circle

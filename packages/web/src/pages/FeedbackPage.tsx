@@ -1,5 +1,6 @@
 import { useEffect, type ReactElement } from "react";
 import { useSearchParams, Navigate, Link } from "react-router-dom";
+import { useBrand } from "../context/TenantBrandingContext";
 
 interface StatusContent {
   icon: ReactElement;
@@ -140,10 +141,11 @@ export function FeedbackPage(): ReactElement {
   const [searchParams] = useSearchParams();
   const status = searchParams.get("status") ?? "";
   const rating = searchParams.get("v");
+  const brand = useBrand();
 
   useEffect(() => {
-    document.title = "Feedback — AgentLoop";
-  }, [status]);
+    document.title = `Feedback — ${brand.name}`;
+  }, [status, brand.name]);
 
   const content = getContent(status, rating);
   if (!content) {

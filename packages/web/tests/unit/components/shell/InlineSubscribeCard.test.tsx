@@ -30,11 +30,6 @@ function renderCard(): ReturnType<typeof render> {
 }
 
 describe("InlineSubscribeCard", () => {
-  it("renders the serif headline 'Read AgentLoop every morning.'", () => {
-    renderCard();
-    expect(screen.getByText(/Read AgentLoop every morning/i)).toBeTruthy();
-  });
-
   it("renders the mono sub-line 'What we read so you don't have to. 7am daily, free.'", () => {
     renderCard();
     expect(

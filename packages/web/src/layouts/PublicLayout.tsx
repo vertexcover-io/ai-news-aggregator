@@ -2,6 +2,7 @@ import { useEffect, type ReactElement } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Masthead } from "../components/shell/Masthead";
 import { Footer } from "../components/shell/Footer";
+import { TenantBrandingProvider } from "../context/TenantBrandingContext";
 
 export function PublicLayout(): ReactElement {
   const { pathname, hash } = useLocation();
@@ -28,12 +29,14 @@ export function PublicLayout(): ReactElement {
   }, [pathname, hash]);
 
   return (
-    <div className="min-h-screen bg-[#fafaf7] text-[#14110d]">
-      <div className="max-w-[960px] mx-auto px-4 sm:px-6 md:px-8 pt-7 pb-18">
-        <Masthead />
-        <Outlet />
-        <Footer />
+    <TenantBrandingProvider>
+      <div className="min-h-screen bg-[#fafaf7] text-[#14110d]">
+        <div className="max-w-[960px] mx-auto px-4 sm:px-6 md:px-8 pt-7 pb-18">
+          <Masthead />
+          <Outlet />
+          <Footer />
+        </div>
       </div>
-    </div>
+    </TenantBrandingProvider>
   );
 }

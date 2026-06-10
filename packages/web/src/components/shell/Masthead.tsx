@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAdminSession } from "../../hooks/useAdminSession";
+import { useBrand } from "../../context/TenantBrandingContext";
 import { BrandMark } from "./BrandMark";
 
 type ActiveNavItem = "must-read" | "sources" | "built" | null;
@@ -47,6 +48,7 @@ export function Masthead(): ReactElement {
   const active = deriveActive(pathname);
   const { data: session } = useAdminSession();
   const isAdmin = session?.admin === true;
+  const brand = useBrand();
 
   return (
     <header
@@ -56,44 +58,56 @@ export function Masthead(): ReactElement {
       <div className="block leading-none">
         <Link
           to="/"
-          aria-label="AGENTLOOP — home"
+          aria-label={`${brand.name} — home`}
           className="flex items-center gap-2.5 sm:gap-3"
         >
           <BrandMark
             size={30}
+            logoUrl={brand.logoUrl}
+            label={brand.name}
             className="shrink-0 text-[#8c3a1e] sm:h-9 sm:w-9"
           />
           <div className="font-mono text-[22px] sm:text-[30px] font-semibold tracking-[0.12em] text-[#14110d] uppercase">
-            AGENTLOOP
+            {brand.name}
           </div>
         </Link>
-        <div className="mt-2 font-mono text-[10.5px] tracking-[0.22em] uppercase text-[#6b6557]">
-          A{" "}
-          <a
-            href="https://blog.vertexcover.io"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
-          >
-            Vertexcover Labs
-          </a>{" "}
-          publication
-        </div>
+        {brand.nav.built ? (
+          <div className="mt-2 font-mono text-[10.5px] tracking-[0.22em] uppercase text-[#6b6557]">
+            A{" "}
+            <a
+              href="https://blog.vertexcover.io"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
+            >
+              Vertexcover Labs
+            </a>{" "}
+            publication
+          </div>
+        ) : null}
       </div>
 
       <nav
         aria-label="Primary"
         className="flex items-baseline gap-0 text-[12px]"
       >
-        <NavLink to="/must-read" active={active === "must-read"} hideOnMobile>
-          Must Read
-        </NavLink>
-        <span
-          aria-hidden="true"
-          className="hidden sm:inline mx-3 text-[#6b6557]"
-        >
-          ·
-        </span>
+        {brand.nav.mustRead ? (
+          <>
+            <NavLink
+              to="/must-read"
+              active={active === "must-read"}
+              hideOnMobile
+            >
+              Must Read
+            </NavLink>
+            <span
+              aria-hidden="true"
+              className="hidden sm:inline mx-3 text-[#6b6557]"
+            >
+              ·
+            </span>
+          </>
+        ) : null}
         <NavLink to="/sources" active={active === "sources"} hideOnMobile>
           Sources
         </NavLink>
@@ -103,15 +117,19 @@ export function Masthead(): ReactElement {
         >
           ·
         </span>
-        <NavLink to="/built" active={active === "built"} hideOnMobile>
-          How it&apos;s built
-        </NavLink>
-        <span
-          aria-hidden="true"
-          className="hidden sm:inline mx-3 text-[#6b6557]"
-        >
-          ·
-        </span>
+        {brand.nav.built ? (
+          <>
+            <NavLink to="/built" active={active === "built"} hideOnMobile>
+              How it&apos;s built
+            </NavLink>
+            <span
+              aria-hidden="true"
+              className="hidden sm:inline mx-3 text-[#6b6557]"
+            >
+              ·
+            </span>
+          </>
+        ) : null}
         {isAdmin ? (
           <>
             <Link

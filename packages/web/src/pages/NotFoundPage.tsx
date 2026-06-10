@@ -2,12 +2,14 @@ import type { ReactElement } from "react";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { setMeta } from "../lib/meta";
+import { useBrand } from "../context/TenantBrandingContext";
 
 export function NotFoundPage(): ReactElement {
+  const brand = useBrand();
   useEffect(() => {
-    document.title = "Not found — AgentLoop";
+    document.title = `Not found — ${brand.name}`;
     setMeta("description", "The page you were looking for isn't here.");
-  }, []);
+  }, [brand.name]);
 
   return (
     <main className="mx-auto max-w-[680px] px-4 sm:px-6 md:px-8 py-24 text-center">
@@ -34,18 +36,22 @@ export function NotFoundPage(): ReactElement {
         >
           Today&apos;s issue →
         </Link>
-        <Link
-          to="/must-read"
-          className="font-mono uppercase text-[11.5px] tracking-[0.2em] text-[#6b6557] hover:text-[#14110d]"
-        >
-          The canon →
-        </Link>
-        <Link
-          to="/built"
-          className="font-mono uppercase text-[11.5px] tracking-[0.2em] text-[#6b6557] hover:text-[#14110d]"
-        >
-          How it&apos;s built →
-        </Link>
+        {brand.nav.mustRead ? (
+          <Link
+            to="/must-read"
+            className="font-mono uppercase text-[11.5px] tracking-[0.2em] text-[#6b6557] hover:text-[#14110d]"
+          >
+            The canon →
+          </Link>
+        ) : null}
+        {brand.nav.built ? (
+          <Link
+            to="/built"
+            className="font-mono uppercase text-[11.5px] tracking-[0.2em] text-[#6b6557] hover:text-[#14110d]"
+          >
+            How it&apos;s built →
+          </Link>
+        ) : null}
       </nav>
     </main>
   );

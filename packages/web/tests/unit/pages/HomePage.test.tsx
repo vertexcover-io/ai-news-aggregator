@@ -62,12 +62,23 @@ function makeCanon(overrides: Partial<PublicMustReadEntry> = {}): PublicMustRead
   };
 }
 
+const TEST_HEADLINE = "The daily read for people who ship with agents.";
+
 function renderHome(payload: HomePagePayload): ReturnType<typeof render> {
   mockGetHome.mockResolvedValue(payload);
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   qc.setQueryData(["home"], payload);
+  qc.setQueryData(["tenant", "branding"], {
+    name: "AgentLoop",
+    headline: TEST_HEADLINE,
+    topicStrip: null,
+    subtagline: null,
+    logoVersion: 0,
+    hasLogo: false,
+    nav: { sources: true, mustRead: true, built: true },
+  });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={["/"]}>

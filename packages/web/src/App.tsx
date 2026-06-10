@@ -11,6 +11,12 @@ import { BuiltPage } from "./pages/BuiltPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { SourcesPage } from "./pages/SourcesPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
+import { SignupPage } from "./pages/SignupPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
+import { SuperAdminPage } from "./pages/SuperAdminPage";
+import { TenantSettingsPage } from "./pages/TenantSettingsPage";
 import { ConfirmPage } from "./pages/ConfirmPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
@@ -45,6 +51,15 @@ export const routes: RouteObject[] = [
     ],
   },
   { path: "/admin/login", element: <AdminLoginPage /> },
+  { path: "/signup", element: <SignupPage /> },
+  { path: "/login", element: <AdminLoginPage /> },
+  { path: "/forgot", element: <ForgotPasswordPage /> },
+  { path: "/reset", element: <ResetPasswordPage /> },
+  {
+    path: "/onboarding",
+    element: <RequireAdmin />,
+    children: [{ index: true, element: <OnboardingPage /> }],
+  },
   {
     path: "/admin",
     element: <RequireAdmin />,
@@ -53,6 +68,8 @@ export const routes: RouteObject[] = [
         element: <AdminLayout />,
         children: [
           { index: true, element: <DashboardPage /> },
+          { path: "tenant-settings", element: <TenantSettingsPage /> },
+          { path: "tenants", element: <SuperAdminPage /> },
           { path: "runs/:runId", element: <RunObservabilityPage /> },
           { path: "review/:runId", element: <ReviewPage /> },
           { path: "sources/:runId", element: <SourcesPreviewPage /> },
