@@ -49,6 +49,34 @@ export function toCronMinusMinutes(hhmm: string, minutesBefore: number): string 
   return `${minute} ${hour} * * *`;
 }
 
+// Start-time jitter (F46/NF4): tenants sharing a nominal pipeline time are spread
+// across a jitter window so they don't all fire at once (thundering herd). The
+// offset is a DETERMINISTIC function of tenantId — reconcile is idempotent and the
+// same tenant always lands on the same minute (no drift across re-reconciles).
+// Defaults to 0 (no jitter) so single-tenant AGENTLOOP behavior is unchanged; an
+// operator sets PIPELINE_JITTER_WINDOW_MINUTES once multiple tenants share times.
+export const PIPELINE_JITTER_WINDOW_MINUTES = Number(
+  process.env.PIPELINE_JITTER_WINDOW_MINUTES ?? "0",
+);
+
+export function jitterMinutes(tenantId: string, windowMinutes: number): number {
+  if (windowMinutes <= 0) return 0;
+  let hash = 0;
+  for (let i = 0; i < tenantId.length; i += 1) {
+    hash = (hash * 31 + tenantId.charCodeAt(i)) % 2147483647;
+  }
+  return hash % windowMinutes;
+}
+
+export function toCronPlusMinutes(hhmm: string, minutesAfter: number): string {
+  const [h, m] = hhmm.split(":").map((s) => Number(s));
+  const dayMinutes = 24 * 60;
+  const total = (h * 60 + m + minutesAfter + dayMinutes) % dayMinutes;
+  const hour = Math.floor(total / 60);
+  const minute = total % 60;
+  return `${minute} ${hour} * * *`;
+}
+
 export async function reconcilePipelineSchedule(
   queue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">,
   settings: UserSettings,
@@ -65,9 +93,13 @@ export async function reconcilePipelineSchedule(
     }
     return;
   }
+  const jitteredPipelineTime = toCronPlusMinutes(
+    pipelineTime,
+    jitterMinutes(tenantId, PIPELINE_JITTER_WINDOW_MINUTES),
+  );
   await queue.upsertJobScheduler(
     pipelineKey,
-    { pattern: toCron(pipelineTime), tz: settings.scheduleTimezone },
+    { pattern: jitteredPipelineTime, tz: settings.scheduleTimezone },
     { name: "pipeline-run", data: { tenantId } },
   );
   await queue.upsertJobScheduler(

@@ -12,6 +12,8 @@ import {
   reconcileDailyRunSchedule,
   toCronMinusMinutes,
   toCron,
+  toCronPlusMinutes,
+  jitterMinutes,
 } from "@api/services/scheduler.js";
 
 // Default (no explicit tenant) reconciliation namespaces every scheduler key
@@ -194,4 +196,33 @@ describe("reconcileDailyRunSchedule", () => {
   // timezone engine, not the scheduler. The scheduler only emits the tz-naive
   // cron string (tested by toCron) + the IANA tz string (passed through to
   // upsertJobScheduler), both covered above.
+});
+
+describe("jitterMinutes / toCronPlusMinutes (F46 start-time jitter)", () => {
+  it("returns 0 when the window is 0 (jitter disabled)", () => {
+    expect(jitterMinutes("any-tenant", 0)).toBe(0);
+  });
+
+  it("is deterministic and stable for a given tenant + window", () => {
+    const a = jitterMinutes("11111111-1111-1111-1111-111111111111", 5);
+    const b = jitterMinutes("11111111-1111-1111-1111-111111111111", 5);
+    expect(a).toBe(b);
+    expect(a).toBeGreaterThanOrEqual(0);
+    expect(a).toBeLessThan(5);
+  });
+
+  it("spreads different tenants across the window (not all identical)", () => {
+    const offsets = [
+      "00000000-0000-0000-0000-000000000000",
+      "11111111-1111-1111-1111-111111111111",
+      "22222222-2222-2222-2222-222222222222",
+      "33333333-3333-3333-3333-333333333333",
+    ].map((t) => jitterMinutes(t, 30));
+    expect(new Set(offsets).size).toBeGreaterThan(1);
+  });
+
+  it("offsets a cron pattern forward, wrapping past midnight", () => {
+    expect(toCronPlusMinutes("09:00", 7)).toBe("7 9 * * *");
+    expect(toCronPlusMinutes("23:58", 5)).toBe("3 0 * * *");
+  });
 });
