@@ -216,7 +216,7 @@ export function buildApp(deps: BuildAppDeps): Hono {
 
   app.route("/api/runs", gatedWrap(gate, deps.runsRouter));
   app.route("/api/settings", gatedWrap(gate, deps.settingsRouter));
-  app.route("/api/settings", gatedWrap(gate, deps.sendingDomainRouter));
+  app.route("/api/settings/domain", gatedWrap(gate, deps.sendingDomainRouter));
   app.route("/api/settings/notifications", gatedWrap(gate, deps.notificationsRouter));
   app.route("/api/settings/features", gatedWrap(gate, deps.featuresRouter));
 

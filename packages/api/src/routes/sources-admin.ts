@@ -4,7 +4,7 @@ import {
   createLogger,
   getDb as defaultGetDb,
 } from "@newsletter/shared";
-import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
+import { tenantScoped, type ScopedTenantContext } from "@newsletter/shared/services";
 import {
   createSourcesRepo,
   type SourcesRepo,
@@ -26,7 +26,8 @@ const patchSourceSchema = z.object({
 });
 
 export interface SourcesAdminRouterDeps {
-  getSourcesRepo: () => SourcesRepo;
+  getSourcesRepo: (scoped: ScopedTenantContext) => SourcesRepo;
+  getDb: () => ReturnType<typeof defaultGetDb>;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -34,9 +35,16 @@ export function createSourcesAdminRouter(deps: SourcesAdminRouterDeps): Hono {
   const logger = deps.logger ?? createLogger("api:sources-admin");
   const app = new Hono();
 
+  // Resolve per-request tenant context.
+  function repo(c: { get: <T>(key: string) => T }): SourcesRepo {
+    const ctx = c.get("tenantCtx") as { tenantId: string } | undefined;
+    if (!ctx) throw new Error("tenantCtx not set — requireAuth must run first");
+    return deps.getSourcesRepo(tenantScoped({ tenantId: ctx.tenantId, role: "tenant_admin" }));
+  }
+
   // GET / — list all sources for the tenant
   app.get("/", async (c) => {
-    const sources = await deps.getSourcesRepo().list();
+    const sources = await repo(c).list();
     return c.json(sources);
   });
 
@@ -54,7 +62,7 @@ export function createSourcesAdminRouter(deps: SourcesAdminRouterDeps): Hono {
       return c.json({ error: parsed.error.message, issues: parsed.error.issues }, 400);
     }
 
-    const source = await deps.getSourcesRepo().create({
+    const source = await repo(c).create({
       type: parsed.data.type,
       config: parsed.data.config,
       enabled: parsed.data.enabled,
@@ -80,7 +88,7 @@ export function createSourcesAdminRouter(deps: SourcesAdminRouterDeps): Hono {
       return c.json({ error: parsed.error.message, issues: parsed.error.issues }, 400);
     }
 
-    const updated = await deps.getSourcesRepo().update(id, parsed.data);
+    const updated = await repo(c).update(id, parsed.data);
     if (!updated) {
       return c.json({ error: "not found" }, 404);
     }
@@ -92,7 +100,7 @@ export function createSourcesAdminRouter(deps: SourcesAdminRouterDeps): Hono {
   // DELETE /:id — remove a source
   app.delete("/:id", async (c) => {
     const id = c.req.param("id");
-    const deleted = await deps.getSourcesRepo().delete(id);
+    const deleted = await repo(c).delete(id);
     if (!deleted) {
       return c.json({ error: "not found" }, 404);
     }
@@ -105,6 +113,7 @@ export function createSourcesAdminRouter(deps: SourcesAdminRouterDeps): Hono {
 
 export function createDefaultSourcesAdminRouter(): Hono {
   return createSourcesAdminRouter({
-    getSourcesRepo: () => createSourcesRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
+    getDb: () => defaultGetDb(),
+    getSourcesRepo: (scoped) => createSourcesRepo(defaultGetDb(), scoped),
   });
 }

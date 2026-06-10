@@ -108,7 +108,7 @@ export function AdminLoginPage(): ReactElement {
         </form>
         <div className="flex flex-col gap-2 text-sm text-center">
           <Link
-            to="/admin/forgot-password"
+            to="/forgot-password"
             className="text-muted-foreground hover:text-foreground min-h-[44px] inline-flex items-center justify-center"
           >
             Forgot password?

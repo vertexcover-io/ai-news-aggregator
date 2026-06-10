@@ -29,7 +29,7 @@ export function createSendingDomainRouter(deps: SendingDomainRouteDeps): Hono {
   /**
    * GET /domain — Return the current domain status for the tenant.
    */
-  app.get("/domain", async (c) => {
+  app.get("/", async (c) => {
     const tenantCtx = c.get("tenantCtx") as { tenantId: string } | undefined;
     const tenantId = tenantCtx?.tenantId;
     if (!tenantId) {
@@ -54,7 +54,7 @@ export function createSendingDomainRouter(deps: SendingDomainRouteDeps): Hono {
    * Stores the returned domainId, DNS records, and status ("pending") on the tenant.
    * REQ-084.
    */
-  app.post("/domain", async (c) => {
+  app.post("/", async (c) => {
     const tenantCtx = c.get("tenantCtx") as { tenantId: string } | undefined;
     const tenantId = tenantCtx?.tenantId;
     if (!tenantId) {
@@ -110,7 +110,7 @@ export function createSendingDomainRouter(deps: SendingDomainRouteDeps): Hono {
    * Maps Resend status to our internal DomainVerificationStatus (none/pending/verified/failed).
    * REQ-085.
    */
-  app.post("/domain/verify", async (c) => {
+  app.post("/verify", async (c) => {
     const tenantCtx = c.get("tenantCtx") as { tenantId: string } | undefined;
     const tenantId = tenantCtx?.tenantId;
     if (!tenantId) {
