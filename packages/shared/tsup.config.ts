@@ -4,6 +4,7 @@ export default defineConfig((options) => ({
   entry: [
     "src/index.ts",
     "src/db/index.ts",
+    "src/tenant/context.ts",
     "src/redis.ts",
     "src/types/index.ts",
     "src/types/settings.ts",

@@ -1,4 +1,5 @@
 export * from "./db/index.js";
+export * from "./tenant/context.js";
 export * from "./redis.js";
 export * from "./types/index.js";
 export * from "./types/settings.js";

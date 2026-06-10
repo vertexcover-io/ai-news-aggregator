@@ -6,6 +6,8 @@ export const ENRICHED_SUMMARY_LAUNCHED_AT = new Date("2026-05-25T00:00:00Z");
 export const MARKDOWN_EXCERPT_MAX = 4096;
 export const runKey = (runId: string): string => `run:${runId}`;
 export const runCancelChannel = (runId: string): string => `run:cancel:${runId}`;
+export const schedulerKey = (base: string, tenantId: string): string =>
+  `${base}:t:${tenantId}`;
 export * from "./ranking-prompt";
 export * from "./shortlist-prompt";
 export * from "./social-post";

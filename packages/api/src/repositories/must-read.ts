@@ -6,7 +6,7 @@ import type { PublicMustReadEntry } from "@newsletter/shared/types";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type MustReadPublicEntry = Omit<MustReadEntry, "updatedAt">;
+export type MustReadPublicEntry = Omit<MustReadEntry, "updatedAt" | "tenantId">;
 
 export function toPublicWire(row: MustReadPublicEntry): PublicMustReadEntry {
   return {

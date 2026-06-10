@@ -6,6 +6,7 @@
   "exports": {
     ".": "./dist/index.js",
     "./db": "./dist/db/index.js",
+    "./tenant": "./dist/tenant/context.js",
     "./redis": "./dist/redis.js",
     "./types": "./dist/types/index.js",
     "./constants": "./dist/constants/index.js",
