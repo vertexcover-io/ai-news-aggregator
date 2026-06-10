@@ -53,3 +53,50 @@ export interface User {
   /** ISO timestamp. */
   updatedAt: string;
 }
+
+/* ── Auth wire types (P3: signup / login / session) ─────────────────────── */
+
+/** The authenticated user as exposed to the web client (no passwordHash). */
+export interface SessionUser {
+  id: string;
+  tenantId: string | null;
+  email: string;
+  name: string;
+  role: UserRole;
+}
+
+/** Tenant summary returned alongside the session (no logo bytes / config). */
+export interface SessionTenant {
+  id: string;
+  slug: string;
+  name: string;
+  status: TenantStatus;
+}
+
+export interface SignupRequest {
+  name: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface SignupResponse {
+  next: "onboarding";
+  user: SessionUser;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  ok: true;
+  user: SessionUser;
+}
+
+export interface AuthMeResponse {
+  user: SessionUser;
+  /** Null for super_admin sessions. */
+  tenant: SessionTenant | null;
+}

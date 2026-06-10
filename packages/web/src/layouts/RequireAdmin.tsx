@@ -1,10 +1,10 @@
 import type { ReactElement } from "react";
 import { Navigate, useLocation, Outlet } from "react-router-dom";
-import { useAdminSession } from "../hooks/useAdminSession";
-import { UnauthenticatedError } from "../api/admin";
+import { useSession } from "../hooks/useSession";
+import { UnauthenticatedError } from "../api/auth";
 
 export function RequireAdmin(): ReactElement | null {
-  const { data, isLoading, error } = useAdminSession();
+  const { data, isLoading, error } = useSession();
   const location = useLocation();
 
   if (isLoading) return null;

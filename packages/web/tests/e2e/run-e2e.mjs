@@ -4,6 +4,8 @@
 // runs BEFORE Playwright's webServer, which globalSetup cannot guarantee.
 import { execFileSync, spawn } from "node:child_process";
 import { createServer, connect } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -71,6 +73,7 @@ async function main() {
     E2E_API_BASE: `http://127.0.0.1:${apiPort}`,
     PLAYWRIGHT_BASE_URL: `http://127.0.0.1:${webPort}`,
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ?? "vertexcover@123",
+    ADMIN_EMAIL: process.env.ADMIN_EMAIL ?? "admin@agentloop.dev",
     // Shared HMAC secret for subscriber tokens — the API server (token issue +
     // verify) and the specs (which forge expired/edge-case tokens) must agree.
     SESSION_SECRET:
@@ -111,6 +114,27 @@ async function main() {
       stdio: "inherit",
       env,
     });
+
+    // Migration 0041 enforces NOT NULL tenant_id; the tenant-0 column DEFAULT
+    // bridge (pre-tenancy writers keep working) is set by the P2 backfill
+    // script in production. Mirror that ordering on the fresh hermetic DB —
+    // this also creates the AGENTLOOP tenant + the admin user the specs log
+    // in with (ADMIN_EMAIL/ADMIN_PASSWORD).
+    execFileSync(
+      "pnpm",
+      [
+        "--filter", "@newsletter/scripts", "migrate:agentloop",
+        "--counts-file", join(tmpdir(), `agentloop-e2e-counts-${apiPort}.json`),
+      ],
+      {
+        stdio: "inherit",
+        env: {
+          ...env,
+          AGENTLOOP_ADMIN_EMAIL: env.ADMIN_EMAIL,
+          AGENTLOOP_ADMIN_PASSWORD: env.ADMIN_PASSWORD,
+        },
+      },
+    );
 
     const code = await new Promise((resolve) => {
       const child = spawn(

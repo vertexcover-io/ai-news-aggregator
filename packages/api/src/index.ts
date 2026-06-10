@@ -1,10 +1,6 @@
 import { config } from "dotenv";
 config({ path: "../../.env" });
 
-if (!process.env.ADMIN_PASSWORD) {
-  console.error("ADMIN_PASSWORD is required");
-  process.exit(1);
-}
 if (!process.env.SESSION_SECRET) {
   console.error("SESSION_SECRET is required");
   process.exit(1);
@@ -34,8 +30,13 @@ import { createSocialCredentialsRepo } from "@api/repositories/social-credential
 import { createSocialTokensRepo } from "@api/repositories/social-tokens.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createDefaultAdminMustReadRouter } from "@api/routes/admin-must-read.js";
-import { createAdminRouter } from "@api/routes/admin.js";
-import { requireAdmin } from "@api/auth/middleware.js";
+import { createAuthRouter } from "@api/routes/auth.js";
+import { createUsersRepo } from "@api/repositories/users.js";
+import { createTenantsRepo } from "@api/repositories/tenants.js";
+import { seedAdminUser } from "@api/services/admin-seed.js";
+import type { ResetTokenStore } from "@api/services/auth.js";
+import { requireAuth } from "@api/auth/middleware.js";
+import { createRateLimiter } from "@api/auth/rate-limit.js";
 import { buildApp } from "@api/app.js";
 import { createSubscribeRouter } from "@api/routes/subscribe.js";
 import { createSubscribersRepo } from "@api/repositories/subscribers.js";
@@ -60,27 +61,19 @@ import { captureException, configurePostHog, shutdownAnalytics } from "@api/lib/
 
 const logger = createLogger("api");
 
-// Route table (REQ-012 / Phase 4):
+// Route table (P3 — per-user auth):
 //
 // Public (no middleware):
 //   GET  /api/archives              — listing
 //   GET  /api/archives/:runId       — single archive read
-//   POST /api/admin/login           — session issue
-//   POST /api/admin/logout          — session clear
+//   POST /api/auth/signup|login|logout|forgot|reset — session lifecycle
+//   GET  /api/auth/me               — session introspection (cookie-checked)
 //
-// Admin-gated (requireAdmin):
-//   GET  /api/admin/me
+// Auth-gated (requireAuth — {userId,tenantId,role} session cookie):
+//   ALL  /api/admin/*
 //   ALL  /api/runs/*
 //   GET/PUT /api/settings
-//   PATCH /api/admin/archives/:runId
-//   POST  /api/admin/archives/:runId/add-post
-//   GET   /api/admin/archives/:runId/pool
-//   POST  /api/admin/archives/:runId/promote
-//
-// Phase 5 will update the web client to call the relocated admin archive
-// endpoints under /api/admin/archives/*.
 
-const adminPassword = process.env.ADMIN_PASSWORD;
 const sessionSecret = process.env.SESSION_SECRET;
 
 const emailProvider = createEmailProvider();
@@ -102,6 +95,24 @@ const settingsForBootstrap = await settingsRepoForBootstrap.get();
 if (settingsForBootstrap !== null) {
   await reconcilePipelineSchedule(processingQueue, settingsForBootstrap);
   await reconcileCollectorHealthSchedule(collectorHealthQueue, settingsForBootstrap);
+}
+
+// Seed the legacy single admin as a real user on a fresh DB so the dashboard
+// stays reachable after the shared-password gate removal (P3). No-op when any
+// user already exists (e.g. after the P2 AGENTLOOP backfill).
+const adminSeedPassword = process.env.ADMIN_PASSWORD;
+if (adminSeedPassword) {
+  const seeded = await seedAdminUser(
+    {
+      usersRepo: createUsersRepo(getDb()),
+      tenantsRepo: createTenantsRepo(getDb()),
+    },
+    {
+      email: process.env.ADMIN_EMAIL ?? "admin@agentloop.dev",
+      password: adminSeedPassword,
+    },
+  );
+  if (seeded) logger.info("seeded bootstrap admin user");
 }
 
 const runArchivesRepoForSubscribe = createRunArchivesRepo(getDb());
@@ -165,6 +176,52 @@ const linkedInOAuthDeps = {
   env: process.env,
 };
 
+// Single-use, short-TTL reset tokens stored in Redis (REQ-004). GETDEL makes
+// consumption atomic — a token can never be redeemed twice.
+const resetTokenStore: ResetTokenStore = {
+  async save(tokenHash, userId, ttlSeconds) {
+    await oauthRedis.set(`auth:reset:${tokenHash}`, userId, "EX", ttlSeconds);
+  },
+  async consume(tokenHash) {
+    return oauthRedis.getdel(`auth:reset:${tokenHash}`);
+  },
+};
+
+// Token-bucket limits for auth routes (REQ-121). Env-tunable so the hermetic
+// e2e stack (dozens of serial logins from one IP) can relax them; production
+// keeps the strict defaults.
+const authRateLimiter = createRateLimiter({
+  capacity: Number(process.env.AUTH_RATE_LIMIT_CAPACITY ?? 10),
+  refillPerSecond: Number(process.env.AUTH_RATE_LIMIT_REFILL_PER_SEC ?? 0.5),
+});
+
+const authRouter = createAuthRouter({
+  sessionSecret,
+  rateLimiter: authRateLimiter,
+  getUsersRepo: () => createUsersRepo(getDb()),
+  getTenantsRepo: () => createTenantsRepo(getDb()),
+  resetTokenStore,
+  sendResetEmail: async (email, resetUrl) => {
+    await emailProvider.send({
+      to: [email],
+      from: fromMail,
+      replyTo: replyToEmail,
+      subject: "Reset your password",
+      html: `<p>Someone requested a password reset for this account.</p><p><a href="${resetUrl}">Set a new password</a> (link expires in 30 minutes and can be used once).</p><p>If this wasn't you, ignore this email.</p>`,
+      text: `Set a new password: ${resetUrl} (expires in 30 minutes, single use). If this wasn't you, ignore this email.`,
+    });
+  },
+  webBaseUrl: newsletterBaseUrl,
+  logger: {
+    info: (m, meta) => {
+      logger.info(meta ?? {}, m);
+    },
+    warn: (m, meta) => {
+      logger.warn(meta ?? {}, m);
+    },
+  },
+});
+
 const app = buildApp({
   sessionSecret,
   publicArchivesRouter: createDefaultPublicArchivesRouter(),
@@ -180,19 +237,8 @@ const app = buildApp({
   runsRouter: createDefaultRunsRouter(),
   settingsRouter: createDefaultSettingsRouter(),
   collectorHealthRouter: createDefaultCollectorHealthRouter(),
-  adminRouter: createAdminRouter({
-    adminPassword,
-    sessionSecret,
-    logger: {
-      info: (m, meta) => {
-        logger.info(meta ?? {}, m);
-      },
-      warn: (m, meta) => {
-        logger.warn(meta ?? {}, m);
-      },
-    },
-  }),
-  requireAdminFactory: requireAdmin,
+  authRouter,
+  requireAuthFactory: requireAuth,
   subscribeRouter,
   webhooksRouter,
   analyticsRouter: createDefaultAnalyticsRouter(),

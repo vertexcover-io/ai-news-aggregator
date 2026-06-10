@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
-import { requireAdmin } from "../../auth/middleware.js";
+import { requireAuth } from "../../auth/middleware.js";
 import { issueToken, COOKIE_NAME } from "../../auth/session.js";
 import type { SocialTokensRepo, SaveSocialTokenInput } from "../../repositories/social-tokens.js";
 import type {
@@ -20,7 +20,7 @@ const REDIRECT_URI = `${PUBLIC_BASE_URL}/api/admin/social-credentials/linkedin/o
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function authCookie(): string {
-  const token = issueToken(SESSION_SECRET);
+  const token = issueToken({ userId: "00000000-0000-4000-8000-000000000001", tenantId: null, role: "tenant_admin" }, SESSION_SECRET);
   return `${COOKIE_NAME}=${token}`;
 }
 
@@ -132,7 +132,7 @@ function buildTestApp(deps: LinkedInOAuthRouterDeps): Hono {
   );
 
   // Admin-gated start + status routes (mirror app.ts gate).
-  const gate = requireAdmin(SESSION_SECRET);
+  const gate = requireAuth(SESSION_SECRET);
   const startRouter = createLinkedInOAuthRouter(deps);
   const gatedApp = new Hono();
   gatedApp.use("*", gate);

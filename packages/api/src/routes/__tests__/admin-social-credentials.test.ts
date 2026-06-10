@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { Hono } from "hono";
 import { createAdminSocialCredentialsRouter } from "../admin-social-credentials.js";
-import { requireAdmin } from "../../auth/middleware.js";
+import { requireAuth } from "../../auth/middleware.js";
 import { issueToken, COOKIE_NAME } from "../../auth/session.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import type {
@@ -142,8 +142,8 @@ function makeInMemoryRepo(cipher: CredentialCipher): {
 
 function buildProtectedApp(repo: SocialCredentialsRepo): Hono {
   const app = new Hono();
-  app.use("/api/admin/social-credentials/*", requireAdmin(SESSION_SECRET));
-  app.use("/api/admin/social-credentials", requireAdmin(SESSION_SECRET));
+  app.use("/api/admin/social-credentials/*", requireAuth(SESSION_SECRET));
+  app.use("/api/admin/social-credentials", requireAuth(SESSION_SECRET));
   app.route(
     "/api/admin/social-credentials",
     createAdminSocialCredentialsRouter({ getRepo: () => repo }),
@@ -152,7 +152,7 @@ function buildProtectedApp(repo: SocialCredentialsRepo): Hono {
 }
 
 function authCookie(): string {
-  const token = issueToken(SESSION_SECRET);
+  const token = issueToken({ userId: "00000000-0000-4000-8000-000000000001", tenantId: null, role: "tenant_admin" }, SESSION_SECRET);
   return `${COOKIE_NAME}=${token}`;
 }
 
@@ -409,7 +409,7 @@ describe("admin-social-credentials router — VS-10: DELETE", () => {
       },
     };
     const app = new Hono();
-    app.use("/api/admin/social-credentials/*", requireAdmin(SESSION_SECRET));
+    app.use("/api/admin/social-credentials/*", requireAuth(SESSION_SECRET));
     app.route(
       "/api/admin/social-credentials",
       createAdminSocialCredentialsRouter({
@@ -440,7 +440,7 @@ describe("admin-social-credentials router — VS-10: DELETE", () => {
       },
     };
     const app = new Hono();
-    app.use("/api/admin/social-credentials/*", requireAdmin(SESSION_SECRET));
+    app.use("/api/admin/social-credentials/*", requireAuth(SESSION_SECRET));
     app.route(
       "/api/admin/social-credentials",
       createAdminSocialCredentialsRouter({

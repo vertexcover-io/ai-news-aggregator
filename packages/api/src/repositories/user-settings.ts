@@ -102,8 +102,13 @@ export function createUserSettingsRepo(
           shortlistSize: input.shortlistSize,
           updatedAt: now,
         })
+        // 0041 swapped the legacy `singleton` unique index for
+        // unique(tenant_id) — one settings row per tenant. tenant_id is
+        // omitted from the insert, so the tenant-0 column DEFAULT bridge
+        // (set by the P2 backfill) attributes the row until P4 threads
+        // tenant context through this repo.
         .onConflictDoUpdate({
-          target: userSettings.singleton,
+          target: userSettings.tenantId,
           set: {
             topN: input.topN,
             halfLifeHours: input.halfLifeHours,

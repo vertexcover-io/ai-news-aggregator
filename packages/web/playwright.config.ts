@@ -39,6 +39,14 @@ export default defineConfig({
         DATABASE_URL: process.env.DATABASE_URL ?? "",
         REDIS_URL: process.env.REDIS_URL ?? "",
         ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ?? "",
+        // Email for the bootstrap-seeded admin user (P3 per-user auth) — must
+        // match what the specs use to log in (tests/e2e/_infra.ts).
+        ADMIN_EMAIL: process.env.ADMIN_EMAIL ?? "admin@agentloop.dev",
+        // The whole serial suite logs in dozens of times from one IP; the
+        // production token-bucket (10 burst / 0.5 tok/s) would 429 mid-suite.
+        // The 429 path itself is covered by API integration tests.
+        AUTH_RATE_LIMIT_CAPACITY: "100000",
+        AUTH_RATE_LIMIT_REFILL_PER_SEC: "1000",
         // Must match the secret the specs use to forge subscriber tokens;
         // dotenv leaves an already-set env var intact, so this wins over .env.
         SESSION_SECRET: process.env.SESSION_SECRET ?? "",

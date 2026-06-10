@@ -18,7 +18,7 @@ import { createRawItemsRepo } from "@api/repositories/raw-items.js";
 import { createRunArchivesRepo } from "@api/repositories/run-archives.js";
 import { createRunLogRepo } from "@api/repositories/run-logs.js";
 import { createAdminRunsRouter } from "@api/routes/admin-runs.js";
-import { requireAdmin } from "@api/auth/middleware.js";
+import { requireAuth } from "@api/auth/middleware.js";
 import { issueToken } from "@api/auth/session.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -91,7 +91,7 @@ const responseSchema = z.object({
 
 function buildGatedApp(): Hono {
   const app = new Hono();
-  app.use("/api/admin/*", requireAdmin(SESSION_SECRET));
+  app.use("/api/admin/*", requireAuth(SESSION_SECRET));
   app.route(
     "/api/admin/runs",
     createAdminRunsRouter({
@@ -105,7 +105,7 @@ function buildGatedApp(): Hono {
 }
 
 function adminCookie(): string {
-  return `admin_session=${issueToken(SESSION_SECRET, Date.now())}`;
+  return `admin_session=${issueToken({ userId: "00000000-0000-4000-8000-000000000001", tenantId: null, role: "tenant_admin" }, SESSION_SECRET, Date.now())}`;
 }
 
 async function insertRawItem(opts: {

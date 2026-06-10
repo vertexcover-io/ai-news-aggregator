@@ -13,7 +13,7 @@ import type {
   RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
 import { createAdminRunsRouter } from "@api/routes/admin-runs.js";
-import { requireAdmin } from "@api/auth/middleware.js";
+import { requireAuth } from "@api/auth/middleware.js";
 import { issueToken } from "@api/auth/session.js";
 import { NotFoundError } from "@api/lib/errors.js";
 
@@ -59,7 +59,7 @@ function makeApp(opts: {
 }): Hono {
   const app = new Hono();
   if (opts.protected) {
-    app.use("/api/admin/*", requireAdmin(SESSION_SECRET));
+    app.use("/api/admin/*", requireAuth(SESSION_SECRET));
   }
   const router = createAdminRunsRouter({
     redis: makeRedis(),
@@ -72,7 +72,7 @@ function makeApp(opts: {
 }
 
 function adminCookie(): string {
-  const token = issueToken(SESSION_SECRET, Date.now());
+  const token = issueToken({ userId: "00000000-0000-4000-8000-000000000001", tenantId: null, role: "tenant_admin" }, SESSION_SECRET, Date.now());
   return `admin_session=${token}`;
 }
 

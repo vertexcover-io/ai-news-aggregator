@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { logout } from "@/api/admin";
+import { logout } from "@/api/auth";
 import { Button } from "@/components/ui/button";
 
 export function AdminLayout(): ReactElement {

@@ -18,19 +18,19 @@ export interface BuildAppDeps {
   runsRouter: Hono;
   settingsRouter: Hono;
   /**
-   * Exposes POST /login, POST /logout, GET /me. Mounted under /api/admin with
-   * a path-aware gate: /login and /logout bypass the gate; everything else
-   * goes through requireAdmin.
+   * Per-user auth routes (P3): POST /signup|login|logout|forgot|reset +
+   * GET /me. Mounted at /api/auth OUTSIDE the cookie gate — these routes
+   * create/destroy the session. Rate-limited internally (REQ-121).
    */
-  adminRouter: Hono;
-  requireAdminFactory: (secret: string) => MiddlewareHandler;
+  authRouter: Hono;
+  requireAuthFactory: (secret: string) => MiddlewareHandler;
   subscribeRouter: Hono;
   webhooksRouter: Hono;
   analyticsRouter: Hono;
   analyticsConfigRouter: Hono;
   /**
    * Admin-gated LinkedIn OAuth routes (POST /start, GET /status).
-   * Mounted inside adminApp — behind requireAdmin.
+   * Mounted inside adminApp — behind requireAuth.
    */
   linkedInOAuthRouter: Hono;
   /**
@@ -44,8 +44,6 @@ export interface BuildAppDeps {
   collectorHealthRouter: Hono;
 }
 
-const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
-
 /**
  * Compose the full API Hono app.
  *
@@ -54,12 +52,11 @@ const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
  *   Public:
  *     GET  /api/archives
  *     GET  /api/archives/:runId
- *     POST /api/admin/login
- *     POST /api/admin/logout
+ *     POST /api/auth/signup | /login | /logout | /forgot | /reset
+ *     GET  /api/auth/me
  *
- *   Admin-gated (requireAdmin):
- *     GET  /api/admin/me
- *     *    /api/admin/archives/*
+ *   Auth-gated (requireAuth — valid {userId,tenantId,role} session cookie):
+ *     *    /api/admin/*
  *     *    /api/runs/*
  *     *    /api/settings
  */
@@ -98,21 +95,15 @@ export function buildApp(deps: BuildAppDeps): Hono {
     deps.linkedInOAuthCallbackRouter,
   );
 
-  // Path-aware admin gate: login/logout skip, everything else requires a
-  // valid admin_session cookie.
-  const gate = deps.requireAdminFactory(deps.sessionSecret);
-  const conditionalGate: MiddlewareHandler = async (c, next) => {
-    const suffix = new URL(c.req.url).pathname.replace(/^\/api\/admin/, "");
-    if (ADMIN_PUBLIC_SUFFIXES.has(suffix || "/")) {
-      await next();
-      return;
-    }
-    return gate(c, next);
-  };
+  // Per-user auth routes (signup/login/logout/forgot/reset/me) — ungated;
+  // they establish the session the gate below verifies.
+  app.route("/api/auth", deps.authRouter);
+
+  // Everything under /api/admin requires a valid session cookie.
+  const gate = deps.requireAuthFactory(deps.sessionSecret);
 
   const adminApp = new Hono();
-  adminApp.use("*", conditionalGate);
-  adminApp.route("/", deps.adminRouter);
+  adminApp.use("*", gate);
   adminApp.route("/archives", deps.adminArchivesRouter);
   adminApp.route("/runs", deps.adminRunsRouter);
   adminApp.route("/eval", deps.adminEvalRouter);

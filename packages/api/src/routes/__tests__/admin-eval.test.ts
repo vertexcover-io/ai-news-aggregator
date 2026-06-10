@@ -8,7 +8,7 @@ import type {
 } from "@newsletter/shared/types/eval-ranking";
 import { EvalRunRequestSchema } from "@newsletter/shared/types/eval-ranking-schemas";
 import { createAdminEvalRouter } from "../admin-eval.js";
-import { requireAdmin } from "../../auth/middleware.js";
+import { requireAuth } from "../../auth/middleware.js";
 import { issueToken, COOKIE_NAME } from "../../auth/session.js";
 import type {
   CreateManualFixtureResult,
@@ -20,7 +20,7 @@ import type { EvalRunsRepo } from "@api/repositories/eval-runs.js";
 const SESSION_SECRET = "test-session-secret-32-chars-1234";
 
 function authedHeaders(): Record<string, string> {
-  const token = issueToken(SESSION_SECRET);
+  const token = issueToken({ userId: "00000000-0000-4000-8000-000000000001", tenantId: null, role: "tenant_admin" }, SESSION_SECRET);
   return { cookie: `${COOKIE_NAME}=${token}` };
 }
 
@@ -155,7 +155,7 @@ function makeRouter(overrides: Partial<Parameters<typeof createAdminEvalRouter>[
     ...overrides,
   });
   const app = new Hono();
-  app.use("/api/admin/*", requireAdmin(SESSION_SECRET));
+  app.use("/api/admin/*", requireAuth(SESSION_SECRET));
   app.route("/api/admin/eval", router);
   return { app, upsert };
 }

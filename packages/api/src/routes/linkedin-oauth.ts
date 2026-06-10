@@ -6,7 +6,7 @@
  * callback URL AFTER they approve the app. At that point, the browser has no
  * admin_session cookie on the request (the redirect originates from LinkedIn's
  * servers, not from a page that already holds the cookie). Therefore the
- * callback CANNOT be behind requireAdmin.
+ * callback CANNOT be behind the session cookie gate.
  *
  * Instead, security is provided by the state parameter:
  *   - POST /start generates a cryptographically random 32-byte state, stores it
@@ -16,7 +16,7 @@
  *     This CSRF protection means the callback is as safe as the state secret.
  *
  * Mounting strategy in app.ts:
- *   1. createLinkedInOAuthRouter  → mount INSIDE adminApp (behind requireAdmin).
+ *   1. createLinkedInOAuthRouter  → mount INSIDE adminApp (behind requireAuth).
  *      Handles: POST /start, GET /status.
  *   2. createLinkedInOAuthCallbackRouter → mount OUTSIDE adminApp at the full
  *      path /api/admin/social-credentials/linkedin/oauth/callback.
@@ -83,7 +83,7 @@ function settingsRedirectUrl(
 
 /**
  * Admin-gated routes: POST /start, GET /status.
- * Mount this inside adminApp (behind requireAdmin).
+ * Mount this inside adminApp (behind requireAuth).
  */
 export function createLinkedInOAuthRouter(
   deps: LinkedInOAuthRouterDeps,

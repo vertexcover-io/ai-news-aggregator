@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useAdminSession } from "../../hooks/useAdminSession";
+import { useSession } from "../../hooks/useSession";
 import { BrandMark } from "./BrandMark";
 
 type ActiveNavItem = "must-read" | "sources" | "built" | null;
@@ -45,8 +45,8 @@ function NavLink({
 export function Masthead(): ReactElement {
   const { pathname } = useLocation();
   const active = deriveActive(pathname);
-  const { data: session } = useAdminSession();
-  const isAdmin = session?.admin === true;
+  const { data: session } = useSession();
+  const isAdmin = session?.user != null;
 
   return (
     <header
