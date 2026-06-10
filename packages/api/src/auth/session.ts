@@ -8,6 +8,7 @@ export interface SessionPayload {
   userId: string;
   tenantId: string;
   role: Role;
+  impersonating?: boolean;
 }
 
 interface SignedSessionPayload extends SessionPayload {
@@ -62,12 +63,17 @@ export function verifySession(
   } catch {
     return null;
   }
-  const { iat, userId, tenantId, role } = parsed;
+  const { iat, userId, tenantId, role, impersonating } = parsed;
   if (typeof iat !== "number" || !Number.isFinite(iat)) return null;
   if (now - iat > MAX_AGE_MS) return null;
   if (typeof userId !== "string" || typeof tenantId !== "string") return null;
   if (role !== "super_admin" && role !== "tenant_admin") return null;
-  return { userId, tenantId, role };
+  return {
+    userId,
+    tenantId,
+    role,
+    ...(impersonating === true ? { impersonating: true } : {}),
+  };
 }
 
 export function issueToken(secret: string, now: number = Date.now()): string {

@@ -110,6 +110,17 @@ function makeApp(
     adminMustReadRouter: new Hono(),
     runsRouter: makeStubRunsRouter(),
     settingsRouter: makeStubSettingsRouter(),
+    authRouter: new Hono(),
+    authRateLimit: async (_c, next) => {
+      await next();
+    },
+    tenantPublicRouter: new Hono(),
+    onboardingRouter: new Hono(),
+    tenantSourcesRouter: new Hono(),
+    tenantSettingsRouter: new Hono(),
+    sendingDomainsRouter: new Hono(),
+    superAdminRouter: new Hono(),
+    superAdminCredentialsRouter: new Hono(),
     adminRouter: createAdminRouter({
       adminPassword: ADMIN_PASSWORD,
       sessionSecret: SESSION_SECRET,

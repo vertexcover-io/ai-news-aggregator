@@ -35,6 +35,18 @@ import { createSocialTokensRepo } from "@api/repositories/social-tokens.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createDefaultAdminMustReadRouter } from "@api/routes/admin-must-read.js";
 import { createAdminRouter } from "@api/routes/admin.js";
+import { createAuthRouter } from "@api/routes/auth.js";
+import { createDefaultOnboardingRouter } from "@api/routes/onboarding.js";
+import { createDefaultTenantPublicRouter } from "@api/routes/tenant-public.js";
+import { createDefaultTenantSourcesRouter } from "@api/routes/tenant-sources.js";
+import { createDefaultTenantSettingsRouter } from "@api/routes/tenant-settings.js";
+import { createDefaultSendingDomainsRouter } from "@api/routes/sending-domains.js";
+import { createDefaultSuperAdminRouter } from "@api/routes/super-admin.js";
+import { createDefaultSuperAdminCredentialsRouter } from "@api/routes/super-admin-credentials.js";
+import { rateLimit } from "@api/middleware/rate-limit.js";
+import { createUsersRepo } from "@api/repositories/users.js";
+import { createTenantsRepo } from "@api/repositories/tenants.js";
+import { createPasswordResetTokensRepo } from "@api/repositories/password-reset-tokens.js";
 import { requireAdmin } from "@api/auth/middleware.js";
 import { buildApp } from "@api/app.js";
 import { createSubscribeRouter } from "@api/routes/subscribe.js";
@@ -165,6 +177,25 @@ const linkedInOAuthDeps = {
   env: process.env,
 };
 
+const authRouter = createAuthRouter({
+  usersRepo: createUsersRepo(getDb()),
+  tenantsRepo: createTenantsRepo(getDb()),
+  passwordResetTokensRepo: createPasswordResetTokensRepo(getDb()),
+  sessionSecret,
+  webBaseUrl: newsletterBaseUrl,
+  sendPasswordResetEmail: async (email, resetUrl) => {
+    await emailProvider.send({
+      to: [email],
+      from: fromMail,
+      replyTo: replyToEmail,
+      subject: "Reset your AI Newsletter password",
+      html: `<p>We received a request to reset your password.</p><p><a href="${resetUrl}">Reset your password</a></p><p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>`,
+      text: `Reset your password: ${resetUrl}\n\nThis link expires in 1 hour. If you didn't request this, you can ignore this email.`,
+    });
+  },
+  logger,
+});
+
 const app = buildApp({
   sessionSecret,
   publicArchivesRouter: createDefaultPublicArchivesRouter(),
@@ -199,6 +230,15 @@ const app = buildApp({
   analyticsConfigRouter: createDefaultAnalyticsConfigRouter(),
   linkedInOAuthRouter: createLinkedInOAuthRouter(linkedInOAuthDeps),
   linkedInOAuthCallbackRouter: createLinkedInOAuthCallbackRouter(linkedInOAuthDeps),
+  authRouter,
+  authRateLimit: rateLimit({ limit: 10, windowMs: 60_000 }),
+  tenantPublicRouter: createDefaultTenantPublicRouter(),
+  onboardingRouter: createDefaultOnboardingRouter(),
+  tenantSourcesRouter: createDefaultTenantSourcesRouter(),
+  tenantSettingsRouter: createDefaultTenantSettingsRouter(),
+  sendingDomainsRouter: createDefaultSendingDomainsRouter(),
+  superAdminRouter: createDefaultSuperAdminRouter(sessionSecret),
+  superAdminCredentialsRouter: createDefaultSuperAdminCredentialsRouter(),
 });
 
 const port = Number(process.env.API_PORT ?? 3000);

@@ -23,6 +23,24 @@ export interface BuildAppDeps {
   adminMustReadRouter: Hono;
   runsRouter: Hono<AppEnv>;
   settingsRouter: Hono<AppEnv>;
+  /** PUBLIC tenant-account auth: signup/login/logout/forgot/reset. */
+  authRouter: Hono;
+  /** Per-IP rate-limit middleware applied to the auth router's write routes. */
+  authRateLimit: MiddlewareHandler;
+  /** PUBLIC per-tenant branding + logo (host/slug resolved). */
+  tenantPublicRouter: Hono<AppEnv>;
+  /** GATED tenant onboarding wizard. */
+  onboardingRouter: Hono<AppEnv>;
+  /** GATED per-tenant source management + discovery. */
+  tenantSourcesRouter: Hono<AppEnv>;
+  /** GATED per-tenant settings (branding, flags, notifications, slack). */
+  tenantSettingsRouter: Hono<AppEnv>;
+  /** GATED per-tenant sending-domain registration + verification. */
+  sendingDomainsRouter: Hono<AppEnv>;
+  /** GATED super-admin tenant overview + impersonation (self-gates to super_admin). */
+  superAdminRouter: Hono<AppEnv>;
+  /** GATED super-admin app-level credentials (self-gates to super_admin). */
+  superAdminCredentialsRouter: Hono<AppEnv>;
   /**
    * Exposes POST /login, POST /logout, GET /me. Mounted under /api/admin with
    * a path-aware gate: /login and /logout bypass the gate; everything else
@@ -106,6 +124,19 @@ export function buildApp(deps: BuildAppDeps): Hono<AppEnv> {
   // Public sources summary (no admin gate).
   app.route("/api/sources", deps.publicSourcesRouter);
 
+  // PUBLIC tenant-account auth. Per-IP rate-limit guards the write routes
+  // (signup/login/forgot/reset) before the router runs (NF2).
+  const authApp = new Hono<AppEnv>();
+  authApp.use("/signup", deps.authRateLimit);
+  authApp.use("/login", deps.authRateLimit);
+  authApp.use("/forgot", deps.authRateLimit);
+  authApp.use("/reset", deps.authRateLimit);
+  authApp.route("/", deps.authRouter);
+  app.route("/api/auth", authApp);
+
+  // PUBLIC per-tenant branding + logo (tenant resolved by host/slug upstream).
+  app.route("/api/tenant", deps.tenantPublicRouter);
+
   // LinkedIn OAuth callback — mounted BEFORE adminApp so the gate does not
   // intercept requests to this path. LinkedIn redirects the user's browser here
   // after authorization; no admin_session cookie is present on the redirect.
@@ -146,6 +177,21 @@ export function buildApp(deps: BuildAppDeps): Hono<AppEnv> {
 
   app.route("/api/runs", gatedWrap(gate, deps.runsRouter));
   app.route("/api/settings", gatedWrap(gate, deps.settingsRouter));
+
+  // GATED multi-tenancy product surfaces. All sit behind requireAdmin so the
+  // tenant session cookie resolves `tenantCtx` before the handler runs; the
+  // super-admin routers additionally self-gate to role === "super_admin".
+  app.route("/api/onboarding", gatedWrap(gate, deps.onboardingRouter));
+  app.route("/api/tenant-sources", gatedWrap(gate, deps.tenantSourcesRouter));
+  app.route("/api/tenant-settings", gatedWrap(gate, deps.tenantSettingsRouter));
+  app.route("/api/sending-domains", gatedWrap(gate, deps.sendingDomainsRouter));
+  // Mount the more-specific credentials prefix before the tenant overview so it
+  // is not shadowed by the /api/super-admin router.
+  app.route(
+    "/api/super-admin/credentials",
+    gatedWrap(gate, deps.superAdminCredentialsRouter),
+  );
+  app.route("/api/super-admin", gatedWrap(gate, deps.superAdminRouter));
 
   app.onError((err, c) => {
     const status = err instanceof HTTPException ? err.status : 500;

@@ -19,6 +19,7 @@ export function requireAdmin(secret: string): MiddlewareHandler {
         tenantId: session.tenantId,
         userId: session.userId,
         role: session.role,
+        ...(session.impersonating === true ? { impersonating: true } : {}),
       };
       c.set("tenantCtx", ctx);
       await next();

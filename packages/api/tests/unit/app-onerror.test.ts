@@ -34,6 +34,17 @@ function makeMinimalDeps(): BuildAppDeps {
     adminMustReadRouter: stub(),
     runsRouter: stub(),
     settingsRouter: stub(),
+    authRouter: stub(),
+    authRateLimit: async (_c, next) => {
+      await next();
+    },
+    tenantPublicRouter: stub(),
+    onboardingRouter: stub(),
+    tenantSourcesRouter: stub(),
+    tenantSettingsRouter: stub(),
+    sendingDomainsRouter: stub(),
+    superAdminRouter: stub(),
+    superAdminCredentialsRouter: stub(),
     adminRouter: stub(),
     requireAdminFactory,
     subscribeRouter: stub(),
