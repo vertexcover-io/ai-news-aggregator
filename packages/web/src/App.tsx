@@ -30,6 +30,9 @@ import { AdminLayout } from "./layouts/AdminLayout";
 import { RequireAdmin } from "./layouts/RequireAdmin";
 import { RequireSuperAdmin } from "./layouts/RequireSuperAdmin";
 import { RequireOnboarding } from "./layouts/RequireOnboarding";
+import { SignupPage } from "./pages/SignupPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 
 export const routes: RouteObject[] = [
   {
@@ -43,6 +46,9 @@ export const routes: RouteObject[] = [
       { path: "/confirm", element: <ConfirmPage /> },
       { path: "/feedback", element: <FeedbackPage /> },
       { path: "/unsubscribe", element: <UnsubscribePage /> },
+      { path: "/signup", element: <SignupPage /> },
+      { path: "/forgot-password", element: <ForgotPasswordPage /> },
+      { path: "/reset-password", element: <ResetPasswordPage /> },
       { path: "/privacy", element: <PrivacyPolicyPage /> },
       { path: "/terms", element: <TermsPage /> },
       { path: "*", element: <NotFoundPage /> },
