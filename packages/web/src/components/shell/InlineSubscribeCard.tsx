@@ -6,6 +6,7 @@ import {
 } from "react";
 import { postSubscribe } from "../../api/subscribe";
 import { useIsSubscribed } from "../../hooks/useIsSubscribed";
+import { useTenantBranding } from "../../context/TenantBrandingContext";
 import { markSubscribed } from "../../lib/subscriptionStorage";
 import { captureBrowserEvent } from "../../lib/analytics";
 
@@ -15,6 +16,7 @@ export function InlineSubscribeCard(): ReactElement | null {
   const [state, setState] = useState<State>("idle");
   const [email, setEmail] = useState("");
   const isSubscribed = useIsSubscribed();
+  const branding = useTenantBranding();
 
   if (isSubscribed && state !== "success") return null;
 
@@ -53,7 +55,7 @@ export function InlineSubscribeCard(): ReactElement | null {
       className="py-16 text-center"
     >
       <h3 className="font-serif font-medium text-[clamp(28px,3.4vw,40px)] leading-[1.1] tracking-[-0.014em] m-0 mb-[14px] text-[#14110d]">
-        Read AgentLoop every morning.
+        Read {branding.name} every morning.
       </h3>
       <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-[#6b6557] mb-8">
         What we read so you don&apos;t have to. 7am daily, free.
@@ -68,7 +70,7 @@ export function InlineSubscribeCard(): ReactElement | null {
           <form
             data-purpose="subscribe"
             onSubmit={onSubmit}
-            aria-label="Subscribe to AgentLoop"
+            aria-label={`Subscribe to ${branding.name}`}
             className="flex gap-0 max-w-[480px] mx-auto border-t border-b border-[#14110d]"
           >
             <input

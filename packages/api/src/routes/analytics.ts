@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { createLogger, getDb } from "@newsletter/shared";
+import { createLogger, getDb } from "@newsletter/shared"
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import { createAnalyticsRepo, type AnalyticsRepo } from "@api/repositories/analytics.js";
 
 export interface AnalyticsRouterDeps {
@@ -69,5 +70,5 @@ export function createAnalyticsRouter(deps: AnalyticsRouterDeps): Hono {
 }
 
 export function createDefaultAnalyticsRouter(): Hono {
-  return createAnalyticsRouter({ analyticsRepo: createAnalyticsRepo(getDb()) });
+  return createAnalyticsRouter({ analyticsRepo: createAnalyticsRepo(getDb(), BOOTSTRAP_CONTEXT) });
 }

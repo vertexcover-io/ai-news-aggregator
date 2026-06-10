@@ -44,8 +44,10 @@ import { refreshRettiwtCsrfToken } from "@pipeline/collectors/twitter/clients/re
 import type { TwitterClient } from "@pipeline/collectors/twitter/types.js";
 import { Rettiwt } from "rettiwt-api";
 import { createSocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
+import { createAppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
 import { resolveTwitterCollectorCookie } from "@pipeline/services/credential-resolver.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import {
   createRunArchivesRepo,
@@ -117,6 +119,7 @@ export interface RunProcessJobData {
   collectors: RunCollectorsPayload;
   halfLifeHours?: number;
   dryRun?: boolean;
+  tenantId?: string;
 }
 
 export interface RunProcessJobLike {
@@ -234,6 +237,7 @@ async function runCollecting(
   enrichmentCtx: EnrichmentContext,
   tracker: CostTracker,
   runLog: RunLogger,
+  tenantId?: string,
 ): Promise<CollectingOutcome> {
   // In-process serializer for state writes: replicates the old
   // `concurrency: 1` invariant from the collection worker. Without this,
@@ -253,7 +257,9 @@ async function runCollecting(
   const runScopedRawItemsRepo: typeof deps.rawItemsRepo = {
     ...deps.rawItemsRepo,
     upsertItems: (items) =>
-      deps.rawItemsRepo.upsertItems(items.map((i) => ({ ...i, runId }))),
+      deps.rawItemsRepo.upsertItems(
+        items.map((i) => ({ ...i, runId, ...(tenantId !== undefined ? { tenantId } : {}) })),
+      ),
   };
 
   const collectorDeps = { rawItemsRepo: runScopedRawItemsRepo, signal };
@@ -449,6 +455,7 @@ export async function handleRunProcessJob(
     return { rankedCount: 0 };
   }
   const { runId, topN, sourceTypes, collectors, halfLifeHours } = job.data;
+  const tenantId = job.data.tenantId;
   const dryRun = job.data.dryRun ?? false;
   const started = Date.now();
   let runStartedAt: Date = new Date(started);
@@ -553,6 +560,7 @@ export async function handleRunProcessJob(
       enrichmentCtx,
       tracker,
       runLog,
+      tenantId,
     );
     funnel.collected = collecting.outcomes.reduce(
       (sum, o) => sum + (o.result?.itemsStored ?? 0),
@@ -583,6 +591,7 @@ export async function handleRunProcessJob(
         costBreakdown: snapshotCost(),
         runFunnel: { ...funnel },
         sourceTelemetry: failedCollectingTelemetry,
+        tenantId,
         logger,
       });
       logger.error(
@@ -617,6 +626,7 @@ export async function handleRunProcessJob(
           isDryRun: dryRun,
           runFunnel: { ...funnel },
           sourceTelemetry: failedCollectingTelemetry,
+          ...(tenantId !== undefined ? { tenantId } : {}),
         });
       } catch (archiveErr) {
         logger.error(
@@ -790,6 +800,7 @@ export async function handleRunProcessJob(
           sourceTelemetry: emptyShortlistTelemetry,
           runFunnel: { ...funnel },
           shortlistedItemIds: shortlistIds,
+          ...(tenantId !== undefined ? { tenantId } : {}),
         });
       } catch (archiveErr) {
         logger.error(
@@ -863,6 +874,7 @@ export async function handleRunProcessJob(
           isDryRun: dryRun,
           runFunnel: { ...funnel },
           sourceTelemetry: rankFailedTelemetry,
+          ...(tenantId !== undefined ? { tenantId } : {}),
         });
       } catch (archiveErr) {
         logger.error(
@@ -935,6 +947,7 @@ export async function handleRunProcessJob(
       shortlistIds,
       startedTimestamp: started,
       persistCost,
+      tenantId,
     });
   } catch (err) {
     // REQ-08: handle CancelledError — write cancelled state, archive, return normally
@@ -956,6 +969,7 @@ export async function handleRunProcessJob(
           startedAt: runStartedAt,
           sourceTypes,
           isDryRun: dryRun,
+          ...(tenantId !== undefined ? { tenantId } : {}),
         });
       } catch (archiveErr) {
         logger.error(
@@ -995,6 +1009,7 @@ export async function handleRunProcessJob(
       isDryRun: dryRun,
       costBreakdown: snapshotCost(),
       runFunnel: { ...funnel },
+      tenantId,
       logger,
     });
     throw err;
@@ -1033,9 +1048,9 @@ export function createRunProcessWorker(
     !options.runLogRepo;
   const db: AppDb | undefined = needsDb ? getDb() : undefined;
   const rawItemsRepo =
-    options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db));
+    options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db), BOOTSTRAP_CONTEXT);
   const candidatesRepo =
-    options.candidatesRepo ?? createCandidatesRepo(ensureDb(db));
+    options.candidatesRepo ?? createCandidatesRepo(ensureDb(db), BOOTSTRAP_CONTEXT);
   const loadFn = options.loadFn ?? loadCandidatesSince;
   const shortlistFn: ShortlistFn =
     options.shortlistFn ??
@@ -1057,9 +1072,11 @@ export function createRunProcessWorker(
   const twitterClient: () => Promise<TwitterClient> =
     options.twitterClient ??
     (async () => {
-      const repo = createSocialCredentialsRepo(ensureDb(db), getCredentialCipher());
+      const appRepo = createAppCredentialsRepo(ensureDb(db), getCredentialCipher());
+      const socialRepo = createSocialCredentialsRepo(ensureDb(db), getCredentialCipher(), BOOTSTRAP_CONTEXT);
       const cookie = await resolveTwitterCollectorCookie({
-        repo,
+        appRepo,
+        socialRepo,
         env: process.env,
       });
       const rettiwt = new Rettiwt({ apiKey: cookie?.apiKey });
@@ -1070,7 +1087,7 @@ export function createRunProcessWorker(
               refreshCsrfToken: () =>
                 refreshRettiwtCsrfToken({
                   rettiwt,
-                  repo,
+                  repo: socialRepo,
                   credentialSource: cookie.source,
                 }),
             }
@@ -1079,8 +1096,8 @@ export function createRunProcessWorker(
     });
 
   const archiveRepo =
-    options.archiveRepo ?? createRunArchivesRepo(ensureDb(db));
-  const runLogRepo = options.runLogRepo ?? createRunLogRepo(ensureDb(db));
+    options.archiveRepo ?? createRunArchivesRepo(ensureDb(db), BOOTSTRAP_CONTEXT);
+  const runLogRepo = options.runLogRepo ?? createRunLogRepo(ensureDb(db), BOOTSTRAP_CONTEXT);
   const userSettingsRepo = options.userSettingsRepo;
 
   const cancelSubscriber =

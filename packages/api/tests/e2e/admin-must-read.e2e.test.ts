@@ -451,8 +451,10 @@ describe("NF-006: SameSite cookie on /api/admin/login", () => {
   function buildFullApp(): Hono {
     const adminPassword = "test-pw-nf006";
     const sessionSecret = "test-secret-at-least-32-bytes-long-x";
+    const noop: import("hono").MiddlewareHandler = async (_c, next) => { await next(); };
     return buildApp({
       sessionSecret,
+      resolveTenant: noop,
       publicArchivesRouter: new Hono(),
       publicHomeRouter: new Hono(),
       publicMustReadRouter: new Hono(),
@@ -477,6 +479,10 @@ describe("NF-006: SameSite cookie on /api/admin/login", () => {
       analyticsConfigRouter: new Hono(),
       linkedInOAuthRouter: new Hono(),
       linkedInOAuthCallbackRouter: new Hono(),
+      collectorHealthRouter: new Hono(),
+      sourcesAdminRouter: new Hono(),
+      superAppCredentialsRouter: new Hono(),
+      superAdminRouter: new Hono(),
     });
   }
 

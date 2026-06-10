@@ -35,7 +35,12 @@ import { ShortlistPromptSection } from "../components/settings/ShortlistPromptSe
 import { ShortlistSizeField } from "../components/settings/ShortlistSizeField";
 import { DEFAULT_SHORTLIST_PROMPT } from "@newsletter/shared/constants";
 import { SaveBar } from "../components/settings/SaveBar";
+import { SourcesPanel } from "../components/settings/SourcesPanel";
 import { SocialCredentialsPanel } from "../components/SocialCredentialsPanel";
+import { SendingDomainPanel } from "../components/settings/SendingDomainPanel";
+import { NotificationsPanel } from "../components/settings/NotificationsPanel";
+import { FeaturesPanel } from "../components/settings/FeaturesPanel";
+import { useNotifications, useFeatures } from "../hooks/useTenantSettings";
 
 function getDefaults(): SettingsFormValues {
   return {
@@ -85,6 +90,8 @@ function getDefaults(): SettingsFormValues {
 
 export function SettingsPage(): ReactElement {
   const settingsQuery = useSettings();
+  const notificationsQuery = useNotifications();
+  const featuresQuery = useFeatures();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -244,6 +251,18 @@ export function SettingsPage(): ReactElement {
             <RankingPromptSection />
           </form>
         </FormProvider>
+
+        <SourcesPanel />
+
+        <SendingDomainPanel />
+
+        {notificationsQuery.data && (
+          <NotificationsPanel config={notificationsQuery.data} />
+        )}
+
+        {featuresQuery.data && (
+          <FeaturesPanel flags={featuresQuery.data} />
+        )}
 
         <SocialCredentialsPanel />
 

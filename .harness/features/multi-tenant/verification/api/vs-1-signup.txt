@@ -1,0 +1,11 @@
+--- Signup attempt (REQ-001) ---
+COMMAND: curl -s -X POST http://localhost:3000/api/auth/signup -H 'Content-Type: application/json' -d '{"name":"Test","email":"test@example.com","password":"testpass123","confirmPassword":"testpass123"}'
+STATUS: 404 Not Found
+BODY: 404 Not Found
+VERDICT: FAILED -- auth routes not mounted (D-1)
+
+--- Signup with password mismatch (REQ-002) ---
+CANNOT TEST: Auth routes not mounted
+
+--- Signup with duplicate email (REQ-003) ---
+CANNOT TEST: Auth routes not mounted

@@ -36,10 +36,14 @@ function parseHost(url: string): string {
 export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
   const { webhookUrl, logger } = deps;
 
-  if (webhookUrl === undefined || webhookUrl === "") {
+  // Resolve the effective webhook URL: per-tenant config overrides global.
+  const tenantWebhook = deps.tenantNotificationConfig?.slackWebhook ?? null;
+  const effectiveWebhook = tenantWebhook ?? webhookUrl;
+
+  if (effectiveWebhook === undefined || effectiveWebhook === "") {
     logger.info(
       { event: "slack.notify.disabled" },
-      "slack notifications disabled (SLACK_WEBHOOK_URL unset)",
+      "slack notifications disabled (no webhook URL configured)",
     );
     return {
       notifyNewsletterSent: (): Promise<void> => Promise.resolve(),
@@ -57,11 +61,11 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
     };
   }
 
-  if (!webhookUrl.startsWith(SLACK_WEBHOOK_PREFIX)) {
+  if (!effectiveWebhook.startsWith(SLACK_WEBHOOK_PREFIX)) {
     logger.warn(
       {
         event: "slack.notify.suspicious_url",
-        host: parseHost(webhookUrl),
+        host: parseHost(effectiveWebhook),
       },
       "slack webhook URL does not match expected hooks.slack.com prefix",
     );
@@ -97,7 +101,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
         return;
       }
       const result = await postToWebhook({
-        url: webhookUrl,
+        url: effectiveWebhook,
         blocks: input.blocks(archive),
         fetchFn: deps.fetchFn,
       });
@@ -180,7 +184,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
         });
 
         const result = await postToWebhook({
-          url: webhookUrl,
+          url: effectiveWebhook,
           blocks,
           fetchFn: deps.fetchFn,
         });
@@ -300,7 +304,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
 
       if (input.runId === undefined) {
         const result = await postToWebhook({
-          url: webhookUrl,
+          url: effectiveWebhook,
           blocks,
           fetchFn: deps.fetchFn,
         });
@@ -364,7 +368,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
           sourceTelemetry: archive.sourceTelemetry,
           publicArchiveBaseUrl: deps.publicArchiveBaseUrl,
         }).blocks;
-        const result = await postToWebhook({ url: webhookUrl, blocks, fetchFn: deps.fetchFn });
+        const result = await postToWebhook({ url: effectiveWebhook, blocks, fetchFn: deps.fetchFn });
         if (!result.ok) {
           logger.warn(
             { event: "slack.source_distribution.failed", runId: input.runId, status: result.status, responseBody: result.error },
@@ -434,7 +438,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
     }): Promise<void> {
       try {
         const { blocks } = buildSubscriberConfirmedMessage(input);
-        const result = await postToWebhook({ url: webhookUrl, blocks, fetchFn: deps.fetchFn });
+        const result = await postToWebhook({ url: effectiveWebhook, blocks, fetchFn: deps.fetchFn });
         if (!result.ok) {
           logger.warn(
             {
@@ -463,7 +467,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
     }): Promise<void> {
       try {
         const { blocks } = buildSubscriberRemovedMessage(input);
-        const result = await postToWebhook({ url: webhookUrl, blocks, fetchFn: deps.fetchFn });
+        const result = await postToWebhook({ url: effectiveWebhook, blocks, fetchFn: deps.fetchFn });
         if (!result.ok) {
           logger.warn(
             {
@@ -491,7 +495,7 @@ export function createSlackNotifier(deps: SlackNotifierDeps): SlackNotifier {
     }): Promise<void> {
       try {
         const { blocks } = buildFeedbackReceivedMessage(input);
-        const result = await postToWebhook({ url: webhookUrl, blocks, fetchFn: deps.fetchFn });
+        const result = await postToWebhook({ url: effectiveWebhook, blocks, fetchFn: deps.fetchFn });
         if (!result.ok) {
           logger.warn(
             {

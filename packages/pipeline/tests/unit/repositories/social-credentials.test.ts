@@ -4,6 +4,7 @@ import {
   createSocialCredentialsRepo,
   type SocialCredentialsRepo,
 } from "@pipeline/repositories/social-credentials.js";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import type { AppDb } from "@newsletter/shared/db";
 import type {
   LinkedInEncryptedFields,
@@ -29,6 +30,7 @@ interface FakeDb {
 function extractPlatformFromPredicate(predicate: unknown): Platform | null {
   // Drizzle's eq(column, value) returns an SQL object with `queryChunks` array.
   // The literal value sits inside a `Param { value }` entry.
+  // Drizzle's and(...) also has queryChunks, which may contain nested SQL objects.
   const p = predicate as { queryChunks?: unknown[] } | null;
   if (!p || !Array.isArray(p.queryChunks)) return null;
   for (const chunk of p.queryChunks) {
@@ -36,6 +38,11 @@ function extractPlatformFromPredicate(predicate: unknown): Platform | null {
     if (chunk && typeof chunk === "object" && "value" in chunk) {
       const v = (chunk as { value: unknown }).value;
       if (v === "linkedin" || v === "twitter") return v;
+    }
+    // Recurse into nested SQL objects (e.g., from `and()` wrapping)
+    if (chunk && typeof chunk === "object" && "queryChunks" in chunk) {
+      const nested = extractPlatformFromPredicate(chunk);
+      if (nested !== null) return nested;
     }
   }
   return null;
@@ -117,7 +124,7 @@ function makeRepoWithCipher(): {
   };
   const cipher = getCredentialCipher(env);
   const fake = makeFakeDb();
-  const repo = createSocialCredentialsRepo(fake.db, cipher);
+  const repo = createSocialCredentialsRepo(fake.db, cipher, BOOTSTRAP_CONTEXT);
   return { repo, fake };
 }
 

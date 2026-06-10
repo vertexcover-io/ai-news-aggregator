@@ -40,6 +40,7 @@ export async function writeFailedArchive(input: {
   readonly costBreakdown: RunCostBreakdown | null;
   readonly runFunnel: RunFunnel | null;
   readonly sourceTelemetry?: RunSourceTelemetry | null;
+  readonly tenantId?: string;
   readonly logger: ReturnType<typeof createLogger>;
 }): Promise<boolean> {
   try {
@@ -55,6 +56,7 @@ export async function writeFailedArchive(input: {
       isDryRun: input.isDryRun,
       runFunnel: input.runFunnel,
       sourceTelemetry: input.sourceTelemetry ?? null,
+      ...(input.tenantId !== undefined ? { tenantId: input.tenantId } : {}),
     });
     if (input.costBreakdown !== null) {
       await input.archiveRepo.setCostBreakdown(input.runId, input.costBreakdown);

@@ -1,6 +1,7 @@
 import type { AppDb } from "@newsletter/shared/db";
 import { subscribers, emailSends, sesEvents } from "@newsletter/shared/db";
 import { and, gte, lt, eq, count } from "drizzle-orm";
+import { isAllTenants, type ScopedTenantContext, BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 
 export interface AnalyticsRepo {
   getMetrics(params: { from: Date; to: Date }): Promise<{
@@ -14,7 +15,7 @@ export interface AnalyticsRepo {
   }>;
 }
 
-export function createAnalyticsRepo(db: Pick<AppDb, "select">): AnalyticsRepo {
+export function createAnalyticsRepo(db: Pick<AppDb, "select">, scoped: ScopedTenantContext): AnalyticsRepo {
   return {
     async getMetrics({ from, to }) {
       const [

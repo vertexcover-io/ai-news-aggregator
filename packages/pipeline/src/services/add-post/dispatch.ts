@@ -1,4 +1,5 @@
 import type { RawItemInsert } from "@newsletter/shared/db";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import {
   fetchHnPost as defaultFetchHnPost,
   parseHnItemIdFromUrl,
@@ -110,6 +111,7 @@ async function loadTwitterDefaults(): Promise<{
       { resolveTwitterCollectorCookie },
       { refreshRettiwtCsrfToken },
       { createSocialCredentialsRepo },
+      { createAppCredentialsRepo },
       { getDb },
       { getCredentialCipher },
       { Rettiwt },
@@ -117,19 +119,21 @@ async function loadTwitterDefaults(): Promise<{
       import("@pipeline/services/credential-resolver.js"),
       import("@pipeline/collectors/twitter/clients/rettiwt-auth.js"),
       import("@pipeline/repositories/social-credentials.js"),
+      import("@pipeline/repositories/app-credentials.js"),
       import("@newsletter/shared/db"),
       import("@newsletter/shared/services/credential-cipher"),
       import("rettiwt-api"),
     ]);
 
-    const repo = createSocialCredentialsRepo(getDb(), getCredentialCipher());
+    const socialRepo = createSocialCredentialsRepo(getDb(), getCredentialCipher(), BOOTSTRAP_CONTEXT);
+    const appRepo = createAppCredentialsRepo(getDb(), getCredentialCipher());
 
     return {
       rettiwtCtor: Rettiwt as unknown as new (opts: {
         apiKey: string;
       }) => RettiwtTweetFacade,
       resolveCookie: () =>
-        resolveTwitterCollectorCookie({ repo, env: process.env }),
+        resolveTwitterCollectorCookie({ appRepo, socialRepo, env: process.env }),
       refreshCsrf: async (
         apiKey: string,
         source: "db" | "env",
@@ -137,7 +141,7 @@ async function loadTwitterDefaults(): Promise<{
         const holder = { apiKey };
         const ok = await refreshRettiwtCsrfToken({
           rettiwt: holder,
-          repo,
+          repo: socialRepo,
           credentialSource: source,
         });
         return ok && holder.apiKey ? holder.apiKey : null;

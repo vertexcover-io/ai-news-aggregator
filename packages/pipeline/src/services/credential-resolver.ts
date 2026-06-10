@@ -1,5 +1,7 @@
 import { createLogger } from "@newsletter/shared/logger";
+import type { AppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
 import type { SocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
+import type { SocialTokensRepo } from "@pipeline/repositories/social-tokens.js";
 
 export interface LinkedInCreds {
   clientId: string;
@@ -14,13 +16,29 @@ export interface TwitterOAuth1Creds {
   accessSecret: string;
 }
 
+export interface TwitterOAuth2AppCreds {
+  clientId: string;
+  clientSecret: string;
+}
+
+export interface TwitterOAuth2Token {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: Date;
+}
+
 export interface TwitterCollectorCookie {
   apiKey: string;
   source: "db" | "env";
 }
 
 export interface CredentialResolverDeps {
-  repo: SocialCredentialsRepo;
+  /** App-level secrets (LinkedIn client id/secret, Twitter collector cookie, Twitter OAuth2 app) */
+  appRepo: AppCredentialsRepo;
+  /** Tenant-level OAuth tokens (per-tenant social_credentials rows) */
+  socialRepo: SocialCredentialsRepo;
+  /** Tenant-level OAuth2 social tokens (per-tenant social_tokens rows) */
+  tokensRepo?: SocialTokensRepo;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -65,7 +83,8 @@ async function safeGetDbRow<T>(
 export async function resolveLinkedInCredentials(
   deps: CredentialResolverDeps,
 ): Promise<LinkedInCreds | null> {
-  const dbRead = await safeGetDbRow(() => deps.repo.getLinkedIn(), "linkedin");
+  // LinkedIn client credentials are app-level → read from app_credentials
+  const dbRead = await safeGetDbRow(() => deps.appRepo.getLinkedIn(), "linkedin");
   if (dbRead.ok === "decrypt_failed") return null;
   const dbRow = dbRead.ok;
   if (dbRow) {
@@ -91,7 +110,8 @@ export async function resolveLinkedInCredentials(
 export async function resolveTwitterOAuth1Credentials(
   deps: CredentialResolverDeps,
 ): Promise<TwitterOAuth1Creds | null> {
-  const dbRead = await safeGetDbRow(() => deps.repo.getTwitter(), "twitter");
+  // Twitter OAuth 1.0a tokens are tenant-level → read from social_credentials
+  const dbRead = await safeGetDbRow(() => deps.socialRepo.getTwitter(), "twitter");
   if (dbRead.ok === "decrypt_failed") return null;
   const dbRow = dbRead.ok;
   if (dbRow) {
@@ -126,8 +146,9 @@ export async function resolveTwitterOAuth1Credentials(
 export async function resolveTwitterCollectorCookie(
   deps: CredentialResolverDeps,
 ): Promise<TwitterCollectorCookie | null> {
+  // Twitter collector cookie is app-level → read from app_credentials
   const dbRead = await safeGetDbRow(
-    () => deps.repo.getTwitterCollector(),
+    () => deps.appRepo.getTwitterCollector(),
     "twitter_collector",
   );
   if (dbRead.ok === "decrypt_failed") return null;
@@ -139,4 +160,82 @@ export async function resolveTwitterCollectorCookie(
   const apiKey = env.RETTIWT_API_KEY;
   if (!present(apiKey)) return null;
   return { apiKey, source: "env" };
+}
+
+/**
+ * Resolve app-level Twitter OAuth2 client credentials (client id/secret).
+ * These are super-admin managed, stored in app_credentials platform="twitter".
+ * Env fallback: TWITTER_OAUTH2_CLIENT_ID / TWITTER_OAUTH2_CLIENT_SECRET.
+ */
+export async function resolveTwitterOAuth2App(
+  deps: CredentialResolverDeps,
+): Promise<TwitterOAuth2AppCreds | null> {
+  const dbRead = await safeGetDbRow(() => deps.appRepo.getTwitter(), "twitter");
+  if (dbRead.ok === "decrypt_failed") return null;
+  const dbRow = dbRead.ok;
+  if (dbRow) {
+    return { clientId: dbRow.clientId, clientSecret: dbRow.clientSecret };
+  }
+  const env = deps.env ?? {};
+  const clientId = env.TWITTER_OAUTH2_CLIENT_ID;
+  const clientSecret = env.TWITTER_OAUTH2_CLIENT_SECRET;
+  if (!present(clientId) || !present(clientSecret)) return null;
+  return { clientId, clientSecret };
+}
+
+/**
+ * Resolve per-tenant OAuth2 token from social_tokens.
+ * If expired and a refresh token is available, refreshes via
+ * refreshOAuth2Token with FOR UPDATE lock (mirrors LinkedIn D-109).
+ */
+export async function resolveTwitterOAuth2Token(
+  deps: CredentialResolverDeps,
+): Promise<TwitterOAuth2Token | null> {
+  const tokensRepo = deps.tokensRepo;
+  if (!tokensRepo) return null;
+
+  const appCreds = await resolveTwitterOAuth2App(deps);
+  if (!appCreds) return null;
+
+  const REFRESH_SKEW_MS = 5 * 60 * 1000; // 5 minutes
+
+  return tokensRepo.withTokenLock("twitter", async (row, tx) => {
+    if (!row) return null;
+
+    const nowEpoch = Date.now();
+    const expired = row.expiresAt.getTime() <= nowEpoch + REFRESH_SKEW_MS;
+    if (!expired) {
+      return { accessToken: row.accessToken, refreshToken: row.refreshToken, expiresAt: row.expiresAt };
+    }
+
+    if (row.refreshToken === "") {
+      logger.error(
+        { event: "social.twitter.refresh_unavailable" },
+        "twitter oauth2 token expired and no refresh_token stored",
+      );
+      return null;
+    }
+
+    // Refresh via twitter-api-v2
+    const { TwitterApi } = await import("twitter-api-v2");
+    const refreshClient = new TwitterApi({
+      clientId: appCreds.clientId,
+      clientSecret: appCreds.clientSecret,
+    });
+    const refreshed = await refreshClient.refreshOAuth2Token(row.refreshToken);
+
+    const newExpiresAt = new Date(Date.now() + refreshed.expiresIn * 1000);
+    await tx.saveToken("twitter", {
+      accessToken: refreshed.accessToken,
+      refreshToken: refreshed.refreshToken ?? row.refreshToken,
+      expiresAt: newExpiresAt,
+      metadata: row.metadata,
+    });
+
+    return {
+      accessToken: refreshed.accessToken,
+      refreshToken: refreshed.refreshToken ?? row.refreshToken,
+      expiresAt: newExpiresAt,
+    };
+  });
 }

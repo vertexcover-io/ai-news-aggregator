@@ -1,3 +1,4 @@
+import { isAllTenants, type ScopedTenantContext } from "@newsletter/shared/services";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { rawItems } from "@newsletter/shared/db";
 import type { AppDb, RawItemInsert, SourceType } from "@newsletter/shared/db";
@@ -33,7 +34,7 @@ export interface RawItemsRepo {
 }
 
 export function createRawItemsRepo(
-  db: Pick<AppDb, "insert" | "select" | "update">,
+  db: Pick<AppDb, "insert" | "select" | "update">, scoped: ScopedTenantContext,
 ): RawItemsRepo {
   return {
     async upsertItems(items: RawItemInsert[]): Promise<void> {

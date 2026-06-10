@@ -6,9 +6,20 @@ import type {
   ArchiveListItem,
   HomePagePayload,
   PublicMustReadEntry,
+  TenantBranding,
 } from "@newsletter/shared/types";
 import { HomePage } from "../../../src/pages/HomePage";
 import { PublicLayout } from "../../../src/layouts/PublicLayout";
+
+const DEFAULT_BRANDING: TenantBranding = {
+  name: "AGENTLOOP",
+  headline: "The daily read for people who ship with agents.",
+  topicStrip:
+    "AGENTIC CODING · HARNESS ENGINEERING · CONTEXT ENGINEERING · THE SOFTWARE FACTORY",
+  subtagline: "No model releases. No benchmarks. No discourse. Just the craft.",
+  logoUrl: null,
+  flags: { canon: true, isTenantZero: true },
+};
 
 vi.mock("../../../src/api/home", () => ({
   getHome: vi.fn(),
@@ -83,7 +94,7 @@ function renderHome(payload: HomePagePayload): ReturnType<typeof render> {
 
 describe("HomePage", () => {
   it("REQ-002: hero block renders the headline, four pillar chips, and exclusion line", () => {
-    renderHome({ todaysIssue: null, featuredCanon: null, recentIssues: [] });
+    renderHome({ branding: DEFAULT_BRANDING, todaysIssue: null, featuredCanon: null, recentIssues: [] });
     expect(
       screen.getByRole("heading", {
         level: 1,
@@ -104,7 +115,7 @@ describe("HomePage", () => {
     const today = makeArchive("run-today", "2026-05-23", {
       digestHeadline: "The OpenAI Codex sandbox just redrew the cost curve.",
     });
-    renderHome({ todaysIssue: today, featuredCanon: null, recentIssues: [] });
+    renderHome({ branding: DEFAULT_BRANDING, todaysIssue: today, featuredCanon: null, recentIssues: [] });
     const block = document.querySelector('[data-section="todays-issue"]');
     expect(block).not.toBeNull();
     expect(block?.textContent).toContain(
@@ -116,7 +127,7 @@ describe("HomePage", () => {
 
   it("REQ-004: when featuredCanon present, [data-section='from-the-canon'] renders title, annotation, and link to entry URL", () => {
     const canon = makeCanon();
-    renderHome({ todaysIssue: null, featuredCanon: canon, recentIssues: [] });
+    renderHome({ branding: DEFAULT_BRANDING, todaysIssue: null, featuredCanon: canon, recentIssues: [] });
     const block = document.querySelector('[data-section="from-the-canon"]');
     expect(block).not.toBeNull();
     expect(block?.textContent).toContain("Software 3.0");
@@ -132,7 +143,7 @@ describe("HomePage", () => {
     );
     // Inject the todaysIssue into recent to test exclusion
     recent.unshift(today);
-    renderHome({ todaysIssue: today, featuredCanon: null, recentIssues: recent });
+    renderHome({ branding: DEFAULT_BRANDING, todaysIssue: today, featuredCanon: null, recentIssues: recent });
     const section = document.querySelector('[data-section="recent-issues"]');
     expect(section).not.toBeNull();
     const rows = section?.querySelectorAll("ul.archive-list > li") ?? [];
@@ -143,7 +154,7 @@ describe("HomePage", () => {
   });
 
   it("[data-section='elsewhere'] is present with must-read, sources, and built columns; no tools column", () => {
-    renderHome({ todaysIssue: null, featuredCanon: null, recentIssues: [] });
+    renderHome({ branding: DEFAULT_BRANDING, todaysIssue: null, featuredCanon: null, recentIssues: [] });
     const elsewhere = document.querySelector('[data-section="elsewhere"]');
     expect(elsewhere).not.toBeNull();
     expect(elsewhere?.querySelector('[data-column="must-read"]')).not.toBeNull();
@@ -153,13 +164,13 @@ describe("HomePage", () => {
   });
 
   it("no legacy DirectoryNav row is rendered (Masthead is the only top nav site-wide)", () => {
-    renderHome({ todaysIssue: null, featuredCanon: null, recentIssues: [] });
+    renderHome({ branding: DEFAULT_BRANDING, todaysIssue: null, featuredCanon: null, recentIssues: [] });
     expect(document.querySelector('nav[aria-label="Directory"]')).toBeNull();
     expect(document.querySelector('[data-nav="directory"]')).toBeNull();
   });
 
   it("EDGE-001: with todaysIssue=null, neither Today's Issue nor Recent Issues sections render; hero + subscribe + Elsewhere remain", () => {
-    renderHome({ todaysIssue: null, featuredCanon: null, recentIssues: [] });
+    renderHome({ branding: DEFAULT_BRANDING, todaysIssue: null, featuredCanon: null, recentIssues: [] });
     expect(document.querySelector('[data-section="todays-issue"]')).toBeNull();
     expect(document.querySelector('[data-section="recent-issues"]')).toBeNull();
     // Hero
@@ -181,6 +192,7 @@ describe("HomePage", () => {
 
   it("EDGE-002: with featuredCanon=null, From-the-canon section is hidden", () => {
     renderHome({
+      branding: DEFAULT_BRANDING,
       todaysIssue: makeArchive("run-x", "2026-05-23"),
       featuredCanon: null,
       recentIssues: [],
@@ -190,7 +202,7 @@ describe("HomePage", () => {
 
   it("NF-005: all external <a> tags in Today's Issue section that point off-site use rel='noopener noreferrer' target='_blank'", async () => {
     const today = makeArchive("run-today", "2026-05-23");
-    renderHome({ todaysIssue: today, featuredCanon: null, recentIssues: [] });
+    renderHome({ branding: DEFAULT_BRANDING, todaysIssue: today, featuredCanon: null, recentIssues: [] });
     await waitFor(() => {
       expect(document.querySelector('[data-section="todays-issue"]')).not.toBeNull();
     });
@@ -204,7 +216,7 @@ describe("HomePage", () => {
   });
 
   it("NF-005: from-the-canon external link uses rel/target", () => {
-    renderHome({ todaysIssue: null, featuredCanon: makeCanon(), recentIssues: [] });
+    renderHome({ branding: DEFAULT_BRANDING, todaysIssue: null, featuredCanon: makeCanon(), recentIssues: [] });
     const link = document.querySelector(
       '[data-section="from-the-canon"] a[href^="http"]',
     );

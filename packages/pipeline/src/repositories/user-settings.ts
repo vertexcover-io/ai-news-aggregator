@@ -1,3 +1,4 @@
+import { isAllTenants, type ScopedTenantContext } from "@newsletter/shared/services";
 import { eq } from "drizzle-orm";
 import { userSettings } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
@@ -8,7 +9,7 @@ export interface UserSettingsRepo {
 }
 
 export function createUserSettingsRepo(
-  db: Pick<AppDb, "select">,
+  db: Pick<AppDb, "select">, scoped: ScopedTenantContext,
 ): UserSettingsRepo {
   return {
     async get(): Promise<UserSettings | null> {

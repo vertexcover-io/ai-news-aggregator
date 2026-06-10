@@ -96,8 +96,10 @@ function makeApp(
   archiveRepo: RunArchivesRepo = makeArchiveRepo(),
 ): Hono {
   const deps = makeArchivesDeps(archiveRepo);
+  const noop: import("hono").MiddlewareHandler = async (_c, next) => { await next(); };
   return buildApp({
     sessionSecret: SESSION_SECRET,
+    resolveTenant: noop,
     publicArchivesRouter: createPublicArchivesRouter(deps),
     publicHomeRouter: new Hono(),
     publicMustReadRouter: new Hono(),
@@ -110,6 +112,7 @@ function makeApp(
     adminMustReadRouter: new Hono(),
     runsRouter: makeStubRunsRouter(),
     settingsRouter: makeStubSettingsRouter(),
+    sendingDomainRouter: new Hono(),
     adminRouter: createAdminRouter({
       adminPassword: ADMIN_PASSWORD,
       sessionSecret: SESSION_SECRET,
@@ -122,7 +125,14 @@ function makeApp(
     analyticsConfigRouter: makeStubAnalyticsConfigRouter(),
     linkedInOAuthRouter: new Hono(),
     linkedInOAuthCallbackRouter: new Hono(),
+    twitterOAuthRouter: new Hono(),
+    twitterOAuthCallbackRouter: new Hono(),
     collectorHealthRouter: new Hono(),
+    sourcesAdminRouter: new Hono(),
+    notificationsRouter: new Hono(),
+    featuresRouter: new Hono(),
+    superAppCredentialsRouter: new Hono(),
+    superAdminRouter: new Hono(),
   });
 }
 
@@ -203,7 +213,8 @@ describe("route gating (phase 4)", () => {
       headers: { cookie },
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ admin: true });
+    const body = await res.json();
+    expect(body).toMatchObject({ admin: true });
   });
 
   it("6. GET /api/runs without cookie → 401", async () => {

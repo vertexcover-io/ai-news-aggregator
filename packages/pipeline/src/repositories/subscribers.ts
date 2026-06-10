@@ -1,3 +1,4 @@
+import { isAllTenants, type ScopedTenantContext } from "@newsletter/shared/services";
 import { eq, inArray, sql } from "drizzle-orm";
 import { subscribers } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
@@ -10,7 +11,7 @@ export interface PipelineSubscribersRepo {
 }
 
 export function createPipelineSubscribersRepo(
-  db: Pick<AppDb, "select">,
+  db: Pick<AppDb, "select">, scoped: ScopedTenantContext,
 ): PipelineSubscribersRepo {
   return {
     async listConfirmed(): Promise<SubscriberSelect[]> {

@@ -114,7 +114,7 @@ async function main(): Promise<void> {
   if (args.only) recipients = recipients.filter((r) => r.email === args.only);
   if (args.limit !== undefined) recipients = recipients.slice(0, args.limit);
 
-  const repo = createSubscribersRepo(getDb());
+  const repo = createSubscribersRepo(getDb(), BOOTSTRAP_CONTEXT);
   const outDir = resolve(REPO_ROOT, ".harness/runtime/feedback-campaign");
   mkdirSync(outDir, { recursive: true });
 

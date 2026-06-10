@@ -1,3 +1,4 @@
+import { isAllTenants, type ScopedTenantContext } from "@newsletter/shared/services";
 import { and, gte, inArray } from "drizzle-orm";
 import { rawItems } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
@@ -20,7 +21,7 @@ export interface CandidatesRepo {
 }
 
 export function createCandidatesRepo(
-  db: Pick<AppDb, "select">,
+  db: Pick<AppDb, "select">, scoped: ScopedTenantContext,
 ): CandidatesRepo {
   return {
     async findSince(

@@ -7,6 +7,7 @@ import {
   type StaticFetchError,
 } from "@newsletter/shared/services/static-page-fetcher";
 import { extractPageMetadata } from "@newsletter/shared/services/page-metadata";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import {
   createMustReadRepo,
   type MustReadRepo,
@@ -211,6 +212,6 @@ export function createAdminMustReadRouter(
 
 export function createDefaultAdminMustReadRouter(): Hono {
   return createAdminMustReadRouter({
-    getRepo: () => createMustReadRepo(defaultGetDb()),
+    getRepo: () => createMustReadRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
   });
 }

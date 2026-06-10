@@ -1,3 +1,4 @@
+import { isAllTenants, type ScopedTenantContext } from "@newsletter/shared/services";
 import { runLogs } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { RunLogInsert } from "@newsletter/shared";
@@ -11,7 +12,10 @@ export interface RunLogRepo {
   append(runId: string, entry: RunLogInsert): Promise<void>;
 }
 
-export function createRunLogRepo(db: Pick<AppDb, "insert">): RunLogRepo {
+export function createRunLogRepo(
+  db: Pick<AppDb, "insert">,
+  scoped: ScopedTenantContext,
+): RunLogRepo {
   return {
     async append(runId: string, entry: RunLogInsert): Promise<void> {
       await db.insert(runLogs).values({

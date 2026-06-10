@@ -26,6 +26,7 @@ export interface RunProcessJobPayload {
   };
   halfLifeHours?: number;
   dryRun?: boolean;
+  tenantId?: string;
 }
 
 export interface StartRunDeps {
@@ -33,6 +34,7 @@ export interface StartRunDeps {
   queue: Queue<RunProcessJobPayload>;
   now?: () => Date;
   runId?: () => string;
+  tenantId?: string;
 }
 
 export async function startRun(
@@ -122,6 +124,7 @@ export async function startRun(
       ? { halfLifeHours: settings.halfLifeHours }
       : {}),
     ...(opts?.dryRun === true ? { dryRun: true } : {}),
+    ...(deps.tenantId !== undefined ? { tenantId: deps.tenantId } : {}),
   };
 
   await deps.queue.add("run-process", jobPayload, { jobId: runId });

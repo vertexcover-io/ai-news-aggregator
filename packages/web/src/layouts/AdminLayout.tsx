@@ -2,11 +2,14 @@ import type { ReactElement } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { logout } from "@/api/admin";
+import { useAdminSession } from "@/hooks/useAdminSession";
 import { Button } from "@/components/ui/button";
+import { ImpersonationBanner } from "@/components/shell/ImpersonationBanner";
 
 export function AdminLayout(): ReactElement {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { data: session } = useAdminSession();
 
   async function handleSignOut(): Promise<void> {
     await logout();
@@ -16,6 +19,9 @@ export function AdminLayout(): ReactElement {
 
   return (
     <div>
+      {session?.impersonating && (
+        <ImpersonationBanner tenantName={session.impersonatingTenantName ?? "Tenant"} />
+      )}
       <header className="flex items-center justify-between px-4 py-2 border-b">
         <nav className="flex items-center gap-4">
           <Link to="/admin" className="font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-neutral-900 min-h-[44px] inline-flex items-center">Dashboard</Link>

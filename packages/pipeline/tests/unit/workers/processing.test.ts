@@ -89,9 +89,17 @@ vi.mock("@pipeline/repositories/social-credentials.js", () => ({
   createSocialCredentialsRepo: vi.fn(() => ({
     getLinkedIn: vi.fn().mockResolvedValue(null),
     getTwitter: vi.fn().mockResolvedValue(null),
+    getTwitterCollector: vi.fn().mockResolvedValue(null),
     upsertLinkedIn: vi.fn(),
     upsertTwitter: vi.fn(),
+    upsertTwitterCollector: vi.fn(),
     delete: vi.fn(),
+  })),
+}));
+vi.mock("@pipeline/repositories/app-credentials.js", () => ({
+  createAppCredentialsRepo: vi.fn(() => ({
+    getLinkedIn: vi.fn().mockResolvedValue(null),
+    getTwitterCollector: vi.fn().mockResolvedValue(null),
   })),
 }));
 vi.mock("@newsletter/shared/services/credential-cipher", () => ({

@@ -1,3 +1,4 @@
+import { isAllTenants, type ScopedTenantContext } from "@newsletter/shared/services";
 import { sesEvents } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { SesEventInsert, SesEventSelect } from "@newsletter/shared";
@@ -7,7 +8,7 @@ export interface SesEventsRepo {
 }
 
 export function createSesEventsRepo(
-  db: Pick<AppDb, "insert">,
+  db: Pick<AppDb, "insert">, scoped: ScopedTenantContext,
 ): SesEventsRepo {
   return {
     async upsert(insert: SesEventInsert): Promise<SesEventSelect> {

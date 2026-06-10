@@ -31,6 +31,7 @@ import {
   type TwitterHandleResolverDeps,
 } from "@api/services/twitter-handle-resolver.js";
 import { captureAnalytics, refreshPostHogConfig } from "@api/lib/posthog.js";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 
 type RettiwtFactory = TwitterHandleResolverDeps["rettiwtFactory"];
 
@@ -254,7 +255,7 @@ function getDefaultCollectorHealthQueue(): Queue {
 
 export function createDefaultSettingsRouter(): Hono {
   return createSettingsRouter({
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
     processingQueue: getDefaultProcessingQueue(),
     collectorHealthQueue: getDefaultCollectorHealthQueue(),
   });

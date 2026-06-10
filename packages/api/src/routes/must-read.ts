@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { createLogger, getDb as defaultGetDb } from "@newsletter/shared";
 import type { PublicMustReadEntry } from "@newsletter/shared";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import {
   createMustReadRepo,
   toPublicWire,
@@ -34,6 +35,6 @@ export function createPublicMustReadRouter(
 
 export function createDefaultPublicMustReadRouter(): Hono {
   return createPublicMustReadRouter({
-    getMustReadRepo: () => createMustReadRepo(defaultGetDb()),
+    getMustReadRepo: () => createMustReadRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
   });
 }

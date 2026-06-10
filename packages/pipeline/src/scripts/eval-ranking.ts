@@ -5,6 +5,7 @@ import { parseArgs } from "node:util";
 config({ path: resolve(import.meta.dirname, "../../../../.env") });
 
 import { getDb } from "@newsletter/shared/db";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 import { EvalCache } from "@pipeline/eval/cache.js";
 import {
@@ -68,7 +69,7 @@ async function main(): Promise<number> {
 
   const loadPromptFromDb = async (): Promise<string> => {
     const db = getDb();
-    const repo = createUserSettingsRepo(db);
+    const repo = createUserSettingsRepo(db, BOOTSTRAP_CONTEXT);
     const settings = await repo.get();
     if (settings === null) {
       throw new Error(

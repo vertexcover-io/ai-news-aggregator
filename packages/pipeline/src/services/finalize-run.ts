@@ -74,6 +74,7 @@ export interface FinalizeRunInput {
   readonly funnel: RunFunnel;
   readonly shortlistIds: number[];
   readonly startedTimestamp: number;
+  readonly tenantId?: string;
   /** Called after the archive row is successfully written. */
   readonly persistCost: () => Promise<void>;
 }
@@ -87,7 +88,7 @@ export async function finalizeRun(input: FinalizeRunInput): Promise<FinalizeRunR
     runId, topN, sourceTypes, dryRun, runStartedAt, runLog, logger,
     archiveRepo, rawItemsRepo, slackNotifier,
     settings, rankResult, collectingOutcomes, enrichmentCtx, funnel, shortlistIds,
-    startedTimestamp, persistCost,
+    startedTimestamp, persistCost, tenantId,
   } = input;
 
   const autoReviewed = settings?.autoReview === true;
@@ -156,6 +157,7 @@ export async function finalizeRun(input: FinalizeRunInput): Promise<FinalizeRunR
         hook,
         twitterSummary,
       }),
+      ...(tenantId !== undefined ? { tenantId } : {}),
     });
     archiveWritten = true;
   } catch (err) {

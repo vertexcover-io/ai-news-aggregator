@@ -1,4 +1,5 @@
 import { and, count, eq, inArray, ne } from "drizzle-orm";
+import { isAllTenants, type ScopedTenantContext, BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import { subscribers } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { SubscriberInsert, SubscriberSelect, SubscriberStatus } from "@newsletter/shared";
@@ -34,7 +35,7 @@ export interface SubscribersRepo {
 }
 
 export function createSubscribersRepo(
-  db: Pick<AppDb, "select" | "insert" | "update">,
+  db: Pick<AppDb, "select" | "insert" | "update">, scoped: ScopedTenantContext,
 ): SubscribersRepo {
   return {
     async findByEmail(email: string): Promise<SubscriberSelect | null> {

@@ -41,14 +41,8 @@ function extractBody(err: unknown): string {
   return typeof err === "string" ? err : "[unknown error]";
 }
 
-export function createTwitterApiClient(
-  credentials: TwitterOAuth1Credentials,
-  options: CreateTwitterApiClientOptions = {},
-): TwitterApiClient {
-  const Ctor = options.TwitterApiCtor ?? TwitterApi;
-  const client = new Ctor(credentials);
-
-  const run = async <T>(
+function makeRun(_client: TwitterApi) {
+  return async <T>(
     fn: () => Promise<T>,
   ): Promise<
     | { ok: true; value: T }
@@ -64,35 +58,76 @@ export function createTwitterApiClient(
       };
     }
   };
+}
+
+function makeCreatePost(client: TwitterApi) {
+  const run = makeRun(client);
+  return async (input: TwitterCreatePostInput): Promise<TwitterCreatePostResult> => {
+    const result = await run(() =>
+      input.replyToTweetId !== undefined
+        ? client.v2.tweet(input.text, {
+            reply: { in_reply_to_tweet_id: input.replyToTweetId },
+          })
+        : client.v2.tweet(input.text),
+    );
+    if (!result.ok) {
+      return {
+        ok: false,
+        status: result.status,
+        body: result.body,
+      };
+    }
+    const id = result.value.data.id;
+    return {
+      ok: true,
+      tweetId: id,
+      tweetUrl: `https://x.com/i/status/${id}`,
+    };
+  };
+}
+
+export function createTwitterApiClient(
+  credentials: TwitterOAuth1Credentials,
+  options: CreateTwitterApiClientOptions = {},
+): TwitterApiClient {
+  const Ctor = options.TwitterApiCtor ?? TwitterApi;
+  const client = new Ctor(credentials);
+  const run = makeRun(client);
 
   return {
-    async createPost(
-      input: TwitterCreatePostInput,
-    ): Promise<TwitterCreatePostResult> {
-      const result = await run(() =>
-        input.replyToTweetId !== undefined
-          ? client.v2.tweet(input.text, {
-              reply: { in_reply_to_tweet_id: input.replyToTweetId },
-            })
-          : client.v2.tweet(input.text),
-      );
-      if (!result.ok) {
-        return {
-          ok: false,
-          status: result.status,
-          body: result.body,
-        };
-      }
-      const id = result.value.data.id;
-      return {
-        ok: true,
-        tweetId: id,
-        tweetUrl: `https://x.com/i/status/${id}`,
-      };
-    },
+    createPost: makeCreatePost(client),
 
     async validateCredentials(): Promise<TwitterCredentialValidationResult> {
       const result = await run(() => client.currentUserV2(true));
+      if (result.ok) return { ok: true };
+      return {
+        ok: false,
+        status: result.status,
+        body: result.body,
+      };
+    },
+  };
+}
+
+/**
+ * Create a TwitterApiClient authenticated via OAuth2 access token.
+ * The access token comes from the per-tenant social_tokens row (via the
+ * OAuth2 3-legged flow). No refresh — the caller is responsible for
+ * refreshing the token before calling this factory.
+ */
+export function createTwitterOAuth2ApiClient(
+  accessToken: string,
+  options: CreateTwitterApiClientOptions = {},
+): TwitterApiClient {
+  const Ctor = options.TwitterApiCtor ?? TwitterApi;
+  const client = new Ctor(accessToken);
+  const run = makeRun(client);
+
+  return {
+    createPost: makeCreatePost(client),
+
+    async validateCredentials(): Promise<TwitterCredentialValidationResult> {
+      const result = await run(() => client.v2.me());
       if (result.ok) return { ok: true };
       return {
         ok: false,

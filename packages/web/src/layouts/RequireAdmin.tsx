@@ -3,6 +3,14 @@ import { Navigate, useLocation, Outlet } from "react-router-dom";
 import { useAdminSession } from "../hooks/useAdminSession";
 import { UnauthenticatedError } from "../api/admin";
 
+/**
+ * Route guard for /admin routes.
+ *
+ * - Unauthenticated users → redirected to /admin/login
+ * - super_admin users → redirected to /admin/super/tenants (REQ-100)
+ *   EXCEPT when already on a /admin/super path (prevents infinite redirect)
+ * - tenant_admin users → allowed through
+ */
 export function RequireAdmin(): ReactElement | null {
   const { data, isLoading, error } = useAdminSession();
   const location = useLocation();
@@ -12,6 +20,11 @@ export function RequireAdmin(): ReactElement | null {
   if (error instanceof UnauthenticatedError || !data) {
     const next = encodeURIComponent(location.pathname + location.search);
     return <Navigate to={`/admin/login?next=${next}`} replace />;
+  }
+
+  // REQ-100: super_admin lands on tenant list, not tenant dashboard
+  if (data.role === "super_admin" && !location.pathname.startsWith("/admin/super")) {
+    return <Navigate to="/admin/super/tenants" replace />;
   }
 
   return <Outlet />;

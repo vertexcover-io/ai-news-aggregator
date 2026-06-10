@@ -19,6 +19,7 @@ import {
   createUserSettingsRepo,
   type UserSettingsRepo,
 } from "@api/repositories/user-settings.js";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 
 export interface ArchivesSearchRouterDeps {
   getArchiveRepo: () => RunArchivesRepo;
@@ -118,8 +119,8 @@ export function createArchivesSearchRouter(
 
 export function createDefaultArchivesSearchRouter(): Hono {
   return createArchivesSearchRouter({
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
+    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
+    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
   });
 }

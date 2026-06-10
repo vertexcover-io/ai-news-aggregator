@@ -1,4 +1,5 @@
 import { and, between, eq, gte, inArray, sql } from "drizzle-orm";
+import { isAllTenants, type ScopedTenantContext, BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import type IORedis from "ioredis";
 import { rawItems } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
@@ -124,7 +125,7 @@ export function deriveRawItemIdentifierSql(): typeof DERIVED_IDENTIFIER_SQL {
 }
 
 export function createRawItemsRepo(
-  db: Pick<AppDb, "select" | "execute">,
+  db: Pick<AppDb, "select" | "execute">, scoped: ScopedTenantContext,
 ): RawItemsRepo {
   return {
     async findByIds(ids: number[]): Promise<RawItemRow[]> {

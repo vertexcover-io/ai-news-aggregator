@@ -16,12 +16,14 @@ import type { MiddlewareHandler } from "hono";
  */
 function makeMinimalDeps(): BuildAppDeps {
   const stub = () => new Hono();
+  const noop: MiddlewareHandler = async (_c, next) => { await next(); };
   const requireAdminFactory = (_secret: string): MiddlewareHandler =>
     async (_c, next) => {
       await next();
     };
   return {
     sessionSecret: "test-secret-32-bytes-xxxxxxxxxx!!",
+    resolveTenant: noop,
     publicArchivesRouter: stub(),
     publicHomeRouter: stub(),
     publicMustReadRouter: stub(),
@@ -34,6 +36,7 @@ function makeMinimalDeps(): BuildAppDeps {
     adminMustReadRouter: stub(),
     runsRouter: stub(),
     settingsRouter: stub(),
+    sendingDomainRouter: stub(),
     adminRouter: stub(),
     requireAdminFactory,
     subscribeRouter: stub(),
@@ -42,7 +45,14 @@ function makeMinimalDeps(): BuildAppDeps {
     analyticsConfigRouter: stub(),
     linkedInOAuthRouter: stub(),
     linkedInOAuthCallbackRouter: stub(),
+    twitterOAuthRouter: stub(),
+    twitterOAuthCallbackRouter: stub(),
     collectorHealthRouter: stub(),
+    sourcesAdminRouter: stub(),
+    notificationsRouter: stub(),
+    featuresRouter: stub(),
+    superAppCredentialsRouter: stub(),
+    superAdminRouter: stub(),
   };
 }
 

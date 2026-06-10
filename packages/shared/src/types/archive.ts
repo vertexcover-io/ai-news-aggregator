@@ -31,6 +31,48 @@ export interface AdminLoginResponse {
 
 export interface AdminMeResponse {
   admin: true;
+  /** User role: "super_admin" or "tenant_admin". */
+  role: string;
+  /** Phase 6: when a super_admin is impersonating, this is true. */
+  impersonating?: boolean;
+  /** Phase 6: tenant name being impersonated, present when impersonating=true. */
+  impersonatingTenantName?: string;
+}
+
+/** Phase 3: real auth responses */
+export interface SignupResponse {
+  next: "onboarding";
+  userId: string;
+  tenantId: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  ok: boolean;
+  userId: string;
+  tenantId: string | null;
+  role: string;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface SessionMeResponse {
+  authenticated: boolean;
+  userId?: string;
+  tenantId?: string;
+  role?: string;
 }
 
 /** Shared shape for the curated ranked-items patch payload — used by both the

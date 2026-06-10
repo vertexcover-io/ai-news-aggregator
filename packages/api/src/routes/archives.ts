@@ -58,6 +58,7 @@ import {
   type GenerateDigestMetaFn,
 } from "@api/services/review.js";
 import { captureAnalytics } from "@api/lib/posthog.js";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 
 export interface ArchivesRouterDeps {
   getRawItemsRepo: () => RawItemsRepo;
@@ -597,10 +598,10 @@ function getDefaultProcessingQueue(): Queue {
 
 function createDefaultArchivesDeps(): ArchivesRouterDeps {
   return {
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
+    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
+    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
     getReviewEditsRepo: () => createReviewEditsRepo(defaultGetDb()),
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
     hydrateAddedPost: createDefaultHydrateAddedPost(),
     generateRecapFn: createDefaultGenerateRecapFn(),
     generateDigestMeta: createDefaultGenerateDigestMetaFn(),
@@ -616,7 +617,7 @@ function createDefaultHydrateAddedPost(): HydrateAddedPostFn {
       "@newsletter/pipeline/add-post"
     );
     return hydrateAddedPost(url, sourceType, {
-      rawItemsRepo: createPipelineRawItemsRepo(defaultGetDb()),
+      rawItemsRepo: createPipelineRawItemsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
       signal: options?.signal,
     });
   };

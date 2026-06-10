@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { createLogger, getDb as defaultGetDb } from "@newsletter/shared";
 import { buildSourcesSummary } from "@api/services/sources-summary.js";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import {
   createRawItemsRepo,
   type RawItemsRepo,
@@ -99,8 +100,8 @@ export function createPublicSourcesRouter(deps: SourcesRouterDeps): Hono {
 
 export function createDefaultPublicSourcesRouter(): Hono {
   return createPublicSourcesRouter({
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
+    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
+    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
   });
 }

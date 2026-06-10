@@ -1,4 +1,5 @@
 import { and, count, eq } from "drizzle-orm";
+import { isAllTenants, type ScopedTenantContext, BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import { feedbackEvents } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { FeedbackEventInsert, FeedbackEventSelect } from "@newsletter/shared";
@@ -14,7 +15,7 @@ export interface FeedbackEventsRepo {
 }
 
 export function createFeedbackEventsRepo(
-  db: Pick<AppDb, "select" | "insert">,
+  db: Pick<AppDb, "select" | "insert">, scoped: ScopedTenantContext,
 ): FeedbackEventsRepo {
   return {
     async insertEvent(insert: FeedbackEventInsert): Promise<FeedbackEventSelect> {

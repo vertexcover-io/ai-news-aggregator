@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { login, LoginFailedError } from "@/api/admin";
-import { useAdminSession } from "@/hooks/useAdminSession";
+import { login, LoginFailedError } from "@/api/auth";
+import { useSession } from "@/hooks/useSession";
 import { Button } from "@/components/ui/button";
 
 function resolveNext(search: string): string {
@@ -16,28 +16,30 @@ function resolveNext(search: string): string {
 }
 
 export function AdminLoginPage(): ReactElement {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const session = useAdminSession();
+  const session = useSession();
 
   useEffect(() => {
-    if (session.data) {
+    if (session.data?.authenticated) {
       void navigate(resolveNext(location.search), { replace: true });
     }
   }, [session.data, location.search, navigate]);
 
   const mutation = useMutation({
-    mutationFn: (pwd: string) => login({ password: pwd }),
+    mutationFn: (creds: { email: string; password: string }) =>
+      login(creds),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin", "me"] });
+      await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
       void navigate(resolveNext(location.search));
     },
     onError: (err: unknown) => {
       if (err instanceof LoginFailedError) {
-        setError("Incorrect password.");
+        setError("Invalid email or password.");
       } else {
         setError("Something went wrong. Try again.");
       }
@@ -47,7 +49,7 @@ export function AdminLoginPage(): ReactElement {
   function handleSubmit(e: React.BaseSyntheticEvent): void {
     e.preventDefault();
     setError(null);
-    mutation.mutate(password);
+    mutation.mutate({ email, password });
   }
 
   return (
@@ -56,8 +58,25 @@ export function AdminLoginPage(): ReactElement {
         className="rounded-lg border bg-card shadow-sm p-6 flex flex-col gap-4"
         style={{ width: "min(360px, 100%)" }}
       >
-        <h1 className="text-xl font-semibold text-center">Admin</h1>
+        <h1 className="text-xl font-semibold text-center">Sign in</h1>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="email" className="text-sm font-medium">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              required
+              autoFocus
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (error) setError(null);
+              }}
+              className="h-11 min-h-[44px] rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+            />
+          </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="password" className="text-sm font-medium">
               Password
@@ -66,7 +85,6 @@ export function AdminLoginPage(): ReactElement {
               id="password"
               type="password"
               required
-              autoFocus
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
@@ -88,11 +106,19 @@ export function AdminLoginPage(): ReactElement {
             {mutation.isPending ? "Signing in…" : "Sign in"}
           </Button>
         </form>
+        <div className="flex flex-col gap-2 text-sm text-center">
+          <Link
+            to="/admin/forgot-password"
+            className="text-muted-foreground hover:text-foreground min-h-[44px] inline-flex items-center justify-center"
+          >
+            Forgot password?
+          </Link>
+        </div>
         <Link
           to="/"
           className="inline-flex items-center justify-center min-h-[44px] px-2 text-sm text-muted-foreground hover:text-foreground"
         >
-          ← Back to archive
+          &larr; Back to archive
         </Link>
       </div>
     </div>

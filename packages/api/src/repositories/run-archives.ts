@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, ilike, inArray, lte, notInArray, or, sql } from "drizzle-orm";
+import { isAllTenants, type ScopedTenantContext, BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import { emailSends, rawItems, runArchives } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import {
@@ -212,7 +213,7 @@ export interface RangeFailureEntry {
 }
 
 export function createRunArchivesRepo(
-  db: Pick<AppDb, "select" | "update" | "execute" | "delete" | "transaction">,
+  db: Pick<AppDb, "select" | "update" | "execute" | "delete" | "transaction">, scoped: ScopedTenantContext,
 ): RunArchivesRepo {
   function toPoolItem(row: {
     id: number;

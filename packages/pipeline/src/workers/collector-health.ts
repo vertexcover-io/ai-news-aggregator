@@ -30,7 +30,11 @@ import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js"
 import {
   createSocialCredentialsRepo,
 } from "@pipeline/repositories/social-credentials.js";
+import {
+  createAppCredentialsRepo,
+} from "@pipeline/repositories/app-credentials.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import { resolveTwitterCollectorCookie } from "@pipeline/services/credential-resolver.js";
 import { runWebCrawl } from "@pipeline/services/web-crawler.js";
 import { createWebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
@@ -416,14 +420,16 @@ export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
   const db = getDb();
 
   return {
-    userSettingsRepo: createUserSettingsRepo(db),
+    userSettingsRepo: createUserSettingsRepo(db, BOOTSTRAP_CONTEXT),
     store: createCollectorHealthStore(createRedisConnection()),
     runCollectorHealthCheck: defaultRunCollectorHealthCheck,
     // Per-job factory so credentials are always fresh (S-pipeline-03 / D-051)
     buildHealthCheckDeps: async (): Promise<HealthCheckDeps> => {
-      const credentialsRepo = createSocialCredentialsRepo(getDb(), getCredentialCipher());
+      const appCredsRepo = createAppCredentialsRepo(getDb(), getCredentialCipher());
+      const socialCredsRepo = createSocialCredentialsRepo(getDb(), getCredentialCipher(), BOOTSTRAP_CONTEXT);
       const twitterCookie = await resolveTwitterCollectorCookie({
-        repo: credentialsRepo,
+        appRepo: appCredsRepo,
+        socialRepo: socialCredsRepo,
         env: process.env,
       });
       const tavilyApiKey = process.env.TAVILY_API_KEY;

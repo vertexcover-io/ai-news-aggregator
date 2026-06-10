@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tenants — Super admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<style>
+  .sa-tag { font-family:var(--font-mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:#fff; background:var(--ink); border-radius:5px; padding:3px 8px; }
+  .stats { display:grid; grid-template-columns: repeat(4,1fr); gap:14px; margin-bottom:24px; }
+  .stat { border:1px solid var(--line); border-radius: var(--radius-xl); background:var(--cream-elev); padding:18px 20px; }
+  .stat .n { font-family:var(--font-serif); font-size:32px; font-weight:500; color:var(--ink); line-height:1; }
+  .stat .l { font-family:var(--font-mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--mute); margin-top:8px; }
+  .tn { display:flex; align-items:center; gap:11px; }
+  .tn .mk { width:30px; height:30px; border-radius:7px; display:grid; place-items:center; font-family:var(--font-mono); font-size:12px; font-weight:600; color:#fff; }
+  .toolbar { display:flex; gap:10px; align-items:center; margin-bottom:16px; }
+  .search { flex:1; max-width:340px; }
+  @media(max-width:760px){ .stats{ grid-template-columns:1fr 1fr; } }
+</style>
+</head>
+<body>
+  <div class="appbar"><div class="appbar-inner">
+    <a class="brand" href="#"><svg class="brandmark" width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="45" stroke="currentColor" stroke-width="5" stroke-linecap="round" pathLength="360" stroke-dasharray="344 360" stroke-dashoffset="-55"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wordmark">AGENTLOOP</span><span class="sa-tag" style="margin-left:8px">Super admin</span></a>
+    <nav><a class="active" href="#">Tenants</a><a href="#">App credentials</a><span class="avatar" style="background:var(--ink); color:#fff">RK</span></nav>
+  </div></div>
+
+  <div class="shell">
+    <p class="kicker kicker-rust">Platform overview</p>
+    <h1 class="display" style="margin-bottom:24px">Tenants</h1>
+
+    <div class="stats">
+      <div class="stat"><div class="n">37</div><div class="l">Total tenants</div></div>
+      <div class="stat"><div class="n">31</div><div class="l">Active</div></div>
+      <div class="stat"><div class="n">6</div><div class="l">In setup</div></div>
+      <div class="stat"><div class="n">12.4k</div><div class="l">Subscribers</div></div>
+    </div>
+
+    <div class="toolbar">
+      <input class="input search" placeholder="Search tenants by name, slug, or owner email…">
+      <select class="select" style="max-width:150px"><option>All statuses</option><option>Active</option><option>In setup</option></select>
+    </div>
+
+    <div class="card" style="padding:0">
+      <table class="t" style="margin:6px">
+        <thead><tr><th style="padding-left:18px">Tenant</th><th>Domain</th><th>Status</th><th>Subscribers</th><th>Last run</th><th></th></tr></thead>
+        <tbody>
+          <tr class="clickable">
+            <td style="padding-left:18px"><div class="tn"><span class="mk" style="background:#8c3a1e">A</span><div><strong>AGENTLOOP</strong><div class="help" style="margin:0">ritesh@vertexcover.io · tenant 0</div></div></div></td>
+            <td class="kv" style="color:var(--mute)">agentloop.dev</td>
+            <td><span class="badge badge-live"><span class="dot" style="background:var(--rust)"></span> Active</span></td>
+            <td class="kv">8,210</td>
+            <td class="kv" style="color:var(--mute)">2h ago</td>
+            <td style="text-align:right; padding-right:18px"><button class="btn btn-outline btn-sm">Open →</button></td>
+          </tr>
+          <tr class="clickable">
+            <td style="padding-left:18px"><div class="tn"><span class="mk" style="background:#2a261f">T</span><div><strong>The Inference</strong><div class="help" style="margin:0">ada@studio.com</div></div></div></td>
+            <td class="kv" style="color:var(--mute)">theinference.ourdomain.com</td>
+            <td><span class="badge badge-ok"><span class="dot dot-ok"></span> Active</span></td>
+            <td class="kv">1,043</td>
+            <td class="kv" style="color:var(--mute)">3h ago</td>
+            <td style="text-align:right; padding-right:18px"><button class="btn btn-outline btn-sm">Open →</button></td>
+          </tr>
+          <tr class="clickable">
+            <td style="padding-left:18px"><div class="tn"><span class="mk" style="background:#0a66c2">D</span><div><strong>Design Systems Weekly</strong><div class="help" style="margin:0">priya@dsw.co</div></div></div></td>
+            <td class="kv" style="color:var(--mute)">dsw.ourdomain.com</td>
+            <td><span class="badge badge-ok"><span class="dot dot-ok"></span> Active</span></td>
+            <td class="kv">2,887</td>
+            <td class="kv" style="color:var(--mute)">5h ago</td>
+            <td style="text-align:right; padding-right:18px"><button class="btn btn-outline btn-sm">Open →</button></td>
+          </tr>
+          <tr class="clickable">
+            <td style="padding-left:18px"><div class="tn"><span class="mk" style="background:#3a7d44">G</span><div><strong>GreenChip</strong><div class="help" style="margin:0">sam@greenchip.energy</div></div></div></td>
+            <td class="kv" style="color:var(--mute-2)">— not set —</td>
+            <td><span class="badge badge-warn"><span class="dot dot-warn"></span> In setup · step 5</span></td>
+            <td class="kv" style="color:var(--mute-2)">—</td>
+            <td class="kv" style="color:var(--mute-2)">—</td>
+            <td style="text-align:right; padding-right:18px"><button class="btn btn-outline btn-sm">Open →</button></td>
+          </tr>
+          <tr class="clickable">
+            <td style="padding-left:18px"><div class="tn"><span class="mk" style="background:#6e2d17">R</span><div><strong>Robotics Digest</strong><div class="help" style="margin:0">kenji@robo.jp</div></div></div></td>
+            <td class="kv" style="color:var(--mute)">robo.ourdomain.com</td>
+            <td><span class="badge badge-ok"><span class="dot dot-ok"></span> Active</span></td>
+            <td class="kv">512</td>
+            <td class="kv" style="color:var(--mute)">1d ago</td>
+            <td style="text-align:right; padding-right:18px"><button class="btn btn-outline btn-sm">Open →</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="help" style="margin-top:14px">Opening a tenant enters <strong>impersonation</strong> — you’ll see their dashboard as-is, with a banner and one-click exit. Start/stop is audited.</p>
+  </div>
+</body>
+</html>

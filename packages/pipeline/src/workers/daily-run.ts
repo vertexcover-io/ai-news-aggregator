@@ -1,6 +1,7 @@
 import { Queue, Worker } from "bullmq";
 import type IORedis from "ioredis";
-import { getDb } from "@newsletter/shared";
+import { getDb } from "@newsletter/shared"
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { createLogger } from "@newsletter/shared/logger";
 import { startRun } from "@newsletter/shared";
@@ -81,7 +82,7 @@ export function createDailyRunWorker(
   const queue =
     options.queue ?? new Queue<RunProcessJobPayload>("processing", { connection });
   const userSettingsRepo =
-    options.userSettingsRepo ?? createUserSettingsRepo(getDb());
+    options.userSettingsRepo ?? createUserSettingsRepo(getDb(), BOOTSTRAP_CONTEXT);
 
   const deps: DailyRunDeps = { redis, queue, userSettingsRepo };
 

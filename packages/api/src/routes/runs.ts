@@ -35,6 +35,7 @@ import {
 } from "@api/repositories/user-settings.js";
 import { listRuns } from "@api/services/run-list.js";
 import { captureAnalytics } from "@api/lib/posthog.js";
+import { BOOTSTRAP_CONTEXT } from "@newsletter/shared/services";
 
 export interface RunsRouterDeps {
   redis: IORedis;
@@ -285,8 +286,8 @@ export function createDefaultRunsRouter(): Hono {
     redis: createRedisConnection(),
     publisher: createRedisConnection(),
     processingQueue: getDefaultProcessingQueue(),
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
+    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
+    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
+    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb(), BOOTSTRAP_CONTEXT),
   });
 }
