@@ -205,10 +205,12 @@ export function buildApp(deps: BuildAppDeps): Hono {
     }
     return requireAuth(deps.sessionSecret)(c, next);
   };
-  const onboardingApp = new Hono();
-  onboardingApp.use("*", onboardingConditionalGate);
-  onboardingApp.route("/", deps.onboardingRouter);
-  app.route("/api/onboarding", onboardingApp);
+  if (deps.onboardingRouter) {
+    const onboardingApp = new Hono();
+    onboardingApp.use("*", onboardingConditionalGate);
+    onboardingApp.route("/", deps.onboardingRouter);
+    app.route("/api/onboarding", onboardingApp);
+  }
 
   app.route("/api/runs", gatedWrap(gate, deps.runsRouter));
   app.route("/api/settings", gatedWrap(gate, deps.settingsRouter));
