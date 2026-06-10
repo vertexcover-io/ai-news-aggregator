@@ -28,6 +28,8 @@ export interface BuildAppDeps {
    * goes through requireAdmin.
    */
   adminRouter: Hono;
+  /** Factory for the admin gate middleware. Should accept both V2 session tokens
+   * and legacy admin tokens (use requireAuth, not requireAdmin). */
   requireAdminFactory: (secret: string) => MiddlewareHandler;
   subscribeRouter: Hono;
   webhooksRouter: Hono;

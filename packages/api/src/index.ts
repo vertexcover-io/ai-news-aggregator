@@ -39,7 +39,7 @@ import { createSocialTokensRepo } from "@api/repositories/social-tokens.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createDefaultAdminMustReadRouter } from "@api/routes/admin-must-read.js";
 import { createAdminRouter } from "@api/routes/admin.js";
-import { requireAdmin } from "@api/auth/middleware.js";
+import { requireAuth } from "@api/auth/middleware.js";
 import { buildApp } from "@api/app.js";
 import { createResolveTenant } from "@api/middleware/resolve-tenant.js";
 import { createTenantsRepo } from "@api/repositories/tenants.js";
@@ -266,7 +266,7 @@ const app = buildApp({
       },
     },
   }),
-  requireAdminFactory: requireAdmin,
+  requireAdminFactory: requireAuth,
   subscribeRouter,
   webhooksRouter,
   analyticsRouter: createDefaultAnalyticsRouter(),
