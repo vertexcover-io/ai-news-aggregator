@@ -22,6 +22,11 @@ export function RequireAdmin(): ReactElement | null {
     return <Navigate to={`/admin/login?next=${next}`} replace />;
   }
 
+  // Only tenant_admin and super_admin may access admin routes
+  if (data.role !== "tenant_admin" && data.role !== "super_admin") {
+    return <Navigate to="/" replace />;
+  }
+
   // REQ-100: super_admin lands on tenant list, not tenant dashboard
   if (data.role === "super_admin" && !location.pathname.startsWith("/admin/super")) {
     return <Navigate to="/admin/super/tenants" replace />;

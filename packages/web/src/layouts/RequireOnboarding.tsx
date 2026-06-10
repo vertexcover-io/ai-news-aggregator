@@ -2,7 +2,7 @@ import { type ReactElement } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getOnboarding } from "@/api/onboarding";
-import { useAdminSession } from "@/hooks/useAdminSession";
+import { useSession } from "@/hooks/useSession";
 
 /**
  * Route gate: if the tenant is `pending_setup`, redirect to the onboarding
@@ -10,12 +10,12 @@ import { useAdminSession } from "@/hooks/useAdminSession";
  * Mounted as a layout wrapper at `/admin`.
  */
 export function RequireOnboarding(): ReactElement {
-  const { session, loading: sessionLoading } = useAdminSession();
+  const { data: session, isLoading: sessionLoading } = useSession();
 
   const { data, isLoading } = useQuery({
     queryKey: ["onboarding"],
     queryFn: getOnboarding,
-    enabled: !sessionLoading && !!session,
+    enabled: !sessionLoading && !!session?.authenticated,
   });
 
   if (sessionLoading || isLoading) {
@@ -26,7 +26,7 @@ export function RequireOnboarding(): ReactElement {
     );
   }
 
-  if (!session) {
+  if (!session?.authenticated) {
     return <Navigate to="/admin/login" replace />;
   }
 
