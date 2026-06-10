@@ -8,7 +8,7 @@ import type {
 } from "@newsletter/shared";
 
 export interface FeedbackEventsRepo {
-  insertEvent(insert: FeedbackEventInsert): Promise<FeedbackEventSelect>;
+  insertEvent(insert: Omit<FeedbackEventInsert, "tenantId">): Promise<FeedbackEventSelect>;
   /**
    * True when the subscriber already has at least one feedback event for this
    * campaign. Used to fire the Slack notification only on a subscriber's first
@@ -23,7 +23,7 @@ export function createFeedbackEventsRepo(
 ): FeedbackEventsRepo {
   const scope = tenantScope(feedbackEvents.tenantId, ctx);
   return {
-    async insertEvent(insert: FeedbackEventInsert): Promise<FeedbackEventSelect> {
+    async insertEvent(insert: Omit<FeedbackEventInsert, "tenantId">): Promise<FeedbackEventSelect> {
       const [row] = await db
         .insert(feedbackEvents)
         .values(scope.stamp(insert))

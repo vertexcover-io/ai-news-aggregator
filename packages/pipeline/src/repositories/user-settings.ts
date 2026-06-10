@@ -47,6 +47,7 @@ function toDomain(row: typeof userSettings.$inferSelect): UserSettings {
   };
 }
 
+// eslint-disable-next-line newsletter/enforce-tenant-scope -- back-compat get() intentionally reads the legacy singleton row during the cutover window; getForTenant() carries the tenant scope.
 export function createUserSettingsRepo(
   db: Pick<AppDb, "select">,
 ): UserSettingsRepo {

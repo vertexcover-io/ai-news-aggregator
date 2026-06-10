@@ -1,7 +1,6 @@
 import { generateObject } from "ai";
 import type { LanguageModel, LanguageModelUsage, ProviderMetadata } from "ai";
 import { z } from "zod";
-import type { RawItemInsert } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
 import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import type { SourceUnitResult } from "@newsletter/shared/types";
@@ -11,7 +10,7 @@ import type {
   WebCollectConfig,
   WebCollectorResult,
 } from "@pipeline/types.js";
-import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import type { RawItemPreStamp as RawItemInsert, RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { fetchAdaptive } from "@pipeline/services/web-fetch/index.js";
 import {
   runWebCrawl,

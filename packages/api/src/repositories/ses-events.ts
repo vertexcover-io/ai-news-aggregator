@@ -3,7 +3,7 @@ import type { AppDb } from "@newsletter/shared/db";
 import type { SesEventInsert, SesEventSelect, TenantContext } from "@newsletter/shared";
 
 export interface SesEventsRepo {
-  upsert(insert: SesEventInsert): Promise<SesEventSelect>;
+  upsert(insert: Omit<SesEventInsert, "tenantId">): Promise<SesEventSelect>;
 }
 
 export function createSesEventsRepo(
@@ -12,7 +12,7 @@ export function createSesEventsRepo(
 ): SesEventsRepo {
   const scope = tenantScope(sesEvents.tenantId, ctx);
   return {
-    async upsert(insert: SesEventInsert): Promise<SesEventSelect> {
+    async upsert(insert: Omit<SesEventInsert, "tenantId">): Promise<SesEventSelect> {
       const [row] = await db
         .insert(sesEvents)
         .values(scope.stamp(insert))

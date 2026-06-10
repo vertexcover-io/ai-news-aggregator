@@ -2,9 +2,9 @@ import type {
   EnrichedLinkContent,
   EnrichmentSkipReason,
   EnrichmentTelemetry,
-  RawItemInsert,
   RawItemMetadata,
 } from "@newsletter/shared";
+import type { RawItemPreStamp as RawItemInsert } from "@pipeline/repositories/raw-items.js";
 import { enrichOne } from "@pipeline/services/link-enrichment/fetcher.js";
 import type { EnrichmentContext, EnrichmentCounters } from "@pipeline/services/link-enrichment/types.js";
 import { shouldEnrich } from "@pipeline/services/link-enrichment/url-classifier.js";

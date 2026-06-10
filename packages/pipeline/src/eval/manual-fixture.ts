@@ -1,4 +1,4 @@
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemPreStamp as RawItemInsert } from "@pipeline/repositories/raw-items.js";
 import type { EnrichedLinkContent } from "@newsletter/shared";
 import { createLogger, type Logger } from "@newsletter/shared/logger";
 import type {

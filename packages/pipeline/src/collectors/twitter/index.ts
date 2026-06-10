@@ -1,5 +1,5 @@
 import type { CollectorResult, SourceUnitResult } from "@newsletter/shared/types";
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemPreStamp as RawItemInsert } from "@pipeline/repositories/raw-items.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type {
   NormalizedTweet,

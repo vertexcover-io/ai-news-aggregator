@@ -1,10 +1,10 @@
-import type { RawItemInsert } from "@newsletter/shared/db";
 import type { ItemPreview, RankedItem } from "@newsletter/shared";
 import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import { MARKDOWN_EXCERPT_MAX } from "@newsletter/shared/constants";
 import { pickCandidateContent } from "@pipeline/services/candidate-loader.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type {
+  RawItemPreStamp as RawItemInsert,
   RawItemsRepo,
   RawItemRow,
 } from "@pipeline/repositories/raw-items.js";

@@ -1,4 +1,4 @@
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemPreStamp as RawItemInsert } from "@pipeline/repositories/raw-items.js";
 import type { RawItemMetadata, RawItemSourceUnit } from "@newsletter/shared/types";
 import type { NormalizedTweet } from "@pipeline/collectors/twitter/types.js";
 

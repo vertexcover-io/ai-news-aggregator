@@ -288,6 +288,13 @@
       "when": 1781086523245,
       "tag": "0040_purple_ricochet",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1781098572481,
+      "tag": "0041_wet_scarlet_witch",
+      "breakpoints": true
     }
   ]
 }

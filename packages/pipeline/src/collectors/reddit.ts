@@ -1,9 +1,8 @@
 import { JSDOM, VirtualConsole } from "jsdom";
-import type { RawItemInsert } from "@newsletter/shared/db";
 import type { CollectorResult, RawItemEngagement, SourceUnitResult } from "@newsletter/shared/types";
 import type { RedditCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
-import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import type { RawItemPreStamp as RawItemInsert, RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { delay } from "@pipeline/lib/delay.js";
 import { UrlParseError } from "@pipeline/collectors/hn.js";
 import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";

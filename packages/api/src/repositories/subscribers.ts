@@ -18,7 +18,7 @@ export interface SubscribersRepo {
   findByEmail(email: string): Promise<SubscriberSelect | null>;
   findById(id: string): Promise<SubscriberSelect | null>;
   findByIds(ids: string[]): Promise<SubscriberSelect[]>;
-  create(insert: SubscriberInsert): Promise<SubscriberSelect>;
+  create(insert: Omit<SubscriberInsert, "tenantId">): Promise<SubscriberSelect>;
   updateConfirmToken(
     id: string,
     confirmToken: string,
@@ -70,7 +70,7 @@ export function createSubscribersRepo(
         .where(scope.where(inArray(subscribers.id, ids)));
     },
 
-    async create(insert: SubscriberInsert): Promise<SubscriberSelect> {
+    async create(insert: Omit<SubscriberInsert, "tenantId">): Promise<SubscriberSelect> {
       const [row] = await db.insert(subscribers).values(scope.stamp(insert)).returning();
       return row;
     },

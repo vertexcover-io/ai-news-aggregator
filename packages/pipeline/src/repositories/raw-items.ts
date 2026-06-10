@@ -18,8 +18,12 @@ export interface RawItemRow {
   metadata: RawItemMetadata;
 }
 
+// Collectors build items before the tenant is known; the repo stamps tenantId
+// at the persistence boundary via scope.stamp().
+export type RawItemPreStamp = Omit<RawItemInsert, "tenantId">;
+
 export interface RawItemsRepo {
-  upsertItems(items: RawItemInsert[]): Promise<void>;
+  upsertItems(items: RawItemPreStamp[]): Promise<void>;
   findExistingExternalIds(
     sourceType: SourceType,
     externalIds: string[],
@@ -38,7 +42,7 @@ export function createRawItemsRepo(
 ): RawItemsRepo {
   const scope = tenantScope(rawItems.tenantId, ctx);
   return {
-    async upsertItems(items: RawItemInsert[]): Promise<void> {
+    async upsertItems(items: RawItemPreStamp[]): Promise<void> {
       if (items.length === 0) return;
       const now = new Date();
       // Postgres rejects an INSERT ... ON CONFLICT batch where two input rows

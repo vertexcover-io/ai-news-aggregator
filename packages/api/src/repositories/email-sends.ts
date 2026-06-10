@@ -4,7 +4,7 @@ import type { AppDb } from "@newsletter/shared/db";
 import type { EmailSendInsert, EmailSendSelect, TenantContext } from "@newsletter/shared";
 
 export interface EmailSendsRepo {
-  create(insert: EmailSendInsert): Promise<EmailSendSelect>;
+  create(insert: Omit<EmailSendInsert, "tenantId">): Promise<EmailSendSelect>;
   findSentSubscriberIds(runArchiveId: string): Promise<Set<string>>;
   findByMessageId(messageId: string): Promise<EmailSendSelect | null>;
 }
@@ -15,7 +15,7 @@ export function createEmailSendsRepo(
 ): EmailSendsRepo {
   const scope = tenantScope(emailSends.tenantId, ctx);
   return {
-    async create(insert: EmailSendInsert): Promise<EmailSendSelect> {
+    async create(insert: Omit<EmailSendInsert, "tenantId">): Promise<EmailSendSelect> {
       const [row] = await db.insert(emailSends).values(scope.stamp(insert)).returning();
       return row;
     },

@@ -59,7 +59,7 @@ function toDomain(
 function buildUpsertValues(
   input: UserSettingsUpsertInput,
   now: Date,
-): Omit<typeof userSettings.$inferInsert, "singleton"> {
+): Omit<typeof userSettings.$inferInsert, "singleton" | "tenantId"> {
   const pipelineTime = input.pipelineTime;
   return {
     topN: input.topN,
@@ -94,9 +94,28 @@ function buildUpsertValues(
   };
 }
 
+// eslint-disable-next-line newsletter/enforce-tenant-scope -- back-compat get()/upsert() intentionally read the legacy singleton row during the cutover window; getForTenant()/upsertForTenant() carry the tenant scope.
 export function createUserSettingsRepo(
   db: Pick<AppDb, "select" | "insert">,
 ): UserSettingsRepo {
+  async function upsertForTenant(
+    input: UserSettingsUpsertInput,
+    ctx?: TenantContext,
+  ): Promise<UserSettings> {
+    const now = new Date();
+    const scope = tenantScope(userSettings.tenantId, ctx);
+    const values = buildUpsertValues(input, now);
+    const [row] = await db
+      .insert(userSettings)
+      .values(scope.stamp(values))
+      .onConflictDoUpdate({
+        target: userSettings.tenantId,
+        set: values,
+      })
+      .returning();
+    return toDomain(row);
+  }
+
   return {
     async get(): Promise<UserSettings | null> {
       const rows = await db
@@ -119,97 +138,12 @@ export function createUserSettingsRepo(
       return toDomain(rows[0]);
     },
 
-    async upsertForTenant(
-      input: UserSettingsUpsertInput,
-      ctx?: TenantContext,
-    ): Promise<UserSettings> {
-      const now = new Date();
-      const scope = tenantScope(userSettings.tenantId, ctx);
-      const values = buildUpsertValues(input, now);
-      const [row] = await db
-        .insert(userSettings)
-        .values(scope.stamp(values))
-        .onConflictDoUpdate({
-          target: userSettings.tenantId,
-          set: values,
-        })
-        .returning();
-      return toDomain(row);
-    },
+    upsertForTenant,
 
     async upsert(input: UserSettingsUpsertInput): Promise<UserSettings> {
-      const now = new Date();
-      const pipelineTime = input.pipelineTime;
-      const [row] = await db
-        .insert(userSettings)
-        .values({
-          singleton: true,
-          topN: input.topN,
-          halfLifeHours: input.halfLifeHours,
-          hnEnabled: input.hnEnabled,
-          hnConfig: input.hnConfig ?? null,
-          redditEnabled: input.redditEnabled,
-          redditConfig: input.redditConfig ?? null,
-          webEnabled: input.webEnabled,
-          webConfig: input.webConfig ?? null,
-          twitterEnabled: input.twitterEnabled,
-          twitterConfig: input.twitterConfig ?? null,
-          webSearchEnabled: input.webSearchEnabled,
-          webSearchConfig: input.webSearchConfig ?? null,
-          posthogEnabled: input.posthogEnabled,
-          posthogProjectToken: input.posthogProjectToken,
-          posthogHost: input.posthogHost,
-          pipelineTime,
-          emailTime: input.emailTime,
-          linkedinTime: input.linkedinTime,
-          twitterTime: input.twitterTime,
-          scheduleTimezone: input.scheduleTimezone,
-          scheduleEnabled: input.scheduleEnabled,
-          emailEnabled: input.emailEnabled,
-          linkedinEnabled: input.linkedinEnabled,
-          twitterPostEnabled: input.twitterPostEnabled,
-          autoReview: input.autoReview,
-          rankingPrompt: input.rankingPrompt,
-          shortlistPrompt: input.shortlistPrompt,
-          shortlistSize: input.shortlistSize,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: userSettings.singleton,
-          set: {
-            topN: input.topN,
-            halfLifeHours: input.halfLifeHours,
-            hnEnabled: input.hnEnabled,
-            hnConfig: input.hnConfig,
-            redditEnabled: input.redditEnabled,
-            redditConfig: input.redditConfig,
-            webEnabled: input.webEnabled,
-            webConfig: input.webConfig,
-            twitterEnabled: input.twitterEnabled,
-            twitterConfig: input.twitterConfig,
-            webSearchEnabled: input.webSearchEnabled,
-            webSearchConfig: input.webSearchConfig,
-            posthogEnabled: input.posthogEnabled,
-            posthogProjectToken: input.posthogProjectToken,
-            posthogHost: input.posthogHost,
-            pipelineTime,
-            emailTime: input.emailTime,
-            linkedinTime: input.linkedinTime,
-            twitterTime: input.twitterTime,
-            scheduleTimezone: input.scheduleTimezone,
-            scheduleEnabled: input.scheduleEnabled,
-            emailEnabled: input.emailEnabled,
-            linkedinEnabled: input.linkedinEnabled,
-            twitterPostEnabled: input.twitterPostEnabled,
-            autoReview: input.autoReview,
-            rankingPrompt: input.rankingPrompt,
-            shortlistPrompt: input.shortlistPrompt,
-            shortlistSize: input.shortlistSize,
-            updatedAt: now,
-          },
-        })
-        .returning();
-      return toDomain(row);
+      // Back-compat single-tenant path: conflict on tenant_id (AGENTLOOP by
+      // default) now that the singleton unique index is gone.
+      return upsertForTenant(input);
     },
   };
 }

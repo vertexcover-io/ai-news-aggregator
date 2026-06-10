@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
-import type { RawItemInsert } from "@newsletter/shared/db";
 import type { CollectorResult, RunSubmitWebSearchConfig, SourceUnitResult } from "@newsletter/shared/types";
 import { createLogger } from "@newsletter/shared/logger";
-import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
+import type { RawItemPreStamp as RawItemInsert, RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { enrichRawItems } from "@pipeline/services/link-enrichment/index.js";
 import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
 import type { WebSearchProvider, WebSearchResult } from "@pipeline/collectors/web-search/providers/index.js";
