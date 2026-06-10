@@ -5,6 +5,7 @@ import { createRedisConnection } from "@newsletter/shared/redis";
 import { createLogger } from "@newsletter/shared/logger";
 import { startRun } from "@newsletter/shared";
 import type { RunProcessJobPayload, UserSettings } from "@newsletter/shared";
+import { AGENTLOOP_TENANT_ID, systemContext } from "@newsletter/shared/tenant";
 import {
   createUserSettingsRepo,
   type UserSettingsRepo,
@@ -56,10 +57,15 @@ export async function handleDailyRunJob(
     return;
   }
 
-  const { runId } = await startRun(settings, {
-    redis: deps.redis,
-    queue: deps.queue,
-  });
+  const tenantId =
+    typeof job.data.tenantId === "string"
+      ? job.data.tenantId
+      : AGENTLOOP_TENANT_ID;
+  const { runId } = await startRun(
+    settings,
+    { redis: deps.redis, queue: deps.queue },
+    { ctx: systemContext(tenantId) },
+  );
   logger.info(
     { event: "daily-run.started", jobId: job.id, runId },
     "daily-run started",

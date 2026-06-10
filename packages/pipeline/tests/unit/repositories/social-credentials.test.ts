@@ -27,18 +27,28 @@ interface FakeDb {
 }
 
 function extractPlatformFromPredicate(predicate: unknown): Platform | null {
-  // Drizzle's eq(column, value) returns an SQL object with `queryChunks` array.
-  // The literal value sits inside a `Param { value }` entry.
-  const p = predicate as { queryChunks?: unknown[] } | null;
-  if (!p || !Array.isArray(p.queryChunks)) return null;
-  for (const chunk of p.queryChunks) {
-    if (chunk === "linkedin" || chunk === "twitter") return chunk;
-    if (chunk && typeof chunk === "object" && "value" in chunk) {
-      const v = (chunk as { value: unknown }).value;
-      if (v === "linkedin" || v === "twitter") return v;
+  // Drizzle's eq(column, value) returns an SQL object with `queryChunks` array;
+  // the literal value sits inside a `Param { value }` entry. Tenant scoping now
+  // wraps it in and(eq(tenantId), eq(platform)), nesting the platform literal
+  // under additional queryChunks — so walk the chunk tree recursively.
+  let result: Platform | null = null;
+  const walk = (node: unknown): void => {
+    if (node === "linkedin" || node === "twitter") {
+      result = node;
+      return;
     }
-  }
-  return null;
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child);
+      return;
+    }
+    if (node && typeof node === "object") {
+      const obj = node as Record<string, unknown>;
+      if (Array.isArray(obj.queryChunks)) walk(obj.queryChunks);
+      if ("value" in obj) walk(obj.value);
+    }
+  };
+  walk(predicate);
+  return result;
 }
 
 function makeFakeDb(initial: FakeRow[] = []): FakeDb {

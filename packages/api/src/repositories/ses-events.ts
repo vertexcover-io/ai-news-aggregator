@@ -1,6 +1,6 @@
-import { sesEvents } from "@newsletter/shared/db";
+import { sesEvents, tenantScope } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
-import type { SesEventInsert, SesEventSelect } from "@newsletter/shared";
+import type { SesEventInsert, SesEventSelect, TenantContext } from "@newsletter/shared";
 
 export interface SesEventsRepo {
   upsert(insert: SesEventInsert): Promise<SesEventSelect>;
@@ -8,12 +8,14 @@ export interface SesEventsRepo {
 
 export function createSesEventsRepo(
   db: Pick<AppDb, "insert">,
+  ctx?: TenantContext,
 ): SesEventsRepo {
+  const scope = tenantScope(sesEvents.tenantId, ctx);
   return {
     async upsert(insert: SesEventInsert): Promise<SesEventSelect> {
       const [row] = await db
         .insert(sesEvents)
-        .values(insert)
+        .values(scope.stamp(insert))
         .onConflictDoUpdate({
           target: [sesEvents.messageId, sesEvents.eventType],
           set: { occurredAt: insert.occurredAt },

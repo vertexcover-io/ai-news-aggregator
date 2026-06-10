@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { UserSettings } from "@newsletter/shared";
+import { AGENTLOOP_TENANT_ID, schedulerKey } from "@newsletter/shared";
 import {
   DAILY_RUN_SCHEDULER_KEY,
   EMAIL_SEND_SCHEDULER_KEY,
@@ -12,6 +13,11 @@ import {
   toCronMinusMinutes,
   toCron,
 } from "@api/services/scheduler.js";
+
+// Default (no explicit tenant) reconciliation namespaces every scheduler key
+// under tenant 0 (AGENTLOOP) and stamps tenantId into the job data.
+const tenantKey = (base: string) => schedulerKey(base, AGENTLOOP_TENANT_ID);
+const tenantData = { tenantId: AGENTLOOP_TENANT_ID };
 
 function baseSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
@@ -79,29 +85,29 @@ describe("reconcilePipelineSchedule", () => {
     await reconcilePipelineSchedule(queue, baseSettings());
 
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      PIPELINE_RUN_SCHEDULER_KEY,
+      tenantKey(PIPELINE_RUN_SCHEDULER_KEY),
       { pattern: "30 9 * * *", tz: "America/New_York" },
-      { name: "pipeline-run", data: {} },
+      { name: "pipeline-run", data: tenantData },
     );
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      SOCIAL_HEALTH_SCHEDULER_KEY,
+      tenantKey(SOCIAL_HEALTH_SCHEDULER_KEY),
       { pattern: "15 9 * * *", tz: "America/New_York" },
-      { name: "social-health", data: {} },
+      { name: "social-health", data: tenantData },
     );
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      EMAIL_SEND_SCHEDULER_KEY,
+      tenantKey(EMAIL_SEND_SCHEDULER_KEY),
       { pattern: "0 10 * * *", tz: "America/New_York" },
-      { name: "email-send", data: {} },
+      { name: "email-send", data: tenantData },
     );
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      LINKEDIN_POST_SCHEDULER_KEY,
+      tenantKey(LINKEDIN_POST_SCHEDULER_KEY),
       { pattern: "15 10 * * *", tz: "America/New_York" },
-      { name: "linkedin-post", data: {} },
+      { name: "linkedin-post", data: tenantData },
     );
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      TWITTER_POST_SCHEDULER_KEY,
+      tenantKey(TWITTER_POST_SCHEDULER_KEY),
       { pattern: "30 10 * * *", tz: "America/New_York" },
-      { name: "twitter-post", data: {} },
+      { name: "twitter-post", data: tenantData },
     );
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
   });
@@ -111,11 +117,11 @@ describe("reconcilePipelineSchedule", () => {
 
     await reconcilePipelineSchedule(queue, baseSettings({ scheduleEnabled: false }));
 
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(PIPELINE_RUN_SCHEDULER_KEY);
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(SOCIAL_HEALTH_SCHEDULER_KEY);
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(EMAIL_SEND_SCHEDULER_KEY);
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(LINKEDIN_POST_SCHEDULER_KEY);
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(TWITTER_POST_SCHEDULER_KEY);
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(tenantKey(PIPELINE_RUN_SCHEDULER_KEY));
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(tenantKey(SOCIAL_HEALTH_SCHEDULER_KEY));
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(tenantKey(EMAIL_SEND_SCHEDULER_KEY));
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(tenantKey(LINKEDIN_POST_SCHEDULER_KEY));
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(tenantKey(TWITTER_POST_SCHEDULER_KEY));
     expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
   });
 
@@ -128,12 +134,12 @@ describe("reconcilePipelineSchedule", () => {
     );
 
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      EMAIL_SEND_SCHEDULER_KEY,
+      tenantKey(EMAIL_SEND_SCHEDULER_KEY),
       { pattern: "0 10 * * *", tz: "America/New_York" },
-      { name: "email-send", data: {} },
+      { name: "email-send", data: tenantData },
     );
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(LINKEDIN_POST_SCHEDULER_KEY);
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(TWITTER_POST_SCHEDULER_KEY);
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(tenantKey(LINKEDIN_POST_SCHEDULER_KEY));
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(tenantKey(TWITTER_POST_SCHEDULER_KEY));
   });
 });
 
@@ -142,14 +148,14 @@ describe("reconcileDailyRunSchedule", () => {
     const queue = makeQueue();
     await reconcileDailyRunSchedule(queue, baseSettings());
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      DAILY_RUN_SCHEDULER_KEY,
+      tenantKey(DAILY_RUN_SCHEDULER_KEY),
       { pattern: "30 9 * * *", tz: "America/New_York" },
-      { name: "daily-run", data: {} },
+      { name: "daily-run", data: tenantData },
     );
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      SOCIAL_HEALTH_SCHEDULER_KEY,
+      tenantKey(SOCIAL_HEALTH_SCHEDULER_KEY),
       { pattern: "15 9 * * *", tz: "America/New_York" },
-      { name: "social-health", data: {} },
+      { name: "social-health", data: tenantData },
     );
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
   });
@@ -161,10 +167,10 @@ describe("reconcileDailyRunSchedule", () => {
       baseSettings({ scheduleEnabled: false }),
     );
     expect(queue.removeJobScheduler).toHaveBeenCalledWith(
-      DAILY_RUN_SCHEDULER_KEY,
+      tenantKey(DAILY_RUN_SCHEDULER_KEY),
     );
     expect(queue.removeJobScheduler).toHaveBeenCalledWith(
-      SOCIAL_HEALTH_SCHEDULER_KEY,
+      tenantKey(SOCIAL_HEALTH_SCHEDULER_KEY),
     );
     expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
   });

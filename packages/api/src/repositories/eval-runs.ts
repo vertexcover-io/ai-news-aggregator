@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
-import { evalRuns } from "@newsletter/shared/db";
+import { evalRuns, tenantScope } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
+import type { TenantContext } from "@newsletter/shared";
 import type {
   EvalRun,
   EvalRunInsertInput,
@@ -122,22 +123,26 @@ function toSummary(run: EvalRun): EvalRunSummary {
 
 export function createEvalRunsRepo(
   db: Pick<AppDb, "insert" | "select" | "update">,
+  ctx?: TenantContext,
 ): EvalRunsRepo {
+  const scope = tenantScope(evalRuns.tenantId, ctx);
   return {
     async insert(input: EvalRunInsertInput): Promise<{ id: string }> {
       const [row] = await db
         .insert(evalRuns)
-        .values({
-          mode: input.mode,
-          fixtureId: input.fixtureId,
-          date: input.date,
-          windowSize: input.windowSize,
-          draftPromptHash: input.draftPromptHash,
-          draftPromptSnapshot: input.draftPromptSnapshot,
-          savedPromptHash: input.savedPromptHash,
-          savedPromptSnapshot: input.savedPromptSnapshot,
-          status: "running",
-        })
+        .values(
+          scope.stamp({
+            mode: input.mode,
+            fixtureId: input.fixtureId,
+            date: input.date,
+            windowSize: input.windowSize,
+            draftPromptHash: input.draftPromptHash,
+            draftPromptSnapshot: input.draftPromptSnapshot,
+            savedPromptHash: input.savedPromptHash,
+            savedPromptSnapshot: input.savedPromptSnapshot,
+            status: "running",
+          }),
+        )
         .returning({ id: evalRuns.id });
       return { id: row.id };
     },
@@ -155,7 +160,7 @@ export function createEvalRunsRepo(
           scoreBreakdown: payload.scoreBreakdown,
           costBreakdown: payload.costBreakdown,
         })
-        .where(eq(evalRuns.id, id))
+        .where(scope.where(eq(evalRuns.id, id)))
         .returning({ id: evalRuns.id });
       return { rowsAffected: rows.length };
     },
@@ -173,7 +178,7 @@ export function createEvalRunsRepo(
           finishedAt: new Date(),
           errorMessage: truncated,
         })
-        .where(eq(evalRuns.id, id))
+        .where(scope.where(eq(evalRuns.id, id)))
         .returning({ id: evalRuns.id });
       return { rowsAffected: rows.length };
     },
@@ -183,7 +188,7 @@ export function createEvalRunsRepo(
       const rows = await db
         .select()
         .from(evalRuns)
-        .where(eq(evalRuns.id, id));
+        .where(scope.where(eq(evalRuns.id, id)));
       if (rows.length === 0) return null;
       return mapRowToEvalRun(rows[0]);
     },
@@ -195,24 +200,24 @@ export function createEvalRunsRepo(
         filters.push(eq(evalRuns.status, opts.status));
       if (opts.fixtureId !== undefined)
         filters.push(eq(evalRuns.fixtureId, opts.fixtureId));
-      const whereClause = filters.length > 0 ? and(...filters) : undefined;
+      const whereClause = scope.where(
+        filters.length > 0 ? and(...filters) : undefined,
+      );
 
       const offset = (opts.page - 1) * opts.perPage;
 
-      const baseRows = db.select().from(evalRuns).$dynamic();
-      const rowsQuery = whereClause ? baseRows.where(whereClause) : baseRows;
-      const rows = await rowsQuery
+      const rows = await db
+        .select()
+        .from(evalRuns)
+        .where(whereClause)
         .orderBy(desc(evalRuns.startedAt))
         .limit(opts.perPage)
         .offset(offset);
 
-      const baseCount = db
+      const countRows = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(evalRuns)
-        .$dynamic();
-      const countRows = await (whereClause
-        ? baseCount.where(whereClause)
-        : baseCount);
+        .where(whereClause);
       const total = countRows[0]?.count ?? 0;
 
       return {

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import { userSettings } from "@newsletter/shared/db";
+import { userSettings, tenantScope } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
-import type { UserSettings } from "@newsletter/shared";
+import type { TenantContext, UserSettings } from "@newsletter/shared";
 
 export type UserSettingsUpsertInput = Omit<UserSettings, "id" | "updatedAt" | "scheduleTime"> & {
   readonly scheduleTime?: string;
@@ -10,6 +10,11 @@ export type UserSettingsUpsertInput = Omit<UserSettings, "id" | "updatedAt" | "s
 export interface UserSettingsRepo {
   get(): Promise<UserSettings | null>;
   upsert(input: UserSettingsUpsertInput): Promise<UserSettings>;
+  getForTenant(ctx?: TenantContext): Promise<UserSettings | null>;
+  upsertForTenant(
+    input: UserSettingsUpsertInput,
+    ctx?: TenantContext,
+  ): Promise<UserSettings>;
 }
 
 function toDomain(
@@ -51,6 +56,44 @@ function toDomain(
   };
 }
 
+function buildUpsertValues(
+  input: UserSettingsUpsertInput,
+  now: Date,
+): Omit<typeof userSettings.$inferInsert, "singleton"> {
+  const pipelineTime = input.pipelineTime;
+  return {
+    topN: input.topN,
+    halfLifeHours: input.halfLifeHours,
+    hnEnabled: input.hnEnabled,
+    hnConfig: input.hnConfig ?? null,
+    redditEnabled: input.redditEnabled,
+    redditConfig: input.redditConfig ?? null,
+    webEnabled: input.webEnabled,
+    webConfig: input.webConfig ?? null,
+    twitterEnabled: input.twitterEnabled,
+    twitterConfig: input.twitterConfig ?? null,
+    webSearchEnabled: input.webSearchEnabled,
+    webSearchConfig: input.webSearchConfig ?? null,
+    posthogEnabled: input.posthogEnabled,
+    posthogProjectToken: input.posthogProjectToken,
+    posthogHost: input.posthogHost,
+    pipelineTime,
+    emailTime: input.emailTime,
+    linkedinTime: input.linkedinTime,
+    twitterTime: input.twitterTime,
+    scheduleTimezone: input.scheduleTimezone,
+    scheduleEnabled: input.scheduleEnabled,
+    emailEnabled: input.emailEnabled,
+    linkedinEnabled: input.linkedinEnabled,
+    twitterPostEnabled: input.twitterPostEnabled,
+    autoReview: input.autoReview,
+    rankingPrompt: input.rankingPrompt,
+    shortlistPrompt: input.shortlistPrompt,
+    shortlistSize: input.shortlistSize,
+    updatedAt: now,
+  };
+}
+
 export function createUserSettingsRepo(
   db: Pick<AppDb, "select" | "insert">,
 ): UserSettingsRepo {
@@ -63,6 +106,35 @@ export function createUserSettingsRepo(
         .limit(1);
       if (rows.length === 0) return null;
       return toDomain(rows[0]);
+    },
+
+    async getForTenant(ctx?: TenantContext): Promise<UserSettings | null> {
+      const scope = tenantScope(userSettings.tenantId, ctx);
+      const rows = await db
+        .select()
+        .from(userSettings)
+        .where(scope.where())
+        .limit(1);
+      if (rows.length === 0) return null;
+      return toDomain(rows[0]);
+    },
+
+    async upsertForTenant(
+      input: UserSettingsUpsertInput,
+      ctx?: TenantContext,
+    ): Promise<UserSettings> {
+      const now = new Date();
+      const scope = tenantScope(userSettings.tenantId, ctx);
+      const values = buildUpsertValues(input, now);
+      const [row] = await db
+        .insert(userSettings)
+        .values(scope.stamp(values))
+        .onConflictDoUpdate({
+          target: userSettings.tenantId,
+          set: values,
+        })
+        .returning();
+      return toDomain(row);
     },
 
     async upsert(input: UserSettingsUpsertInput): Promise<UserSettings> {

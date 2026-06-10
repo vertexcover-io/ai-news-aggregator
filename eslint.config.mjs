@@ -161,4 +161,47 @@ export default tseslint.config(
     plugins: { newsletter },
     rules: { "newsletter/enforce-repository-access": "error" },
   },
+  // newsletter/enforce-tenant-scope: tenant-owned tables must be queried through
+  // a tenant scope (ctx param + scoped where + raw SQL mentioning tenant_id).
+  // Scoped to repository modules; warn during the Phase 1→2 cutover, flips to
+  // error after the backfill/isolation gate (Phase 2).
+  {
+    files: [
+      "packages/api/src/repositories/**/*.ts",
+      "packages/pipeline/src/repositories/**/*.ts",
+    ],
+    ignores: ["**/*.test.ts"],
+    plugins: { newsletter },
+    rules: {
+      "newsletter/enforce-tenant-scope": [
+        "warn",
+        {
+          tenantOwnedTables: [
+            "raw_items",
+            "run_archives",
+            "run_logs",
+            "review_edits",
+            "email_sends",
+            "subscribers",
+            "feedback_events",
+            "ses_events",
+            "eval_runs",
+            "must_read_entries",
+            "user_settings",
+            "social_credentials",
+            "social_tokens",
+            "sources",
+            "sending_domains",
+            "onboarding_progress",
+          ],
+          appLevelTables: [
+            "tenants",
+            "users",
+            "impersonation_audit",
+            "password_reset_tokens",
+          ],
+        },
+      ],
+    },
+  },
 );

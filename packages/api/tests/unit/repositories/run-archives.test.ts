@@ -23,10 +23,18 @@ function makeFakeDb(initial: StoredArchive): {
   store: { row: StoredArchive };
 } {
   const store = { row: { ...initial } };
+  // findById: select().from().where() resolves directly.
+  // list: select().from().where().orderBy().limit() — tenant scope adds the
+  // .where() before ordering, so model both the direct-await and chained forms.
+  const whereResult = Object.assign(Promise.resolve([store.row]), {
+    orderBy: () => ({
+      limit: () => Promise.resolve([store.row]),
+    }),
+  });
   const db = {
     select: () => ({
       from: () => ({
-        where: () => Promise.resolve([store.row]),
+        where: () => whereResult,
         orderBy: () => ({
           limit: () => Promise.resolve([store.row]),
         }),

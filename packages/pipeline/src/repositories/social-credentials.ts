@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
-import { socialCredentials } from "@newsletter/shared/db";
+import { socialCredentials, tenantScope } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type {
   LinkedInEncryptedFields,
   TwitterEncryptedFields,
   TwitterCollectorEncryptedFields,
 } from "@newsletter/shared/db";
+import type { TenantContext } from "@newsletter/shared";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
 
 export type SocialCredentialPlatform = "linkedin" | "twitter" | "twitter_collector";
@@ -62,13 +63,15 @@ type DbSlice = Pick<AppDb, "select" | "insert" | "delete">;
 export function createSocialCredentialsRepo(
   db: DbSlice,
   cipher: CredentialCipher,
+  ctx?: TenantContext,
 ): SocialCredentialsRepo {
+  const scope = tenantScope(socialCredentials.tenantId, ctx);
   return {
     async getLinkedIn(): Promise<LinkedInCredentialRecord | null> {
       const rows = await db
         .select()
         .from(socialCredentials)
-        .where(eq(socialCredentials.platform, "linkedin"))
+        .where(scope.where(eq(socialCredentials.platform, "linkedin")))
         .limit(1);
       if (rows.length === 0) return null;
       const row = rows[0];
@@ -85,7 +88,7 @@ export function createSocialCredentialsRepo(
       const rows = await db
         .select()
         .from(socialCredentials)
-        .where(eq(socialCredentials.platform, "twitter"))
+        .where(scope.where(eq(socialCredentials.platform, "twitter")))
         .limit(1);
       if (rows.length === 0) return null;
       const row = rows[0];
@@ -108,12 +111,14 @@ export function createSocialCredentialsRepo(
       const now = new Date();
       await db
         .insert(socialCredentials)
-        .values({
-          platform: "linkedin",
-          encryptedFields,
-          metadata,
-          updatedAt: now,
-        })
+        .values(
+          scope.stamp({
+            platform: "linkedin",
+            encryptedFields,
+            metadata,
+            updatedAt: now,
+          }),
+        )
         .onConflictDoUpdate({
           target: socialCredentials.platform,
           set: { encryptedFields, metadata, updatedAt: now },
@@ -130,12 +135,14 @@ export function createSocialCredentialsRepo(
       const now = new Date();
       await db
         .insert(socialCredentials)
-        .values({
-          platform: "twitter",
-          encryptedFields,
-          metadata: null,
-          updatedAt: now,
-        })
+        .values(
+          scope.stamp({
+            platform: "twitter",
+            encryptedFields,
+            metadata: null,
+            updatedAt: now,
+          }),
+        )
         .onConflictDoUpdate({
           target: socialCredentials.platform,
           set: { encryptedFields, metadata: null, updatedAt: now },
@@ -146,7 +153,7 @@ export function createSocialCredentialsRepo(
       const rows = await db
         .select()
         .from(socialCredentials)
-        .where(eq(socialCredentials.platform, "twitter_collector"))
+        .where(scope.where(eq(socialCredentials.platform, "twitter_collector")))
         .limit(1);
       if (rows.length === 0) return null;
       const row = rows[0];
@@ -164,12 +171,14 @@ export function createSocialCredentialsRepo(
       const now = new Date();
       await db
         .insert(socialCredentials)
-        .values({
-          platform: "twitter_collector",
-          encryptedFields,
-          metadata: null,
-          updatedAt: now,
-        })
+        .values(
+          scope.stamp({
+            platform: "twitter_collector",
+            encryptedFields,
+            metadata: null,
+            updatedAt: now,
+          }),
+        )
         .onConflictDoUpdate({
           target: socialCredentials.platform,
           set: { encryptedFields, metadata: null, updatedAt: now },
@@ -179,7 +188,7 @@ export function createSocialCredentialsRepo(
     async delete(platform: SocialCredentialPlatform): Promise<boolean> {
       const deleted = await db
         .delete(socialCredentials)
-        .where(eq(socialCredentials.platform, platform))
+        .where(scope.where(eq(socialCredentials.platform, platform)))
         .returning();
       return deleted.length > 0;
     },

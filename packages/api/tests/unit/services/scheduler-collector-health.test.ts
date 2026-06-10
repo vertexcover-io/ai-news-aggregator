@@ -1,11 +1,17 @@
 import { describe, it, expect, vi } from "vitest";
 import type { UserSettings } from "@newsletter/shared";
+import { AGENTLOOP_TENANT_ID, schedulerKey } from "@newsletter/shared";
 import {
   COLLECTOR_HEALTH_SCHEDULER_KEY,
   COLLECTOR_HEALTH_LEAD_MINUTES,
   toCronMinusMinutes,
   reconcileCollectorHealthSchedule,
 } from "@api/services/scheduler.js";
+
+// Default (no explicit tenant) reconciliation namespaces the collector-health
+// key under tenant 0 (AGENTLOOP) and stamps tenantId into the job data.
+const tenantHealthKey = schedulerKey(COLLECTOR_HEALTH_SCHEDULER_KEY, AGENTLOOP_TENANT_ID);
+const healthData = { trigger: "scheduled", tenantId: AGENTLOOP_TENANT_ID };
 
 function baseSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
@@ -60,9 +66,9 @@ describe("reconcileCollectorHealthSchedule", () => {
 
     const expectedPattern = toCronMinusMinutes("09:30", COLLECTOR_HEALTH_LEAD_MINUTES);
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      COLLECTOR_HEALTH_SCHEDULER_KEY,
+      tenantHealthKey,
       { pattern: expectedPattern, tz: "America/New_York" },
-      { name: "collector-health", data: { trigger: "scheduled" } },
+      { name: "collector-health", data: healthData },
     );
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
   });
@@ -77,7 +83,7 @@ describe("reconcileCollectorHealthSchedule", () => {
 
     await reconcileCollectorHealthSchedule(queue, baseSettings({ scheduleEnabled: false }));
 
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(COLLECTOR_HEALTH_SCHEDULER_KEY);
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(tenantHealthKey);
     expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
   });
 
@@ -86,9 +92,9 @@ describe("reconcileCollectorHealthSchedule", () => {
     await reconcileCollectorHealthSchedule(queue, baseSettings({ pipelineTime: "00:15" }));
 
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      COLLECTOR_HEALTH_SCHEDULER_KEY,
+      tenantHealthKey,
       { pattern: "45 23 * * *", tz: "America/New_York" },
-      { name: "collector-health", data: { trigger: "scheduled" } },
+      { name: "collector-health", data: healthData },
     );
   });
 });

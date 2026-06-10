@@ -3,6 +3,11 @@ import type IORedis from "ioredis";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { getDb } from "@newsletter/shared";
 import {
+  AGENTLOOP_TENANT_ID,
+  systemContext,
+  type TenantContext,
+} from "@newsletter/shared/tenant";
+import {
   DEFAULT_RANKING_PROMPT,
   DEFAULT_SHORTLIST_PROMPT,
 } from "@newsletter/shared/constants";
@@ -112,6 +117,7 @@ export interface RunCollectorsPayload {
 
 export interface RunProcessJobData {
   runId: string;
+  tenantId?: string;
   topN: number;
   sourceTypes: SourceType[];
   collectors: RunCollectorsPayload;
@@ -1026,16 +1032,6 @@ export function createRunProcessWorker(
 ): Worker<RunProcessJobData, RunProcessResult> {
   const connection = options.connection ?? createRedisConnection();
   const runState = options.runState ?? createRunStateService(connection);
-  const needsDb =
-    !options.rawItemsRepo ||
-    !options.candidatesRepo ||
-    !options.archiveRepo ||
-    !options.runLogRepo;
-  const db: AppDb | undefined = needsDb ? getDb() : undefined;
-  const rawItemsRepo =
-    options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db));
-  const candidatesRepo =
-    options.candidatesRepo ?? createCandidatesRepo(ensureDb(db));
   const loadFn = options.loadFn ?? loadCandidatesSince;
   const shortlistFn: ShortlistFn =
     options.shortlistFn ??
@@ -1049,63 +1045,88 @@ export function createRunProcessWorker(
     twitter: options.collectFns?.twitter ?? collectTwitter,
     webSearch: options.collectFns?.webSearch ?? collectWebSearch,
   };
-
-  // Per-job factory: resolves cookies from `social_credentials.twitter_collector`
-  // first (admin-managed), falling back to RETTIWT_API_KEY env var. Construction
-  // happens at job time so admin saves take effect on the next run without a
-  // worker restart. Rettiwt accepts an undefined apiKey (guest mode).
-  const twitterClient: () => Promise<TwitterClient> =
-    options.twitterClient ??
-    (async () => {
-      const repo = createSocialCredentialsRepo(ensureDb(db), getCredentialCipher());
-      const cookie = await resolveTwitterCollectorCookie({
-        repo,
-        env: process.env,
-      });
-      const rettiwt = new Rettiwt({ apiKey: cookie?.apiKey });
-      return createRettiwtClient({
-        rettiwt,
-        auth: cookie
-          ? {
-              refreshCsrfToken: () =>
-                refreshRettiwtCsrfToken({
-                  rettiwt,
-                  repo,
-                  credentialSource: cookie.source,
-                }),
-            }
-          : undefined,
-      });
-    });
-
-  const archiveRepo =
-    options.archiveRepo ?? createRunArchivesRepo(ensureDb(db));
-  const runLogRepo = options.runLogRepo ?? createRunLogRepo(ensureDb(db));
-  const userSettingsRepo = options.userSettingsRepo;
-
   const cancelSubscriber =
     options.cancelSubscriber ?? createCancelSubscriber(connection);
 
-  const deps: RunProcessDeps = {
-    runState,
-    rawItemsRepo,
-    candidatesRepo,
-    loadFn,
-    shortlistFn,
-    rankFn,
-    collectFns,
-    archiveRepo,
-    runLogRepo,
-    userSettingsRepo,
-    cancelSubscriber,
-    twitterClient,
-    slackNotifier: options.slackNotifier,
-    webSearchProvider: options.webSearchProvider,
+  // Tenant-owned repos are rebuilt PER JOB from job.data.tenantId so a single
+  // shared worker serves every tenant. getDb() stays the process-wide singleton;
+  // only the tenant scope varies. Test overrides (options.*Repo) still win.
+  const buildDeps = (ctx: TenantContext): RunProcessDeps => {
+    const needsDb =
+      !options.rawItemsRepo ||
+      !options.candidatesRepo ||
+      !options.archiveRepo ||
+      !options.runLogRepo;
+    const db: AppDb | undefined = needsDb ? getDb() : undefined;
+    const rawItemsRepo =
+      options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db), ctx);
+    const candidatesRepo =
+      options.candidatesRepo ?? createCandidatesRepo(ensureDb(db), ctx);
+
+    // Per-job factory: resolves cookies from `social_credentials.twitter_collector`
+    // first (admin-managed), falling back to RETTIWT_API_KEY env var. Construction
+    // happens at job time so admin saves take effect on the next run without a
+    // worker restart. Rettiwt accepts an undefined apiKey (guest mode).
+    const twitterClient: () => Promise<TwitterClient> =
+      options.twitterClient ??
+      (async () => {
+        const repo = createSocialCredentialsRepo(
+          ensureDb(db),
+          getCredentialCipher(),
+          ctx,
+        );
+        const cookie = await resolveTwitterCollectorCookie({
+          repo,
+          env: process.env,
+        });
+        const rettiwt = new Rettiwt({ apiKey: cookie?.apiKey });
+        return createRettiwtClient({
+          rettiwt,
+          auth: cookie
+            ? {
+                refreshCsrfToken: () =>
+                  refreshRettiwtCsrfToken({
+                    rettiwt,
+                    repo,
+                    credentialSource: cookie.source,
+                  }),
+              }
+            : undefined,
+        });
+      });
+
+    const archiveRepo =
+      options.archiveRepo ?? createRunArchivesRepo(ensureDb(db), ctx);
+    const runLogRepo =
+      options.runLogRepo ?? createRunLogRepo(ensureDb(db), ctx);
+
+    return {
+      runState,
+      rawItemsRepo,
+      candidatesRepo,
+      loadFn,
+      shortlistFn,
+      rankFn,
+      collectFns,
+      archiveRepo,
+      runLogRepo,
+      userSettingsRepo: options.userSettingsRepo,
+      cancelSubscriber,
+      twitterClient,
+      slackNotifier: options.slackNotifier,
+      webSearchProvider: options.webSearchProvider,
+    };
   };
 
   return new Worker<RunProcessJobData, RunProcessResult>(
     "processing",
-    (job) => handleRunProcessJob(deps, job as RunProcessJobLike),
+    (job) => {
+      const tenantId = job.data.tenantId ?? AGENTLOOP_TENANT_ID;
+      return handleRunProcessJob(
+        buildDeps(systemContext(tenantId)),
+        job as RunProcessJobLike,
+      );
+    },
     { connection },
   );
 }

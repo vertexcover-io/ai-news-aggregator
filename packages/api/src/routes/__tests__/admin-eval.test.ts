@@ -95,6 +95,8 @@ function makeRouter(overrides: Partial<Parameters<typeof createAdminEvalRouter>[
   const repo: UserSettingsRepo = {
     get: () => Promise.resolve(settings),
     upsert,
+    getForTenant: () => Promise.resolve(settings),
+    upsertForTenant: upsert,
   };
   const router = createAdminEvalRouter({
     getSettingsRepo: () => repo,
@@ -695,6 +697,8 @@ describe("POST /run SSE", () => {
       getSettingsRepo: () => ({
         get: () => Promise.resolve(settings),
         upsert: vi.fn(),
+        getForTenant: () => Promise.resolve(settings),
+        upsertForTenant: vi.fn(),
       }),
       listCalendarRunsByDate,
     });

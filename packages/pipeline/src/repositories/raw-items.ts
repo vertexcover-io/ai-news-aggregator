@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { rawItems } from "@newsletter/shared/db";
+import { rawItems, tenantScope } from "@newsletter/shared/db";
 import type { AppDb, RawItemInsert, SourceType } from "@newsletter/shared/db";
-import type { RawItemMetadata, RecapContent } from "@newsletter/shared";
+import type { RawItemMetadata, RecapContent, TenantContext } from "@newsletter/shared";
 
 export interface RawItemRow {
   id: number;
@@ -34,7 +34,9 @@ export interface RawItemsRepo {
 
 export function createRawItemsRepo(
   db: Pick<AppDb, "insert" | "select" | "update">,
+  ctx?: TenantContext,
 ): RawItemsRepo {
+  const scope = tenantScope(rawItems.tenantId, ctx);
   return {
     async upsertItems(items: RawItemInsert[]): Promise<void> {
       if (items.length === 0) return;
@@ -48,7 +50,7 @@ export function createRawItemsRepo(
         new Map(
           items.map((i) => [`${i.sourceType}::${i.externalId}`, i]),
         ).values(),
-      );
+      ).map((i) => scope.stamp(i));
       await db.insert(rawItems).values(deduped).onConflictDoUpdate({
         target: [rawItems.sourceType, rawItems.externalId],
         set: {
@@ -72,9 +74,11 @@ export function createRawItemsRepo(
         .select({ externalId: rawItems.externalId })
         .from(rawItems)
         .where(
-          and(
-            eq(rawItems.sourceType, sourceType),
-            inArray(rawItems.externalId, externalIds),
+          scope.where(
+            and(
+              eq(rawItems.sourceType, sourceType),
+              inArray(rawItems.externalId, externalIds),
+            ),
           ),
         );
 
@@ -102,9 +106,11 @@ export function createRawItemsRepo(
         })
         .from(rawItems)
         .where(
-          and(
-            eq(rawItems.sourceType, sourceType),
-            eq(rawItems.externalId, externalId),
+          scope.where(
+            and(
+              eq(rawItems.sourceType, sourceType),
+              eq(rawItems.externalId, externalId),
+            ),
           ),
         )
         .limit(1);
@@ -129,7 +135,7 @@ export function createRawItemsRepo(
           metadata: rawItems.metadata,
         })
         .from(rawItems)
-        .where(inArray(rawItems.id, ids));
+        .where(scope.where(inArray(rawItems.id, ids)));
     },
 
     async updateRecapData(updates: { id: number; recap: RecapContent }[]): Promise<void> {
@@ -142,7 +148,7 @@ export function createRawItemsRepo(
             metadata: sql`jsonb_set(coalesce(${rawItems.metadata}, '{}'), '{recap}', ${JSON.stringify(recap)}::jsonb)`,
             updatedAt: now,
           })
-          .where(eq(rawItems.id, id));
+          .where(scope.where(eq(rawItems.id, id)));
       }
     },
   };

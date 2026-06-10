@@ -24,6 +24,8 @@ import {
   reconcilePipelineSchedule,
   reconcileCollectorHealthSchedule,
 } from "@api/services/scheduler.js";
+import { AGENTLOOP_TENANT_ID } from "@newsletter/shared/tenant";
+import type { TenantVariables } from "@api/middleware/types.js";
 import {
   defaultRettiwtFactory,
   resolveTwitterHandles,
@@ -87,11 +89,13 @@ async function resolveTwitterConfig(
   };
 }
 
-export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
+export function createSettingsRouter(
+  deps: SettingsRouterDeps,
+): Hono<{ Variables: TenantVariables }> {
   const logger = deps.logger ?? createLogger("api:settings");
   const resolver = deps.resolveHandles ?? resolveTwitterHandles;
   const rettiwtFactory = deps.rettiwtFactory ?? defaultRettiwtFactory;
-  const app = new Hono();
+  const app = new Hono<{ Variables: TenantVariables }>();
 
   app.get("/", async (c) => {
     const settings = await deps.getSettingsRepo().get();
@@ -207,10 +211,15 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       shortlistSize: parsed.data.shortlistSize,
     };
 
+    const tenantId = c.get("tenantCtx")?.tenantId ?? AGENTLOOP_TENANT_ID;
     const saved = await deps.getSettingsRepo().upsert(upsertInput);
     refreshPostHogConfig(saved);
-    await reconcilePipelineSchedule(deps.processingQueue, saved);
-    await reconcileCollectorHealthSchedule(deps.collectorHealthQueue, saved);
+    await reconcilePipelineSchedule(deps.processingQueue, saved, tenantId);
+    await reconcileCollectorHealthSchedule(
+      deps.collectorHealthQueue,
+      saved,
+      tenantId,
+    );
     logger.info(
       {
         event: "settings.saved",
@@ -252,7 +261,9 @@ function getDefaultCollectorHealthQueue(): Queue {
   return defaultCollectorHealthQueue;
 }
 
-export function createDefaultSettingsRouter(): Hono {
+export function createDefaultSettingsRouter(): Hono<{
+  Variables: TenantVariables;
+}> {
   return createSettingsRouter({
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
     processingQueue: getDefaultProcessingQueue(),

@@ -90,6 +90,7 @@ export interface RankedItemRef {
 
 export interface RunState {
   id: string;
+  tenantId?: string;
   status: RunStatus;
   stage: RunStage;
   topN: number;

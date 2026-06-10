@@ -6,6 +6,11 @@ import { createRedisConnection } from "@newsletter/shared/redis";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RunProcessJobPayload } from "@newsletter/shared";
 import {
+  AGENTLOOP_TENANT_ID,
+  systemContext,
+  type TenantContext,
+} from "@newsletter/shared/tenant";
+import {
   handleRunProcessJob,
   type RunProcessDeps,
   type RunProcessJobData,
@@ -125,26 +130,33 @@ export function createProcessingWorker(
 ): Worker<ProcessingJobData, unknown> {
   const connection = options.connection ?? createRedisConnection();
 
-  const runProcessDeps =
-    options.runProcessDeps ?? buildDefaultRunProcessDeps(connection);
-  const dailyRunDeps =
-    options.dailyRunDeps ?? buildDefaultDailyRunDeps(connection);
   const socialHealthDeps =
     options.socialHealthDeps ?? buildDefaultSocialHealthDeps();
-  // NOTE: publishDeps are intentionally rebuilt per job when not injected by
-  // a test/caller. Notifiers embed credential values at construction time, and
-  // the design (docs/plans/2026-05-19-admin-social-config-design.md §3, §4.4)
-  // promises that operators saving credentials via /admin/settings take effect
-  // on the next pipeline job WITHOUT a worker restart. Caching the resolved
-  // deps for the lifetime of the worker would break that contract.
-  const buildPublishDeps = async (): Promise<PublishDeps> =>
-    options.publishDeps ?? (await buildDefaultPublishDeps());
+  // Tenant-owned deps are rebuilt PER JOB from job.data.tenantId so a single
+  // shared worker serves every tenant. getDb() stays the process-wide singleton;
+  // only the tenant scope varies. Test-injected deps still win.
+  // NOTE: publishDeps were already rebuilt per job (the freshness contract for
+  // admin-saved credentials — docs/plans/2026-05-19-admin-social-config-design.md
+  // §3, §4.4); per-tenant scoping rides on the same per-job rebuild.
+  const buildPublishDeps = async (ctx: TenantContext): Promise<PublishDeps> =>
+    options.publishDeps ?? (await buildDefaultPublishDeps(ctx));
+  const ctxOf = (job: Job<ProcessingJobData, unknown>): TenantContext => {
+    const tenantId =
+      typeof job.data.tenantId === "string"
+        ? job.data.tenantId
+        : AGENTLOOP_TENANT_ID;
+    return systemContext(tenantId);
+  };
 
   return new Worker<ProcessingJobData, unknown>(
     "processing",
     async (job: Job<ProcessingJobData, unknown>) => {
+      const ctx = ctxOf(job);
       switch (job.name) {
         case "run-process": {
+          const runProcessDeps =
+            options.runProcessDeps ??
+            buildDefaultRunProcessDeps(connection, ctx);
           const typed: RunProcessJobLike = {
             name: job.name,
             id: job.id,
@@ -154,6 +166,8 @@ export function createProcessingWorker(
         }
         case "daily-run":
         case "pipeline-run": {
+          const dailyRunDeps =
+            options.dailyRunDeps ?? buildDefaultDailyRunDeps(connection, ctx);
           const typed: DailyRunJobLike = {
             name: job.name,
             id: job.id,
@@ -163,7 +177,7 @@ export function createProcessingWorker(
           return undefined;
         }
         case "email-send": {
-          const publishDeps = await buildPublishDeps();
+          const publishDeps = await buildPublishDeps(ctx);
           const typed: EmailSendJobLike = {
             name: job.name,
             id: job.id,
@@ -173,7 +187,7 @@ export function createProcessingWorker(
           return undefined;
         }
         case "linkedin-post": {
-          const publishDeps = await buildPublishDeps();
+          const publishDeps = await buildPublishDeps(ctx);
           const typed: LinkedInPostJobLike = {
             name: job.name,
             id: job.id,
@@ -183,7 +197,7 @@ export function createProcessingWorker(
           return undefined;
         }
         case "twitter-post": {
-          const publishDeps = await buildPublishDeps();
+          const publishDeps = await buildPublishDeps(ctx);
           const typed: TwitterPostJobLike = {
             name: job.name,
             id: job.id,
@@ -214,13 +228,16 @@ export function createProcessingWorker(
   );
 }
 
-function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
+function buildDefaultRunProcessDeps(
+  connection: IORedis,
+  ctx: TenantContext,
+): RunProcessDeps {
   const db = getDb();
   const runState: RunStateService = createRunStateService(connection);
-  const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db);
-  const candidatesRepo: CandidatesRepo = createCandidatesRepo(db);
-  const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db);
-  const runLogRepo = createRunLogRepo(db);
+  const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db, ctx);
+  const candidatesRepo: CandidatesRepo = createCandidatesRepo(db, ctx);
+  const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db, ctx);
+  const runLogRepo = createRunLogRepo(db, ctx);
   const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db);
   const loadFn: LoadCandidatesFn = loadCandidatesSince;
   // TAVILY_API_KEY resolved at worker startup. Env-driven only (no DB equivalent),
@@ -241,7 +258,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   // job without a worker restart. Rettiwt accepts an undefined apiKey (guest
   // mode); the collector itself classifies the first auth failure as `auth`,
   // which the Slack notice surfaces.
-  const credentialsRepo = getSharedSocialCredentialsRepo();
+  const credentialsRepo = buildSocialCredentialsRepo(ctx);
   const twitterClient = async (): Promise<TwitterClient> => {
     const cookie = await resolveTwitterCollectorCookie({
       repo: credentialsRepo,
@@ -293,7 +310,10 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   };
 }
 
-function buildDefaultDailyRunDeps(connection: IORedis): DailyRunDeps {
+function buildDefaultDailyRunDeps(
+  connection: IORedis,
+  _ctx: TenantContext,
+): DailyRunDeps {
   const db = getDb();
   const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db);
   const queue = new Queue<RunProcessJobPayload>("processing", { connection });
@@ -363,12 +383,14 @@ function warnInvalidTwitterConfig(
   );
 }
 
-export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
+export async function buildDefaultPublishDeps(
+  ctx: TenantContext = systemContext(AGENTLOOP_TENANT_ID),
+): Promise<PublishDeps> {
   const db = getDb();
-  const archiveRepo = createRunArchivesRepo(db);
-  const rawItemsRepo = createRawItemsRepo(db);
-  const socialTokensRepo = getSharedSocialTokensRepo();
-  const socialCredentialsRepo = getSharedSocialCredentialsRepo();
+  const archiveRepo = createRunArchivesRepo(db, ctx);
+  const rawItemsRepo = createRawItemsRepo(db, ctx);
+  const socialTokensRepo = buildSocialTokensRepo(ctx);
+  const socialCredentialsRepo = buildSocialCredentialsRepo(ctx);
   const slackNotifier = createSlackNotifier({
     webhookUrl: process.env.SLACK_WEBHOOK_URL,
     archives: archiveRepo,
@@ -445,8 +467,8 @@ export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
 
   return {
     emailProvider: createEmailProvider(),
-    subscribersRepo: createPipelineSubscribersRepo(db),
-    emailSendsRepo: createPipelineEmailSendsRepo(db),
+    subscribersRepo: createPipelineSubscribersRepo(db, ctx),
+    emailSendsRepo: createPipelineEmailSendsRepo(db, ctx),
     archiveRepo,
     rawItemsRepo,
     renderNewsletter,
@@ -479,18 +501,14 @@ function buildDefaultSocialHealthDeps(): SocialHealthDeps {
   };
 }
 
-let cachedSocialTokensRepo: SocialTokensRepo | undefined;
-function getSharedSocialTokensRepo(): SocialTokensRepo {
-  cachedSocialTokensRepo ??= createSocialTokensRepo(getDb(), getCredentialCipher());
-  return cachedSocialTokensRepo;
+// Credential repos are built PER JOB (not cached) so admin saves at
+// /admin/settings take effect on the next job without a restart, and so each
+// job's repo is scoped to the originating tenant.
+function buildSocialTokensRepo(ctx: TenantContext): SocialTokensRepo {
+  return createSocialTokensRepo(getDb(), getCredentialCipher(), ctx);
 }
 
-let cachedSocialCredentialsRepo: SocialCredentialsRepo | undefined;
-function getSharedSocialCredentialsRepo(): SocialCredentialsRepo {
-  cachedSocialCredentialsRepo ??= createSocialCredentialsRepo(
-    getDb(),
-    getCredentialCipher(),
-  );
-  return cachedSocialCredentialsRepo;
+function buildSocialCredentialsRepo(ctx: TenantContext): SocialCredentialsRepo {
+  return createSocialCredentialsRepo(getDb(), getCredentialCipher(), ctx);
 }
 

@@ -45,18 +45,26 @@ function makeFakeDb(initial: StoredRow[] = []): FakeDbHandle {
   function makeSelectChain(pendingPlatform: { value: string | null }) {
     const chain = {
       from: vi.fn().mockReturnThis(),
+      // Tenant scoping wraps the platform predicate in and(eq(tenantId), eq(platform)),
+      // so the platform string is now nested under additional queryChunks. Walk the
+      // SQL chunk tree and pick the platform value (the non-tenant string).
       where: vi.fn(function (_pred: unknown) {
-        const p = _pred as { queryChunks?: unknown[] } | null;
-        if (p && Array.isArray(p.queryChunks)) {
-          for (const chunk of p.queryChunks) {
-            if (typeof chunk === "string") {
-              pendingPlatform.value = chunk;
-            } else if (chunk && typeof chunk === "object" && "value" in chunk) {
-              const v = (chunk as { value: unknown }).value;
-              if (typeof v === "string") pendingPlatform.value = v;
-            }
+        const walk = (node: unknown): void => {
+          if (node === "linkedin" || node === "twitter") {
+            pendingPlatform.value = node;
+            return;
           }
-        }
+          if (Array.isArray(node)) {
+            for (const child of node) walk(child);
+            return;
+          }
+          if (node && typeof node === "object") {
+            const obj = node as Record<string, unknown>;
+            if (Array.isArray(obj.queryChunks)) walk(obj.queryChunks);
+            if ("value" in obj) walk(obj.value);
+          }
+        };
+        walk(_pred);
         return chain;
       }),
       limit: vi.fn(function () {

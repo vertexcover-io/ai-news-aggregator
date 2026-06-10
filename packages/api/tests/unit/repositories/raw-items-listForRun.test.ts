@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import type IORedis from "ioredis";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
+import { rawItems, tenantScope } from "@newsletter/shared/db";
+import { AGENTLOOP_TENANT_ID } from "@newsletter/shared";
 import type { RunState } from "@newsletter/shared";
 import type {
   RunArchiveRow,
@@ -79,6 +81,9 @@ function makeRedis(store: Record<string, string> = {}): FakeRedis {
 
 const RUN_ID = "11111111-1111-1111-1111-111111111111";
 
+// Tenant-scoped reads now require a TenantScope; default to tenant 0 (AGENTLOOP).
+const scope = tenantScope(rawItems.tenantId, { tenantId: AGENTLOOP_TENANT_ID, role: "tenant_admin" });
+
 function makeArchive(overrides: Partial<RunArchiveRow> = {}): RunArchiveRow {
   return {
     id: RUN_ID,
@@ -132,6 +137,7 @@ describe("listRawItemsForRun", () => {
 
     const result = await listRawItemsForRun(RUN_ID, {
       db,
+      scope,
       archiveRepo,
       redis: redis.client,
     });
@@ -176,7 +182,7 @@ describe("listRawItemsForRun", () => {
     };
     const redis = makeRedis({ [`run:${RUN_ID}`]: JSON.stringify(state) });
 
-    const result = await listRawItemsForRun(RUN_ID, { db, archiveRepo, redis: redis.client });
+    const result = await listRawItemsForRun(RUN_ID, { db, scope, archiveRepo, redis: redis.client });
 
     expect(result).toEqual([]);
     expect(redis.get).toHaveBeenCalledWith(`run:${RUN_ID}`);
@@ -188,7 +194,7 @@ describe("listRawItemsForRun", () => {
     const redis = makeRedis();
 
     await expect(
-      listRawItemsForRun(RUN_ID, { db, archiveRepo, redis: redis.client }),
+      listRawItemsForRun(RUN_ID, { db, scope, archiveRepo, redis: redis.client }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
@@ -197,7 +203,7 @@ describe("listRawItemsForRun", () => {
     const archiveRepo = makeArchiveRepo(makeArchive());
     const redis = makeRedis();
 
-    const result = await listRawItemsForRun(RUN_ID, { db, archiveRepo, redis: redis.client });
+    const result = await listRawItemsForRun(RUN_ID, { db, scope, archiveRepo, redis: redis.client });
     expect(result).toEqual([]);
   });
 
@@ -209,7 +215,7 @@ describe("listRawItemsForRun", () => {
     const redis = makeRedis();
 
     await expect(
-      listRawItemsForRun(RUN_ID, { db, archiveRepo, redis: redis.client }),
+      listRawItemsForRun(RUN_ID, { db, scope, archiveRepo, redis: redis.client }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

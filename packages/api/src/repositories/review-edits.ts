@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
-import { reviewEdits } from "@newsletter/shared/db";
+import { reviewEdits, tenantScope } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { ReviewEditRow } from "@newsletter/shared/review-edits";
+import type { TenantContext } from "@newsletter/shared";
 
 /** Minimal DB interface required by this repo — also satisfied by a Drizzle tx. */
 type DbOrTx = Pick<AppDb, "select" | "insert" | "update" | "delete">;
@@ -28,23 +29,31 @@ function dbRowToReviewEditRow(row: typeof reviewEdits.$inferSelect): ReviewEditR
   };
 }
 
-export function createReviewEditsRepo(db: AppDb): ReviewEditsRepo {
+export function createReviewEditsRepo(
+  db: AppDb,
+  ctx?: TenantContext,
+): ReviewEditsRepo {
+  const scope = tenantScope(reviewEdits.tenantId, ctx);
   return {
     async replaceForRun(runId, rows, tx) {
       const executor: DbOrTx = tx ?? db;
-      await executor.delete(reviewEdits).where(eq(reviewEdits.runId, runId));
+      await executor
+        .delete(reviewEdits)
+        .where(scope.where(eq(reviewEdits.runId, runId)));
       if (rows.length > 0) {
         await executor.insert(reviewEdits).values(
-          rows.map((r) => ({
-            runId,
-            editType: r.editType,
-            rawItemId: r.rawItemId ?? undefined,
-            field: r.field ?? undefined,
-            before: r.before,
-            after: r.after,
-            positionBefore: r.positionBefore ?? undefined,
-            positionAfter: r.positionAfter ?? undefined,
-          })),
+          rows.map((r) =>
+            scope.stamp({
+              runId,
+              editType: r.editType,
+              rawItemId: r.rawItemId ?? undefined,
+              field: r.field ?? undefined,
+              before: r.before,
+              after: r.after,
+              positionBefore: r.positionBefore ?? undefined,
+              positionAfter: r.positionAfter ?? undefined,
+            }),
+          ),
         );
       }
     },
@@ -52,7 +61,7 @@ export function createReviewEditsRepo(db: AppDb): ReviewEditsRepo {
       const rows = await db
         .select()
         .from(reviewEdits)
-        .where(eq(reviewEdits.runId, runId))
+        .where(scope.where(eq(reviewEdits.runId, runId)))
         .orderBy(reviewEdits.id);
       return rows.map(dbRowToReviewEditRow);
     },

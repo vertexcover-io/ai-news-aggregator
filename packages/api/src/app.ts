@@ -2,6 +2,12 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { MiddlewareHandler } from "hono";
 import { captureException } from "@api/lib/posthog.js";
+import type { TenantVariables } from "@api/middleware/types.js";
+import { hostTenant } from "@api/middleware/host-tenant.js";
+
+export interface AppEnv {
+  Variables: TenantVariables;
+}
 
 export interface BuildAppDeps {
   sessionSecret: string;
@@ -15,8 +21,8 @@ export interface BuildAppDeps {
   adminEvalRouter: Hono;
   adminSocialCredentialsRouter: Hono;
   adminMustReadRouter: Hono;
-  runsRouter: Hono;
-  settingsRouter: Hono;
+  runsRouter: Hono<AppEnv>;
+  settingsRouter: Hono<AppEnv>;
   /**
    * Exposes POST /login, POST /logout, GET /me. Mounted under /api/admin with
    * a path-aware gate: /login and /logout bypass the gate; everything else
@@ -42,6 +48,13 @@ export interface BuildAppDeps {
   linkedInOAuthCallbackRouter: Hono;
   /** Admin-gated collector health check trigger + snapshot routes. */
   collectorHealthRouter: Hono;
+  /**
+   * Optional resolver for the host-tenant middleware. Maps a tenant slug
+   * (`<slug>.<ROOT_DOMAIN>`) to a tenant id. Phase 1 ships no tenants repo, so
+   * this is omitted and the middleware merely stashes the slug; every request
+   * still resolves to AGENTLOOP via the admin gate / repo defaults.
+   */
+  resolveTenantBySlug?: (slug: string) => Promise<{ tenantId: string } | null>;
 }
 
 const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
@@ -63,8 +76,12 @@ const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
  *     *    /api/runs/*
  *     *    /api/settings
  */
-export function buildApp(deps: BuildAppDeps): Hono {
-  const app = new Hono();
+export function buildApp(deps: BuildAppDeps): Hono<AppEnv> {
+  const app = new Hono<AppEnv>();
+
+  // Resolve the host tenant before any route runs. On admin/app hosts this is a
+  // no-op; tenant identity for admin routes is set by requireAdmin downstream.
+  app.use("*", hostTenant({ resolveTenantBySlug: deps.resolveTenantBySlug }));
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
@@ -110,7 +127,7 @@ export function buildApp(deps: BuildAppDeps): Hono {
     return gate(c, next);
   };
 
-  const adminApp = new Hono();
+  const adminApp = new Hono<AppEnv>();
   adminApp.use("*", conditionalGate);
   adminApp.route("/", deps.adminRouter);
   adminApp.route("/archives", deps.adminArchivesRouter);
@@ -142,8 +159,8 @@ export function buildApp(deps: BuildAppDeps): Hono {
   return app;
 }
 
-function gatedWrap(mw: MiddlewareHandler, router: Hono): Hono {
-  const app = new Hono();
+function gatedWrap(mw: MiddlewareHandler, router: Hono<AppEnv>): Hono<AppEnv> {
+  const app = new Hono<AppEnv>();
   app.use("*", mw);
   app.route("/", router);
   return app;

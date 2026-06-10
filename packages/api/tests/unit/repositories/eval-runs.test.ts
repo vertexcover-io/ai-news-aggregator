@@ -124,7 +124,10 @@ function makeFakeDb(): FakeDb {
       from: () => chain,
       $dynamic: () => chain,
       where: () => {
-        state.where = shiftPred();
+        // Tenant-scoped reads always call .where() (scope predicate), even when
+        // the caller queued no row-matching predicate. getById/update queue a
+        // byId predicate; list queues none, so fall through to match-all.
+        if (predStack.length > 0) state.where = shiftPred();
         return chain;
       },
       orderBy: () => chain,

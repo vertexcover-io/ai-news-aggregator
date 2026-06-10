@@ -1,7 +1,8 @@
 import { desc, eq, sql } from "drizzle-orm";
-import { mustReadEntries } from "@newsletter/shared/db";
+import { mustReadEntries, tenantScope } from "@newsletter/shared/db";
 import type { AppDb, MustReadEntry } from "@newsletter/shared/db";
 import type { PublicMustReadEntry } from "@newsletter/shared/types";
+import type { TenantContext } from "@newsletter/shared";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -45,7 +46,9 @@ export interface MustReadRepo {
 
 export function createMustReadRepo(
   db: Pick<AppDb, "select" | "insert" | "update" | "delete" | "execute">,
+  ctx?: TenantContext,
 ): MustReadRepo {
+  const scope = tenantScope(mustReadEntries.tenantId, ctx);
   const publicColumns = {
     id: mustReadEntries.id,
     url: mustReadEntries.url,
@@ -61,6 +64,7 @@ export function createMustReadRepo(
       return db
         .select(publicColumns)
         .from(mustReadEntries)
+        .where(scope.where())
         .orderBy(desc(mustReadEntries.addedAt));
     },
 
@@ -68,6 +72,7 @@ export function createMustReadRepo(
       return db
         .select()
         .from(mustReadEntries)
+        .where(scope.where())
         .orderBy(desc(mustReadEntries.addedAt));
     },
 
@@ -76,7 +81,7 @@ export function createMustReadRepo(
       const rows = await db
         .select()
         .from(mustReadEntries)
-        .where(eq(mustReadEntries.id, id))
+        .where(scope.where(eq(mustReadEntries.id, id)))
         .limit(1);
       return rows[0] ?? null;
     },
@@ -85,7 +90,7 @@ export function createMustReadRepo(
       const rows = await db
         .select()
         .from(mustReadEntries)
-        .where(eq(mustReadEntries.url, url))
+        .where(scope.where(eq(mustReadEntries.url, url)))
         .limit(1);
       return rows[0] ?? null;
     },
@@ -94,6 +99,7 @@ export function createMustReadRepo(
       const rows = await db
         .select()
         .from(mustReadEntries)
+        .where(scope.where())
         .orderBy(sql`random()`)
         .limit(1);
       return rows[0] ?? null;
@@ -102,13 +108,15 @@ export function createMustReadRepo(
     async create(input: MustReadCreateInput): Promise<MustReadEntry> {
       const [row] = await db
         .insert(mustReadEntries)
-        .values({
-          url: input.url,
-          title: input.title,
-          author: input.author,
-          year: input.year,
-          annotation: input.annotation,
-        })
+        .values(
+          scope.stamp({
+            url: input.url,
+            title: input.title,
+            author: input.author,
+            year: input.year,
+            annotation: input.annotation,
+          }),
+        )
         .returning();
       return row;
     },
@@ -126,7 +134,7 @@ export function createMustReadRepo(
       const rows = await db
         .update(mustReadEntries)
         .set(setObj)
-        .where(eq(mustReadEntries.id, id))
+        .where(scope.where(eq(mustReadEntries.id, id)))
         .returning();
       return rows[0] ?? null;
     },
@@ -135,7 +143,7 @@ export function createMustReadRepo(
       if (!UUID_RE.test(id)) return false;
       const rows = await db
         .delete(mustReadEntries)
-        .where(eq(mustReadEntries.id, id))
+        .where(scope.where(eq(mustReadEntries.id, id)))
         .returning({ id: mustReadEntries.id });
       return rows.length === 1;
     },
@@ -143,7 +151,8 @@ export function createMustReadRepo(
     async count(): Promise<number> {
       const [row] = await db
         .select({ c: sql<number>`count(*)::int` })
-        .from(mustReadEntries);
+        .from(mustReadEntries)
+        .where(scope.where());
       return row.c;
     },
   };

@@ -1,7 +1,11 @@
 import { eq } from "drizzle-orm";
-import { socialTokens } from "@newsletter/shared/db";
-import type { AppDb, SocialTokenEncryptedFields } from "@newsletter/shared/db";
-import type { SocialTokenMetadata } from "@newsletter/shared";
+import { socialTokens, tenantScope } from "@newsletter/shared/db";
+import type {
+  AppDb,
+  SocialTokenEncryptedFields,
+  TenantScope,
+} from "@newsletter/shared/db";
+import type { SocialTokenMetadata, TenantContext } from "@newsletter/shared";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
 
 export type SocialPlatform = "linkedin" | "twitter";
@@ -59,6 +63,7 @@ function toRow(
 
 async function upsertToken(
   db: TxLike,
+  scope: TenantScope,
   platform: SocialPlatform,
   input: SaveSocialTokenInput,
   cipher: CredentialCipher,
@@ -69,13 +74,15 @@ async function upsertToken(
   };
   await db
     .insert(socialTokens)
-    .values({
-      platform,
-      encryptedFields,
-      expiresAt: input.expiresAt,
-      metadata: input.metadata ?? null,
-      updatedAt: new Date(),
-    })
+    .values(
+      scope.stamp({
+        platform,
+        encryptedFields,
+        expiresAt: input.expiresAt,
+        metadata: input.metadata ?? null,
+        updatedAt: new Date(),
+      }),
+    )
     .onConflictDoUpdate({
       target: socialTokens.platform,
       set: {
@@ -90,13 +97,15 @@ async function upsertToken(
 export function createSocialTokensRepo(
   db: Pick<AppDb, "select" | "insert" | "transaction">,
   cipher: CredentialCipher,
+  ctx?: TenantContext,
 ): SocialTokensRepo {
+  const scope = tenantScope(socialTokens.tenantId, ctx);
   return {
     async getToken(platform: SocialPlatform): Promise<SocialTokenRow | null> {
       const rows = await db
         .select()
         .from(socialTokens)
-        .where(eq(socialTokens.platform, platform))
+        .where(scope.where(eq(socialTokens.platform, platform)))
         .limit(1);
       if (rows.length === 0) return null;
       try {
@@ -112,7 +121,7 @@ export function createSocialTokensRepo(
       platform: SocialPlatform,
       input: SaveSocialTokenInput,
     ): Promise<void> {
-      await upsertToken(db, platform, input, cipher);
+      await upsertToken(db, scope, platform, input, cipher);
     },
 
     async withTokenLock<T>(
@@ -123,7 +132,7 @@ export function createSocialTokensRepo(
         const rows = await tx
           .select()
           .from(socialTokens)
-          .where(eq(socialTokens.platform, platform))
+          .where(scope.where(eq(socialTokens.platform, platform)))
           .limit(1)
           .for("update");
         let row: SocialTokenRow | null;
@@ -135,7 +144,7 @@ export function createSocialTokensRepo(
         }
         const txApi: SocialTokensTx = {
           async saveToken(p, inp) {
-            await upsertToken(tx, p, inp, cipher);
+            await upsertToken(tx, scope, p, inp, cipher);
           },
         };
         return fn(row, txApi);

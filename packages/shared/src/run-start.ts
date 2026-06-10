@@ -10,11 +10,13 @@ import type {
   RunSubmitWebSearchConfig,
 } from "./types/run.js";
 import type { UserSettings } from "./types/settings.js";
+import { AGENTLOOP_TENANT_ID, type TenantContext } from "./tenant/context.js";
 
 const TTL_SECONDS = 3600;
 
 export interface RunProcessJobPayload {
   runId: string;
+  tenantId: string;
   topN: number;
   sourceTypes: ("hn" | "reddit" | "blog" | "twitter" | "web_search")[];
   collectors: {
@@ -38,8 +40,9 @@ export interface StartRunDeps {
 export async function startRun(
   settings: UserSettings,
   deps: StartRunDeps,
-  opts?: { dryRun?: boolean },
+  opts?: { dryRun?: boolean; ctx?: TenantContext },
 ): Promise<{ runId: string }> {
+  const tenantId = opts?.ctx?.tenantId ?? AGENTLOOP_TENANT_ID;
   const runId = (deps.runId ?? randomUUID)();
   const nowIso = (deps.now ? deps.now() : new Date()).toISOString();
   const hnConfig = settings.hnEnabled ? settings.hnConfig : null;
@@ -70,6 +73,7 @@ export async function startRun(
 
   const initial: RunState = {
     id: runId,
+    tenantId,
     status: "running",
     stage: "queued",
     topN: settings.topN,
@@ -115,6 +119,7 @@ export async function startRun(
 
   const jobPayload: RunProcessJobPayload = {
     runId,
+    tenantId,
     topN: settings.topN,
     sourceTypes,
     collectors,

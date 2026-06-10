@@ -1,7 +1,7 @@
 import { and, gte, inArray } from "drizzle-orm";
-import { rawItems } from "@newsletter/shared/db";
+import { rawItems, tenantScope } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
-import type { RawItemMetadata } from "@newsletter/shared";
+import type { RawItemMetadata, TenantContext } from "@newsletter/shared";
 
 export interface CandidateRow {
   id: number;
@@ -21,7 +21,9 @@ export interface CandidatesRepo {
 
 export function createCandidatesRepo(
   db: Pick<AppDb, "select">,
+  ctx?: TenantContext,
 ): CandidatesRepo {
+  const scope = tenantScope(rawItems.tenantId, ctx);
   return {
     async findSince(
       since: Date,
@@ -42,9 +44,11 @@ export function createCandidatesRepo(
         })
         .from(rawItems)
         .where(
-          and(
-            gte(rawItems.collectedAt, since),
-            inArray(rawItems.sourceType, sourceTypes),
+          scope.where(
+            and(
+              gte(rawItems.collectedAt, since),
+              inArray(rawItems.sourceType, sourceTypes),
+            ),
           ),
         );
       return rows;

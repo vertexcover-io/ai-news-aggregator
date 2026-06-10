@@ -1,5 +1,5 @@
 import { desc, eq, inArray, sql } from "drizzle-orm";
-import { runArchives, rawItems } from "@newsletter/shared/db";
+import { runArchives, rawItems, tenantScope } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type {
   NotificationKey,
@@ -10,6 +10,7 @@ import type {
   RunSourceTelemetry,
   SocialMetadata,
   SourceType,
+  TenantContext,
 } from "@newsletter/shared";
 import { parseRunCostBreakdown } from "@newsletter/shared";
 import type { PreReviewSnapshot } from "@newsletter/shared/review-edits";
@@ -85,7 +86,10 @@ export interface RunArchivesRepo {
 
 export function createRunArchivesRepo(
   db: Pick<AppDb, "insert" | "select" | "update">,
+  ctx?: TenantContext,
 ): RunArchivesRepo {
+  const scope = tenantScope(runArchives.tenantId, ctx);
+  const rawScope = tenantScope(rawItems.tenantId, ctx);
   const selectArchiveRow = {
     id: runArchives.id,
     status: runArchives.status,
@@ -115,7 +119,7 @@ export function createRunArchivesRepo(
       const rows = await db
         .select(selectArchiveRow)
         .from(runArchives)
-        .where(eq(runArchives.id, id));
+        .where(scope.where(eq(runArchives.id, id)));
       return rows[0] ?? null;
     },
 
@@ -123,6 +127,7 @@ export function createRunArchivesRepo(
       const rows = await db
         .select(selectArchiveRow)
         .from(runArchives)
+        .where(scope.where())
         .orderBy(desc(runArchives.completedAt))
         .limit(1);
       return rows[0] ?? null;
@@ -132,13 +137,13 @@ export function createRunArchivesRepo(
       await db
         .update(runArchives)
         .set({ slackNotifiedAt: at })
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
     },
     async markEmailSent(runId: string, at: Date): Promise<void> {
       await db
         .update(runArchives)
         .set({ emailSentAt: at })
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
     },
     async markNotification(
       runId: string,
@@ -150,7 +155,7 @@ export function createRunArchivesRepo(
         .set({
           notificationState: sql`coalesce(${runArchives.notificationState}, '{}'::jsonb) || jsonb_build_object(${key}::text, ${at.toISOString()}::text)`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
     },
 
     async markLinkedInPosted(
@@ -162,7 +167,7 @@ export function createRunArchivesRepo(
         await db
           .update(runArchives)
           .set({ linkedinPostedAt: at })
-          .where(eq(runArchives.id, runId));
+          .where(scope.where(eq(runArchives.id, runId)));
         return;
       }
       const patch: SocialMetadata = { linkedinPermalink: permalink };
@@ -172,7 +177,7 @@ export function createRunArchivesRepo(
           linkedinPostedAt: at,
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
     },
 
     async markTwitterPosted(
@@ -190,7 +195,7 @@ export function createRunArchivesRepo(
         await db
           .update(runArchives)
           .set({ twitterPostedAt: at })
-          .where(eq(runArchives.id, runId));
+          .where(scope.where(eq(runArchives.id, runId)));
         return;
       }
       await db
@@ -199,7 +204,7 @@ export function createRunArchivesRepo(
           twitterPostedAt: at,
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
     },
 
     async setCostBreakdown(
@@ -209,7 +214,7 @@ export function createRunArchivesRepo(
       await db
         .update(runArchives)
         .set({ costBreakdown: breakdown })
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
     },
 
     async getCostBreakdown(runId: string): Promise<RunCostBreakdown | null> {
@@ -219,7 +224,7 @@ export function createRunArchivesRepo(
       const rows = await db
         .select({ costBreakdown: runArchives.costBreakdown })
         .from(runArchives)
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
       if (rows.length === 0) return null;
       return parseRunCostBreakdown(rows[0].costBreakdown);
     },
@@ -236,13 +241,13 @@ export function createRunArchivesRepo(
         .set({
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
     },
 
     async upsert(input: RunArchiveUpsertInput): Promise<void> {
       await db
         .insert(runArchives)
-        .values({
+        .values(scope.stamp({
           id: input.id,
           status: input.status,
           rankedItems: input.rankedItems,
@@ -263,7 +268,7 @@ export function createRunArchivesRepo(
           publishedAt: input.publishedAt ?? null,
           shortlistedItemIds: input.shortlistedItemIds ?? null,
           preReviewSnapshot: input.preReviewSnapshot ?? null,
-        })
+        }))
         .onConflictDoUpdate({
           target: runArchives.id,
           set: {
@@ -295,7 +300,9 @@ export function createRunArchivesRepo(
         .select({ rankedItems: runArchives.rankedItems })
         .from(runArchives)
         .where(
-          sql`${runArchives.reviewed} = true AND ${runArchives.isDryRun} = false AND ${runArchives.status} = 'completed'`,
+          scope.where(
+            sql`${runArchives.reviewed} = true AND ${runArchives.isDryRun} = false AND ${runArchives.status} = 'completed'`,
+          ),
         );
 
       if (archiveRows.length === 0) return new Set<string>();
@@ -311,7 +318,7 @@ export function createRunArchivesRepo(
       const urlRows = await db
         .select({ url: rawItems.url })
         .from(rawItems)
-        .where(inArray(rawItems.id, rawItemIds));
+        .where(rawScope.where(inArray(rawItems.id, rawItemIds)));
 
       // Step 4: canonicalize and return
       return new Set(urlRows.map((row) => canonicalizeUrl(row.url)));

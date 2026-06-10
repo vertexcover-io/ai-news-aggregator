@@ -1,11 +1,13 @@
 import type { Queue } from "bullmq";
 import {
+  AGENTLOOP_TENANT_ID,
   COLLECTOR_HEALTH_LEAD_MINUTES,
   COLLECTOR_HEALTH_SCHEDULER_KEY,
   EMAIL_SEND_SCHEDULER_KEY,
   LEGACY_DAILY_RUN_SCHEDULER_KEY,
   LINKEDIN_POST_SCHEDULER_KEY,
   PIPELINE_RUN_SCHEDULER_KEY,
+  schedulerKey,
   TWITTER_POST_SCHEDULER_KEY,
   type UserSettings,
 } from "@newsletter/shared";
@@ -50,23 +52,26 @@ export function toCronMinusMinutes(hhmm: string, minutesBefore: number): string 
 export async function reconcilePipelineSchedule(
   queue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">,
   settings: UserSettings,
+  tenantId: string = AGENTLOOP_TENANT_ID,
 ): Promise<void> {
   const pipelineTime = settings.pipelineTime;
+  const pipelineKey = schedulerKey(PIPELINE_RUN_SCHEDULER_KEY, tenantId);
+  const socialHealthKey = schedulerKey(SOCIAL_HEALTH_SCHEDULER_KEY, tenantId);
   if (!settings.scheduleEnabled) {
-    await queue.removeJobScheduler(PIPELINE_RUN_SCHEDULER_KEY);
-    await queue.removeJobScheduler(SOCIAL_HEALTH_SCHEDULER_KEY);
+    await queue.removeJobScheduler(pipelineKey);
+    await queue.removeJobScheduler(socialHealthKey);
     for (const scheduler of PUBLISH_SCHEDULERS) {
-      await queue.removeJobScheduler(scheduler.key);
+      await queue.removeJobScheduler(schedulerKey(scheduler.key, tenantId));
     }
     return;
   }
   await queue.upsertJobScheduler(
-    PIPELINE_RUN_SCHEDULER_KEY,
+    pipelineKey,
     { pattern: toCron(pipelineTime), tz: settings.scheduleTimezone },
-    { name: "pipeline-run", data: {} },
+    { name: "pipeline-run", data: { tenantId } },
   );
   await queue.upsertJobScheduler(
-    SOCIAL_HEALTH_SCHEDULER_KEY,
+    socialHealthKey,
     {
       pattern: toCronMinusMinutes(
         pipelineTime,
@@ -74,17 +79,18 @@ export async function reconcilePipelineSchedule(
       ),
       tz: settings.scheduleTimezone,
     },
-    { name: "social-health", data: {} },
+    { name: "social-health", data: { tenantId } },
   );
   for (const scheduler of PUBLISH_SCHEDULERS) {
+    const key = schedulerKey(scheduler.key, tenantId);
     if (!scheduler.enabled(settings)) {
-      await queue.removeJobScheduler(scheduler.key);
+      await queue.removeJobScheduler(key);
       continue;
     }
     await queue.upsertJobScheduler(
-      scheduler.key,
+      key,
       { pattern: toCron(scheduler.time(settings)), tz: settings.scheduleTimezone },
-      { name: scheduler.jobName, data: {} },
+      { name: scheduler.jobName, data: { tenantId } },
     );
   }
 }
@@ -92,18 +98,20 @@ export async function reconcilePipelineSchedule(
 export async function reconcileCollectorHealthSchedule(
   queue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">,
   settings: UserSettings,
+  tenantId: string = AGENTLOOP_TENANT_ID,
 ): Promise<void> {
+  const key = schedulerKey(COLLECTOR_HEALTH_SCHEDULER_KEY, tenantId);
   if (!settings.scheduleEnabled) {
-    await queue.removeJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY);
+    await queue.removeJobScheduler(key);
     return;
   }
   await queue.upsertJobScheduler(
-    COLLECTOR_HEALTH_SCHEDULER_KEY,
+    key,
     {
       pattern: toCronMinusMinutes(settings.pipelineTime, COLLECTOR_HEALTH_LEAD_MINUTES),
       tz: settings.scheduleTimezone,
     },
-    { name: "collector-health", data: { trigger: "scheduled" } },
+    { name: "collector-health", data: { trigger: "scheduled", tenantId } },
   );
 }
 
@@ -133,27 +141,30 @@ type LegacyScheduleSettings = Omit<UserSettings, "pipelineTime" | "scheduleTime"
 export async function reconcileDailyRunSchedule(
   queue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">,
   settings: LegacyScheduleSettings,
+  tenantId: string = AGENTLOOP_TENANT_ID,
 ): Promise<void> {
   const scheduleTime = settings.pipelineTime ?? settings.scheduleTime;
   if (scheduleTime === undefined) {
     throw new Error("pipelineTime or scheduleTime is required");
   }
+  const dailyRunKey = schedulerKey(DAILY_RUN_SCHEDULER_KEY, tenantId);
+  const socialHealthKey = schedulerKey(SOCIAL_HEALTH_SCHEDULER_KEY, tenantId);
   if (!settings.scheduleEnabled) {
-    await queue.removeJobScheduler(DAILY_RUN_SCHEDULER_KEY);
-    await queue.removeJobScheduler(SOCIAL_HEALTH_SCHEDULER_KEY);
+    await queue.removeJobScheduler(dailyRunKey);
+    await queue.removeJobScheduler(socialHealthKey);
     return;
   }
   await queue.upsertJobScheduler(
-    DAILY_RUN_SCHEDULER_KEY,
+    dailyRunKey,
     { pattern: toCron(scheduleTime), tz: settings.scheduleTimezone },
-    { name: "daily-run", data: {} },
+    { name: "daily-run", data: { tenantId } },
   );
   await queue.upsertJobScheduler(
-    SOCIAL_HEALTH_SCHEDULER_KEY,
+    socialHealthKey,
     {
       pattern: toCronMinusMinutes(scheduleTime, SOCIAL_HEALTH_LEAD_MINUTES),
       tz: settings.scheduleTimezone,
     },
-    { name: "social-health", data: {} },
+    { name: "social-health", data: { tenantId } },
   );
 }

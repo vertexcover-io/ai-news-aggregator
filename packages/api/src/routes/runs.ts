@@ -13,6 +13,8 @@ import type {
   RunProcessJobPayload,
   RunState,
 } from "@newsletter/shared";
+import { AGENTLOOP_TENANT_ID, type TenantContext } from "@newsletter/shared/tenant";
+import type { TenantVariables } from "@api/middleware/types.js";
 import { runNowBodySchema, runSubmitSchema, socialChannelSchema } from "@api/lib/validate.js";
 import { createRun } from "@api/services/runs.js";
 import {
@@ -46,10 +48,12 @@ export interface RunsRouterDeps {
   logger?: ReturnType<typeof createLogger>;
 }
 
-export function createRunsRouter(deps: RunsRouterDeps): Hono {
+export function createRunsRouter(
+  deps: RunsRouterDeps,
+): Hono<{ Variables: TenantVariables }> {
   const logger = deps.logger ?? createLogger("api:runs");
   const publisher = deps.publisher ?? deps.redis;
-  const runs = new Hono();
+  const runs = new Hono<{ Variables: TenantVariables }>();
 
   runs.post("/", async (c) => {
     let body: unknown;
@@ -118,10 +122,14 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     }
     const dryRun = parsed.data.dryRun ?? false;
 
+    const ctx: TenantContext = c.get("tenantCtx") ?? {
+      tenantId: AGENTLOOP_TENANT_ID,
+      role: "tenant_admin",
+    };
     const { runId } = await startRun(
       settings,
       { redis: deps.redis, queue: deps.processingQueue },
-      { dryRun },
+      { dryRun, ctx },
     );
     logger.info(
       { event: "run.now", runId, topN: settings.topN, dryRun },
@@ -280,7 +288,7 @@ function getDefaultProcessingQueue(): Queue<RunProcessJobPayload> {
   return defaultProcessingQueue;
 }
 
-export function createDefaultRunsRouter(): Hono {
+export function createDefaultRunsRouter(): Hono<{ Variables: TenantVariables }> {
   return createRunsRouter({
     redis: createRedisConnection(),
     publisher: createRedisConnection(),

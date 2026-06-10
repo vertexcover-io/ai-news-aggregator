@@ -1,6 +1,6 @@
-import { runLogs } from "@newsletter/shared/db";
+import { runLogs, tenantScope } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
-import type { RunLogInsert } from "@newsletter/shared";
+import type { RunLogInsert, TenantContext } from "@newsletter/shared";
 
 export interface RunLogRepo {
   /**
@@ -11,18 +11,24 @@ export interface RunLogRepo {
   append(runId: string, entry: RunLogInsert): Promise<void>;
 }
 
-export function createRunLogRepo(db: Pick<AppDb, "insert">): RunLogRepo {
+export function createRunLogRepo(
+  db: Pick<AppDb, "insert">,
+  ctx?: TenantContext,
+): RunLogRepo {
+  const scope = tenantScope(runLogs.tenantId, ctx);
   return {
     async append(runId: string, entry: RunLogInsert): Promise<void> {
-      await db.insert(runLogs).values({
-        runId,
-        level: entry.level,
-        stage: entry.stage,
-        source: entry.source,
-        event: entry.event,
-        message: entry.message,
-        context: entry.context,
-      });
+      await db.insert(runLogs).values(
+        scope.stamp({
+          runId,
+          level: entry.level,
+          stage: entry.stage,
+          source: entry.source,
+          event: entry.event,
+          message: entry.message,
+          context: entry.context,
+        }),
+      );
     },
   };
 }

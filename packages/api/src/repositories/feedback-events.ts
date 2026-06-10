@@ -1,7 +1,11 @@
 import { and, count, eq } from "drizzle-orm";
-import { feedbackEvents } from "@newsletter/shared/db";
+import { feedbackEvents, tenantScope } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
-import type { FeedbackEventInsert, FeedbackEventSelect } from "@newsletter/shared";
+import type {
+  FeedbackEventInsert,
+  FeedbackEventSelect,
+  TenantContext,
+} from "@newsletter/shared";
 
 export interface FeedbackEventsRepo {
   insertEvent(insert: FeedbackEventInsert): Promise<FeedbackEventSelect>;
@@ -15,10 +19,15 @@ export interface FeedbackEventsRepo {
 
 export function createFeedbackEventsRepo(
   db: Pick<AppDb, "select" | "insert">,
+  ctx?: TenantContext,
 ): FeedbackEventsRepo {
+  const scope = tenantScope(feedbackEvents.tenantId, ctx);
   return {
     async insertEvent(insert: FeedbackEventInsert): Promise<FeedbackEventSelect> {
-      const [row] = await db.insert(feedbackEvents).values(insert).returning();
+      const [row] = await db
+        .insert(feedbackEvents)
+        .values(scope.stamp(insert))
+        .returning();
       return row;
     },
 
@@ -27,9 +36,11 @@ export function createFeedbackEventsRepo(
         .select({ value: count() })
         .from(feedbackEvents)
         .where(
-          and(
-            eq(feedbackEvents.subscriberId, subscriberId),
-            eq(feedbackEvents.campaign, campaign),
+          scope.where(
+            and(
+              eq(feedbackEvents.subscriberId, subscriberId),
+              eq(feedbackEvents.campaign, campaign),
+            ),
           ),
         );
       return row.value > 0;

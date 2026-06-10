@@ -1,7 +1,12 @@
 import { and, count, eq, inArray, ne } from "drizzle-orm";
-import { subscribers } from "@newsletter/shared/db";
+import { subscribers, tenantScope } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
-import type { SubscriberInsert, SubscriberSelect, SubscriberStatus } from "@newsletter/shared";
+import type {
+  SubscriberInsert,
+  SubscriberSelect,
+  SubscriberStatus,
+  TenantContext,
+} from "@newsletter/shared";
 
 export interface SubscriberStatusUpdateResult {
   readonly changed: boolean;
@@ -35,13 +40,15 @@ export interface SubscribersRepo {
 
 export function createSubscribersRepo(
   db: Pick<AppDb, "select" | "insert" | "update">,
+  ctx?: TenantContext,
 ): SubscribersRepo {
+  const scope = tenantScope(subscribers.tenantId, ctx);
   return {
     async findByEmail(email: string): Promise<SubscriberSelect | null> {
       const rows = await db
         .select()
         .from(subscribers)
-        .where(eq(subscribers.email, email))
+        .where(scope.where(eq(subscribers.email, email)))
         .limit(1);
       return rows[0] ?? null;
     },
@@ -50,18 +57,21 @@ export function createSubscribersRepo(
       const rows = await db
         .select()
         .from(subscribers)
-        .where(eq(subscribers.id, id))
+        .where(scope.where(eq(subscribers.id, id)))
         .limit(1);
       return rows[0] ?? null;
     },
 
     async findByIds(ids: string[]): Promise<SubscriberSelect[]> {
       if (ids.length === 0) return [];
-      return db.select().from(subscribers).where(inArray(subscribers.id, ids));
+      return db
+        .select()
+        .from(subscribers)
+        .where(scope.where(inArray(subscribers.id, ids)));
     },
 
     async create(insert: SubscriberInsert): Promise<SubscriberSelect> {
-      const [row] = await db.insert(subscribers).values(insert).returning();
+      const [row] = await db.insert(subscribers).values(scope.stamp(insert)).returning();
       return row;
     },
 
@@ -73,7 +83,7 @@ export function createSubscribersRepo(
       await db
         .update(subscribers)
         .set({ confirmToken, confirmTokenExpiresAt, updatedAt: new Date() })
-        .where(eq(subscribers.id, id));
+        .where(scope.where(eq(subscribers.id, id)));
     },
 
     async updateStatus(
@@ -89,7 +99,9 @@ export function createSubscribersRepo(
       const updatedRows = await db
         .update(subscribers)
         .set({ status, updatedAt: new Date(), ...(extra ?? {}) })
-        .where(and(eq(subscribers.id, id), ne(subscribers.status, status)))
+        .where(
+          scope.where(and(eq(subscribers.id, id), ne(subscribers.status, status))),
+        )
         .returning();
       for (const updated of updatedRows) {
         return { changed: true, next: status, row: updated };
@@ -97,7 +109,7 @@ export function createSubscribersRepo(
       const currentRows = await db
         .select()
         .from(subscribers)
-        .where(eq(subscribers.id, id))
+        .where(scope.where(eq(subscribers.id, id)))
         .limit(1);
       for (const current of currentRows) {
         return { changed: false, next: current.status, row: current };
@@ -109,14 +121,14 @@ export function createSubscribersRepo(
       return db
         .select()
         .from(subscribers)
-        .where(eq(subscribers.status, "confirmed"));
+        .where(scope.where(eq(subscribers.status, "confirmed")));
     },
 
     async countConfirmed(): Promise<number> {
       const [row] = await db
         .select({ value: count() })
         .from(subscribers)
-        .where(eq(subscribers.status, "confirmed"));
+        .where(scope.where(eq(subscribers.status, "confirmed")));
       return row.value;
     },
   };

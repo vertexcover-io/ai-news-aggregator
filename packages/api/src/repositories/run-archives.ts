@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, ilike, inArray, lte, notInArray, or, sql } from "drizzle-orm";
-import { emailSends, rawItems, runArchives } from "@newsletter/shared/db";
+import { emailSends, rawItems, runArchives, tenantScope } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import {
   formatDateInTimezone,
@@ -14,6 +14,7 @@ import {
   type RunFunnel,
   type RunSourceTelemetry,
   type SocialMetadata,
+  type TenantContext,
 } from "@newsletter/shared";
 import type { PreReviewSnapshot } from "@newsletter/shared/review-edits";
 import { deriveRawItemIdentifier } from "@newsletter/shared/services";
@@ -213,7 +214,11 @@ export interface RangeFailureEntry {
 
 export function createRunArchivesRepo(
   db: Pick<AppDb, "select" | "update" | "execute" | "delete" | "transaction">,
+  ctx?: TenantContext,
 ): RunArchivesRepo {
+  const scope = tenantScope(runArchives.tenantId, ctx);
+  const rawScope = tenantScope(rawItems.tenantId, ctx);
+  const sendScope = tenantScope(emailSends.tenantId, ctx);
   function toPoolItem(row: {
     id: number;
     title: string;
@@ -285,20 +290,20 @@ export function createRunArchivesRepo(
           preReviewSnapshot: runArchives.preReviewSnapshot,
         })
         .from(runArchives)
-        .where(eq(runArchives.id, id));
+        .where(scope.where(eq(runArchives.id, id)));
       return rows[0] ?? null;
     },
     async markSlackNotified(runId: string, at: Date): Promise<void> {
       await db
         .update(runArchives)
         .set({ slackNotifiedAt: at })
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
     },
     async markEmailSent(runId: string, at: Date): Promise<void> {
       await db
         .update(runArchives)
         .set({ emailSentAt: at })
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
     },
     async markNotification(
       runId: string,
@@ -310,7 +315,7 @@ export function createRunArchivesRepo(
         .set({
           notificationState: sql`coalesce(${runArchives.notificationState}, '{}'::jsonb) || jsonb_build_object(${key}::text, ${at.toISOString()}::text)`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
     },
     async markLinkedInPosted(
       runId: string,
@@ -321,7 +326,7 @@ export function createRunArchivesRepo(
         await db
           .update(runArchives)
           .set({ linkedinPostedAt: at })
-          .where(eq(runArchives.id, runId));
+          .where(scope.where(eq(runArchives.id, runId)));
         return;
       }
       const patch: SocialMetadata = { linkedinPermalink: permalink };
@@ -331,7 +336,7 @@ export function createRunArchivesRepo(
           linkedinPostedAt: at,
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
     },
     async markTwitterPosted(
       runId: string,
@@ -342,7 +347,7 @@ export function createRunArchivesRepo(
         await db
           .update(runArchives)
           .set({ twitterPostedAt: at })
-          .where(eq(runArchives.id, runId));
+          .where(scope.where(eq(runArchives.id, runId)));
         return;
       }
       const patch: SocialMetadata = { twitterPermalink: permalink };
@@ -352,7 +357,7 @@ export function createRunArchivesRepo(
           twitterPostedAt: at,
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
     },
     async recordSocialFailure(
       runId: string,
@@ -366,13 +371,13 @@ export function createRunArchivesRepo(
         .set({
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
     },
     async findMostRecentReviewed(): Promise<{ id: string } | null> {
       const rows = await db
         .select({ id: runArchives.id })
         .from(runArchives)
-        .where(eq(runArchives.reviewed, true))
+        .where(scope.where(eq(runArchives.reviewed, true)))
         .orderBy(desc(runArchives.completedAt))
         .limit(1);
       if (rows.length === 0) return null;
@@ -412,10 +417,12 @@ export function createRunArchivesRepo(
         })
         .from(runArchives)
         .where(
-          and(
-            eq(runArchives.reviewed, true),
-            eq(runArchives.isDryRun, false),
-            gte(runArchives.completedAt, since),
+          scope.where(
+            and(
+              eq(runArchives.reviewed, true),
+              eq(runArchives.isDryRun, false),
+              gte(runArchives.completedAt, since),
+            ),
           ),
         )
         .orderBy(desc(runArchives.completedAt))
@@ -434,7 +441,11 @@ export function createRunArchivesRepo(
           isDryRun: runArchives.isDryRun,
         })
         .from(runArchives)
-        .where(and(eq(runArchives.reviewed, true), eq(runArchives.isDryRun, false)))
+        .where(
+          scope.where(
+            and(eq(runArchives.reviewed, true), eq(runArchives.isDryRun, false)),
+          ),
+        )
         .orderBy(
           sql`coalesce(${runArchives.publishedAt}, ${runArchives.completedAt}) desc`,
         );
@@ -453,11 +464,13 @@ export function createRunArchivesRepo(
       const q = input.q?.trim();
 
       if (!q) {
-        const where = and(
-          eq(runArchives.reviewed, true),
-          eq(runArchives.isDryRun, false),
-          gte(runArchives.completedAt, fromTs),
-          lte(runArchives.completedAt, toTs),
+        const where = scope.where(
+          and(
+            eq(runArchives.reviewed, true),
+            eq(runArchives.isDryRun, false),
+            gte(runArchives.completedAt, fromTs),
+            lte(runArchives.completedAt, toTs),
+          ),
         );
         const rows = await db
           .select({
@@ -502,6 +515,7 @@ export function createRunArchivesRepo(
         FROM run_archives
         WHERE reviewed = true
           AND is_dry_run = false
+          AND tenant_id = ${scope.tenantId}
           AND completed_at BETWEEN ${fromIso}::timestamptz AND ${toIso}::timestamptz
           AND search_tsv @@ ${tsq}
         ORDER BY rank DESC, coalesce(published_at, completed_at) DESC
@@ -513,6 +527,7 @@ export function createRunArchivesRepo(
         FROM run_archives
         WHERE reviewed = true
           AND is_dry_run = false
+          AND tenant_id = ${scope.tenantId}
           AND completed_at BETWEEN ${fromIso}::timestamptz AND ${toIso}::timestamptz
           AND search_tsv @@ ${tsq}
       `);
@@ -569,6 +584,7 @@ export function createRunArchivesRepo(
           preReviewSnapshot: runArchives.preReviewSnapshot,
         })
         .from(runArchives)
+        .where(scope.where())
         .orderBy(desc(runArchives.completedAt))
         .limit(limit);
     },
@@ -610,7 +626,7 @@ export function createRunArchivesRepo(
       const [row] = await db
         .update(runArchives)
         .set(setValues)
-        .where(eq(runArchives.id, id))
+        .where(scope.where(eq(runArchives.id, id)))
         .returning({
           id: runArchives.id,
           status: runArchives.status,
@@ -678,7 +694,7 @@ export function createRunArchivesRepo(
       const [row] = await tx
         .update(runArchives)
         .set(setValues)
-        .where(eq(runArchives.id, id))
+        .where(scope.where(eq(runArchives.id, id)))
         .returning({
           id: runArchives.id,
           status: runArchives.status,
@@ -758,7 +774,7 @@ export function createRunArchivesRepo(
       if (opts.shortlistedOnly && opts.shortlistedIds && opts.shortlistedIds.length > 0) {
         conditions.push(inArray(rawItems.id, opts.shortlistedIds));
       }
-      const where = and(...conditions);
+      const where = rawScope.where(and(...conditions));
 
       const [countRow] = await db
         .select({ count: sql<number>`count(*)::int` })
@@ -802,7 +818,7 @@ export function createRunArchivesRepo(
           sourceTypes: runArchives.sourceTypes,
         })
         .from(runArchives)
-        .where(eq(runArchives.id, runId));
+        .where(scope.where(eq(runArchives.id, runId)));
       if (archive.length === 0) return [];
       const row = archive[0];
       if (!row.startedAt || !row.sourceTypes || row.sourceTypes.length === 0) {
@@ -819,9 +835,11 @@ export function createRunArchivesRepo(
         })
         .from(rawItems)
         .where(
-          and(
-            gte(rawItems.collectedAt, row.startedAt),
-            inArray(rawItems.sourceType, row.sourceTypes),
+          rawScope.where(
+            and(
+              gte(rawItems.collectedAt, row.startedAt),
+              inArray(rawItems.sourceType, row.sourceTypes),
+            ),
           ),
         )
         .groupBy(rawItems.sourceType, UNIT_ID_SQL, UNIT_NAME_SQL);
@@ -838,11 +856,11 @@ export function createRunArchivesRepo(
       return db.transaction(async (tx) => {
         const removed = await tx
           .delete(emailSends)
-          .where(eq(emailSends.runArchiveId, id))
+          .where(sendScope.where(eq(emailSends.runArchiveId, id)))
           .returning({ id: emailSends.id });
         const archiveRows = await tx
           .delete(runArchives)
-          .where(eq(runArchives.id, id))
+          .where(scope.where(eq(runArchives.id, id)))
           .returning({ id: runArchives.id });
         return {
           deleted: archiveRows.length === 1,
@@ -865,6 +883,7 @@ export function createRunArchivesRepo(
                jsonb_array_elements(ranked_items) AS item
           WHERE reviewed = true
             AND status = 'completed'
+            AND tenant_id = ${scope.tenantId}
             AND completed_at >= ${opts.from.toISOString()}::timestamptz
             AND completed_at <  ${opts.to.toISOString()}::timestamptz
         )
@@ -874,6 +893,7 @@ export function createRunArchivesRepo(
           COUNT(DISTINCT ri.id) AS n
         FROM raw_items ri
         JOIN ranked_refs rr ON rr.raw_item_id = ri.id
+        WHERE ri.tenant_id = ${rawScope.tenantId}
         GROUP BY ri.source_type, identifier
       `);
       const map = new Map<string, number>();
@@ -895,11 +915,13 @@ export function createRunArchivesRepo(
         })
         .from(runArchives)
         .where(
-          and(
-            gte(runArchives.completedAt, opts.from),
-            sql`${runArchives.completedAt} < ${opts.to.toISOString()}::timestamptz`,
-            eq(runArchives.status, "completed"),
-            sql`${runArchives.sourceTelemetry} IS NOT NULL`,
+          scope.where(
+            and(
+              gte(runArchives.completedAt, opts.from),
+              sql`${runArchives.completedAt} < ${opts.to.toISOString()}::timestamptz`,
+              eq(runArchives.status, "completed"),
+              sql`${runArchives.sourceTelemetry} IS NOT NULL`,
+            ),
           ),
         )
         .orderBy(desc(runArchives.completedAt));
@@ -944,6 +966,7 @@ export function createRunArchivesRepo(
           FROM run_archives ra,
                jsonb_array_elements(ra.source_telemetry->'sources') AS entry
           WHERE ra.status = 'completed'
+            AND ra.tenant_id = ${scope.tenantId}
             AND ra.completed_at >= ${opts.from.toISOString()}::timestamptz
             AND ra.completed_at <  ${opts.to.toISOString()}::timestamptz
             AND ra.source_telemetry IS NOT NULL
@@ -995,6 +1018,7 @@ export function createRunArchivesRepo(
         SELECT COUNT(*) AS n
         FROM run_archives
         WHERE status = 'completed'
+          AND tenant_id = ${scope.tenantId}
           AND completed_at >= ${opts.from.toISOString()}::timestamptz
           AND completed_at <  ${opts.to.toISOString()}::timestamptz
       `);
