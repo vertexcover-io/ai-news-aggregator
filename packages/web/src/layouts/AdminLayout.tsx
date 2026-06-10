@@ -1,19 +1,19 @@
 import type { ReactElement } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { logout } from "@/api/admin";
-import { useAdminSession } from "@/hooks/useAdminSession";
+import { logout } from "@/api/auth";
+import { useSession } from "@/hooks/useSession";
 import { Button } from "@/components/ui/button";
 import { ImpersonationBanner } from "@/components/shell/ImpersonationBanner";
 
 export function AdminLayout(): ReactElement {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: session } = useAdminSession();
+  const { data: session } = useSession();
 
   async function handleSignOut(): Promise<void> {
     await logout();
-    await queryClient.invalidateQueries({ queryKey: ["admin", "me"] });
+    await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
     await navigate("/");
   }
 

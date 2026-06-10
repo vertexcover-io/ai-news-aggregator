@@ -7,6 +7,8 @@ export interface Session {
   userId?: string;
   tenantId?: string;
   role?: string;
+  impersonating?: boolean;
+  impersonatingTenantName?: string;
 }
 
 export function useSession(): UseQueryResult<Session> {

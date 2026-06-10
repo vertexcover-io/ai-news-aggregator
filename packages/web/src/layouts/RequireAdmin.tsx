@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { Navigate, useLocation, Outlet } from "react-router-dom";
-import { useAdminSession } from "../hooks/useAdminSession";
-import { UnauthenticatedError } from "../api/admin";
+import { useSession } from "../hooks/useSession";
+import { UnauthenticatedError } from "../api/auth";
 
 /**
  * Route guard for /admin routes.
@@ -12,12 +12,12 @@ import { UnauthenticatedError } from "../api/admin";
  * - tenant_admin users → allowed through
  */
 export function RequireAdmin(): ReactElement | null {
-  const { data, isLoading, error } = useAdminSession();
+  const { data, isLoading, error } = useSession();
   const location = useLocation();
 
   if (isLoading) return null;
 
-  if (error instanceof UnauthenticatedError || !data) {
+  if (error instanceof UnauthenticatedError || !data?.authenticated) {
     const next = encodeURIComponent(location.pathname + location.search);
     return <Navigate to={`/admin/login?next=${next}`} replace />;
   }
