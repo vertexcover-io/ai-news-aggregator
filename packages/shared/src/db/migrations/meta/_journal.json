@@ -288,6 +288,13 @@
       "when": 1781083441239,
       "tag": "0040_high_warbound",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1781085091801,
+      "tag": "0041_talented_husk",
+      "breakpoints": true
     }
   ]
 }

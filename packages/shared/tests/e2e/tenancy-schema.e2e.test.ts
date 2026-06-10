@@ -1,12 +1,13 @@
 /**
- * Phase 1 (multi-tenant) e2e: applies ALL migrations to a freshly created
+ * Phase 1+2 (multi-tenant) e2e: applies ALL migrations to a freshly created
  * throwaway database and asserts the tenancy schema landed:
  *   - `tenants` + `users` tables exist with the expected columns
- *   - `tenant_id` exists and is NULLABLE (+ indexed) on every tenant-owned table
+ *   - `tenant_id` exists, is indexed, and is NOT NULL on every tenant-owned
+ *     table (0041 enforce — fresh DBs pass the EDGE-012 guard trivially;
+ *     populated DBs require the P2 AGENTLOOP backfill first)
+ *   - user_settings traded its singleton unique index for unique(tenant_id)
  *   - tenants.slug is unique
  *   - users.email is citext and case-insensitively unique
- *
- * Purely additive — REQ-010 foundation (backfill/enforcement come in P2).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomBytes } from "node:crypto";
@@ -79,13 +80,15 @@ afterAll(async () => {
 });
 
 describe("tenancy schema migration (e2e)", () => {
-  it("test_REQ_010_all_tenant_tables_have_tenant_id — nullable uuid tenant_id on every tenant-owned table", async () => {
+  it("test_REQ_010_all_tenant_tables_have_tenant_id — uuid tenant_id on every tenant-owned table (NOT NULL since 0041)", async () => {
     for (const table of TENANT_OWNED_TABLES) {
       const cols = await columnsOf(table);
       const tenantId = cols.get("tenant_id");
       expect(tenantId, `${table}.tenant_id missing`).toBeDefined();
       expect(tenantId?.udt_name, `${table}.tenant_id type`).toBe("uuid");
-      expect(tenantId?.is_nullable, `${table}.tenant_id must be NULLABLE (D-105)`).toBe("YES");
+      // 0040 added the column nullable (D-105); 0041 enforces NOT NULL only
+      // after the guard verified no NULL rows remain (EDGE-012).
+      expect(tenantId?.is_nullable, `${table}.tenant_id must be NOT NULL post-0041`).toBe("NO");
     }
   });
 
@@ -176,12 +179,13 @@ describe("tenancy schema migration (e2e)", () => {
     await sql`DELETE FROM users WHERE email = 'admin@example.com'`;
   });
 
-  it("leaves existing user_settings shape intact (singleton constraint untouched until P2)", async () => {
+  it("swaps the user_settings singleton unique index for unique(tenant_id) (0041)", async () => {
     const rows = await sql<{ indexname: string }[]>`
       SELECT indexname FROM pg_indexes
       WHERE schemaname = 'public' AND tablename = 'user_settings'
-        AND indexname = 'user_settings_singleton_uq'
     `;
-    expect(rows.length).toBe(1);
+    const names = rows.map((r) => r.indexname);
+    expect(names).not.toContain("user_settings_singleton_uq");
+    expect(names).toContain("user_settings_tenant_id_uq");
   });
 });

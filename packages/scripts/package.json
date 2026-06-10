@@ -1,0 +1,29 @@
+{
+  "name": "@newsletter/scripts",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit --passWithNoTests",
+    "test:e2e": "vitest run --project e2e",
+    "migrate:agentloop": "tsx src/migrate-agentloop-tenant.ts",
+    "verify:agentloop": "tsx src/verify-agentloop-migration.ts"
+  },
+  "dependencies": {
+    "@newsletter/shared": "workspace:*",
+    "bullmq": "5.78.0",
+    "dotenv": "16.5.0",
+    "ioredis": "5.10.1",
+    "postgres": "3.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "drizzle-orm": "0.45.2",
+    "tsx": "4.19.4",
+    "typescript": "5.8.3",
+    "vitest": "3.2.1"
+  }
+}

@@ -264,13 +264,17 @@ export const userSettings = pgTable(
     twitterPostEnabled: boolean("twitter_post_enabled").notNull().default(true),
     autoReview: boolean("auto_review").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    // Nullable until P2 backfills; the singleton constraint is replaced by
-    // a unique (tenant_id) in P2 once every row has a tenant.
+    // One settings row per tenant. The DB column is NOT NULL since migration
+    // 0041 (enforced only after the P2 backfill ran — EDGE-012); the Drizzle
+    // type stays optional until P4+/P8 thread tenant_id through every writer
+    // (a column DEFAULT set by the backfill bridges legacy inserts to
+    // tenant 0 in the meantime).
     tenantId: uuid("tenant_id"),
   },
   (t) => [
-    uniqueIndex("user_settings_singleton_uq").on(t.singleton),
-    index("user_settings_tenant_id_idx").on(t.tenantId),
+    // 0041 swapped the legacy `singleton` unique index for unique(tenant_id):
+    // the table is one-row-per-tenant now, not a global singleton.
+    uniqueIndex("user_settings_tenant_id_uq").on(t.tenantId),
   ],
 );
 

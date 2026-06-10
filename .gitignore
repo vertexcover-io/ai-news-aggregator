@@ -32,3 +32,6 @@ evals/ranking/cache/
 # Reader-feedback campaign recipient exports (PII — never commit)
 /confirmed_subscribers.txt
 /subscribers_with_names.csv
+
+# AGENTLOOP tenant-0 migration: pre-migration row-count snapshot (operator artifact)
+agentloop-migration-counts.json
