@@ -17,9 +17,11 @@
     "./logger": "./dist/logger.js",
     "./services": "./dist/services/index.js",
     "./services/credential-cipher": "./dist/services/credential-cipher.js",
+    "./types/tenant": "./dist/types/tenant.js",
     "./types/eval-ranking": "./dist/types/eval-ranking.js",
     "./types/eval-ranking-schemas": "./dist/types/eval-ranking-schemas.js",
     "./constants/eval-ranking": "./dist/constants/eval-ranking.js",
+    "./constants/tenant": "./dist/constants/tenant.js",
     "./services/url-safety": "./dist/services/url-safety.js",
     "./services/static-page-fetcher": "./dist/services/static-page-fetcher.js",
     "./services/page-metadata": "./dist/services/page-metadata.js",
@@ -34,6 +36,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
+    "test:e2e": "vitest run --project e2e",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
@@ -48,6 +51,7 @@
   },
   "devDependencies": {
     "@types/node": "22.15.3",
+    "dotenv": "16.5.0",
     "drizzle-kit": "0.31.10",
     "tsup": "8.4.0",
     "typescript": "5.8.3",

@@ -1,5 +1,5 @@
 import { desc } from "drizzle-orm";
-import { bigserial, boolean, index, integer, jsonb, pgTable, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigserial, boolean, customType, index, integer, jsonb, pgTable, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type {
   NotificationState,
   RawItemEngagement,
@@ -21,8 +21,70 @@ import type {
 import type { RunCostBreakdown } from "@shared/types/cost-breakdown.js";
 import type { EncryptedBlob } from "@shared/services/credential-cipher.js";
 import type { EditType, PreReviewSnapshot } from "@shared/review-edits/types.js";
+import type { OnboardingState, TenantStatus, UserRole } from "@shared/types/tenant.js";
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter" | "web_search";
+
+/** Case-insensitive text (citext extension — created in migration 0040). */
+const citext = customType<{ data: string }>({
+  dataType() {
+    return "citext";
+  },
+});
+
+const bytea = customType<{ data: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
+
+export const tenants = pgTable(
+  "tenants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    status: text("status").$type<TenantStatus>().notNull().default("pending_setup"),
+    customDomain: text("custom_domain"),
+    headline: text("headline"),
+    topicStrip: text("topic_strip"),
+    subtagline: text("subtagline"),
+    logoBytes: bytea("logo_bytes"),
+    logoContentType: text("logo_content_type"),
+    featureCanon: boolean("feature_canon").notNull().default(false),
+    featureDeliverability: boolean("feature_deliverability").notNull().default(false),
+    featureEval: boolean("feature_eval").notNull().default(false),
+    onboardingState: jsonb("onboarding_state").$type<OnboardingState | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("tenants_slug_uq").on(t.slug)],
+);
+
+export type TenantRow = typeof tenants.$inferSelect;
+export type TenantInsert = typeof tenants.$inferInsert;
+
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Nullable: super_admin accounts belong to the platform, not a tenant.
+    tenantId: uuid("tenant_id").references(() => tenants.id),
+    email: citext("email").notNull(),
+    name: text("name").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    role: text("role").$type<UserRole>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("users_email_uq").on(t.email),
+    index("users_tenant_id_idx").on(t.tenantId),
+  ],
+);
+
+export type UserRow = typeof users.$inferSelect;
+export type UserInsert = typeof users.$inferInsert;
 
 export const rawItems = pgTable("raw_items", {
   id: serial("id").primaryKey(),
@@ -41,9 +103,11 @@ export const rawItems = pgTable("raw_items", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   runId: uuid("run_id"),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
   unique("raw_items_source_type_external_id_unique").on(t.sourceType, t.externalId),
   index("raw_items_run_id_idx").on(t.runId),
+  index("raw_items_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type RawItemInsert = typeof rawItems.$inferInsert;
@@ -79,7 +143,10 @@ export const runArchives = pgTable("run_archives", {
   runFunnel: jsonb("run_funnel").$type<RunFunnel | null>(),
   shortlistedItemIds: jsonb("shortlisted_item_ids").$type<number[] | null>(),
   preReviewSnapshot: jsonb("pre_review_snapshot").$type<PreReviewSnapshot | null>(),
-});
+  tenantId: uuid("tenant_id"),
+}, (t) => [
+  index("run_archives_tenant_id_idx").on(t.tenantId),
+]);
 
 export const runLogs = pgTable(
   "run_logs",
@@ -93,8 +160,12 @@ export const runLogs = pgTable(
     event: text("event").$type<RunLogEvent>().notNull(),
     message: text("message").notNull(),
     context: jsonb("context").$type<RunLogContext | null>(),
+    tenantId: uuid("tenant_id"),
   },
-  (t) => [index("run_logs_run_id_id_idx").on(t.runId, t.id)],
+  (t) => [
+    index("run_logs_run_id_id_idx").on(t.runId, t.id),
+    index("run_logs_tenant_id_idx").on(t.tenantId),
+  ],
 );
 
 export type RunLogRow = typeof runLogs.$inferSelect;
@@ -113,7 +184,10 @@ export const socialTokens = pgTable("social_tokens", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   metadata: jsonb("metadata").$type<SocialTokenMetadata | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  tenantId: uuid("tenant_id"),
+}, (t) => [
+  index("social_tokens_tenant_id_idx").on(t.tenantId),
+]);
 
 export type SocialTokenInsert = typeof socialTokens.$inferInsert;
 export type SocialTokenSelect = typeof socialTokens.$inferSelect;
@@ -146,7 +220,10 @@ export const socialCredentials = pgTable("social_credentials", {
   metadata: jsonb("metadata").$type<{ apiVersion?: string } | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: text("updated_by"),
-});
+  tenantId: uuid("tenant_id"),
+}, (t) => [
+  index("social_credentials_tenant_id_idx").on(t.tenantId),
+]);
 
 export type SocialCredentialInsert = typeof socialCredentials.$inferInsert;
 export type SocialCredentialSelect = typeof socialCredentials.$inferSelect;
@@ -187,8 +264,14 @@ export const userSettings = pgTable(
     twitterPostEnabled: boolean("twitter_post_enabled").notNull().default(true),
     autoReview: boolean("auto_review").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // Nullable until P2 backfills; the singleton constraint is replaced by
+    // a unique (tenant_id) in P2 once every row has a tenant.
+    tenantId: uuid("tenant_id"),
   },
-  (t) => [uniqueIndex("user_settings_singleton_uq").on(t.singleton)],
+  (t) => [
+    uniqueIndex("user_settings_singleton_uq").on(t.singleton),
+    index("user_settings_tenant_id_idx").on(t.tenantId),
+  ],
 );
 
 export type UserSettingsInsert = typeof userSettings.$inferInsert;
@@ -205,8 +288,12 @@ export const mustReadEntries = pgTable(
     annotation: text("annotation").notNull(),
     addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    tenantId: uuid("tenant_id"),
   },
-  (t) => [index("must_read_entries_added_at_idx").on(desc(t.addedAt))],
+  (t) => [
+    index("must_read_entries_added_at_idx").on(desc(t.addedAt)),
+    index("must_read_entries_tenant_id_idx").on(t.tenantId),
+  ],
 );
 
 export type MustReadEntry = typeof mustReadEntries.$inferSelect;
@@ -224,8 +311,10 @@ export const subscribers = pgTable("subscribers", {
   unsubscribedAt: timestamp("unsubscribed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
   uniqueIndex("subscribers_email_uq").on(t.email),
+  index("subscribers_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type SubscriberInsert = typeof subscribers.$inferInsert;
@@ -237,8 +326,10 @@ export const emailSends = pgTable("email_sends", {
   runArchiveId: uuid("run_archive_id").notNull().references(() => runArchives.id),
   messageId: text("message_id"),
   sentAt: timestamp("sent_at").notNull().defaultNow(),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
   unique("email_sends_subscriber_archive_uq").on(t.subscriberId, t.runArchiveId),
+  index("email_sends_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type EmailSendInsert = typeof emailSends.$inferInsert;
@@ -259,8 +350,10 @@ export const feedbackEvents = pgTable("feedback_events", {
   userAgent: text("user_agent"),
   ip: text("ip"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
   index("feedback_events_subscriber_campaign_idx").on(t.subscriberId, t.campaign),
+  index("feedback_events_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type FeedbackEventInsert = typeof feedbackEvents.$inferInsert;
@@ -276,8 +369,10 @@ export const sesEvents = pgTable("ses_events", {
   rawPayload: jsonb("raw_payload").notNull(),
   occurredAt: timestamp("occurred_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
   unique("ses_events_message_type_uq").on(t.messageId, t.eventType),
+  index("ses_events_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type SesEventInsert = typeof sesEvents.$inferInsert;
@@ -299,9 +394,11 @@ export const evalRuns = pgTable("eval_runs", {
   scoreBreakdown: jsonb("score_breakdown"),
   costBreakdown: jsonb("cost_breakdown"),
   errorMessage: text("error_message"),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
   index("eval_runs_started_at_idx").on(t.startedAt.desc()),
   index("eval_runs_prompt_hash_idx").on(t.draftPromptHash),
+  index("eval_runs_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type EvalRunInsert = typeof evalRuns.$inferInsert;
@@ -318,9 +415,11 @@ export const reviewEdits = pgTable("review_edits", {
   positionBefore: integer("position_before"),
   positionAfter: integer("position_after"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
   index("review_edits_run_id_idx").on(t.runId),
   index("review_edits_edit_type_idx").on(t.editType),
+  index("review_edits_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type ReviewEditInsert = typeof reviewEdits.$inferInsert;
