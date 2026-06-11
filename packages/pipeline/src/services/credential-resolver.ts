@@ -1,5 +1,6 @@
 import { createLogger } from "@newsletter/shared/logger";
 import type { SocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
+import type { AppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
 
 export interface LinkedInCreds {
   clientId: string;
@@ -19,8 +20,24 @@ export interface TwitterCollectorCookie {
   source: "db" | "env";
 }
 
+/**
+ * Tenant-level resolution (P12): the repo is scoped to the job's tenant, so
+ * lookups hit `(tenant_id, platform)` rows owned by that tenant only.
+ */
 export interface CredentialResolverDeps {
-  repo: SocialCredentialsRepo;
+  repo: Pick<SocialCredentialsRepo, "getTwitter">;
+  env?: NodeJS.ProcessEnv;
+}
+
+/**
+ * App-level resolution (P12, REQ-082/086): the LinkedIn OAuth client and the
+ * shared Twitter collector cookie come from the super-admin `app_credentials`
+ * store (DB-first per job, D-051/S-pipeline-03), env fallback. Never
+ * tenant-scoped — these secrets are shared by every tenant and are never
+ * exposed to tenant admins.
+ */
+export interface AppCredentialResolverDeps {
+  appRepo: Pick<AppCredentialsRepo, "getLinkedInClient" | "getTwitterCollector">;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -63,9 +80,9 @@ async function safeGetDbRow<T>(
 }
 
 export async function resolveLinkedInCredentials(
-  deps: CredentialResolverDeps,
+  deps: AppCredentialResolverDeps,
 ): Promise<LinkedInCreds | null> {
-  const dbRead = await safeGetDbRow(() => deps.repo.getLinkedIn(), "linkedin");
+  const dbRead = await safeGetDbRow(() => deps.appRepo.getLinkedInClient(), "linkedin");
   if (dbRead.ok === "decrypt_failed") return null;
   const dbRow = dbRead.ok;
   if (dbRow) {
@@ -124,10 +141,10 @@ export async function resolveTwitterOAuth1Credentials(
 }
 
 export async function resolveTwitterCollectorCookie(
-  deps: CredentialResolverDeps,
+  deps: AppCredentialResolverDeps,
 ): Promise<TwitterCollectorCookie | null> {
   const dbRead = await safeGetDbRow(
-    () => deps.repo.getTwitterCollector(),
+    () => deps.appRepo.getTwitterCollector(),
     "twitter_collector",
   );
   if (dbRead.ok === "decrypt_failed") return null;

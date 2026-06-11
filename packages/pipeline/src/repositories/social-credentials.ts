@@ -1,21 +1,16 @@
+/**
+ * Tenant-level social credentials (P12, REQ-083): rows are keyed
+ * `(tenant_id, platform)` and hold ONLY per-tenant secrets — the tenant's
+ * Twitter OAuth1 posting keys. App-level secrets (LinkedIn client, Twitter
+ * collector cookie) live in `app_credentials` (see app-credentials.ts).
+ */
 import { eq } from "drizzle-orm";
 import { scopedTenantId, socialCredentials, tenantScoped } from "@newsletter/shared/db";
 import type { AppDb, TenantScope } from "@newsletter/shared/db";
-import type {
-  LinkedInEncryptedFields,
-  TwitterEncryptedFields,
-  TwitterCollectorEncryptedFields,
-} from "@newsletter/shared/db";
+import type { TwitterEncryptedFields } from "@newsletter/shared/db";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
 
-export type SocialCredentialPlatform = "linkedin" | "twitter" | "twitter_collector";
-
-export interface LinkedInCredentialRecord {
-  clientId: string;
-  clientSecret: string;
-  apiVersion: string | null;
-  updatedAt: Date;
-}
+export type SocialCredentialPlatform = "twitter";
 
 export interface TwitterCredentialRecord {
   apiKey: string;
@@ -25,17 +20,6 @@ export interface TwitterCredentialRecord {
   updatedAt: Date;
 }
 
-export interface TwitterCollectorCredentialRecord {
-  apiKey: string;
-  updatedAt: Date;
-}
-
-export interface UpsertLinkedInInput {
-  clientId: string;
-  clientSecret: string;
-  apiVersion?: string;
-}
-
 export interface UpsertTwitterInput {
   apiKey: string;
   apiSecret: string;
@@ -43,21 +27,28 @@ export interface UpsertTwitterInput {
   accessTokenSecret: string;
 }
 
-export interface UpsertTwitterCollectorInput {
-  apiKey: string;
-}
-
 export interface SocialCredentialsRepo {
-  getLinkedIn(): Promise<LinkedInCredentialRecord | null>;
   getTwitter(): Promise<TwitterCredentialRecord | null>;
-  getTwitterCollector(): Promise<TwitterCollectorCredentialRecord | null>;
-  upsertLinkedIn(input: UpsertLinkedInInput): Promise<void>;
   upsertTwitter(input: UpsertTwitterInput): Promise<void>;
-  upsertTwitterCollector(input: UpsertTwitterCollectorInput): Promise<void>;
   delete(platform: SocialCredentialPlatform): Promise<boolean>;
 }
 
 type DbSlice = Pick<AppDb, "select" | "insert" | "delete">;
+
+/**
+ * tenant_id is part of the PK (P12) — writes must stamp a concrete tenant.
+ * Reads stay scope-optional (legacy unscoped mode), but an unscoped write
+ * would be a cross-tenant bug, so it throws loudly.
+ */
+function requireTenantId(ctx: TenantScope | undefined): string {
+  const tenantId = scopedTenantId(ctx);
+  if (tenantId === undefined) {
+    throw new Error(
+      "social_credentials write requires a concrete tenant scope (tenant_id is part of the primary key)",
+    );
+  }
+  return tenantId;
+}
 
 export function createSocialCredentialsRepo(
   db: DbSlice,
@@ -65,23 +56,6 @@ export function createSocialCredentialsRepo(
   ctx?: TenantScope,
 ): SocialCredentialsRepo {
   return {
-    async getLinkedIn(): Promise<LinkedInCredentialRecord | null> {
-      const rows = await db
-        .select()
-        .from(socialCredentials)
-        .where(tenantScoped(socialCredentials.tenantId, ctx, eq(socialCredentials.platform, "linkedin")))
-        .limit(1);
-      if (rows.length === 0) return null;
-      const row = rows[0];
-      const fields = row.encryptedFields as LinkedInEncryptedFields;
-      return {
-        clientId: cipher.decrypt(fields.clientId),
-        clientSecret: cipher.decrypt(fields.clientSecret),
-        apiVersion: row.metadata?.apiVersion ?? null,
-        updatedAt: row.updatedAt,
-      };
-    },
-
     async getTwitter(): Promise<TwitterCredentialRecord | null> {
       const rows = await db
         .select()
@@ -100,28 +74,6 @@ export function createSocialCredentialsRepo(
       };
     },
 
-    async upsertLinkedIn(input: UpsertLinkedInInput): Promise<void> {
-      const encryptedFields: LinkedInEncryptedFields = {
-        clientId: cipher.encrypt(input.clientId),
-        clientSecret: cipher.encrypt(input.clientSecret),
-      };
-      const metadata = input.apiVersion ? { apiVersion: input.apiVersion } : null;
-      const now = new Date();
-      await db
-        .insert(socialCredentials)
-        .values({
-          platform: "linkedin",
-          tenantId: scopedTenantId(ctx),
-          encryptedFields,
-          metadata,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: socialCredentials.platform,
-          set: { encryptedFields, metadata, updatedAt: now },
-        });
-    },
-
     async upsertTwitter(input: UpsertTwitterInput): Promise<void> {
       const encryptedFields: TwitterEncryptedFields = {
         apiKey: cipher.encrypt(input.apiKey),
@@ -134,48 +86,13 @@ export function createSocialCredentialsRepo(
         .insert(socialCredentials)
         .values({
           platform: "twitter",
-          tenantId: scopedTenantId(ctx),
+          tenantId: requireTenantId(ctx),
           encryptedFields,
           metadata: null,
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: socialCredentials.platform,
-          set: { encryptedFields, metadata: null, updatedAt: now },
-        });
-    },
-
-    async getTwitterCollector(): Promise<TwitterCollectorCredentialRecord | null> {
-      const rows = await db
-        .select()
-        .from(socialCredentials)
-        .where(tenantScoped(socialCredentials.tenantId, ctx, eq(socialCredentials.platform, "twitter_collector")))
-        .limit(1);
-      if (rows.length === 0) return null;
-      const row = rows[0];
-      const fields = row.encryptedFields as TwitterCollectorEncryptedFields;
-      return {
-        apiKey: cipher.decrypt(fields.apiKey),
-        updatedAt: row.updatedAt,
-      };
-    },
-
-    async upsertTwitterCollector(input: UpsertTwitterCollectorInput): Promise<void> {
-      const encryptedFields: TwitterCollectorEncryptedFields = {
-        apiKey: cipher.encrypt(input.apiKey),
-      };
-      const now = new Date();
-      await db
-        .insert(socialCredentials)
-        .values({
-          platform: "twitter_collector",
-          tenantId: scopedTenantId(ctx),
-          encryptedFields,
-          metadata: null,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: socialCredentials.platform,
+          target: [socialCredentials.tenantId, socialCredentials.platform],
           set: { encryptedFields, metadata: null, updatedAt: now },
         });
     },

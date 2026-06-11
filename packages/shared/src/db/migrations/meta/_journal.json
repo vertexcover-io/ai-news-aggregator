@@ -316,6 +316,13 @@
       "when": 1781167276455,
       "tag": "0044_clear_king_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1781189115717,
+      "tag": "0045_fancy_psylocke",
+      "breakpoints": true
     }
   ]
 }

@@ -47,6 +47,7 @@ import { createLinkedInNotifier } from "@pipeline/social/linkedin/notifier.js";
 import { createTwitterNotifier } from "@pipeline/social/twitter/notifier.js";
 import { createSocialTokensRepo } from "@pipeline/repositories/social-tokens.js";
 import { createSocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
+import { createAppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import {
   jobTenantContext,
@@ -286,20 +287,18 @@ async function buildDefaultRunProcessDeps(
     twitter: collectTwitter,
     webSearch: collectWebSearch,
   };
-  // Per-job factory: resolves cookies from `social_credentials.twitter_collector`
-  // first (admin-managed), falling back to RETTIWT_API_KEY env var. This is the
-  // freshness contract: admin saves at /admin/settings take effect on the next
-  // job without a worker restart. Rettiwt accepts an undefined apiKey (guest
-  // mode); the collector itself classifies the first auth failure as `auth`,
-  // which the Slack notice surfaces. Scoped to the job's tenant (D-051/P9).
-  const credentialsRepo = createSocialCredentialsRepo(
-    db,
-    getCredentialCipher(),
-    scope,
-  );
+  // Per-job factory: resolves the SHARED collector cookie from the app-level
+  // `app_credentials` store first (super-admin managed, P12 REQ-086), falling
+  // back to RETTIWT_API_KEY env var. This is the freshness contract: super
+  // admin saves take effect on the next job without a worker restart. Rettiwt
+  // accepts an undefined apiKey (guest mode); the collector itself classifies
+  // the first auth failure as `auth`, which the Slack notice surfaces. The
+  // cookie is app-level by design — never tenant-scoped, never exposed to
+  // tenant admins (D-051/S-pipeline-03).
+  const appCredentialsRepo = createAppCredentialsRepo(db, getCredentialCipher());
   const twitterClient = async (): Promise<TwitterClient> => {
     const cookie = await resolveTwitterCollectorCookie({
-      repo: credentialsRepo,
+      appRepo: appCredentialsRepo,
       env: process.env,
     });
     const rettiwt = new Rettiwt({ apiKey: cookie?.apiKey });
@@ -310,7 +309,7 @@ async function buildDefaultRunProcessDeps(
             refreshCsrfToken: () =>
               refreshRettiwtCsrfToken({
                 rettiwt,
-                repo: credentialsRepo,
+                repo: appCredentialsRepo,
                 credentialSource: cookie.source,
               }),
           }
@@ -445,6 +444,9 @@ export async function buildDefaultPublishDeps(
     getCredentialCipher(),
     scope,
   );
+  // App-level store (P12): the shared LinkedIn OAuth client is resolved from
+  // app_credentials, never from the tenant's rows (REQ-080/082).
+  const appCredentialsRepo = createAppCredentialsRepo(db, getCredentialCipher());
   const slackNotifier = createSlackNotifier({
     webhookUrl: process.env.SLACK_WEBHOOK_URL,
     archives: archiveRepo,
@@ -463,7 +465,7 @@ export async function buildDefaultPublishDeps(
     process.env.PUBLIC_BASE_URL ?? process.env.NEWSLETTER_BASE_URL ?? "";
 
   const linkedinCreds = await resolveLinkedInCredentials({
-    repo: socialCredentialsRepo,
+    appRepo: appCredentialsRepo,
     env: process.env,
   });
   const linkedinNotifier =

@@ -1,5 +1,5 @@
 import { desc } from "drizzle-orm";
-import { bigserial, boolean, customType, index, integer, jsonb, pgTable, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigserial, boolean, customType, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type {
   NotificationState,
   RawItemEngagement,
@@ -215,17 +215,23 @@ export interface SocialTokenEncryptedFields {
   refreshToken: EncryptedBlob;
 }
 
+/**
+ * Tenant-level OAuth tokens, keyed `(tenant_id, platform)` (P12, REQ-083):
+ * each tenant connects its own LinkedIn/Twitter account; the composite PK
+ * isolates token rows per tenant while the shared OAuth app client lives in
+ * `app_credentials` (REQ-080/082).
+ */
 export const socialTokens = pgTable("social_tokens", {
-  platform: text("platform").primaryKey().$type<"linkedin" | "twitter">(),
+  tenantId: uuid("tenant_id").notNull(),
+  platform: text("platform").notNull().$type<"linkedin" | "twitter">(),
   encryptedFields: jsonb("encrypted_fields")
     .notNull()
     .$type<SocialTokenEncryptedFields>(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   metadata: jsonb("metadata").$type<SocialTokenMetadata | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  tenantId: uuid("tenant_id"),
 }, (t) => [
-  index("social_tokens_tenant_id_idx").on(t.tenantId),
+  primaryKey({ columns: [t.tenantId, t.platform] }),
 ]);
 
 export type SocialTokenInsert = typeof socialTokens.$inferInsert;
@@ -249,8 +255,16 @@ export interface TwitterCollectorEncryptedFields {
 
 export type SocialCredentialPlatform = "linkedin" | "twitter" | "twitter_collector";
 
+/**
+ * Tenant-level social credentials, keyed `(tenant_id, platform)` (P12,
+ * REQ-083). Holds ONLY per-tenant secrets (Twitter OAuth1 posting keys).
+ * App-level secrets (LinkedIn client, Twitter collector cookie) moved to
+ * `app_credentials` in migration 0045 — the column type keeps the legacy
+ * platform union so pre-move rows remain representable mid-migration.
+ */
 export const socialCredentials = pgTable("social_credentials", {
-  platform: text("platform").primaryKey().$type<SocialCredentialPlatform>(),
+  tenantId: uuid("tenant_id").notNull(),
+  platform: text("platform").notNull().$type<SocialCredentialPlatform>(),
   encryptedFields: jsonb("encrypted_fields")
     .notNull()
     .$type<
@@ -259,13 +273,35 @@ export const socialCredentials = pgTable("social_credentials", {
   metadata: jsonb("metadata").$type<{ apiVersion?: string } | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: text("updated_by"),
-  tenantId: uuid("tenant_id"),
 }, (t) => [
-  index("social_credentials_tenant_id_idx").on(t.tenantId),
+  primaryKey({ columns: [t.tenantId, t.platform] }),
 ]);
 
 export type SocialCredentialInsert = typeof socialCredentials.$inferInsert;
 export type SocialCredentialSelect = typeof socialCredentials.$inferSelect;
+
+/**
+ * App-level shared secrets (P12, REQ-082/086, NF6): the LinkedIn OAuth app
+ * client (id/secret) every tenant connects through, and the shared Twitter
+ * collector cookie (Rettiwt key) used for collection across tenants. Written
+ * ONLY via super-admin (`/api/super/app-credentials`); NEVER serialized into
+ * tenant-facing responses. Encrypted at rest with the same D-012 cipher
+ * (D-104: the SESSION_SECRET-derived KEK is never rotated).
+ */
+export type AppCredentialKey = "linkedin_client" | "twitter_collector";
+
+export const appCredentials = pgTable("app_credentials", {
+  key: text("key").primaryKey().$type<AppCredentialKey>(),
+  encryptedFields: jsonb("encrypted_fields")
+    .notNull()
+    .$type<LinkedInEncryptedFields | TwitterCollectorEncryptedFields>(),
+  metadata: jsonb("metadata").$type<{ apiVersion?: string } | null>(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text("updated_by"),
+});
+
+export type AppCredentialInsert = typeof appCredentials.$inferInsert;
+export type AppCredentialSelect = typeof appCredentials.$inferSelect;
 
 export type RunArchiveInsert = typeof runArchives.$inferInsert;
 

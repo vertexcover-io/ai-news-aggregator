@@ -109,37 +109,30 @@ async function loadTwitterDefaults(): Promise<{
     const [
       { resolveTwitterCollectorCookie },
       { refreshRettiwtCsrfToken },
-      { createSocialCredentialsRepo },
+      { createAppCredentialsRepo },
       { getDb },
       { getCredentialCipher },
       { Rettiwt },
-      { primeDefaultTenantScope },
     ] = await Promise.all([
       import("@pipeline/services/credential-resolver.js"),
       import("@pipeline/collectors/twitter/clients/rettiwt-auth.js"),
-      import("@pipeline/repositories/social-credentials.js"),
+      import("@pipeline/repositories/app-credentials.js"),
       import("@newsletter/shared/db"),
       import("@newsletter/shared/services/credential-cipher"),
       import("rettiwt-api"),
-      import("@pipeline/repositories/default-tenant.js"),
     ]);
 
-    // Default-tenant bridge: add-post is a manual entrypoint with no BullMQ
-    // job context (no per-job tenantId to consume — P9 keeps the bridge for
-    // exactly this case). CSRF refresh writes back to social_credentials,
-    // which requires a concrete tenant_id.
-    const repo = createSocialCredentialsRepo(
-      getDb(),
-      getCredentialCipher(),
-      await primeDefaultTenantScope(getDb()),
-    );
+    // The shared collector cookie is APP-LEVEL (P12, REQ-086) — read from
+    // app_credentials with no tenant scope; CSRF refresh writes back to the
+    // same store.
+    const repo = createAppCredentialsRepo(getDb(), getCredentialCipher());
 
     return {
       rettiwtCtor: Rettiwt as unknown as new (opts: {
         apiKey: string;
       }) => RettiwtTweetFacade,
       resolveCookie: () =>
-        resolveTwitterCollectorCookie({ repo, env: process.env }),
+        resolveTwitterCollectorCookie({ appRepo: repo, env: process.env }),
       refreshCsrf: async (
         apiKey: string,
         source: "db" | "env",

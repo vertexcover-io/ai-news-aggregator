@@ -98,7 +98,10 @@ describe("tenancy schema migration (e2e)", () => {
         SELECT indexdef FROM pg_indexes
         WHERE schemaname = 'public' AND tablename = ${table}
       `;
-      const hasTenantIdx = rows.some((r) => r.indexdef.includes("(tenant_id)"));
+      // A standalone (tenant_id) index OR a composite index/PK LEADING on
+      // tenant_id both satisfy tenant-scoped lookups (P12 re-keyed
+      // social_credentials/social_tokens to a (tenant_id, platform) PK).
+      const hasTenantIdx = rows.some((r) => /\(tenant_id[,)]/.test(r.indexdef));
       expect(hasTenantIdx, `${table} missing index on tenant_id`).toBe(true);
     }
   });

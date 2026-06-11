@@ -43,7 +43,7 @@ import { createRettiwtClient } from "@pipeline/collectors/twitter/clients/rettiw
 import { refreshRettiwtCsrfToken } from "@pipeline/collectors/twitter/clients/rettiwt-auth.js";
 import type { TwitterClient } from "@pipeline/collectors/twitter/types.js";
 import { Rettiwt } from "rettiwt-api";
-import { createSocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
+import { createAppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
 import { resolveTwitterCollectorCookie } from "@pipeline/services/credential-resolver.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -87,7 +87,6 @@ import {
 import {
   getDefaultTenantScope,
   jobTenantContext,
-  primeDefaultTenantScope,
 } from "@pipeline/repositories/default-tenant.js";
 import {
   createRunLogger,
@@ -1113,21 +1112,18 @@ export function buildRunProcessDepsForJob(
     webSearch: options.collectFns?.webSearch ?? collectWebSearch,
   };
 
-  // Per-job factory: resolves cookies from `social_credentials.twitter_collector`
-  // first (admin-managed), falling back to RETTIWT_API_KEY env var. Construction
-  // happens at job time so admin saves take effect on the next run without a
-  // worker restart (S-pipeline-03). Rettiwt accepts an undefined apiKey (guest
-  // mode). Credentials are read with the JOB's tenant scope (D-051).
+  // Per-job factory: resolves the SHARED collector cookie from the app-level
+  // `app_credentials` store first (super-admin managed, P12 REQ-086), falling
+  // back to RETTIWT_API_KEY env var. Construction happens at job time so saves
+  // take effect on the next run without a worker restart (S-pipeline-03). The
+  // cookie is app-level by design — never tenant-scoped. Rettiwt accepts an
+  // undefined apiKey (guest mode).
   const twitterClient: () => Promise<TwitterClient> =
     options.twitterClient ??
     (async () => {
-      const repo = createSocialCredentialsRepo(
-        ensureDb(db),
-        getCredentialCipher(),
-        tenantScope ?? (await primeDefaultTenantScope(ensureDb(db))),
-      );
+      const repo = createAppCredentialsRepo(ensureDb(db), getCredentialCipher());
       const cookie = await resolveTwitterCollectorCookie({
-        repo,
+        appRepo: repo,
         env: process.env,
       });
       const rettiwt = new Rettiwt({ apiKey: cookie?.apiKey });

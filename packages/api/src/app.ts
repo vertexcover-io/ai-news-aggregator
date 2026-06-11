@@ -69,6 +69,14 @@ export interface BuildAppDeps {
    */
   superAdminRouter?: Hono;
   /**
+   * Super-admin app-level credentials (P12, REQ-082/086): GET /, PUT
+   * /linkedin-client, PUT /twitter-collector, DELETE /:key — mounted at
+   * /api/super/app-credentials. The router applies requireSuperAdmin
+   * internally. Optional ONLY so existing unit tests composing buildApp keep
+   * working — index.ts always provides it.
+   */
+  superAppCredentialsRouter?: Hono;
+  /**
    * Tenant source management (P8, REQ-070/072/074): GET/POST /api/sources +
    * PATCH/DELETE /api/sources/:id, auth-gated. Mounted on /api/sources AFTER
    * the public summary router, so GET /api/sources/summary stays public and
@@ -186,6 +194,13 @@ export function buildApp(deps: BuildAppDeps): Hono {
   // Onboarding wizard (P11) — auth-gated tenant_admin surface.
   if (deps.onboardingRouter) {
     app.route("/api/onboarding", gatedWrap(gate, deps.onboardingRouter));
+  }
+
+  // Super-admin app-level credentials (P12, REQ-082/086) — self-gated via
+  // requireSuperAdmin inside the router. Mounted BEFORE the console router so
+  // its paths never fall through to the console's catch-alls.
+  if (deps.superAppCredentialsRouter) {
+    app.route("/api/super/app-credentials", deps.superAppCredentialsRouter);
   }
 
   // Super-admin console (self-gated via requireSuperAdmin inside the router).

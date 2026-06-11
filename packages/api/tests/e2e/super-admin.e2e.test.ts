@@ -32,6 +32,7 @@ import { createAuditLogRepo } from "@api/repositories/audit-log.js";
 import { createTenantsRepo } from "@api/repositories/tenants.js";
 import { createUsersRepo } from "@api/repositories/users.js";
 import { createSocialCredentialsRepo } from "@api/repositories/social-credentials.js";
+import { createAppCredentialsRepo } from "@api/repositories/app-credentials.js";
 import { requireAuth } from "@api/auth/middleware.js";
 import { createRateLimiter } from "@api/auth/rate-limit.js";
 import {
@@ -336,12 +337,10 @@ describe("super-admin console backend (P6)", () => {
 
   it("test_REQ_082_app_secrets_absent_from_tenant_responses", async () => {
     const app = buildTestApp();
-    // Store app-level LinkedIn credentials (client secret = sentinel).
-    const credsRepo = createSocialCredentialsRepo(db, cipher, {
-      tenantId: tenantBId,
-      role: "tenant_admin",
-    });
-    await credsRepo.upsertLinkedIn({
+    // Store app-level LinkedIn credentials (client secret = sentinel) in the
+    // P12 super-admin app_credentials store.
+    const appCredsRepo = createAppCredentialsRepo(db, cipher);
+    await appCredsRepo.upsertLinkedInClient({
       clientId: `client-${STAMP}`,
       clientSecret: SECRET_SENTINEL,
     });
@@ -365,7 +364,7 @@ describe("super-admin console backend (P6)", () => {
       });
       expect(await me.text()).not.toContain(SECRET_SENTINEL);
     } finally {
-      await credsRepo.delete("linkedin");
+      await appCredsRepo.delete("linkedin_client");
     }
   });
 });

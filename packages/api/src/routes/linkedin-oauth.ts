@@ -29,8 +29,13 @@
 import { randomBytes } from "node:crypto";
 import { Hono } from "hono";
 import { createLogger } from "@newsletter/shared/logger";
-import type { SocialCredentialsRepo } from "@api/repositories/social-credentials.js";
+import {
+  isTenantContext,
+  type TenantScope,
+} from "@newsletter/shared/types/tenant-context";
+import type { AppCredentialsRepo } from "@api/repositories/app-credentials.js";
 import type { SocialTokensRepo } from "@api/repositories/social-tokens.js";
+import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
 import { resolveLinkedInClient } from "@api/services/linkedin-credential-resolver.js";
 import {
   buildAuthorizeUrl,
@@ -46,8 +51,19 @@ export interface OAuthRedis {
 }
 
 export interface LinkedInOAuthRouterDeps {
-  getCredRepo: () => SocialCredentialsRepo;
-  getTokenRepo: () => SocialTokensRepo;
+  /**
+   * App-level store (P12, REQ-080): every tenant connects through the SHARED
+   * LinkedIn OAuth client held in `app_credentials` — super-admin-managed,
+   * never the tenant's own rows.
+   */
+  getAppCredsRepo: () => Pick<AppCredentialsRepo, "getLinkedInClient" | "getStatus">;
+  /**
+   * Tenant-scoped token repo: the OAuth tokens themselves belong to ONE
+   * tenant (REQ-080/083). The start route derives the scope from the session;
+   * the callback re-derives it from the tenant id carried by the Redis state
+   * (the callback has no session — see module JSDoc).
+   */
+  getTokenRepo: (scope?: TenantScope) => SocialTokensRepo;
   redis: OAuthRedis;
   /** Process env (for PUBLIC_BASE_URL and env-fallback credentials). */
   env: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -90,11 +106,11 @@ export function createLinkedInOAuthRouter(
 ): Hono {
   const app = new Hono();
 
-  // POST /start → resolve client creds, generate state, store in Redis, return authorize URL.
+  // POST /start → resolve the shared app client, generate state, store in
+  // Redis, return authorize URL.
   app.post("/start", async (c) => {
-    const credRepo = deps.getCredRepo();
     const creds = await resolveLinkedInClient({
-      repo: credRepo,
+      repo: deps.getAppCredsRepo(),
       env: deps.env as NodeJS.ProcessEnv,
     });
 
@@ -105,8 +121,13 @@ export function createLinkedInOAuthRouter(
     const state = randomBytes(32).toString("hex");
     const redirectUri = buildRedirectUri(deps.env as Record<string, string | undefined>);
 
-    // Store state in Redis (consume-once CSRF token).
-    await deps.redis.set(stateKey(state), "1", "EX", STATE_TTL_SECONDS);
+    // Store state in Redis (consume-once CSRF token). The value carries the
+    // STARTING tenant's id so the session-less callback can store the tokens
+    // under the right tenant (P12, REQ-080); legacy/unscoped sessions store
+    // the pre-P12 "1" sentinel (single-tenant bridge applies on callback).
+    const scope = tenantScopeFromContext(c);
+    const stateValue = isTenantContext(scope) ? scope.tenantId : "1";
+    await deps.redis.set(stateKey(state), stateValue, "EX", STATE_TTL_SECONDS);
 
     const authorizeUrl = buildAuthorizeUrl({
       clientId: creds.clientId,
@@ -118,11 +139,12 @@ export function createLinkedInOAuthRouter(
   });
 
   // GET /status → reports full LinkedIn connection status (REQ-011).
+  // clientConfigured reflects the SHARED app client; connected/connectedAs is
+  // the calling tenant's own token (REQ-080, never another tenant's).
   app.get("/status", async (c) => {
-    const credRepo = deps.getCredRepo();
-    const status = await credRepo.getStatus();
+    const appStatus = await deps.getAppCredsRepo().getStatus();
 
-    const tokenRepo = deps.getTokenRepo();
+    const tokenRepo = deps.getTokenRepo(tenantScopeFromContext(c));
     const tokenRow = await tokenRepo.getLinkedIn().catch(() => null);
 
     const connected = tokenRow !== null;
@@ -133,7 +155,7 @@ export function createLinkedInOAuthRouter(
     const hasRefreshToken = connected && rt !== "" && rt !== null;
 
     return c.json({
-      clientConfigured: status.linkedin.configured,
+      clientConfigured: appStatus.linkedinClient.configured,
       connected,
       connectedAs,
       expiresAt,
@@ -203,10 +225,18 @@ export function createLinkedInOAuthCallbackRouter(
       return errorRedirect("state");
     }
 
-    // Resolve client credentials (needed for token exchange).
-    const credRepo = deps.getCredRepo();
+    // The state value carries the STARTING tenant's id (P12, REQ-080) — the
+    // callback has no session, so this is how the tokens land under the right
+    // tenant. The legacy "1" sentinel falls back to the wiring's default
+    // scope (single-tenant bridge).
+    const tokenScope: TenantScope | undefined =
+      storedValue === "1"
+        ? undefined
+        : { tenantId: storedValue, role: "tenant_admin" };
+
+    // Resolve the shared app client (needed for token exchange).
     const creds = await resolveLinkedInClient({
-      repo: credRepo,
+      repo: deps.getAppCredsRepo(),
       env: deps.env as NodeJS.ProcessEnv,
     });
     if (creds === null) {
@@ -255,9 +285,10 @@ export function createLinkedInOAuthCallbackRouter(
     const personUrn = `urn:li:person:${userInfoResult.userInfo.sub}`;
     const displayName = userInfoResult.userInfo.name ?? null;
 
-    // Persist encrypted token. The cipher is baked into the repo factory
-    // (injected via deps.getTokenRepo); this route does not handle encryption directly.
-    const tokenRepo = deps.getTokenRepo();
+    // Persist encrypted token UNDER THE STARTING TENANT (REQ-080). The cipher
+    // is baked into the repo factory (injected via deps.getTokenRepo); this
+    // route does not handle encryption directly.
+    const tokenRepo = deps.getTokenRepo(tokenScope);
     await tokenRepo.saveToken("linkedin", {
       accessToken: exchangeResult.parsed.accessToken,
       refreshToken: exchangeResult.parsed.refreshToken,

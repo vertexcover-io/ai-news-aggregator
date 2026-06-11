@@ -29,9 +29,11 @@ import {
   createLinkedInOAuthRouter,
   createLinkedInOAuthCallbackRouter,
 } from "@api/routes/linkedin-oauth.js";
-import { createSocialCredentialsRepo } from "@api/repositories/social-credentials.js";
 import { createSocialTokensRepo } from "@api/repositories/social-tokens.js";
+import { createAppCredentialsRepo } from "@api/repositories/app-credentials.js";
+import { createSuperAppCredentialsRouter } from "@api/routes/super-app-credentials.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import type { TenantScope } from "@newsletter/shared/types/tenant-context";
 import { createDefaultAdminMustReadRouter } from "@api/routes/admin-must-read.js";
 import { createAuthRouter } from "@api/routes/auth.js";
 import { createDefaultOnboardingRouter } from "@api/routes/onboarding.js";
@@ -209,11 +211,14 @@ const webhooksRouter = createWebhooksRouter({
 });
 
 const linkedInOAuthDeps = {
-  // OAuth callback is state-gated (no session) — stamp the bridge tenant.
-  getCredRepo: () =>
-    createSocialCredentialsRepo(getDb(), getCredentialCipher(), defaultTenantScope),
-  getTokenRepo: () =>
-    createSocialTokensRepo(getDb(), getCredentialCipher(), defaultTenantScope),
+  // The shared LinkedIn app client is APP-LEVEL (P12, REQ-080/082): resolved
+  // from app_credentials, never from tenant rows.
+  getAppCredsRepo: () => createAppCredentialsRepo(getDb(), getCredentialCipher()),
+  // Tokens are tenant-scoped (REQ-080): /start derives the scope from the
+  // session and carries the tenant id through the Redis state to the
+  // session-less callback; legacy "1" states fall back to the bridge tenant.
+  getTokenRepo: (scope?: TenantScope) =>
+    createSocialTokensRepo(getDb(), getCredentialCipher(), scope ?? defaultTenantScope),
   redis: oauthRedis,
   env: process.env,
 };
@@ -310,6 +315,12 @@ const app = buildApp({
     sessionSecret,
     getTenantsRepo: () => createTenantsRepo(getDb()),
     getAuditLogRepo: () => createAuditLogRepo(getDb()),
+  }),
+  // App-level shared secrets (P12, REQ-082/086) — requireSuperAdmin is
+  // applied inside the router factory.
+  superAppCredentialsRouter: createSuperAppCredentialsRouter({
+    sessionSecret,
+    getRepo: () => createAppCredentialsRepo(getDb(), getCredentialCipher()),
   }),
 });
 

@@ -57,6 +57,21 @@ function toRow(
   };
 }
 
+/**
+ * tenant_id is part of the PK (P12) — writes must stamp a concrete tenant.
+ * Reads stay scope-optional (legacy unscoped mode), but an unscoped write
+ * would be a cross-tenant bug, so it throws loudly.
+ */
+function requireTenantId(ctx: TenantScope | undefined): string {
+  const tenantId = scopedTenantId(ctx);
+  if (tenantId === undefined) {
+    throw new Error(
+      "social_tokens write requires a concrete tenant scope (tenant_id is part of the primary key)",
+    );
+  }
+  return tenantId;
+}
+
 async function upsertToken(
   db: TxLike,
   platform: SocialPlatform,
@@ -72,14 +87,15 @@ async function upsertToken(
     .insert(socialTokens)
     .values({
       platform,
-      tenantId: scopedTenantId(ctx),
+      tenantId: requireTenantId(ctx),
       encryptedFields,
       expiresAt: input.expiresAt,
       metadata: input.metadata ?? null,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
-      target: socialTokens.platform,
+      // Composite (tenant_id, platform) PK (P12, REQ-083).
+      target: [socialTokens.tenantId, socialTokens.platform],
       set: {
         encryptedFields,
         expiresAt: input.expiresAt,

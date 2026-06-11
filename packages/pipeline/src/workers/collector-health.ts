@@ -29,13 +29,10 @@ import type { UserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 import {
   getDefaultTenantScope,
   jobTenantContext,
-  primeDefaultTenantScope,
 } from "@pipeline/repositories/default-tenant.js";
 import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
-import {
-  createSocialCredentialsRepo,
-} from "@pipeline/repositories/social-credentials.js";
+import { createAppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { resolveTwitterCollectorCookie } from "@pipeline/services/credential-resolver.js";
 import { runWebCrawl } from "@pipeline/services/web-crawler.js";
@@ -446,13 +443,14 @@ export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
     runCollectorHealthCheck: defaultRunCollectorHealthCheck,
     // Per-job factory so credentials are always fresh (S-pipeline-03 / D-051)
     buildHealthCheckDeps: async (): Promise<HealthCheckDeps> => {
-      const credentialsRepo = createSocialCredentialsRepo(
+      // Shared collector cookie is APP-LEVEL (P12, REQ-086) — resolved from
+      // app_credentials, never tenant-scoped.
+      const appCredentialsRepo = createAppCredentialsRepo(
         getDb(),
         getCredentialCipher(),
-        await primeDefaultTenantScope(getDb()),
       );
       const twitterCookie = await resolveTwitterCollectorCookie({
-        repo: credentialsRepo,
+        appRepo: appCredentialsRepo,
         env: process.env,
       });
       const tavilyApiKey = process.env.TAVILY_API_KEY;

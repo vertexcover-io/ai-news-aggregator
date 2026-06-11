@@ -7,7 +7,9 @@ import {
 } from "@tanstack/react-query";
 import { apiFetchAdmin } from "./client";
 
-export type Platform = "linkedin" | "twitter" | "twitter-collector";
+// P12 (REQ-082): "twitter-collector" is no longer a tenant platform — the
+// shared collector cookie moved to the super-admin app-credentials store.
+export type Platform = "linkedin" | "twitter";
 
 export interface LinkedInStatus {
   configured: boolean;
@@ -31,21 +33,11 @@ export interface SocialCredentialsStatus {
   twitterCollector: TwitterCollectorStatus;
 }
 
-export interface LinkedInUpsertInput {
-  clientId: string;
-  clientSecret: string;
-  apiVersion?: string;
-}
-
 export interface TwitterUpsertInput {
   apiKey: string;
   apiSecret: string;
   accessToken: string;
   accessTokenSecret: string;
-}
-
-export interface TwitterCollectorUpsertInput {
-  apiKey: string;
 }
 
 export interface UpsertResult {
@@ -90,19 +82,6 @@ async function getSocialCredentialsStatus(): Promise<SocialCredentialsStatus> {
   return (await res.json()) as SocialCredentialsStatus;
 }
 
-async function putLinkedInCredentials(
-  input: LinkedInUpsertInput,
-): Promise<UpsertResult> {
-  const res = await apiFetchAdmin("/api/admin/social-credentials/linkedin", {
-    method: "PUT",
-    body: JSON.stringify(input),
-  });
-  if (!res.ok) {
-    await readError(res, "Failed to save LinkedIn credentials");
-  }
-  return (await res.json()) as UpsertResult;
-}
-
 async function putTwitterCredentials(
   input: TwitterUpsertInput,
 ): Promise<UpsertResult> {
@@ -112,22 +91,6 @@ async function putTwitterCredentials(
   });
   if (!res.ok) {
     await readError(res, "Failed to save Twitter credentials");
-  }
-  return (await res.json()) as UpsertResult;
-}
-
-async function putTwitterCollectorCookie(
-  input: TwitterCollectorUpsertInput,
-): Promise<UpsertResult> {
-  const res = await apiFetchAdmin(
-    "/api/admin/social-credentials/twitter-collector",
-    {
-      method: "PUT",
-      body: JSON.stringify(input),
-    },
-  );
-  if (!res.ok) {
-    await readError(res, "Failed to save Twitter collector cookies");
   }
   return (await res.json()) as UpsertResult;
 }
@@ -153,20 +116,6 @@ export function useSocialCredentialsStatus(): UseQueryResult<SocialCredentialsSt
   });
 }
 
-export function useSaveLinkedInCredentials(): UseMutationResult<
-  UpsertResult,
-  Error,
-  LinkedInUpsertInput
-> {
-  const qc = useQueryClient();
-  return useMutation<UpsertResult, Error, LinkedInUpsertInput>({
-    mutationFn: putLinkedInCredentials,
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: STATUS_QUERY_KEY });
-    },
-  });
-}
-
 export function useSaveTwitterCredentials(): UseMutationResult<
   UpsertResult,
   Error,
@@ -175,20 +124,6 @@ export function useSaveTwitterCredentials(): UseMutationResult<
   const qc = useQueryClient();
   return useMutation<UpsertResult, Error, TwitterUpsertInput>({
     mutationFn: putTwitterCredentials,
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: STATUS_QUERY_KEY });
-    },
-  });
-}
-
-export function useSaveTwitterCollectorCookie(): UseMutationResult<
-  UpsertResult,
-  Error,
-  TwitterCollectorUpsertInput
-> {
-  const qc = useQueryClient();
-  return useMutation<UpsertResult, Error, TwitterCollectorUpsertInput>({
-    mutationFn: putTwitterCollectorCookie,
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: STATUS_QUERY_KEY });
     },

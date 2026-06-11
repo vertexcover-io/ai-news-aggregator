@@ -87,11 +87,18 @@ vi.mock("@pipeline/repositories/social-tokens.js", () => ({
 }));
 vi.mock("@pipeline/repositories/social-credentials.js", () => ({
   createSocialCredentialsRepo: vi.fn(() => ({
-    getLinkedIn: vi.fn().mockResolvedValue(null),
     getTwitter: vi.fn().mockResolvedValue(null),
-    upsertLinkedIn: vi.fn(),
     upsertTwitter: vi.fn(),
     delete: vi.fn(),
+  })),
+}));
+// App-level store (P12): LinkedIn client + collector cookie resolve here; the
+// env-fallback paths under test need the DB store to report "no row".
+vi.mock("@pipeline/repositories/app-credentials.js", () => ({
+  createAppCredentialsRepo: vi.fn(() => ({
+    getLinkedInClient: vi.fn().mockResolvedValue(null),
+    getTwitterCollector: vi.fn().mockResolvedValue(null),
+    upsertTwitterCollector: vi.fn(),
   })),
 }));
 vi.mock("@newsletter/shared/services/credential-cipher", () => ({
