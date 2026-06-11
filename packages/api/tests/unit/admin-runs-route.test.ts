@@ -143,3 +143,75 @@ describe("GET /api/admin/runs/:runId/sources", () => {
     expect(body.items).toEqual([]);
   });
 });
+
+describe("test_REQ_013_admin_runs_redis_state_tenant_fence", () => {
+  const TENANT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const TENANT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  function makeFencedApp(stateTenantId: string): Hono {
+    const liveState = {
+      id: VALID_UUID,
+      status: "running",
+      stage: "collecting",
+      topN: 10,
+      startedAt: "2026-06-11T10:00:00.000Z",
+      updatedAt: "2026-06-11T10:01:00.000Z",
+      completedAt: null,
+      sources: {},
+      rankedItems: null,
+      warnings: [],
+      error: null,
+      tenantId: stateTenantId,
+    };
+    const redis = {
+      get: vi.fn((key: string) =>
+        key === `run:${VALID_UUID}`
+          ? Promise.resolve(JSON.stringify(liveState))
+          : Promise.resolve(null),
+      ),
+    } as unknown as IORedis;
+    const app = new Hono();
+    app.use("*", async (c, next) => {
+      c.set("tenantCtx", { userId: "u-1", tenantId: TENANT_A, role: "tenant_admin" });
+      await next();
+    });
+    app.route(
+      "/api/admin/runs",
+      createAdminRunsRouter({
+        redis,
+        getRawItemsRepo: () =>
+          ({
+            findByIds: vi.fn(() => Promise.resolve([])),
+            listForRun: vi.fn(() => Promise.resolve([])),
+            listForRunWithEnrichment: vi.fn(() => Promise.resolve([])),
+          }) as unknown as RawItemsRepo,
+        getArchiveRepo: () => makeArchiveRepo(null),
+        getRunLogRepo: () => ({
+          listForRun: vi.fn(() => Promise.resolve([])),
+          listForRunSource: vi.fn(() => Promise.resolve([])),
+        }),
+      }),
+    );
+    return app;
+  }
+
+  it("observability: another tenant's live state returns 404", async () => {
+    const app = makeFencedApp(TENANT_B);
+    const res = await app.request(`/api/admin/runs/${VALID_UUID}/observability`);
+    expect(res.status).toBe(404);
+  });
+
+  it("observability: the owning tenant's live state returns 200", async () => {
+    const app = makeFencedApp(TENANT_A);
+    const res = await app.request(`/api/admin/runs/${VALID_UUID}/observability`);
+    expect(res.status).toBe(200);
+  });
+
+  it("source items: another tenant's live state returns 404", async () => {
+    const app = makeFencedApp(TENANT_B);
+    const res = await app.request(
+      `/api/admin/runs/${VALID_UUID}/sources/${encodeURIComponent("reddit:r/AI_Agents")}/items`,
+    );
+    expect(res.status).toBe(404);
+  });
+});

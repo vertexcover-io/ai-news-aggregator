@@ -205,6 +205,8 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       redis: deps.redis,
       archiveRepo,
       timezone,
+      // REQ-013: fence the Redis live-state entries to the session tenant.
+      requesterScope: tenantScopeFromContext(c),
     });
     return c.json({ runs: runsList });
   });

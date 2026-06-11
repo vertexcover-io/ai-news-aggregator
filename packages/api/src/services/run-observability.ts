@@ -12,6 +12,10 @@ import type {
   RunState,
   RunStatus,
 } from "@newsletter/shared";
+import {
+  isTenantContext,
+  type TenantScope,
+} from "@newsletter/shared/types/tenant-context";
 import type { RunArchiveRow, RunArchivesRepo } from "@api/repositories/run-archives.js";
 import type { RunLogRepo } from "@api/repositories/run-logs.js";
 import { NotFoundError } from "@api/lib/errors.js";
@@ -20,6 +24,13 @@ export interface BuildRunObservabilityDeps {
   redis: Pick<IORedis, "get">;
   archiveRepo: Pick<RunArchivesRepo, "findById">;
   runLogRepo: RunLogRepo;
+  /**
+   * REQ-013: archive/log repos arrive tenant-fenced, but the raw Redis
+   * `run:{runId}` state is global — another tenant's live state must read as
+   * absent here. Legacy states without a tenantId stay readable
+   * (grandfathered — written before the stamp existed).
+   */
+  requesterScope?: TenantScope;
 }
 
 export const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>([
@@ -49,7 +60,15 @@ export async function buildRunObservability(
     deps.runLogRepo.listForRun(runId),
   ]);
 
-  const runState: RunState | null = stateRaw === null ? null : (JSON.parse(stateRaw) as RunState);
+  const parsedState: RunState | null = stateRaw === null ? null : (JSON.parse(stateRaw) as RunState);
+  // REQ-013: another tenant's live state is treated as absent.
+  const runState: RunState | null =
+    parsedState !== null &&
+    isTenantContext(deps.requesterScope) &&
+    typeof parsedState.tenantId === "string" &&
+    parsedState.tenantId !== deps.requesterScope.tenantId
+      ? null
+      : parsedState;
 
   if (runState === null && archive === null) {
     throw new NotFoundError(`run not found: ${runId}`);

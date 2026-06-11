@@ -60,6 +60,8 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
           archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)),
           rawItemsRepo: deps.getRawItemsRepo(tenantScopeFromContext(c)),
           runLogRepo: deps.getRunLogRepo(tenantScopeFromContext(c)),
+          // REQ-013: fence the raw Redis run-state read to the session tenant.
+          requesterScope: tenantScopeFromContext(c),
         },
       );
       return c.json(body);
@@ -109,6 +111,8 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
         redis: deps.redis,
         archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)),
         runLogRepo: deps.getRunLogRepo(tenantScopeFromContext(c)),
+        // REQ-013: fence the raw Redis run-state read to the session tenant.
+        requesterScope: tenantScopeFromContext(c),
       });
       return c.json(body);
     } catch (err) {
