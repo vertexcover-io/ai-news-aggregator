@@ -19,7 +19,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
 import { inArray } from "drizzle-orm";
-import { createRedisConnection } from "@newsletter/shared";
+import { AGENTLOOP_TENANT_ID, createRedisConnection } from "@newsletter/shared";
 import type { RunSourceTelemetry } from "@newsletter/shared";
 import { getDb, rawItems, runArchives, runLogs } from "@newsletter/shared/db";
 import { createRawItemsRepo } from "@api/repositories/raw-items.js";
@@ -88,6 +88,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
     const runId = randomUUID();
     await db.insert(runArchives).values({
       id: runId,
+      tenantId: AGENTLOOP_TENANT_ID,
       status: "completed",
       rankedItems: [],
       topN: 10,
@@ -100,6 +101,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
 
     await db.insert(runLogs).values([
       {
+        tenantId: AGENTLOOP_TENANT_ID,
         runId,
         level: "info",
         stage: "collect",
@@ -109,6 +111,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
         context: { listingUrl: "https://cursor.com/blog", discovered: 12 },
       },
       {
+        tenantId: AGENTLOOP_TENANT_ID,
         runId,
         level: "warn",
         stage: "collect",
@@ -122,6 +125,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
         },
       },
       {
+        tenantId: AGENTLOOP_TENANT_ID,
         runId,
         level: "info",
         stage: "collect",
@@ -131,6 +135,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
         context: { url: "https://cursor.com/blog/post-1" },
       },
       {
+        tenantId: AGENTLOOP_TENANT_ID,
         runId,
         level: "error",
         stage: "collect",
@@ -144,6 +149,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
         },
       },
       {
+        tenantId: AGENTLOOP_TENANT_ID,
         runId,
         level: "info",
         stage: "collect",
@@ -153,6 +159,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
         context: { jobs: 1, requestsFinished: 3, requestsFailed: 0 },
       },
       {
+        tenantId: AGENTLOOP_TENANT_ID,
         runId,
         level: "error",
         stage: "enrich",
@@ -233,6 +240,7 @@ describe("VS-7: GET /api/admin/runs/:runId/sources/blog:cursor.com/items returns
 
     await db.insert(runArchives).values({
       id: runId,
+      tenantId: AGENTLOOP_TENANT_ID,
       status: "completed",
       rankedItems: [],
       topN: 10,
@@ -253,6 +261,7 @@ describe("VS-7: GET /api/admin/runs/:runId/sources/blog:cursor.com/items returns
       const [row] = await db
         .insert(rawItems)
         .values({
+          tenantId: AGENTLOOP_TENANT_ID,
           runId,
           sourceType: "blog",
           externalId: `cursor-${idx}-${randomUUID()}`,
@@ -319,6 +328,7 @@ describe("VS-8: legacy archive with listing-URL identifier returns 200 + empty i
 
     await db.insert(runArchives).values({
       id: runId,
+      tenantId: AGENTLOOP_TENANT_ID,
       status: "completed",
       rankedItems: [],
       topN: 10,

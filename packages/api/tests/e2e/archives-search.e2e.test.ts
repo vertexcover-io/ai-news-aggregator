@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
+import { AGENTLOOP_TENANT_ID } from "@newsletter/shared";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
@@ -73,6 +74,7 @@ async function insertRaw(
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: AGENTLOOP_TENANT_ID,
       sourceType: "hn",
       externalId,
       title,
@@ -146,6 +148,7 @@ async function insertArchive(opts: {
     : null;
   await db.insert(runArchives).values({
     id: opts.id,
+    tenantId: AGENTLOOP_TENANT_ID,
     status: "completed",
     rankedItems: refs,
     topN: 1,

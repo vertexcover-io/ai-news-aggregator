@@ -9,6 +9,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
+import { AGENTLOOP_TENANT_ID } from "@newsletter/shared";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
@@ -52,6 +53,7 @@ beforeAll(async () => {
   const inserted = await db
     .insert(rawItems)
     .values({
+      tenantId: AGENTLOOP_TENANT_ID,
       sourceType: "hn",
       externalId: seedExternalId,
       title: "Quantum Cromulence in Café Society",
@@ -74,6 +76,7 @@ beforeAll(async () => {
 
   await db.insert(runArchives).values({
     id: seedRunId,
+    tenantId: AGENTLOOP_TENANT_ID,
     status: "completed",
     rankedItems: [
       {

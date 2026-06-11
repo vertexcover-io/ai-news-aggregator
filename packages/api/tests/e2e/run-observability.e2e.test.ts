@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
 import { inArray } from "drizzle-orm";
 import { z } from "zod";
-import { createRedisConnection, runKey } from "@newsletter/shared";
+import { AGENTLOOP_TENANT_ID, createRedisConnection, runKey } from "@newsletter/shared";
 import type { RunSourceTelemetry, RunState } from "@newsletter/shared";
 import { getDb, runArchives, runLogs } from "@newsletter/shared/db";
 import { createRawItemsRepo } from "@api/repositories/raw-items.js";
@@ -149,6 +149,7 @@ async function seedHistoricalRun(): Promise<string> {
   const runId = randomUUID();
   await db.insert(runArchives).values({
     id: runId,
+    tenantId: AGENTLOOP_TENANT_ID,
     status: "completed",
     rankedItems: [],
     topN: 10,
@@ -163,6 +164,7 @@ async function seedHistoricalRun(): Promise<string> {
 
   await db.insert(runLogs).values([
     {
+      tenantId: AGENTLOOP_TENANT_ID,
       runId,
       level: "info",
       stage: "collecting",
@@ -172,6 +174,7 @@ async function seedHistoricalRun(): Promise<string> {
       context: null,
     },
     {
+      tenantId: AGENTLOOP_TENANT_ID,
       runId,
       level: "info",
       stage: "collecting",
@@ -181,6 +184,7 @@ async function seedHistoricalRun(): Promise<string> {
       context: { durationMs: 5000 },
     },
     {
+      tenantId: AGENTLOOP_TENANT_ID,
       runId,
       level: "error",
       stage: "collecting",
@@ -217,6 +221,7 @@ async function seedLiveRun(): Promise<string> {
 
   await db.insert(runLogs).values([
     {
+      tenantId: AGENTLOOP_TENANT_ID,
       runId,
       level: "info",
       stage: "queued",
@@ -226,6 +231,7 @@ async function seedLiveRun(): Promise<string> {
       context: null,
     },
     {
+      tenantId: AGENTLOOP_TENANT_ID,
       runId,
       level: "info",
       stage: "processing",
@@ -235,6 +241,7 @@ async function seedLiveRun(): Promise<string> {
       context: { inputCount: 12, outputCount: 10 },
     },
     {
+      tenantId: AGENTLOOP_TENANT_ID,
       runId,
       level: "info",
       stage: "shortlisting",

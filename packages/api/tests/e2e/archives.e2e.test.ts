@@ -20,7 +20,7 @@ import {
   subscribers,
   userSettings,
 } from "@newsletter/shared/db";
-import type { RankedItemRef } from "@newsletter/shared";
+import { AGENTLOOP_TENANT_ID, type RankedItemRef } from "@newsletter/shared";
 import type { DigestMeta } from "@newsletter/shared/constants";
 import type { GenerateDigestMetaFn } from "@api/services/review.js";
 import { createRawItemsRepo } from "@api/repositories/raw-items.js";
@@ -144,6 +144,7 @@ async function insertRawItem(opts: {
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: AGENTLOOP_TENANT_ID,
       sourceType: "hn",
       externalId: `${seedPrefix}-${opts.externalId}`,
       title: opts.title,
@@ -187,6 +188,7 @@ async function insertArchive(opts: {
 
   await db.insert(runArchives).values({
     id: runId,
+    tenantId: AGENTLOOP_TENANT_ID,
     status: "completed",
     rankedItems,
     topN: rankedItems.length,
@@ -622,12 +624,14 @@ describe("DELETE /api/admin/archives/:runId (e2e)", () => {
     const [subscriber] = await db
       .insert(subscribers)
       .values({
+        tenantId: AGENTLOOP_TENANT_ID,
         email: `${archive.runId}@example.com`,
         status: "confirmed",
       })
       .returning({ id: subscribers.id });
     seededSubscriberIds.add(subscriber.id);
     await db.insert(emailSends).values({
+      tenantId: AGENTLOOP_TENANT_ID,
       subscriberId: subscriber.id,
       runArchiveId: archive.runId,
       messageId: `msg-${archive.runId}`,
@@ -785,12 +789,12 @@ describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
       expect(addSpy).toHaveBeenCalledWith(
         "linkedin-post",
         { runId: archive.runId },
-        { jobId: `linkedin-post:${archive.runId}`, delay: 0 },
+        { jobId: `linkedin-post-${archive.runId}`, delay: 0 },
       );
       expect(addSpy).toHaveBeenCalledWith(
         "twitter-post",
         { runId: archive.runId },
-        { jobId: `twitter-post:${archive.runId}`, delay: 0 },
+        { jobId: `twitter-post-${archive.runId}`, delay: 0 },
       );
     },
   );
@@ -858,12 +862,12 @@ describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
       expect(addSpy).toHaveBeenCalledWith(
         "linkedin-post",
         { runId: archive.runId },
-        { jobId: `linkedin-post:${archive.runId}`, delay: 0 },
+        { jobId: `linkedin-post-${archive.runId}`, delay: 0 },
       );
       expect(addSpy).toHaveBeenCalledWith(
         "twitter-post",
         { runId: archive.runId },
-        { jobId: `twitter-post:${archive.runId}`, delay: 0 },
+        { jobId: `twitter-post-${archive.runId}`, delay: 0 },
       );
     },
   );

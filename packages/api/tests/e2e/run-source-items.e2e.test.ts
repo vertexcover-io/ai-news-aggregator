@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
 import { inArray } from "drizzle-orm";
 import { z } from "zod";
-import { createRedisConnection } from "@newsletter/shared";
+import { AGENTLOOP_TENANT_ID, createRedisConnection } from "@newsletter/shared";
 import type { RankedItemRef, RunSourceItemsResponse } from "@newsletter/shared/types";
 import { getDb, rawItems, runArchives, runLogs } from "@newsletter/shared/db";
 import { createRawItemsRepo } from "@api/repositories/raw-items.js";
@@ -121,6 +121,7 @@ async function insertRawItem(opts: {
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: AGENTLOOP_TENANT_ID,
       runId: opts.runId,
       sourceType: opts.sourceType,
       externalId: `${opts.externalId}-${randomUUID()}`,
@@ -197,6 +198,7 @@ async function seedRun(): Promise<{
 
   await db.insert(runArchives).values({
     id: runId,
+    tenantId: AGENTLOOP_TENANT_ID,
     status: "completed",
     rankedItems,
     topN: 5,
@@ -211,6 +213,7 @@ async function seedRun(): Promise<{
 
   await db.insert(runLogs).values([
     {
+      tenantId: AGENTLOOP_TENANT_ID,
       runId,
       level: "info",
       stage: "collecting",
@@ -220,6 +223,7 @@ async function seedRun(): Promise<{
       context: { itemsFetched: 3 },
     },
     {
+      tenantId: AGENTLOOP_TENANT_ID,
       runId,
       level: "error",
       stage: "collecting",

@@ -8,6 +8,7 @@ import { sql } from "drizzle-orm";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
+import { AGENTLOOP_TENANT_ID } from "@newsletter/shared";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
@@ -39,6 +40,7 @@ beforeAll(async () => {
   const [{ id: idA }] = await db
     .insert(rawItems)
     .values({
+      tenantId: AGENTLOOP_TENANT_ID,
       sourceType: "hn",
       externalId: seedExternalIdA,
       title: "Quantum Cromulence in Café Society",
@@ -61,6 +63,7 @@ beforeAll(async () => {
   const [{ id: idB }] = await db
     .insert(rawItems)
     .values({
+      tenantId: AGENTLOOP_TENANT_ID,
       sourceType: "reddit",
       externalId: seedExternalIdB,
       title: "REMOVED_ITEM_TITLE_TOKEN",
@@ -82,6 +85,7 @@ beforeAll(async () => {
 
   await db.insert(runArchives).values({
     id: seedRunId,
+    tenantId: AGENTLOOP_TENANT_ID,
     status: "completed",
     rankedItems: [],
     topN: 2,

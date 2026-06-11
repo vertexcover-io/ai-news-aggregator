@@ -477,6 +477,16 @@ describe("NF-006: SameSite cookie on /api/admin/login", () => {
       analyticsConfigRouter: new Hono(),
       linkedInOAuthRouter: new Hono(),
       linkedInOAuthCallbackRouter: new Hono(),
+      authRouter: new Hono(),
+      authRateLimit: (_c, next) => next(),
+      tenantPublicRouter: new Hono(),
+      onboardingRouter: new Hono(),
+      tenantSourcesRouter: new Hono(),
+      tenantSettingsRouter: new Hono(),
+      sendingDomainsRouter: new Hono(),
+      superAdminRouter: new Hono(),
+      superAdminCredentialsRouter: new Hono(),
+      collectorHealthRouter: new Hono(),
     });
   }
 

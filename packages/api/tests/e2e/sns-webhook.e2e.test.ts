@@ -24,7 +24,8 @@ import {
   emailSends,
   runArchives,
 } from "@newsletter/shared/db";
-import { createLogger } from "@newsletter/shared";
+import { AGENTLOOP_TENANT_ID, createLogger } from "@newsletter/shared";
+import type { SlackNotifier } from "@newsletter/shared";
 import { createWebhooksRouter } from "@api/routes/webhooks.js";
 import { createSesEventsRepo } from "@api/repositories/ses-events.js";
 import { createEmailSendsRepo } from "@api/repositories/email-sends.js";
@@ -162,6 +163,22 @@ function buildSignedSubscriptionConfirmation(input: SubConfirmInput): string {
   });
 }
 
+const noopAsync = (): Promise<void> => Promise.resolve();
+const stubSlackNotifier: SlackNotifier = {
+  notifyNewsletterSent: noopAsync,
+  notifyReviewPending: noopAsync,
+  notifyReviewWarning: noopAsync,
+  notifyPublishFailed: noopAsync,
+  notifyPublishUnavailable: noopAsync,
+  notifySourceDistribution: noopAsync,
+  notifyEmailDelivery: noopAsync,
+  notifyLinkedinPosted: noopAsync,
+  notifyTwitterPosted: noopAsync,
+  notifySubscriberConfirmed: noopAsync,
+  notifySubscriberRemoved: noopAsync,
+  notifyFeedbackReceived: noopAsync,
+};
+
 function buildApp(certFetcher: CertFetcher): Hono {
   const logger = createLogger("test-sns-webhook");
   const app = new Hono();
@@ -172,6 +189,7 @@ function buildApp(certFetcher: CertFetcher): Hono {
       emailSendsRepo: createEmailSendsRepo(db),
       subscribersRepo: createSubscribersRepo(db),
       verifySns: (raw: string) => verifySnsMessage(raw, certFetcher),
+      slackNotifier: stubSlackNotifier,
       logger,
     }),
   );
@@ -184,6 +202,7 @@ async function insertSubscriber(email: string, status: "confirmed" | "pending" =
   const [row] = await db
     .insert(subscribers)
     .values({
+      tenantId: AGENTLOOP_TENANT_ID,
       email,
       status,
       subscribedAt: new Date(),
@@ -197,6 +216,7 @@ async function insertRunArchive() {
     .insert(runArchives)
     .values({
       id: randomUUID(),
+      tenantId: AGENTLOOP_TENANT_ID,
       status: "completed",
       rankedItems: [],
       topN: 5,
@@ -214,7 +234,7 @@ async function insertEmailSend(
 ) {
   const [row] = await db
     .insert(emailSends)
-    .values({ subscriberId, runArchiveId, messageId })
+    .values({ tenantId: AGENTLOOP_TENANT_ID, subscriberId, runArchiveId, messageId })
     .returning();
   return row;
 }

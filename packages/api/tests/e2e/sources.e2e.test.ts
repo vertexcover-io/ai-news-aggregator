@@ -30,10 +30,11 @@ import {
   userSettings,
   type SourceType,
 } from "@newsletter/shared/db";
-import type {
-  RankedItemRef,
-  RunSourceTelemetry,
-  UserSettings,
+import {
+  AGENTLOOP_TENANT_ID,
+  type RankedItemRef,
+  type RunSourceTelemetry,
+  type UserSettings,
 } from "@newsletter/shared";
 import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import { SOURCE_TYPE_ORDER } from "@newsletter/shared/constants";
@@ -147,6 +148,7 @@ async function insertRawItem(opts: InsertRawItemArgs): Promise<number> {
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: AGENTLOOP_TENANT_ID,
       sourceType: opts.sourceType,
       externalId: `${seedPrefix}-${opts.externalId}`,
       title: opts.title,
@@ -180,6 +182,7 @@ async function insertArchive(opts: InsertArchiveArgs): Promise<string> {
   );
   await db.insert(runArchives).values({
     id: runId,
+    tenantId: AGENTLOOP_TENANT_ID,
     status: "completed",
     rankedItems,
     topN: rankedItems.length,

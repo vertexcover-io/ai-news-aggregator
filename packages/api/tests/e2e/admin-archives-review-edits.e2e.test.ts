@@ -21,7 +21,7 @@ import { config } from "dotenv";
 import { eq, inArray, sql } from "drizzle-orm";
 import { createRedisConnection } from "@newsletter/shared";
 import { getDb, rawItems, reviewEdits, runArchives } from "@newsletter/shared/db";
-import type { RankedItemRef } from "@newsletter/shared";
+import { AGENTLOOP_TENANT_ID, type RankedItemRef } from "@newsletter/shared";
 import type { PreReviewSnapshot } from "@newsletter/shared/review-edits";
 import { createRawItemsRepo } from "@api/repositories/raw-items.js";
 import { createRunArchivesRepo } from "@api/repositories/run-archives.js";
@@ -81,6 +81,7 @@ async function insertRawItem(externalId: string, recap?: {
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: AGENTLOOP_TENANT_ID,
       sourceType: "hn",
       externalId: `${seedPrefix}-${externalId}`,
       title: `Title for ${externalId}`,
@@ -121,6 +122,7 @@ async function insertArchive(opts: {
 
   await db.insert(runArchives).values({
     id: runId,
+    tenantId: AGENTLOOP_TENANT_ID,
     status: "completed",
     rankedItems,
     topN: rankedItems.length,
