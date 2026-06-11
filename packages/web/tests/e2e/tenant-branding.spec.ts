@@ -51,6 +51,16 @@ test.beforeAll(async () => {
     );
 
     // One reviewed archive for AGENTLOOP so its homepage shows today's issue.
+    //
+    // "Today's issue" = the MOST-RECENT reviewed non-dry-run archive for the
+    // tenant (findLatestReviewedSince orders by completed_at DESC). Earlier
+    // specs in the serial suite leave reviewed tenant-0 archives behind with
+    // far-future completed_at (cost-dialog seeds 2099, edit-after-review
+    // 2199/2299 — no cleanup), so seeding plain now() loses the recency race
+    // when the whole suite runs. Seed strictly AFTER the current table
+    // maximum so this archive deterministically IS today's issue regardless
+    // of run order — workers=1 guarantees nothing seeds between here and the
+    // assertions.
     const tenantRow = await db.query(
       `SELECT id FROM tenants WHERE slug = 'agentloop'`,
     );
@@ -62,9 +72,12 @@ test.beforeAll(async () => {
          (id, tenant_id, status, ranked_items, top_n, reviewed,
           started_at, completed_at, source_types,
           digest_headline, digest_summary)
-       VALUES ($1, $2, 'completed', '[]'::jsonb, 0, true,
-               now() - interval '1 minute', now(), '["hn"]'::jsonb,
-               'P7 branding e2e headline', 'P7 branding e2e summary')`,
+       SELECT $1, $2, 'completed', '[]'::jsonb, 0, true,
+              now() - interval '1 minute',
+              GREATEST(now(), COALESCE(max(completed_at), now()) + interval '1 minute'),
+              '["hn"]'::jsonb,
+              'P7 branding e2e headline', 'P7 branding e2e summary'
+       FROM run_archives`,
       [agentloopArchiveId, agentloopId],
     );
   } finally {
@@ -86,11 +99,17 @@ test.afterAll(async () => {
 });
 
 async function openHome(page: Page): Promise<void> {
+  // Pathname-exact match (NOT includes()) — Vite's /src/api/home.ts module
+  // request would shadow /api/home under a substring match. Generous timeout:
+  // under the full serial suite the dev servers are cold/contended and the
+  // default deadline flakes.
   const brandingLoaded = page.waitForResponse(
     (r) => new URL(r.url()).pathname === "/api/branding" && r.status() === 200,
+    { timeout: 20_000 },
   );
   const homeLoaded = page.waitForResponse(
     (r) => new URL(r.url()).pathname === "/api/home" && r.status() === 200,
+    { timeout: 20_000 },
   );
   await page.goto("/");
   await brandingLoaded;

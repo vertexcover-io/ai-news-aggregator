@@ -106,13 +106,24 @@ test.describe("signup", () => {
   }) => {
     await context.clearCookies();
     await page.goto("/signup");
-    await page.getByLabel(/Your name/i).fill("E2E Mismatch");
-    await page.getByLabel(/^Email$/i).fill(`e2e-signup-mm-${UNIQUE}@example.com`);
-    await page.getByLabel(/^Password$/i).fill(PASSWORD);
-    await page.getByLabel(/Confirm password/i).fill("different-password");
-    await page.getByRole("button", { name: /Create account/i }).click();
-
-    await expect(page.getByRole("alert")).toContainText(/Passwords do not match/i);
+    // Under the full serial suite, a Vite dependency re-optimization (e.g.
+    // triggered by the preceding happy-path test loading /admin/onboarding)
+    // can full-reload this page mid-test and wipe typed form state — the
+    // submit then hits `required` validation and the alert never renders
+    // (see the warm-up beforeAll). Retry the whole fill→submit→alert
+    // interaction so one dev-server reload can't fail the test; the product
+    // assertions (alert text + staying on /signup) are unchanged.
+    await expect(async () => {
+      await page.getByLabel(/Your name/i).fill("E2E Mismatch");
+      await page.getByLabel(/^Email$/i).fill(`e2e-signup-mm-${UNIQUE}@example.com`);
+      await page.getByLabel(/^Password$/i).fill(PASSWORD);
+      await page.getByLabel(/Confirm password/i).fill("different-password");
+      await page.getByRole("button", { name: /Create account/i }).click();
+      await expect(page.getByRole("alert")).toContainText(
+        /Passwords do not match/i,
+        { timeout: 2_000 },
+      );
+    }).toPass({ timeout: 15_000 });
     await expect(page).toHaveURL(/\/signup/);
   });
 
