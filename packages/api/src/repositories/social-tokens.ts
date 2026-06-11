@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { socialTokens } from "@newsletter/shared/db";
-import type { AppDb, SocialTokenEncryptedFields } from "@newsletter/shared/db";
+import { scopedTenantId, socialTokens, tenantScoped } from "@newsletter/shared/db";
+import type { AppDb, SocialTokenEncryptedFields, TenantScope } from "@newsletter/shared/db";
 import type { SocialTokenMetadata } from "@newsletter/shared/types";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
 
@@ -34,6 +34,7 @@ export interface SocialTokensRepo {
 export function createSocialTokensRepo(
   db: Pick<AppDb, "select" | "insert" | "delete">,
   cipher: CredentialCipher,
+  ctx?: TenantScope,
 ): SocialTokensRepo {
   return {
     async saveToken(
@@ -51,6 +52,7 @@ export function createSocialTokensRepo(
         .insert(socialTokens)
         .values({
           platform,
+          tenantId: scopedTenantId(ctx),
           encryptedFields,
           expiresAt: input.expiresAt,
           metadata: input.metadata ?? null,
@@ -72,7 +74,7 @@ export function createSocialTokensRepo(
         const rows = await db
           .select()
           .from(socialTokens)
-          .where(eq(socialTokens.platform, "linkedin"))
+          .where(tenantScoped(socialTokens.tenantId, ctx, eq(socialTokens.platform, "linkedin")))
           .limit(1);
         if (rows.length === 0) return null;
         const row = rows[0];
@@ -93,7 +95,7 @@ export function createSocialTokensRepo(
     async deleteToken(platform: SocialPlatform): Promise<boolean> {
       const result = await db
         .delete(socialTokens)
-        .where(eq(socialTokens.platform, platform))
+        .where(tenantScoped(socialTokens.tenantId, ctx, eq(socialTokens.platform, platform)))
         .returning({ platform: socialTokens.platform });
       return result.length > 0;
     },

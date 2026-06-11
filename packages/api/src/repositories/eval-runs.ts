@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
-import { evalRuns } from "@newsletter/shared/db";
-import type { AppDb } from "@newsletter/shared/db";
+import { evalRuns, scopedTenantId, tenantScoped } from "@newsletter/shared/db";
+import type { AppDb, TenantScope } from "@newsletter/shared/db";
 import type {
   EvalRun,
   EvalRunInsertInput,
@@ -122,6 +122,7 @@ function toSummary(run: EvalRun): EvalRunSummary {
 
 export function createEvalRunsRepo(
   db: Pick<AppDb, "insert" | "select" | "update">,
+  ctx?: TenantScope,
 ): EvalRunsRepo {
   return {
     async insert(input: EvalRunInsertInput): Promise<{ id: string }> {
@@ -137,6 +138,7 @@ export function createEvalRunsRepo(
           savedPromptHash: input.savedPromptHash,
           savedPromptSnapshot: input.savedPromptSnapshot,
           status: "running",
+          tenantId: scopedTenantId(ctx),
         })
         .returning({ id: evalRuns.id });
       return { id: row.id };
@@ -155,7 +157,7 @@ export function createEvalRunsRepo(
           scoreBreakdown: payload.scoreBreakdown,
           costBreakdown: payload.costBreakdown,
         })
-        .where(eq(evalRuns.id, id))
+        .where(tenantScoped(evalRuns.tenantId, ctx, eq(evalRuns.id, id)))
         .returning({ id: evalRuns.id });
       return { rowsAffected: rows.length };
     },
@@ -173,7 +175,7 @@ export function createEvalRunsRepo(
           finishedAt: new Date(),
           errorMessage: truncated,
         })
-        .where(eq(evalRuns.id, id))
+        .where(tenantScoped(evalRuns.tenantId, ctx, eq(evalRuns.id, id)))
         .returning({ id: evalRuns.id });
       return { rowsAffected: rows.length };
     },
@@ -183,7 +185,7 @@ export function createEvalRunsRepo(
       const rows = await db
         .select()
         .from(evalRuns)
-        .where(eq(evalRuns.id, id));
+        .where(tenantScoped(evalRuns.tenantId, ctx, eq(evalRuns.id, id)));
       if (rows.length === 0) return null;
       return mapRowToEvalRun(rows[0]);
     },
@@ -195,12 +197,12 @@ export function createEvalRunsRepo(
         filters.push(eq(evalRuns.status, opts.status));
       if (opts.fixtureId !== undefined)
         filters.push(eq(evalRuns.fixtureId, opts.fixtureId));
-      const whereClause = filters.length > 0 ? and(...filters) : undefined;
+      const whereClause = tenantScoped(evalRuns.tenantId, ctx, and(...filters));
 
       const offset = (opts.page - 1) * opts.perPage;
 
       const baseRows = db.select().from(evalRuns).$dynamic();
-      const rowsQuery = whereClause ? baseRows.where(whereClause) : baseRows;
+      const rowsQuery = whereClause === undefined ? baseRows : baseRows.where(whereClause);
       const rows = await rowsQuery
         .orderBy(desc(evalRuns.startedAt))
         .limit(opts.perPage)
@@ -210,9 +212,9 @@ export function createEvalRunsRepo(
         .select({ count: sql<number>`count(*)::int` })
         .from(evalRuns)
         .$dynamic();
-      const countRows = await (whereClause
-        ? baseCount.where(whereClause)
-        : baseCount);
+      const countRows = await (whereClause === undefined
+        ? baseCount
+        : baseCount.where(whereClause));
       const total = countRows[0]?.count ?? 0;
 
       return {

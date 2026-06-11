@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { userSettings } from "@newsletter/shared/db";
-import type { AppDb } from "@newsletter/shared/db";
+import { isTenantContext, scopedTenantId, tenantScoped, userSettings } from "@newsletter/shared/db";
+import type { AppDb, TenantScope } from "@newsletter/shared/db";
 import type { UserSettings } from "@newsletter/shared";
 
 export type UserSettingsUpsertInput = Omit<UserSettings, "id" | "updatedAt" | "scheduleTime"> & {
@@ -53,13 +53,20 @@ function toDomain(
 
 export function createUserSettingsRepo(
   db: Pick<AppDb, "select" | "insert">,
+  ctx?: TenantScope,
 ): UserSettingsRepo {
   return {
     async get(): Promise<UserSettings | null> {
+      // Legacy (no ctx): the pre-tenancy singleton row. With a tenant ctx the
+      // unique(tenant_id) row is authoritative (one settings row per tenant).
       const rows = await db
         .select()
         .from(userSettings)
-        .where(eq(userSettings.singleton, true))
+        .where(
+          isTenantContext(ctx)
+            ? tenantScoped(userSettings.tenantId, ctx)
+            : eq(userSettings.singleton, true),
+        )
         .limit(1);
       if (rows.length === 0) return null;
       return toDomain(rows[0]);
@@ -72,6 +79,7 @@ export function createUserSettingsRepo(
         .insert(userSettings)
         .values({
           singleton: true,
+          tenantId: scopedTenantId(ctx),
           topN: input.topN,
           halfLifeHours: input.halfLifeHours,
           hnEnabled: input.hnEnabled,

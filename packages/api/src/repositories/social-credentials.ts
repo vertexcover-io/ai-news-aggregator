@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { socialCredentials } from "@newsletter/shared/db";
-import type { AppDb } from "@newsletter/shared/db";
+import { scopedTenantId, socialCredentials, tenantScoped } from "@newsletter/shared/db";
+import type { AppDb, TenantScope } from "@newsletter/shared/db";
 import type {
   LinkedInEncryptedFields,
   TwitterEncryptedFields,
@@ -77,13 +77,14 @@ type DbSlice = Pick<AppDb, "select" | "insert" | "delete">;
 export function createSocialCredentialsRepo(
   db: DbSlice,
   cipher: CredentialCipher,
+  ctx?: TenantScope,
 ): SocialCredentialsRepo {
   return {
     async getLinkedIn(): Promise<LinkedInCredentialRecord | null> {
       const rows = await db
         .select()
         .from(socialCredentials)
-        .where(eq(socialCredentials.platform, "linkedin"))
+        .where(tenantScoped(socialCredentials.tenantId, ctx, eq(socialCredentials.platform, "linkedin")))
         .limit(1);
       if (rows.length === 0) return null;
       const row = rows[0];
@@ -97,7 +98,7 @@ export function createSocialCredentialsRepo(
     },
 
     async getStatus(): Promise<SocialCredentialsStatus> {
-      const rows = await db.select().from(socialCredentials);
+      const rows = await db.select().from(socialCredentials).where(tenantScoped(socialCredentials.tenantId, ctx));
       let linkedin: LinkedInStatus = {
         configured: false,
         apiVersion: null,
@@ -141,6 +142,7 @@ export function createSocialCredentialsRepo(
         .insert(socialCredentials)
         .values({
           platform: "linkedin",
+          tenantId: scopedTenantId(ctx),
           encryptedFields,
           metadata,
           updatedAt: now,
@@ -166,6 +168,7 @@ export function createSocialCredentialsRepo(
         .insert(socialCredentials)
         .values({
           platform: "twitter",
+          tenantId: scopedTenantId(ctx),
           encryptedFields,
           metadata: null,
           updatedAt: now,
@@ -190,6 +193,7 @@ export function createSocialCredentialsRepo(
         .insert(socialCredentials)
         .values({
           platform: "twitter_collector",
+          tenantId: scopedTenantId(ctx),
           encryptedFields,
           metadata: null,
           updatedAt: now,
@@ -206,7 +210,7 @@ export function createSocialCredentialsRepo(
     async delete(platform: SocialCredentialPlatform): Promise<boolean> {
       const result = await db
         .delete(socialCredentials)
-        .where(eq(socialCredentials.platform, platform))
+        .where(tenantScoped(socialCredentials.tenantId, ctx, eq(socialCredentials.platform, platform)))
         .returning({ platform: socialCredentials.platform });
       return result.length > 0;
     },

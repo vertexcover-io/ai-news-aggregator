@@ -21,6 +21,7 @@ const pipelineServiceFile =
 const apiServiceFile = "/repo/packages/api/src/services/run-service.ts";
 const pipelineRepoFile =
   "/repo/packages/pipeline/src/repositories/raw-items-repo.ts";
+const apiRepoFile = "/repo/packages/api/src/repositories/must-read.ts";
 const apiTestFile = "/repo/packages/api/tests/e2e/runs.test.ts";
 
 ruleTester.run("enforce-repository-access", rule, {
@@ -59,6 +60,58 @@ ruleTester.run("enforce-repository-access", rule, {
       name: "type-only default import from drizzle-orm",
       filename: apiServiceFile,
       code: `import type Drizzle from "drizzle-orm";\nconst _d: Drizzle | null = null;\n`,
+    },
+    {
+      name: "test_REQ_014: tenant-owned select scoped via tenantScoped() passes",
+      filename: apiRepoFile,
+      code: [
+        `import { eq } from "drizzle-orm";`,
+        `import { mustReadEntries, tenantScoped } from "@newsletter/shared/db";`,
+        `export function findById(db, ctx, id) {`,
+        `  return db.select().from(mustReadEntries).where(tenantScoped(mustReadEntries.tenantId, ctx, eq(mustReadEntries.id, id))).limit(1);`,
+        `}`,
+      ].join("\n"),
+    },
+    {
+      name: "test_REQ_014: tenant-owned insert stamping tenantId passes",
+      filename: pipelineRepoFile,
+      code: [
+        `import { rawItems, scopedTenantId } from "@newsletter/shared/db";`,
+        `export function insertItem(db, ctx, item) {`,
+        `  return db.insert(rawItems).values({ ...item, tenantId: scopedTenantId(ctx) });`,
+        `}`,
+      ].join("\n"),
+    },
+    {
+      name: "test_REQ_014: explicit withAllTenants() escape hatch passes",
+      filename: apiRepoFile,
+      code: [
+        `import { runArchives, tenantScoped, withAllTenants } from "@newsletter/shared/db";`,
+        `export function listAll(db, superAdminCtx) {`,
+        `  return db.select().from(runArchives).where(tenantScoped(runArchives.tenantId, withAllTenants(superAdminCtx)));`,
+        `}`,
+      ].join("\n"),
+    },
+    {
+      name: "test_REQ_014: non-tenant-owned table (users login lookup) needs no scope",
+      filename: apiRepoFile,
+      code: [
+        `import { eq } from "drizzle-orm";`,
+        `import { users } from "@newsletter/shared/db";`,
+        `export function findByEmail(db, email) {`,
+        `  return db.select().from(users).where(eq(users.email, email)).limit(1);`,
+        `}`,
+      ].join("\n"),
+    },
+    {
+      name: "test_REQ_014: unscoped tenant table in a test file is exempt",
+      filename: apiTestFile,
+      code: [
+        `import { rawItems } from "@newsletter/shared/db";`,
+        `export function readAll(db) {`,
+        `  return db.select().from(rawItems);`,
+        `}`,
+      ].join("\n"),
     },
   ],
   invalid: [
@@ -141,6 +194,53 @@ ruleTester.run("enforce-repository-access", rule, {
       filename: apiServiceFile,
       code: `import "drizzle-orm";\n`,
       errors: [{ messageId: "repositoryOnly" }],
+    },
+    {
+      name: "test_REQ_014_lint_rule_flags_unscoped_query: select from tenant-owned table without tenant filter",
+      filename: apiRepoFile,
+      code: [
+        `import { eq } from "drizzle-orm";`,
+        `import { mustReadEntries } from "@newsletter/shared/db";`,
+        `export function findById(db, id) {`,
+        `  return db.select().from(mustReadEntries).where(eq(mustReadEntries.id, id)).limit(1);`,
+        `}`,
+      ].join("\n"),
+      errors: [{ messageId: "tenantScopeRequired", data: { table: "mustReadEntries" } }],
+    },
+    {
+      name: "test_REQ_014: unscoped insert into tenant-owned table fires",
+      filename: pipelineRepoFile,
+      code: [
+        `import { rawItems } from "@newsletter/shared/db";`,
+        `export function insertItem(db, item) {`,
+        `  return db.insert(rawItems).values(item);`,
+        `}`,
+      ].join("\n"),
+      errors: [{ messageId: "tenantScopeRequired", data: { table: "rawItems" } }],
+    },
+    {
+      name: "test_REQ_014: unscoped update of tenant-owned table fires",
+      filename: apiRepoFile,
+      code: [
+        `import { eq } from "drizzle-orm";`,
+        `import { subscribers } from "@newsletter/shared/db";`,
+        `export function touch(db, id) {`,
+        `  return db.update(subscribers).set({ status: "confirmed" }).where(eq(subscribers.id, id));`,
+        `}`,
+      ].join("\n"),
+      errors: [{ messageId: "tenantScopeRequired", data: { table: "subscribers" } }],
+    },
+    {
+      name: "test_REQ_014: unscoped delete from tenant-owned table fires",
+      filename: apiRepoFile,
+      code: [
+        `import { eq } from "drizzle-orm";`,
+        `import { reviewEdits } from "@newsletter/shared/db";`,
+        `export function wipe(db, runId) {`,
+        `  return db.delete(reviewEdits).where(eq(reviewEdits.runId, runId));`,
+        `}`,
+      ].join("\n"),
+      errors: [{ messageId: "tenantScopeRequired", data: { table: "reviewEdits" } }],
     },
   ],
 });

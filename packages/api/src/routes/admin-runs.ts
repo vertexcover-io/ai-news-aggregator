@@ -8,6 +8,7 @@ import {
 } from "@newsletter/shared";
 import type { RunObservability, RunSourcesResponse } from "@newsletter/shared";
 import type { RunSourceItemsResponse } from "@newsletter/shared/types";
+import type { TenantScope } from "@newsletter/shared/types/tenant-context";
 import {
   createRawItemsRepo,
   type RawItemsRepo,
@@ -21,6 +22,7 @@ import {
   type RunLogRepo,
 } from "@api/repositories/run-logs.js";
 import { buildRunObservability } from "@api/services/run-observability.js";
+import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
 import {
   buildRunSourceItems,
   InvalidSourceKeyError,
@@ -33,9 +35,9 @@ const runIdSchema = z.string().regex(UUID_RE);
 
 export interface AdminRunsRouterDeps {
   redis: IORedis;
-  getRawItemsRepo: () => RawItemsRepo;
-  getArchiveRepo: () => RunArchivesRepo;
-  getRunLogRepo: () => RunLogRepo;
+  getRawItemsRepo: (scope?: TenantScope) => RawItemsRepo;
+  getArchiveRepo: (scope?: TenantScope) => RunArchivesRepo;
+  getRunLogRepo: (scope?: TenantScope) => RunLogRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -55,9 +57,9 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
         c.req.param("sourceKey"),
         {
           redis: deps.redis,
-          archiveRepo: deps.getArchiveRepo(),
-          rawItemsRepo: deps.getRawItemsRepo(),
-          runLogRepo: deps.getRunLogRepo(),
+          archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)),
+          rawItemsRepo: deps.getRawItemsRepo(tenantScopeFromContext(c)),
+          runLogRepo: deps.getRunLogRepo(tenantScopeFromContext(c)),
         },
       );
       return c.json(body);
@@ -80,10 +82,12 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
       return c.json({ error: "invalid runId" }, 400);
     }
     try {
-      const items = await deps.getRawItemsRepo().listForRun(parsed.data, {
-        archiveRepo: deps.getArchiveRepo(),
-        redis: deps.redis,
-      });
+      const items = await deps
+        .getRawItemsRepo(tenantScopeFromContext(c))
+        .listForRun(parsed.data, {
+          archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)),
+          redis: deps.redis,
+        });
       const body: RunSourcesResponse = { runId: parsed.data, items };
       return c.json(body);
     } catch (err) {
@@ -103,8 +107,8 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
     try {
       const body: RunObservability = await buildRunObservability(parsed.data, {
         redis: deps.redis,
-        archiveRepo: deps.getArchiveRepo(),
-        runLogRepo: deps.getRunLogRepo(),
+        archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)),
+        runLogRepo: deps.getRunLogRepo(tenantScopeFromContext(c)),
       });
       return c.json(body);
     } catch (err) {
@@ -122,8 +126,8 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
 export function createDefaultAdminRunsRouter(): Hono {
   return createAdminRunsRouter({
     redis: createRedisConnection(),
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getRunLogRepo: () => createRunLogRepo(defaultGetDb()),
+    getRawItemsRepo: (scope) => createRawItemsRepo(defaultGetDb(), scope),
+    getArchiveRepo: (scope) => createRunArchivesRepo(defaultGetDb(), scope),
+    getRunLogRepo: (scope) => createRunLogRepo(defaultGetDb(), scope),
   });
 }

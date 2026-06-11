@@ -23,6 +23,7 @@ export default defineConfig((options) => ({
     "src/services/credential-cipher.ts",
     "src/types/eval-ranking.ts",
     "src/types/tenant.ts",
+    "src/types/tenant-context.ts",
     "src/types/eval-ranking-schemas.ts",
     "src/constants/eval-ranking.ts",
     "src/constants/tenant.ts",

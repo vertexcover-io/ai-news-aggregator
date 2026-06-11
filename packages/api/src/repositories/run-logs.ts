@@ -1,6 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
-import { runLogs } from "@newsletter/shared/db";
-import type { AppDb, SourceType } from "@newsletter/shared/db";
+import { runLogs, tenantScoped } from "@newsletter/shared/db";
+import type { AppDb, SourceType, TenantScope } from "@newsletter/shared/db";
 import type { RunLogEntry } from "@newsletter/shared";
 
 export interface RunLogSourceLookup {
@@ -17,11 +17,14 @@ export interface RunLogRepo {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function createRunLogRepo(db: Pick<AppDb, "select">): RunLogRepo {
+export function createRunLogRepo(
+  db: Pick<AppDb, "select">,
+  ctx?: TenantScope,
+): RunLogRepo {
   return {
     async listForRun(runId: string): Promise<RunLogEntry[]> {
       if (!UUID_RE.test(runId)) return [];
-      const rows = await selectLogs(db, runId);
+      const rows = await selectLogs(db, ctx, runId);
       return rows.map(toRunLogEntry);
     },
     async listForRunSource(
@@ -29,11 +32,11 @@ export function createRunLogRepo(db: Pick<AppDb, "select">): RunLogRepo {
       source: RunLogSourceLookup,
     ): Promise<RunLogEntry[]> {
       if (!UUID_RE.test(runId)) return [];
-      const exactRows = await selectLogs(db, runId, source.identifier);
+      const exactRows = await selectLogs(db, ctx, runId, source.identifier);
       if (exactRows.length > 0) return exactRows.map(toRunLogEntry);
 
       if (source.identifier === source.sourceType) return [];
-      const fallbackRows = await selectLogs(db, runId, source.sourceType);
+      const fallbackRows = await selectLogs(db, ctx, runId, source.sourceType);
       return fallbackRows.map(toRunLogEntry);
     },
   };
@@ -65,6 +68,7 @@ interface RunLogSelectedRow {
 
 function selectLogs(
   db: Pick<AppDb, "select">,
+  ctx: TenantScope | undefined,
   runId: string,
   source?: string,
 ): Promise<RunLogSelectedRow[]> {
@@ -77,7 +81,7 @@ function selectLogs(
   return db
     .select(RUN_LOG_SELECT)
     .from(runLogs)
-    .where(predicate)
+    .where(tenantScoped(runLogs.tenantId, ctx, predicate))
     .orderBy(asc(runLogs.id));
 }
 

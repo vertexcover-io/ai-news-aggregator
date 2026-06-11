@@ -1,6 +1,6 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
-import { rawItems } from "@newsletter/shared/db";
-import type { AppDb, RawItemInsert, SourceType } from "@newsletter/shared/db";
+import { eq, inArray, sql } from "drizzle-orm";
+import { rawItems, scopedTenantId, tenantScoped } from "@newsletter/shared/db";
+import type { AppDb, RawItemInsert, SourceType, TenantScope } from "@newsletter/shared/db";
 import type { RawItemMetadata, RecapContent } from "@newsletter/shared";
 
 export interface RawItemRow {
@@ -34,6 +34,7 @@ export interface RawItemsRepo {
 
 export function createRawItemsRepo(
   db: Pick<AppDb, "insert" | "select" | "update">,
+  ctx?: TenantScope,
 ): RawItemsRepo {
   return {
     async upsertItems(items: RawItemInsert[]): Promise<void> {
@@ -48,7 +49,7 @@ export function createRawItemsRepo(
         new Map(
           items.map((i) => [`${i.sourceType}::${i.externalId}`, i]),
         ).values(),
-      );
+      ).map((i) => ({ ...i, tenantId: scopedTenantId(ctx) ?? i.tenantId }));
       await db.insert(rawItems).values(deduped).onConflictDoUpdate({
         target: [rawItems.sourceType, rawItems.externalId],
         set: {
@@ -72,7 +73,9 @@ export function createRawItemsRepo(
         .select({ externalId: rawItems.externalId })
         .from(rawItems)
         .where(
-          and(
+          tenantScoped(
+            rawItems.tenantId,
+            ctx,
             eq(rawItems.sourceType, sourceType),
             inArray(rawItems.externalId, externalIds),
           ),
@@ -102,7 +105,9 @@ export function createRawItemsRepo(
         })
         .from(rawItems)
         .where(
-          and(
+          tenantScoped(
+            rawItems.tenantId,
+            ctx,
             eq(rawItems.sourceType, sourceType),
             eq(rawItems.externalId, externalId),
           ),
@@ -129,7 +134,7 @@ export function createRawItemsRepo(
           metadata: rawItems.metadata,
         })
         .from(rawItems)
-        .where(inArray(rawItems.id, ids));
+        .where(tenantScoped(rawItems.tenantId, ctx, inArray(rawItems.id, ids)));
     },
 
     async updateRecapData(updates: { id: number; recap: RecapContent }[]): Promise<void> {
@@ -142,7 +147,7 @@ export function createRawItemsRepo(
             metadata: sql`jsonb_set(coalesce(${rawItems.metadata}, '{}'), '{recap}', ${JSON.stringify(recap)}::jsonb)`,
             updatedAt: now,
           })
-          .where(eq(rawItems.id, id));
+          .where(tenantScoped(rawItems.tenantId, ctx, eq(rawItems.id, id)));
       }
     },
   };

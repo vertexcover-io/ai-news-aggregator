@@ -29,6 +29,8 @@ import {
   createRunArchivesRepo,
   type RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
+import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
 import {
   createUserSettingsRepo,
   type UserSettingsRepo,
@@ -40,9 +42,9 @@ export interface RunsRouterDeps {
   redis: IORedis;
   publisher?: IORedis;
   processingQueue: Queue<RunProcessJobPayload>;
-  getRawItemsRepo: () => RawItemsRepo;
-  getSettingsRepo?: () => UserSettingsRepo;
-  getArchiveRepo?: () => RunArchivesRepo;
+  getRawItemsRepo: (scope?: TenantScope) => RawItemsRepo;
+  getSettingsRepo?: (scope?: TenantScope) => UserSettingsRepo;
+  getArchiveRepo?: (scope?: TenantScope) => RunArchivesRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -86,7 +88,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
   });
 
   runs.post("/now", async (c) => {
-    const settingsRepo = deps.getSettingsRepo?.();
+    const settingsRepo = deps.getSettingsRepo?.(tenantScopeFromContext(c));
     if (!settingsRepo) {
       return c.json({ error: "settings repository not configured" }, 500);
     }
@@ -148,11 +150,11 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       }
       limit = parsed;
     }
-    const archiveRepo = deps.getArchiveRepo?.();
+    const archiveRepo = deps.getArchiveRepo?.(tenantScopeFromContext(c));
     if (!archiveRepo) {
       return c.json({ error: "archive repository not configured" }, 500);
     }
-    const settings = await deps.getSettingsRepo?.().get();
+    const settings = await deps.getSettingsRepo?.(tenantScopeFromContext(c)).get();
     const timezone = safeTimezone(settings?.scheduleTimezone);
     const runsList = await listRuns(limit, {
       redis: deps.redis,
@@ -171,7 +173,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     const state = JSON.parse(raw) as RunState;
     if (state.status === "completed" && Array.isArray(state.rankedItems)) {
       const hydrated = await hydrateRankedItems(
-        deps.getRawItemsRepo(),
+        deps.getRawItemsRepo(tenantScopeFromContext(c)),
         state.rankedItems,
         null,
       );
@@ -182,7 +184,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
 
   runs.post("/:runId/cancel", async (c) => {
     const runId = c.req.param("runId");
-    const archiveRepo = deps.getArchiveRepo?.();
+    const archiveRepo = deps.getArchiveRepo?.(tenantScopeFromContext(c));
     if (!archiveRepo) {
       return c.json({ error: "archive repository not configured" }, 500);
     }
@@ -228,7 +230,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       return c.json({ error: "invalid runId: must be a UUID" }, 400);
     }
 
-    const archiveRepo = deps.getArchiveRepo?.();
+    const archiveRepo = deps.getArchiveRepo?.(tenantScopeFromContext(c));
     if (!archiveRepo) {
       return c.json({ error: "archive repository not configured" }, 500);
     }
@@ -285,8 +287,8 @@ export function createDefaultRunsRouter(): Hono {
     redis: createRedisConnection(),
     publisher: createRedisConnection(),
     processingQueue: getDefaultProcessingQueue(),
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
+    getRawItemsRepo: (scope) => createRawItemsRepo(defaultGetDb(), scope),
+    getSettingsRepo: (scope) => createUserSettingsRepo(defaultGetDb(), scope),
+    getArchiveRepo: (scope) => createRunArchivesRepo(defaultGetDb(), scope),
   });
 }

@@ -18,6 +18,7 @@
     "./services": "./dist/services/index.js",
     "./services/credential-cipher": "./dist/services/credential-cipher.js",
     "./types/tenant": "./dist/types/tenant.js",
+    "./types/tenant-context": "./dist/types/tenant-context.js",
     "./types/eval-ranking": "./dist/types/eval-ranking.js",
     "./types/eval-ranking-schemas": "./dist/types/eval-ranking-schemas.js",
     "./constants/eval-ranking": "./dist/constants/eval-ranking.js",

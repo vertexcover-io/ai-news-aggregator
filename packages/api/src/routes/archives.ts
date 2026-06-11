@@ -25,6 +25,8 @@ import {
   createRawItemsRepo,
   type RawItemsRepo,
 } from "@api/repositories/raw-items.js";
+import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
 import {
   createRunArchivesRepo,
   type RunArchiveRow,
@@ -60,10 +62,10 @@ import {
 import { captureAnalytics } from "@api/lib/posthog.js";
 
 export interface ArchivesRouterDeps {
-  getRawItemsRepo: () => RawItemsRepo;
-  getArchiveRepo: () => RunArchivesRepo;
-  getReviewEditsRepo?: () => ReviewEditsRepo;
-  getSettingsRepo?: () => Pick<UserSettingsRepo, "get">;
+  getRawItemsRepo: (scope?: TenantScope) => RawItemsRepo;
+  getArchiveRepo: (scope?: TenantScope) => RunArchivesRepo;
+  getReviewEditsRepo?: (scope?: TenantScope) => ReviewEditsRepo;
+  getSettingsRepo?: (scope?: TenantScope) => Pick<UserSettingsRepo, "get">;
   hydrateAddedPost?: HydrateAddedPostFn;
   generateRecapFn?: GenerateRecapFn;
   generateDigestMeta?: GenerateDigestMetaFn;
@@ -157,7 +159,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
   archives.get("/:runId", async (c) => {
     const runId = c.req.param("runId");
     try {
-      const archive = await deps.getArchiveRepo().findById(runId);
+      const archive = await deps.getArchiveRepo(tenantScopeFromContext(c)).findById(runId);
       if (!archive) return c.json({ error: "not found" }, 404);
       const timezone = await getConfiguredTimezone(deps);
 
@@ -203,7 +205,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         twitterPostedAt: archive.twitterPostedAt?.toISOString() ?? null,
       };
 
-      const reviewEditsRepo = deps.getReviewEditsRepo?.();
+      const reviewEditsRepo = deps.getReviewEditsRepo?.(tenantScopeFromContext(c));
       const reviewEdits = reviewEditsRepo
         ? await reviewEditsRepo.listForRun(runId)
         : [];
@@ -216,7 +218,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
 
       if (archive.status === "completed" && Array.isArray(archive.rankedItems)) {
         const hydrated = await hydrateRankedItems(
-          deps.getRawItemsRepo(),
+          deps.getRawItemsRepo(tenantScopeFromContext(c)),
           archive.rankedItems,
           archive.completedAt,
         );
@@ -245,9 +247,9 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     const publish = parsed.data.publish ?? true;
     try {
       const updated = await patchArchive(runId, parsed.data, {
-        archiveRepo: deps.getArchiveRepo(),
-        rawItemsRepo: deps.getRawItemsRepo(),
-        reviewEditsRepo: deps.getReviewEditsRepo?.(),
+        archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)),
+        rawItemsRepo: deps.getRawItemsRepo(tenantScopeFromContext(c)),
+        reviewEditsRepo: deps.getReviewEditsRepo?.(tenantScopeFromContext(c)),
       });
       logger.info(
         { event: "archive.patched", runId, count: parsed.data.rankedItems.length, publish },
@@ -259,7 +261,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         properties: { run_id: runId, item_count: parsed.data.rankedItems.length },
       });
       if (publish && deps.processingQueue && deps.getSettingsRepo) {
-        const settings = await deps.getSettingsRepo().get();
+        const settings = await deps.getSettingsRepo(tenantScopeFromContext(c)).get();
         if (settings) {
           const channels = selectImmediatePublishChannels({
             settings,
@@ -305,7 +307,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
 
   archives.post("/:runId/send", async (c) => {
     const runId = c.req.param("runId");
-    const archive = await deps.getArchiveRepo().findById(runId);
+    const archive = await deps.getArchiveRepo(tenantScopeFromContext(c)).findById(runId);
     if (!archive) return c.json({ error: "not found" }, 404);
     if (deps.processingQueue) {
       await deps.processingQueue.add(
@@ -340,8 +342,8 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     }
     try {
       const ranked = await addPostToArchive(runId, parsed.data, {
-        archiveRepo: deps.getArchiveRepo(),
-        rawItemsRepo: deps.getRawItemsRepo(),
+        archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)),
+        rawItemsRepo: deps.getRawItemsRepo(tenantScopeFromContext(c)),
         hydrateAddedPost: deps.hydrateAddedPost,
       });
       logger.info(
@@ -397,8 +399,8 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     }
     try {
       const meta = await regenerateDigestMeta(runId, parsed.data, {
-        archiveRepo: deps.getArchiveRepo(),
-        rawItemsRepo: deps.getRawItemsRepo(),
+        archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)),
+        rawItemsRepo: deps.getRawItemsRepo(tenantScopeFromContext(c)),
         generateDigestMeta: deps.generateDigestMeta,
       });
       logger.info(
@@ -450,7 +452,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
           selectedSourceTypes,
           shortlistedOnly,
         },
-        { archiveRepo: deps.getArchiveRepo() },
+        { archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)) },
       );
       return c.json(result);
     } catch (err) {
@@ -461,9 +463,9 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
 
   archives.get("/:runId/source-facets", async (c) => {
     const runId = c.req.param("runId");
-    const archive = await deps.getArchiveRepo().findById(runId);
+    const archive = await deps.getArchiveRepo(tenantScopeFromContext(c)).findById(runId);
     if (!archive) return c.json({ error: "not found" }, 404);
-    const facets = await deps.getArchiveRepo().getSourceFacets(runId);
+    const facets = await deps.getArchiveRepo(tenantScopeFromContext(c)).getSourceFacets(runId);
     return c.json({ facets });
   });
 
@@ -482,8 +484,8 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     try {
       const generateRecapFn = deps.generateRecapFn ?? createDefaultGenerateRecapFn();
       const ranked = await promoteItem(runId, parsed.data, {
-        archiveRepo: deps.getArchiveRepo(),
-        rawItemsRepo: deps.getRawItemsRepo(),
+        archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)),
+        rawItemsRepo: deps.getRawItemsRepo(tenantScopeFromContext(c)),
         generateRecapFn,
       });
       logger.info(
@@ -513,7 +515,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     if (!parsed.success) {
       return c.json({ error: "invalid runId" }, 400);
     }
-    const result = await deps.getArchiveRepo().delete(runId);
+    const result = await deps.getArchiveRepo(tenantScopeFromContext(c)).delete(runId);
     // Always attempt Redis cleanup, even when the DB row was absent: a ghost
     // run (Redis run-state present but archive upsert never reached) is
     // exactly the case where Delete must work. `redis.del` returns the number
@@ -597,10 +599,10 @@ function getDefaultProcessingQueue(): Queue {
 
 function createDefaultArchivesDeps(): ArchivesRouterDeps {
   return {
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getReviewEditsRepo: () => createReviewEditsRepo(defaultGetDb()),
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getRawItemsRepo: (scope) => createRawItemsRepo(defaultGetDb(), scope),
+    getArchiveRepo: (scope) => createRunArchivesRepo(defaultGetDb(), scope),
+    getReviewEditsRepo: (scope) => createReviewEditsRepo(defaultGetDb(), scope),
+    getSettingsRepo: (scope) => createUserSettingsRepo(defaultGetDb(), scope),
     hydrateAddedPost: createDefaultHydrateAddedPost(),
     generateRecapFn: createDefaultGenerateRecapFn(),
     generateDigestMeta: createDefaultGenerateDigestMetaFn(),
