@@ -33,10 +33,15 @@ export async function ensurePipelineTenant(): Promise<TenantContext> {
       slug: E2E_TENANT_SLUG,
       name: "AgentLoop (pipeline e2e)",
       status: "active",
+      // AGENTLOOP is grandfathered to a verified sending domain in production
+      // (migration 0047), so its subscriber broadcasts pass the P14 fail-closed
+      // gate. The fixture mirrors that — without it, the broadcast path is
+      // blocked and no email_sends rows are written.
+      sendingDomainStatus: "verified",
     })
     .onConflictDoUpdate({
       target: tenants.slug,
-      set: { updatedAt: new Date() },
+      set: { updatedAt: new Date(), sendingDomainStatus: "verified" },
     });
   resetDefaultTenantScopeForTests();
   const scope = await primeDefaultTenantScope(db);
