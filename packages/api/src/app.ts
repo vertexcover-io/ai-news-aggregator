@@ -76,6 +76,14 @@ export interface BuildAppDeps {
    * unit tests composing buildApp keep working — index.ts always provides it.
    */
   tenantSourcesRouter?: Hono;
+  /**
+   * Onboarding wizard routes (P11, REQ-030–038): GET/PATCH /api/onboarding,
+   * slug-available, generate-prompts, discover-sources, activate — mounted
+   * gated at /api/onboarding (the wizard is a tenant_admin surface).
+   * Optional ONLY so existing unit tests composing buildApp keep working —
+   * index.ts always provides it.
+   */
+  onboardingRouter?: Hono;
 }
 
 /**
@@ -173,6 +181,11 @@ export function buildApp(deps: BuildAppDeps): Hono {
   // summary router above already handled (GET /summary) never reach this.
   if (deps.tenantSourcesRouter) {
     app.route("/api/sources", gatedWrap(gate, deps.tenantSourcesRouter));
+  }
+
+  // Onboarding wizard (P11) — auth-gated tenant_admin surface.
+  if (deps.onboardingRouter) {
+    app.route("/api/onboarding", gatedWrap(gate, deps.onboardingRouter));
   }
 
   // Super-admin console (self-gated via requireSuperAdmin inside the router).

@@ -30,6 +30,7 @@ import { TermsPage } from "./pages/TermsPage";
 import { PublicLayout } from "./layouts/PublicLayout";
 import { AdminLayout } from "./layouts/AdminLayout";
 import { RequireAdmin } from "./layouts/RequireAdmin";
+import { RequireOnboarding } from "./layouts/RequireOnboarding";
 
 export const routes: RouteObject[] = [
   {
@@ -56,10 +57,15 @@ export const routes: RouteObject[] = [
     path: "/admin",
     element: <RequireAdmin />,
     children: [
-      { path: "onboarding", element: <OnboardingPage /> },
       {
-        element: <AdminLayout />,
+        // pending_setup → funnelled into the wizard; active → wizard exits
+        // to the dashboard (P11, REQ-030/035).
+        element: <RequireOnboarding />,
         children: [
+          { path: "onboarding", element: <OnboardingPage /> },
+          {
+            element: <AdminLayout />,
+            children: [
           { index: true, element: <DashboardPage /> },
           { path: "runs/:runId", element: <RunObservabilityPage /> },
           { path: "review/:runId", element: <ReviewPage /> },
@@ -73,6 +79,8 @@ export const routes: RouteObject[] = [
           { path: "must-read", element: <AdminMustReadListPage /> },
           { path: "must-read/new", element: <AdminMustReadEditPage /> },
           { path: "must-read/:id", element: <AdminMustReadEditPage /> },
+            ],
+          },
         ],
       },
     ],

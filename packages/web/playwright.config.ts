@@ -58,6 +58,12 @@ export default defineConfig({
         // Any new e2e that exercises a Slack-triggering path asserts intent via
         // logs/DB state, never a live send. See packages/web/CLAUDE.md (E2E rules).
         SLACK_WEBHOOK_URL: "",
+        // Same rule for the onboarding wizard's AI endpoints (P11): force-blank
+        // the keys so a stray request can never reach Anthropic/Tavily — the
+        // wizard spec stubs /api/onboarding/{generate-prompts,discover-sources}
+        // at the browser network layer (page.route) instead.
+        ANTHROPIC_API_KEY: "",
+        TAVILY_API_KEY: "",
       },
     },
     {

@@ -100,6 +100,10 @@ export function createResolveTenant(deps: ResolveTenantDeps): MiddlewareHandler 
     const repo = deps.getTenantsRepo();
     const tenant = await repo.findBySlug(classification.slug);
     if (tenant !== null) {
+      // Only ACTIVE tenants have a public site (P11, REQ-031/035): a
+      // pending_setup tenant's host serves the same generic 404 as an
+      // unknown slug until the onboarding wizard activates it.
+      if (tenant.status !== "active") return notFound(c);
       c.set("publicTenant", { tenantId: tenant.id, slug: tenant.slug });
       await next();
       return;
@@ -108,6 +112,7 @@ export function createResolveTenant(deps: ResolveTenantDeps): MiddlewareHandler 
     // Slug miss: the tenant may have been renamed (REQ-023, EDGE-002).
     const renamed = await repo.findByPreviousSlug(classification.slug);
     if (renamed !== null) {
+      if (renamed.status !== "active") return notFound(c);
       if (classification.kind === "slug" && classification.redirectable) {
         return c.redirect(
           slugRedirectUrl(c, classification.slug, renamed.slug),

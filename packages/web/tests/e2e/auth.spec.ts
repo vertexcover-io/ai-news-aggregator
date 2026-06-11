@@ -72,9 +72,10 @@ test.describe("signup", () => {
     await page.getByRole("button", { name: /Create account/i }).click();
 
     await expect(page).toHaveURL(/\/admin\/onboarding/, { timeout: 10_000 });
+    // P11: signup lands on the real wizard's first step.
     await expect(
-      page.getByRole("heading", { name: /^Onboarding$/i, level: 1 }),
-    ).toBeVisible();
+      page.getByRole("heading", { name: /Name your newsletter/i, level: 2 }),
+    ).toBeVisible({ timeout: 10_000 });
 
     // DB truth: tenant_admin user + pending_setup tenant (REQ-001).
     const db = makeDbClient();
@@ -133,19 +134,25 @@ test.describe("signup", () => {
   }) => {
     await context.clearCookies();
     await page.goto("/signup");
-    await page.getByLabel(/Your name/i).fill("E2E Dup");
-    // The seeded admin's email is guaranteed to exist.
-    await page.getByLabel(/^Email$/i).fill(ADMIN_EMAIL);
-    await page.getByLabel(/^Password$/i).fill(PASSWORD);
-    await page.getByLabel(/Confirm password/i).fill(PASSWORD);
-    const signupResponse = page.waitForResponse(
-      (r) =>
-        r.url().includes("/api/auth/signup") &&
-        r.request().method() === "POST",
-      { timeout: 10_000 },
-    );
-    await page.getByRole("button", { name: /Create account/i }).click();
-    expect((await signupResponse).status()).toBe(409);
+    // Retried as a block: a Vite dependency re-optimization (e.g. after the
+    // preceding happy-path test loads the P11 wizard's chunks) can
+    // full-reload this page mid-fill and wipe form state, so the click then
+    // never fires the POST (same pattern as the mismatch test above).
+    await expect(async () => {
+      await page.getByLabel(/Your name/i).fill("E2E Dup");
+      // The seeded admin's email is guaranteed to exist.
+      await page.getByLabel(/^Email$/i).fill(ADMIN_EMAIL);
+      await page.getByLabel(/^Password$/i).fill(PASSWORD);
+      await page.getByLabel(/Confirm password/i).fill(PASSWORD);
+      const signupResponse = page.waitForResponse(
+        (r) =>
+          r.url().includes("/api/auth/signup") &&
+          r.request().method() === "POST",
+        { timeout: 10_000 },
+      );
+      await page.getByRole("button", { name: /Create account/i }).click();
+      expect((await signupResponse).status()).toBe(409);
+    }).toPass({ timeout: 45_000 });
 
     await expect(page.getByRole("alert")).toContainText(/already in use/i, {
       timeout: 10_000,

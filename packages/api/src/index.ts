@@ -34,6 +34,7 @@ import { createSocialTokensRepo } from "@api/repositories/social-tokens.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createDefaultAdminMustReadRouter } from "@api/routes/admin-must-read.js";
 import { createAuthRouter } from "@api/routes/auth.js";
+import { createDefaultOnboardingRouter } from "@api/routes/onboarding.js";
 import { createSuperAdminRouter } from "@api/routes/super-admin.js";
 import { createUsersRepo } from "@api/repositories/users.js";
 import { createTenantsRepo } from "@api/repositories/tenants.js";
@@ -295,6 +296,13 @@ const app = buildApp({
   resolveTenant: createResolveTenant({
     config: loadDomainConfig(process.env),
     getTenantsRepo: () => createTenantsRepo(getDb()),
+  }),
+  // Onboarding wizard (P11) — resumable state, slug check, prompt-gen,
+  // source discovery, activation. Activation reconciles the per-tenant
+  // schedulers on the same queues the settings save path uses.
+  onboardingRouter: createDefaultOnboardingRouter({
+    processingQueue,
+    collectorHealthQueue,
   }),
   // Super-admin console + audited impersonation (P6) — requireSuperAdmin
   // is applied inside the router factory.

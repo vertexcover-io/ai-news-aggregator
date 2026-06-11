@@ -1,7 +1,10 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { tenants } from "@newsletter/shared/db";
 import type { AppDb, TenantRow } from "@newsletter/shared/db";
-import type { TenantStatus } from "@newsletter/shared/types/tenant";
+import type {
+  OnboardingState,
+  TenantStatus,
+} from "@newsletter/shared/types/tenant";
 
 // Row type re-exported so routes/services can type tenants without importing
 // the restricted DB module (S-api-01).
@@ -30,6 +33,37 @@ export interface TenantsRepo {
   create(input: CreateTenantInput): Promise<TenantRow>;
   /** Sets the new slug and records the outgoing one in `previousSlug`. */
   updateSlug(id: string, newSlug: string): Promise<TenantRow | null>;
+  /** Persists resumable wizard progress (P11, REQ-030). */
+  updateOnboardingState(
+    id: string,
+    state: OnboardingState,
+  ): Promise<TenantRow | null>;
+  /**
+   * Stores validated logo bytes + content type (P11, REQ-029). Callers must
+   * have run `validateLogo` first — a rejected upload never reaches here, so
+   * the previously stored logo stays intact (REQ-039).
+   */
+  updateLogo(
+    id: string,
+    bytes: Buffer,
+    contentType: string,
+  ): Promise<TenantRow | null>;
+  /**
+   * Applies the wizard's profile slots and flips the tenant `active`
+   * (P11, REQ-035) in one update.
+   */
+  completeOnboarding(
+    id: string,
+    profile: OnboardingCompletionProfile,
+  ): Promise<TenantRow | null>;
+}
+
+export interface OnboardingCompletionProfile {
+  name: string;
+  headline: string;
+  topicStrip: string | null;
+  subtagline: string | null;
+  onboardingState: OnboardingState;
 }
 
 export function createTenantsRepo(
@@ -67,6 +101,55 @@ export function createTenantsRepo(
         .set({
           previousSlug: sql`${tenants.slug}`,
           slug: newSlug,
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.id, id))
+        .returning();
+      return rows[0] ?? null;
+    },
+
+    async updateOnboardingState(
+      id: string,
+      state: OnboardingState,
+    ): Promise<TenantRow | null> {
+      const rows = await db
+        .update(tenants)
+        .set({ onboardingState: state, updatedAt: new Date() })
+        .where(eq(tenants.id, id))
+        .returning();
+      return rows[0] ?? null;
+    },
+
+    async updateLogo(
+      id: string,
+      bytes: Buffer,
+      contentType: string,
+    ): Promise<TenantRow | null> {
+      const rows = await db
+        .update(tenants)
+        .set({
+          logoBytes: bytes,
+          logoContentType: contentType,
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.id, id))
+        .returning();
+      return rows[0] ?? null;
+    },
+
+    async completeOnboarding(
+      id: string,
+      profile: OnboardingCompletionProfile,
+    ): Promise<TenantRow | null> {
+      const rows = await db
+        .update(tenants)
+        .set({
+          name: profile.name,
+          headline: profile.headline,
+          topicStrip: profile.topicStrip,
+          subtagline: profile.subtagline,
+          onboardingState: profile.onboardingState,
+          status: "active",
           updatedAt: new Date(),
         })
         .where(eq(tenants.id, id))
