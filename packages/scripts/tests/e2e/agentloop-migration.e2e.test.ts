@@ -409,4 +409,70 @@ describe("AGENTLOOP tenant-0 backfill migration (e2e)", () => {
     expect(inserted?.tenant_id).toBe(backfill.tenantId);
     await sql`DELETE FROM raw_items WHERE external_id = 'hn-post-enforce-1'`;
   });
+
+  // P14 fix (REQ-053 regression guard / EDGE-005): AGENTLOOP historically
+  // broadcasts via the shared platform sender, so tenant 0 — and ONLY tenant
+  // 0 — is grandfathered to sending_domain_status='verified'. Migration 0046
+  // added the column NULLABLE with no default, which would have left
+  // AGENTLOOP NULL → blocked by the (fail-closed) broadcast gate.
+  it("test_REQ_053_agentloop_grandfathered_verified — full migrations grandfather AGENTLOOP to 'verified'; fresh tenants stay NULL (blocked) and the column has NO default", async () => {
+    // The data migration (applied with the full folder in the previous test)
+    // healed the AGENTLOOP row: NULL → 'verified'.
+    const [agentloop] = await sql<{ sending_domain_status: string | null }[]>`
+      SELECT sending_domain_status FROM tenants WHERE id = ${backfill.tenantId}
+    `;
+    expect(agentloop?.sending_domain_status).toBe("verified");
+
+    // NOT a column default: a brand-new tenant must come up NULL → its
+    // broadcast stays blocked until it actually verifies a domain (REQ-053).
+    const [colDefault] = await sql<{ column_default: string | null }[]>`
+      SELECT column_default FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'tenants'
+        AND column_name = 'sending_domain_status'
+    `;
+    expect(colDefault?.column_default).toBeNull();
+
+    const [fresh] = await sql<{ sending_domain_status: string | null }[]>`
+      INSERT INTO tenants (slug, name) VALUES ('fresh-signup', 'Fresh Signup')
+      RETURNING sending_domain_status
+    `;
+    expect(fresh?.sending_domain_status).toBeNull();
+  });
+
+  it("test_REQ_053_backfill_rerun_heals_sending_domain — backfill re-run (post-0046 schema) restores 'verified' for AGENTLOOP only, never clobbers a real status, leaves other tenants NULL", async () => {
+    // Simulate a DB where the column landed after the original backfill ran.
+    await sql`
+      UPDATE tenants SET sending_domain_status = NULL WHERE id = ${backfill.tenantId}
+    `;
+
+    const rerun = await runAgentloopBackfill(sql, BACKFILL_CONFIG);
+    expect(rerun.tenantId).toBe(backfill.tenantId);
+
+    const [agentloop] = await sql<{ sending_domain_status: string | null }[]>`
+      SELECT sending_domain_status FROM tenants WHERE id = ${backfill.tenantId}
+    `;
+    expect(agentloop?.sending_domain_status).toBe("verified");
+
+    // Tenant-0-only: the fresh tenant from the previous test is untouched.
+    const [fresh] = await sql<{ sending_domain_status: string | null }[]>`
+      SELECT sending_domain_status FROM tenants WHERE slug = 'fresh-signup'
+    `;
+    expect(fresh?.sending_domain_status).toBeNull();
+
+    // Guarded (IS NULL): a real in-flight status is never overwritten back
+    // to 'verified' by an idempotent re-run.
+    await sql`
+      UPDATE tenants SET sending_domain_status = 'pending' WHERE id = ${backfill.tenantId}
+    `;
+    await runAgentloopBackfill(sql, BACKFILL_CONFIG);
+    const [pending] = await sql<{ sending_domain_status: string | null }[]>`
+      SELECT sending_domain_status FROM tenants WHERE id = ${backfill.tenantId}
+    `;
+    expect(pending?.sending_domain_status).toBe("pending");
+
+    // Restore the grandfathered state for any later assertions.
+    await sql`
+      UPDATE tenants SET sending_domain_status = 'verified' WHERE id = ${backfill.tenantId}
+    `;
+  });
 });

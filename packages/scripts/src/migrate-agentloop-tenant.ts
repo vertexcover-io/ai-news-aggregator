@@ -135,6 +135,28 @@ export async function runAgentloopBackfill(
       throw new Error(`unexpected non-uuid tenant id: ${tenantId}`);
     }
 
+    // -- 1b. Grandfather the sending domain (P14, REQ-053/EDGE-005). ----------
+    // AGENTLOOP broadcasts via the shared platform sender, so tenant 0 — and
+    // ONLY tenant 0 (guarded by id) — is marked `verified`; otherwise the
+    // fail-closed broadcast gate would block its real subscriber broadcasts
+    // (migration 0046 added the column NULLABLE with no default). The IS NULL
+    // guard keeps re-runs from clobbering a real in-flight status, and the
+    // column-existence check lets this script run against pre-0046 schemas
+    // (the rehearsal order applies migrations through 0040 before backfill —
+    // migration 0047 covers that ordering). Deliberately NOT a column default:
+    // fresh tenants must stay NULL → blocked until they verify (REQ-053).
+    const domainStatusColumn = await tx`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'tenants'
+        AND column_name = 'sending_domain_status'
+    `;
+    if (domainStatusColumn.length > 0) {
+      await tx`
+        UPDATE tenants SET sending_domain_status = 'verified'
+        WHERE id = ${tenantId} AND sending_domain_status IS NULL
+      `;
+    }
+
     // -- 2. Tenant admin + platform super-admins (idempotent, no overwrite). --
     const adminPassword = cfg.adminPassword ?? generateTempPassword();
     const insertedAdmin = await tx`

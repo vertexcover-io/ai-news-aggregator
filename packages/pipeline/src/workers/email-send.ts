@@ -83,13 +83,14 @@ export interface EmailSendDeps {
   subscribersRepo: PipelineSubscribersRepo;
   /**
    * P14 (REQ-053/EDGE-006): tenant sending-domain lookup for the broadcast
-   * gate. OPTIONAL with a fail-open default so legacy callers/tests keep the
-   * pre-P14 behavior; production (`buildDefaultPublishDeps`) always provides
-   * it, which makes the gate active: a broadcast is BLOCKED unless the job
-   * tenant's domain status is `verified`. Targeted sends (welcome/back-issue)
-   * and API-side transactional mail are never gated (EDGE-005).
+   * gate. REQUIRED — fail-closed: the gate cannot be disabled by omitting the
+   * repo (a previous optional-with-fail-open default let exactly that happen).
+   * Production (`buildDefaultPublishDeps`) wires `createPipelineTenantsRepo`,
+   * and a broadcast is BLOCKED unless the job tenant's domain status is
+   * `verified`. Targeted sends (welcome/back-issue) and API-side transactional
+   * mail use the shared platform sender and are never gated (EDGE-005).
    */
-  tenantsRepo?: Pick<PipelineTenantsRepo, "getSendingDomainStatus">;
+  tenantsRepo: Pick<PipelineTenantsRepo, "getSendingDomainStatus">;
   emailSendsRepo: PipelineEmailSendsRepo;
   archiveRepo: RunArchivesRepo;
   rawItemsRepo: RawItemsRepo;
@@ -210,9 +211,10 @@ export async function handleEmailSendJob(
   // from the tenant's own sending domain, so it is BLOCKED until that domain
   // is verified with Resend. Targeted sends (the welcome back-issue) and all
   // API-side transactional mail use the shared platform sender and are never
-  // gated (EDGE-005). `tenantsRepo` is optional for legacy callers — absent
-  // means pre-P14 single-tenant behavior (no gate).
-  if (isBroadcast && deps.tenantsRepo !== undefined) {
+  // gated (EDGE-005). FAIL-CLOSED: `tenantsRepo` is required, so the gate runs
+  // on every broadcast — an untyped caller omitting it gets a thrown TypeError
+  // here, before any email goes out (never a silent bypass).
+  if (isBroadcast) {
     const domainStatus = await deps.tenantsRepo.getSendingDomainStatus();
     if (domainStatus !== "verified") {
       logger.warn(

@@ -99,6 +99,11 @@ function makeDeps(
       updateRecapData: vi.fn(),
       listForRun: vi.fn(() => Promise.resolve([])),
     },
+    // Default: a verified tenant — the broadcast gate is consulted and passes.
+    // Gate-behavior tests override this with pending/failed/null statuses.
+    tenantsRepo: {
+      getSendingDomainStatus: vi.fn(() => Promise.resolve("verified" as const)),
+    },
     renderNewsletter: vi.fn(() => Promise.resolve("<html>newsletter</html>")),
     sessionSecret: "secret",
     fromMail: "newsletter@example.com",
@@ -185,24 +190,40 @@ describe("sending-domain broadcast gate (P14)", () => {
     },
   );
 
-  it("allows the broadcast when the tenant sending domain is verified", async () => {
+  it("allows the broadcast when the tenant sending domain is verified — and proves the gate path actually ran", async () => {
     const archive = makeArchive();
-    const deps = makeDeps(archive, { tenantsRepo: makeTenantsRepo("verified") });
+    const tenantsRepo = makeTenantsRepo("verified");
+    const deps = makeDeps(archive, { tenantsRepo });
 
     await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
 
+    // The gate is consulted on EVERY broadcast (fail-closed design): a
+    // verified status is the only thing that lets the send proceed.
+    expect(tenantsRepo.getSendingDomainStatus).toHaveBeenCalledOnce();
     expect(deps.emailProvider.send).toHaveBeenCalledOnce();
     expect(deps.archiveRepo.markEmailSent).toHaveBeenCalledOnce();
   });
 
-  it("legacy deps without a tenantsRepo stay ungated (back-compat default)", async () => {
+  // SECURITY (fail-closed): `tenantsRepo` is REQUIRED on EmailSendDeps, so a
+  // typed caller cannot omit it (compile-time guarantee). This test simulates
+  // the only remaining bypass vector — an untyped/JS caller omitting the repo
+  // at runtime — and proves the broadcast still cannot go out unchecked: the
+  // job fails before any email is sent and the archive marker stays unset.
+  it("test_REQ_053_fail_closed_gate_omission — omitting tenantsRepo can no longer bypass the gate: the broadcast never sends", async () => {
     const archive = makeArchive();
-    const deps = makeDeps(archive);
+    const base = makeDeps(archive);
+    const depsWithoutRepo = { ...base, tenantsRepo: undefined };
 
-    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+    await expect(
+      handleEmailSendJob(depsWithoutRepo as never, {
+        name: "email-send",
+        id: "job-1",
+        data: {},
+      }),
+    ).rejects.toThrow();
 
-    expect(deps.emailProvider.send).toHaveBeenCalledOnce();
-    expect(deps.archiveRepo.markEmailSent).toHaveBeenCalledOnce();
+    expect(base.emailProvider.send).not.toHaveBeenCalled();
+    expect(base.archiveRepo.markEmailSent).not.toHaveBeenCalled();
   });
 
   it("test_EDGE_006_publish_without_domain_blocks_broadcast_allows_social — social publish proceeds while the email broadcast is blocked", async () => {

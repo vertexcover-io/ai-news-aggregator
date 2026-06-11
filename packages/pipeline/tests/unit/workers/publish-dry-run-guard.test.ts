@@ -175,6 +175,10 @@ describe("publish workers dry-run guard", () => {
         {
           emailProvider: emailProvider as never,
           subscribersRepo: subscribersRepo as never,
+          // Required (fail-closed gate); irrelevant here — dry-run returns early.
+          tenantsRepo: {
+            getSendingDomainStatus: vi.fn(() => Promise.resolve("verified" as const)),
+          },
           emailSendsRepo: emailSendsRepo as never,
           archiveRepo: archiveRepo as never,
           rawItemsRepo: rawItemsRepo as never,
