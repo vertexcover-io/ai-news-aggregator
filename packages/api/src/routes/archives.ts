@@ -281,7 +281,8 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
           const enqueued: PublishChannel[] = [];
           for (const channel of channels) {
             if (sentAt[channel] != null) continue;
-            await deps.processingQueue.add(channel, { runId }, { jobId: jobIdFor(channel, runId), delay: 0 });
+            const tenantCtx = resolveTenantCtx(c);
+            await deps.processingQueue.add(channel, { runId, tenantId: tenantCtx.tenantId }, { jobId: jobIdFor(channel, runId), delay: 0 });
             enqueued.push(channel);
           }
           const pastDue = new Set<PublishChannel>(channels);
@@ -315,9 +316,10 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     const archive = await deps.getArchiveRepo(resolveTenantCtx(c)).findById(runId);
     if (!archive) return c.json({ error: "not found" }, 404);
     if (deps.processingQueue) {
+      const tenantCtx = resolveTenantCtx(c);
       await deps.processingQueue.add(
         "email-send",
-        { runId },
+        { runId, tenantId: tenantCtx.tenantId },
         { jobId: jobIdFor("email-send", runId), delay: 0 },
       );
       logger.info(

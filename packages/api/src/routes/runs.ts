@@ -259,7 +259,8 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     // Social post jobs carry only { runId } but share the processing queue.
     // Queue<RunProcessJobPayload> is structurally compatible via BullMQ's base class —
     // casting through the base QueueBase which exposes an untyped add.
-    await (deps.processingQueue as Queue).add(jobName, { runId });
+    const tenantCtx = resolveTenantCtx(c);
+    await (deps.processingQueue as Queue).add(jobName, { runId, tenantId: tenantCtx.tenantId });
 
     logger.info({ event: "run.post.manual", runId, channel }, "run.post.manual");
     void captureAnalytics({
