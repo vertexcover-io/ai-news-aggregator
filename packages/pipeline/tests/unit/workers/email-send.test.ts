@@ -103,6 +103,7 @@ function makeDeps(
     // Gate-behavior tests override this with pending/failed/null statuses.
     tenantsRepo: {
       getSendingDomainStatus: vi.fn(() => Promise.resolve("verified" as const)),
+      getSendingDomainName: vi.fn(() => Promise.resolve(null)),
     },
     renderNewsletter: vi.fn(() => Promise.resolve("<html>newsletter</html>")),
     sessionSecret: "secret",
@@ -147,10 +148,17 @@ beforeEach(() => {
 // P14: sending-domain broadcast gate (REQ-053 / EDGE-005 / EDGE-006, REQ-052)
 // ─────────────────────────────────────────────────────────────────────────────
 describe("sending-domain broadcast gate (P14)", () => {
-  function makeTenantsRepo(status: "pending" | "verified" | "failed" | null): {
+  function makeTenantsRepo(
+    status: "pending" | "verified" | "failed" | null,
+    name: string | null = null,
+  ): {
     getSendingDomainStatus: ReturnType<typeof vi.fn>;
+    getSendingDomainName: ReturnType<typeof vi.fn>;
   } {
-    return { getSendingDomainStatus: vi.fn(() => Promise.resolve(status)) };
+    return {
+      getSendingDomainStatus: vi.fn(() => Promise.resolve(status)),
+      getSendingDomainName: vi.fn(() => Promise.resolve(name)),
+    };
   }
 
   it.each([
@@ -248,6 +256,40 @@ describe("sending-domain broadcast gate (P14)", () => {
     expect(linkedinNotifier.notifyArchiveReady).toHaveBeenCalledWith({
       runId: archive.id,
     });
+  });
+
+  it("test_REQ_084_broadcast_sends_from_verified_tenant_domain — a verified broadcast goes out from newsletter@<tenant domain>, while targeted sends keep the shared platform sender", async () => {
+    const archive = makeArchive();
+    const tenantsRepo = makeTenantsRepo("verified", "news.acme.com");
+    const deps = makeDeps(archive, { tenantsRepo });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "newsletter@news.acme.com" }),
+    );
+
+    // Targeted (welcome/transactional) send: shared platform sender even
+    // though the tenant's own domain is verified (EDGE-005).
+    vi.clearAllMocks();
+    await handleEmailSendJob(deps, {
+      name: "email-send",
+      id: "job-2",
+      data: { runId: archive.id, subscriberIds: ["sub-1"] },
+    });
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: deps.fromMail }),
+    );
+  });
+
+  it("grandfathered verified tenant with NO domain name (tenant 0) keeps the shared FROM", async () => {
+    const archive = makeArchive();
+    const deps = makeDeps(archive, { tenantsRepo: makeTenantsRepo("verified", null) });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: deps.fromMail }),
+    );
   });
 
   it("test_REQ_052_broadcast_only_confirmed_of_tenant — a verified broadcast resolves recipients via the tenant-scoped listConfirmed, never findByIds", async () => {

@@ -8,12 +8,14 @@ const isRestrictedSource = (source: string): boolean =>
   source.startsWith("drizzle-orm/");
 
 /**
- * Drizzle schema identifiers for the 13 tenant-owned tables (P2 enforce
- * migration). Every repository query against one of these MUST carry a
- * tenant predicate (REQ-014). `users` / `tenants` are deliberately absent —
- * the login-by-email lookup and tenant CRUD are platform-level (allowlist).
+ * Drizzle schema identifiers for the tenant-owned tables: the 13 from the P2
+ * enforce migration plus `sources` (added in P8). Every repository query
+ * against one of these MUST carry a tenant predicate (REQ-014). `users` /
+ * `tenants` are deliberately absent — the login-by-email lookup and tenant
+ * CRUD are platform-level (allowlist).
  */
 const TENANT_OWNED_TABLES: ReadonlySet<string> = new Set([
+  "sources",
   "rawItems",
   "runArchives",
   "runLogs",

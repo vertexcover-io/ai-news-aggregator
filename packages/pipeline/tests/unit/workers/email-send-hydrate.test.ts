@@ -119,6 +119,7 @@ async function captureStories(archive: PipelineRunArchiveRow, row: RawItemRow) {
     // hydration is exercised end-to-end.
     tenantsRepo: {
       getSendingDomainStatus: vi.fn(() => Promise.resolve("verified" as const)),
+      getSendingDomainName: vi.fn(() => Promise.resolve(null)),
     },
     renderNewsletter: vi.fn((props) => {
       capturedStories = props.stories;

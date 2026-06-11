@@ -473,3 +473,44 @@ describe("REQ-030 grep assertion: single queue.add(\"run-process\") call site", 
     expect(hits[0]).toMatch(/packages\/shared\/src\/run-start\.ts$/);
   });
 });
+
+describe("startRun tenant stamping (REQ-013 fence input)", () => {
+  it("stamps opts.tenantId onto the Redis run state so run reads/cancels can be tenant-fenced", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "11111111-2222-3333-4444-666666666666";
+    const tenantId = "99999999-9999-9999-9999-999999999999";
+
+    await startRun(
+      baseSettings,
+      {
+        redis: redis as unknown as IORedis,
+        queue: q.queue,
+        runId: () => fixedId,
+      },
+      { tenantId },
+    );
+
+    const entry = redis.store.get(`run:${fixedId}`);
+    if (!entry) throw new Error("expected redis entry");
+    const state = JSON.parse(entry.value) as RunState;
+    expect(state.tenantId).toBe(tenantId);
+  });
+
+  it("omits tenantId from the state for legacy starts (no opts.tenantId)", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "11111111-2222-3333-4444-777777777777";
+
+    await startRun(baseSettings, {
+      redis: redis as unknown as IORedis,
+      queue: q.queue,
+      runId: () => fixedId,
+    });
+
+    const entry = redis.store.get(`run:${fixedId}`);
+    if (!entry) throw new Error("expected redis entry");
+    const state = JSON.parse(entry.value) as RunState;
+    expect(state.tenantId).toBeUndefined();
+  });
+});

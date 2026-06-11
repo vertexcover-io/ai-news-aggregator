@@ -154,10 +154,10 @@ The rule explicitly allows:
 
 ## Tenant-scope guard (`tenantScopeRequired`)
 
-Multi-tenancy isolates the 13 tenant-owned tables (`raw_items`,
+Multi-tenancy isolates the 14 tenant-owned tables (`raw_items`,
 `run_archives`, `run_logs`, `review_edits`, `email_sends`, `subscribers`,
 `feedback_events`, `ses_events`, `eval_runs`, `must_read_entries`,
-`user_settings`, `social_credentials`, `social_tokens`) by a `tenant_id`
+`user_settings`, `social_credentials`, `social_tokens`, `sources`) by a `tenant_id`
 column. Repositories must route every read/write predicate through the
 `tenantScoped(...)` helper (and stamp inserts via `scopedTenantId(...)`),
 both exported from `@newsletter/shared/db`.

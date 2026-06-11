@@ -177,7 +177,15 @@ export const rawItems = pgTable("raw_items", {
   runId: uuid("run_id"),
   tenantId: uuid("tenant_id"),
 }, (t) => [
-  unique("raw_items_source_type_external_id_unique").on(t.sourceType, t.externalId),
+  // Per-tenant dedup key (P4 isolation): two tenants collecting the same
+  // story must produce two rows. A GLOBAL (source_type, external_id) unique
+  // would make the second tenant's upsert silently rewrite the first
+  // tenant's row (runId/engagement) while never storing its own item.
+  unique("raw_items_tenant_source_type_external_id_unique").on(
+    t.tenantId,
+    t.sourceType,
+    t.externalId,
+  ),
   index("raw_items_run_id_idx").on(t.runId),
   index("raw_items_tenant_id_idx").on(t.tenantId),
 ]);
@@ -437,7 +445,10 @@ export const subscribers = pgTable("subscribers", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   tenantId: uuid("tenant_id"),
 }, (t) => [
-  uniqueIndex("subscribers_email_uq").on(t.email),
+  // One subscription per email PER TENANT (REQ-050/051): a reader can
+  // subscribe to several tenants' newsletters; a global unique(email) would
+  // silently swallow the second tenant's subscribe as a "duplicate".
+  uniqueIndex("subscribers_tenant_email_uq").on(t.tenantId, t.email),
   index("subscribers_tenant_id_idx").on(t.tenantId),
 ]);
 

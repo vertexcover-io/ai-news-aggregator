@@ -302,3 +302,51 @@ describe("feature flags (REQ-093, EDGE-014)", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("slack webhook URL validation (SSRF guard)", () => {
+  it.each([
+    ["cloud metadata endpoint", "http://169.254.169.254/latest/meta-data"],
+    ["internal service", "https://internal.example.com/hook"],
+    ["non-URL garbage", "not-a-url"],
+    ["slack-lookalike http", "http://hooks.slack.com/services/T0/B0/x"],
+  ])(
+    "rejects a webhook that is not a Slack incoming-webhook URL (%s) and stores nothing",
+    async (_label, webhook) => {
+      const repo = makeTenantsRepo(makeTenantRow());
+      const app = appWithRepo(repo);
+
+      const res = await app.request("/api/settings/notifications", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Cookie: authCookie() },
+        body: JSON.stringify({
+          notifyEmail: null,
+          slackWebhook: webhook,
+          notifyReviewReady: true,
+          notifyErrors: true,
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(repo.updateNotificationSettings).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still accepts a real Slack incoming-webhook URL", async () => {
+    const repo = makeTenantsRepo(makeTenantRow());
+    const app = appWithRepo(repo);
+
+    const res = await app.request("/api/settings/notifications", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: authCookie() },
+      body: JSON.stringify({
+        notifyEmail: null,
+        slackWebhook: RAW_WEBHOOK,
+        notifyReviewReady: true,
+        notifyErrors: true,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(repo.updateNotificationSettings).toHaveBeenCalledOnce();
+  });
+});

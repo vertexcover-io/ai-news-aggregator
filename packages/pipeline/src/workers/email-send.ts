@@ -90,7 +90,10 @@ export interface EmailSendDeps {
    * `verified`. Targeted sends (welcome/back-issue) and API-side transactional
    * mail use the shared platform sender and are never gated (EDGE-005).
    */
-  tenantsRepo: Pick<PipelineTenantsRepo, "getSendingDomainStatus">;
+  tenantsRepo: Pick<
+    PipelineTenantsRepo,
+    "getSendingDomainStatus" | "getSendingDomainName"
+  >;
   emailSendsRepo: PipelineEmailSendsRepo;
   archiveRepo: RunArchivesRepo;
   rawItemsRepo: RawItemsRepo;
@@ -214,6 +217,11 @@ export async function handleEmailSendJob(
   // gated (EDGE-005). FAIL-CLOSED: `tenantsRepo` is required, so the gate runs
   // on every broadcast — an untyped caller omitting it gets a thrown TypeError
   // here, before any email goes out (never a silent bypass).
+  // Broadcasts from a tenant with a registered+verified domain go out from
+  // `newsletter@<domain>` (REQ-084 follow-through; design VS-2.3). Targeted
+  // sends and tenants without a domain NAME (the grandfathered tenant 0)
+  // keep the shared platform sender.
+  let fromAddress = deps.fromMail;
   if (isBroadcast) {
     const domainStatus = await deps.tenantsRepo.getSendingDomainStatus();
     if (domainStatus !== "verified") {
@@ -233,6 +241,10 @@ export async function handleEmailSendJob(
         reason: "sending_domain_not_verified",
       });
       return;
+    }
+    const domainName = await deps.tenantsRepo.getSendingDomainName();
+    if (domainName !== null) {
+      fromAddress = `newsletter@${domainName}`;
     }
   }
 
@@ -311,7 +323,7 @@ export async function handleEmailSendJob(
             try {
               const result = await deps.emailProvider.send({
                 to: [subscriber.email],
-                from: deps.fromMail,
+                from: fromAddress,
                 replyTo: deps.replyToEmail,
                 subject,
                 html,

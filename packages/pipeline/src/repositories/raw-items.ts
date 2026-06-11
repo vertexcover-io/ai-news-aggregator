@@ -50,8 +50,12 @@ export function createRawItemsRepo(
           items.map((i) => [`${i.sourceType}::${i.externalId}`, i]),
         ).values(),
       ).map((i) => ({ ...i, tenantId: scopedTenantId(ctx) ?? i.tenantId }));
+      // Conflict key is PER TENANT (tenant_id, source_type, external_id):
+      // two tenants collecting the same story keep independent rows — a
+      // global key would let tenant B's upsert rewrite tenant A's row
+      // (runId/engagement) while storing nothing for B (REQ-064).
       await db.insert(rawItems).values(deduped).onConflictDoUpdate({
-        target: [rawItems.sourceType, rawItems.externalId],
+        target: [rawItems.tenantId, rawItems.sourceType, rawItems.externalId],
         set: {
           engagement: sql.raw(`excluded.${rawItems.engagement.name}`),
           metadata: sql.raw(`excluded.${rawItems.metadata.name}`),

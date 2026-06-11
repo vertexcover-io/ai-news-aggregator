@@ -35,6 +35,7 @@ import {
   type RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
 import {
+  isTenantContext,
   scopedTenantId,
   type TenantScope,
 } from "@newsletter/shared/types/tenant-context";
@@ -215,6 +216,16 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       return c.json({ error: "not found" }, 404);
     }
     const state = JSON.parse(raw) as RunState;
+    // REQ-013: live run state is tenant-fenced — another tenant's runId
+    // reads as not-found. Legacy states without a tenantId stay readable.
+    const stateScope = tenantScopeFromContext(c);
+    if (
+      isTenantContext(stateScope) &&
+      typeof state.tenantId === "string" &&
+      state.tenantId !== stateScope.tenantId
+    ) {
+      return c.json({ error: "not found" }, 404);
+    }
     if (state.status === "completed" && Array.isArray(state.rankedItems)) {
       const hydrated = await hydrateRankedItems(
         deps.getRawItemsRepo(tenantScopeFromContext(c)),
@@ -237,6 +248,8 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
         redis: deps.redis,
         publisher,
         archiveRepo,
+        // REQ-013: a tenant can only cancel its own live runs.
+        requesterScope: tenantScopeFromContext(c),
       });
       logger.info({ event: "run.cancelling", runId }, "run.cancelling");
       void captureAnalytics({

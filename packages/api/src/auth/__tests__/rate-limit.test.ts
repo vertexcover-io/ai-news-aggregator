@@ -44,16 +44,19 @@ describe("auth rate limiter (REQ-121)", () => {
     expect((await post(app, "2.2.2.2")).status).toBe(200);
   });
 
-  it("uses the first hop of x-forwarded-for", async () => {
+  it("keys on the LAST x-forwarded-for hop — a client-forged first hop cannot mint fresh buckets", async () => {
     const app = buildApp({ capacity: 1, refillPerSecond: 0, now: () => 0 });
+    // The proxy APPENDS the real peer ip; everything before it is
+    // client-controlled. Rotating the forged prefix must not escape the
+    // limit.
     const res1 = await app.request("/login", {
       method: "POST",
-      headers: { "x-forwarded-for": "9.9.9.9, 10.0.0.1" },
+      headers: { "x-forwarded-for": "6.6.6.1, 9.9.9.9" },
     });
     expect(res1.status).toBe(200);
     const res2 = await app.request("/login", {
       method: "POST",
-      headers: { "x-forwarded-for": "9.9.9.9, 10.0.0.2" },
+      headers: { "x-forwarded-for": "6.6.6.2, 9.9.9.9" },
     });
     expect(res2.status).toBe(429);
   });

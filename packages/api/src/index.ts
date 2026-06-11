@@ -119,7 +119,11 @@ if (!defaultTenantScope) {
   );
 }
 
-const settingsRepoForBootstrap = createUserSettingsRepo(getDb());
+// Scoped to the AGENTLOOP bridge tenant: since 0041 dropped the singleton
+// unique, an UNSCOPED get() ("WHERE singleton = true LIMIT 1") returns an
+// arbitrary tenant's row once a second tenant activates — which would stamp
+// AGENTLOOP's scheduler entries with another tenant's times.
+const settingsRepoForBootstrap = createUserSettingsRepo(getDb(), defaultTenantScope);
 await removeLegacySchedulers(processingQueue);
 const settingsForBootstrap = await settingsRepoForBootstrap.get();
 if (settingsForBootstrap !== null) {
@@ -159,7 +163,9 @@ const runArchivesRepoForSubscribe = createRunArchivesRepo(
   getDb(),
   defaultTenantScope,
 );
-configurePostHog(async () => createUserSettingsRepo(getDb()).get());
+// PostHog analytics config is the platform's (AGENTLOOP) settings row — an
+// unscoped get() would read an arbitrary tenant's row (see bootstrap note).
+configurePostHog(async () => createUserSettingsRepo(getDb(), defaultTenantScope).get());
 
 const slackNotifier = createSlackNotifier({
   webhookUrl: process.env.SLACK_WEBHOOK_URL,
@@ -170,8 +176,12 @@ const slackNotifier = createSlackNotifier({
 });
 
 const subscribeRouter = createSubscribeRouter({
-  subscribersRepo: createSubscribersRepo(getDb(), defaultTenantScope),
-  feedbackEventsRepo: createFeedbackEventsRepo(getDb(), defaultTenantScope),
+  // REQ-050/051: the route derives the fence per request — Host tenant for
+  // intake, systemScope for token-verified id flows — so the factory passes
+  // the scope straight through (defaultTenantScope only bridges the app host).
+  getSubscribersRepo: (scope) => createSubscribersRepo(getDb(), scope),
+  getFeedbackEventsRepo: (scope) => createFeedbackEventsRepo(getDb(), scope),
+  defaultTenantScope,
   feedbackCampaign: process.env.FEEDBACK_CAMPAIGN ?? "2026-06-reading-check",
   sessionSecret,
   baseUrl: apiBaseUrl,
@@ -187,15 +197,23 @@ const subscribeRouter = createSubscribeRouter({
       text: `Confirm your subscription: ${confirmUrl}`,
     });
   },
-  sendNewsletterToSubscriber: async (runId, subscriberId) => {
+  sendNewsletterToSubscriber: async (runId, subscriberId, tenantId) => {
     await processingQueue.add(
       "email-send",
-      { runId, subscriberIds: [subscriberId] },
+      {
+        runId,
+        subscriberIds: [subscriberId],
+        ...(tenantId !== undefined ? { tenantId } : {}),
+      },
       { jobId: `email-send-${runId}-${subscriberId}` },
     );
   },
-  getMostRecentReviewedArchiveId: async () => {
-    const archive = await runArchivesRepoForSubscribe.findMostRecentReviewed();
+  getMostRecentReviewedArchiveId: async (tenantId) => {
+    const repo =
+      tenantId !== undefined
+        ? createRunArchivesRepo(getDb(), { tenantId, role: "tenant_admin" })
+        : runArchivesRepoForSubscribe;
+    const archive = await repo.findMostRecentReviewed();
     return archive?.id ?? null;
   },
   slackNotifier,

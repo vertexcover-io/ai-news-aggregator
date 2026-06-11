@@ -304,3 +304,40 @@ describe("GET /api/admin/collector-health", () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe("tenant scoping", () => {
+  it("getSettings receives the SESSION tenant scope (not unscoped)", async () => {
+    const TENANT_X = "11111111-1111-1111-1111-111111111111";
+    const scopes: unknown[] = [];
+    const { Hono } = await import("hono");
+    const outer = new Hono();
+    outer.use("*", async (c, next) => {
+      c.set("tenantCtx", {
+        userId: "u1",
+        tenantId: TENANT_X,
+        role: "tenant_admin",
+      });
+      await next();
+    });
+    outer.route(
+      "/",
+      createCollectorHealthRouter({
+        collectorHealthQueue: { add: vi.fn() },
+        store: makeStore(),
+        getSettings: (scope?: unknown) => {
+          scopes.push(scope);
+          return Promise.resolve(null);
+        },
+      }),
+    );
+    const res = await outer.request("/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(202);
+    expect(scopes).toEqual([
+      { tenantId: TENANT_X, userId: "u1", role: "tenant_admin" },
+    ]);
+  });
+});

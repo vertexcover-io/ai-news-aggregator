@@ -12,11 +12,18 @@ import {
 } from "@newsletter/shared/services";
 import type { HealthCheckCollector } from "@newsletter/shared/types";
 import type { UserSettings } from "@newsletter/shared";
+import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
 
 export interface CollectorHealthRouterDeps {
   collectorHealthQueue: Pick<Queue, "add">;
   store: CollectorHealthStore;
-  getSettings: () => Promise<UserSettings | null>;
+  /**
+   * Settings of the SESSION tenant (the route is requireAuth-gated). An
+   * unscoped read would return an arbitrary tenant's row now that every
+   * user_settings row carries `singleton = true` (0041).
+   */
+  getSettings: (scope?: TenantScope) => Promise<UserSettings | null>;
 }
 
 const checkBodySchema = z.object({
@@ -57,7 +64,7 @@ export function createCollectorHealthRouter(deps: CollectorHealthRouterDeps): Ho
       targets = [parsed.data.collector];
     } else {
       // REQ-002: absent -> all enabled from settings
-      const settings = await deps.getSettings();
+      const settings = await deps.getSettings(tenantScopeFromContext(c));
       targets = settings !== null ? enabledCollectors(settings) : [];
     }
 
@@ -97,12 +104,12 @@ export function createDefaultCollectorHealthRouter(): Hono {
   return createCollectorHealthRouter({
     collectorHealthQueue: getDefaultCollectorHealthQueue(),
     store: createCollectorHealthStore(redis),
-    getSettings: async () => {
+    getSettings: async (scope) => {
       // Settings are read lazily per-request — no startup caching
       // to honour the "takes effect without restart" freshness promise.
       const { createUserSettingsRepo } = await import("@api/repositories/user-settings.js");
       const { getDb } = await import("@newsletter/shared");
-      return createUserSettingsRepo(getDb()).get();
+      return createUserSettingsRepo(getDb(), scope).get();
     },
   });
 }

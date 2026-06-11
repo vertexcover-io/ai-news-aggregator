@@ -44,14 +44,29 @@ const notificationsPutSchema = z.object({
     .union([z.email(), z.literal("")])
     .nullable()
     .transform((v) => (v === "" ? null : v)),
-  /** Absent = keep stored secret; ""/null = clear; URL = encrypt + store. */
+  /**
+   * Absent = keep stored secret; ""/null = clear; URL = encrypt + store.
+   * SSRF guard: the pipeline worker POSTs alert payloads to this URL, so
+   * only genuine Slack incoming-webhook URLs are accepted — never an
+   * arbitrary (internal/metadata) endpoint a tenant could point us at.
+   */
   slackWebhook: z
     .string()
     .trim()
     .max(2048)
     .nullable()
     .optional()
-    .transform((v) => (v === "" ? null : v)),
+    .transform((v) => (v === "" ? null : v))
+    .refine(
+      (v) =>
+        v === null ||
+        v === undefined ||
+        v.startsWith("https://hooks.slack.com/"),
+      {
+        message:
+          "slackWebhook must be a Slack incoming-webhook URL (https://hooks.slack.com/…)",
+      },
+    ),
   notifyReviewReady: z.boolean(),
   notifyErrors: z.boolean(),
 });

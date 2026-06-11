@@ -28,9 +28,16 @@ export function createRateLimiter(opts: RateLimiterOptions): MiddlewareHandler {
   const buckets = new Map<string, Bucket>();
 
   return createMiddleware(async (c, next) => {
+    // Key on the LAST x-forwarded-for hop: the trusted proxy APPENDS the
+    // real peer ip, so every earlier entry is client-forgeable — keying on
+    // the first hop would let an attacker mint a fresh bucket per request.
     const forwarded = c.req.header("x-forwarded-for");
+    const hops = forwarded
+      ?.split(",")
+      .map((h) => h.trim())
+      .filter((h) => h.length > 0);
     const ip =
-      forwarded?.split(",")[0]?.trim() ??
+      hops?.[hops.length - 1] ??
       c.req.header("x-real-ip") ??
       "unknown";
 

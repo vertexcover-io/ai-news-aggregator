@@ -46,7 +46,7 @@ describe("Database Schema E2E", () => {
     expect(item.engagement).toEqual({ points: 100, commentCount: 50 });
   });
 
-  it("enforces unique constraint on (source_type, external_id)", async () => {
+  it("enforces unique constraint on (tenant_id, source_type, external_id)", async () => {
     await db.insert(rawItems).values({
       sourceType: "hn",
       tenantId: tenant.tenantId,
@@ -65,7 +65,7 @@ describe("Database Schema E2E", () => {
         url: "https://example.com/updated",
       })
       .onConflictDoUpdate({
-        target: [rawItems.sourceType, rawItems.externalId],
+        target: [rawItems.tenantId, rawItems.sourceType, rawItems.externalId],
         set: {
           title: "Updated Title",
           url: "https://example.com/updated",

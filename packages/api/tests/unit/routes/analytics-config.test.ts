@@ -91,3 +91,28 @@ describe("GET /api/public/analytics-config", () => {
   });
 });
 
+
+describe("tenant scoping", () => {
+  it("passes the Host-resolved public tenant scope to the settings repo factory", async () => {
+    const TENANT_X = "11111111-1111-1111-1111-111111111111";
+    const scopes: unknown[] = [];
+    const { Hono } = await import("hono");
+    const outer = new Hono();
+    outer.use("*", async (c, next) => {
+      c.set("publicTenant", { tenantId: TENANT_X, slug: "x" });
+      await next();
+    });
+    outer.route(
+      "/",
+      createAnalyticsConfigRouter({
+        getSettingsRepo: (scope?: unknown) => {
+          scopes.push(scope);
+          return makeRepo(null);
+        },
+      }),
+    );
+    const res = await outer.request("/");
+    expect(res.status).toBe(200);
+    expect(scopes).toEqual([{ tenantId: TENANT_X, role: "tenant_admin" }]);
+  });
+});

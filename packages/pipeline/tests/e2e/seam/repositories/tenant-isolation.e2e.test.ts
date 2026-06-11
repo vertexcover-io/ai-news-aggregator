@@ -11,7 +11,12 @@ import { config } from "dotenv";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { tenants, userSettings, subscribers } from "@newsletter/shared/db";
+import {
+  tenants,
+  userSettings,
+  subscribers,
+  rawItems as rawItemsTable,
+} from "@newsletter/shared/db";
 import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { createRunArchivesRepo } from "@pipeline/repositories/run-archives.js";
@@ -97,6 +102,49 @@ describe("test_REQ_012_repo_queries_scope_by_tenant (pipeline)", () => {
     if (bRow) {
       expect(await repoA.findByIds([bRow.id])).toHaveLength(0);
     }
+  });
+
+  it("raw items: two tenants collecting the SAME story keep independent rows (REQ-064)", async () => {
+    const db = getTestDb();
+    const repoA = createRawItemsRepo(db, ctxA);
+    const repoB = createRawItemsRepo(db, ctxB);
+    const runA = randomUUID();
+    const runB = randomUUID();
+    const sharedId = `${MARKER}-shared-1`;
+
+    await repoA.upsertItems([
+      {
+        sourceType: "hn",
+        externalId: sharedId,
+        title: "Shared story",
+        url: "https://example.com/shared",
+        runId: runA,
+      },
+    ]);
+    // Tenant B collecting the same story must NOT rewrite tenant A's row
+    // (previously the global (source_type, external_id) unique made this
+    // upsert clobber A's runId while storing nothing for B).
+    await repoB.upsertItems([
+      {
+        sourceType: "hn",
+        externalId: sharedId,
+        title: "Shared story",
+        url: "https://example.com/shared",
+        runId: runB,
+      },
+    ]);
+
+    const aRow = await repoA.findBySourceAndExternalId("hn", sharedId);
+    const bRow = await repoB.findBySourceAndExternalId("hn", sharedId);
+    expect(aRow).not.toBeNull();
+    expect(bRow).not.toBeNull();
+    expect(aRow?.id).not.toBe(bRow?.id);
+    // Lineage stays per tenant: A's row still points at A's run.
+    const aRunIds = await db
+      .select({ runId: rawItemsTable.runId })
+      .from(rawItemsTable)
+      .where(sql`${rawItemsTable.id} = ${aRow?.id ?? -1}`);
+    expect(aRunIds[0]?.runId).toBe(runA);
   });
 
   it("run archives: upsert stamps tenant_id; findById is fenced (REQ-013)", async () => {

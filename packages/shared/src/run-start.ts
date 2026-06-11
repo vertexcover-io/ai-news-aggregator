@@ -105,6 +105,8 @@ export async function startRun(
     shortlistedItemIds: null,
     warnings: [],
     error: null,
+    // REQ-013: lets the API tenant-fence live run-state reads and cancels.
+    ...(opts?.tenantId !== undefined ? { tenantId: opts.tenantId } : {}),
   };
 
   await deps.redis.set(

@@ -230,6 +230,17 @@ ruleTester.run("enforce-repository-access", rule, {
       errors: [{ messageId: "tenantScopeRequired", data: { table: "rawItems" } }],
     },
     {
+      name: "test_REQ_014: unscoped select from sources (P8 tenant-owned table) fires",
+      filename: apiRepoFile,
+      code: [
+        `import { sources } from "@newsletter/shared/db";`,
+        `export function listAll(db) {`,
+        `  return db.select().from(sources);`,
+        `}`,
+      ].join("\n"),
+      errors: [{ messageId: "tenantScopeRequired", data: { table: "sources" } }],
+    },
+    {
       name: "test_REQ_014: unscoped update of tenant-owned table fires",
       filename: apiRepoFile,
       code: [

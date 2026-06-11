@@ -178,6 +178,7 @@ describe("publish workers dry-run guard", () => {
           // Required (fail-closed gate); irrelevant here — dry-run returns early.
           tenantsRepo: {
             getSendingDomainStatus: vi.fn(() => Promise.resolve("verified" as const)),
+            getSendingDomainName: vi.fn(() => Promise.resolve(null)),
           },
           emailSendsRepo: emailSendsRepo as never,
           archiveRepo: archiveRepo as never,
