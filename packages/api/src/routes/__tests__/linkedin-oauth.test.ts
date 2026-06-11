@@ -105,6 +105,9 @@ function makeTokenRepo(existingRow?: {
         metadata: existingRow.metadata ?? null,
       });
     },
+    getTwitter(): Promise<null> {
+      return Promise.resolve(null);
+    },
     deleteToken(): Promise<boolean> {
       return Promise.resolve(existingRow !== undefined);
     },
@@ -702,6 +705,9 @@ describe("GET /callback — name persistence", () => {
         return Promise.resolve();
       },
       getLinkedIn() {
+        return Promise.resolve(null);
+      },
+      getTwitter() {
         return Promise.resolve(null);
       },
       deleteToken() {

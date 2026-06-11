@@ -253,6 +253,16 @@ export interface TwitterCollectorEncryptedFields {
   apiKey: EncryptedBlob;
 }
 
+/**
+ * Shared Twitter OAuth2 app client (P13, REQ-081): every tenant runs the
+ * 3-legged posting connect through this client; the per-tenant tokens it
+ * yields live in `social_tokens` keyed `(tenant_id, 'twitter')`.
+ */
+export interface TwitterClientEncryptedFields {
+  clientId: EncryptedBlob;
+  clientSecret: EncryptedBlob;
+}
+
 export type SocialCredentialPlatform = "linkedin" | "twitter" | "twitter_collector";
 
 /**
@@ -288,13 +298,15 @@ export type SocialCredentialSelect = typeof socialCredentials.$inferSelect;
  * tenant-facing responses. Encrypted at rest with the same D-012 cipher
  * (D-104: the SESSION_SECRET-derived KEK is never rotated).
  */
-export type AppCredentialKey = "linkedin_client" | "twitter_collector";
+export type AppCredentialKey = "linkedin_client" | "twitter_collector" | "twitter_client";
 
 export const appCredentials = pgTable("app_credentials", {
   key: text("key").primaryKey().$type<AppCredentialKey>(),
   encryptedFields: jsonb("encrypted_fields")
     .notNull()
-    .$type<LinkedInEncryptedFields | TwitterCollectorEncryptedFields>(),
+    .$type<
+      LinkedInEncryptedFields | TwitterCollectorEncryptedFields | TwitterClientEncryptedFields
+    >(),
   metadata: jsonb("metadata").$type<{ apiVersion?: string } | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: text("updated_by"),

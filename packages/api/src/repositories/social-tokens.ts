@@ -27,6 +27,8 @@ export interface SocialTokensRepo {
   saveToken(platform: SocialPlatform, input: SaveSocialTokenInput): Promise<void>;
   /** Returns the decrypted LinkedIn token row, or null when no row exists. Decrypt failures return null. */
   getLinkedIn(): Promise<SocialTokenRecord | null>;
+  /** Returns the decrypted Twitter OAuth2 token row, or null when no row exists. Decrypt failures return null. */
+  getTwitter(): Promise<SocialTokenRecord | null>;
   /** Deletes the OAuth token row for a platform. Returns true if a row was removed. */
   deleteToken(platform: SocialPlatform): Promise<boolean>;
 }
@@ -47,6 +49,30 @@ export function createSocialTokensRepo(
       );
     }
     return tenantId;
+  };
+  const getDecryptedToken = async (
+    platform: SocialPlatform,
+  ): Promise<SocialTokenRecord | null> => {
+    try {
+      const rows = await db
+        .select()
+        .from(socialTokens)
+        .where(tenantScoped(socialTokens.tenantId, ctx, eq(socialTokens.platform, platform)))
+        .limit(1);
+      if (rows.length === 0) return null;
+      const row = rows[0];
+      // encryptedFields is typed as SocialTokenEncryptedFields via the column .$type<>()
+      const encFields = row.encryptedFields;
+      return {
+        accessToken: cipher.decrypt(encFields.accessToken),
+        refreshToken: cipher.decrypt(encFields.refreshToken),
+        expiresAt: row.expiresAt,
+        metadata: row.metadata ?? null,
+      };
+    } catch {
+      // Decrypt failure → treat as not connected (REQ-011)
+      return null;
+    }
   };
   return {
     async saveToken(
@@ -83,26 +109,11 @@ export function createSocialTokensRepo(
     },
 
     async getLinkedIn(): Promise<SocialTokenRecord | null> {
-      try {
-        const rows = await db
-          .select()
-          .from(socialTokens)
-          .where(tenantScoped(socialTokens.tenantId, ctx, eq(socialTokens.platform, "linkedin")))
-          .limit(1);
-        if (rows.length === 0) return null;
-        const row = rows[0];
-        // encryptedFields is typed as SocialTokenEncryptedFields via the column .$type<>()
-        const encFields = row.encryptedFields;
-        return {
-          accessToken: cipher.decrypt(encFields.accessToken),
-          refreshToken: cipher.decrypt(encFields.refreshToken),
-          expiresAt: row.expiresAt,
-          metadata: row.metadata ?? null,
-        };
-      } catch {
-        // Decrypt failure → treat as not connected (REQ-011)
-        return null;
-      }
+      return getDecryptedToken("linkedin");
+    },
+
+    async getTwitter(): Promise<SocialTokenRecord | null> {
+      return getDecryptedToken("twitter");
     },
 
     async deleteToken(platform: SocialPlatform): Promise<boolean> {

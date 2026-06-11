@@ -40,6 +40,20 @@ export interface BuildAppDeps {
    * Mounted BEFORE adminApp so the gate does not intercept this path.
    */
   linkedInOAuthCallbackRouter: Hono;
+  /**
+   * Admin-gated Twitter OAuth2 routes (POST /start, GET /status) (P13,
+   * REQ-081). Mounted inside adminApp — behind requireAuth. Optional ONLY so
+   * existing unit tests composing buildApp keep working — index.ts always
+   * provides it.
+   */
+  twitterOAuthRouter?: Hono;
+  /**
+   * Public (ungated) Twitter OAuth2 callback router (GET /). Twitter
+   * redirects the browser here after authorization; no admin cookie is
+   * present on the redirect. Security is the Redis-stored consume-once state
+   * carrying the PKCE code verifier (D-001 pattern). Mounted BEFORE adminApp.
+   */
+  twitterOAuthCallbackRouter?: Hono;
   /** Admin-gated collector health check trigger + snapshot routes. */
   collectorHealthRouter: Hono;
   /**
@@ -159,6 +173,15 @@ export function buildApp(deps: BuildAppDeps): Hono {
     deps.linkedInOAuthCallbackRouter,
   );
 
+  // Twitter OAuth2 callback — same gate exemption as the LinkedIn callback
+  // above (P13, REQ-081): state-gated, not cookie-gated.
+  if (deps.twitterOAuthCallbackRouter) {
+    app.route(
+      "/api/admin/social-credentials/twitter/oauth/callback",
+      deps.twitterOAuthCallbackRouter,
+    );
+  }
+
   // Per-user auth routes (signup/login/logout/forgot/reset/me) — ungated;
   // they establish the session the gate below verifies.
   app.route("/api/auth", deps.authRouter);
@@ -177,6 +200,13 @@ export function buildApp(deps: BuildAppDeps): Hono {
     "/social-credentials/linkedin/oauth",
     deps.linkedInOAuthRouter,
   );
+  // Admin-gated Twitter OAuth2 start + status routes (P13, REQ-081).
+  if (deps.twitterOAuthRouter) {
+    adminApp.route(
+      "/social-credentials/twitter/oauth",
+      deps.twitterOAuthRouter,
+    );
+  }
   adminApp.route("/must-read", deps.adminMustReadRouter);
   adminApp.route("/analytics", deps.analyticsRouter);
   adminApp.route("/collector-health", deps.collectorHealthRouter);

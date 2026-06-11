@@ -10,6 +10,7 @@ import { appCredentials } from "@newsletter/shared/db";
 import type { AppDb, AppCredentialKey } from "@newsletter/shared/db";
 import type {
   LinkedInEncryptedFields,
+  TwitterClientEncryptedFields,
   TwitterCollectorEncryptedFields,
 } from "@newsletter/shared/db";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
@@ -26,6 +27,18 @@ export interface LinkedInClientRecord {
 export interface TwitterCollectorRecord {
   apiKey: string;
   updatedAt: Date;
+}
+
+/** Shared Twitter OAuth2 app client (P13, REQ-081) — app-level, never tenant-exposed. */
+export interface TwitterClientRecord {
+  clientId: string;
+  clientSecret: string;
+  updatedAt: Date;
+}
+
+export interface TwitterClientUpsertInput {
+  readonly clientId: string;
+  readonly clientSecret: string;
 }
 
 export interface LinkedInClientUpsertInput {
@@ -49,14 +62,20 @@ export interface AppCredentialsStatus {
     readonly configured: boolean;
     readonly updatedAt: string | null;
   };
+  readonly twitterClient: {
+    readonly configured: boolean;
+    readonly updatedAt: string | null;
+  };
 }
 
 export interface AppCredentialsRepo {
   getStatus(): Promise<AppCredentialsStatus>;
   getLinkedInClient(): Promise<LinkedInClientRecord | null>;
   getTwitterCollector(): Promise<TwitterCollectorRecord | null>;
+  getTwitterClient(): Promise<TwitterClientRecord | null>;
   upsertLinkedInClient(input: LinkedInClientUpsertInput): Promise<{ updatedAt: string }>;
   upsertTwitterCollector(input: TwitterCollectorUpsertInput): Promise<{ updatedAt: string }>;
+  upsertTwitterClient(input: TwitterClientUpsertInput): Promise<{ updatedAt: string }>;
   delete(key: AppCredentialKey): Promise<boolean>;
 }
 
@@ -78,11 +97,20 @@ export function createAppCredentialsRepo(
         configured: false,
         updatedAt: null,
       };
+      let twitterClient: AppCredentialsStatus["twitterClient"] = {
+        configured: false,
+        updatedAt: null,
+      };
       for (const row of rows) {
         if (row.key === "linkedin_client") {
           linkedinClient = {
             configured: true,
             apiVersion: row.metadata?.apiVersion ?? null,
+            updatedAt: row.updatedAt.toISOString(),
+          };
+        } else if (row.key === "twitter_client") {
+          twitterClient = {
+            configured: true,
             updatedAt: row.updatedAt.toISOString(),
           };
         } else {
@@ -92,7 +120,7 @@ export function createAppCredentialsRepo(
           };
         }
       }
-      return { linkedinClient, twitterCollector };
+      return { linkedinClient, twitterCollector, twitterClient };
     },
 
     async getLinkedInClient(): Promise<LinkedInClientRecord | null> {
@@ -123,6 +151,22 @@ export function createAppCredentialsRepo(
       const fields = row.encryptedFields as TwitterCollectorEncryptedFields;
       return {
         apiKey: cipher.decrypt(fields.apiKey),
+        updatedAt: row.updatedAt,
+      };
+    },
+
+    async getTwitterClient(): Promise<TwitterClientRecord | null> {
+      const rows = await db
+        .select()
+        .from(appCredentials)
+        .where(eq(appCredentials.key, "twitter_client"))
+        .limit(1);
+      if (rows.length === 0) return null;
+      const row = rows[0];
+      const fields = row.encryptedFields as TwitterClientEncryptedFields;
+      return {
+        clientId: cipher.decrypt(fields.clientId),
+        clientSecret: cipher.decrypt(fields.clientSecret),
         updatedAt: row.updatedAt,
       };
     },
@@ -164,6 +208,31 @@ export function createAppCredentialsRepo(
         .insert(appCredentials)
         .values({
           key: "twitter_collector",
+          encryptedFields,
+          metadata: null,
+          updatedAt: now,
+          updatedBy: "super_admin",
+        })
+        .onConflictDoUpdate({
+          target: appCredentials.key,
+          set: { encryptedFields, metadata: null, updatedAt: now, updatedBy: "super_admin" },
+        })
+        .returning();
+      return { updatedAt: row.updatedAt.toISOString() };
+    },
+
+    async upsertTwitterClient(
+      input: TwitterClientUpsertInput,
+    ): Promise<{ updatedAt: string }> {
+      const encryptedFields: TwitterClientEncryptedFields = {
+        clientId: cipher.encrypt(input.clientId),
+        clientSecret: cipher.encrypt(input.clientSecret),
+      };
+      const now = new Date();
+      const [row] = await db
+        .insert(appCredentials)
+        .values({
+          key: "twitter_client",
           encryptedFields,
           metadata: null,
           updatedAt: now,

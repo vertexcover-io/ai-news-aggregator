@@ -12,6 +12,7 @@ import {
   resolveLinkedInCredentials,
   resolveTwitterCollectorCookie,
   resolveTwitterOAuth1Credentials,
+  resolveTwitterOAuth2Client,
 } from "@pipeline/services/credential-resolver.js";
 import type { SocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
 import type { AppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
@@ -35,6 +36,8 @@ function makeAppRepo(opts: {
   linkedinThrows?: Error;
   twitterCollector?: Awaited<ReturnType<AppCredentialsRepo["getTwitterCollector"]>>;
   twitterCollectorThrows?: Error;
+  twitterClient?: Awaited<ReturnType<AppCredentialsRepo["getTwitterClient"]>>;
+  twitterClientThrows?: Error;
 }): AppCredentialsRepo {
   return {
     getLinkedInClient: vi.fn(() => {
@@ -46,6 +49,12 @@ function makeAppRepo(opts: {
         return Promise.reject(opts.twitterCollectorThrows);
       }
       return Promise.resolve(opts.twitterCollector ?? null);
+    }),
+    getTwitterClient: vi.fn(() => {
+      if (opts.twitterClientThrows) {
+        return Promise.reject(opts.twitterClientThrows);
+      }
+      return Promise.resolve(opts.twitterClient ?? null);
     }),
     upsertTwitterCollector: vi.fn(),
   };
@@ -285,5 +294,57 @@ describe("resolveTwitterCollectorCookie (app-level store)", () => {
     const appRepo = makeAppRepo({});
     const env: NodeJS.ProcessEnv = { RETTIWT_API_KEY: "" };
     expect(await resolveTwitterCollectorCookie({ appRepo, env })).toBeNull();
+  });
+});
+
+describe("resolveTwitterOAuth2Client (app-level shared OAuth2 client, P13 REQ-081)", () => {
+  it("resolves the shared client from the super-admin app store, even when env is set", async () => {
+    const appRepo = makeAppRepo({
+      twitterClient: {
+        clientId: "store-tw-id",
+        clientSecret: "store-tw-secret",
+        updatedAt: new Date(),
+      },
+    });
+    const env: NodeJS.ProcessEnv = {
+      TWITTER_OAUTH2_CLIENT_ID: "env-tw-id",
+      TWITTER_OAUTH2_CLIENT_SECRET: "env-tw-secret",
+    };
+    expect(await resolveTwitterOAuth2Client({ appRepo, env })).toEqual({
+      clientId: "store-tw-id",
+      clientSecret: "store-tw-secret",
+    });
+  });
+
+  it("falls back to TWITTER_OAUTH2_CLIENT_ID/SECRET when the store row is absent", async () => {
+    const appRepo = makeAppRepo({});
+    const env: NodeJS.ProcessEnv = {
+      TWITTER_OAUTH2_CLIENT_ID: "env-tw-id",
+      TWITTER_OAUTH2_CLIENT_SECRET: "env-tw-secret",
+    };
+    expect(await resolveTwitterOAuth2Client({ appRepo, env })).toEqual({
+      clientId: "env-tw-id",
+      clientSecret: "env-tw-secret",
+    });
+  });
+
+  it("returns null when both the store and env are empty (or env is partial)", async () => {
+    const appRepo = makeAppRepo({});
+    expect(await resolveTwitterOAuth2Client({ appRepo, env: {} })).toBeNull();
+    expect(
+      await resolveTwitterOAuth2Client({
+        appRepo,
+        env: { TWITTER_OAUTH2_CLIENT_ID: "only-id" },
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null on store read failure and does NOT fall through to env", async () => {
+    const appRepo = makeAppRepo({ twitterClientThrows: new Error("decrypt failed") });
+    const env: NodeJS.ProcessEnv = {
+      TWITTER_OAUTH2_CLIENT_ID: "env-tw-id",
+      TWITTER_OAUTH2_CLIENT_SECRET: "env-tw-secret",
+    };
+    expect(await resolveTwitterOAuth2Client({ appRepo, env })).toBeNull();
   });
 });

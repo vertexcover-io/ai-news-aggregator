@@ -10,6 +10,7 @@ import { appCredentials } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type {
   LinkedInEncryptedFields,
+  TwitterClientEncryptedFields,
   TwitterCollectorEncryptedFields,
 } from "@newsletter/shared/db";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
@@ -26,9 +27,17 @@ export interface TwitterCollectorRecord {
   updatedAt: Date;
 }
 
+/** Shared Twitter OAuth2 app client (P13, REQ-081) — app-level, never tenant-exposed. */
+export interface TwitterClientRecord {
+  clientId: string;
+  clientSecret: string;
+  updatedAt: Date;
+}
+
 export interface AppCredentialsRepo {
   getLinkedInClient(): Promise<LinkedInClientRecord | null>;
   getTwitterCollector(): Promise<TwitterCollectorRecord | null>;
+  getTwitterClient(): Promise<TwitterClientRecord | null>;
   /** CSRF-refresh write-back: persists the rotated collector cookie. */
   upsertTwitterCollector(input: { apiKey: string }): Promise<void>;
 }
@@ -68,6 +77,22 @@ export function createAppCredentialsRepo(
       const fields = row.encryptedFields as TwitterCollectorEncryptedFields;
       return {
         apiKey: cipher.decrypt(fields.apiKey),
+        updatedAt: row.updatedAt,
+      };
+    },
+
+    async getTwitterClient(): Promise<TwitterClientRecord | null> {
+      const rows = await db
+        .select()
+        .from(appCredentials)
+        .where(eq(appCredentials.key, "twitter_client"))
+        .limit(1);
+      if (rows.length === 0) return null;
+      const row = rows[0];
+      const fields = row.encryptedFields as TwitterClientEncryptedFields;
+      return {
+        clientId: cipher.decrypt(fields.clientId),
+        clientSecret: cipher.decrypt(fields.clientSecret),
         updatedAt: row.updatedAt,
       };
     },

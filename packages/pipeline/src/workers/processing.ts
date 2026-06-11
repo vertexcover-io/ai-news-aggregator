@@ -44,7 +44,10 @@ import {
   type TwitterOAuth1Credentials,
 } from "@pipeline/social/twitter/api-client.js";
 import { createLinkedInNotifier } from "@pipeline/social/linkedin/notifier.js";
-import { createTwitterNotifier } from "@pipeline/social/twitter/notifier.js";
+import {
+  createTwitterNotifier,
+  type TwitterNotifier,
+} from "@pipeline/social/twitter/notifier.js";
 import { createSocialTokensRepo } from "@pipeline/repositories/social-tokens.js";
 import { createSocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
 import { createAppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
@@ -59,6 +62,7 @@ import {
   resolveLinkedInCredentials,
   resolveTwitterCollectorCookie,
   resolveTwitterOAuth1Credentials,
+  resolveTwitterOAuth2Client,
 } from "@pipeline/services/credential-resolver.js";
 import {
   createRunStateService,
@@ -486,40 +490,69 @@ export async function buildDefaultPublishDeps(
       : null;
 
   const twitterLogger = createLogger("social.twitter");
-  const twitterCreds = await resolveTwitterOAuth1Credentials({
-    repo: socialCredentialsRepo,
+  const twitterConfig = {
+    publicArchiveBaseUrl,
+    twitterIsPremium: process.env.TWITTER_IS_PREMIUM === "true",
+  };
+  // P13 (REQ-081): per-tenant OAuth2 posting takes precedence. When the JOB's
+  // tenant has an OAuth2 token row (keyed (tenant_id,'twitter')) and the
+  // shared app client resolves, post with the tenant's tokens — refreshed
+  // under a FOR UPDATE lock inside the notifier. Tenants without an OAuth2
+  // connection fall back to the legacy OAuth1 manual posting keys.
+  let twitterNotifier: TwitterNotifier | null;
+  const twitterOAuth2Client = await resolveTwitterOAuth2Client({
+    appRepo: appCredentialsRepo,
     env: process.env,
   });
-  // Preserve the "partial env config" warning behavior when DB is empty:
-  // the resolver returns null on partial env, but operators expect a hint
-  // about which keys are missing. Only emit the warning when there's no DB row.
-  if (twitterCreds === null) {
-    const dbRow = await socialCredentialsRepo.getTwitter();
-    if (dbRow === null) {
-      const envConfig = readTwitterOAuth1Config();
-      if (envConfig.status === "partial") {
-        warnInvalidTwitterConfig(twitterLogger, envConfig.missing);
+  const tenantTwitterToken =
+    twitterOAuth2Client !== null
+      ? await socialTokensRepo.getToken("twitter")
+      : null;
+  if (twitterOAuth2Client !== null && tenantTwitterToken !== null) {
+    twitterNotifier = createTwitterNotifier({
+      oauth2: {
+        tokens: socialTokensRepo,
+        clientId: twitterOAuth2Client.clientId,
+        clientSecret: twitterOAuth2Client.clientSecret,
+      },
+      archives: archiveRepo,
+      rawItems: rawItemsRepo,
+      config: twitterConfig,
+      logger: twitterLogger,
+    });
+  } else {
+    const twitterCreds = await resolveTwitterOAuth1Credentials({
+      repo: socialCredentialsRepo,
+      env: process.env,
+    });
+    // Preserve the "partial env config" warning behavior when DB is empty:
+    // the resolver returns null on partial env, but operators expect a hint
+    // about which keys are missing. Only emit the warning when there's no DB row.
+    if (twitterCreds === null) {
+      const dbRow = await socialCredentialsRepo.getTwitter();
+      if (dbRow === null) {
+        const envConfig = readTwitterOAuth1Config();
+        if (envConfig.status === "partial") {
+          warnInvalidTwitterConfig(twitterLogger, envConfig.missing);
+        }
       }
     }
+    twitterNotifier =
+      twitterCreds !== null
+        ? createTwitterNotifier({
+            apiClient: createTwitterApiClient({
+              appKey: twitterCreds.appKey,
+              appSecret: twitterCreds.appSecret,
+              accessToken: twitterCreds.accessToken,
+              accessSecret: twitterCreds.accessSecret,
+            }),
+            archives: archiveRepo,
+            rawItems: rawItemsRepo,
+            config: twitterConfig,
+            logger: twitterLogger,
+          })
+        : null;
   }
-  const twitterNotifier =
-    twitterCreds !== null
-      ? createTwitterNotifier({
-          apiClient: createTwitterApiClient({
-            appKey: twitterCreds.appKey,
-            appSecret: twitterCreds.appSecret,
-            accessToken: twitterCreds.accessToken,
-            accessSecret: twitterCreds.accessSecret,
-          }),
-          archives: archiveRepo,
-          rawItems: rawItemsRepo,
-          config: {
-            publicArchiveBaseUrl,
-            twitterIsPremium: process.env.TWITTER_IS_PREMIUM === "true",
-          },
-          logger: twitterLogger,
-        })
-      : null;
 
   return {
     emailProvider: createEmailProvider(),

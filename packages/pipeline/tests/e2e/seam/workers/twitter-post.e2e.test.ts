@@ -11,6 +11,9 @@ import { createRunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { createTwitterApiClient, createTwitterNotifier } from "@pipeline/social/twitter/index.js";
 import { handleTwitterPostJob } from "@pipeline/workers/twitter-post.js";
+import { createSocialTokensRepo } from "@pipeline/repositories/social-tokens.js";
+import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import { socialTokens } from "@newsletter/shared/db";
 import { getTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
 import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
 import type { TenantContext } from "@newsletter/shared/types/tenant-context";
@@ -21,6 +24,8 @@ import type { SocialMetadata } from "@newsletter/shared";
 config({ path: resolve(import.meta.dirname, "../../../../../../.env.test") });
 
 const TWITTER_TWEETS_URL = "https://api.x.com/2/tweets";
+const TWITTER_OAUTH_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
+const CIPHER_SESSION_SECRET = "twitter-post-e2e-session-secret-32-bytes!!";
 
 const server = setupServer();
 
@@ -273,5 +278,137 @@ describe("twitter-post worker e2e", () => {
     );
 
     expect(twitterRequests.length).toBe(requestsAfterFirst);
+  });
+
+  // ── P13 (REQ-081): per-tenant OAuth2 posting — tenant tokens from
+  //    social_tokens (real DB), refresh under the FOR UPDATE lock, mocked
+  //    Twitter provider (msw). No live tweet, ever. ─────────────────────────
+  describe("OAuth2 tenant-token posting (REQ-081)", () => {
+    const cipher = getCredentialCipher({
+      SESSION_SECRET: CIPHER_SESSION_SECRET,
+    } as NodeJS.ProcessEnv);
+
+    function tokensRepo() {
+      return createSocialTokensRepo(db, cipher, tenant);
+    }
+
+    function createOAuth2Notifier() {
+      const archiveRepo = createRunArchivesRepo(db, tenant);
+      return {
+        archiveRepo,
+        notifier: createTwitterNotifier({
+          oauth2: {
+            tokens: tokensRepo(),
+            clientId: "app-tw-client-id",
+            clientSecret: "app-tw-client-secret",
+          },
+          archives: archiveRepo,
+          rawItems: createRawItemsRepo(db, tenant),
+          config: {
+            publicArchiveBaseUrl: "https://newsletter.example.com",
+          },
+          logger: createLogger("twitter-post-oauth2-e2e"),
+          now: () => new Date("2026-05-21T00:00:00.000Z"),
+        }),
+      };
+    }
+
+    beforeEach(async () => {
+      await db.delete(socialTokens);
+    });
+
+    it("test_REQ_081_publish_path_posts_with_tenant_tokens — tweets carry the TENANT's bearer token; no refresh when fresh", async () => {
+      const runId = await seedReviewedArchive(db);
+      await tokensRepo().saveToken("twitter", {
+        accessToken: "tenant-at-fresh",
+        refreshToken: "tenant-rt-fresh",
+        expiresAt: new Date("2026-05-22T00:00:00.000Z"), // fresh vs now=05-21
+      });
+
+      let authHeaders: string[] = [];
+      server.use(
+        http.post(TWITTER_TWEETS_URL, ({ request }) => {
+          authHeaders = [...authHeaders, request.headers.get("authorization") ?? ""];
+          const tweetId =
+            authHeaders.length === 1 ? "2000000000000000001" : "2000000000000000002";
+          return HttpResponse.json({ data: { id: tweetId, text: "posted" } }, { status: 201 });
+        }),
+      );
+
+      const { archiveRepo, notifier } = createOAuth2Notifier();
+      await handleTwitterPostJob(
+        { archiveRepo, twitterNotifier: notifier },
+        { name: "twitter-post", data: { runId } },
+      );
+
+      // Head tweet + link reply, both with the tenant's OAuth2 access token.
+      expect(authHeaders).toEqual(["Bearer tenant-at-fresh", "Bearer tenant-at-fresh"]);
+      const state = await loadArchiveTwitterState(db, runId);
+      expect(state.twitterPostedAt).not.toBeNull();
+      expect(state.socialMetadata?.twitterThreadIds).toEqual([
+        "2000000000000000001",
+        "2000000000000000002",
+      ]);
+    });
+
+    it("expired tenant token → refreshed via the shared app client and rotated tokens persisted; post uses the NEW token", async () => {
+      const runId = await seedReviewedArchive(db);
+      await tokensRepo().saveToken("twitter", {
+        accessToken: "tenant-at-stale",
+        refreshToken: "tenant-rt-stale",
+        expiresAt: new Date("2026-05-20T00:00:00.000Z"), // expired vs now=05-21
+      });
+
+      let refreshBodies: string[] = [];
+      let authHeaders: string[] = [];
+      server.use(
+        http.post(TWITTER_OAUTH_TOKEN_URL, async ({ request }) => {
+          refreshBodies = [...refreshBodies, await request.text()];
+          return HttpResponse.json({
+            access_token: "tenant-at-rotated",
+            refresh_token: "tenant-rt-rotated",
+            expires_in: 7200,
+          });
+        }),
+        http.post(TWITTER_TWEETS_URL, ({ request }) => {
+          authHeaders = [...authHeaders, request.headers.get("authorization") ?? ""];
+          const tweetId =
+            authHeaders.length === 1 ? "2000000000000000011" : "2000000000000000012";
+          return HttpResponse.json({ data: { id: tweetId, text: "posted" } }, { status: 201 });
+        }),
+      );
+
+      const { archiveRepo, notifier } = createOAuth2Notifier();
+      await handleTwitterPostJob(
+        { archiveRepo, twitterNotifier: notifier },
+        { name: "twitter-post", data: { runId } },
+      );
+
+      // Refresh hit the OAuth2 token endpoint with the stored refresh token.
+      expect(refreshBodies).toHaveLength(1);
+      expect(refreshBodies[0]).toContain("grant_type=refresh_token");
+      expect(refreshBodies[0]).toContain("refresh_token=tenant-rt-stale");
+      // The post used the rotated access token.
+      expect(authHeaders).toEqual(["Bearer tenant-at-rotated", "Bearer tenant-at-rotated"]);
+      // The rotated tokens were persisted under (tenant, 'twitter') — the
+      // tx.saveToken ran inside the FOR UPDATE lock against the real DB.
+      const row = await tokensRepo().getToken("twitter");
+      expect(row?.accessToken).toBe("tenant-at-rotated");
+      expect(row?.refreshToken).toBe("tenant-rt-rotated");
+      const state = await loadArchiveTwitterState(db, runId);
+      expect(state.twitterPostedAt).not.toBeNull();
+    });
+
+    it("no tenant token row → channel skips without calling Twitter; run state untouched", async () => {
+      const runId = await seedReviewedArchive(db);
+      // msw: any tweet call would be an unhandled request error.
+      const { archiveRepo, notifier } = createOAuth2Notifier();
+      await handleTwitterPostJob(
+        { archiveRepo, twitterNotifier: notifier },
+        { name: "twitter-post", data: { runId } },
+      );
+      const state = await loadArchiveTwitterState(db, runId);
+      expect(state.twitterPostedAt).toBeNull();
+    });
   });
 });

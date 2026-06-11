@@ -29,6 +29,10 @@ import {
   createLinkedInOAuthRouter,
   createLinkedInOAuthCallbackRouter,
 } from "@api/routes/linkedin-oauth.js";
+import {
+  createTwitterOAuthRouter,
+  createTwitterOAuthCallbackRouter,
+} from "@api/routes/twitter-oauth.js";
 import { createSocialTokensRepo } from "@api/repositories/social-tokens.js";
 import { createAppCredentialsRepo } from "@api/repositories/app-credentials.js";
 import { createSuperAppCredentialsRouter } from "@api/routes/super-app-credentials.js";
@@ -223,6 +227,16 @@ const linkedInOAuthDeps = {
   env: process.env,
 };
 
+// P13 (REQ-081): per-tenant Twitter OAuth2 connect — same two-tier wiring as
+// LinkedIn above (shared app client from app_credentials; tenant-scoped tokens).
+const twitterOAuthDeps = {
+  getAppCredsRepo: () => createAppCredentialsRepo(getDb(), getCredentialCipher()),
+  getTokenRepo: (scope?: TenantScope) =>
+    createSocialTokensRepo(getDb(), getCredentialCipher(), scope ?? defaultTenantScope),
+  redis: oauthRedis,
+  env: process.env,
+};
+
 // Single-use, short-TTL reset tokens stored in Redis (REQ-004). GETDEL makes
 // consumption atomic — a token can never be redeemed twice.
 const resetTokenStore: ResetTokenStore = {
@@ -296,6 +310,8 @@ const app = buildApp({
   analyticsConfigRouter: createDefaultAnalyticsConfigRouter(),
   linkedInOAuthRouter: createLinkedInOAuthRouter(linkedInOAuthDeps),
   linkedInOAuthCallbackRouter: createLinkedInOAuthCallbackRouter(linkedInOAuthDeps),
+  twitterOAuthRouter: createTwitterOAuthRouter(twitterOAuthDeps),
+  twitterOAuthCallbackRouter: createTwitterOAuthCallbackRouter(twitterOAuthDeps),
   // Host→tenant resolution (P5): ROOT_DOMAIN / APP_HOST / CUSTOM_DOMAIN_MAP
   // env-driven; X-Tenant-Slug + *.lvh.me dev overrides outside production.
   resolveTenant: createResolveTenant({

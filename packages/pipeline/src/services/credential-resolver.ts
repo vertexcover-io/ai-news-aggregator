@@ -20,6 +20,12 @@ export interface TwitterCollectorCookie {
   source: "db" | "env";
 }
 
+/** Shared Twitter OAuth2 app client (P13, REQ-081) — used to refresh per-tenant tokens. */
+export interface TwitterOAuth2ClientCreds {
+  clientId: string;
+  clientSecret: string;
+}
+
 /**
  * Tenant-level resolution (P12): the repo is scoped to the job's tenant, so
  * lookups hit `(tenant_id, platform)` rows owned by that tenant only.
@@ -37,7 +43,10 @@ export interface CredentialResolverDeps {
  * exposed to tenant admins.
  */
 export interface AppCredentialResolverDeps {
-  appRepo: Pick<AppCredentialsRepo, "getLinkedInClient" | "getTwitterCollector">;
+  appRepo: Pick<
+    AppCredentialsRepo,
+    "getLinkedInClient" | "getTwitterCollector" | "getTwitterClient"
+  >;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -62,7 +71,7 @@ type DbRead<T> = { ok: T | null } | { ok: "decrypt_failed" };
 
 async function safeGetDbRow<T>(
   fetch: () => Promise<T | null>,
-  platform: "linkedin" | "twitter" | "twitter_collector",
+  platform: "linkedin" | "twitter" | "twitter_collector" | "twitter_client",
 ): Promise<DbRead<T>> {
   try {
     return { ok: await fetch() };
@@ -138,6 +147,30 @@ export async function resolveTwitterOAuth1Credentials(
     accessToken,
     accessSecret: accessTokenSecret,
   };
+}
+
+/**
+ * App-level Twitter OAuth2 client (P13, REQ-081): resolves the SHARED app
+ * client used to refresh per-tenant posting tokens. DB-first from the
+ * super-admin `app_credentials` store, env fallback — never tenant-scoped.
+ */
+export async function resolveTwitterOAuth2Client(
+  deps: AppCredentialResolverDeps,
+): Promise<TwitterOAuth2ClientCreds | null> {
+  const dbRead = await safeGetDbRow(
+    () => deps.appRepo.getTwitterClient(),
+    "twitter_client",
+  );
+  if (dbRead.ok === "decrypt_failed") return null;
+  const dbRow = dbRead.ok;
+  if (dbRow) {
+    return { clientId: dbRow.clientId, clientSecret: dbRow.clientSecret };
+  }
+  const env = deps.env ?? {};
+  const clientId = env.TWITTER_OAUTH2_CLIENT_ID;
+  const clientSecret = env.TWITTER_OAUTH2_CLIENT_SECRET;
+  if (!present(clientId) || !present(clientSecret)) return null;
+  return { clientId, clientSecret };
 }
 
 export async function resolveTwitterCollectorCookie(

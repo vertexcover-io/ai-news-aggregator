@@ -85,6 +85,9 @@ function makeTokenRepo(initial: SocialTokenRecord | null): {
     getLinkedIn() {
       return Promise.resolve(state.token);
     },
+    getTwitter() {
+      return Promise.resolve(null);
+    },
     deleteToken() {
       const existed = state.token !== null;
       state.token = null;
@@ -103,6 +106,7 @@ const appStatus: AppCredentialsStatus = {
     updatedAt: "2026-06-01T00:00:00.000Z",
   },
   twitterCollector: { configured: true, updatedAt: "2026-06-02T00:00:00.000Z" },
+  twitterClient: { configured: false, updatedAt: null },
 };
 
 function buildApp(opts?: {

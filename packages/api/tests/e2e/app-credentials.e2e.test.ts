@@ -35,6 +35,12 @@ import {
   createLinkedInOAuthCallbackRouter,
   type LinkedInOAuthRouterDeps,
 } from "@api/routes/linkedin-oauth.js";
+import {
+  createTwitterOAuthRouter,
+  createTwitterOAuthCallbackRouter,
+  type TwitterOAuthRouterDeps,
+} from "@api/routes/twitter-oauth.js";
+import type { TwitterOAuthProvider } from "@api/services/twitter-oauth.js";
 import { createSocialCredentialsRepo } from "@api/repositories/social-credentials.js";
 import { createSocialTokensRepo } from "@api/repositories/social-tokens.js";
 import { createAppCredentialsRepo } from "@api/repositories/app-credentials.js";
@@ -117,7 +123,37 @@ function makeLinkedInFetch(personSub: string): typeof fetch {
   }) as typeof fetch;
 }
 
-function buildApp(redis: FakeRedis, fetchFn?: typeof fetch): Hono {
+/** Fake Twitter OAuth2 provider (P13): deterministic state + token exchange. */
+function makeTwitterProvider(handle: string): TwitterOAuthProvider {
+  return {
+    generateAuthLink() {
+      return {
+        url: `https://x.com/i/oauth2/authorize?state=tw-state-${handle}`,
+        codeVerifier: `cv-${handle}`,
+        state: `tw-state-${handle}`,
+      };
+    },
+    exchangeCode(input) {
+      // The exchange only succeeds with the PKCE verifier the start step stored.
+      if (input.codeVerifier !== `cv-${handle}`) {
+        return Promise.resolve({ ok: false as const });
+      }
+      return Promise.resolve({
+        ok: true as const,
+        accessToken: `tw-at-${handle}`,
+        refreshToken: `tw-rt-${handle}`,
+        expiresAt: new Date("2026-12-31T00:00:00.000Z"),
+        username: handle,
+      });
+    },
+  };
+}
+
+function buildApp(
+  redis: FakeRedis,
+  fetchFn?: typeof fetch,
+  twitterProvider?: TwitterOAuthProvider,
+): Hono {
   const app = new Hono();
 
   const oauthDeps: LinkedInOAuthRouterDeps = {
@@ -128,10 +164,27 @@ function buildApp(redis: FakeRedis, fetchFn?: typeof fetch): Hono {
     fetchFn,
   };
 
-  // Public callback (state-gated, no session).
+  const twitterOAuthDeps: TwitterOAuthRouterDeps = {
+    getAppCredsRepo: () => createAppCredentialsRepo(db, cipher),
+    getTokenRepo: (scope) => createSocialTokensRepo(db, cipher, scope),
+    redis,
+    env: {
+      ...process.env,
+      PUBLIC_BASE_URL: "https://app.test",
+      TWITTER_OAUTH2_CLIENT_ID: "",
+      TWITTER_OAUTH2_CLIENT_SECRET: "",
+    },
+    provider: twitterProvider ?? makeTwitterProvider("unused"),
+  };
+
+  // Public callbacks (state-gated, no session).
   app.route(
     "/api/admin/social-credentials/linkedin/oauth/callback",
     createLinkedInOAuthCallbackRouter(oauthDeps),
+  );
+  app.route(
+    "/api/admin/social-credentials/twitter/oauth/callback",
+    createTwitterOAuthCallbackRouter(twitterOAuthDeps),
   );
 
   const adminApp = new Hono();
@@ -139,6 +192,10 @@ function buildApp(redis: FakeRedis, fetchFn?: typeof fetch): Hono {
   adminApp.route(
     "/social-credentials/linkedin/oauth",
     createLinkedInOAuthRouter(oauthDeps),
+  );
+  adminApp.route(
+    "/social-credentials/twitter/oauth",
+    createTwitterOAuthRouter(twitterOAuthDeps),
   );
   adminApp.route(
     "/social-credentials",
@@ -177,7 +234,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.delete(socialTokens).where(inArray(socialTokens.tenantId, [tenantAId, tenantBId]));
   await db.delete(socialCredentials).where(inArray(socialCredentials.tenantId, [tenantAId, tenantBId]));
-  await db.delete(appCredentials).where(inArray(appCredentials.key, ["linkedin_client", "twitter_collector"]));
+  await db.delete(appCredentials).where(inArray(appCredentials.key, ["linkedin_client", "twitter_collector", "twitter_client"]));
   await db.delete(tenants).where(inArray(tenants.id, [tenantAId, tenantBId]));
 });
 
@@ -374,6 +431,96 @@ describe("P12 two-tier social credentials (e2e)", () => {
     });
     const bodyB = (await statusB.json()) as { connected: boolean };
     expect(bodyB.connected).toBe(false);
+  });
+
+  it("test_REQ_081_twitter_oauth_stores_tenant_tokens — OAuth2 connect through the shared app client; tokens keyed (tenant_id,'twitter'); no manual key entry", async () => {
+    const redis = makeRedis();
+    const app = buildApp(redis, undefined, makeTwitterProvider("agentloop"));
+
+    // Super admin configures the SHARED Twitter OAuth2 app client (P13) —
+    // tenants never enter client credentials themselves.
+    const putClient = await app.request("/api/super/app-credentials/twitter-client", {
+      method: "PUT",
+      headers: { cookie: superCookie(), "content-type": "application/json" },
+      body: JSON.stringify({
+        clientId: `tw-client-${STAMP}`,
+        clientSecret: `tw-secret-${STAMP}`,
+      }),
+    });
+    expect(putClient.status).toBe(200);
+
+    // Tenant A starts the 3-legged flow: authorize URL + Redis-stored
+    // { codeVerifier, tenantId } under the provider state.
+    const start = await app.request("/api/admin/social-credentials/twitter/oauth/start", {
+      method: "POST",
+      headers: { cookie: tenantCookie(USER_A, tenantAId) },
+    });
+    expect(start.status).toBe(200);
+    const { authorizeUrl } = (await start.json()) as { authorizeUrl: string };
+    const state = new URL(authorizeUrl).searchParams.get("state");
+    expect(state).toBe("tw-state-agentloop");
+    const storedState = redis.store.get(`twitter:oauth:state:${state}`);
+    expect(storedState).toBeTruthy();
+    expect(JSON.parse(storedState ?? "{}")).toMatchObject({
+      codeVerifier: "cv-agentloop",
+      tenantId: tenantAId,
+    });
+
+    // Twitter redirects the browser back — token exchange mocked (no session).
+    const cb = await app.request(
+      `/api/admin/social-credentials/twitter/oauth/callback?code=code-a&state=${state}`,
+    );
+    expect(cb.status).toBe(302);
+    expect(cb.headers.get("location")).toContain("twitter=connected");
+
+    // The token landed under tenant A — keyed (tenant_id, 'twitter'),
+    // ciphertext at rest.
+    const rows = await db
+      .select()
+      .from(socialTokens)
+      .where(inArray(socialTokens.tenantId, [tenantAId, tenantBId]));
+    const twitterRows = rows.filter((r) => r.platform === "twitter");
+    expect(twitterRows).toHaveLength(1);
+    expect(twitterRows[0].tenantId).toBe(tenantAId);
+    expect(JSON.stringify(twitterRows[0].encryptedFields)).not.toContain("tw-at-agentloop");
+
+    // Tenant B sees no connection; tenant A decrypts its own token.
+    const repoB = createSocialTokensRepo(db, cipher, { tenantId: tenantBId, role: "tenant_admin" });
+    expect(await repoB.getTwitter()).toBeNull();
+    const repoA = createSocialTokensRepo(db, cipher, { tenantId: tenantAId, role: "tenant_admin" });
+    const tokenA = await repoA.getTwitter();
+    expect(tokenA?.accessToken).toBe("tw-at-agentloop");
+    expect(tokenA?.refreshToken).toBe("tw-rt-agentloop");
+
+    // GET /status reflects connected + token expiry for A; not connected for B.
+    const statusA = await app.request("/api/admin/social-credentials/twitter/oauth/status", {
+      headers: { cookie: tenantCookie(USER_A, tenantAId) },
+    });
+    const bodyA = (await statusA.json()) as {
+      clientConfigured: boolean;
+      connected: boolean;
+      connectedAs: string | null;
+      expiresAt: string | null;
+      hasRefreshToken: boolean;
+    };
+    expect(bodyA.clientConfigured).toBe(true);
+    expect(bodyA.connected).toBe(true);
+    expect(bodyA.connectedAs).toBe("agentloop");
+    expect(bodyA.expiresAt).toBe("2026-12-31T00:00:00.000Z");
+    expect(bodyA.hasRefreshToken).toBe(true);
+    const statusB = await app.request("/api/admin/social-credentials/twitter/oauth/status", {
+      headers: { cookie: tenantCookie(USER_B, tenantBId) },
+    });
+    expect(((await statusB.json()) as { connected: boolean }).connected).toBe(false);
+
+    // The state was consumed — a replayed callback fails.
+    const replay = await app.request(
+      `/api/admin/social-credentials/twitter/oauth/callback?code=code-a&state=${state}`,
+    );
+    expect(replay.headers.get("location")).toContain("twitter=error");
+
+    // Cleanup: drop tenant A's twitter token so later tests start clean.
+    expect(await repoA.deleteToken("twitter")).toBe(true);
   });
 
   it("DELETE /linkedin disconnects ONLY the calling tenant's token (tenant routes expose connect/disconnect)", async () => {

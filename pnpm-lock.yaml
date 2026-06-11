@@ -125,6 +125,9 @@ importers:
       rettiwt-api:
         specifier: 7.0.3
         version: 7.0.3(patch_hash=cf58694866c74347a978be3eadc200dc71a265f766231b297fe6643b8f37da2a)
+      twitter-api-v2:
+        specifier: 1.29.0
+        version: 1.29.0
       zod:
         specifier: 4.3.6
         version: 4.3.6

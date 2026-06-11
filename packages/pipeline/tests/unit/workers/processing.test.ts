@@ -98,6 +98,7 @@ vi.mock("@pipeline/repositories/app-credentials.js", () => ({
   createAppCredentialsRepo: vi.fn(() => ({
     getLinkedInClient: vi.fn().mockResolvedValue(null),
     getTwitterCollector: vi.fn().mockResolvedValue(null),
+    getTwitterClient: vi.fn().mockResolvedValue(null),
     upsertTwitterCollector: vi.fn(),
   })),
 }));
