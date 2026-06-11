@@ -19,6 +19,7 @@ import {
 import { createDefaultArchivesSearchRouter } from "@api/routes/archives-search.js";
 import { createDefaultPublicHomeRouter } from "@api/routes/home.js";
 import { createDefaultPublicMustReadRouter } from "@api/routes/must-read.js";
+import { createDefaultBrandingRouter } from "@api/routes/branding.js";
 import { createDefaultPublicSourcesRouter } from "@api/routes/sources.js";
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
 import { createDefaultCollectorHealthRouter } from "@api/routes/collector-health.js";
@@ -266,6 +267,8 @@ const app = buildApp({
   runsRouter: createDefaultRunsRouter(),
   settingsRouter: createDefaultSettingsRouter(),
   collectorHealthRouter: createDefaultCollectorHealthRouter(),
+  // Public tenant branding payload + logo bytes (P7).
+  brandingRouter: createDefaultBrandingRouter(),
   authRouter,
   requireAuthFactory: requireAuth,
   subscribeRouter,

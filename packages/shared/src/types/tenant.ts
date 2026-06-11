@@ -57,6 +57,32 @@ export interface User {
   updatedAt: string;
 }
 
+/* ── Branding wire types (P7: REQ-040/041/042/043) ──────────────────────── */
+
+/** Per-tenant feature flags the public site needs for nav derivation (REQ-042). */
+export interface TenantBrandingFlags {
+  /** Canon/Must-Read feature — `Must Read` nav + Elsewhere column only when on. */
+  canon: boolean;
+}
+
+/**
+ * Public branding payload (`GET /api/branding`) — everything the public site
+ * chrome needs to render a tenant's identity with no hardcoded brand
+ * (REQ-040). Served for the Host-resolved tenant; falls back to tenant 0 on
+ * the app host (local dev / legacy single-tenant).
+ */
+export interface TenantBranding {
+  name: string;
+  headline: string | null;
+  topicStrip: string | null;
+  subtagline: string | null;
+  /** Versioned logo URL (`/api/branding/logo?v=…`); null when no logo uploaded. */
+  logoUrl: string | null;
+  flags: TenantBrandingFlags;
+  /** AGENTLOOP-only surfaces (`Built` nav, colophon) render only when true (REQ-042). */
+  isTenantZero: boolean;
+}
+
 /* ── Auth wire types (P3: signup / login / session) ─────────────────────── */
 
 /** The authenticated user as exposed to the web client (no passwordHash). */

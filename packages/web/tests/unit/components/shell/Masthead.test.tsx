@@ -2,20 +2,29 @@ import { describe, expect, it, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { TenantBranding } from "@newsletter/shared/types/tenant";
 import { Masthead } from "../../../../src/components/shell/Masthead";
+import {
+  AGENTLOOP_BRANDING,
+  SECOND_TENANT_BRANDING,
+  withBranding,
+} from "../../../helpers/branding";
 
 afterEach(() => {
   cleanup();
 });
 
-function renderMasthead(initialPath = "/"): ReturnType<typeof render> {
+function renderMasthead(
+  initialPath = "/",
+  branding: TenantBranding = AGENTLOOP_BRANDING,
+): ReturnType<typeof render> {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialPath]}>
-        <Masthead />
+        {withBranding(<Masthead />, branding)}
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -79,5 +88,41 @@ describe("Masthead", () => {
     renderMasthead("/built");
     const wordmark = screen.getByRole("link", { name: /agentloop/i });
     expect(wordmark.getAttribute("href")).toBe("/");
+  });
+});
+
+describe("test_REQ_042_nav_derived_from_flags_and_tenant0", () => {
+  it("non-zero tenant with canon off: Sources + Subscribe only — no Must Read, no Built, no publication sub-line", () => {
+    renderMasthead("/", SECOND_TENANT_BRANDING);
+    expect(screen.getByRole("link", { name: /^sources$/i })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /subscribe/i })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /must read/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /built/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /vertexcover labs/i })).toBeNull();
+  });
+
+  it("non-zero tenant with canon ON: Must Read appears, Built still hidden", () => {
+    renderMasthead("/", {
+      ...SECOND_TENANT_BRANDING,
+      flags: { canon: true },
+    });
+    expect(screen.getByRole("link", { name: /must read/i })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /built/i })).toBeNull();
+  });
+
+  it("renders the tenant wordmark, no AGENTLOOP string anywhere (REQ-040)", () => {
+    renderMasthead("/", SECOND_TENANT_BRANDING);
+    expect(screen.getByText("The Inference")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/agentloop/i);
+  });
+
+  it("renders the tenant logo image when logoUrl is set (BrandMark fallback otherwise)", () => {
+    renderMasthead("/", SECOND_TENANT_BRANDING);
+    const img = document.querySelector(`img[src="${SECOND_TENANT_BRANDING.logoUrl ?? ""}"]`);
+    expect(img).not.toBeNull();
+    cleanup();
+    renderMasthead("/", { ...SECOND_TENANT_BRANDING, logoUrl: null });
+    expect(document.querySelector("img")).toBeNull();
+    expect(document.querySelector("svg")).not.toBeNull();
   });
 });

@@ -7,11 +7,20 @@ import type {
   HomePagePayload,
   PublicMustReadEntry,
 } from "@newsletter/shared/types";
+import type { TenantBranding } from "@newsletter/shared/types/tenant";
 import { HomePage } from "../../../src/pages/HomePage";
 import { PublicLayout } from "../../../src/layouts/PublicLayout";
+import {
+  AGENTLOOP_BRANDING,
+  SECOND_TENANT_BRANDING,
+} from "../../helpers/branding";
 
 vi.mock("../../../src/api/home", () => ({
   getHome: vi.fn(),
+}));
+
+vi.mock("../../../src/api/branding", () => ({
+  getBranding: vi.fn(),
 }));
 
 vi.mock("../../../src/api/subscribe", () => ({
@@ -23,7 +32,9 @@ vi.mock("../../../src/lib/analytics", () => ({
 }));
 
 import { getHome } from "../../../src/api/home";
+import { getBranding } from "../../../src/api/branding";
 const mockGetHome = vi.mocked(getHome);
+const mockGetBranding = vi.mocked(getBranding);
 
 afterEach(() => {
   cleanup();
@@ -62,12 +73,17 @@ function makeCanon(overrides: Partial<PublicMustReadEntry> = {}): PublicMustRead
   };
 }
 
-function renderHome(payload: HomePagePayload): ReturnType<typeof render> {
+function renderHome(
+  payload: HomePagePayload,
+  branding: TenantBranding = AGENTLOOP_BRANDING,
+): ReturnType<typeof render> {
   mockGetHome.mockResolvedValue(payload);
+  mockGetBranding.mockResolvedValue(branding);
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   qc.setQueryData(["home"], payload);
+  qc.setQueryData(["branding"], branding);
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={["/"]}>
@@ -210,5 +226,50 @@ describe("HomePage", () => {
     );
     expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
     expect(link?.getAttribute("target")).toBe("_blank");
+  });
+
+  it("test_REQ_041_homepage_today_plus_archives: section order is hero → today's issue → subscribe → recent issues → elsewhere with branding applied", () => {
+    const today = makeArchive("run-today", "2026-05-23");
+    const recent = [makeArchive("run-1", "2026-05-22"), makeArchive("run-2", "2026-05-21")];
+    renderHome({ todaysIssue: today, featuredCanon: null, recentIssues: recent });
+
+    const h1 = screen.getByRole("heading", { level: 1 });
+    expect(h1.textContent).toContain("The daily read for people who ship with");
+    const sections = Array.from(
+      document.querySelectorAll("[data-section]"),
+    ).map((el) => el.getAttribute("data-section"));
+    expect(sections).toEqual([
+      "todays-issue",
+      "inline-subscribe",
+      "recent-issues",
+      "elsewhere",
+    ]);
+    // Hero precedes today's issue in the DOM.
+    const todaySection = document.querySelector('[data-section="todays-issue"]');
+    expect(
+      h1.compareDocumentPosition(todaySection as Node) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("test_REQ_040_public_site_uses_tenant_branding (jsdom): second tenant homepage renders its own hero slots, no AGENTLOOP string", () => {
+    renderHome(
+      { todaysIssue: null, featuredCanon: null, recentIssues: [] },
+      SECOND_TENANT_BRANDING,
+    );
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: /The daily read for people building with inference\./,
+      }),
+    ).toBeTruthy();
+    const body = document.body.textContent ?? "";
+    expect(body).toMatch(/SERVING/);
+    expect(body).toMatch(/QUANTIZATION/);
+    expect(body).toContain(
+      "No funding rounds. No leaderboards. No discourse. Just the runtime.",
+    );
+    expect(body).not.toMatch(/agentloop/i);
+    expect(body).not.toMatch(/vertexcover/i);
   });
 });

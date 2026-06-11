@@ -26,7 +26,10 @@ import {
   type RawItemsRepo,
 } from "@api/repositories/raw-items.js";
 import type { TenantScope } from "@newsletter/shared/types/tenant-context";
-import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
+import {
+  tenantScopeFromContext,
+  tenantScopeFromPublicHost,
+} from "@api/auth/tenant-scope.js";
 import {
   createRunArchivesRepo,
   type RunArchiveRow,
@@ -76,9 +79,10 @@ export interface ArchivesRouterDeps {
 
 async function getConfiguredTimezone(
   deps: Pick<ArchivesRouterDeps, "getSettingsRepo">,
+  scope?: TenantScope,
 ): Promise<string> {
   if (deps.getSettingsRepo === undefined) return "UTC";
-  const settings = await deps.getSettingsRepo().get();
+  const settings = await deps.getSettingsRepo(scope).get();
   return safeTimezone(settings?.scheduleTimezone);
 }
 
@@ -97,9 +101,11 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
   const archives = new Hono();
 
   archives.get("/", async (c) => {
-    const timezone = await getConfiguredTimezone(deps);
-    const items = await deps.getArchiveRepo().listReviewed({
-      rawItemsRepo: deps.getRawItemsRepo(),
+    // Public reads are fenced by the Host-resolved tenant (P7, REQ-044).
+    const scope = tenantScopeFromPublicHost(c);
+    const timezone = await getConfiguredTimezone(deps, scope);
+    const items = await deps.getArchiveRepo(scope).listReviewed({
+      rawItemsRepo: deps.getRawItemsRepo(scope),
       timezone,
     });
     return c.json({ archives: items } satisfies ArchiveListResponse);
@@ -107,11 +113,13 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
 
   archives.get("/:runId", async (c) => {
     const runId = c.req.param("runId");
+    const scope = tenantScopeFromPublicHost(c);
     try {
-      const archive = await deps.getArchiveRepo().findById(runId);
+      // Cross-host ids fall out of the tenant fence → not-found (REQ-044).
+      const archive = await deps.getArchiveRepo(scope).findById(runId);
       if (!archive) return c.json({ error: "not found" }, 404);
       if (!archive.reviewed) return c.json({ error: "not found" }, 404);
-      const timezone = await getConfiguredTimezone(deps);
+      const timezone = await getConfiguredTimezone(deps, scope);
 
       // REQ-011: public route never serializes shortlistedItemIds
       const state = {
@@ -135,7 +143,7 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
 
       if (archive.status === "completed" && Array.isArray(archive.rankedItems)) {
         const hydrated = await hydrateRankedItems(
-          deps.getRawItemsRepo(),
+          deps.getRawItemsRepo(scope),
           archive.rankedItems,
           archive.completedAt,
         );

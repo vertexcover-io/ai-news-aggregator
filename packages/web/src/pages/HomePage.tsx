@@ -1,40 +1,77 @@
-import { useEffect, type ReactElement } from "react";
+import { Fragment, useEffect, type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { TenantBranding } from "@newsletter/shared/types/tenant";
 import { getHome } from "../api/home";
 import { setMeta } from "../lib/meta";
+import {
+  brandDisplayName,
+  useTenantBranding,
+} from "../hooks/useTenantBranding";
 import { ArchiveRow } from "../components/archive-listing/ArchiveRow";
 import { TodaysIssueBlock } from "../components/home/TodaysIssueBlock";
 import { FromTheCanonBlock } from "../components/home/FromTheCanonBlock";
 import { ElsewhereStrip } from "../components/home/ElsewhereStrip";
 import { InlineSubscribeCard } from "../components/shell/InlineSubscribeCard";
 
-const TAGLINE = "The daily read for people who ship with agents.";
+/** "… ship with agents." → ["… ship with", "agents."] — the last word gets the rust italic accent. */
+function splitHeadline(headline: string): [string, string] {
+  const trimmed = headline.trim();
+  const lastSpace = trimmed.lastIndexOf(" ");
+  if (lastSpace === -1) return ["", trimmed];
+  return [trimmed.slice(0, lastSpace), trimmed.slice(lastSpace + 1)];
+}
 
-function Hero(): ReactElement {
+/** Non-breaking spaces inside each strip segment, exactly as the legacy markup. */
+function noBreak(segment: string): string {
+  return segment.replace(/ /g, " ");
+}
+
+function Hero({ branding }: { branding: TenantBranding }): ReactElement {
+  const [lead, accent] = splitHeadline(branding.headline ?? "");
+  const stripSegments = (branding.topicStrip ?? "")
+    .split("·")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+
   return (
     <section className="pt-16 pb-14 text-center">
       <h1 className="font-serif font-medium text-[clamp(40px,6.4vw,68px)] leading-[1.02] tracking-[-0.018em] m-0 mx-auto max-w-[14ch] text-[#14110d]">
-        The daily read for people who ship with{" "}
-        <span className="text-[#8c3a1e] italic font-medium">agents.</span>
+        {lead}
+        {lead ? " " : null}
+        <span className="text-[#8c3a1e] italic font-medium">{accent}</span>
       </h1>
-      <div className="mt-9 mx-auto font-mono text-[11px] tracking-[0.22em] uppercase text-[#14110d] max-w-[820px] leading-[2]">
-        AGENTIC&nbsp;CODING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> HARNESS&nbsp;ENGINEERING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> CONTEXT&nbsp;ENGINEERING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> THE&nbsp;SOFTWARE&nbsp;FACTORY
-      </div>
-      <div className="mt-5 mx-auto font-mono text-[10.5px] tracking-[0.16em] uppercase text-[#6b6557] max-w-[760px]">
-        No model releases. No benchmarks. No discourse. Just the craft.
-      </div>
+      {stripSegments.length > 0 ? (
+        <div className="mt-9 mx-auto font-mono text-[11px] tracking-[0.22em] uppercase text-[#14110d] max-w-[820px] leading-[2]">
+          {stripSegments.map((segment, index) => (
+            <Fragment key={segment}>
+              {index > 0 ? (
+                <>
+                  {" "}
+                  <span className="text-[#8c3a1e] mx-2.5">·</span>{" "}
+                </>
+              ) : null}
+              {noBreak(segment)}
+            </Fragment>
+          ))}
+        </div>
+      ) : null}
+      {branding.subtagline ? (
+        <div className="mt-5 mx-auto font-mono text-[10.5px] tracking-[0.16em] uppercase text-[#6b6557] max-w-[760px]">
+          {branding.subtagline}
+        </div>
+      ) : null}
     </section>
   );
 }
 
 export function HomePage(): ReactElement {
+  const branding = useTenantBranding();
+  const displayName = brandDisplayName(branding);
+  const headline = branding.headline;
   useEffect(() => {
-    document.title = "AgentLoop — The daily read for people who ship with agents.";
-    setMeta("description", TAGLINE);
-  }, []);
+    document.title = headline ? `${displayName} — ${headline}` : displayName;
+    setMeta("description", headline ?? "");
+  }, [displayName, headline]);
 
   const { data } = useQuery({
     queryKey: ["home"],
@@ -52,7 +89,7 @@ export function HomePage(): ReactElement {
   return (
     <>
       <hr className="border-0 border-t-2 border-[#14110d] m-0" />
-      <Hero />
+      <Hero branding={branding} />
       <hr className="border-0 border-t-2 border-[#14110d] m-0" />
 
       {todaysIssue ? <TodaysIssueBlock issue={todaysIssue} /> : null}

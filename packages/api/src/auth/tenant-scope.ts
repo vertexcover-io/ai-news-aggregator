@@ -37,3 +37,18 @@ export function tenantScopeFromSession(
 export function tenantScopeFromContext(c: Context): TenantScope | undefined {
   return tenantScopeFromSession(c.get("tenantCtx"));
 }
+
+/**
+ * Repository scope for PUBLIC routes, derived from the Host-resolved tenant
+ * (`publicTenant`, set by the P5 resolver — P7, REQ-044). Returns a concrete
+ * single-tenant fence so cross-host resource ids read as not-found; on the
+ * app host / local dev no public tenant exists → undefined (legacy
+ * single-tenant mode, same data as today). The role is nominal — repositories
+ * only consume `tenantId` — and this scope never grants write paths anything:
+ * public routes are read-only.
+ */
+export function tenantScopeFromPublicHost(c: Context): TenantScope | undefined {
+  const publicTenant = c.get("publicTenant");
+  if (publicTenant === undefined) return undefined;
+  return { tenantId: publicTenant.tenantId, role: "tenant_admin" };
+}

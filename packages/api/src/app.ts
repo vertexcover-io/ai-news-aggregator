@@ -53,6 +53,14 @@ export interface BuildAppDeps {
    */
   resolveTenant?: MiddlewareHandler;
   /**
+   * Public tenant branding routes (P7, REQ-040/043): GET / (TenantBranding
+   * payload) + GET /logo (Postgres-stored logo bytes with cache headers).
+   * Mounted at /api/branding, ungated — branding is public-site chrome.
+   * Optional ONLY so existing unit tests composing buildApp keep working —
+   * index.ts always provides it.
+   */
+  brandingRouter?: Hono;
+  /**
    * Super-admin console routes (P6, REQ-100/101/102/103): GET /tenants,
    * POST /impersonate/:tenantId, POST /impersonate/exit — mounted at
    * /api/super. The router applies requireSuperAdmin internally (see
@@ -110,6 +118,11 @@ export function buildApp(deps: BuildAppDeps): Hono {
 
   // Public sources summary (no admin gate).
   app.route("/api/sources", deps.publicSourcesRouter);
+
+  // Public tenant branding (P7) — payload + logo bytes.
+  if (deps.brandingRouter) {
+    app.route("/api/branding", deps.brandingRouter);
+  }
 
   // LinkedIn OAuth callback — mounted BEFORE adminApp so the gate does not
   // intercept requests to this path. LinkedIn redirects the user's browser here

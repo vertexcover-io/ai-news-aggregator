@@ -76,3 +76,10 @@ export const TENANT_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 /** Format check only — reserved-word policy is `isReservedTenantSlug`. */
 export const isValidTenantSlugFormat = (slug: string): boolean =>
   TENANT_SLUG_PATTERN.test(slug);
+
+/**
+ * Slug of tenant 0 — the migrated AGENTLOOP tenant (P2 backfill). Used to
+ * derive `isTenantZero` branding (REQ-042) and as the app-host/dev fallback
+ * tenant for public branding. Reserved above, so no other tenant can take it.
+ */
+export const TENANT_ZERO_SLUG = "agentloop";

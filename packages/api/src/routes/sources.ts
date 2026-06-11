@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { createLogger, getDb as defaultGetDb } from "@newsletter/shared";
+import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import { tenantScopeFromPublicHost } from "@api/auth/tenant-scope.js";
 import { buildSourcesSummary } from "@api/services/sources-summary.js";
 import {
   createRawItemsRepo,
@@ -15,9 +17,9 @@ import {
 } from "@api/repositories/user-settings.js";
 
 export interface SourcesRouterDeps {
-  getRawItemsRepo: () => RawItemsRepo;
-  getArchiveRepo: () => RunArchivesRepo;
-  getSettingsRepo: () => UserSettingsRepo;
+  getRawItemsRepo: (scope?: TenantScope) => RawItemsRepo;
+  getArchiveRepo: (scope?: TenantScope) => RunArchivesRepo;
+  getSettingsRepo: (scope?: TenantScope) => UserSettingsRepo;
   logger?: ReturnType<typeof createLogger>;
   now?: () => Date;
 }
@@ -78,11 +80,13 @@ export function createPublicSourcesRouter(deps: SourcesRouterDeps): Hono {
     if (!r.ok) {
       return c.json({ error: r.message }, 400);
     }
+    // Per-tenant source summary on tenant hosts (P7, REQ-044).
+    const scope = tenantScopeFromPublicHost(c);
     try {
       const summary = await buildSourcesSummary({
-        rawItemsRepo: deps.getRawItemsRepo(),
-        runArchivesRepo: deps.getArchiveRepo(),
-        userSettingsRepo: deps.getSettingsRepo(),
+        rawItemsRepo: deps.getRawItemsRepo(scope),
+        runArchivesRepo: deps.getArchiveRepo(scope),
+        userSettingsRepo: deps.getSettingsRepo(scope),
         from: r.range.from,
         to: r.range.to,
         now: deps.now,
@@ -99,8 +103,8 @@ export function createPublicSourcesRouter(deps: SourcesRouterDeps): Hono {
 
 export function createDefaultPublicSourcesRouter(): Hono {
   return createPublicSourcesRouter({
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getRawItemsRepo: (scope) => createRawItemsRepo(defaultGetDb(), scope),
+    getArchiveRepo: (scope) => createRunArchivesRepo(defaultGetDb(), scope),
+    getSettingsRepo: (scope) => createUserSettingsRepo(defaultGetDb(), scope),
   });
 }
