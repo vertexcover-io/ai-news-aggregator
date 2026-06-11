@@ -138,6 +138,7 @@ async function fetchSource(
   config: TwitterCollectConfig,
   sleep: (ms: number) => Promise<void>,
   now: () => Date,
+  throttle: () => Promise<void>,
 ): Promise<FetchSourceOutcome> {
   const max = config.maxTweetsPerSource ?? DEFAULT_MAX_TWEETS_PER_SOURCE;
   const cutoff =
@@ -152,6 +153,9 @@ async function fetchSource(
 
   while (all.length < max && pagesFetched < MAX_PAGES) {
     if (deps.signal?.aborted) throw new AbortError();
+    // REQ-068: every page fetch draws from the GLOBAL twitter budget shared
+    // across all tenants' concurrent runs.
+    await throttle();
     const opts: TwitterClientFetchOptions = {
       maxTweets: max,
       cursor,
@@ -306,13 +310,36 @@ export async function collectTwitter(
   const failures: TwitterCollectorFailure[] = [];
   const unitResults: SourceUnitResult[] = [];
 
+  // P10 (REQ-068/EDGE-011): failure-tolerant wrapper around the shared
+  // throttle — an unavailable limiter degrades to unthrottled collection
+  // (warned once per collect) instead of failing the source.
+  const throttleFn = deps.throttle;
+  let throttleWarned = false;
+  const throttleSafe = async (): Promise<void> => {
+    if (!throttleFn) return;
+    try {
+      await throttleFn();
+    } catch (err) {
+      if (!throttleWarned) {
+        throttleWarned = true;
+        logger.warn(
+          {
+            event: "collector.twitter.throttle_unavailable",
+            error: errMessage(err),
+          },
+          "twitter throttle unavailable — proceeding unthrottled",
+        );
+      }
+    }
+  };
+
   for (const source of sources) {
     checkAborted(deps.signal);
     const sourceStart = now().getTime();
     const { identifier, displayName } = buildSourceMeta(source, userIdToHandle);
 
     try {
-      const outcome = await fetchSource(source, deps, config, sleep, now);
+      const outcome = await fetchSource(source, deps, config, sleep, now, throttleSafe);
       const rows = outcome.tweets.map((t) =>
         tweetToRawItem(t, { identifier, displayName }),
       );

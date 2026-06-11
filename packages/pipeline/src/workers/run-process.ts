@@ -96,6 +96,7 @@ import {
 import type { RunCostBreakdown, RunFunnel } from "@newsletter/shared";
 import { writeFailedArchive } from "@pipeline/services/run-archive-writer.js";
 import { finalizeRun } from "@pipeline/services/finalize-run.js";
+import type { SourceRateLimiter } from "@pipeline/services/source-rate-limit.js";
 
 const logger = createLogger("worker:run-process");
 
@@ -183,6 +184,8 @@ export type TwitterCollectFn = (
     rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
     signal?: AbortSignal;
     enrichment?: EnrichmentContext;
+    /** Global page throttle shared across tenants (P10, REQ-068). */
+    throttle?: () => Promise<void>;
   },
   config: TwitterCollectConfig,
 ) => Promise<CollectorResult>;
@@ -227,6 +230,13 @@ export interface RunProcessDeps {
   slackNotifier?: SlackNotifier;
   /** Tavily (or future) web-search provider. Resolved once at worker startup from TAVILY_API_KEY env var. */
   webSearchProvider?: WebSearchProvider;
+  /**
+   * Global per-external-source limiter (P10, REQ-067/068): Redis-shared
+   * token buckets pace collector starts (and Twitter page fetches) across
+   * concurrent tenant runs. Optional — absence (or a limiter failure) means
+   * unthrottled collection, never a failed source.
+   */
+  sourceRateLimiter?: SourceRateLimiter;
 }
 
 interface CollectingOutcome {
@@ -268,6 +278,27 @@ async function runCollecting(
 
   const collectorDeps = { rawItemsRepo: runScopedRawItemsRepo, signal };
   const enrichingDeps = { ...collectorDeps, enrichment: enrichmentCtx };
+
+  // P10 (REQ-067): pace each collector start on the GLOBAL per-source bucket
+  // so concurrent tenant runs share one upstream budget. Limiter failures are
+  // swallowed — collection proceeds unthrottled rather than failing a source.
+  const sourceRateLimiter = deps.sourceRateLimiter;
+  const paceSource = async (sourceKey: string): Promise<void> => {
+    if (!sourceRateLimiter) return;
+    try {
+      await sourceRateLimiter.acquire(sourceKey);
+    } catch (err) {
+      logger.warn(
+        {
+          event: "run.source.rate_limiter_unavailable",
+          runId,
+          sourceType: sourceKey,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "source rate limiter unavailable — proceeding unthrottled",
+      );
+    }
+  };
 
   type SourceKey = CollectorSourceType;
   interface Task {
@@ -320,6 +351,12 @@ async function runCollecting(
             rawItemsRepo: runScopedRawItemsRepo,
             signal,
             enrichment: enrichmentCtx,
+            // REQ-068: page-level throttle on the SHARED twitter budget — the
+            // collector invokes it before every page fetch and tolerates
+            // throttle failures itself (graceful degrade, EDGE-011).
+            ...(sourceRateLimiter !== undefined
+              ? { throttle: (): Promise<void> => sourceRateLimiter.acquire("twitter") }
+              : {}),
           },
           config,
         );
@@ -356,6 +393,7 @@ async function runCollecting(
   let failureCount = 0;
 
   const runTask = async (task: Task): Promise<void> => {
+    await paceSource(task.sourceKey);
     const started = Date.now();
     try {
       const result = await task.run();
@@ -1029,6 +1067,7 @@ export interface CreateRunProcessWorkerOptions {
   twitterClient?: () => Promise<TwitterClient>;
   slackNotifier?: SlackNotifier;
   webSearchProvider?: WebSearchProvider;
+  sourceRateLimiter?: SourceRateLimiter;
 }
 
 /**
@@ -1131,6 +1170,7 @@ export function buildRunProcessDepsForJob(
     twitterClient,
     slackNotifier: options.slackNotifier,
     webSearchProvider: options.webSearchProvider,
+    sourceRateLimiter: options.sourceRateLimiter,
   });
 }
 

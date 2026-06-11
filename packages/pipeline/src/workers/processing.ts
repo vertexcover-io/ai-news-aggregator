@@ -104,6 +104,15 @@ import { rankCandidates } from "@pipeline/processors/rank.js";
 import { shortlistCandidates } from "@pipeline/processors/shortlist.js";
 import { renderNewsletter } from "@pipeline/lib/email-render.js";
 import { createEmailProvider } from "@pipeline/lib/email-provider.js";
+import {
+  createRunConcurrencyLimiter,
+  PROCESSING_WORKER_CONCURRENCY,
+  type RunConcurrencyLimiter,
+} from "@pipeline/services/concurrency.js";
+import {
+  createSourceRateLimiter,
+  type SourceRateLimiter,
+} from "@pipeline/services/source-rate-limit.js";
 
 const logger = createLogger("worker:processing");
 
@@ -113,6 +122,10 @@ export interface CreateProcessingWorkerOptions {
   dailyRunDeps?: DailyRunDeps;
   publishDeps?: PublishDeps;
   socialHealthDeps?: SocialHealthDeps;
+  /** Global run cap (P10, REQ-065). Injected by tests; Redis-backed default. */
+  runConcurrencyLimiter?: RunConcurrencyLimiter;
+  /** Global per-external-source limiter (P10, REQ-067/068). */
+  sourceRateLimiter?: SourceRateLimiter;
 }
 
 type PublishDeps = EmailSendDeps & LinkedInPostDeps & TwitterPostDeps;
@@ -143,6 +156,14 @@ export function createProcessingWorker(
   ): Promise<PublishDeps> =>
     options.publishDeps ?? (await buildDefaultPublishDeps(jobTenantContext(jobData)));
 
+  // P10 (REQ-065/067): Redis-backed limiters shared across worker processes —
+  // the run semaphore caps simultaneous full runs; the source limiter paces
+  // collector starts/pages per external source across concurrent tenant runs.
+  const runConcurrencyLimiter =
+    options.runConcurrencyLimiter ?? createRunConcurrencyLimiter(connection);
+  const sourceRateLimiter =
+    options.sourceRateLimiter ?? createSourceRateLimiter(connection);
+
   return new Worker<ProcessingJobData, unknown>(
     "processing",
     async (job: Job<ProcessingJobData, unknown>) => {
@@ -153,10 +174,23 @@ export function createProcessingWorker(
             id: job.id,
             data: job.data as unknown as RunProcessJobData,
           };
-          const runProcessDeps =
-            options.runProcessDeps ??
-            (await buildDefaultRunProcessDeps(connection, typed.data));
-          return handleRunProcessJob(runProcessDeps, typed);
+          // REQ-065/EDGE-009: wait (queue) for a global slot — excess runs
+          // are delayed, never dropped; the slot frees on success OR failure.
+          const releaseRunSlot = await runConcurrencyLimiter.acquire(
+            typed.data.runId,
+          );
+          try {
+            const runProcessDeps =
+              options.runProcessDeps ??
+              (await buildDefaultRunProcessDeps(
+                connection,
+                typed.data,
+                sourceRateLimiter,
+              ));
+            return await handleRunProcessJob(runProcessDeps, typed);
+          } finally {
+            await releaseRunSlot();
+          }
         }
         case "daily-run":
         case "pipeline-run": {
@@ -216,13 +250,16 @@ export function createProcessingWorker(
         }
       }
     },
-    { connection },
+    // Concurrency stays ABOVE the run cap (and never 1) so capped runs can
+    // parallelize while publish/health jobs keep flowing (P10, REQ-065).
+    { connection, concurrency: PROCESSING_WORKER_CONCURRENCY },
   );
 }
 
 async function buildDefaultRunProcessDeps(
   connection: IORedis,
   jobData: RunProcessJobData,
+  sourceRateLimiter?: SourceRateLimiter,
 ): Promise<RunProcessDeps> {
   const db = getDb();
   // Per-job tenant scope (P9, REQ-061/064): the job payload carries the
@@ -308,6 +345,7 @@ async function buildDefaultRunProcessDeps(
     twitterClient,
     slackNotifier,
     webSearchProvider,
+    sourceRateLimiter,
   };
 }
 
