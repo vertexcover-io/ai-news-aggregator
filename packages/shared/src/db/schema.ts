@@ -1,5 +1,5 @@
 import { desc } from "drizzle-orm";
-import { bigserial, boolean, customType, index, integer, jsonb, pgTable, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigserial, boolean, customType, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type {
   NotificationState,
   RawItemEngagement,
@@ -122,8 +122,8 @@ export interface SocialTokenEncryptedFields {
 }
 
 export const socialTokens = pgTable("social_tokens", {
-  platform: text("platform").primaryKey().$type<"linkedin" | "twitter">(),
-  tenantId: uuid("tenant_id"),
+  platform: text("platform").notNull().$type<"linkedin" | "twitter">(),
+  tenantId: uuid("tenant_id").notNull(),
   encryptedFields: jsonb("encrypted_fields")
     .notNull()
     .$type<SocialTokenEncryptedFields>(),
@@ -131,6 +131,7 @@ export const socialTokens = pgTable("social_tokens", {
   metadata: jsonb("metadata").$type<SocialTokenMetadata | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
+  primaryKey({ columns: [t.tenantId, t.platform] }),
   index("social_tokens_tenant_id_idx").on(t.tenantId),
 ]);
 
@@ -156,8 +157,8 @@ export interface TwitterCollectorEncryptedFields {
 export type SocialCredentialPlatform = "linkedin" | "twitter" | "twitter_collector";
 
 export const socialCredentials = pgTable("social_credentials", {
-  platform: text("platform").primaryKey().$type<SocialCredentialPlatform>(),
-  tenantId: uuid("tenant_id"),
+  platform: text("platform").notNull().$type<SocialCredentialPlatform>(),
+  tenantId: uuid("tenant_id").notNull(),
   encryptedFields: jsonb("encrypted_fields")
     .notNull()
     .$type<
@@ -167,11 +168,29 @@ export const socialCredentials = pgTable("social_credentials", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: text("updated_by"),
 }, (t) => [
+  primaryKey({ columns: [t.tenantId, t.platform] }),
   index("social_credentials_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type SocialCredentialInsert = typeof socialCredentials.$inferInsert;
 export type SocialCredentialSelect = typeof socialCredentials.$inferSelect;
+
+// Phase 12: App-level credentials (super-admin-only, never exposed to tenants).
+// Stores shared secrets like LinkedIn client id/secret and Twitter collector cookies.
+export type AppCredentialPlatform = "linkedin_app" | "twitter_collector_app";
+
+export const appCredentials = pgTable("app_credentials", {
+  platform: text("platform").primaryKey().$type<AppCredentialPlatform>(),
+  encryptedFields: jsonb("encrypted_fields")
+    .notNull()
+    .$type<Record<string, EncryptedBlob>>(),
+  metadata: jsonb("metadata").$type<Record<string, unknown> | null>(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text("updated_by"),
+});
+
+export type AppCredentialInsert = typeof appCredentials.$inferInsert;
+export type AppCredentialSelect = typeof appCredentials.$inferSelect;
 
 export type RunArchiveInsert = typeof runArchives.$inferInsert;
 
