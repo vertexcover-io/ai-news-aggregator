@@ -32,6 +32,15 @@ import {
 } from "@pipeline/repositories/default-tenant.js";
 import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
+import { createPipelineTenantsRepo } from "@pipeline/repositories/tenants.js";
+import {
+  resolveTenantNotificationChannels,
+  type TenantNotificationChannels,
+} from "@pipeline/services/tenant-notify.js";
+import {
+  createNotificationEmailSender,
+  type NotificationEmailSender,
+} from "@pipeline/services/notification-email.js";
 import { createAppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { resolveTwitterCollectorCookie } from "@pipeline/services/credential-resolver.js";
@@ -73,6 +82,16 @@ export interface CollectorHealthJobDeps {
   /** Factory called per-job so credentials are always fresh (S-pipeline-03 / D-051) */
   buildHealthCheckDeps: () => Promise<HealthCheckDeps>;
   slackWebhookUrl: string | undefined;
+  /**
+   * Per-job tenant channel resolution (P16, REQ-091): when present, the
+   * failure alert goes to the JOB tenant's webhook/email instead of the
+   * fixed `slackWebhookUrl` (kept as the legacy fallback for injected test
+   * deps). Stays MARKERLESS either way (D-111).
+   */
+  resolveNotificationChannels?: (
+    ctx?: TenantContext,
+  ) => Promise<TenantNotificationChannels>;
+  notificationEmailSender?: NotificationEmailSender;
   postToWebhook: PostToWebhookFn;
   /** Emits one `collector_preflight_failed` PostHog event per failed collector. Silent no-op when PostHog is unconfigured. */
   capturePipelineEvent: (event: string, properties?: Record<string, unknown>) => void;
@@ -374,8 +393,59 @@ export async function handleCollectorHealthJob(
     "collector health job completed",
   );
 
-  // Post Slack alert if there are failures and webhook is configured
-  if (failures.length === 0 || deps.slackWebhookUrl === undefined || deps.slackWebhookUrl === "") {
+  if (failures.length === 0) {
+    return;
+  }
+
+  // P16 (REQ-091): resolve the JOB tenant's channels — its decrypted webhook
+  // and/or notification email; legacy wiring keeps the fixed global webhook.
+  // D-111 holds: no notification_state marker, the alert re-fires every
+  // failed check.
+  const channels: TenantNotificationChannels =
+    deps.resolveNotificationChannels !== undefined
+      ? await deps.resolveNotificationChannels(
+          jobTenantContext(job.data) ?? getDefaultTenantScope(),
+        )
+      : {
+          slackWebhookUrl: deps.slackWebhookUrl,
+          notifyEmail: undefined,
+          notifyReviewReady: true,
+          notifyErrors: true,
+        };
+
+  if (!channels.notifyErrors) {
+    log.info(
+      { event: "collector_health.alert_skipped", reason: "toggle_off", jobId: job.id },
+      "collector health alert skipped (tenant error alerts off)",
+    );
+    return;
+  }
+
+  if (
+    channels.notifyEmail !== undefined &&
+    deps.notificationEmailSender !== undefined
+  ) {
+    try {
+      await deps.notificationEmailSender.send({
+        to: channels.notifyEmail,
+        subject: "Collector health check failed",
+        text: failures
+          .map((f) => `${f.collector}: ${f.reason}`)
+          .join("\n"),
+      });
+    } catch (err) {
+      log.warn(
+        {
+          event: "collector_health.email_alert_failed",
+          error: err instanceof Error ? err.message : String(err),
+          jobId: job.id,
+        },
+        "collector health email alert failed",
+      );
+    }
+  }
+
+  if (channels.slackWebhookUrl === undefined || channels.slackWebhookUrl === "") {
     return;
   }
 
@@ -383,7 +453,7 @@ export async function handleCollectorHealthJob(
 
   try {
     const webhookResult = await deps.postToWebhook({
-      url: deps.slackWebhookUrl,
+      url: channels.slackWebhookUrl,
       blocks: message.blocks,
     });
 
@@ -470,6 +540,16 @@ export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
       };
     },
     slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
+    // P16 (REQ-091): per-job tenant channel resolution — decrypts the JOB
+    // tenant's webhook at send time; global env webhook stays the fallback.
+    resolveNotificationChannels: (ctx?: TenantContext) =>
+      resolveTenantNotificationChannels({
+        tenantsRepo: createPipelineTenantsRepo(getDb(), ctx),
+        cipher: getCredentialCipher(),
+        env: process.env,
+        logger: createLogger("tenant-notify"),
+      }),
+    notificationEmailSender: createNotificationEmailSender(),
     postToWebhook,
     capturePipelineEvent,
     logger: createLogger("worker:collector-health"),

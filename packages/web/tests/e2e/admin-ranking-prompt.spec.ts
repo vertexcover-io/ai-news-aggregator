@@ -146,6 +146,13 @@ test.describe("Admin ranking prompt (VS-1..VS-4)", () => {
   }) => {
     // Save a known short prompt first so Reset has something to override.
     await page.goto("/admin/settings");
+    // Wait for the settings query to hydrate the form (same guard as VS-3):
+    // filling before react-hook-form's reset() lands would let the reset
+    // overwrite the typed value and the Save would persist the seeded
+    // default instead of knownShort.
+    await expect(page.locator("#rankingPrompt")).toHaveValue(
+      DEFAULT_RANKING_PROMPT,
+    );
     const knownShort = "Short test prompt for VS-4.";
     await page.locator("#rankingPrompt").fill(knownShort);
     const savePut = page.waitForResponse(

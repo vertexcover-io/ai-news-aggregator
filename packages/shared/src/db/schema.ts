@@ -68,6 +68,22 @@ export const tenants = pgTable(
     featureCanon: boolean("feature_canon").notNull().default(false),
     featureDeliverability: boolean("feature_deliverability").notNull().default(false),
     featureEval: boolean("feature_eval").notNull().default(false),
+    /**
+     * Per-tenant notification config (P16, REQ-090–092). `notifyEmail` is the
+     * address review-ready/error alerts go to; null = email channel off.
+     */
+    notifyEmail: text("notify_email"),
+    /**
+     * Slack incoming-webhook URL, stored as the JSON-serialized
+     * `EncryptedBlob` ciphertext from the D-012 credential cipher — NEVER
+     * plaintext, never returned raw to clients (REQ-092). null = Slack
+     * channel off (pipeline falls back to the global SLACK_WEBHOOK_URL).
+     */
+    slackWebhook: text("slack_webhook"),
+    /** Review-ready alert toggle (REQ-090); on by default once a channel is configured. */
+    notifyReviewReady: boolean("notify_review_ready").notNull().default(true),
+    /** Collector-failure / run-crash alert toggle (REQ-091). */
+    notifyErrors: boolean("notify_errors").notNull().default(true),
     onboardingState: jsonb("onboarding_state").$type<OnboardingState | null>(),
     /**
      * Per-tenant Resend sending domain (P14, REQ-084/085). All nullable —

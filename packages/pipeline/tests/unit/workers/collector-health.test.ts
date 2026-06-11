@@ -443,6 +443,69 @@ describe("handleCollectorHealthJob", () => {
     expect(postToWebhook).not.toHaveBeenCalled();
   });
 
+  it("P16 REQ-091: per-tenant channels — failure alert goes to the TENANT webhook + email, not the global one", async () => {
+    const postToWebhook = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    const emails: { to: string; subject: string; text: string }[] = [];
+    const runCheck = makeRunCollectorHealthCheck({ hn: makeHealthOutcome("failed") });
+    const deps = makeDeps({
+      runCollectorHealthCheck: runCheck,
+      slackWebhookUrl: "https://hooks.slack.com/services/T/B/GLOBAL",
+      resolveNotificationChannels: vi.fn().mockResolvedValue({
+        slackWebhookUrl: "https://hooks.slack.com/services/T/B/TENANT",
+        notifyEmail: "ada@studio.com",
+        notifyReviewReady: true,
+        notifyErrors: true,
+      }),
+      notificationEmailSender: {
+        send: (input) => {
+          emails.push(input);
+          return Promise.resolve();
+        },
+      },
+      postToWebhook,
+    });
+
+    await handleCollectorHealthJob(deps, {
+      name: "collector-health",
+      id: "job-t1",
+      data: { collectors: ["hn"], trigger: "scheduled", tenantId: "t-1" },
+    });
+
+    expect(postToWebhook).toHaveBeenCalledOnce();
+    const callArgs = postToWebhook.mock.calls[0] as [{ url: string }];
+    expect(callArgs[0].url).toBe("https://hooks.slack.com/services/T/B/TENANT");
+    expect(emails).toEqual([
+      expect.objectContaining({ to: "ada@studio.com" }),
+    ]);
+  });
+
+  it("P16 REQ-091: tenant error-alert toggle off suppresses webhook + email", async () => {
+    const postToWebhook = vi.fn();
+    const sendEmail = vi.fn();
+    const runCheck = makeRunCollectorHealthCheck({ hn: makeHealthOutcome("failed") });
+    const deps = makeDeps({
+      runCollectorHealthCheck: runCheck,
+      slackWebhookUrl: "https://hooks.slack.com/services/T/B/GLOBAL",
+      resolveNotificationChannels: vi.fn().mockResolvedValue({
+        slackWebhookUrl: "https://hooks.slack.com/services/T/B/TENANT",
+        notifyEmail: "ada@studio.com",
+        notifyReviewReady: true,
+        notifyErrors: false,
+      }),
+      notificationEmailSender: { send: sendEmail },
+      postToWebhook,
+    });
+
+    await handleCollectorHealthJob(deps, {
+      name: "collector-health",
+      id: "job-t2",
+      data: { collectors: ["hn"], trigger: "scheduled", tenantId: "t-1" },
+    });
+
+    expect(postToWebhook).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
   it("webhook non-2xx → warn log, job ok, does not throw (REQ-016)", async () => {
     const logger = makeLogger();
     const postToWebhook = vi.fn().mockResolvedValue({ ok: false, status: 500 });

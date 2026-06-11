@@ -69,6 +69,40 @@ export interface TenantsRepo {
     id: string,
     patch: SendingDomainPatch,
   ): Promise<TenantRow | null>;
+  /**
+   * Persists the tenant's notification config (P16, REQ-092). `slackWebhook`
+   * carries the CIPHERTEXT (JSON EncryptedBlob string) — encryption happens
+   * in the route via the D-012 cipher; this repo never sees the raw URL.
+   * `slackWebhook === undefined` leaves the stored secret untouched (the
+   * panel omits it when the operator didn't retype it); `null` clears it.
+   */
+  updateNotificationSettings(
+    id: string,
+    patch: NotificationSettingsPatch,
+  ): Promise<TenantRow | null>;
+  /**
+   * Sets the three optional feature flags (P16, REQ-093). Flags only —
+   * never touches feature data (must_read rows survive Canon off,
+   * EDGE-014).
+   */
+  updateFeatureFlags(
+    id: string,
+    flags: TenantFeatureFlagsPatch,
+  ): Promise<TenantRow | null>;
+}
+
+export interface NotificationSettingsPatch {
+  notifyEmail: string | null;
+  notifyReviewReady: boolean;
+  notifyErrors: boolean;
+  /** Ciphertext or null-to-clear; undefined = keep the stored value. */
+  slackWebhook?: string | null;
+}
+
+export interface TenantFeatureFlagsPatch {
+  featureCanon: boolean;
+  featureDeliverability: boolean;
+  featureEval: boolean;
 }
 
 /** One tenant + the aggregates the super-admin console renders (P15). */
@@ -236,6 +270,35 @@ export function createTenantsRepo(
       const rows = await db
         .update(tenants)
         .set({ ...patch, updatedAt: new Date() })
+        .where(eq(tenants.id, id))
+        .returning();
+      return rows[0] ?? null;
+    },
+
+    async updateNotificationSettings(
+      id: string,
+      patch: NotificationSettingsPatch,
+    ): Promise<TenantRow | null> {
+      const { slackWebhook, ...rest } = patch;
+      const rows = await db
+        .update(tenants)
+        .set({
+          ...rest,
+          ...(slackWebhook !== undefined ? { slackWebhook } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.id, id))
+        .returning();
+      return rows[0] ?? null;
+    },
+
+    async updateFeatureFlags(
+      id: string,
+      flags: TenantFeatureFlagsPatch,
+    ): Promise<TenantRow | null> {
+      const rows = await db
+        .update(tenants)
+        .set({ ...flags, updatedAt: new Date() })
         .where(eq(tenants.id, id))
         .returning();
       return rows[0] ?? null;

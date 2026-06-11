@@ -261,3 +261,23 @@ export interface SendingDomainWire {
   /** Human-readable failure reasons; present only when status = "failed". */
   reasons?: string[];
 }
+
+/**
+ * Notification settings panel payload (GET/PUT /api/settings/notifications,
+ * P16 REQ-092). The Slack webhook is write-only: clients send the raw URL on
+ * PUT, but only ever read back `slackWebhookSet` — the ciphertext (let alone
+ * the plaintext) never crosses the wire to the browser.
+ */
+export interface TenantNotificationSettingsWire {
+  notifyEmail: string | null;
+  slackWebhookSet: boolean;
+  notifyReviewReady: boolean;
+  notifyErrors: boolean;
+}
+
+/** Optional feature flags payload (GET/PUT /api/settings/features, REQ-093). */
+export interface TenantFeatureFlagsWire {
+  featureCanon: boolean;
+  featureDeliverability: boolean;
+  featureEval: boolean;
+}

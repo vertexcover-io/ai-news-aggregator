@@ -39,6 +39,9 @@ import { collectWeb } from "@pipeline/collectors/web.js";
 import { collectTwitter } from "@pipeline/collectors/twitter/index.js";
 import { collectWebSearch } from "@pipeline/collectors/web-search/index.js";
 import type { WebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
+import type { ErrorAlerter } from "@pipeline/services/error-alerts.js";
+import type { NotificationEmailSender } from "@pipeline/services/notification-email.js";
+import type { TenantNotificationChannels } from "@pipeline/services/tenant-notify.js";
 import { createRettiwtClient } from "@pipeline/collectors/twitter/clients/rettiwt.js";
 import { refreshRettiwtCsrfToken } from "@pipeline/collectors/twitter/clients/rettiwt-auth.js";
 import type { TwitterClient } from "@pipeline/collectors/twitter/types.js";
@@ -227,6 +230,18 @@ export interface RunProcessDeps {
    */
   twitterClient: () => Promise<TwitterClient>;
   slackNotifier?: SlackNotifier;
+  /**
+   * Per-tenant notification channels + email sender (P16, REQ-090).
+   * Resolved per job by the deps builder; optional with backward-compat
+   * defaults (absent = legacy Slack-only review-ready behavior).
+   */
+  notificationChannels?: TenantNotificationChannels;
+  notificationEmailSender?: NotificationEmailSender;
+  /**
+   * Tenant error alerts (P16, REQ-091): run-crash notifications to the
+   * tenant's channels. Markerless (D-111 counterpart) and never throws.
+   */
+  errorAlerter?: ErrorAlerter;
   /** Tavily (or future) web-search provider. Resolved once at worker startup from TAVILY_API_KEY env var. */
   webSearchProvider?: WebSearchProvider;
   /**
@@ -650,6 +665,16 @@ export async function handleRunProcessJob(
         },
         `run.failed: ${errorMessage}`,
       );
+      // P16 (REQ-091): all collectors down = terminal failure → alert the
+      // tenant's channels (dry runs stay silent, matching the notifier's
+      // dry-run gate). Markerless + never throws.
+      if (!dryRun) {
+        await deps.errorAlerter?.runCrashed({
+          runId,
+          error: errorMessage,
+          stage: "collecting",
+        });
+      }
       // Ensure archive row exists before setCostBreakdown (REQ-040 / EDGE-002):
       // setCostBreakdown is a plain UPDATE that silently no-ops without a row.
       try {
@@ -974,6 +999,10 @@ export async function handleRunProcessJob(
       archiveRepo: deps.archiveRepo,
       rawItemsRepo: deps.rawItemsRepo,
       slackNotifier: deps.slackNotifier,
+      notificationChannels: deps.notificationChannels,
+      notificationEmailSender: deps.notificationEmailSender,
+      publicArchiveBaseUrl:
+        process.env.PUBLIC_BASE_URL ?? process.env.NEWSLETTER_BASE_URL,
       settings,
       rankResult,
       collectingOutcomes: collecting.outcomes,
@@ -1044,6 +1073,15 @@ export async function handleRunProcessJob(
       runFunnel: { ...funnel },
       logger,
     });
+    // P16 (REQ-091): unhandled stage crash → alert the tenant's channels
+    // before re-throwing (dry runs stay silent). Markerless + never throws.
+    if (!dryRun) {
+      await deps.errorAlerter?.runCrashed({
+        runId,
+        error: message,
+        stage: currentStage,
+      });
+    }
     throw err;
   } finally {
     await subscriber.close();
@@ -1065,6 +1103,9 @@ export interface CreateRunProcessWorkerOptions {
   cancelSubscriber?: CancelSubscriberFactory;
   twitterClient?: () => Promise<TwitterClient>;
   slackNotifier?: SlackNotifier;
+  notificationChannels?: TenantNotificationChannels;
+  notificationEmailSender?: NotificationEmailSender;
+  errorAlerter?: ErrorAlerter;
   webSearchProvider?: WebSearchProvider;
   sourceRateLimiter?: SourceRateLimiter;
 }
@@ -1165,6 +1206,9 @@ export function buildRunProcessDepsForJob(
     cancelSubscriber,
     twitterClient,
     slackNotifier: options.slackNotifier,
+    notificationChannels: options.notificationChannels,
+    notificationEmailSender: options.notificationEmailSender,
+    errorAlerter: options.errorAlerter,
     webSearchProvider: options.webSearchProvider,
     sourceRateLimiter: options.sourceRateLimiter,
   });

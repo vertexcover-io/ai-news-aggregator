@@ -85,6 +85,9 @@ import {
   createPipelineSubscribersRepo,
 } from "@pipeline/repositories/subscribers.js";
 import { createPipelineTenantsRepo } from "@pipeline/repositories/tenants.js";
+import { resolveTenantNotificationChannels } from "@pipeline/services/tenant-notify.js";
+import { createNotificationEmailSender } from "@pipeline/services/notification-email.js";
+import { createErrorAlerter } from "@pipeline/services/error-alerts.js";
 import {
   createPipelineEmailSendsRepo,
 } from "@pipeline/repositories/email-sends.js";
@@ -321,8 +324,19 @@ async function buildDefaultRunProcessDeps(
         : undefined,
     });
   };
+  // P16 (REQ-090/091): resolve the JOB tenant's notification channels —
+  // decrypting the stored webhook ciphertext per job, at send time (D-012);
+  // tenants without a webhook (and legacy jobs) fall back to the global
+  // SLACK_WEBHOOK_URL exactly as before this phase.
+  const notificationChannels = await resolveTenantNotificationChannels({
+    tenantsRepo: createPipelineTenantsRepo(db, scope),
+    cipher: getCredentialCipher(),
+    env: process.env,
+    logger: createLogger("tenant-notify"),
+  });
+  const notificationEmailSender = createNotificationEmailSender();
   const slackNotifier = createSlackNotifier({
-    webhookUrl: process.env.SLACK_WEBHOOK_URL,
+    webhookUrl: notificationChannels.slackWebhookUrl,
     archives: archiveRepo,
     resolveTopRankedTitle: async (archive) => {
       if (archive.rankedItems.length === 0) return null;
@@ -348,6 +362,13 @@ async function buildDefaultRunProcessDeps(
     cancelSubscriber: createCancelSubscriber(connection),
     twitterClient,
     slackNotifier,
+    notificationChannels,
+    notificationEmailSender,
+    errorAlerter: createErrorAlerter({
+      channels: notificationChannels,
+      emailSender: notificationEmailSender,
+      logger: createLogger("error-alerts"),
+    }),
     webSearchProvider,
     sourceRateLimiter,
   };
@@ -452,8 +473,16 @@ export async function buildDefaultPublishDeps(
   // App-level store (P12): the shared LinkedIn OAuth client is resolved from
   // app_credentials, never from the tenant's rows (REQ-080/082).
   const appCredentialsRepo = createAppCredentialsRepo(db, getCredentialCipher());
+  // P16 (REQ-090/091): publish-path Slack alerts (failures, posted/delivery
+  // notices) also route to the JOB tenant's webhook (global env fallback).
+  const publishNotificationChannels = await resolveTenantNotificationChannels({
+    tenantsRepo: createPipelineTenantsRepo(db, scope),
+    cipher: getCredentialCipher(),
+    env: process.env,
+    logger: createLogger("tenant-notify"),
+  });
   const slackNotifier = createSlackNotifier({
-    webhookUrl: process.env.SLACK_WEBHOOK_URL,
+    webhookUrl: publishNotificationChannels.slackWebhookUrl,
     archives: archiveRepo,
     resolveTopRankedTitle: async (archive) => {
       if (archive.rankedItems.length === 0) return null;

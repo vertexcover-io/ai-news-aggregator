@@ -337,6 +337,13 @@
       "when": 1781197253259,
       "tag": "0047_grandfather_agentloop_sending_domain",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1781200029811,
+      "tag": "0048_redundant_stellaris",
+      "breakpoints": true
     }
   ]
 }

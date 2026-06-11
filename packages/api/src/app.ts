@@ -106,6 +106,13 @@ export interface BuildAppDeps {
    */
   sendingDomainRouter?: Hono;
   /**
+   * Notification settings + feature flags (P16, REQ-092/093): GET/PUT
+   * /api/settings/notifications + GET/PUT /api/settings/features,
+   * auth-gated. Optional ONLY so existing unit tests composing buildApp keep
+   * working — index.ts always provides it.
+   */
+  notificationSettingsRouter?: Hono;
+  /**
    * Onboarding wizard routes (P11, REQ-030–038): GET/PATCH /api/onboarding,
    * slug-available, generate-prompts, discover-sources, activate — mounted
    * gated at /api/onboarding (the wizard is a tenant_admin surface).
@@ -226,6 +233,12 @@ export function buildApp(deps: BuildAppDeps): Hono {
   // keeps the dependency graphs of the two routers independent.
   if (deps.sendingDomainRouter) {
     app.route("/api/settings/domain", gatedWrap(gate, deps.sendingDomainRouter));
+  }
+  // Notification settings + feature flags (P16, REQ-092/093) — handles the
+  // /notifications and /features sub-paths; the legacy settings router's
+  // GET "/" / PUT "/" never match those.
+  if (deps.notificationSettingsRouter) {
+    app.route("/api/settings", gatedWrap(gate, deps.notificationSettingsRouter));
   }
   app.route("/api/settings", gatedWrap(gate, deps.settingsRouter));
 
