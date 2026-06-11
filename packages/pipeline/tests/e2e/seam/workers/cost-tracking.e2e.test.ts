@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { Queue, QueueEvents, Worker } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import { rawItems, runArchives } from "@newsletter/shared/db";
+import { AGENTLOOP_TENANT_ID } from "@newsletter/shared";
 import type { RunState } from "@newsletter/shared/types";
 import type { CollectorResult } from "@newsletter/shared/types";
 import type { LanguageModelUsage, ProviderMetadata } from "ai";
@@ -184,6 +185,7 @@ describe("cost-tracking E2E", () => {
     const runId = randomUUID();
     await db.insert(rawItems).values([
       {
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: `hn-${runId}-1`,
         title: "Item A",
@@ -288,6 +290,7 @@ describe("cost-tracking E2E", () => {
     };
 
     await db.insert(runArchives).values({
+            tenantId: AGENTLOOP_TENANT_ID,
       id: runId,
       status: "completed",
       rankedItems: [],
@@ -354,6 +357,7 @@ describe("cost-tracking E2E", () => {
       const runId = randomUUID();
       await db.insert(rawItems).values([
         {
+            tenantId: AGENTLOOP_TENANT_ID,
           sourceType: "hn",
           externalId: `hn-${runId}-x`,
           title: "Unknown",
@@ -410,6 +414,7 @@ describe("cost-tracking E2E", () => {
       const runId = randomUUID();
       await db.insert(rawItems).values([
         {
+            tenantId: AGENTLOOP_TENANT_ID,
           sourceType: "hn",
           externalId: `hn-${runId}-f`,
           title: "Fail",
@@ -466,6 +471,7 @@ describe("cost-tracking E2E", () => {
       const runId = randomUUID();
       await db.insert(rawItems).values([
         {
+            tenantId: AGENTLOOP_TENANT_ID,
           sourceType: "hn",
           externalId: `hn-${runId}-rt`,
           title: "RankFailWithTokens",

@@ -120,7 +120,7 @@ export function createSocialCredentialsRepo(
           }),
         )
         .onConflictDoUpdate({
-          target: socialCredentials.platform,
+          target: [socialCredentials.tenantId, socialCredentials.platform],
           set: { encryptedFields, metadata, updatedAt: now },
         });
     },
@@ -144,7 +144,7 @@ export function createSocialCredentialsRepo(
           }),
         )
         .onConflictDoUpdate({
-          target: socialCredentials.platform,
+          target: [socialCredentials.tenantId, socialCredentials.platform],
           set: { encryptedFields, metadata: null, updatedAt: now },
         });
     },
@@ -180,7 +180,7 @@ export function createSocialCredentialsRepo(
           }),
         )
         .onConflictDoUpdate({
-          target: socialCredentials.platform,
+          target: [socialCredentials.tenantId, socialCredentials.platform],
           set: { encryptedFields, metadata: null, updatedAt: now },
         });
     },

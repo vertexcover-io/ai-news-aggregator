@@ -16,7 +16,7 @@ import { handleLinkedInPostJob } from "@pipeline/workers/linkedin-post.js";
 import { getTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
 import { closeTestRedis } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { AppDb, RawItemInsert } from "@newsletter/shared/db";
-import type { SocialMetadata } from "@newsletter/shared";
+import { AGENTLOOP_TENANT_ID, type SocialMetadata } from "@newsletter/shared";
 
 config({ path: resolve(import.meta.dirname, "../../../../../../.env.test") });
 
@@ -63,6 +63,7 @@ async function seedReviewedArchive(
 ): Promise<string> {
   const runId = randomUUID();
   const raw: RawItemInsert = {
+    tenantId: AGENTLOOP_TENANT_ID,
     sourceType: "hn",
     externalId: `linkedin-worker-${runId}`,
     title: "Agent benchmarks reshape enterprise buying",
@@ -86,6 +87,7 @@ async function seedReviewedArchive(
   }
 
   await db.insert(runArchives).values({
+            tenantId: AGENTLOOP_TENANT_ID,
     id: runId,
     status: "completed",
     rankedItems: [

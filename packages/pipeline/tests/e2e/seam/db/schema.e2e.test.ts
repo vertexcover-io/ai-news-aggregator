@@ -3,6 +3,7 @@ import { config } from "dotenv";
 import { resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import { rawItems } from "@newsletter/shared/db";
+import { AGENTLOOP_TENANT_ID } from "@newsletter/shared";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import type { AppDb } from "@newsletter/shared/db";
 
@@ -23,6 +24,7 @@ describe("Database Schema E2E", () => {
     const [item] = await db
       .insert(rawItems)
       .values({
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: "12345",
         title: "Test Article",
@@ -42,6 +44,7 @@ describe("Database Schema E2E", () => {
 
   it("enforces unique constraint on (source_type, external_id)", async () => {
     await db.insert(rawItems).values({
+            tenantId: AGENTLOOP_TENANT_ID,
       sourceType: "hn",
       externalId: "99999",
       title: "First Insert",
@@ -51,6 +54,7 @@ describe("Database Schema E2E", () => {
     await db
       .insert(rawItems)
       .values({
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: "99999",
         title: "Updated Title",
@@ -88,6 +92,7 @@ describe("Database Schema E2E", () => {
     const [inserted] = await db
       .insert(rawItems)
       .values({
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: "77777",
         title: "JSONB Test",

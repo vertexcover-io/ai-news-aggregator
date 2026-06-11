@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Queue, QueueEvents, Worker } from "bullmq";
 import { rawItems, runArchives } from "@newsletter/shared/db";
+import { AGENTLOOP_TENANT_ID } from "@newsletter/shared";
 import { sql } from "drizzle-orm";
 import type { RunState } from "@newsletter/shared/types";
 import {
@@ -118,6 +119,7 @@ describe("run-process worker E2E", () => {
     // seed raw_items
     await db.insert(rawItems).values([
       {
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: "hn-1",
         title: "Item A",
@@ -126,6 +128,7 @@ describe("run-process worker E2E", () => {
         metadata: { comments: [] },
       },
       {
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: "hn-2",
         title: "Item A dup",
@@ -134,6 +137,7 @@ describe("run-process worker E2E", () => {
         metadata: { comments: [] },
       },
       {
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: "hn-3",
         title: "Item B",
@@ -142,6 +146,7 @@ describe("run-process worker E2E", () => {
         metadata: { comments: [] },
       },
       {
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "reddit",
         externalId: "r-1",
         title: "Item C",
@@ -233,6 +238,7 @@ describe("run-process worker E2E", () => {
       .insert(rawItems)
       .values([
         {
+            tenantId: AGENTLOOP_TENANT_ID,
           sourceType: "hn",
           externalId: "hn-shortlist-1",
           title: "Shortlist Item A",
@@ -241,6 +247,7 @@ describe("run-process worker E2E", () => {
           metadata: { comments: [] },
         },
         {
+            tenantId: AGENTLOOP_TENANT_ID,
           sourceType: "hn",
           externalId: "hn-shortlist-2",
           title: "Shortlist Item B",
@@ -303,6 +310,7 @@ describe("run-process worker E2E", () => {
     // Seed raw_items so dedup/shortlist would be reached but inject a rank failure
     await db.insert(rawItems).values([
       {
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: "hn-fail-1",
         title: "Item that causes rank failure",
@@ -398,6 +406,7 @@ describe("run-process worker E2E", () => {
     // Seed items - no prior published archives exist (truncated in beforeEach)
     await db.insert(rawItems).values([
       {
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: "hn-edge005-1",
         title: "Item A",
@@ -406,6 +415,7 @@ describe("run-process worker E2E", () => {
         metadata: { comments: [] },
       },
       {
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: "hn-edge005-2",
         title: "Item B",
@@ -456,6 +466,7 @@ describe("run-process worker E2E", () => {
       .insert(rawItems)
       .values([
         {
+            tenantId: AGENTLOOP_TENANT_ID,
           sourceType: "hn",
           externalId: "hn-prior-1",
           title: "Prior published article",
@@ -472,6 +483,7 @@ describe("run-process worker E2E", () => {
     // Step 2: Create a prior "published" archive (reviewed=true, isDryRun=false, status=completed)
     const priorArchiveId = randomUUID();
     await db.insert(runArchives).values({
+            tenantId: AGENTLOOP_TENANT_ID,
       id: priorArchiveId,
       status: "completed",
       rankedItems: [{ rawItemId: priorRawId, score: 0.9, rationale: "top" }],
@@ -487,6 +499,7 @@ describe("run-process worker E2E", () => {
 
     await db.insert(rawItems).values([
       {
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: "hn-new-published",
         title: "Prior published article (re-collected)",
@@ -495,6 +508,7 @@ describe("run-process worker E2E", () => {
         metadata: { comments: [] },
       },
       {
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: "hn-new-unique",
         title: "Brand new article",
@@ -569,6 +583,7 @@ describe("run-process worker E2E", () => {
 
     await db.insert(rawItems).values([
       {
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: "hn-edge009-1",
         title: "Item A",
@@ -577,6 +592,7 @@ describe("run-process worker E2E", () => {
         metadata: { comments: [] },
       },
       {
+            tenantId: AGENTLOOP_TENANT_ID,
         sourceType: "hn",
         externalId: "hn-edge009-2",
         title: "Item B",

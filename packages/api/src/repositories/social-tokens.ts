@@ -62,7 +62,7 @@ export function createSocialTokensRepo(
           }),
         )
         .onConflictDoUpdate({
-          target: socialTokens.platform,
+          target: [socialTokens.tenantId, socialTokens.platform],
           set: {
             encryptedFields,
             expiresAt: input.expiresAt,

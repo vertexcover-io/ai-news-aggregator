@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Queue, Worker, type Job } from "bullmq";
 import { userSettings } from "@newsletter/shared/db";
+import { AGENTLOOP_TENANT_ID, schedulerKey } from "@newsletter/shared";
 import {
   DAILY_RUN_SCHEDULER_KEY,
   PIPELINE_RUN_SCHEDULER_KEY,
@@ -92,6 +93,7 @@ function makeScheduleSettings(enabled: boolean): UserSettings {
 
 async function seedUserSettings(db: AppDb): Promise<void> {
   await db.insert(userSettings).values({
+            tenantId: AGENTLOOP_TENANT_ID,
     topN: 1,
     halfLifeHours: null,
     hnEnabled: true,
@@ -221,9 +223,9 @@ describe("daily-run worker scheduler e2e", () => {
 
   it("REQ-WK-6 removes the daily-run scheduler when scheduling is disabled", async () => {
     await dailyQueue.upsertJobScheduler(
-      DAILY_RUN_SCHEDULER_KEY,
+      schedulerKey(DAILY_RUN_SCHEDULER_KEY, AGENTLOOP_TENANT_ID),
       { every: 1000 },
-      { name: "daily-run", data: {} },
+      { name: "daily-run", data: { tenantId: AGENTLOOP_TENANT_ID } },
     );
 
     await reconcileDailyRunSchedule(dailyQueue, makeScheduleSettings(false));

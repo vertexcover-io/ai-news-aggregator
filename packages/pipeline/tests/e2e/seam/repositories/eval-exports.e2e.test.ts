@@ -16,6 +16,7 @@ import { resolve } from "node:path";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { rawItems, runArchives } from "@newsletter/shared/db";
+import { AGENTLOOP_TENANT_ID } from "@newsletter/shared";
 import { createEvalExportsRepo } from "@pipeline/repositories/eval-exports.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import type { AppDb } from "@newsletter/shared/db";
@@ -44,6 +45,7 @@ async function seedArchive(
     rationale: "seeded",
   }));
   await db.insert(runArchives).values({
+            tenantId: AGENTLOOP_TENANT_ID,
     id: opts.id,
     status: "completed",
     rankedItems,
@@ -89,6 +91,7 @@ describe("eval-exports repo e2e — VS-5", () => {
         .insert(rawItems)
         .values([
           {
+            tenantId: AGENTLOOP_TENANT_ID,
             sourceType: "hn",
             externalId: `${runId}-A`,
             title: "Item A",
@@ -98,6 +101,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             runId,
           },
           {
+            tenantId: AGENTLOOP_TENANT_ID,
             // duplicate of A — same canonical URL (UTM stripped), lower engagement
             sourceType: "reddit",
             externalId: `${runId}-A-dup`,
@@ -108,6 +112,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             runId,
           },
           {
+            tenantId: AGENTLOOP_TENANT_ID,
             sourceType: "hn",
             externalId: `${runId}-B`,
             title: "Item B",
@@ -117,6 +122,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             runId,
           },
           {
+            tenantId: AGENTLOOP_TENANT_ID,
             sourceType: "hn",
             externalId: `${runId}-C`,
             title: "Item C",
@@ -126,6 +132,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             runId,
           },
           {
+            tenantId: AGENTLOOP_TENANT_ID,
             sourceType: "hn",
             externalId: `${runId}-D`,
             title: "Item D",
@@ -201,6 +208,7 @@ describe("eval-exports repo e2e — VS-5", () => {
         .insert(rawItems)
         .values([
           {
+            tenantId: AGENTLOOP_TENANT_ID,
             sourceType: "hn",
             externalId: `${runR}-X`,
             title: "Run R - Item X",
@@ -210,6 +218,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             runId: runR,
           },
           {
+            tenantId: AGENTLOOP_TENANT_ID,
             sourceType: "hn",
             externalId: `${runR}-Y`,
             title: "Run R - Item Y",
@@ -224,6 +233,7 @@ describe("eval-exports repo e2e — VS-5", () => {
       // Seed items for run R2 (same day, different run_id)
       await db.insert(rawItems).values([
         {
+            tenantId: AGENTLOOP_TENANT_ID,
           sourceType: "hn",
           externalId: `${runR2}-Z`,
           title: "Run R2 - Item Z",
@@ -285,6 +295,7 @@ describe("eval-exports repo e2e — VS-5", () => {
         .insert(rawItems)
         .values([
           {
+            tenantId: AGENTLOOP_TENANT_ID,
             sourceType: "hn",
             externalId: `${runR3}-legacy-P`,
             title: "Legacy Item P",
@@ -295,6 +306,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             // runId is omitted → NULL
           },
           {
+            tenantId: AGENTLOOP_TENANT_ID,
             // duplicate of P, lower engagement
             sourceType: "reddit",
             externalId: `${runR3}-legacy-P-dup`,
@@ -305,6 +317,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             collectedAt: new Date(startedAt.getTime() + 2000),
           },
           {
+            tenantId: AGENTLOOP_TENANT_ID,
             sourceType: "hn",
             externalId: `${runR3}-legacy-Q`,
             title: "Legacy Item Q",

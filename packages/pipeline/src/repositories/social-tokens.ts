@@ -84,7 +84,7 @@ async function upsertToken(
       }),
     )
     .onConflictDoUpdate({
-      target: socialTokens.platform,
+      target: [socialTokens.tenantId, socialTokens.platform],
       set: {
         encryptedFields,
         expiresAt: input.expiresAt,
