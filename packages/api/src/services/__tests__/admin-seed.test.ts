@@ -5,6 +5,7 @@ import type { TenantRow, UserRow } from "@newsletter/shared/db";
 const TENANT: TenantRow = {
   id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
   slug: "agentloop",
+  previousSlug: null,
   name: "AGENTLOOP",
   status: "active",
   customDomain: null,

@@ -43,6 +43,12 @@ export const tenants = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     slug: text("slug").notNull(),
+    /**
+     * The slug this tenant had before its most recent rename (P5, REQ-023).
+     * The host→tenant resolver 301-redirects `<previousSlug>.<root>` to the
+     * current slug so in-flight links/emails keep resolving (EDGE-002).
+     */
+    previousSlug: text("previous_slug"),
     name: text("name").notNull(),
     status: text("status").$type<TenantStatus>().notNull().default("pending_setup"),
     customDomain: text("custom_domain"),
@@ -58,7 +64,10 @@ export const tenants = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("tenants_slug_uq").on(t.slug)],
+  (t) => [
+    uniqueIndex("tenants_slug_uq").on(t.slug),
+    index("tenants_previous_slug_idx").on(t.previousSlug),
+  ],
 );
 
 export type TenantRow = typeof tenants.$inferSelect;

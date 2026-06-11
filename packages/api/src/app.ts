@@ -42,6 +42,16 @@ export interface BuildAppDeps {
   linkedInOAuthCallbackRouter: Hono;
   /** Admin-gated collector health check trigger + snapshot routes. */
   collectorHealthRouter: Hono;
+  /**
+   * Host→tenant resolver (P5, REQ-020/021/022/023). Mounted on every /api
+   * route BEFORE the routers: app-host requests pass through (tenant comes
+   * from the session via requireAuth), `<slug>.<root>` / custom-domain
+   * requests get a role-less `publicTenant` context var, unknown hosts get a
+   * generic 404, and renamed slugs 301-redirect. Optional ONLY so existing
+   * unit tests composing buildApp keep the legacy single-tenant behavior —
+   * index.ts always provides it.
+   */
+  resolveTenant?: MiddlewareHandler;
 }
 
 /**
@@ -64,6 +74,13 @@ export function buildApp(deps: BuildAppDeps): Hono {
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ status: "ok" }));
+
+  // Host→tenant resolution runs before every /api route (P5): public routes
+  // use the Host-derived tenant, admin routes keep the session tenant set by
+  // requireAuth below (REQ-020/021/022).
+  if (deps.resolveTenant) {
+    app.use("/api/*", deps.resolveTenant);
+  }
 
   // Public subscribe/confirm/unsubscribe routes.
   app.route("/api", deps.subscribeRouter);

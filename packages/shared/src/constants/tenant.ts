@@ -66,3 +66,13 @@ const RESERVED_TENANT_SLUG_SET: ReadonlySet<string> = new Set(RESERVED_TENANT_SL
 
 export const isReservedTenantSlug = (slug: string): boolean =>
   RESERVED_TENANT_SLUG_SET.has(slug.toLowerCase());
+
+/**
+ * Slug format (REQ-033): lowercase alphanumeric + hyphens, no leading/trailing
+ * hyphen, max 63 chars (DNS label limit — slugs become subdomains).
+ */
+export const TENANT_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/** Format check only — reserved-word policy is `isReservedTenantSlug`. */
+export const isValidTenantSlugFormat = (slug: string): boolean =>
+  TENANT_SLUG_PATTERN.test(slug);

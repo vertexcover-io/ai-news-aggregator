@@ -25,6 +25,7 @@ function makeTenantRow(over: Partial<TenantRow> = {}): TenantRow {
   return {
     id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
     slug: "pending-abc123",
+    previousSlug: null,
     name: "Ada",
     status: "pending_setup",
     customDomain: null,

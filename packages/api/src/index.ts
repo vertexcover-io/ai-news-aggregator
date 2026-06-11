@@ -36,6 +36,8 @@ import { createTenantsRepo } from "@api/repositories/tenants.js";
 import { seedAdminUser } from "@api/services/admin-seed.js";
 import type { ResetTokenStore } from "@api/services/auth.js";
 import { requireAuth } from "@api/auth/middleware.js";
+import { loadDomainConfig } from "@api/config/domains.js";
+import { createResolveTenant } from "@api/middleware/resolve-tenant.js";
 import { createRateLimiter } from "@api/auth/rate-limit.js";
 import { buildApp } from "@api/app.js";
 import { createSubscribeRouter } from "@api/routes/subscribe.js";
@@ -245,6 +247,12 @@ const app = buildApp({
   analyticsConfigRouter: createDefaultAnalyticsConfigRouter(),
   linkedInOAuthRouter: createLinkedInOAuthRouter(linkedInOAuthDeps),
   linkedInOAuthCallbackRouter: createLinkedInOAuthCallbackRouter(linkedInOAuthDeps),
+  // Host→tenant resolution (P5): ROOT_DOMAIN / APP_HOST / CUSTOM_DOMAIN_MAP
+  // env-driven; X-Tenant-Slug + *.lvh.me dev overrides outside production.
+  resolveTenant: createResolveTenant({
+    config: loadDomainConfig(process.env),
+    getTenantsRepo: () => createTenantsRepo(getDb()),
+  }),
 });
 
 const port = Number(process.env.API_PORT ?? 3000);
