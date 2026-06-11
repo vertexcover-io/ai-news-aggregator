@@ -2,9 +2,13 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { MiddlewareHandler } from "hono";
 import { captureException } from "@api/lib/posthog.js";
+import { resolveTenant } from "@api/middleware/resolve-tenant.js";
+import type { ResolveTenantConfig } from "@api/middleware/resolve-tenant.js";
 
 export interface BuildAppDeps {
   sessionSecret: string;
+  /** Tenant resolution config. When provided, the resolve-tenant middleware is mounted. */
+  resolveTenantConfig?: ResolveTenantConfig;
   publicArchivesRouter: Hono;
   publicHomeRouter: Hono;
   publicMustReadRouter: Hono;
@@ -42,6 +46,12 @@ export interface BuildAppDeps {
   linkedInOAuthCallbackRouter: Hono;
   /** Admin-gated collector health check trigger + snapshot routes. */
   collectorHealthRouter: Hono;
+  /**
+   * Public auth routes: signup, login, logout, forgot-password, reset-password, me.
+   * Mounted at /api/auth — ungated (signup/login/logout are public by design).
+   * Optional during migration — tests that don't test auth can omit it.
+   */
+  authRouter?: Hono;
 }
 
 const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
@@ -67,6 +77,17 @@ export function buildApp(deps: BuildAppDeps): Hono {
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ status: "ok" }));
+
+  // Phase 5: Host → tenant resolution middleware.
+  // Mounted early so all downstream routes can read c.get('hostClassification').
+  if (deps.resolveTenantConfig) {
+    app.use("*", resolveTenant(deps.resolveTenantConfig));
+  }
+
+  // Public auth routes (signup, login, logout, forgot, reset, me).
+  if (deps.authRouter) {
+    app.route("/api/auth", deps.authRouter);
+  }
 
   // Public subscribe/confirm/unsubscribe routes.
   app.route("/api", deps.subscribeRouter);
