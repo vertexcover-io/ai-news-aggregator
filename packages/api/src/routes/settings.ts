@@ -15,7 +15,10 @@ import {
   userSettingsUpsertSchema,
   type UserSettingsUpsertBody,
 } from "@api/lib/validate.js";
-import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import {
+  scopedTenantId,
+  type TenantScope,
+} from "@newsletter/shared/types/tenant-context";
 import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
 import {
   createUserSettingsRepo,
@@ -209,10 +212,18 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       shortlistSize: parsed.data.shortlistSize,
     };
 
-    const saved = await deps.getSettingsRepo(tenantScopeFromContext(c)).upsert(upsertInput);
+    const sessionScope = tenantScopeFromContext(c);
+    const saved = await deps.getSettingsRepo(sessionScope).upsert(upsertInput);
     refreshPostHogConfig(saved);
-    await reconcilePipelineSchedule(deps.processingQueue, saved);
-    await reconcileCollectorHealthSchedule(deps.collectorHealthQueue, saved);
+    // P9 (REQ-060): scheduler entries carry the saving tenant so the jobs
+    // they spawn are scoped to it.
+    const sessionTenantId = scopedTenantId(sessionScope);
+    await reconcilePipelineSchedule(deps.processingQueue, saved, sessionTenantId);
+    await reconcileCollectorHealthSchedule(
+      deps.collectorHealthQueue,
+      saved,
+      sessionTenantId,
+    );
     logger.info(
       {
         event: "settings.saved",

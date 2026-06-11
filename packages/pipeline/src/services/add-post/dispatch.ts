@@ -124,8 +124,10 @@ async function loadTwitterDefaults(): Promise<{
       import("@pipeline/repositories/default-tenant.js"),
     ]);
 
-    // Single-tenant bridge (pre-P9): CSRF refresh writes back to
-    // social_credentials, which requires a concrete tenant_id.
+    // Default-tenant bridge: add-post is a manual entrypoint with no BullMQ
+    // job context (no per-job tenantId to consume — P9 keeps the bridge for
+    // exactly this case). CSRF refresh writes back to social_credentials,
+    // which requires a concrete tenant_id.
     const repo = createSocialCredentialsRepo(
       getDb(),
       getCredentialCipher(),

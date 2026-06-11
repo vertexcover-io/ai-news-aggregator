@@ -28,8 +28,10 @@ import {
 import type { UserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 import {
   getDefaultTenantScope,
+  jobTenantContext,
   primeDefaultTenantScope,
 } from "@pipeline/repositories/default-tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 import {
   createSocialCredentialsRepo,
@@ -44,6 +46,8 @@ import type { UserSettings } from "@newsletter/shared";
 export interface CollectorHealthJobData {
   collectors?: HealthCheckCollector[];
   trigger: CollectorHealthTrigger;
+  /** Originating tenant (P9, REQ-060); legacy entries fall back to the bridge. */
+  tenantId?: string;
 }
 
 export interface CollectorHealthJobLike {
@@ -56,6 +60,13 @@ type PostToWebhookFn = typeof postToWebhook;
 
 export interface CollectorHealthJobDeps {
   userSettingsRepo: UserSettingsRepo;
+  /**
+   * Per-job settings repo factory (P9, REQ-061): when present, the handler
+   * loads settings scoped to the job's tenant (`data.tenantId`) instead of
+   * the fixed `userSettingsRepo` (kept for injected-test deps and legacy
+   * single-tenant wiring).
+   */
+  getUserSettingsRepo?: (ctx?: TenantContext) => UserSettingsRepo;
   store: CollectorHealthStore;
   runCollectorHealthCheck: (
     collector: CheckableCollector,
@@ -192,11 +203,18 @@ export async function handleCollectorHealthJob(
   // failure inside the catch block.
   const payloadCollectors = job.data.collectors ?? [];
 
+  // P9 (REQ-061): scheduled entries carry the owning tenant — load THAT
+  // tenant's settings. Legacy entries (no tenantId) keep the fixed repo.
+  const settingsRepo =
+    deps.getUserSettingsRepo !== undefined
+      ? deps.getUserSettingsRepo(jobTenantContext(job.data) ?? getDefaultTenantScope())
+      : deps.userSettingsRepo;
+
   let settings: Awaited<ReturnType<typeof deps.userSettingsRepo.get>>;
   let targets: HealthCheckCollector[];
 
   try {
-    settings = await deps.userSettingsRepo.get();
+    settings = await settingsRepo.get();
 
     if (payloadCollectors.length > 0) {
       targets = payloadCollectors;
@@ -421,6 +439,9 @@ export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
 
   return {
     userSettingsRepo: createUserSettingsRepo(db, getDefaultTenantScope()),
+    // P9 (REQ-061): the handler prefers this factory, scoping settings to the
+    // job's tenant; the fixed repo above remains the legacy fallback.
+    getUserSettingsRepo: (ctx?: TenantContext) => createUserSettingsRepo(db, ctx),
     store: createCollectorHealthStore(createRedisConnection()),
     runCollectorHealthCheck: defaultRunCollectorHealthCheck,
     // Per-job factory so credentials are always fresh (S-pipeline-03 / D-051)

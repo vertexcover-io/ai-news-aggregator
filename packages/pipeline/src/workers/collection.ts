@@ -10,7 +10,7 @@ import {
   createRawItemsRepo,
   type RawItemsRepo,
 } from "@pipeline/repositories/raw-items.js";
-import { primeDefaultTenantScope } from "@pipeline/repositories/default-tenant.js";
+import { resolveJobTenantScope } from "@pipeline/repositories/default-tenant.js";
 import {
   createRunStateService,
   type RunSourceType,
@@ -29,6 +29,8 @@ export interface CollectionJobLike {
   data: {
     runId?: string;
     config: HnCollectConfig | RedditCollectConfig | WebCollectConfig;
+    /** Originating tenant (P9, REQ-060); legacy jobs fall back to the bridge. */
+    tenantId?: string;
   };
 }
 
@@ -39,23 +41,24 @@ export interface CollectionWorkerDeps {
 
 const logger = createLogger("worker:collection");
 
-let defaultDepsInstance: CollectionWorkerDeps | null = null;
+let sharedRunState: RunStateService | null = null;
 
 /**
- * Async so the first job can resolve the default (AGENTLOOP) tenant scope
- * before any raw_items write — tenant_id is NOT NULL with no DB DEFAULT.
- * Per-tenant job payloads replace this in P9.
+ * Per-job deps (P9, REQ-064): the raw_items repo is scoped to the job's
+ * tenant (`data.tenantId`); legacy jobs without one fall back to the default
+ * (AGENTLOOP) bridge — tenant_id is NOT NULL with no DB DEFAULT, so a write
+ * is never unscoped. The run-state service is connection-bound and shared.
  */
-async function getDefaultDeps(): Promise<CollectionWorkerDeps> {
-  if (!defaultDepsInstance) {
-    const db = getDb();
-    const scope = await primeDefaultTenantScope(db);
-    defaultDepsInstance = {
-      rawItemsRepo: createRawItemsRepo(db, scope),
-      runState: createRunStateService(createRedisConnection()),
-    };
-  }
-  return defaultDepsInstance;
+async function buildJobDeps(
+  data: CollectionJobLike["data"],
+): Promise<CollectionWorkerDeps> {
+  const db = getDb();
+  const scope = await resolveJobTenantScope(db, data);
+  sharedRunState ??= createRunStateService(createRedisConnection());
+  return {
+    rawItemsRepo: createRawItemsRepo(db, scope),
+    runState: sharedRunState,
+  };
 }
 
 function jobNameToSourceType(name: string): RunSourceType {
@@ -103,7 +106,7 @@ export async function handleCollectionJob(
   job: CollectionJobLike,
   deps?: CollectionWorkerDeps,
 ): Promise<CollectorResult> {
-  deps ??= await getDefaultDeps();
+  deps ??= await buildJobDeps(job.data);
   const runId = job.data.runId;
   const startedAt = Date.now();
 

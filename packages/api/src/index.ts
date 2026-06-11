@@ -96,12 +96,36 @@ const collectorHealthQueue = new BullQueue(COLLECTOR_HEALTH_QUEUE_NAME, { connec
 // Shared Redis connection for OAuth state storage (SET/GET/DEL — not a BullMQ queue).
 const oauthRedis = createRedisConnection();
 
+// Default-tenant bridge: sessionless write paths (public subscribe, LinkedIn
+// OAuth callback) must still stamp a concrete tenant_id — resolve the
+// AGENTLOOP tenant once at bootstrap. Pipeline jobs carry their own tenantId
+// since P9; this scope also stamps the bootstrap scheduler reconcile below.
+const defaultTenant = await createTenantsRepo(getDb()).findBySlug("agentloop");
+const defaultTenantScope = defaultTenant
+  ? ({ tenantId: defaultTenant.id, role: "tenant_admin" } as const)
+  : undefined;
+if (!defaultTenantScope) {
+  logger.warn(
+    "no agentloop tenant found — sessionless tenant-owned writes will fail until it exists",
+  );
+}
+
 const settingsRepoForBootstrap = createUserSettingsRepo(getDb());
 await removeLegacySchedulers(processingQueue);
 const settingsForBootstrap = await settingsRepoForBootstrap.get();
 if (settingsForBootstrap !== null) {
-  await reconcilePipelineSchedule(processingQueue, settingsForBootstrap);
-  await reconcileCollectorHealthSchedule(collectorHealthQueue, settingsForBootstrap);
+  // P9 (REQ-060): bootstrap reconcile owns the legacy AGENTLOOP schedule —
+  // stamp its tenant onto the scheduler entries' job data.
+  await reconcilePipelineSchedule(
+    processingQueue,
+    settingsForBootstrap,
+    defaultTenantScope?.tenantId,
+  );
+  await reconcileCollectorHealthSchedule(
+    collectorHealthQueue,
+    settingsForBootstrap,
+    defaultTenantScope?.tenantId,
+  );
 }
 
 // Seed the legacy single admin as a real user on a fresh DB so the dashboard
@@ -120,20 +144,6 @@ if (adminSeedPassword) {
     },
   );
   if (seeded) logger.info("seeded bootstrap admin user");
-}
-
-// Single-tenant bridge (pre-P9): sessionless write paths (public subscribe,
-// LinkedIn OAuth callback) must still stamp a concrete tenant_id — resolve
-// the AGENTLOOP tenant once at bootstrap. P5 host resolution / P9 job
-// threading replace this with per-request tenant contexts.
-const defaultTenant = await createTenantsRepo(getDb()).findBySlug("agentloop");
-const defaultTenantScope = defaultTenant
-  ? ({ tenantId: defaultTenant.id, role: "tenant_admin" } as const)
-  : undefined;
-if (!defaultTenantScope) {
-  logger.warn(
-    "no agentloop tenant found — sessionless tenant-owned writes will fail until it exists",
-  );
 }
 
 const runArchivesRepoForSubscribe = createRunArchivesRepo(

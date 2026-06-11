@@ -12,6 +12,7 @@ import {
 } from "../../../../../api/src/services/scheduler.js";
 import { handleDailyRunJob, type DailyRunJobLike } from "@pipeline/workers/daily-run.js";
 import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
+import { createSourcesRepo } from "@pipeline/repositories/sources.js";
 import { getTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
 import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
 import type { TenantContext } from "@newsletter/shared/types/tenant-context";
@@ -162,7 +163,7 @@ describe("daily-run worker scheduler e2e", () => {
           {
             redis: connection,
             queue: runQueue,
-            userSettingsRepo: createUserSettingsRepo(db, tenant),
+            getUserSettingsRepo: () => createUserSettingsRepo(db, tenant),
           },
           { name: job.name, id: job.id, data: {} } satisfies DailyRunJobLike,
         ),
@@ -224,6 +225,189 @@ describe("daily-run worker scheduler e2e", () => {
 
     expect(jobs.filter((job) => job.name === "run-process")).toHaveLength(1);
     expect(payload.sourceTypes).toEqual(["hn"]);
+  });
+
+  // ── P9: per-tenant job scope ──────────────────────────────────────────
+  // Two tenants with different settings + sources rows; the worker must load
+  // the ORIGINATING tenant's config from job.data.tenantId (REQ-061) and
+  // collect from that tenant's ENABLED sources ROWS, not user_settings JSONB
+  // and not another tenant's rows (REQ-073). REQ-060: the enqueued
+  // run-process payload carries the tenant id.
+  describe("per-tenant job scope (P9)", () => {
+    const P9_MARKER = "pipeline-daily-run-p9";
+    let tenantAId: string;
+    let tenantBId: string;
+
+    async function seedP9Tenants(): Promise<void> {
+      const { tenants, sources } = await import("@newsletter/shared/db");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(
+        sql.raw(
+          `DELETE FROM sources WHERE tenant_id IN (SELECT id FROM tenants WHERE slug LIKE '${P9_MARKER}%')`,
+        ),
+      );
+      await db.execute(
+        sql.raw(`DELETE FROM tenants WHERE slug LIKE '${P9_MARKER}%'`),
+      );
+      const rows = await db
+        .insert(tenants)
+        .values([
+          { slug: `${P9_MARKER}-a`, name: "P9 Tenant A", status: "active" },
+          { slug: `${P9_MARKER}-b`, name: "P9 Tenant B", status: "active" },
+        ])
+        .returning({ id: tenants.id });
+      tenantAId = rows[0].id;
+      tenantBId = rows[1].id;
+
+      // user_settings: A topN 7 (JSONB says hn — rows must win), B topN 13
+      await db.insert(userSettings).values([
+        {
+          ...settingsSeed(tenantAId),
+          topN: 7,
+          hnEnabled: true,
+          hnConfig: { sinceDays: 1, count: 1 },
+        },
+        { ...settingsSeed(tenantBId), topN: 13 },
+      ]);
+
+      // sources rows: A = enabled r/AAA + DISABLED r/ZZZ; B = enabled r/BBB
+      await db.insert(sources).values([
+        {
+          tenantId: tenantAId,
+          type: "reddit",
+          config: { kind: "reddit", subreddit: "AAA", sinceDays: 1 },
+          enabled: true,
+        },
+        {
+          tenantId: tenantAId,
+          type: "reddit",
+          config: { kind: "reddit", subreddit: "ZZZ", sinceDays: 1 },
+          enabled: false,
+        },
+        {
+          tenantId: tenantBId,
+          type: "reddit",
+          config: { kind: "reddit", subreddit: "BBB", sinceDays: 1 },
+          enabled: true,
+        },
+      ]);
+    }
+
+    function settingsSeed(
+      tenantId: string,
+    ): typeof userSettings.$inferInsert {
+      return {
+        tenantId,
+        topN: 5,
+        halfLifeHours: null,
+        hnEnabled: false,
+        hnConfig: null,
+        redditEnabled: false,
+        redditConfig: null,
+        webEnabled: false,
+        webConfig: null,
+        twitterEnabled: false,
+        twitterConfig: null,
+        webSearchEnabled: false,
+        webSearchConfig: null,
+        posthogEnabled: false,
+        pipelineTime: "00:00",
+        emailTime: "09:00",
+        linkedinTime: "09:30",
+        twitterTime: "10:00",
+        scheduleTimezone: "UTC",
+        scheduleEnabled: true,
+        emailEnabled: false,
+        linkedinEnabled: false,
+        twitterPostEnabled: false,
+        autoReview: false,
+        rankingPrompt: "p9 ranking prompt",
+        shortlistPrompt: "p9 shortlist prompt {{N}}",
+        shortlistSize: 30,
+      };
+    }
+
+    interface CapturedAdd {
+      name: string;
+      payload: RunProcessJobPayload;
+    }
+
+    function makeCapturingDeps(): {
+      deps: Parameters<typeof handleDailyRunJob>[0];
+      added: CapturedAdd[];
+      runIds: string[];
+    } {
+      const added: CapturedAdd[] = [];
+      const runIds: string[] = [];
+      const fakeQueue = {
+        add: (name: string, payload: RunProcessJobPayload) => {
+          added.push({ name, payload });
+          runIds.push(payload.runId);
+          return Promise.resolve({ id: payload.runId });
+        },
+      };
+      const deps = {
+        redis: getTestRedis(),
+        queue: fakeQueue as never,
+        getUserSettingsRepo: (ctx?: TenantContext) =>
+          createUserSettingsRepo(db, ctx),
+        getSourcesRepo: (ctx?: TenantContext) => createSourcesRepo(db, ctx),
+      };
+      return { deps, added, runIds };
+    }
+
+    it("test_REQ_061_worker_loads_tenant_settings", async () => {
+      await seedP9Tenants();
+      const { deps, added, runIds } = makeCapturingDeps();
+
+      await handleDailyRunJob(deps, {
+        name: "pipeline-run",
+        id: "p9-req061",
+        data: { tenantId: tenantAId },
+      });
+
+      try {
+        expect(added).toHaveLength(1);
+        const payload = added[0].payload;
+        // settings come from tenant A's row, not B's and not the singleton
+        expect(payload.topN).toBe(7);
+        // REQ-060: payload carries the originating tenant
+        expect(payload.tenantId).toBe(tenantAId);
+      } finally {
+        await removeRunStateKeys(runIds);
+      }
+    });
+
+    it("test_REQ_073_pipeline_uses_enabled_tenant_sources", async () => {
+      await seedP9Tenants();
+      const { deps, added, runIds } = makeCapturingDeps();
+
+      await handleDailyRunJob(deps, {
+        name: "pipeline-run",
+        id: "p9-req073-a",
+        data: { tenantId: tenantAId },
+      });
+      await handleDailyRunJob(deps, {
+        name: "pipeline-run",
+        id: "p9-req073-b",
+        data: { tenantId: tenantBId },
+      });
+
+      try {
+        expect(added).toHaveLength(2);
+        const [a, b] = added;
+        // A collects ONLY its enabled rows: r/AAA (not disabled ZZZ, not B's BBB)
+        expect(a.payload.collectors.reddit?.subreddits).toEqual(["AAA"]);
+        // rows replace the JSONB configs entirely — A's hnConfig must NOT leak in
+        expect(a.payload.collectors.hn).toBeUndefined();
+        expect(a.payload.sourceTypes).toEqual(["reddit"]);
+        // B collects only its own enabled row
+        expect(b.payload.collectors.reddit?.subreddits).toEqual(["BBB"]);
+        expect(b.payload.tenantId).toBe(tenantBId);
+      } finally {
+        await removeRunStateKeys(runIds);
+      }
+    });
   });
 
   it("REQ-WK-6 removes the daily-run scheduler when scheduling is disabled", async () => {

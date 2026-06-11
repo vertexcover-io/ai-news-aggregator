@@ -13,6 +13,12 @@
  * table is additive and collection behavior is unchanged.
  */
 import type { SourceType } from "../db/schema.js";
+import type {
+  RunCollectorsPayload,
+  RunSubmitTwitterUser,
+  RunSubmitWebSource,
+  WebSearchQueryConfig,
+} from "./run.js";
 
 /** Whole-feed HN source (one row per tenant at most, lifted from hnConfig). */
 export interface HnSourceConfig {
@@ -171,6 +177,127 @@ export function buildSourceConfig(
       return { kind: "web", name: new URL(listingUrl).hostname, listingUrl };
     }
   }
+}
+
+/** Web collector default page budget when no row specifies one (UI default). */
+const DEFAULT_WEB_MAX_ITEMS = 10;
+
+function firstDefined<T>(values: (T | undefined)[]): T | undefined {
+  return values.find((v) => v !== undefined);
+}
+
+/**
+ * Map a tenant's enabled `sources` ROW configs to the run's collectors
+ * payload (P9, REQ-073) — the exact inverse of the P8 JSONB→rows lift
+ * (packages/scripts/src/lift-sources.ts):
+ *
+ * - one `hn` row → collectors.hn (first hn row wins; at most one per tenant)
+ * - reddit rows  → one config aggregating subreddits[]; scalar options
+ *   (sort/limit/sinceDays) come from the first row that defines them
+ * - `web`-kind rows (blog/rss/newsletter/github types) → web.sources[];
+ *   maxItems = max across rows (lift stamped the shared legacy value on
+ *   every row), defaulting to the Settings-panel default
+ * - twitter rows → users[] + listIds[]; users without a resolved `userId`
+ *   are skipped (the collector fetches timelines by id, not handle)
+ * - web_search rows → queries[]
+ *
+ * Pass only ENABLED rows — disabled rows must not collect (REQ-073).
+ */
+export function collectorsFromSources(
+  rowConfigs: readonly SourceConfig[],
+): RunCollectorsPayload {
+  const collectors: RunCollectorsPayload = {};
+
+  const hn = rowConfigs.find((c): c is HnSourceConfig => c.kind === "hn");
+  if (hn) {
+    const { kind: _kind, ...config } = hn;
+    collectors.hn = config;
+  }
+
+  const reddit = rowConfigs.filter(
+    (c): c is RedditSourceConfig => c.kind === "reddit",
+  );
+  if (reddit.length > 0) {
+    const sort = firstDefined(reddit.map((r) => r.sort));
+    const limit = firstDefined(reddit.map((r) => r.limit));
+    collectors.reddit = {
+      subreddits: reddit.map((r) => r.subreddit),
+      ...(sort !== undefined ? { sort } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+      sinceDays: firstDefined(reddit.map((r) => r.sinceDays)) ?? 1,
+    };
+  }
+
+  const web = rowConfigs.filter((c): c is WebSourceConfig => c.kind === "web");
+  if (web.length > 0) {
+    const sources: RunSubmitWebSource[] = web.map((w) => ({
+      name: w.name,
+      listingUrl: w.listingUrl,
+    }));
+    const maxItemsValues = web
+      .map((w) => w.maxItems)
+      .filter((v): v is number => v !== undefined);
+    const sinceDays = firstDefined(web.map((w) => w.sinceDays));
+    collectors.web = {
+      sources,
+      maxItems:
+        maxItemsValues.length > 0
+          ? Math.max(...maxItemsValues)
+          : DEFAULT_WEB_MAX_ITEMS,
+      ...(sinceDays !== undefined ? { sinceDays } : {}),
+    };
+  }
+
+  const twitterUsers = rowConfigs.filter(
+    (c): c is TwitterUserSourceConfig => c.kind === "twitter_user",
+  );
+  const twitterLists = rowConfigs.filter(
+    (c): c is TwitterListSourceConfig => c.kind === "twitter_list",
+  );
+  const users: RunSubmitTwitterUser[] = twitterUsers
+    .filter((u): u is TwitterUserSourceConfig & { userId: string } =>
+      u.userId !== undefined && u.userId !== "",
+    )
+    .map((u) => ({ handle: u.handle, userId: u.userId }));
+  const listIds = twitterLists.map((l) => l.listId);
+  if (users.length > 0 || listIds.length > 0) {
+    const twitterRows = [...twitterUsers, ...twitterLists];
+    const maxTweetsPerSource = firstDefined(
+      twitterRows.map((t) => t.maxTweetsPerSource),
+    );
+    const sinceHours = firstDefined(twitterRows.map((t) => t.sinceHours));
+    collectors.twitter = {
+      listIds,
+      users,
+      ...(maxTweetsPerSource !== undefined ? { maxTweetsPerSource } : {}),
+      ...(sinceHours !== undefined ? { sinceHours } : {}),
+    };
+  }
+
+  const webSearch = rowConfigs.filter(
+    (c): c is WebSearchSourceConfig => c.kind === "web_search",
+  );
+  if (webSearch.length > 0) {
+    const queries: WebSearchQueryConfig[] = webSearch.map((q) => ({
+      query: q.query,
+      sinceDays: q.sinceDays,
+      maxItems: q.maxItems,
+    }));
+    collectors.webSearch = { provider: "tavily", queries };
+  }
+
+  return collectors;
+}
+
+/** True when a collectors payload would collect nothing (no run worth starting). */
+export function hasAnyCollector(collectors: RunCollectorsPayload): boolean {
+  return (
+    collectors.hn !== undefined ||
+    collectors.reddit !== undefined ||
+    collectors.web !== undefined ||
+    collectors.twitter !== undefined ||
+    collectors.webSearch !== undefined
+  );
 }
 
 /** Display label for one source row in the Settings panel / onboarding list. */

@@ -86,6 +86,7 @@ import {
 } from "@pipeline/repositories/run-logs.js";
 import {
   getDefaultTenantScope,
+  jobTenantContext,
   primeDefaultTenantScope,
 } from "@pipeline/repositories/default-tenant.js";
 import {
@@ -121,6 +122,11 @@ export interface RunProcessJobData {
   collectors: RunCollectorsPayload;
   halfLifeHours?: number;
   dryRun?: boolean;
+  /**
+   * Originating tenant (P9, REQ-060). Optional only for in-flight jobs
+   * enqueued before P9 — those fall back to the default AGENTLOOP bridge.
+   */
+  tenantId?: string;
 }
 
 export interface RunProcessJobLike {
@@ -1025,9 +1031,19 @@ export interface CreateRunProcessWorkerOptions {
   webSearchProvider?: WebSearchProvider;
 }
 
-export function createRunProcessWorker(
-  options: CreateRunProcessWorkerOptions = {},
-): Worker<RunProcessJobData, RunProcessResult> {
+/**
+ * Builds the deps for ONE run-process job (P9, REQ-061/064): every repo not
+ * injected via `options` is constructed with the job's tenant scope —
+ * `jobTenantContext(jobData)` for P9 payloads, falling back to the default
+ * AGENTLOOP bridge (`getDefaultTenantScope()`, primed at process startup)
+ * for legacy in-flight jobs with no `tenantId`. All tenant-owned writes the
+ * run performs (raw_items, run_archives, run_logs) therefore stamp the
+ * originating tenant.
+ */
+export function buildRunProcessDepsForJob(
+  options: CreateRunProcessWorkerOptions,
+  jobData: { tenantId?: unknown } | undefined,
+): Promise<RunProcessDeps> {
   const connection = options.connection ?? createRedisConnection();
   const runState = options.runState ?? createRunStateService(connection);
   const needsDb =
@@ -1036,9 +1052,10 @@ export function createRunProcessWorker(
     !options.archiveRepo ||
     !options.runLogRepo;
   const db: AppDb | undefined = needsDb ? getDb() : undefined;
-  // Single-tenant bridge (pre-P9): primed at process startup so default repos
-  // stamp a concrete tenant_id on every write.
-  const tenantScope = getDefaultTenantScope();
+  // Per-job tenant scope (REQ-060/064). The sync bridge read keeps this
+  // function dependency-free for unit tests with fake DBs; production primes
+  // the bridge once at process startup (src/index.ts).
+  const tenantScope = jobTenantContext(jobData) ?? getDefaultTenantScope();
   const rawItemsRepo =
     options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db), tenantScope);
   const candidatesRepo =
@@ -1060,14 +1077,15 @@ export function createRunProcessWorker(
   // Per-job factory: resolves cookies from `social_credentials.twitter_collector`
   // first (admin-managed), falling back to RETTIWT_API_KEY env var. Construction
   // happens at job time so admin saves take effect on the next run without a
-  // worker restart. Rettiwt accepts an undefined apiKey (guest mode).
+  // worker restart (S-pipeline-03). Rettiwt accepts an undefined apiKey (guest
+  // mode). Credentials are read with the JOB's tenant scope (D-051).
   const twitterClient: () => Promise<TwitterClient> =
     options.twitterClient ??
     (async () => {
       const repo = createSocialCredentialsRepo(
         ensureDb(db),
         getCredentialCipher(),
-        await primeDefaultTenantScope(ensureDb(db)),
+        tenantScope ?? (await primeDefaultTenantScope(ensureDb(db))),
       );
       const cookie = await resolveTwitterCollectorCookie({
         repo,
@@ -1098,7 +1116,7 @@ export function createRunProcessWorker(
   const cancelSubscriber =
     options.cancelSubscriber ?? createCancelSubscriber(connection);
 
-  const deps: RunProcessDeps = {
+  return Promise.resolve({
     runState,
     rawItemsRepo,
     candidatesRepo,
@@ -1113,11 +1131,30 @@ export function createRunProcessWorker(
     twitterClient,
     slackNotifier: options.slackNotifier,
     webSearchProvider: options.webSearchProvider,
+  });
+}
+
+export function createRunProcessWorker(
+  options: CreateRunProcessWorkerOptions = {},
+): Worker<RunProcessJobData, RunProcessResult> {
+  const connection = options.connection ?? createRedisConnection();
+  // Connection-bound services are shared across jobs; repos are rebuilt per
+  // job so each run's writes stamp the job's tenant (P9, REQ-064).
+  const sharedOptions: CreateRunProcessWorkerOptions = {
+    ...options,
+    connection,
+    runState: options.runState ?? createRunStateService(connection),
+    cancelSubscriber:
+      options.cancelSubscriber ?? createCancelSubscriber(connection),
   };
 
   return new Worker<RunProcessJobData, RunProcessResult>(
     "processing",
-    (job) => handleRunProcessJob(deps, job as RunProcessJobLike),
+    async (job) => {
+      const typed = job as RunProcessJobLike;
+      const deps = await buildRunProcessDepsForJob(sharedOptions, typed.data);
+      return handleRunProcessJob(deps, typed);
+    },
     { connection },
   );
 }

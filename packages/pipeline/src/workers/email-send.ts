@@ -96,7 +96,8 @@ export interface EmailSendDeps {
 export interface EmailSendJobLike {
   name: string;
   id?: string;
-  data: { runId?: string; subscriberIds?: string[] | "all" };
+  /** `tenantId` (P9, REQ-060): consumed by the dispatcher to scope publish deps. */
+  data: { runId?: string; subscriberIds?: string[] | "all"; tenantId?: string };
 }
 
 function isRetryable(err: unknown): boolean {

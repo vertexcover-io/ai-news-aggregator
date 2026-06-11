@@ -106,6 +106,42 @@ describe("reconcilePipelineSchedule", () => {
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
   });
 
+  // P9 (REQ-060): when reconciled for a tenant, every scheduler entry's job
+  // data carries that tenant — the worker scopes its repos from it. Keys stay
+  // the singleton `:`-form (per-tenant keys are P10 / REQ-062, D-112).
+  it("REQ-060: stamps the tenantId onto every scheduler entry's job data", async () => {
+    const queue = makeQueue();
+    const tenantId = "11111111-2222-3333-4444-555555555555";
+
+    await reconcilePipelineSchedule(queue, baseSettings(), tenantId);
+
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      PIPELINE_RUN_SCHEDULER_KEY,
+      { pattern: "30 9 * * *", tz: "America/New_York" },
+      { name: "pipeline-run", data: { tenantId } },
+    );
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      SOCIAL_HEALTH_SCHEDULER_KEY,
+      { pattern: "15 9 * * *", tz: "America/New_York" },
+      { name: "social-health", data: { tenantId } },
+    );
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      EMAIL_SEND_SCHEDULER_KEY,
+      { pattern: "0 10 * * *", tz: "America/New_York" },
+      { name: "email-send", data: { tenantId } },
+    );
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      LINKEDIN_POST_SCHEDULER_KEY,
+      { pattern: "15 10 * * *", tz: "America/New_York" },
+      { name: "linkedin-post", data: { tenantId } },
+    );
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      TWITTER_POST_SCHEDULER_KEY,
+      { pattern: "30 10 * * *", tz: "America/New_York" },
+      { name: "twitter-post", data: { tenantId } },
+    );
+  });
+
   it("removes all standing schedulers when the schedule is disabled", async () => {
     const queue = makeQueue();
 

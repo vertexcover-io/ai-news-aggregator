@@ -45,19 +45,15 @@ import {
 } from "@pipeline/social/twitter/api-client.js";
 import { createLinkedInNotifier } from "@pipeline/social/linkedin/notifier.js";
 import { createTwitterNotifier } from "@pipeline/social/twitter/notifier.js";
-import {
-  createSocialTokensRepo,
-  type SocialTokensRepo,
-} from "@pipeline/repositories/social-tokens.js";
-import {
-  createSocialCredentialsRepo,
-  type SocialCredentialsRepo,
-} from "@pipeline/repositories/social-credentials.js";
+import { createSocialTokensRepo } from "@pipeline/repositories/social-tokens.js";
+import { createSocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import {
-  getDefaultTenantScope,
+  jobTenantContext,
   primeDefaultTenantScope,
 } from "@pipeline/repositories/default-tenant.js";
+import type { TenantContext, TenantScope } from "@newsletter/shared/types/tenant-context";
+import { createSourcesRepo } from "@pipeline/repositories/sources.js";
 import {
   resolveLinkedInCredentials,
   resolveTwitterCollectorCookie,
@@ -129,20 +125,23 @@ export function createProcessingWorker(
 ): Worker<ProcessingJobData, unknown> {
   const connection = options.connection ?? createRedisConnection();
 
-  const runProcessDeps =
-    options.runProcessDeps ?? buildDefaultRunProcessDeps(connection);
   const dailyRunDeps =
     options.dailyRunDeps ?? buildDefaultDailyRunDeps(connection);
   const socialHealthDeps =
     options.socialHealthDeps ?? buildDefaultSocialHealthDeps();
-  // NOTE: publishDeps are intentionally rebuilt per job when not injected by
-  // a test/caller. Notifiers embed credential values at construction time, and
-  // the design (docs/plans/2026-05-19-admin-social-config-design.md §3, §4.4)
-  // promises that operators saving credentials via /admin/settings take effect
-  // on the next pipeline job WITHOUT a worker restart. Caching the resolved
-  // deps for the lifetime of the worker would break that contract.
-  const buildPublishDeps = async (): Promise<PublishDeps> =>
-    options.publishDeps ?? (await buildDefaultPublishDeps());
+  // NOTE: run-process and publish deps are intentionally rebuilt PER JOB when
+  // not injected by a test/caller:
+  // - Notifiers embed credential values at construction time, and the design
+  //   (docs/plans/2026-05-19-admin-social-config-design.md §3, §4.4) promises
+  //   that operators saving credentials via /admin/settings take effect on
+  //   the next pipeline job WITHOUT a worker restart (S-pipeline-03).
+  // - P9 (REQ-061/064): repos must be scoped to the JOB's tenant
+  //   (job.data.tenantId), so a run's raw_items/run_archives/run_logs and a
+  //   publish's email_sends all carry the originating tenant_id.
+  const buildPublishDeps = async (
+    jobData: Record<string, unknown>,
+  ): Promise<PublishDeps> =>
+    options.publishDeps ?? (await buildDefaultPublishDeps(jobTenantContext(jobData)));
 
   return new Worker<ProcessingJobData, unknown>(
     "processing",
@@ -154,6 +153,9 @@ export function createProcessingWorker(
             id: job.id,
             data: job.data as unknown as RunProcessJobData,
           };
+          const runProcessDeps =
+            options.runProcessDeps ??
+            (await buildDefaultRunProcessDeps(connection, typed.data));
           return handleRunProcessJob(runProcessDeps, typed);
         }
         case "daily-run":
@@ -167,31 +169,31 @@ export function createProcessingWorker(
           return undefined;
         }
         case "email-send": {
-          const publishDeps = await buildPublishDeps();
+          const publishDeps = await buildPublishDeps(job.data);
           const typed: EmailSendJobLike = {
             name: job.name,
             id: job.id,
-            data: job.data as { runId?: string },
+            data: job.data as { runId?: string; tenantId?: string },
           };
           await handleEmailSendJob(publishDeps, typed);
           return undefined;
         }
         case "linkedin-post": {
-          const publishDeps = await buildPublishDeps();
+          const publishDeps = await buildPublishDeps(job.data);
           const typed: LinkedInPostJobLike = {
             name: job.name,
             id: job.id,
-            data: job.data as { runId?: string },
+            data: job.data as { runId?: string; tenantId?: string },
           };
           await handleLinkedInPostJob(publishDeps, typed);
           return undefined;
         }
         case "twitter-post": {
-          const publishDeps = await buildPublishDeps();
+          const publishDeps = await buildPublishDeps(job.data);
           const typed: TwitterPostJobLike = {
             name: job.name,
             id: job.id,
-            data: job.data as { runId?: string },
+            data: job.data as { runId?: string; tenantId?: string },
           };
           await handleTwitterPostJob(publishDeps, typed);
           return undefined;
@@ -218,11 +220,16 @@ export function createProcessingWorker(
   );
 }
 
-function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
+async function buildDefaultRunProcessDeps(
+  connection: IORedis,
+  jobData: RunProcessJobData,
+): Promise<RunProcessDeps> {
   const db = getDb();
-  // Single-tenant bridge (pre-P9): index.ts primes the AGENTLOOP scope before
-  // the worker is constructed, so every write stamps a concrete tenant_id.
-  const scope = getDefaultTenantScope();
+  // Per-job tenant scope (P9, REQ-061/064): the job payload carries the
+  // originating tenant; legacy in-flight jobs (no tenantId) fall back to the
+  // AGENTLOOP bridge so no write can ever be unscoped.
+  const scope: TenantScope | undefined =
+    jobTenantContext(jobData) ?? (await primeDefaultTenantScope(db));
   const runState: RunStateService = createRunStateService(connection);
   const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db, scope);
   const candidatesRepo: CandidatesRepo = createCandidatesRepo(db, scope);
@@ -247,8 +254,12 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   // freshness contract: admin saves at /admin/settings take effect on the next
   // job without a worker restart. Rettiwt accepts an undefined apiKey (guest
   // mode); the collector itself classifies the first auth failure as `auth`,
-  // which the Slack notice surfaces.
-  const credentialsRepo = getSharedSocialCredentialsRepo();
+  // which the Slack notice surfaces. Scoped to the job's tenant (D-051/P9).
+  const credentialsRepo = createSocialCredentialsRepo(
+    db,
+    getCredentialCipher(),
+    scope,
+  );
   const twitterClient = async (): Promise<TwitterClient> => {
     const cookie = await resolveTwitterCollectorCookie({
       repo: credentialsRepo,
@@ -302,15 +313,15 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
 
 function buildDefaultDailyRunDeps(connection: IORedis): DailyRunDeps {
   const db = getDb();
-  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(
-    db,
-    getDefaultTenantScope(),
-  );
   const queue = new Queue<RunProcessJobPayload>("processing", { connection });
+  // Per-job repo factories (P9, REQ-061/073): the daily-run handler resolves
+  // the job's tenant context and asks for repos scoped to it.
   return {
     redis: connection,
     queue,
-    userSettingsRepo,
+    getUserSettingsRepo: (ctx?: TenantContext): UserSettingsRepo =>
+      createUserSettingsRepo(db, ctx),
+    getSourcesRepo: (ctx?: TenantContext) => createSourcesRepo(db, ctx),
   };
 }
 
@@ -373,16 +384,29 @@ function warnInvalidTwitterConfig(
   );
 }
 
-export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
+export async function buildDefaultPublishDeps(
+  jobScope?: TenantContext,
+): Promise<PublishDeps> {
   const db = getDb();
-  // Rebuilt per job (see createProcessingWorker note) — resolve the
-  // single-tenant bridge scope here so email_sends/run_archives writes stamp
-  // a concrete tenant_id even if the entrypoint prime was skipped.
-  const scope = await primeDefaultTenantScope(db);
+  // Rebuilt per job (see createProcessingWorker note). P9 (REQ-064, D-051):
+  // the job's tenant scope drives every repo — archive lookups, email_sends
+  // writes, and social credential/token resolution are all fenced to the
+  // originating tenant. Legacy jobs without a tenantId fall back to the
+  // single-tenant AGENTLOOP bridge so writes always stamp a concrete
+  // tenant_id even if the entrypoint prime was skipped.
+  const scope = jobScope ?? (await primeDefaultTenantScope(db));
   const archiveRepo = createRunArchivesRepo(db, scope);
   const rawItemsRepo = createRawItemsRepo(db, scope);
-  const socialTokensRepo = getSharedSocialTokensRepo();
-  const socialCredentialsRepo = getSharedSocialCredentialsRepo();
+  const socialTokensRepo = createSocialTokensRepo(
+    db,
+    getCredentialCipher(),
+    scope,
+  );
+  const socialCredentialsRepo = createSocialCredentialsRepo(
+    db,
+    getCredentialCipher(),
+    scope,
+  );
   const slackNotifier = createSlackNotifier({
     webhookUrl: process.env.SLACK_WEBHOOK_URL,
     archives: archiveRepo,
@@ -493,23 +517,4 @@ function buildDefaultSocialHealthDeps(): SocialHealthDeps {
   };
 }
 
-let cachedSocialTokensRepo: SocialTokensRepo | undefined;
-function getSharedSocialTokensRepo(): SocialTokensRepo {
-  cachedSocialTokensRepo ??= createSocialTokensRepo(
-    getDb(),
-    getCredentialCipher(),
-    getDefaultTenantScope(),
-  );
-  return cachedSocialTokensRepo;
-}
-
-let cachedSocialCredentialsRepo: SocialCredentialsRepo | undefined;
-function getSharedSocialCredentialsRepo(): SocialCredentialsRepo {
-  cachedSocialCredentialsRepo ??= createSocialCredentialsRepo(
-    getDb(),
-    getCredentialCipher(),
-    getDefaultTenantScope(),
-  );
-  return cachedSocialCredentialsRepo;
-}
 

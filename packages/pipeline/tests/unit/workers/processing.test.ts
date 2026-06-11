@@ -126,10 +126,18 @@ vi.mock("@pipeline/repositories/user-settings.js", () => ({
 }));
 // Single-tenant bridge: unit tests run "legacy unscoped" — the fake db has no
 // .select, so the prime/lookup must be stubbed out (scope = undefined).
-vi.mock("@pipeline/repositories/default-tenant.js", () => ({
-  getDefaultTenantScope: vi.fn(() => undefined),
-  primeDefaultTenantScope: vi.fn(() => Promise.resolve(undefined)),
-}));
+// jobTenantContext stays REAL (pure, no DB) so P9 per-job scoping behaves as
+// in production.
+vi.mock("@pipeline/repositories/default-tenant.js", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@pipeline/repositories/default-tenant.js")
+  >();
+  return {
+    ...actual,
+    getDefaultTenantScope: vi.fn(() => undefined),
+    primeDefaultTenantScope: vi.fn(() => Promise.resolve(undefined)),
+  };
+});
 vi.mock("@pipeline/services/run-state.js", () => ({
   createRunStateService: vi.fn(() => ({})),
 }));

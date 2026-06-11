@@ -38,6 +38,16 @@ export function toCron(hhmm: string): string {
   return `${m} ${h} * * *`;
 }
 
+/**
+ * Scheduler-entry job data (P9, REQ-060): jobs spawned by a scheduler carry
+ * the owning tenant so workers scope settings/sources/writes to it. Omitted
+ * for legacy (pre-tenant) reconciles — workers then fall back to the
+ * single-tenant AGENTLOOP bridge.
+ */
+function schedulerJobData(tenantId?: string): Record<string, unknown> {
+  return tenantId !== undefined ? { tenantId } : {};
+}
+
 export function toCronMinusMinutes(hhmm: string, minutesBefore: number): string {
   const [h, m] = hhmm.split(":").map((s) => Number(s));
   const dayMinutes = 24 * 60;
@@ -50,6 +60,7 @@ export function toCronMinusMinutes(hhmm: string, minutesBefore: number): string 
 export async function reconcilePipelineSchedule(
   queue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">,
   settings: UserSettings,
+  tenantId?: string,
 ): Promise<void> {
   const pipelineTime = settings.pipelineTime;
   if (!settings.scheduleEnabled) {
@@ -63,7 +74,7 @@ export async function reconcilePipelineSchedule(
   await queue.upsertJobScheduler(
     PIPELINE_RUN_SCHEDULER_KEY,
     { pattern: toCron(pipelineTime), tz: settings.scheduleTimezone },
-    { name: "pipeline-run", data: {} },
+    { name: "pipeline-run", data: schedulerJobData(tenantId) },
   );
   await queue.upsertJobScheduler(
     SOCIAL_HEALTH_SCHEDULER_KEY,
@@ -74,7 +85,7 @@ export async function reconcilePipelineSchedule(
       ),
       tz: settings.scheduleTimezone,
     },
-    { name: "social-health", data: {} },
+    { name: "social-health", data: schedulerJobData(tenantId) },
   );
   for (const scheduler of PUBLISH_SCHEDULERS) {
     if (!scheduler.enabled(settings)) {
@@ -84,7 +95,7 @@ export async function reconcilePipelineSchedule(
     await queue.upsertJobScheduler(
       scheduler.key,
       { pattern: toCron(scheduler.time(settings)), tz: settings.scheduleTimezone },
-      { name: scheduler.jobName, data: {} },
+      { name: scheduler.jobName, data: schedulerJobData(tenantId) },
     );
   }
 }
@@ -92,6 +103,7 @@ export async function reconcilePipelineSchedule(
 export async function reconcileCollectorHealthSchedule(
   queue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">,
   settings: UserSettings,
+  tenantId?: string,
 ): Promise<void> {
   if (!settings.scheduleEnabled) {
     await queue.removeJobScheduler(COLLECTOR_HEALTH_SCHEDULER_KEY);
@@ -103,7 +115,10 @@ export async function reconcileCollectorHealthSchedule(
       pattern: toCronMinusMinutes(settings.pipelineTime, COLLECTOR_HEALTH_LEAD_MINUTES),
       tz: settings.scheduleTimezone,
     },
-    { name: "collector-health", data: { trigger: "scheduled" } },
+    {
+      name: "collector-health",
+      data: { trigger: "scheduled", ...schedulerJobData(tenantId) },
+    },
   );
 }
 

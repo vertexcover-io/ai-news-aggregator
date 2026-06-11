@@ -25,7 +25,10 @@ import {
   createRawItemsRepo,
   type RawItemsRepo,
 } from "@api/repositories/raw-items.js";
-import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import {
+  scopedTenantId,
+  type TenantScope,
+} from "@newsletter/shared/types/tenant-context";
 import {
   tenantScopeFromContext,
   tenantScopeFromPublicHost,
@@ -282,9 +285,19 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
             "twitter-post": updated.twitterPostedAt,
           };
           const enqueued: PublishChannel[] = [];
+          // P9 (REQ-060): publish jobs carry the session tenant so the worker
+          // scopes its publish deps to the originating tenant.
+          const publishTenantId = scopedTenantId(tenantScopeFromContext(c));
           for (const channel of channels) {
             if (sentAt[channel] != null) continue;
-            await deps.processingQueue.add(channel, { runId }, { jobId: jobIdFor(channel, runId), delay: 0 });
+            await deps.processingQueue.add(
+              channel,
+              {
+                runId,
+                ...(publishTenantId !== undefined ? { tenantId: publishTenantId } : {}),
+              },
+              { jobId: jobIdFor(channel, runId), delay: 0 },
+            );
             enqueued.push(channel);
           }
           const pastDue = new Set<PublishChannel>(channels);
@@ -318,9 +331,14 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     const archive = await deps.getArchiveRepo(tenantScopeFromContext(c)).findById(runId);
     if (!archive) return c.json({ error: "not found" }, 404);
     if (deps.processingQueue) {
+      // P9 (REQ-060): force-send carries the session tenant.
+      const sendTenantId = scopedTenantId(tenantScopeFromContext(c));
       await deps.processingQueue.add(
         "email-send",
-        { runId },
+        {
+          runId,
+          ...(sendTenantId !== undefined ? { tenantId: sendTenantId } : {}),
+        },
         { jobId: jobIdFor("email-send", runId), delay: 0 },
       );
       logger.info(

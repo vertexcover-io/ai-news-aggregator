@@ -13,6 +13,12 @@ export interface PipelineSourceCreateInput {
 export interface SourcesRepo {
   /** The rows collection will run from (P9, REQ-073): tenant + enabled only. */
   listEnabled(): Promise<SourceRow[]>;
+  /**
+   * True when the tenant has ANY sources rows (enabled or not). Distinguishes
+   * "not yet lifted to rows — fall back to user_settings JSONB" from "all
+   * rows disabled — collect nothing" (REQ-073).
+   */
+  hasAny(): Promise<boolean>;
   create(input: PipelineSourceCreateInput): Promise<SourceRow>;
 }
 
@@ -33,6 +39,15 @@ export function createSourcesRepo(
         .from(sources)
         .where(tenantScoped(sources.tenantId, ctx, eq(sources.enabled, true)))
         .orderBy(asc(sources.createdAt), asc(sources.id));
+    },
+
+    async hasAny(): Promise<boolean> {
+      const rows = await db
+        .select({ id: sources.id })
+        .from(sources)
+        .where(tenantScoped(sources.tenantId, ctx))
+        .limit(1);
+      return rows.length > 0;
     },
 
     async create(input: PipelineSourceCreateInput): Promise<SourceRow> {

@@ -7,6 +7,7 @@ import { rawItems, runArchives } from "@newsletter/shared/db";
 import { sql } from "drizzle-orm";
 import type { RunState } from "@newsletter/shared/types";
 import {
+  buildRunProcessDepsForJob,
   handleRunProcessJob,
   type CollectFns,
   type RunProcessJobLike,
@@ -688,5 +689,164 @@ describe("run-process worker E2E", () => {
       await throwingQueue.obliterate({ force: true });
       await throwingQueue.close();
     }
+  });
+
+  // ── P9 (REQ-064): every run derivative carries the ORIGINATING tenant ──
+  // Exercises the production per-job deps seam (buildRunProcessDepsForJob):
+  // repos are NOT injected — they're built from job.data.tenantId, exactly as
+  // the worker does. Two tenants run back-to-back; raw_items, run_archives
+  // and run_logs must each carry their own run's tenant_id, and neither run
+  // may rank the other tenant's items (candidate loading is tenant-fenced).
+  it("test_REQ_064_run_derivatives_carry_tenant_id", async () => {
+    const { tenants, runArchives: archivesTable, runLogs } = await import(
+      "@newsletter/shared/db"
+    );
+    const connection = getTestRedis();
+    const runStateService = createRunStateService(connection);
+
+    const suffix = randomUUID().slice(0, 8);
+    const tenantRows = await db
+      .insert(tenants)
+      .values([
+        { slug: `p9-rp-a-${suffix}`, name: "P9 RP Tenant A", status: "active" },
+        { slug: `p9-rp-b-${suffix}`, name: "P9 RP Tenant B", status: "active" },
+      ])
+      .returning({ id: tenants.id });
+    const tenantA = tenantRows[0].id;
+    const tenantB = tenantRows[1].id;
+
+    const runs = [
+      { runId: randomUUID(), tenantId: tenantA, label: "A" },
+      { runId: randomUUID(), tenantId: tenantB, label: "B" },
+    ] as const;
+
+    const noopCancelSubscriber: CancelSubscriberFactory = {
+      subscribe: () => Promise.resolve({ close: () => Promise.resolve() }),
+    };
+    const noopCollect: CollectFns["reddit"] = (): Promise<CollectorResult> =>
+      Promise.resolve({ itemsFetched: 0, itemsStored: 0, failures: 0, durationMs: 0 });
+
+    for (const run of runs) {
+      const startedAt = new Date(Date.now() - 30 * 1000).toISOString();
+      await runStateService.set({
+        id: run.runId,
+        status: "running",
+        stage: "collecting",
+        topN: 3,
+        startedAt,
+        updatedAt: startedAt,
+        completedAt: null,
+        sources: {},
+        rankedItems: null,
+        warnings: [],
+        error: null,
+      });
+
+      // The fake hn collector writes through the deps-provided repo — the
+      // same write path real collectors use — so tenant stamping comes from
+      // the per-job scoped repo, not from the test.
+      const collectOwnItem: CollectFns["hn"] = async ({ rawItemsRepo }) => {
+        await rawItemsRepo.upsertItems([
+          {
+            sourceType: "hn",
+            externalId: `p9-rp-${run.label}-${suffix}`,
+            title: `Tenant ${run.label} story`,
+            url: `https://example.com/p9-rp-${suffix}/${run.label}`,
+            engagement: { points: 10, commentCount: 1 },
+            metadata: { comments: [] },
+          } as never,
+        ]);
+        return { itemsFetched: 1, itemsStored: 1, failures: 0, durationMs: 1 };
+      };
+
+      const jobData = {
+        runId: run.runId,
+        topN: 3,
+        sourceTypes: ["hn"] as ["hn"],
+        collectors: { hn: { sinceDays: 1 } },
+        tenantId: run.tenantId,
+      };
+
+      const deps = await buildRunProcessDepsForJob(
+        {
+          connection,
+          runState: runStateService,
+          collectFns: {
+            hn: collectOwnItem,
+            reddit: noopCollect,
+            web: noopCollect,
+            twitter: noopCollect as never,
+            webSearch: noopCollect as never,
+          },
+          shortlistFn: (candidates) =>
+            Promise.resolve({ shortlist: candidates, breakdowns: [] }),
+          rankFn: (deduped, opts) =>
+            Promise.resolve({
+              rankedItems: deduped.slice(0, opts.topN).map((c, idx) => ({
+                rawItemId: c.id,
+                score: 1 - idx * 0.1,
+                rationale: "deterministic test rank",
+              })),
+              candidateCount: deduped.length,
+              rankedCount: Math.min(deduped.length, opts.topN),
+            }),
+          cancelSubscriber: noopCancelSubscriber,
+        },
+        jobData,
+      );
+
+      await handleRunProcessJob(deps, {
+        name: "run-process",
+        id: run.runId,
+        data: jobData,
+      });
+    }
+
+    // raw_items written during each run carry that run's tenant
+    const itemRows = await db
+      .select({
+        externalId: rawItems.externalId,
+        tenantId: rawItems.tenantId,
+        runId: rawItems.runId,
+      })
+      .from(rawItems)
+      .where(sql`${rawItems.externalId} LIKE ${`p9-rp-%-${suffix}`}`);
+    expect(itemRows).toHaveLength(2);
+    const itemByLabel = new Map(itemRows.map((r) => [r.externalId, r]));
+    expect(itemByLabel.get(`p9-rp-A-${suffix}`)?.tenantId).toBe(tenantA);
+    expect(itemByLabel.get(`p9-rp-A-${suffix}`)?.runId).toBe(runs[0].runId);
+    expect(itemByLabel.get(`p9-rp-B-${suffix}`)?.tenantId).toBe(tenantB);
+
+    // run_archives: one row per run, stamped with the originating tenant
+    for (const run of runs) {
+      const [archive] = await db
+        .select({
+          tenantId: archivesTable.tenantId,
+          status: archivesTable.status,
+          rankedItems: archivesTable.rankedItems,
+        })
+        .from(archivesTable)
+        .where(sql`${archivesTable.id} = ${run.runId}`);
+      expect(archive?.tenantId).toBe(run.tenantId);
+      expect(archive?.status).toBe("completed");
+      // No cross-tenant leakage: each run ranked exactly its own single item
+      // (tenant B's window includes tenant A's item timestamp-wise — only the
+      // tenant fence on candidate loading keeps it out).
+      expect(archive?.rankedItems).toHaveLength(1);
+    }
+
+    // run_logs rows carry the run's tenant
+    for (const run of runs) {
+      const logRows = await db
+        .select({ tenantId: runLogs.tenantId })
+        .from(runLogs)
+        .where(sql`${runLogs.runId} = ${run.runId}`);
+      expect(logRows.length).toBeGreaterThan(0);
+      expect(new Set(logRows.map((r) => r.tenantId))).toEqual(
+        new Set([run.tenantId]),
+      );
+    }
+
+    await connection.del(...runs.map((r) => `run:${r.runId}`));
   });
 });

@@ -10,9 +10,14 @@ import {
   runKey,
 } from "@newsletter/shared";
 import type {
+  RunCollectorsPayload,
   RunProcessJobPayload,
   RunState,
 } from "@newsletter/shared";
+import {
+  collectorsFromSources,
+  hasAnyCollector,
+} from "@newsletter/shared/types";
 import { runNowBodySchema, runSubmitSchema, socialChannelSchema } from "@api/lib/validate.js";
 import { createRun } from "@api/services/runs.js";
 import {
@@ -29,12 +34,19 @@ import {
   createRunArchivesRepo,
   type RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
-import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import {
+  scopedTenantId,
+  type TenantScope,
+} from "@newsletter/shared/types/tenant-context";
 import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
 import {
   createUserSettingsRepo,
   type UserSettingsRepo,
 } from "@api/repositories/user-settings.js";
+import {
+  createSourcesRepo,
+  type SourcesRepo,
+} from "@api/repositories/sources.js";
 import { listRuns } from "@api/services/run-list.js";
 import { captureAnalytics } from "@api/lib/posthog.js";
 
@@ -45,6 +57,8 @@ export interface RunsRouterDeps {
   getRawItemsRepo: (scope?: TenantScope) => RawItemsRepo;
   getSettingsRepo?: (scope?: TenantScope) => UserSettingsRepo;
   getArchiveRepo?: (scope?: TenantScope) => RunArchivesRepo;
+  /** Tenant sources rows (P9, REQ-073) — drives /now's collection set. */
+  getSourcesRepo?: (scope?: TenantScope) => SourcesRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -70,7 +84,11 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       parsed.data,
       deps.redis,
       deps.processingQueue,
-      { halfLifeHours: parsed.data.halfLifeHours },
+      {
+        halfLifeHours: parsed.data.halfLifeHours,
+        // P9 (REQ-060): stamp the session tenant onto the job payload.
+        tenantId: scopedTenantId(tenantScopeFromContext(c)),
+      },
     );
     const sources = Object.keys(parsed.data).filter(
       (k) => k !== "topN" && k !== "halfLifeHours",
@@ -88,7 +106,8 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
   });
 
   runs.post("/now", async (c) => {
-    const settingsRepo = deps.getSettingsRepo?.(tenantScopeFromContext(c));
+    const scope = tenantScopeFromContext(c);
+    const settingsRepo = deps.getSettingsRepo?.(scope);
     if (!settingsRepo) {
       return c.json({ error: "settings repository not configured" }, 500);
     }
@@ -96,14 +115,34 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     if (!settings) {
       return c.json({ error: "settings not configured" }, 409);
     }
-    const anySource =
-      (settings.hnEnabled && settings.hnConfig !== null) ||
-      (settings.redditEnabled && settings.redditConfig !== null) ||
-      (settings.webEnabled && settings.webConfig !== null) ||
-      (settings.twitterEnabled && settings.twitterConfig !== null) ||
-      (settings.webSearchEnabled && settings.webSearchConfig !== null);
-    if (!anySource) {
-      return c.json({ error: "no sources enabled" }, 409);
+
+    // P9 (REQ-073): once the tenant has `sources` ROWS, the collection set is
+    // derived from the ENABLED rows and the legacy settings JSONB is ignored
+    // (all rows disabled ⇒ nothing collects, even if JSONB says otherwise).
+    // Tenants without rows keep the legacy JSONB path.
+    let collectors: RunCollectorsPayload | undefined;
+    const sourcesRepo = deps.getSourcesRepo?.(scope);
+    if (sourcesRepo) {
+      const rows = await sourcesRepo.list();
+      if (rows.length > 0) {
+        collectors = collectorsFromSources(
+          rows.filter((row) => row.enabled).map((row) => row.config),
+        );
+        if (!hasAnyCollector(collectors)) {
+          return c.json({ error: "no sources enabled" }, 409);
+        }
+      }
+    }
+    if (collectors === undefined) {
+      const anySource =
+        (settings.hnEnabled && settings.hnConfig !== null) ||
+        (settings.redditEnabled && settings.redditConfig !== null) ||
+        (settings.webEnabled && settings.webConfig !== null) ||
+        (settings.twitterEnabled && settings.twitterConfig !== null) ||
+        (settings.webSearchEnabled && settings.webSearchConfig !== null);
+      if (!anySource) {
+        return c.json({ error: "no sources enabled" }, 409);
+      }
     }
 
     // Body is optional — empty body / no body means a live run.
@@ -120,10 +159,15 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     }
     const dryRun = parsed.data.dryRun ?? false;
 
+    const tenantId = scopedTenantId(scope);
     const { runId } = await startRun(
       settings,
       { redis: deps.redis, queue: deps.processingQueue },
-      { dryRun },
+      {
+        dryRun,
+        ...(collectors !== undefined ? { collectors } : {}),
+        ...(tenantId !== undefined ? { tenantId } : {}),
+      },
     );
     logger.info(
       { event: "run.now", runId, topN: settings.topN, dryRun },
@@ -256,10 +300,15 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     }
 
     const jobName = channel === "linkedin" ? "linkedin-post" : "twitter-post";
-    // Social post jobs carry only { runId } but share the processing queue.
-    // Queue<RunProcessJobPayload> is structurally compatible via BullMQ's base class —
-    // casting through the base QueueBase which exposes an untyped add.
-    await (deps.processingQueue as Queue).add(jobName, { runId });
+    // Social post jobs carry { runId, tenantId? } but share the processing
+    // queue. Queue<RunProcessJobPayload> is structurally compatible via
+    // BullMQ's base class — casting through the base QueueBase which exposes
+    // an untyped add. tenantId (P9, REQ-060) scopes the publish deps.
+    const postTenantId = scopedTenantId(tenantScopeFromContext(c));
+    await (deps.processingQueue as Queue).add(jobName, {
+      runId,
+      ...(postTenantId !== undefined ? { tenantId: postTenantId } : {}),
+    });
 
     logger.info({ event: "run.post.manual", runId, channel }, "run.post.manual");
     void captureAnalytics({
@@ -290,5 +339,6 @@ export function createDefaultRunsRouter(): Hono {
     getRawItemsRepo: (scope) => createRawItemsRepo(defaultGetDb(), scope),
     getSettingsRepo: (scope) => createUserSettingsRepo(defaultGetDb(), scope),
     getArchiveRepo: (scope) => createRunArchivesRepo(defaultGetDb(), scope),
+    getSourcesRepo: (scope) => createSourcesRepo(defaultGetDb(), scope),
   });
 }
