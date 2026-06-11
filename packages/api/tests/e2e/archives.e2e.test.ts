@@ -785,12 +785,12 @@ describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
       expect(addSpy).toHaveBeenCalledWith(
         "linkedin-post",
         { runId: archive.runId },
-        { jobId: `linkedin-post:${archive.runId}`, delay: 0 },
+        { jobId: `linkedin-post-${archive.runId}`, delay: 0 },
       );
       expect(addSpy).toHaveBeenCalledWith(
         "twitter-post",
         { runId: archive.runId },
-        { jobId: `twitter-post:${archive.runId}`, delay: 0 },
+        { jobId: `twitter-post-${archive.runId}`, delay: 0 },
       );
     },
   );
@@ -858,12 +858,12 @@ describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
       expect(addSpy).toHaveBeenCalledWith(
         "linkedin-post",
         { runId: archive.runId },
-        { jobId: `linkedin-post:${archive.runId}`, delay: 0 },
+        { jobId: `linkedin-post-${archive.runId}`, delay: 0 },
       );
       expect(addSpy).toHaveBeenCalledWith(
         "twitter-post",
         { runId: archive.runId },
-        { jobId: `twitter-post:${archive.runId}`, delay: 0 },
+        { jobId: `twitter-post-${archive.runId}`, delay: 0 },
       );
     },
   );

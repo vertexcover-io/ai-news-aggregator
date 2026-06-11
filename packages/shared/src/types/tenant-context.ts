@@ -27,13 +27,27 @@ export interface AllTenantsScope {
 }
 
 /**
+ * Trusted server-side cross-tenant scope for flows that have NO user session
+ * at all, e.g. the SNS webhook: it is an unauthenticated external endpoint
+ * gated by AWS SNS signature verification, and a bounce/complaint for one
+ * email may legitimately match subscribers across multiple tenants. Unlike
+ * {@link AllTenantsScope} it is not derived from (or gated on) a user role —
+ * obtain it via {@link systemScope} ONLY in server bootstrap wiring for
+ * trusted system flows, never from request/session data.
+ */
+export interface SystemScope {
+  readonly allTenants: true;
+  readonly role: "system";
+}
+
+/**
  * What repository factories accept. `undefined` (param omitted) is the
  * legacy single-tenant compatibility mode: queries stay unscoped and inserts
  * fall back to the DB-level tenant-0 column DEFAULT installed by the
  * AGENTLOOP backfill (P2). P5 (host resolution) and P9 (tenant in job
  * payloads) remove the remaining undefined call sites.
  */
-export type TenantScope = TenantContext | AllTenantsScope;
+export type TenantScope = TenantContext | AllTenantsScope | SystemScope;
 
 /** Narrows a scope to a concrete single-tenant context. */
 export function isTenantContext(
@@ -52,6 +66,19 @@ export function withAllTenants(ctx: { role: UserRole }): AllTenantsScope {
     throw new Error("withAllTenants is restricted to super_admin sessions");
   }
   return { allTenants: true, role: "super_admin" };
+}
+
+/**
+ * System cross-tenant scope for trusted server-side flows with no user
+ * session (see {@link SystemScope}). Deliberately NOT gated on a role —
+ * the safety boundary is the call site: only server bootstrap code may call
+ * this, for endpoints whose trust is established by other means (the SNS
+ * webhook only reaches repository code after AWS SNS signature
+ * verification in `webhooks.ts`). Repositories treat it exactly like
+ * AllTenantsScope: no tenant predicate.
+ */
+export function systemScope(): SystemScope {
+  return { allTenants: true, role: "system" };
 }
 
 /**

@@ -12,10 +12,12 @@ export type {
   TenantContext,
   TenantScope,
   AllTenantsScope,
+  SystemScope,
 } from "../types/tenant-context.js";
 export {
   isTenantContext,
   withAllTenants,
+  systemScope,
   scopedTenantId,
 } from "../types/tenant-context.js";
 

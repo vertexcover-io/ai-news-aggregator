@@ -93,6 +93,17 @@ ruleTester.run("enforce-repository-access", rule, {
       ].join("\n"),
     },
     {
+      name: "test_REQ_014: systemScope() trusted server-side cross-tenant escape hatch passes",
+      filename: apiRepoFile,
+      code: [
+        `import { sesEvents } from "@newsletter/shared/db";`,
+        `import { systemScope } from "@newsletter/shared/types/tenant-context";`,
+        `export function upsertCrossTenant(db, scope = systemScope()) {`,
+        `  return db.insert(sesEvents).values({ messageId: "m" });`,
+        `}`,
+      ].join("\n"),
+    },
+    {
       name: "test_REQ_014: non-tenant-owned table (users login lookup) needs no scope",
       filename: apiRepoFile,
       code: [

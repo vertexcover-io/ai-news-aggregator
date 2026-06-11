@@ -174,6 +174,10 @@ must lexically contain one of the recognized markers:
 - `withAllTenants(` — the audited super-admin cross-tenant escape hatch
   (throws for any non-`super_admin` role; only `requireSuperAdmin` paths
   may construct it)
+- `systemScope(` — the audited server-side cross-tenant escape hatch for
+  trusted flows with no user session (e.g. the SNS webhook, which only
+  reaches repository code after AWS SNS signature verification); only
+  server bootstrap wiring may construct it
 - a bare `tenantId` reference — covers hand-rolled
   `eq(table.tenantId, ...)` predicates
 

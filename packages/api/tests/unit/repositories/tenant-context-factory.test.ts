@@ -9,7 +9,10 @@ import { describe, it, expect } from "vitest";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import type { AppDb } from "@newsletter/shared/db";
-import type { TenantContext } from "@newsletter/shared/types/tenant-context";
+import {
+  systemScope,
+  type TenantContext,
+} from "@newsletter/shared/types/tenant-context";
 import { createMustReadRepo } from "@api/repositories/must-read.js";
 import { createSubscribersRepo } from "@api/repositories/subscribers.js";
 import { createRunLogRepo } from "@api/repositories/run-logs.js";
@@ -92,6 +95,15 @@ describe("test_REQ_126_repo_factory_requires_tenant_context", () => {
     const { db, captured } = makeCaptureDb();
     const repo = createMustReadRepo(db);
     await repo.findById(SOME_UUID);
+    const { sql, params } = renderLastWhere(captured);
+    expect(sql).not.toContain("tenant_id");
+    expect(params).not.toContain(CTX.tenantId);
+  });
+
+  it("systemScope() (trusted server-side flows, e.g. SNS webhook) emits NO tenant_id predicate — cross-tenant by design", async () => {
+    const { db, captured } = makeCaptureDb();
+    const repo = createSubscribersRepo(db, systemScope());
+    await repo.findByEmail("someone@example.com");
     const { sql, params } = renderLastWhere(captured);
     expect(sql).not.toContain("tenant_id");
     expect(params).not.toContain(CTX.tenantId);

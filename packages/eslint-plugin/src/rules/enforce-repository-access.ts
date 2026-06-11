@@ -41,11 +41,15 @@ const QUERY_ENTRY_PROPERTIES: ReadonlySet<string> = new Set([
  * Recognized tenant-scoping markers. The check is intentionally lexical at
  * enclosing-function granularity: the predicate seam is
  * `tenantScoped(table.tenantId, ctx, …)` / `scopedTenantId(ctx)` from
- * `@newsletter/shared/db`, and `withAllTenants(…)` is the audited super-admin
- * cross-tenant escape hatch. A bare `tenantId` reference also counts so
- * hand-rolled `eq(table.tenantId, …)` predicates pass.
+ * `@newsletter/shared/db`, `withAllTenants(…)` is the audited super-admin
+ * cross-tenant escape hatch, and `systemScope(…)` is the audited
+ * server-side cross-tenant escape hatch for trusted sessionless flows (e.g.
+ * the SNS webhook, reachable only after AWS SNS signature verification). A
+ * bare `tenantId` reference also counts so hand-rolled
+ * `eq(table.tenantId, …)` predicates pass.
  */
-const TENANT_SCOPE_MARKER = /tenantScoped\s*\(|scopedTenantId\s*\(|withAllTenants\s*\(|tenantId/;
+const TENANT_SCOPE_MARKER =
+  /tenantScoped\s*\(|scopedTenantId\s*\(|withAllTenants\s*\(|systemScope\s*\(|tenantId/;
 
 const isFunctionNode = (
   node: TSESTree.Node,
@@ -81,7 +85,7 @@ export default createRule({
       repositoryOnly:
         "Value imports from '{{source}}' are only allowed inside repository modules. Move this query into {{expected}} and inject the repo instead. (Type-only `import type { ... }` is still allowed.)",
       tenantScopeRequired:
-        "Query against tenant-owned table '{{table}}' has no tenant scope. Filter through `tenantScoped({{table}}.tenantId, ctx, ...)` (or stamp inserts with `scopedTenantId(ctx)`); super-admin cross-tenant reads must go through `withAllTenants(...)`.",
+        "Query against tenant-owned table '{{table}}' has no tenant scope. Filter through `tenantScoped({{table}}.tenantId, ctx, ...)` (or stamp inserts with `scopedTenantId(ctx)`); super-admin cross-tenant reads must go through `withAllTenants(...)`, trusted sessionless system flows through `systemScope()`.",
     },
     schema: [],
   },

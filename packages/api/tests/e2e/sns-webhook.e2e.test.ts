@@ -8,7 +8,7 @@
  *  - Inject a certFetcher into verifySnsMessage that returns the matching public PEM.
  *  - Hit the webhooks router via a fully-wired Hono app and a real Postgres DB.
  */
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
 import { execSync } from "node:child_process";
@@ -24,7 +24,8 @@ import {
   emailSends,
   runArchives,
 } from "@newsletter/shared/db";
-import { createLogger } from "@newsletter/shared";
+import { createLogger, type SlackNotifier } from "@newsletter/shared";
+import { systemScope } from "@newsletter/shared/types/tenant-context";
 import { createWebhooksRouter } from "@api/routes/webhooks.js";
 import { createSesEventsRepo } from "@api/repositories/ses-events.js";
 import { createEmailSendsRepo } from "@api/repositories/email-sends.js";
@@ -162,16 +163,44 @@ function buildSignedSubscriptionConfirmation(input: SubConfirmInput): string {
   });
 }
 
-function buildApp(certFetcher: CertFetcher): Hono {
+/**
+ * In-memory SlackNotifier fake — tests verify alerts *fire*, never POST to a
+ * real Slack webhook.
+ */
+function makeSlackNotifier() {
+  return {
+    notifyNewsletterSent: vi.fn().mockResolvedValue(undefined),
+    notifyReviewPending: vi.fn().mockResolvedValue(undefined),
+    notifyReviewWarning: vi.fn().mockResolvedValue(undefined),
+    notifyPublishFailed: vi.fn().mockResolvedValue(undefined),
+    notifyPublishUnavailable: vi.fn().mockResolvedValue(undefined),
+    notifySourceDistribution: vi.fn().mockResolvedValue(undefined),
+    notifyEmailDelivery: vi.fn().mockResolvedValue(undefined),
+    notifyLinkedinPosted: vi.fn().mockResolvedValue(undefined),
+    notifyTwitterPosted: vi.fn().mockResolvedValue(undefined),
+    notifySubscriberConfirmed: vi.fn().mockResolvedValue(undefined),
+    notifySubscriberRemoved: vi.fn().mockResolvedValue(undefined),
+    notifyFeedbackReceived: vi.fn().mockResolvedValue(undefined),
+  } satisfies SlackNotifier;
+}
+
+function buildApp(
+  certFetcher: CertFetcher,
+  slackNotifier: SlackNotifier = makeSlackNotifier(),
+): Hono {
   const logger = createLogger("test-sns-webhook");
   const app = new Hono();
+  // Repos run under systemScope(), mirroring production wiring (index.ts):
+  // the webhook has no session/tenant and may match rows across tenants.
+  const scope = systemScope();
   app.route(
     "/api/webhooks",
     createWebhooksRouter({
-      sesEventsRepo: createSesEventsRepo(db),
-      emailSendsRepo: createEmailSendsRepo(db),
-      subscribersRepo: createSubscribersRepo(db),
+      sesEventsRepo: createSesEventsRepo(db, scope),
+      emailSendsRepo: createEmailSendsRepo(db, scope),
+      subscribersRepo: createSubscribersRepo(db, scope),
       verifySns: (raw: string) => verifySnsMessage(raw, certFetcher),
+      slackNotifier,
       logger,
     }),
   );
@@ -236,7 +265,8 @@ beforeEach(async () => {
 
 describe("SNS webhook — signed payloads (e2e)", () => {
   it("REQ-019: permanent bounce marks subscriber bounced and stores ses_events row", async () => {
-    const app = buildApp(allowAllCertFetcher);
+    const slackNotifier = makeSlackNotifier();
+    const app = buildApp(allowAllCertFetcher, slackNotifier);
     const email = `e2e-bounce-${randomUUID()}@example.com`;
     const sub = await insertSubscriber(email);
     const archive = await insertRunArchive();
@@ -274,6 +304,10 @@ describe("SNS webhook — signed payloads (e2e)", () => {
 
     const updated = await db.select().from(subscribers).where(eq(subscribers.id, sub.id));
     expect(updated[0]?.status).toBe("bounced");
+    const { notifySubscriberRemoved } = slackNotifier;
+    expect(notifySubscriberRemoved).toHaveBeenCalledWith(
+      expect.objectContaining({ email, via: "bounce" }),
+    );
   });
 
   it("REQ-019/EDGE-008: transient bounce records event but does NOT mark subscriber bounced", async () => {
@@ -314,7 +348,8 @@ describe("SNS webhook — signed payloads (e2e)", () => {
   });
 
   it("REQ-020: complaint marks subscriber complained", async () => {
-    const app = buildApp(allowAllCertFetcher);
+    const slackNotifier = makeSlackNotifier();
+    const app = buildApp(allowAllCertFetcher, slackNotifier);
     const email = `e2e-complaint-${randomUUID()}@example.com`;
     const sub = await insertSubscriber(email);
     const archive = await insertRunArchive();
@@ -341,6 +376,10 @@ describe("SNS webhook — signed payloads (e2e)", () => {
 
     const after = await db.select().from(subscribers).where(eq(subscribers.id, sub.id));
     expect(after[0]?.status).toBe("complained");
+    const { notifySubscriberRemoved } = slackNotifier;
+    expect(notifySubscriberRemoved).toHaveBeenCalledWith(
+      expect.objectContaining({ email, via: "complaint" }),
+    );
   });
 
   it("REQ-021: delivery, open, click events are stored without subscriber status change", async () => {

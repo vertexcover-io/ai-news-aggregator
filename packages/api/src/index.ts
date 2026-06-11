@@ -8,6 +8,7 @@ if (!process.env.SESSION_SECRET) {
 
 import { serve } from "@hono/node-server";
 import { createLogger, getDb, createSlackNotifier } from "@newsletter/shared";
+import { systemScope } from "@newsletter/shared/types/tenant-context";
 import { createDefaultRunsRouter } from "@api/routes/runs.js";
 import { createDefaultAdminRunsRouter } from "@api/routes/admin-runs.js";
 import { createDefaultAdminEvalRouter } from "@api/routes/admin-eval.js";
@@ -160,10 +161,16 @@ const subscribeRouter = createSubscribeRouter({
   slackNotifier,
 });
 
+// SNS webhook repos run under systemScope(): the endpoint is unauthenticated
+// (no session/tenant) but trusted — handlers only reach these repos after AWS
+// SNS signature verification in webhooks.ts — and a bounce/complaint for one
+// email address may legitimately match email sends/subscribers across
+// tenants, so the lookup and status update are cross-tenant by design.
+const webhookScope = systemScope();
 const webhooksRouter = createWebhooksRouter({
-  sesEventsRepo: createSesEventsRepo(getDb()),
-  emailSendsRepo: createEmailSendsRepo(getDb()),
-  subscribersRepo: createSubscribersRepo(getDb()),
+  sesEventsRepo: createSesEventsRepo(getDb(), webhookScope),
+  emailSendsRepo: createEmailSendsRepo(getDb(), webhookScope),
+  subscribersRepo: createSubscribersRepo(getDb(), webhookScope),
   verifySns: verifySnsMessage,
   slackNotifier,
   logger,
