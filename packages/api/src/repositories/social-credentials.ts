@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { socialCredentials } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type {
@@ -7,6 +7,7 @@ import type {
   TwitterCollectorEncryptedFields,
 } from "@newsletter/shared/db";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 export interface LinkedInCredentialRecord {
   clientId: string;
@@ -76,6 +77,7 @@ type DbSlice = Pick<AppDb, "select" | "insert" | "delete">;
 
 export function createSocialCredentialsRepo(
   db: DbSlice,
+  ctx: TenantContext,
   cipher: CredentialCipher,
 ): SocialCredentialsRepo {
   return {
@@ -83,7 +85,11 @@ export function createSocialCredentialsRepo(
       const rows = await db
         .select()
         .from(socialCredentials)
-        .where(eq(socialCredentials.platform, "linkedin"))
+        .where(
+          ctx.allTenants
+            ? eq(socialCredentials.platform, "linkedin")
+            : and(eq(socialCredentials.platform, "linkedin"), eq(socialCredentials.tenantId, ctx.tenantId)),
+        )
         .limit(1);
       if (rows.length === 0) return null;
       const row = rows[0];
@@ -97,7 +103,9 @@ export function createSocialCredentialsRepo(
     },
 
     async getStatus(): Promise<SocialCredentialsStatus> {
-      const rows = await db.select().from(socialCredentials);
+      const rows = ctx.allTenants
+        ? await db.select().from(socialCredentials)
+        : await db.select().from(socialCredentials).where(eq(socialCredentials.tenantId, ctx.tenantId));
       let linkedin: LinkedInStatus = {
         configured: false,
         apiVersion: null,
@@ -141,13 +149,14 @@ export function createSocialCredentialsRepo(
         .insert(socialCredentials)
         .values({
           platform: "linkedin",
+          tenantId: ctx.tenantId,
           encryptedFields,
           metadata,
           updatedAt: now,
           updatedBy: "admin",
         })
         .onConflictDoUpdate({
-          target: socialCredentials.platform,
+          target: [socialCredentials.platform, socialCredentials.tenantId],
           set: { encryptedFields, metadata, updatedAt: now, updatedBy: "admin" },
         })
         .returning();
@@ -166,13 +175,14 @@ export function createSocialCredentialsRepo(
         .insert(socialCredentials)
         .values({
           platform: "twitter",
+          tenantId: ctx.tenantId,
           encryptedFields,
           metadata: null,
           updatedAt: now,
           updatedBy: "admin",
         })
         .onConflictDoUpdate({
-          target: socialCredentials.platform,
+          target: [socialCredentials.platform, socialCredentials.tenantId],
           set: { encryptedFields, metadata: null, updatedAt: now, updatedBy: "admin" },
         })
         .returning();
@@ -190,13 +200,14 @@ export function createSocialCredentialsRepo(
         .insert(socialCredentials)
         .values({
           platform: "twitter_collector",
+          tenantId: ctx.tenantId,
           encryptedFields,
           metadata: null,
           updatedAt: now,
           updatedBy: "admin",
         })
         .onConflictDoUpdate({
-          target: socialCredentials.platform,
+          target: [socialCredentials.platform, socialCredentials.tenantId],
           set: { encryptedFields, metadata: null, updatedAt: now, updatedBy: "admin" },
         })
         .returning();
@@ -206,7 +217,11 @@ export function createSocialCredentialsRepo(
     async delete(platform: SocialCredentialPlatform): Promise<boolean> {
       const result = await db
         .delete(socialCredentials)
-        .where(eq(socialCredentials.platform, platform))
+        .where(
+          ctx.allTenants
+            ? eq(socialCredentials.platform, platform)
+            : and(eq(socialCredentials.platform, platform), eq(socialCredentials.tenantId, ctx.tenantId)),
+        )
         .returning({ platform: socialCredentials.platform });
       return result.length > 0;
     },

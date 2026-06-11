@@ -1,4 +1,4 @@
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { runArchives, rawItems } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type {
@@ -13,6 +13,7 @@ import type {
 } from "@newsletter/shared";
 import { parseRunCostBreakdown } from "@newsletter/shared";
 import type { PreReviewSnapshot } from "@newsletter/shared/review-edits";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import { canonicalizeUrl } from "../processors/dedup.js";
 
 export interface RunArchiveUpsertInput {
@@ -85,6 +86,7 @@ export interface RunArchivesRepo {
 
 export function createRunArchivesRepo(
   db: Pick<AppDb, "insert" | "select" | "update">,
+  ctx: TenantContext,
 ): RunArchivesRepo {
   const selectArchiveRow = {
     id: runArchives.id,
@@ -115,7 +117,11 @@ export function createRunArchivesRepo(
       const rows = await db
         .select(selectArchiveRow)
         .from(runArchives)
-        .where(eq(runArchives.id, id));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, id)
+            : and(eq(runArchives.id, id), eq(runArchives.tenantId, ctx.tenantId)),
+        );
       return rows[0] ?? null;
     },
 
@@ -123,6 +129,7 @@ export function createRunArchivesRepo(
       const rows = await db
         .select(selectArchiveRow)
         .from(runArchives)
+        .where(ctx.allTenants ? undefined : eq(runArchives.tenantId, ctx.tenantId))
         .orderBy(desc(runArchives.completedAt))
         .limit(1);
       return rows[0] ?? null;
@@ -132,13 +139,21 @@ export function createRunArchivesRepo(
       await db
         .update(runArchives)
         .set({ slackNotifiedAt: at })
-        .where(eq(runArchives.id, runId));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, runId)
+            : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+        );
     },
     async markEmailSent(runId: string, at: Date): Promise<void> {
       await db
         .update(runArchives)
         .set({ emailSentAt: at })
-        .where(eq(runArchives.id, runId));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, runId)
+            : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+        );
     },
     async markNotification(
       runId: string,
@@ -150,7 +165,11 @@ export function createRunArchivesRepo(
         .set({
           notificationState: sql`coalesce(${runArchives.notificationState}, '{}'::jsonb) || jsonb_build_object(${key}::text, ${at.toISOString()}::text)`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, runId)
+            : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+        );
     },
 
     async markLinkedInPosted(
@@ -158,11 +177,14 @@ export function createRunArchivesRepo(
       at: Date,
       permalink: string | null,
     ): Promise<void> {
+      const idWhere = ctx.allTenants
+        ? eq(runArchives.id, runId)
+        : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId));
       if (permalink === null) {
         await db
           .update(runArchives)
           .set({ linkedinPostedAt: at })
-          .where(eq(runArchives.id, runId));
+          .where(idWhere);
         return;
       }
       const patch: SocialMetadata = { linkedinPermalink: permalink };
@@ -172,7 +194,7 @@ export function createRunArchivesRepo(
           linkedinPostedAt: at,
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(idWhere);
     },
 
     async markTwitterPosted(
@@ -186,11 +208,14 @@ export function createRunArchivesRepo(
       if (threadIds !== undefined && threadIds.length > 0) {
         patch.twitterThreadIds = threadIds;
       }
+      const idWhere = ctx.allTenants
+        ? eq(runArchives.id, runId)
+        : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId));
       if (Object.keys(patch).length === 0) {
         await db
           .update(runArchives)
           .set({ twitterPostedAt: at })
-          .where(eq(runArchives.id, runId));
+          .where(idWhere);
         return;
       }
       await db
@@ -199,7 +224,7 @@ export function createRunArchivesRepo(
           twitterPostedAt: at,
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(idWhere);
     },
 
     async setCostBreakdown(
@@ -209,7 +234,11 @@ export function createRunArchivesRepo(
       await db
         .update(runArchives)
         .set({ costBreakdown: breakdown })
-        .where(eq(runArchives.id, runId));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, runId)
+            : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+        );
     },
 
     async getCostBreakdown(runId: string): Promise<RunCostBreakdown | null> {
@@ -219,7 +248,11 @@ export function createRunArchivesRepo(
       const rows = await db
         .select({ costBreakdown: runArchives.costBreakdown })
         .from(runArchives)
-        .where(eq(runArchives.id, runId));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, runId)
+            : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+        );
       if (rows.length === 0) return null;
       return parseRunCostBreakdown(rows[0].costBreakdown);
     },
@@ -236,7 +269,11 @@ export function createRunArchivesRepo(
         .set({
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, runId)
+            : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+        );
     },
 
     async upsert(input: RunArchiveUpsertInput): Promise<void> {
@@ -244,6 +281,7 @@ export function createRunArchivesRepo(
         .insert(runArchives)
         .values({
           id: input.id,
+          tenantId: ctx.tenantId,
           status: input.status,
           rankedItems: input.rankedItems,
           topN: input.topN,
@@ -295,7 +333,12 @@ export function createRunArchivesRepo(
         .select({ rankedItems: runArchives.rankedItems })
         .from(runArchives)
         .where(
-          sql`${runArchives.reviewed} = true AND ${runArchives.isDryRun} = false AND ${runArchives.status} = 'completed'`,
+          ctx.allTenants
+            ? sql`${runArchives.reviewed} = true AND ${runArchives.isDryRun} = false AND ${runArchives.status} = 'completed'`
+            : and(
+                sql`${runArchives.reviewed} = true AND ${runArchives.isDryRun} = false AND ${runArchives.status} = 'completed'`,
+                eq(runArchives.tenantId, ctx.tenantId),
+              ),
         );
 
       if (archiveRows.length === 0) return new Set<string>();
@@ -311,7 +354,11 @@ export function createRunArchivesRepo(
       const urlRows = await db
         .select({ url: rawItems.url })
         .from(rawItems)
-        .where(inArray(rawItems.id, rawItemIds));
+        .where(
+          ctx.allTenants
+            ? inArray(rawItems.id, rawItemIds)
+            : and(inArray(rawItems.id, rawItemIds), eq(rawItems.tenantId, ctx.tenantId)),
+        );
 
       // Step 4: canonicalize and return
       return new Set(urlRows.map((row) => canonicalizeUrl(row.url)));

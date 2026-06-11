@@ -13,6 +13,7 @@ import type {
 } from "@newsletter/shared/types/eval-ranking";
 import { dedupCandidates } from "@pipeline/processors/dedup.js";
 import type { RawItemRow } from "./raw-items.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 /**
  * Subset of a run_archives row needed for exporting a fixture.
@@ -150,11 +151,16 @@ const RAW_ITEMS_SELECT = {
 async function loadDedupedPool(
   db: Pick<AppDb, "select">,
   archive: EvalExportArchiveRow,
+  ctx: TenantContext,
 ): Promise<FixtureItem[]> {
   const byRunId = await db
     .select(RAW_ITEMS_SELECT)
     .from(rawItems)
-    .where(eq(rawItems.runId, archive.id));
+    .where(
+      ctx.allTenants
+        ? eq(rawItems.runId, archive.id)
+        : and(eq(rawItems.runId, archive.id), eq(rawItems.tenantId, ctx.tenantId)),
+    );
 
   const rows: RawItemRow[] =
     byRunId.length > 0
@@ -163,11 +169,20 @@ async function loadDedupedPool(
           .select(RAW_ITEMS_SELECT)
           .from(rawItems)
           .where(
-            between(
-              rawItems.collectedAt,
-              archive.startedAt ?? archive.createdAt,
-              archive.completedAt,
-            ),
+            ctx.allTenants
+              ? between(
+                  rawItems.collectedAt,
+                  archive.startedAt ?? archive.createdAt,
+                  archive.completedAt,
+                )
+              : and(
+                  between(
+                    rawItems.collectedAt,
+                    archive.startedAt ?? archive.createdAt,
+                    archive.completedAt,
+                  ),
+                  eq(rawItems.tenantId, ctx.tenantId),
+                ),
           );
 
   const fixtureItems = rows.map(buildFixtureItem);
@@ -184,6 +199,7 @@ async function loadDedupedPool(
 
 export function createEvalExportsRepo(
   db: Pick<AppDb, "select">,
+  ctx: TenantContext,
 ): EvalExportsRepo {
   return {
     async listCompletedArchives({ since, runId }) {
@@ -200,7 +216,13 @@ export function createEvalExportsRepo(
           .select(selectRow)
           .from(runArchives)
           .where(
-            and(eq(runArchives.status, "completed"), eq(runArchives.id, runId)),
+            ctx.allTenants
+              ? and(eq(runArchives.status, "completed"), eq(runArchives.id, runId))
+              : and(
+                  eq(runArchives.status, "completed"),
+                  eq(runArchives.id, runId),
+                  eq(runArchives.tenantId, ctx.tenantId),
+                ),
           );
         return rows;
       }
@@ -209,10 +231,16 @@ export function createEvalExportsRepo(
         .select(selectRow)
         .from(runArchives)
         .where(
-          and(
-            eq(runArchives.status, "completed"),
-            gte(runArchives.createdAt, since),
-          ),
+          ctx.allTenants
+            ? and(
+                eq(runArchives.status, "completed"),
+                gte(runArchives.createdAt, since),
+              )
+            : and(
+                eq(runArchives.status, "completed"),
+                gte(runArchives.createdAt, since),
+                eq(runArchives.tenantId, ctx.tenantId),
+              ),
         )
         .orderBy(asc(runArchives.createdAt));
       return rows;
@@ -223,7 +251,12 @@ export function createEvalExportsRepo(
         .select(RAW_ITEMS_SELECT)
         .from(rawItems)
         .where(
-          sql`date_trunc('day', ${rawItems.collectedAt}) = ${dateISO}::date`,
+          ctx.allTenants
+            ? sql`date_trunc('day', ${rawItems.collectedAt}) = ${dateISO}::date`
+            : and(
+                sql`date_trunc('day', ${rawItems.collectedAt}) = ${dateISO}::date`,
+                eq(rawItems.tenantId, ctx.tenantId),
+              ),
         )
         .orderBy(desc(rawItems.collectedAt));
       return rows;
@@ -233,7 +266,14 @@ export function createEvalExportsRepo(
       return db
         .select(RAW_ITEMS_SELECT)
         .from(rawItems)
-        .where(between(rawItems.collectedAt, from, to));
+        .where(
+          ctx.allTenants
+            ? between(rawItems.collectedAt, from, to)
+            : and(
+                between(rawItems.collectedAt, from, to),
+                eq(rawItems.tenantId, ctx.tenantId),
+              ),
+        );
     },
 
     async listCompletedRunsByDate(dateISO, timezone = "UTC") {
@@ -253,10 +293,16 @@ export function createEvalExportsRepo(
         })
         .from(runArchives)
         .where(
-          and(
-            eq(runArchives.status, "completed"),
-            between(runArchives.completedAt, window.from, window.to),
-          ),
+          ctx.allTenants
+            ? and(
+                eq(runArchives.status, "completed"),
+                between(runArchives.completedAt, window.from, window.to),
+              )
+            : and(
+                eq(runArchives.status, "completed"),
+                between(runArchives.completedAt, window.from, window.to),
+                eq(runArchives.tenantId, ctx.tenantId),
+              ),
         )
         .orderBy(desc(runArchives.completedAt));
 
@@ -270,7 +316,7 @@ export function createEvalExportsRepo(
             completedAt: row.completedAt,
             startedAt: row.startedAt,
           };
-          const pool = await loadDedupedPool(db, archive);
+          const pool = await loadDedupedPool(db, archive, ctx);
           return {
             runId: row.id,
             completedAt: row.completedAt.toISOString(),
@@ -302,7 +348,13 @@ export function createEvalExportsRepo(
         })
         .from(runArchives)
         .where(
-          and(eq(runArchives.status, "completed"), eq(runArchives.id, runId)),
+          ctx.allTenants
+            ? and(eq(runArchives.status, "completed"), eq(runArchives.id, runId))
+            : and(
+                eq(runArchives.status, "completed"),
+                eq(runArchives.id, runId),
+                eq(runArchives.tenantId, ctx.tenantId),
+              ),
         );
       if (rows.length === 0) return null;
       const row = rows[0];
@@ -314,7 +366,7 @@ export function createEvalExportsRepo(
         startedAt: row.startedAt,
       };
       // sourcePool is the deduped collected pool attributed by run_id (REQ-004/005/006)
-      const sourcePool = await loadDedupedPool(db, archive);
+      const sourcePool = await loadDedupedPool(db, archive, ctx);
       return {
         runId: row.id,
         completedAt: row.completedAt.toISOString(),

@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { rawItems } from "@newsletter/shared/db";
 import type { AppDb, RawItemInsert, SourceType } from "@newsletter/shared/db";
 import type { RawItemMetadata, RecapContent } from "@newsletter/shared";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 export interface RawItemRow {
   id: number;
@@ -34,6 +35,7 @@ export interface RawItemsRepo {
 
 export function createRawItemsRepo(
   db: Pick<AppDb, "insert" | "select" | "update">,
+  ctx: TenantContext,
 ): RawItemsRepo {
   return {
     async upsertItems(items: RawItemInsert[]): Promise<void> {
@@ -49,7 +51,8 @@ export function createRawItemsRepo(
           items.map((i) => [`${i.sourceType}::${i.externalId}`, i]),
         ).values(),
       );
-      await db.insert(rawItems).values(deduped).onConflictDoUpdate({
+      const stamped = deduped.map((item) => ({ ...item, tenantId: ctx.tenantId }));
+      await db.insert(rawItems).values(stamped).onConflictDoUpdate({
         target: [rawItems.sourceType, rawItems.externalId],
         set: {
           engagement: sql.raw(`excluded.${rawItems.engagement.name}`),
@@ -72,10 +75,16 @@ export function createRawItemsRepo(
         .select({ externalId: rawItems.externalId })
         .from(rawItems)
         .where(
-          and(
-            eq(rawItems.sourceType, sourceType),
-            inArray(rawItems.externalId, externalIds),
-          ),
+          ctx.allTenants
+            ? and(
+                eq(rawItems.sourceType, sourceType),
+                inArray(rawItems.externalId, externalIds),
+              )
+            : and(
+                eq(rawItems.sourceType, sourceType),
+                inArray(rawItems.externalId, externalIds),
+                eq(rawItems.tenantId, ctx.tenantId),
+              ),
         );
 
       return new Set(rows.map((r) => r.externalId));
@@ -102,10 +111,16 @@ export function createRawItemsRepo(
         })
         .from(rawItems)
         .where(
-          and(
-            eq(rawItems.sourceType, sourceType),
-            eq(rawItems.externalId, externalId),
-          ),
+          ctx.allTenants
+            ? and(
+                eq(rawItems.sourceType, sourceType),
+                eq(rawItems.externalId, externalId),
+              )
+            : and(
+                eq(rawItems.sourceType, sourceType),
+                eq(rawItems.externalId, externalId),
+                eq(rawItems.tenantId, ctx.tenantId),
+              ),
         )
         .limit(1);
       return rows[0] ?? null;
@@ -129,7 +144,11 @@ export function createRawItemsRepo(
           metadata: rawItems.metadata,
         })
         .from(rawItems)
-        .where(inArray(rawItems.id, ids));
+        .where(
+          ctx.allTenants
+            ? inArray(rawItems.id, ids)
+            : and(inArray(rawItems.id, ids), eq(rawItems.tenantId, ctx.tenantId)),
+        );
     },
 
     async updateRecapData(updates: { id: number; recap: RecapContent }[]): Promise<void> {
@@ -142,7 +161,11 @@ export function createRawItemsRepo(
             metadata: sql`jsonb_set(coalesce(${rawItems.metadata}, '{}'), '{recap}', ${JSON.stringify(recap)}::jsonb)`,
             updatedAt: now,
           })
-          .where(eq(rawItems.id, id));
+          .where(
+            ctx.allTenants
+              ? eq(rawItems.id, id)
+              : and(eq(rawItems.id, id), eq(rawItems.tenantId, ctx.tenantId)),
+          );
       }
     },
   };

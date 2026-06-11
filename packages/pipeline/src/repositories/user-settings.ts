@@ -1,7 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { userSettings } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { UserSettings } from "@newsletter/shared";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 export interface UserSettingsRepo {
   get(): Promise<UserSettings | null>;
@@ -9,13 +10,18 @@ export interface UserSettingsRepo {
 
 export function createUserSettingsRepo(
   db: Pick<AppDb, "select">,
+  ctx: TenantContext,
 ): UserSettingsRepo {
   return {
     async get(): Promise<UserSettings | null> {
       const rows = await db
         .select()
         .from(userSettings)
-        .where(eq(userSettings.singleton, true))
+        .where(
+          ctx.allTenants
+            ? eq(userSettings.singleton, true)
+            : and(eq(userSettings.singleton, true), eq(userSettings.tenantId, ctx.tenantId)),
+        )
         .limit(1);
       if (rows.length === 0) return null;
       const row = rows[0];

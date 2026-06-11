@@ -20,6 +20,7 @@ import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import { deriveRawItemIdentifierSql } from "./raw-items.js";
 import type { RawItemRow, RawItemsRepo } from "./raw-items.js";
 import { buildItemPreview } from "../services/item-preview.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 const DERIVED_IDENTIFIER_SQL = deriveRawItemIdentifierSql();
 
@@ -213,6 +214,7 @@ export interface RangeFailureEntry {
 
 export function createRunArchivesRepo(
   db: Pick<AppDb, "select" | "update" | "execute" | "delete" | "transaction">,
+  ctx: TenantContext,
 ): RunArchivesRepo {
   function toPoolItem(row: {
     id: number;
@@ -285,20 +287,32 @@ export function createRunArchivesRepo(
           preReviewSnapshot: runArchives.preReviewSnapshot,
         })
         .from(runArchives)
-        .where(eq(runArchives.id, id));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, id)
+            : and(eq(runArchives.id, id), eq(runArchives.tenantId, ctx.tenantId)),
+        );
       return rows[0] ?? null;
     },
     async markSlackNotified(runId: string, at: Date): Promise<void> {
       await db
         .update(runArchives)
         .set({ slackNotifiedAt: at })
-        .where(eq(runArchives.id, runId));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, runId)
+            : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+        );
     },
     async markEmailSent(runId: string, at: Date): Promise<void> {
       await db
         .update(runArchives)
         .set({ emailSentAt: at })
-        .where(eq(runArchives.id, runId));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, runId)
+            : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+        );
     },
     async markNotification(
       runId: string,
@@ -310,7 +324,11 @@ export function createRunArchivesRepo(
         .set({
           notificationState: sql`coalesce(${runArchives.notificationState}, '{}'::jsonb) || jsonb_build_object(${key}::text, ${at.toISOString()}::text)`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, runId)
+            : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+        );
     },
     async markLinkedInPosted(
       runId: string,
@@ -321,7 +339,11 @@ export function createRunArchivesRepo(
         await db
           .update(runArchives)
           .set({ linkedinPostedAt: at })
-          .where(eq(runArchives.id, runId));
+          .where(
+            ctx.allTenants
+              ? eq(runArchives.id, runId)
+              : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+          );
         return;
       }
       const patch: SocialMetadata = { linkedinPermalink: permalink };
@@ -331,7 +353,11 @@ export function createRunArchivesRepo(
           linkedinPostedAt: at,
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, runId)
+            : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+        );
     },
     async markTwitterPosted(
       runId: string,
@@ -342,7 +368,11 @@ export function createRunArchivesRepo(
         await db
           .update(runArchives)
           .set({ twitterPostedAt: at })
-          .where(eq(runArchives.id, runId));
+          .where(
+            ctx.allTenants
+              ? eq(runArchives.id, runId)
+              : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+          );
         return;
       }
       const patch: SocialMetadata = { twitterPermalink: permalink };
@@ -352,7 +382,11 @@ export function createRunArchivesRepo(
           twitterPostedAt: at,
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, runId)
+            : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+        );
     },
     async recordSocialFailure(
       runId: string,
@@ -366,19 +400,35 @@ export function createRunArchivesRepo(
         .set({
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, runId)
+            : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+        );
     },
     async findMostRecentReviewed(): Promise<{ id: string } | null> {
+      const conditions = [eq(runArchives.reviewed, true)];
+      if (!ctx.allTenants) {
+        conditions.push(eq(runArchives.tenantId, ctx.tenantId));
+      }
       const rows = await db
         .select({ id: runArchives.id })
         .from(runArchives)
-        .where(eq(runArchives.reviewed, true))
+        .where(and(...conditions))
         .orderBy(desc(runArchives.completedAt))
         .limit(1);
       if (rows.length === 0) return null;
       return { id: rows[0].id };
     },
     async findLatestReviewedSince(since: Date): Promise<RunArchiveRow | null> {
+      const conditions = [
+        eq(runArchives.reviewed, true),
+        eq(runArchives.isDryRun, false),
+        gte(runArchives.completedAt, since),
+      ];
+      if (!ctx.allTenants) {
+        conditions.push(eq(runArchives.tenantId, ctx.tenantId));
+      }
       const rows = await db
         .select({
           id: runArchives.id,
@@ -411,18 +461,16 @@ export function createRunArchivesRepo(
           preReviewSnapshot: runArchives.preReviewSnapshot,
         })
         .from(runArchives)
-        .where(
-          and(
-            eq(runArchives.reviewed, true),
-            eq(runArchives.isDryRun, false),
-            gte(runArchives.completedAt, since),
-          ),
-        )
+        .where(and(...conditions))
         .orderBy(desc(runArchives.completedAt))
         .limit(1);
       return rows[0] ?? null;
     },
     async listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]> {
+      const conditions = [eq(runArchives.reviewed, true), eq(runArchives.isDryRun, false)];
+      if (!ctx.allTenants) {
+        conditions.push(eq(runArchives.tenantId, ctx.tenantId));
+      }
       const baseQuery = db
         .select({
           runId: runArchives.id,
@@ -434,7 +482,7 @@ export function createRunArchivesRepo(
           isDryRun: runArchives.isDryRun,
         })
         .from(runArchives)
-        .where(and(eq(runArchives.reviewed, true), eq(runArchives.isDryRun, false)))
+        .where(and(...conditions))
         .orderBy(
           sql`coalesce(${runArchives.publishedAt}, ${runArchives.completedAt}) desc`,
         );
@@ -453,12 +501,16 @@ export function createRunArchivesRepo(
       const q = input.q?.trim();
 
       if (!q) {
-        const where = and(
+        const whereConditions = [
           eq(runArchives.reviewed, true),
           eq(runArchives.isDryRun, false),
           gte(runArchives.completedAt, fromTs),
           lte(runArchives.completedAt, toTs),
-        );
+        ];
+        if (!ctx.allTenants) {
+          whereConditions.push(eq(runArchives.tenantId, ctx.tenantId));
+        }
+        const where = and(...whereConditions);
         const rows = await db
           .select({
             runId: runArchives.id,
@@ -504,6 +556,7 @@ export function createRunArchivesRepo(
           AND is_dry_run = false
           AND completed_at BETWEEN ${fromIso}::timestamptz AND ${toIso}::timestamptz
           AND search_tsv @@ ${tsq}
+          ${ctx.allTenants ? sql`` : sql`AND tenant_id = ${ctx.tenantId}::uuid`}
         ORDER BY rank DESC, coalesce(published_at, completed_at) DESC
         LIMIT ${cappedLimit}
       `);
@@ -515,6 +568,7 @@ export function createRunArchivesRepo(
           AND is_dry_run = false
           AND completed_at BETWEEN ${fromIso}::timestamptz AND ${toIso}::timestamptz
           AND search_tsv @@ ${tsq}
+          ${ctx.allTenants ? sql`` : sql`AND tenant_id = ${ctx.tenantId}::uuid`}
       `);
 
       const rows = matchedRows.map((r) => ({
@@ -537,7 +591,7 @@ export function createRunArchivesRepo(
       return { archives, total: totalRow[0].c };
     },
     async list(limit: number): Promise<RunArchiveRow[]> {
-      return db
+      const baseQuery = db
         .select({
           id: runArchives.id,
           status: runArchives.status,
@@ -568,37 +622,41 @@ export function createRunArchivesRepo(
           shortlistedItemIds: runArchives.shortlistedItemIds,
           preReviewSnapshot: runArchives.preReviewSnapshot,
         })
-        .from(runArchives)
-        .orderBy(desc(runArchives.completedAt))
-        .limit(limit);
+        .from(runArchives);
+
+      const query = ctx.allTenants
+        ? baseQuery
+        : baseQuery.where(eq(runArchives.tenantId, ctx.tenantId));
+
+      return query.orderBy(desc(runArchives.completedAt)).limit(limit);
     },
     async updateRankedItems(
       id: string,
       items: RankedItemRef[],
-      ctx: UpdateRankedItemsContext,
+      updateCtx: UpdateRankedItemsContext,
     ): Promise<RunArchiveRow> {
-      const meta = ctx.digestMeta;
+      const meta = updateCtx.digestMeta;
       // Effective post-patch headline/summary: a provided digestMeta key wins,
-      // otherwise the existing value carried on ctx. searchText MUST reflect the
+      // otherwise the existing value carried on updateCtx. searchText MUST reflect the
       // copy that will be displayed after this write, or public FTS drifts.
       const effectiveHeadline =
-        meta && "digestHeadline" in meta ? meta.digestHeadline ?? null : ctx.digestHeadline;
+        meta && "digestHeadline" in meta ? meta.digestHeadline ?? null : updateCtx.digestHeadline;
       const effectiveSummary =
-        meta && "digestSummary" in meta ? meta.digestSummary ?? null : ctx.digestSummary;
+        meta && "digestSummary" in meta ? meta.digestSummary ?? null : updateCtx.digestSummary;
       const searchText = serializeArchiveSearchText({
         digestHeadline: effectiveHeadline,
         digestSummary: effectiveSummary,
         rankedItems: items,
-        rawItemsById: ctx.rawItemsById,
+        rawItemsById: updateCtx.rawItemsById,
       });
       const setValues: Partial<typeof runArchives.$inferInsert> = {
         rankedItems: items,
-        reviewed: ctx.reviewed ?? true,
+        reviewed: updateCtx.reviewed ?? true,
         searchText,
         updatedAt: new Date(),
       };
-      if (ctx.draftSavedAt != null) {
-        setValues.draftSavedAt = ctx.draftSavedAt;
+      if (updateCtx.draftSavedAt != null) {
+        setValues.draftSavedAt = updateCtx.draftSavedAt;
       }
       if (meta) {
         if ("digestHeadline" in meta) setValues.digestHeadline = meta.digestHeadline ?? null;
@@ -610,7 +668,11 @@ export function createRunArchivesRepo(
       const [row] = await db
         .update(runArchives)
         .set(setValues)
-        .where(eq(runArchives.id, id))
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, id)
+            : and(eq(runArchives.id, id), eq(runArchives.tenantId, ctx.tenantId)),
+        )
         .returning({
           id: runArchives.id,
           status: runArchives.status,
@@ -646,28 +708,28 @@ export function createRunArchivesRepo(
     async updateRankedItemsInTx(
       id: string,
       items: RankedItemRef[],
-      ctx: UpdateRankedItemsContext,
+      updateCtx: UpdateRankedItemsContext,
       tx: Pick<AppDb, "update">,
     ): Promise<RunArchiveRow> {
-      const meta = ctx.digestMeta;
+      const meta = updateCtx.digestMeta;
       const effectiveHeadline =
-        meta && "digestHeadline" in meta ? meta.digestHeadline ?? null : ctx.digestHeadline;
+        meta && "digestHeadline" in meta ? meta.digestHeadline ?? null : updateCtx.digestHeadline;
       const effectiveSummary =
-        meta && "digestSummary" in meta ? meta.digestSummary ?? null : ctx.digestSummary;
+        meta && "digestSummary" in meta ? meta.digestSummary ?? null : updateCtx.digestSummary;
       const searchText = serializeArchiveSearchText({
         digestHeadline: effectiveHeadline,
         digestSummary: effectiveSummary,
         rankedItems: items,
-        rawItemsById: ctx.rawItemsById,
+        rawItemsById: updateCtx.rawItemsById,
       });
       const setValues: Partial<typeof runArchives.$inferInsert> = {
         rankedItems: items,
-        reviewed: ctx.reviewed ?? true,
+        reviewed: updateCtx.reviewed ?? true,
         searchText,
         updatedAt: new Date(),
       };
-      if (ctx.draftSavedAt != null) {
-        setValues.draftSavedAt = ctx.draftSavedAt;
+      if (updateCtx.draftSavedAt != null) {
+        setValues.draftSavedAt = updateCtx.draftSavedAt;
       }
       if (meta) {
         if ("digestHeadline" in meta) setValues.digestHeadline = meta.digestHeadline ?? null;
@@ -678,7 +740,11 @@ export function createRunArchivesRepo(
       const [row] = await tx
         .update(runArchives)
         .set(setValues)
-        .where(eq(runArchives.id, id))
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, id)
+            : and(eq(runArchives.id, id), eq(runArchives.tenantId, ctx.tenantId)),
+        )
         .returning({
           id: runArchives.id,
           status: runArchives.status,
@@ -758,6 +824,9 @@ export function createRunArchivesRepo(
       if (opts.shortlistedOnly && opts.shortlistedIds && opts.shortlistedIds.length > 0) {
         conditions.push(inArray(rawItems.id, opts.shortlistedIds));
       }
+      if (!ctx.allTenants) {
+        conditions.push(eq(rawItems.tenantId, ctx.tenantId));
+      }
       const where = and(...conditions);
 
       const [countRow] = await db
@@ -802,7 +871,11 @@ export function createRunArchivesRepo(
           sourceTypes: runArchives.sourceTypes,
         })
         .from(runArchives)
-        .where(eq(runArchives.id, runId));
+        .where(
+          ctx.allTenants
+            ? eq(runArchives.id, runId)
+            : and(eq(runArchives.id, runId), eq(runArchives.tenantId, ctx.tenantId)),
+        );
       if (archive.length === 0) return [];
       const row = archive[0];
       if (!row.startedAt || !row.sourceTypes || row.sourceTypes.length === 0) {
@@ -810,6 +883,13 @@ export function createRunArchivesRepo(
       }
       const UNIT_ID_SQL = sql<string>`COALESCE(NULLIF(${rawItems.metadata} #>> '{sourceUnit,identifier}', ''), ${DERIVED_IDENTIFIER_SQL})`;
       const UNIT_NAME_SQL = sql<string>`COALESCE(NULLIF(${rawItems.metadata} #>> '{sourceUnit,displayName}', ''), ${UNIT_ID_SQL})`;
+      const rawConditions = [
+        gte(rawItems.collectedAt, row.startedAt),
+        inArray(rawItems.sourceType, row.sourceTypes),
+      ];
+      if (!ctx.allTenants) {
+        rawConditions.push(eq(rawItems.tenantId, ctx.tenantId));
+      }
       const rows = await db
         .select({
           sourceType: rawItems.sourceType,
@@ -818,12 +898,7 @@ export function createRunArchivesRepo(
           count: sql<number>`count(*)::int`,
         })
         .from(rawItems)
-        .where(
-          and(
-            gte(rawItems.collectedAt, row.startedAt),
-            inArray(rawItems.sourceType, row.sourceTypes),
-          ),
-        )
+        .where(and(...rawConditions))
         .groupBy(rawItems.sourceType, UNIT_ID_SQL, UNIT_NAME_SQL);
       return rows.map((r) => ({
         sourceType: r.sourceType,
@@ -838,11 +913,19 @@ export function createRunArchivesRepo(
       return db.transaction(async (tx) => {
         const removed = await tx
           .delete(emailSends)
-          .where(eq(emailSends.runArchiveId, id))
+          .where(
+            ctx.allTenants
+              ? eq(emailSends.runArchiveId, id)
+              : and(eq(emailSends.runArchiveId, id), eq(emailSends.tenantId, ctx.tenantId)),
+          )
           .returning({ id: emailSends.id });
         const archiveRows = await tx
           .delete(runArchives)
-          .where(eq(runArchives.id, id))
+          .where(
+            ctx.allTenants
+              ? eq(runArchives.id, id)
+              : and(eq(runArchives.id, id), eq(runArchives.tenantId, ctx.tenantId)),
+          )
           .returning({ id: runArchives.id });
         return {
           deleted: archiveRows.length === 1,
@@ -867,6 +950,7 @@ export function createRunArchivesRepo(
             AND status = 'completed'
             AND completed_at >= ${opts.from.toISOString()}::timestamptz
             AND completed_at <  ${opts.to.toISOString()}::timestamptz
+            ${ctx.allTenants ? sql`` : sql`AND tenant_id = ${ctx.tenantId}::uuid`}
         )
         SELECT
           ri.source_type,
@@ -874,6 +958,7 @@ export function createRunArchivesRepo(
           COUNT(DISTINCT ri.id) AS n
         FROM raw_items ri
         JOIN ranked_refs rr ON rr.raw_item_id = ri.id
+        ${ctx.allTenants ? sql`` : sql`WHERE ri.tenant_id = ${ctx.tenantId}::uuid`}
         GROUP BY ri.source_type, identifier
       `);
       const map = new Map<string, number>();
@@ -888,20 +973,22 @@ export function createRunArchivesRepo(
       from: Date;
       to: Date;
     }): Promise<Map<string, RecentSourceTelemetryEntry>> {
+      const telemetryConditions = [
+        gte(runArchives.completedAt, opts.from),
+        sql`${runArchives.completedAt} < ${opts.to.toISOString()}::timestamptz`,
+        eq(runArchives.status, "completed"),
+        sql`${runArchives.sourceTelemetry} IS NOT NULL`,
+      ];
+      if (!ctx.allTenants) {
+        telemetryConditions.push(eq(runArchives.tenantId, ctx.tenantId));
+      }
       const rows = await db
         .select({
           sourceTelemetry: runArchives.sourceTelemetry,
           completedAt: runArchives.completedAt,
         })
         .from(runArchives)
-        .where(
-          and(
-            gte(runArchives.completedAt, opts.from),
-            sql`${runArchives.completedAt} < ${opts.to.toISOString()}::timestamptz`,
-            eq(runArchives.status, "completed"),
-            sql`${runArchives.sourceTelemetry} IS NOT NULL`,
-          ),
-        )
+        .where(and(...telemetryConditions))
         .orderBy(desc(runArchives.completedAt));
 
       const map = new Map<string, RecentSourceTelemetryEntry>();
@@ -947,6 +1034,7 @@ export function createRunArchivesRepo(
             AND ra.completed_at >= ${opts.from.toISOString()}::timestamptz
             AND ra.completed_at <  ${opts.to.toISOString()}::timestamptz
             AND ra.source_telemetry IS NOT NULL
+            ${ctx.allTenants ? sql`` : sql`AND ra.tenant_id = ${ctx.tenantId}::uuid`}
         ),
         filtered AS (
           SELECT
@@ -997,6 +1085,7 @@ export function createRunArchivesRepo(
         WHERE status = 'completed'
           AND completed_at >= ${opts.from.toISOString()}::timestamptz
           AND completed_at <  ${opts.to.toISOString()}::timestamptz
+          ${ctx.allTenants ? sql`` : sql`AND tenant_id = ${ctx.tenantId}::uuid`}
       `);
       const r = rows[0];
       return typeof r.n === "number" ? r.n : Number.parseInt(r.n, 10);

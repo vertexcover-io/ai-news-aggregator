@@ -1,12 +1,13 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { mustReadEntries } from "@newsletter/shared/db";
 import type { AppDb, MustReadEntry } from "@newsletter/shared/db";
 import type { PublicMustReadEntry } from "@newsletter/shared/types";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type MustReadPublicEntry = Omit<MustReadEntry, "updatedAt">;
+export type MustReadPublicEntry = Omit<MustReadEntry, "tenantId" | "updatedAt">;
 
 export function toPublicWire(row: MustReadPublicEntry): PublicMustReadEntry {
   return {
@@ -45,6 +46,7 @@ export interface MustReadRepo {
 
 export function createMustReadRepo(
   db: Pick<AppDb, "select" | "insert" | "update" | "delete" | "execute">,
+  ctx: TenantContext,
 ): MustReadRepo {
   const publicColumns = {
     id: mustReadEntries.id,
@@ -56,44 +58,58 @@ export function createMustReadRepo(
     addedAt: mustReadEntries.addedAt,
   } as const;
 
+  const tenantCondition = () =>
+    ctx.allTenants ? undefined : eq(mustReadEntries.tenantId, ctx.tenantId);
+
   return {
     async listPublic(): Promise<MustReadPublicEntry[]> {
-      return db
+      const tc = tenantCondition();
+      const query = db
         .select(publicColumns)
         .from(mustReadEntries)
-        .orderBy(desc(mustReadEntries.addedAt));
+        .$dynamic();
+      return (tc ? query.where(tc) : query).orderBy(desc(mustReadEntries.addedAt));
     },
 
     async listAdmin(): Promise<MustReadEntry[]> {
-      return db
+      const tc = tenantCondition();
+      const query = db
         .select()
         .from(mustReadEntries)
-        .orderBy(desc(mustReadEntries.addedAt));
+        .$dynamic();
+      return (tc ? query.where(tc) : query).orderBy(desc(mustReadEntries.addedAt));
     },
 
     async findById(id: string): Promise<MustReadEntry | null> {
       if (!UUID_RE.test(id)) return null;
+      const conditions = [eq(mustReadEntries.id, id)];
+      if (!ctx.allTenants) conditions.push(eq(mustReadEntries.tenantId, ctx.tenantId));
       const rows = await db
         .select()
         .from(mustReadEntries)
-        .where(eq(mustReadEntries.id, id))
+        .where(and(...conditions))
         .limit(1);
       return rows[0] ?? null;
     },
 
     async findByUrl(url: string): Promise<MustReadEntry | null> {
+      const conditions = [eq(mustReadEntries.url, url)];
+      if (!ctx.allTenants) conditions.push(eq(mustReadEntries.tenantId, ctx.tenantId));
       const rows = await db
         .select()
         .from(mustReadEntries)
-        .where(eq(mustReadEntries.url, url))
+        .where(and(...conditions))
         .limit(1);
       return rows[0] ?? null;
     },
 
     async findRandom(): Promise<MustReadEntry | null> {
-      const rows = await db
+      const tc = tenantCondition();
+      const query = db
         .select()
         .from(mustReadEntries)
+        .$dynamic();
+      const rows = await (tc ? query.where(tc) : query)
         .orderBy(sql`random()`)
         .limit(1);
       return rows[0] ?? null;
@@ -108,6 +124,7 @@ export function createMustReadRepo(
           author: input.author,
           year: input.year,
           annotation: input.annotation,
+          tenantId: ctx.tenantId,
         })
         .returning();
       return row;
@@ -123,28 +140,35 @@ export function createMustReadRepo(
         ...(patch.annotation !== undefined && { annotation: patch.annotation }),
         updatedAt: sql`now()`,
       };
+      const conditions = [eq(mustReadEntries.id, id)];
+      if (!ctx.allTenants) conditions.push(eq(mustReadEntries.tenantId, ctx.tenantId));
       const rows = await db
         .update(mustReadEntries)
         .set(setObj)
-        .where(eq(mustReadEntries.id, id))
+        .where(and(...conditions))
         .returning();
       return rows[0] ?? null;
     },
 
     async delete(id: string): Promise<boolean> {
       if (!UUID_RE.test(id)) return false;
+      const conditions = [eq(mustReadEntries.id, id)];
+      if (!ctx.allTenants) conditions.push(eq(mustReadEntries.tenantId, ctx.tenantId));
       const rows = await db
         .delete(mustReadEntries)
-        .where(eq(mustReadEntries.id, id))
+        .where(and(...conditions))
         .returning({ id: mustReadEntries.id });
       return rows.length === 1;
     },
 
     async count(): Promise<number> {
-      const [row] = await db
+      const tc = tenantCondition();
+      const query = db
         .select({ c: sql<number>`count(*)::int` })
-        .from(mustReadEntries);
-      return row.c;
+        .from(mustReadEntries)
+        .$dynamic();
+      const rows = await (tc ? query.where(tc) : query);
+      return rows[0]?.c ?? 0;
     },
   };
 }

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { socialCredentials } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type {
@@ -7,6 +7,7 @@ import type {
   TwitterCollectorEncryptedFields,
 } from "@newsletter/shared/db";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 export type SocialCredentialPlatform = "linkedin" | "twitter" | "twitter_collector";
 
@@ -61,6 +62,7 @@ type DbSlice = Pick<AppDb, "select" | "insert" | "delete">;
 
 export function createSocialCredentialsRepo(
   db: DbSlice,
+  ctx: TenantContext,
   cipher: CredentialCipher,
 ): SocialCredentialsRepo {
   return {
@@ -68,7 +70,11 @@ export function createSocialCredentialsRepo(
       const rows = await db
         .select()
         .from(socialCredentials)
-        .where(eq(socialCredentials.platform, "linkedin"))
+        .where(
+          ctx.allTenants
+            ? eq(socialCredentials.platform, "linkedin")
+            : and(eq(socialCredentials.platform, "linkedin"), eq(socialCredentials.tenantId, ctx.tenantId)),
+        )
         .limit(1);
       if (rows.length === 0) return null;
       const row = rows[0];
@@ -85,7 +91,11 @@ export function createSocialCredentialsRepo(
       const rows = await db
         .select()
         .from(socialCredentials)
-        .where(eq(socialCredentials.platform, "twitter"))
+        .where(
+          ctx.allTenants
+            ? eq(socialCredentials.platform, "twitter")
+            : and(eq(socialCredentials.platform, "twitter"), eq(socialCredentials.tenantId, ctx.tenantId)),
+        )
         .limit(1);
       if (rows.length === 0) return null;
       const row = rows[0];
@@ -110,6 +120,7 @@ export function createSocialCredentialsRepo(
         .insert(socialCredentials)
         .values({
           platform: "linkedin",
+          tenantId: ctx.tenantId,
           encryptedFields,
           metadata,
           updatedAt: now,
@@ -132,6 +143,7 @@ export function createSocialCredentialsRepo(
         .insert(socialCredentials)
         .values({
           platform: "twitter",
+          tenantId: ctx.tenantId,
           encryptedFields,
           metadata: null,
           updatedAt: now,
@@ -146,7 +158,11 @@ export function createSocialCredentialsRepo(
       const rows = await db
         .select()
         .from(socialCredentials)
-        .where(eq(socialCredentials.platform, "twitter_collector"))
+        .where(
+          ctx.allTenants
+            ? eq(socialCredentials.platform, "twitter_collector")
+            : and(eq(socialCredentials.platform, "twitter_collector"), eq(socialCredentials.tenantId, ctx.tenantId)),
+        )
         .limit(1);
       if (rows.length === 0) return null;
       const row = rows[0];
@@ -166,6 +182,7 @@ export function createSocialCredentialsRepo(
         .insert(socialCredentials)
         .values({
           platform: "twitter_collector",
+          tenantId: ctx.tenantId,
           encryptedFields,
           metadata: null,
           updatedAt: now,
@@ -179,7 +196,11 @@ export function createSocialCredentialsRepo(
     async delete(platform: SocialCredentialPlatform): Promise<boolean> {
       const deleted = await db
         .delete(socialCredentials)
-        .where(eq(socialCredentials.platform, platform))
+        .where(
+          ctx.allTenants
+            ? eq(socialCredentials.platform, platform)
+            : and(eq(socialCredentials.platform, platform), eq(socialCredentials.tenantId, ctx.tenantId)),
+        )
         .returning();
       return deleted.length > 0;
     },

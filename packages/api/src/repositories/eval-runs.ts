@@ -7,6 +7,7 @@ import type {
   EvalRunStatus,
   EvalRunSummary,
 } from "@newsletter/shared/types/eval-ranking";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 const ERROR_MESSAGE_MAX_LEN = 512;
 
@@ -122,6 +123,7 @@ function toSummary(run: EvalRun): EvalRunSummary {
 
 export function createEvalRunsRepo(
   db: Pick<AppDb, "insert" | "select" | "update">,
+  ctx: TenantContext,
 ): EvalRunsRepo {
   return {
     async insert(input: EvalRunInsertInput): Promise<{ id: string }> {
@@ -137,6 +139,7 @@ export function createEvalRunsRepo(
           savedPromptHash: input.savedPromptHash,
           savedPromptSnapshot: input.savedPromptSnapshot,
           status: "running",
+          tenantId: ctx.tenantId,
         })
         .returning({ id: evalRuns.id });
       return { id: row.id };
@@ -147,6 +150,8 @@ export function createEvalRunsRepo(
       payload: { scoreBreakdown: unknown; costBreakdown: unknown },
     ): Promise<{ rowsAffected: number }> {
       if (!UUID_RE.test(id)) return { rowsAffected: 0 };
+      const conditions = [eq(evalRuns.id, id)];
+      if (!ctx.allTenants) conditions.push(eq(evalRuns.tenantId, ctx.tenantId));
       const rows = await db
         .update(evalRuns)
         .set({
@@ -155,7 +160,7 @@ export function createEvalRunsRepo(
           scoreBreakdown: payload.scoreBreakdown,
           costBreakdown: payload.costBreakdown,
         })
-        .where(eq(evalRuns.id, id))
+        .where(and(...conditions))
         .returning({ id: evalRuns.id });
       return { rowsAffected: rows.length };
     },
@@ -166,6 +171,8 @@ export function createEvalRunsRepo(
     ): Promise<{ rowsAffected: number }> {
       if (!UUID_RE.test(id)) return { rowsAffected: 0 };
       const truncated = payload.errorMessage.slice(0, ERROR_MESSAGE_MAX_LEN);
+      const conditions = [eq(evalRuns.id, id)];
+      if (!ctx.allTenants) conditions.push(eq(evalRuns.tenantId, ctx.tenantId));
       const rows = await db
         .update(evalRuns)
         .set({
@@ -173,23 +180,26 @@ export function createEvalRunsRepo(
           finishedAt: new Date(),
           errorMessage: truncated,
         })
-        .where(eq(evalRuns.id, id))
+        .where(and(...conditions))
         .returning({ id: evalRuns.id });
       return { rowsAffected: rows.length };
     },
 
     async getById(id: string): Promise<EvalRun | null> {
       if (!UUID_RE.test(id)) return null;
+      const conditions = [eq(evalRuns.id, id)];
+      if (!ctx.allTenants) conditions.push(eq(evalRuns.tenantId, ctx.tenantId));
       const rows = await db
         .select()
         .from(evalRuns)
-        .where(eq(evalRuns.id, id));
+        .where(and(...conditions));
       if (rows.length === 0) return null;
       return mapRowToEvalRun(rows[0]);
     },
 
     async list(opts: EvalRunListOptions): Promise<EvalRunListResult> {
       const filters = [];
+      if (!ctx.allTenants) filters.push(eq(evalRuns.tenantId, ctx.tenantId));
       if (opts.mode !== undefined) filters.push(eq(evalRuns.mode, opts.mode));
       if (opts.status !== undefined)
         filters.push(eq(evalRuns.status, opts.status));

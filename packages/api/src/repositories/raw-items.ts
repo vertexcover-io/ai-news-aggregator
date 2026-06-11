@@ -12,6 +12,7 @@ import type {
 } from "@newsletter/shared";
 import type { RunArchivesRepo } from "./run-archives.js";
 import { NotFoundError } from "@api/lib/errors.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 export interface RawItemRow {
   id: number;
@@ -125,10 +126,15 @@ export function deriveRawItemIdentifierSql(): typeof DERIVED_IDENTIFIER_SQL {
 
 export function createRawItemsRepo(
   db: Pick<AppDb, "select" | "execute">,
+  ctx: TenantContext,
 ): RawItemsRepo {
   return {
     async findByIds(ids: number[]): Promise<RawItemRow[]> {
       if (ids.length === 0) return [];
+      const conditions = [inArray(rawItems.id, ids)];
+      if (!ctx.allTenants) {
+        conditions.push(eq(rawItems.tenantId, ctx.tenantId));
+      }
       const rows = await db
         .select({
           id: rawItems.id,
@@ -144,20 +150,20 @@ export function createRawItemsRepo(
           metadata: rawItems.metadata,
         })
         .from(rawItems)
-        .where(inArray(rawItems.id, ids));
+        .where(and(...conditions));
       return rows;
     },
     async listForRun(
       runId: string,
       callDeps: ListForRunDeps,
     ): Promise<RawItemSummary[]> {
-      return listRawItemsForRun(runId, { db, ...callDeps });
+      return listRawItemsForRun(runId, ctx, { db, ...callDeps });
     },
     async listForRunWithEnrichment(
       runId: string,
       callDeps: ListForRunDeps,
     ): Promise<RawItemWithEnrichment[]> {
-      return listRawItemsForRunWithEnrichment(runId, { db, ...callDeps });
+      return listRawItemsForRunWithEnrichment(runId, ctx, { db, ...callDeps });
     },
     async aggregateBySourceAndIdentifier(
       opts: AggregateBySourceAndIdentifierOpts,
@@ -178,6 +184,7 @@ export function createRawItemsRepo(
         FROM raw_items
         WHERE collected_at >= ${opts.from.toISOString()}::timestamptz
           AND collected_at <  ${opts.to.toISOString()}::timestamptz
+          ${ctx.allTenants ? sql`` : sql`AND tenant_id = ${ctx.tenantId}::uuid`}
         GROUP BY source_type, identifier
       `);
       return rows.map((r) => ({
@@ -250,10 +257,19 @@ async function resolveRunWindow(
 
 export async function listRawItemsForRun(
   runId: string,
+  ctx: TenantContext,
   deps: ListRawItemsForRunDeps,
 ): Promise<RawItemSummary[]> {
   const window = await resolveRunWindow(runId, deps);
   if (window.sourceTypes.length === 0) return [];
+
+  const conditions = [
+    gte(rawItems.collectedAt, window.startedAt),
+    inArray(rawItems.sourceType, window.sourceTypes),
+  ];
+  if (!ctx.allTenants) {
+    conditions.push(eq(rawItems.tenantId, ctx.tenantId));
+  }
 
   const rows = await deps.db
     .select({
@@ -268,12 +284,7 @@ export async function listRawItemsForRun(
       engagement: rawItems.engagement,
     })
     .from(rawItems)
-    .where(
-      and(
-        gte(rawItems.collectedAt, window.startedAt),
-        inArray(rawItems.sourceType, window.sourceTypes),
-      ),
-    )
+    .where(and(...conditions))
     .orderBy(
       sql`${rawItems.sourceType} ASC`,
       sql`COALESCE(${rawItems.publishedAt}, ${rawItems.collectedAt}) DESC`,
@@ -320,10 +331,13 @@ interface RawItemWithEnrichmentRow {
 
 async function listRawItemsForRunWithEnrichment(
   runId: string,
+  ctx: TenantContext,
   deps: ListRawItemsForRunDeps,
 ): Promise<RawItemWithEnrichment[]> {
   const window = await resolveRunWindow(runId, deps);
 
+  // runId lookup already scopes by tenant via the run's own tenant_id — no
+  // additional tenant filter needed.
   const byRunId = await deps.db
     .select(RAW_ITEM_WITH_ENRICHMENT_SELECT)
     .from(rawItems)
@@ -344,10 +358,15 @@ async function listRawItemsForRunWithEnrichment(
       ? gte(rawItems.collectedAt, window.startedAt)
       : between(rawItems.collectedAt, window.startedAt, window.completedAt);
 
+  const fallbackConditions = [windowPredicate, inArray(rawItems.sourceType, window.sourceTypes)];
+  if (!ctx.allTenants) {
+    fallbackConditions.push(eq(rawItems.tenantId, ctx.tenantId));
+  }
+
   const fallbackRows = await deps.db
     .select(RAW_ITEM_WITH_ENRICHMENT_SELECT)
     .from(rawItems)
-    .where(and(windowPredicate, inArray(rawItems.sourceType, window.sourceTypes)))
+    .where(and(...fallbackConditions))
     .orderBy(
       sql`${rawItems.sourceType} ASC`,
       sql`COALESCE(${rawItems.publishedAt}, ${rawItems.collectedAt}) DESC`,

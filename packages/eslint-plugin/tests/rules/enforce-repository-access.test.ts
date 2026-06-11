@@ -22,6 +22,7 @@ const apiServiceFile = "/repo/packages/api/src/services/run-service.ts";
 const pipelineRepoFile =
   "/repo/packages/pipeline/src/repositories/raw-items-repo.ts";
 const apiTestFile = "/repo/packages/api/tests/e2e/runs.test.ts";
+const apiRepoFile = "/repo/packages/api/src/repositories/run-archives.ts";
 
 ruleTester.run("enforce-repository-access", rule, {
   valid: [
@@ -59,6 +60,22 @@ ruleTester.run("enforce-repository-access", rule, {
       name: "type-only default import from drizzle-orm",
       filename: apiServiceFile,
       code: `import type Drizzle from "drizzle-orm";\nconst _d: Drizzle | null = null;\n`,
+    },
+    // --- Phase 4: Valid tenant-scoped queries ---
+    {
+      name: "REQ-014 valid: scoped query with tenantId filter in repo file",
+      filename: apiRepoFile,
+      code: `import { eq, and } from "drizzle-orm";\nimport { runArchives } from "@newsletter/shared/db";\nexport function scopedQuery(db: any, tenantId: string) {\n  return db.select().from(runArchives).where(and(eq(runArchives.id, "x"), eq(runArchives.tenantId, tenantId)));\n}\n`,
+    },
+    {
+      name: "REQ-014 valid: users table login by email is allowlisted",
+      filename: apiRepoFile,
+      code: `import { eq } from "drizzle-orm";\nimport { users } from "@newsletter/shared/db";\nexport function findByEmail(db: any, email: string) {\n  return db.select().from(users).where(eq(users.email, email));\n}\n`,
+    },
+    {
+      name: "REQ-014 valid: super-admin withAllTenants escape hatch",
+      filename: apiRepoFile,
+      code: `import { eq } from "drizzle-orm";\nimport { runArchives } from "@newsletter/shared/db";\nexport function withAllTenants(db: any) {\n  return db.select().from(runArchives).where(eq(runArchives.id, "x")).withAllTenants();\n}\n`,
     },
   ],
   invalid: [
@@ -141,6 +158,13 @@ ruleTester.run("enforce-repository-access", rule, {
       filename: apiServiceFile,
       code: `import "drizzle-orm";\n`,
       errors: [{ messageId: "repositoryOnly" }],
+    },
+    // --- Phase 4: Tenant scoping violations ---
+    {
+      name: "REQ-014: unscoped query on tenant-owned table in repo file",
+      filename: apiRepoFile,
+      code: `import { eq } from "drizzle-orm";\nimport { runArchives } from "@newsletter/shared/db";\nexport function badQuery(db: any) {\n  return db.select().from(runArchives).where(eq(runArchives.id, "x"));\n}\n`,
+      errors: [{ messageId: "unscopedTenantQuery" }],
     },
   ],
 });
