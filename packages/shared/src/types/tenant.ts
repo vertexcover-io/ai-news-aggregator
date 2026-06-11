@@ -12,6 +12,9 @@ export type TenantStatus = "pending_setup" | "active";
 /** `super_admin` is platform-level (no tenant); `tenant_admin` owns exactly one tenant. */
 export type UserRole = "super_admin" | "tenant_admin";
 
+/** Audited platform-level actions (P6 — impersonation start/stop, REQ-103). */
+export type AuditAction = "impersonation_start" | "impersonation_stop";
+
 /** Resumable onboarding-wizard progress, persisted per tenant (P11 consumes this). */
 export interface OnboardingState {
   /** Step key the tenant last worked on (wizard is resumable). */
@@ -99,4 +102,10 @@ export interface AuthMeResponse {
   user: SessionUser;
   /** Null for super_admin sessions. */
   tenant: SessionTenant | null;
+  /**
+   * Present (non-null) only while a super_admin session carries a valid
+   * impersonation cookie (P6, REQ-101/102). Optional so pre-P6 clients and
+   * cached responses keep parsing.
+   */
+  impersonation?: { tenant: SessionTenant } | null;
 }

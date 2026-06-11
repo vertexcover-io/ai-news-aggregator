@@ -31,7 +31,9 @@ import type { TenantsRepo } from "@api/repositories/tenants.js";
 import {
   issueToken,
   verifyToken,
+  verifyImpersonationToken,
   COOKIE_NAME,
+  IMPERSONATION_COOKIE_NAME,
   MAX_AGE_MS,
 } from "@api/auth/session.js";
 import { createRateLimiter } from "@api/auth/rate-limit.js";
@@ -207,6 +209,31 @@ export function createAuthRouter(deps: AuthRouterDeps): Hono {
       user.tenantId !== null
         ? await deps.getTenantsRepo().findById(user.tenantId)
         : null;
+
+    // Surface a live impersonation (super_admin only) so the web shell can
+    // render the banner + exit button (P6, REQ-101/102). Invalid/expired/
+    // mismatched cookies are simply ignored — never an error.
+    let impersonation: AuthMeResponse["impersonation"] = null;
+    if (user.role === "super_admin") {
+      const impToken = getCookie(c, IMPERSONATION_COOKIE_NAME);
+      const imp = impToken
+        ? verifyImpersonationToken(impToken, deps.sessionSecret)
+        : null;
+      if (imp !== null && imp.userId === user.id) {
+        const acting = await deps.getTenantsRepo().findById(imp.actingTenantId);
+        if (acting !== null) {
+          impersonation = {
+            tenant: {
+              id: acting.id,
+              slug: acting.slug,
+              name: acting.name,
+              status: acting.status,
+            },
+          };
+        }
+      }
+    }
+
     const response: AuthMeResponse = {
       user: toSessionUser(user),
       tenant:
@@ -218,6 +245,7 @@ export function createAuthRouter(deps: AuthRouterDeps): Hono {
               status: tenant.status,
             }
           : null,
+      impersonation,
     };
     return c.json(response);
   });

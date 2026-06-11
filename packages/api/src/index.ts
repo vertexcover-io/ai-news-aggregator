@@ -32,8 +32,10 @@ import { createSocialTokensRepo } from "@api/repositories/social-tokens.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createDefaultAdminMustReadRouter } from "@api/routes/admin-must-read.js";
 import { createAuthRouter } from "@api/routes/auth.js";
+import { createSuperAdminRouter } from "@api/routes/super-admin.js";
 import { createUsersRepo } from "@api/repositories/users.js";
 import { createTenantsRepo } from "@api/repositories/tenants.js";
+import { createAuditLogRepo } from "@api/repositories/audit-log.js";
 import { seedAdminUser } from "@api/services/admin-seed.js";
 import type { ResetTokenStore } from "@api/services/auth.js";
 import { requireAuth } from "@api/auth/middleware.js";
@@ -259,6 +261,13 @@ const app = buildApp({
   resolveTenant: createResolveTenant({
     config: loadDomainConfig(process.env),
     getTenantsRepo: () => createTenantsRepo(getDb()),
+  }),
+  // Super-admin console + audited impersonation (P6) — requireSuperAdmin
+  // is applied inside the router factory.
+  superAdminRouter: createSuperAdminRouter({
+    sessionSecret,
+    getTenantsRepo: () => createTenantsRepo(getDb()),
+    getAuditLogRepo: () => createAuditLogRepo(getDb()),
   }),
 });
 

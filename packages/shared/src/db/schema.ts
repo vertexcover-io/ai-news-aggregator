@@ -21,7 +21,7 @@ import type {
 import type { RunCostBreakdown } from "@shared/types/cost-breakdown.js";
 import type { EncryptedBlob } from "@shared/services/credential-cipher.js";
 import type { EditType, PreReviewSnapshot } from "@shared/review-edits/types.js";
-import type { OnboardingState, TenantStatus, UserRole } from "@shared/types/tenant.js";
+import type { AuditAction, OnboardingState, TenantStatus, UserRole } from "@shared/types/tenant.js";
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter" | "web_search";
 
@@ -94,6 +94,35 @@ export const users = pgTable(
 
 export type UserRow = typeof users.$inferSelect;
 export type UserInsert = typeof users.$inferInsert;
+
+/**
+ * Platform audit trail (P6, REQ-103) — records super-admin impersonation
+ * start/stop with the acting super admin and the target tenant.
+ *
+ * NOT tenant-owned in the isolation sense: rows are written and read only by
+ * super-admin/platform flows, never serialized to tenant responses. Both ids
+ * are deliberately plain uuids (no FK) so audit history survives user or
+ * tenant deletion.
+ */
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    action: text("action").$type<AuditAction>().notNull(),
+    /** The super admin performing the action (audit identity). */
+    actorUserId: uuid("actor_user_id").notNull(),
+    /** The tenant the action targeted. */
+    tenantId: uuid("tenant_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("audit_log_tenant_id_idx").on(t.tenantId),
+    index("audit_log_actor_user_id_idx").on(t.actorUserId),
+  ],
+);
+
+export type AuditLogRow = typeof auditLog.$inferSelect;
+export type AuditLogInsert = typeof auditLog.$inferInsert;
 
 export const rawItems = pgTable("raw_items", {
   id: serial("id").primaryKey(),

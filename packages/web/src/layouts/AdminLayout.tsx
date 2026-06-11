@@ -3,6 +3,7 @@ import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { logout } from "@/api/auth";
 import { Button } from "@/components/ui/button";
+import { ImpersonationBanner } from "@/components/admin/ImpersonationBanner";
 
 export function AdminLayout(): ReactElement {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ export function AdminLayout(): ReactElement {
 
   return (
     <div>
+      <ImpersonationBanner />
       <header className="flex items-center justify-between px-4 py-2 border-b">
         <nav className="flex items-center gap-4">
           <Link to="/admin" className="font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-neutral-900 min-h-[44px] inline-flex items-center">Dashboard</Link>

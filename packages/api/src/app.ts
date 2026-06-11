@@ -52,6 +52,14 @@ export interface BuildAppDeps {
    * index.ts always provides it.
    */
   resolveTenant?: MiddlewareHandler;
+  /**
+   * Super-admin console routes (P6, REQ-100/101/102/103): GET /tenants,
+   * POST /impersonate/:tenantId, POST /impersonate/exit — mounted at
+   * /api/super. The router applies requireSuperAdmin internally (see
+   * routes/super-admin.ts). Optional ONLY so existing unit tests composing
+   * buildApp keep working — index.ts always provides it.
+   */
+  superAdminRouter?: Hono;
 }
 
 /**
@@ -137,6 +145,11 @@ export function buildApp(deps: BuildAppDeps): Hono {
 
   app.route("/api/runs", gatedWrap(gate, deps.runsRouter));
   app.route("/api/settings", gatedWrap(gate, deps.settingsRouter));
+
+  // Super-admin console (self-gated via requireSuperAdmin inside the router).
+  if (deps.superAdminRouter) {
+    app.route("/api/super", deps.superAdminRouter);
+  }
 
   app.onError((err, c) => {
     const status = err instanceof HTTPException ? err.status : 500;

@@ -24,6 +24,9 @@ export function tenantScopeFromSession(
       tenantId: session.tenantId,
       userId: session.userId,
       role: session.role,
+      // Impersonating super_admins land here too (tenantId = acting tenant):
+      // a concrete tenant fence, never withAllTenants (EDGE-008).
+      ...(session.impersonating === true ? { impersonating: true } : {}),
     };
   }
   if (session.role === "super_admin") return withAllTenants(session);

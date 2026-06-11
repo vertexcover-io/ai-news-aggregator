@@ -10,6 +10,7 @@
     "test:unit": "vitest run --project unit --passWithNoTests",
     "test:e2e": "vitest run --project e2e",
     "migrate:agentloop": "tsx src/migrate-agentloop-tenant.ts",
+    "seed:super-admins": "tsx src/seed-super-admins.ts",
     "verify:agentloop": "tsx src/verify-agentloop-migration.ts"
   },
   "dependencies": {

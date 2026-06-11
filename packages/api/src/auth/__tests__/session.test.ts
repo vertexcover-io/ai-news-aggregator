@@ -2,8 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   issueToken,
   verifyToken,
+  issueImpersonationToken,
+  verifyImpersonationToken,
   MAX_AGE_MS,
+  IMPERSONATION_MAX_AGE_MS,
   type SessionPayload,
+  type ImpersonationPayload,
 } from "../session.js";
 
 const SECRET = "test-secret-please-rotate";
@@ -87,5 +91,67 @@ describe("issueToken / verifyToken (REQ-005)", () => {
   it("rejects a legacy timestamp-format token", () => {
     // Pre-P3 tokens were `<issuedAt>.<mac>` — they must no longer verify.
     expect(verifyToken("1700000000000.abcdef0123456789", SECRET)).toBeNull();
+  });
+});
+
+/* ── P6: impersonation tokens (REQ-101/102, EDGE-008) ───────────────────── */
+
+const IMPERSONATION: ImpersonationPayload = {
+  userId: "99999999-8888-7777-6666-555555555555", // the SUPER admin (audit identity)
+  role: "super_admin",
+  actingTenantId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  impersonating: true,
+};
+
+describe("issueImpersonationToken / verifyImpersonationToken (REQ-101)", () => {
+  it("round-trips the super-admin identity and acting tenant", () => {
+    const now = 1_700_000_000_000;
+    const token = issueImpersonationToken(IMPERSONATION, SECRET, now);
+    expect(verifyImpersonationToken(token, SECRET, now)).toEqual(IMPERSONATION);
+  });
+
+  it("is short-lived: expires after IMPERSONATION_MAX_AGE_MS", () => {
+    const issuedAt = 1_700_000_000_000;
+    const token = issueImpersonationToken(IMPERSONATION, SECRET, issuedAt);
+    expect(IMPERSONATION_MAX_AGE_MS).toBeLessThan(MAX_AGE_MS);
+    expect(
+      verifyImpersonationToken(token, SECRET, issuedAt + IMPERSONATION_MAX_AGE_MS),
+    ).toEqual(IMPERSONATION);
+    expect(
+      verifyImpersonationToken(
+        token,
+        SECRET,
+        issuedAt + IMPERSONATION_MAX_AGE_MS + 1,
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects a regular session token presented as an impersonation token", () => {
+    const sessionToken = issueToken(
+      { userId: IMPERSONATION.userId, tenantId: null, role: "super_admin" },
+      SECRET,
+    );
+    expect(verifyImpersonationToken(sessionToken, SECRET)).toBeNull();
+  });
+
+  it("rejects an impersonation token presented as a session token", () => {
+    const token = issueImpersonationToken(IMPERSONATION, SECRET);
+    expect(verifyToken(token, SECRET)).toBeNull();
+  });
+
+  it("rejects a tampered acting tenant", () => {
+    const token = issueImpersonationToken(IMPERSONATION, SECRET);
+    const [body, mac] = token.split(".");
+    const forged = JSON.parse(
+      Buffer.from(body, "base64url").toString("utf8"),
+    ) as Record<string, unknown>;
+    forged.actingTenantId = "ffffffff-0000-1111-2222-333333333333";
+    const tamperedBody = Buffer.from(JSON.stringify(forged)).toString("base64url");
+    expect(verifyImpersonationToken(`${tamperedBody}.${mac}`, SECRET)).toBeNull();
+  });
+
+  it("rejects a token signed with a different secret", () => {
+    const token = issueImpersonationToken(IMPERSONATION, SECRET);
+    expect(verifyImpersonationToken(token, "another-secret-entirely")).toBeNull();
   });
 });
