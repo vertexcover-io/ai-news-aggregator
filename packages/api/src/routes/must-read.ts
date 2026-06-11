@@ -6,9 +6,11 @@ import {
   toPublicWire,
   type MustReadRepo,
 } from "@api/repositories/must-read.js";
+import { resolveTenantCtx } from "@api/lib/tenant-ctx.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 export interface PublicMustReadRouterDeps {
-  getMustReadRepo: () => MustReadRepo;
+  getMustReadRepo: (ctx: TenantContext) => MustReadRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -20,7 +22,7 @@ export function createPublicMustReadRouter(
 
   app.get("/", async (c) => {
     try {
-      const rows = await deps.getMustReadRepo().listPublic();
+      const rows = await deps.getMustReadRepo(resolveTenantCtx(c)).listPublic();
       const body: PublicMustReadEntry[] = rows.map(toPublicWire);
       return c.json(body);
     } catch (err) {
@@ -34,6 +36,6 @@ export function createPublicMustReadRouter(
 
 export function createDefaultPublicMustReadRouter(): Hono {
   return createPublicMustReadRouter({
-    getMustReadRepo: () => createMustReadRepo(defaultGetDb()),
+    getMustReadRepo: (ctx) => createMustReadRepo(defaultGetDb(), ctx),
   });
 }

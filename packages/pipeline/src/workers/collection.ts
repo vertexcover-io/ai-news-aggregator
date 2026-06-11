@@ -6,6 +6,9 @@ import type { CollectorResult } from "@newsletter/shared";
 import { collectHn } from "@pipeline/collectors/hn.js";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
+
+import { BOOTSTRAP_TENANT_ID } from "@newsletter/shared/types/tenant-context";
+const bootstrapCtx = { tenantId: BOOTSTRAP_TENANT_ID, role: "super_admin" as const };
 import {
   createRawItemsRepo,
   type RawItemsRepo,
@@ -42,7 +45,7 @@ let defaultDepsInstance: CollectionWorkerDeps | null = null;
 
 function getDefaultDeps(): CollectionWorkerDeps {
   defaultDepsInstance ??= {
-    rawItemsRepo: createRawItemsRepo(getDb()),
+    rawItemsRepo: createRawItemsRepo(getDb(), bootstrapCtx),
     runState: createRunStateService(createRedisConnection()),
   };
   return defaultDepsInstance;

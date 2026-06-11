@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { createLogger, getDb as defaultGetDb } from "@newsletter/shared";
 import type { HomePagePayload, PublicMustReadEntry } from "@newsletter/shared";
+import { resolveTenantCtx } from "@api/lib/tenant-ctx.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import {
   createRawItemsRepo,
   type RawItemsRepo,
@@ -22,9 +24,9 @@ const RECENT_LIMIT = 10;
 const RECENT_FETCH_LIMIT = RECENT_LIMIT + 1;
 
 export interface PublicHomeRouterDeps {
-  getArchiveRepo: () => RunArchivesRepo;
-  getRawItemsRepo: () => RawItemsRepo;
-  getMustReadRepo: () => MustReadRepo;
+  getArchiveRepo: (ctx: TenantContext) => RunArchivesRepo;
+  getRawItemsRepo: (ctx: TenantContext) => RawItemsRepo;
+  getMustReadRepo: (ctx: TenantContext) => MustReadRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -35,9 +37,9 @@ export function createPublicHomeRouter(deps: PublicHomeRouterDeps): Hono {
   app.get("/", async (c) => {
     try {
       const since = new Date(Date.now() - FORTY_EIGHT_HOURS_MS);
-      const archiveRepo = deps.getArchiveRepo();
-      const rawItemsRepo = deps.getRawItemsRepo();
-      const mustReadRepo = deps.getMustReadRepo();
+      const archiveRepo = deps.getArchiveRepo(resolveTenantCtx(c));
+      const rawItemsRepo = deps.getRawItemsRepo(resolveTenantCtx(c));
+      const mustReadRepo = deps.getMustReadRepo(resolveTenantCtx(c));
 
       const [todaysIssueRow, featuredRow, recentArchives] = await Promise.all([
         archiveRepo.findLatestReviewedSince(since),
@@ -79,8 +81,8 @@ export function createPublicHomeRouter(deps: PublicHomeRouterDeps): Hono {
 
 export function createDefaultPublicHomeRouter(): Hono {
   return createPublicHomeRouter({
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getMustReadRepo: () => createMustReadRepo(defaultGetDb()),
+    getArchiveRepo: (ctx) => createRunArchivesRepo(defaultGetDb(), ctx),
+    getRawItemsRepo: (ctx) => createRawItemsRepo(defaultGetDb(), ctx),
+    getMustReadRepo: (ctx) => createMustReadRepo(defaultGetDb(), ctx),
   });
 }

@@ -58,6 +58,9 @@ import {
 } from "@api/services/scheduler.js";
 import { captureException, configurePostHog, shutdownAnalytics } from "@api/lib/posthog.js";
 
+import { BOOTSTRAP_TENANT_ID } from "@newsletter/shared/types/tenant-context";
+const bootstrapCtx = { tenantId: BOOTSTRAP_TENANT_ID, role: "super_admin" as const };
+
 const logger = createLogger("api");
 
 // Route table (REQ-012 / Phase 4):
@@ -96,7 +99,7 @@ const collectorHealthQueue = new BullQueue(COLLECTOR_HEALTH_QUEUE_NAME, { connec
 // Shared Redis connection for OAuth state storage (SET/GET/DEL — not a BullMQ queue).
 const oauthRedis = createRedisConnection();
 
-const settingsRepoForBootstrap = createUserSettingsRepo(getDb());
+const settingsRepoForBootstrap = createUserSettingsRepo(getDb(), bootstrapCtx);
 await removeLegacySchedulers(processingQueue);
 const settingsForBootstrap = await settingsRepoForBootstrap.get();
 if (settingsForBootstrap !== null) {
@@ -104,8 +107,8 @@ if (settingsForBootstrap !== null) {
   await reconcileCollectorHealthSchedule(collectorHealthQueue, settingsForBootstrap);
 }
 
-const runArchivesRepoForSubscribe = createRunArchivesRepo(getDb());
-configurePostHog(async () => createUserSettingsRepo(getDb()).get());
+const runArchivesRepoForSubscribe = createRunArchivesRepo(getDb(), bootstrapCtx);
+configurePostHog(async () => createUserSettingsRepo(getDb(), bootstrapCtx).get());
 
 const slackNotifier = createSlackNotifier({
   webhookUrl: process.env.SLACK_WEBHOOK_URL,
@@ -116,8 +119,8 @@ const slackNotifier = createSlackNotifier({
 });
 
 const subscribeRouter = createSubscribeRouter({
-  subscribersRepo: createSubscribersRepo(getDb()),
-  feedbackEventsRepo: createFeedbackEventsRepo(getDb()),
+  subscribersRepo: createSubscribersRepo(getDb(), bootstrapCtx),
+  feedbackEventsRepo: createFeedbackEventsRepo(getDb(), bootstrapCtx),
   feedbackCampaign: process.env.FEEDBACK_CAMPAIGN ?? "2026-06-reading-check",
   sessionSecret,
   baseUrl: apiBaseUrl,
@@ -148,9 +151,9 @@ const subscribeRouter = createSubscribeRouter({
 });
 
 const webhooksRouter = createWebhooksRouter({
-  sesEventsRepo: createSesEventsRepo(getDb()),
-  emailSendsRepo: createEmailSendsRepo(getDb()),
-  subscribersRepo: createSubscribersRepo(getDb()),
+  sesEventsRepo: createSesEventsRepo(getDb(), bootstrapCtx),
+  emailSendsRepo: createEmailSendsRepo(getDb(), bootstrapCtx),
+  subscribersRepo: createSubscribersRepo(getDb(), bootstrapCtx),
   verifySns: verifySnsMessage,
   slackNotifier,
   logger,
@@ -158,9 +161,9 @@ const webhooksRouter = createWebhooksRouter({
 
 const linkedInOAuthDeps = {
   getCredRepo: () =>
-    createSocialCredentialsRepo(getDb(), getCredentialCipher()),
+    createSocialCredentialsRepo(getDb(), bootstrapCtx, getCredentialCipher()),
   getTokenRepo: () =>
-    createSocialTokensRepo(getDb(), getCredentialCipher()),
+    createSocialTokensRepo(getDb(), bootstrapCtx, getCredentialCipher()),
   redis: oauthRedis,
   env: process.env,
 };

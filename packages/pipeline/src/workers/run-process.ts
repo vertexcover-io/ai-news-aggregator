@@ -92,6 +92,9 @@ import type { RunCostBreakdown, RunFunnel } from "@newsletter/shared";
 import { writeFailedArchive } from "@pipeline/services/run-archive-writer.js";
 import { finalizeRun } from "@pipeline/services/finalize-run.js";
 
+import { BOOTSTRAP_TENANT_ID } from "@newsletter/shared/types/tenant-context";
+const bootstrapCtx = { tenantId: BOOTSTRAP_TENANT_ID, role: "super_admin" as const };
+
 const logger = createLogger("worker:run-process");
 
 const FALLBACK_WINDOW_MS = 10 * 60 * 1000; // 10-minute dedup lookback fallback
@@ -112,6 +115,7 @@ export interface RunCollectorsPayload {
 
 export interface RunProcessJobData {
   runId: string;
+  tenantId: string;
   topN: number;
   sourceTypes: SourceType[];
   collectors: RunCollectorsPayload;
@@ -448,7 +452,7 @@ export async function handleRunProcessJob(
   if (job.name !== "run-process") {
     return { rankedCount: 0 };
   }
-  const { runId, topN, sourceTypes, collectors, halfLifeHours } = job.data;
+  const { runId, tenantId, topN, sourceTypes, collectors, halfLifeHours } = job.data;
   const dryRun = job.data.dryRun ?? false;
   const started = Date.now();
   let runStartedAt: Date = new Date(started);
@@ -1033,9 +1037,9 @@ export function createRunProcessWorker(
     !options.runLogRepo;
   const db: AppDb | undefined = needsDb ? getDb() : undefined;
   const rawItemsRepo =
-    options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db));
+    options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db), bootstrapCtx);
   const candidatesRepo =
-    options.candidatesRepo ?? createCandidatesRepo(ensureDb(db));
+    options.candidatesRepo ?? createCandidatesRepo(ensureDb(db), bootstrapCtx);
   const loadFn = options.loadFn ?? loadCandidatesSince;
   const shortlistFn: ShortlistFn =
     options.shortlistFn ??
@@ -1057,7 +1061,7 @@ export function createRunProcessWorker(
   const twitterClient: () => Promise<TwitterClient> =
     options.twitterClient ??
     (async () => {
-      const repo = createSocialCredentialsRepo(ensureDb(db), getCredentialCipher());
+      const repo = createSocialCredentialsRepo(ensureDb(db), bootstrapCtx, getCredentialCipher());
       const cookie = await resolveTwitterCollectorCookie({
         repo,
         env: process.env,
@@ -1079,8 +1083,8 @@ export function createRunProcessWorker(
     });
 
   const archiveRepo =
-    options.archiveRepo ?? createRunArchivesRepo(ensureDb(db));
-  const runLogRepo = options.runLogRepo ?? createRunLogRepo(ensureDb(db));
+    options.archiveRepo ?? createRunArchivesRepo(ensureDb(db), bootstrapCtx);
+  const runLogRepo = options.runLogRepo ?? createRunLogRepo(ensureDb(db), bootstrapCtx);
   const userSettingsRepo = options.userSettingsRepo;
 
   const cancelSubscriber =

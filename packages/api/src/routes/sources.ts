@@ -13,11 +13,13 @@ import {
   createUserSettingsRepo,
   type UserSettingsRepo,
 } from "@api/repositories/user-settings.js";
+import { resolveTenantCtx } from "@api/lib/tenant-ctx.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 export interface SourcesRouterDeps {
-  getRawItemsRepo: () => RawItemsRepo;
-  getArchiveRepo: () => RunArchivesRepo;
-  getSettingsRepo: () => UserSettingsRepo;
+  getRawItemsRepo: (ctx: TenantContext) => RawItemsRepo;
+  getArchiveRepo: (ctx: TenantContext) => RunArchivesRepo;
+  getSettingsRepo: (ctx: TenantContext) => UserSettingsRepo;
   logger?: ReturnType<typeof createLogger>;
   now?: () => Date;
 }
@@ -80,9 +82,9 @@ export function createPublicSourcesRouter(deps: SourcesRouterDeps): Hono {
     }
     try {
       const summary = await buildSourcesSummary({
-        rawItemsRepo: deps.getRawItemsRepo(),
-        runArchivesRepo: deps.getArchiveRepo(),
-        userSettingsRepo: deps.getSettingsRepo(),
+        rawItemsRepo: deps.getRawItemsRepo(resolveTenantCtx(c)),
+        runArchivesRepo: deps.getArchiveRepo(resolveTenantCtx(c)),
+        userSettingsRepo: deps.getSettingsRepo(resolveTenantCtx(c)),
         from: r.range.from,
         to: r.range.to,
         now: deps.now,
@@ -99,8 +101,8 @@ export function createPublicSourcesRouter(deps: SourcesRouterDeps): Hono {
 
 export function createDefaultPublicSourcesRouter(): Hono {
   return createPublicSourcesRouter({
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getRawItemsRepo: (ctx) => createRawItemsRepo(defaultGetDb(), ctx),
+    getArchiveRepo: (ctx) => createRunArchivesRepo(defaultGetDb(), ctx),
+    getSettingsRepo: (ctx) => createUserSettingsRepo(defaultGetDb(), ctx),
   });
 }

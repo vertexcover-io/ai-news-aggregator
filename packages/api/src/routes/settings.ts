@@ -31,11 +31,13 @@ import {
   type TwitterHandleResolverDeps,
 } from "@api/services/twitter-handle-resolver.js";
 import { captureAnalytics, refreshPostHogConfig } from "@api/lib/posthog.js";
+import { resolveTenantCtx } from "@api/lib/tenant-ctx.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 type RettiwtFactory = TwitterHandleResolverDeps["rettiwtFactory"];
 
 export interface SettingsRouterDeps {
-  getSettingsRepo: () => UserSettingsRepo;
+  getSettingsRepo: (ctx: TenantContext) => UserSettingsRepo;
   processingQueue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">;
   collectorHealthQueue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">;
   resolveHandles?: (
@@ -94,7 +96,7 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
   const app = new Hono();
 
   app.get("/", async (c) => {
-    const settings = await deps.getSettingsRepo().get();
+    const settings = await deps.getSettingsRepo(resolveTenantCtx(c)).get();
     return c.json(settings);
   });
 
@@ -207,7 +209,7 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       shortlistSize: parsed.data.shortlistSize,
     };
 
-    const saved = await deps.getSettingsRepo().upsert(upsertInput);
+    const saved = await deps.getSettingsRepo(resolveTenantCtx(c)).upsert(upsertInput);
     refreshPostHogConfig(saved);
     await reconcilePipelineSchedule(deps.processingQueue, saved);
     await reconcileCollectorHealthSchedule(deps.collectorHealthQueue, saved);
@@ -254,7 +256,7 @@ function getDefaultCollectorHealthQueue(): Queue {
 
 export function createDefaultSettingsRouter(): Hono {
   return createSettingsRouter({
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getSettingsRepo: (ctx) => createUserSettingsRepo(defaultGetDb(), ctx),
     processingQueue: getDefaultProcessingQueue(),
     collectorHealthQueue: getDefaultCollectorHealthQueue(),
   });

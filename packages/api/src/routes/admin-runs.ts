@@ -26,6 +26,8 @@ import {
   InvalidSourceKeyError,
 } from "@api/services/run-source-items.js";
 import { NotFoundError } from "@api/lib/errors.js";
+import { resolveTenantCtx } from "@api/lib/tenant-ctx.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -33,9 +35,9 @@ const runIdSchema = z.string().regex(UUID_RE);
 
 export interface AdminRunsRouterDeps {
   redis: IORedis;
-  getRawItemsRepo: () => RawItemsRepo;
-  getArchiveRepo: () => RunArchivesRepo;
-  getRunLogRepo: () => RunLogRepo;
+  getRawItemsRepo: (ctx: TenantContext) => RawItemsRepo;
+  getArchiveRepo: (ctx: TenantContext) => RunArchivesRepo;
+  getRunLogRepo: (ctx: TenantContext) => RunLogRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -55,9 +57,9 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
         c.req.param("sourceKey"),
         {
           redis: deps.redis,
-          archiveRepo: deps.getArchiveRepo(),
-          rawItemsRepo: deps.getRawItemsRepo(),
-          runLogRepo: deps.getRunLogRepo(),
+          archiveRepo: deps.getArchiveRepo(resolveTenantCtx(c)),
+          rawItemsRepo: deps.getRawItemsRepo(resolveTenantCtx(c)),
+          runLogRepo: deps.getRunLogRepo(resolveTenantCtx(c)),
         },
       );
       return c.json(body);
@@ -80,8 +82,8 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
       return c.json({ error: "invalid runId" }, 400);
     }
     try {
-      const items = await deps.getRawItemsRepo().listForRun(parsed.data, {
-        archiveRepo: deps.getArchiveRepo(),
+      const items = await deps.getRawItemsRepo(resolveTenantCtx(c)).listForRun(parsed.data, {
+        archiveRepo: deps.getArchiveRepo(resolveTenantCtx(c)),
         redis: deps.redis,
       });
       const body: RunSourcesResponse = { runId: parsed.data, items };
@@ -103,8 +105,8 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
     try {
       const body: RunObservability = await buildRunObservability(parsed.data, {
         redis: deps.redis,
-        archiveRepo: deps.getArchiveRepo(),
-        runLogRepo: deps.getRunLogRepo(),
+        archiveRepo: deps.getArchiveRepo(resolveTenantCtx(c)),
+        runLogRepo: deps.getRunLogRepo(resolveTenantCtx(c)),
       });
       return c.json(body);
     } catch (err) {
@@ -122,8 +124,8 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
 export function createDefaultAdminRunsRouter(): Hono {
   return createAdminRunsRouter({
     redis: createRedisConnection(),
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getRunLogRepo: () => createRunLogRepo(defaultGetDb()),
+    getRawItemsRepo: (ctx) => createRawItemsRepo(defaultGetDb(), ctx),
+    getArchiveRepo: (ctx) => createRunArchivesRepo(defaultGetDb(), ctx),
+    getRunLogRepo: (ctx) => createRunLogRepo(defaultGetDb(), ctx),
   });
 }

@@ -1,9 +1,14 @@
 import { Hono } from "hono";
 import { createLogger, getDb } from "@newsletter/shared";
 import { createAnalyticsRepo, type AnalyticsRepo } from "@api/repositories/analytics.js";
+import { resolveTenantCtx } from "@api/lib/tenant-ctx.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
+
+import { BOOTSTRAP_TENANT_ID } from "@newsletter/shared/types/tenant-context";
+const bootstrapCtx = { tenantId: BOOTSTRAP_TENANT_ID, role: "super_admin" as const };
 
 export interface AnalyticsRouterDeps {
-  analyticsRepo: AnalyticsRepo;
+  getAnalyticsRepo: (ctx: TenantContext) => AnalyticsRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -41,7 +46,8 @@ export function createAnalyticsRouter(deps: AnalyticsRouterDeps): Hono {
     }
 
     const startedAt = Date.now();
-    const metrics = await deps.analyticsRepo.getMetrics({ from, to });
+    const repo = deps.getAnalyticsRepo(resolveTenantCtx(c));
+    const metrics = await repo.getMetrics({ from, to });
     logger.info(
       {
         event: "analytics.fetched",
@@ -69,5 +75,5 @@ export function createAnalyticsRouter(deps: AnalyticsRouterDeps): Hono {
 }
 
 export function createDefaultAnalyticsRouter(): Hono {
-  return createAnalyticsRouter({ analyticsRepo: createAnalyticsRepo(getDb()) });
+  return createAnalyticsRouter({ getAnalyticsRepo: (ctx) => createAnalyticsRepo(getDb(), ctx) });
 }

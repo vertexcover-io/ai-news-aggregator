@@ -8,6 +8,9 @@ import { getDb } from "@newsletter/shared/db";
 import { createEvalExportsRepo } from "@pipeline/repositories/eval-exports.js";
 import { exportFixtures } from "@pipeline/eval/export-fixtures.js";
 
+import { BOOTSTRAP_TENANT_ID } from "@newsletter/shared/types/tenant-context";
+const bootstrapCtx = { tenantId: BOOTSTRAP_TENANT_ID, role: "super_admin" as const };
+
 interface ParsedCliArgs {
   days: number;
   force: boolean;
@@ -41,7 +44,7 @@ function parseCliArgs(argv: string[]): ParsedCliArgs {
 async function main(): Promise<number> {
   const args = parseCliArgs(process.argv.slice(2));
   const db = getDb();
-  const repo = createEvalExportsRepo(db);
+  const repo = createEvalExportsRepo(db, bootstrapCtx);
 
   const result = await exportFixtures({
     days: args.days,
