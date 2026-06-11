@@ -336,7 +336,9 @@ function parseStories(response: AlgoliaStorySearchResponse): RawItemInsert[] {
       sourceType: "hn" as const,
       externalId: hit.objectID,
       title: hit.title,
-      url: hit.url ?? "",
+      // Ask HN / Show HN stories have no external url — fall back to the HN
+      // permalink (same convention as the single-item fetch path above).
+      url: hit.url ?? `https://news.ycombinator.com/item?id=${hit.objectID}`,
       sourceUrl: `https://news.ycombinator.com/item?id=${hit.objectID}`,
       author: hit.author ?? null,
       content: hit.story_text ?? null,

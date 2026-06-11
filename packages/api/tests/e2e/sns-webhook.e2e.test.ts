@@ -30,6 +30,7 @@ import { createWebhooksRouter } from "@api/routes/webhooks.js";
 import { createSesEventsRepo } from "@api/repositories/ses-events.js";
 import { createEmailSendsRepo } from "@api/repositories/email-sends.js";
 import { createSubscribersRepo } from "@api/repositories/subscribers.js";
+import { ensureE2eTenant } from "./helpers/tenant.js";
 import {
   verifySnsMessage,
   type CertFetcher,
@@ -57,6 +58,7 @@ if (!databaseUrl) {
 
 const sql = postgres(databaseUrl);
 const db = drizzle(sql);
+const tenantCtx = await ensureE2eTenant();
 
 interface KeyPair {
   privatePem: string;
@@ -213,6 +215,7 @@ async function insertSubscriber(email: string, status: "confirmed" | "pending" =
   const [row] = await db
     .insert(subscribers)
     .values({
+      tenantId: tenantCtx.tenantId,
       email,
       status,
       subscribedAt: new Date(),
@@ -226,6 +229,7 @@ async function insertRunArchive() {
     .insert(runArchives)
     .values({
       id: randomUUID(),
+      tenantId: tenantCtx.tenantId,
       status: "completed",
       rankedItems: [],
       topN: 5,
@@ -243,7 +247,7 @@ async function insertEmailSend(
 ) {
   const [row] = await db
     .insert(emailSends)
-    .values({ subscriberId, runArchiveId, messageId })
+    .values({ subscriberId, runArchiveId, messageId, tenantId: tenantCtx.tenantId })
     .returning();
   return row;
 }

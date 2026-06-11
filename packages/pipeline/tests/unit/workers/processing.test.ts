@@ -124,6 +124,12 @@ vi.mock("@pipeline/repositories/candidates.js", () => ({
 vi.mock("@pipeline/repositories/user-settings.js", () => ({
   createUserSettingsRepo: vi.fn(() => ({})),
 }));
+// Single-tenant bridge: unit tests run "legacy unscoped" — the fake db has no
+// .select, so the prime/lookup must be stubbed out (scope = undefined).
+vi.mock("@pipeline/repositories/default-tenant.js", () => ({
+  getDefaultTenantScope: vi.fn(() => undefined),
+  primeDefaultTenantScope: vi.fn(() => Promise.resolve(undefined)),
+}));
 vi.mock("@pipeline/services/run-state.js", () => ({
   createRunStateService: vi.fn(() => ({})),
 }));

@@ -12,6 +12,8 @@ import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { createTwitterApiClient, createTwitterNotifier } from "@pipeline/social/twitter/index.js";
 import { handleTwitterPostJob } from "@pipeline/workers/twitter-post.js";
 import { getTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import { closeTestRedis } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { AppDb, RawItemInsert } from "@newsletter/shared/db";
 import type { SocialMetadata } from "@newsletter/shared";
@@ -55,6 +57,7 @@ async function seedReviewedArchive(
 ): Promise<string> {
   const runId = randomUUID();
   const raw: RawItemInsert = {
+    tenantId: tenant.tenantId,
     sourceType: "hn",
     externalId: `twitter-worker-${runId}`,
     title: "Small models gain enterprise traction",
@@ -79,6 +82,7 @@ async function seedReviewedArchive(
 
   await db.insert(runArchives).values({
     id: runId,
+    tenantId: tenant.tenantId,
     status: "completed",
     rankedItems: [
       {
@@ -101,7 +105,7 @@ async function seedReviewedArchive(
 }
 
 function createNotifier(db: AppDb) {
-  const archiveRepo = createRunArchivesRepo(db);
+  const archiveRepo = createRunArchivesRepo(db, tenant);
   return {
     archiveRepo,
     notifier: createTwitterNotifier({
@@ -112,7 +116,7 @@ function createNotifier(db: AppDb) {
         accessSecret: "twitter-access-secret",
       }),
       archives: archiveRepo,
-      rawItems: createRawItemsRepo(db),
+      rawItems: createRawItemsRepo(db, tenant),
       config: {
         publicArchiveBaseUrl: "https://newsletter.example.com",
       },
@@ -122,12 +126,16 @@ function createNotifier(db: AppDb) {
   };
 }
 
+// tenant_id is NOT NULL on raw_items/run_archives — all seeds + repos stamp this
+let tenant: TenantContext;
+
 describe("twitter-post worker e2e", () => {
   let db: AppDb;
   let twitterRequests: readonly string[];
 
-  beforeAll(() => {
+  beforeAll(async () => {
     db = getTestDb();
+    tenant = await ensurePipelineTenant();
     server.listen({ onUnhandledRequest: "error" });
   });
 

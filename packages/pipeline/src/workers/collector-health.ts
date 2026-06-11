@@ -26,6 +26,10 @@ import {
   type CollectorHealthOutcome,
 } from "@pipeline/services/collector-health/index.js";
 import type { UserSettingsRepo } from "@pipeline/repositories/user-settings.js";
+import {
+  getDefaultTenantScope,
+  primeDefaultTenantScope,
+} from "@pipeline/repositories/default-tenant.js";
 import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 import {
   createSocialCredentialsRepo,
@@ -416,12 +420,16 @@ export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
   const db = getDb();
 
   return {
-    userSettingsRepo: createUserSettingsRepo(db),
+    userSettingsRepo: createUserSettingsRepo(db, getDefaultTenantScope()),
     store: createCollectorHealthStore(createRedisConnection()),
     runCollectorHealthCheck: defaultRunCollectorHealthCheck,
     // Per-job factory so credentials are always fresh (S-pipeline-03 / D-051)
     buildHealthCheckDeps: async (): Promise<HealthCheckDeps> => {
-      const credentialsRepo = createSocialCredentialsRepo(getDb(), getCredentialCipher());
+      const credentialsRepo = createSocialCredentialsRepo(
+        getDb(),
+        getCredentialCipher(),
+        await primeDefaultTenantScope(getDb()),
+      );
       const twitterCookie = await resolveTwitterCollectorCookie({
         repo: credentialsRepo,
         env: process.env,

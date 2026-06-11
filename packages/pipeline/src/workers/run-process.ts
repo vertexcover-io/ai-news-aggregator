@@ -85,6 +85,10 @@ import {
   type RunLogRepo,
 } from "@pipeline/repositories/run-logs.js";
 import {
+  getDefaultTenantScope,
+  primeDefaultTenantScope,
+} from "@pipeline/repositories/default-tenant.js";
+import {
   createRunLogger,
   type RunLogger,
 } from "@pipeline/services/run-logger.js";
@@ -1032,10 +1036,13 @@ export function createRunProcessWorker(
     !options.archiveRepo ||
     !options.runLogRepo;
   const db: AppDb | undefined = needsDb ? getDb() : undefined;
+  // Single-tenant bridge (pre-P9): primed at process startup so default repos
+  // stamp a concrete tenant_id on every write.
+  const tenantScope = getDefaultTenantScope();
   const rawItemsRepo =
-    options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db));
+    options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db), tenantScope);
   const candidatesRepo =
-    options.candidatesRepo ?? createCandidatesRepo(ensureDb(db));
+    options.candidatesRepo ?? createCandidatesRepo(ensureDb(db), tenantScope);
   const loadFn = options.loadFn ?? loadCandidatesSince;
   const shortlistFn: ShortlistFn =
     options.shortlistFn ??
@@ -1057,7 +1064,11 @@ export function createRunProcessWorker(
   const twitterClient: () => Promise<TwitterClient> =
     options.twitterClient ??
     (async () => {
-      const repo = createSocialCredentialsRepo(ensureDb(db), getCredentialCipher());
+      const repo = createSocialCredentialsRepo(
+        ensureDb(db),
+        getCredentialCipher(),
+        await primeDefaultTenantScope(ensureDb(db)),
+      );
       const cookie = await resolveTwitterCollectorCookie({
         repo,
         env: process.env,
@@ -1079,8 +1090,9 @@ export function createRunProcessWorker(
     });
 
   const archiveRepo =
-    options.archiveRepo ?? createRunArchivesRepo(ensureDb(db));
-  const runLogRepo = options.runLogRepo ?? createRunLogRepo(ensureDb(db));
+    options.archiveRepo ?? createRunArchivesRepo(ensureDb(db), tenantScope);
+  const runLogRepo =
+    options.runLogRepo ?? createRunLogRepo(ensureDb(db), tenantScope);
   const userSettingsRepo = options.userSettingsRepo;
 
   const cancelSubscriber =

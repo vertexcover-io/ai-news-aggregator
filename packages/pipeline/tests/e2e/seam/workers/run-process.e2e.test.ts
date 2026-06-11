@@ -22,6 +22,8 @@ import {
   type RunArchivesRepo,
 } from "@pipeline/repositories/run-archives.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import {
   getTestRedis,
   closeTestRedis,
@@ -33,12 +35,15 @@ config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
 
 describe("run-process worker E2E", () => {
   let db: AppDb;
+  // tenant_id is NOT NULL on raw_items/run_archives — all repos + seeds stamp this
+  let tenant: TenantContext;
   let queue: Queue;
   let queueEvents: QueueEvents;
   let worker: Worker<unknown, RunProcessResult>;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     db = getTestDb();
+    tenant = await ensurePipelineTenant();
     const connection = getTestRedis();
     const runStateService = createRunStateService(connection);
 
@@ -66,9 +71,9 @@ describe("run-process worker E2E", () => {
         handleRunProcessJob(
           {
             runState: runStateService,
-            rawItemsRepo: createRawItemsRepo(db),
-            candidatesRepo: createCandidatesRepo(db),
-            archiveRepo: createRunArchivesRepo(db),
+            rawItemsRepo: createRawItemsRepo(db, tenant),
+            candidatesRepo: createCandidatesRepo(db, tenant),
+            archiveRepo: createRunArchivesRepo(db, tenant),
             loadFn: loadCandidatesSince,
             shortlistFn: (candidates) =>
               Promise.resolve({ shortlist: candidates, breakdowns: [] }),
@@ -124,6 +129,7 @@ describe("run-process worker E2E", () => {
         url: "https://example.com/a",
         engagement: { points: 100, commentCount: 10 },
         metadata: { comments: [] },
+        tenantId: tenant.tenantId,
       },
       {
         sourceType: "hn",
@@ -132,6 +138,7 @@ describe("run-process worker E2E", () => {
         url: "https://example.com/a?utm_source=x",
         engagement: { points: 50, commentCount: 5 },
         metadata: { comments: [] },
+        tenantId: tenant.tenantId,
       },
       {
         sourceType: "hn",
@@ -140,6 +147,7 @@ describe("run-process worker E2E", () => {
         url: "https://example.com/b",
         engagement: { points: 80, commentCount: 4 },
         metadata: { comments: [] },
+        tenantId: tenant.tenantId,
       },
       {
         sourceType: "reddit",
@@ -148,6 +156,7 @@ describe("run-process worker E2E", () => {
         url: "https://example.com/c",
         engagement: { points: 200, commentCount: 20 },
         metadata: { comments: [] },
+        tenantId: tenant.tenantId,
       },
     ]);
 
@@ -239,6 +248,7 @@ describe("run-process worker E2E", () => {
           url: "https://example.com/shortlist-a",
           engagement: { points: 100, commentCount: 10 },
           metadata: { comments: [] },
+          tenantId: tenant.tenantId,
         },
         {
           sourceType: "hn",
@@ -247,6 +257,7 @@ describe("run-process worker E2E", () => {
           url: "https://example.com/shortlist-b",
           engagement: { points: 80, commentCount: 5 },
           metadata: { comments: [] },
+          tenantId: tenant.tenantId,
         },
       ])
       .returning({ id: rawItems.id });
@@ -309,6 +320,7 @@ describe("run-process worker E2E", () => {
         url: "https://example.com/fail",
         engagement: { points: 50, commentCount: 2 },
         metadata: { comments: [] },
+        tenantId: tenant.tenantId,
       },
     ]);
 
@@ -336,9 +348,9 @@ describe("run-process worker E2E", () => {
         handleRunProcessJob(
           {
             runState: runStateService,
-            rawItemsRepo: createRawItemsRepo(db),
-            candidatesRepo: createCandidatesRepo(db),
-            archiveRepo: createRunArchivesRepo(db),
+            rawItemsRepo: createRawItemsRepo(db, tenant),
+            candidatesRepo: createCandidatesRepo(db, tenant),
+            archiveRepo: createRunArchivesRepo(db, tenant),
             loadFn: loadCandidatesSince,
             shortlistFn: (candidates) =>
               Promise.resolve({ shortlist: candidates, breakdowns: [] }),
@@ -404,6 +416,7 @@ describe("run-process worker E2E", () => {
         url: "https://example.com/edge005-a",
         engagement: { points: 100, commentCount: 10 },
         metadata: { comments: [] },
+        tenantId: tenant.tenantId,
       },
       {
         sourceType: "hn",
@@ -412,6 +425,7 @@ describe("run-process worker E2E", () => {
         url: "https://example.com/edge005-b",
         engagement: { points: 80, commentCount: 5 },
         metadata: { comments: [] },
+        tenantId: tenant.tenantId,
       },
     ]);
 
@@ -462,6 +476,7 @@ describe("run-process worker E2E", () => {
           url: "https://example.com/published-article",
           engagement: { points: 100, commentCount: 10 },
           metadata: { comments: [] },
+          tenantId: tenant.tenantId,
         },
       ])
       .returning({ id: rawItems.id });
@@ -473,6 +488,7 @@ describe("run-process worker E2E", () => {
     const priorArchiveId = randomUUID();
     await db.insert(runArchives).values({
       id: priorArchiveId,
+      tenantId: tenant.tenantId,
       status: "completed",
       rankedItems: [{ rawItemId: priorRawId, score: 0.9, rationale: "top" }],
       topN: 5,
@@ -493,6 +509,7 @@ describe("run-process worker E2E", () => {
         url: "https://example.com/published-article", // same URL as prior archive
         engagement: { points: 150, commentCount: 15 },
         metadata: { comments: [] },
+        tenantId: tenant.tenantId,
       },
       {
         sourceType: "hn",
@@ -501,6 +518,7 @@ describe("run-process worker E2E", () => {
         url: "https://example.com/brand-new",
         engagement: { points: 80, commentCount: 5 },
         metadata: { comments: [] },
+        tenantId: tenant.tenantId,
       },
     ]);
 
@@ -575,6 +593,7 @@ describe("run-process worker E2E", () => {
         url: "https://example.com/edge009-a",
         engagement: { points: 100, commentCount: 10 },
         metadata: { comments: [] },
+        tenantId: tenant.tenantId,
       },
       {
         sourceType: "hn",
@@ -583,6 +602,7 @@ describe("run-process worker E2E", () => {
         url: "https://example.com/edge009-b",
         engagement: { points: 80, commentCount: 5 },
         metadata: { comments: [] },
+        tenantId: tenant.tenantId,
       },
     ]);
 
@@ -602,7 +622,7 @@ describe("run-process worker E2E", () => {
     await runStateService.set(initial);
 
     // Create a repo with a throwing getPublishedCanonicalUrls
-    const baseRepo = createRunArchivesRepo(db);
+    const baseRepo = createRunArchivesRepo(db, tenant);
     const throwingRepo: RunArchivesRepo = {
       ...baseRepo,
       getPublishedCanonicalUrls: () => Promise.reject(new Error("DB connection failed")),
@@ -616,8 +636,8 @@ describe("run-process worker E2E", () => {
         handleRunProcessJob(
           {
             runState: runStateService,
-            rawItemsRepo: createRawItemsRepo(db),
-            candidatesRepo: createCandidatesRepo(db),
+            rawItemsRepo: createRawItemsRepo(db, tenant),
+            candidatesRepo: createCandidatesRepo(db, tenant),
             archiveRepo: throwingRepo,
             loadFn: loadCandidatesSince,
             shortlistFn: (candidates) =>

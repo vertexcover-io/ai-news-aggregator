@@ -20,6 +20,7 @@ import { createRunLogRepo } from "@api/repositories/run-logs.js";
 import { createAdminRunsRouter } from "@api/routes/admin-runs.js";
 import { requireAuth } from "@api/auth/middleware.js";
 import { issueToken } from "@api/auth/session.js";
+import { ensureE2eTenant } from "./helpers/tenant.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
@@ -29,9 +30,10 @@ const SESSION_SECRET = "run-source-items-e2e-secret-at-least-32b";
 
 const db = getDb();
 const redis = createRedisConnection();
-const rawItemsRepo = createRawItemsRepo(db);
-const archiveRepo = createRunArchivesRepo(db);
-const runLogRepo = createRunLogRepo(db);
+const tenantCtx = await ensureE2eTenant();
+const rawItemsRepo = createRawItemsRepo(db, tenantCtx);
+const archiveRepo = createRunArchivesRepo(db, tenantCtx);
+const runLogRepo = createRunLogRepo(db, tenantCtx);
 
 const seededRunIds = new Set<string>();
 const seededRawItemIds = new Set<number>();
@@ -122,6 +124,7 @@ async function insertRawItem(opts: {
     .insert(rawItems)
     .values({
       runId: opts.runId,
+      tenantId: tenantCtx.tenantId,
       sourceType: opts.sourceType,
       externalId: `${opts.externalId}-${randomUUID()}`,
       title: opts.title,
@@ -197,6 +200,7 @@ async function seedRun(): Promise<{
 
   await db.insert(runArchives).values({
     id: runId,
+    tenantId: tenantCtx.tenantId,
     status: "completed",
     rankedItems,
     topN: 5,
@@ -212,6 +216,7 @@ async function seedRun(): Promise<{
   await db.insert(runLogs).values([
     {
       runId,
+      tenantId: tenantCtx.tenantId,
       level: "info",
       stage: "collecting",
       source: "reddit",
@@ -221,6 +226,7 @@ async function seedRun(): Promise<{
     },
     {
       runId,
+      tenantId: tenantCtx.tenantId,
       level: "error",
       stage: "collecting",
       source: "twitter",

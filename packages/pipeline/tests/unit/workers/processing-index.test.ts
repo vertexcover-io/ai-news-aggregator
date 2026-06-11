@@ -39,6 +39,14 @@ vi.mock("@pipeline/services/run-state.js", () => ({
 vi.mock("@pipeline/lib/boot.js", () => ({
   assertChromiumInstalled: vi.fn(),
 }));
+// index.ts primes the single-tenant bridge scope at startup (P4 write-side);
+// the unit test has no DB, so stub the resolver like the other boot effects.
+vi.mock("@pipeline/repositories/default-tenant.js", () => ({
+  primeDefaultTenantScope: vi.fn(() =>
+    Promise.resolve({ tenantId: "00000000-0000-0000-0000-0000000000aa", role: "tenant_admin" }),
+  ),
+  getDefaultTenantScope: vi.fn(() => undefined),
+}));
 
 import { getRunIdFromJobData } from "../../../src/index.js";
 

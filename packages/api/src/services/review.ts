@@ -1,4 +1,5 @@
 import type { PatchArchivePayload, PoolResponse, RankedItem, RankedItemRef } from "@newsletter/shared";
+import type { TenantScope } from "@newsletter/shared/types/tenant-context";
 import type { DigestMeta } from "@newsletter/shared/constants";
 import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
@@ -62,7 +63,7 @@ export class ConflictError extends Error {
 export type HydrateAddedPostFn = (
   url: string,
   sourceType: AddPostSourceType,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; scope?: TenantScope },
 ) => Promise<RankedItem>;
 
 export interface DigestMetaInputItem {

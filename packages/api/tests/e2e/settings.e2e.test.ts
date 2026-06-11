@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { getDb, userSettings } from "@newsletter/shared/db";
 import { createSettingsRouter } from "@api/routes/settings.js";
 import { createUserSettingsRepo } from "@api/repositories/user-settings.js";
+import { ensureE2eTenant } from "./helpers/tenant.js";
 
 function makeQueue() {
   return {
@@ -17,6 +18,7 @@ function makeQueue() {
 }
 
 const db = getDb();
+const tenantCtx = await ensureE2eTenant();
 
 beforeAll(async () => {
   await db.delete(userSettings).where(eq(userSettings.singleton, true));
@@ -39,7 +41,7 @@ function buildApp(queue: ReturnType<typeof makeQueue>) {
   app.route(
     "/api/settings",
     createSettingsRouter({
-      getSettingsRepo: () => createUserSettingsRepo(db),
+      getSettingsRepo: () => createUserSettingsRepo(db, tenantCtx),
       processingQueue: queue as never,
       collectorHealthQueue: collectorHealthQueue as never,
     }),

@@ -13,6 +13,8 @@ import {
 import { handleDailyRunJob, type DailyRunJobLike } from "@pipeline/workers/daily-run.js";
 import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 import { getTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import { closeTestRedis, getTestRedis } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { AppDb } from "@newsletter/shared/db";
 import type { RunProcessJobPayload, UserSettings } from "@newsletter/shared";
@@ -92,6 +94,7 @@ function makeScheduleSettings(enabled: boolean): UserSettings {
 
 async function seedUserSettings(db: AppDb): Promise<void> {
   await db.insert(userSettings).values({
+    tenantId: tenant.tenantId,
     topN: 1,
     halfLifeHours: null,
     hnEnabled: true,
@@ -128,6 +131,9 @@ async function seedUserSettings(db: AppDb): Promise<void> {
   });
 }
 
+// tenant_id is NOT NULL on user_settings — seeds + repo stamp this tenant
+let tenant: TenantContext;
+
 describe("daily-run worker scheduler e2e", () => {
   let db: AppDb;
   let dailyQueue: Queue;
@@ -137,8 +143,9 @@ describe("daily-run worker scheduler e2e", () => {
   let runQueueName: string;
   let createdRunIds: readonly string[];
 
-  beforeAll(() => {
+  beforeAll(async () => {
     db = getTestDb();
+    tenant = await ensurePipelineTenant();
   });
 
   beforeEach(async () => {
@@ -155,7 +162,7 @@ describe("daily-run worker scheduler e2e", () => {
           {
             redis: connection,
             queue: runQueue,
-            userSettingsRepo: createUserSettingsRepo(db),
+            userSettingsRepo: createUserSettingsRepo(db, tenant),
           },
           { name: job.name, id: job.id, data: {} } satisfies DailyRunJobLike,
         ),

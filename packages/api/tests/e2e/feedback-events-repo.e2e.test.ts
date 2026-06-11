@@ -16,10 +16,12 @@ config({ path: resolve(REPO_ROOT, ".env") });
 const { getDb } = await import("@newsletter/shared/db");
 const { createFeedbackEventsRepo } = await import("@api/repositories/feedback-events.js");
 const { createSubscribersRepo } = await import("@api/repositories/subscribers.js");
+const { ensureE2eTenant } = await import("./helpers/tenant.js");
 
 const db = getDb();
-const repo = createFeedbackEventsRepo(db);
-const subscribersRepo = createSubscribersRepo(db);
+const tenantCtx = await ensureE2eTenant();
+const repo = createFeedbackEventsRepo(db, tenantCtx);
+const subscribersRepo = createSubscribersRepo(db, tenantCtx);
 
 const CAMPAIGN = "e2e-feedback-events-test";
 const EMAIL = "feedback-events-repo-e2e@example.com";

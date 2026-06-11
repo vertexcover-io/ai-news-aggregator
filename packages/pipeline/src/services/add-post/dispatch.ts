@@ -113,6 +113,7 @@ async function loadTwitterDefaults(): Promise<{
       { getDb },
       { getCredentialCipher },
       { Rettiwt },
+      { primeDefaultTenantScope },
     ] = await Promise.all([
       import("@pipeline/services/credential-resolver.js"),
       import("@pipeline/collectors/twitter/clients/rettiwt-auth.js"),
@@ -120,9 +121,16 @@ async function loadTwitterDefaults(): Promise<{
       import("@newsletter/shared/db"),
       import("@newsletter/shared/services/credential-cipher"),
       import("rettiwt-api"),
+      import("@pipeline/repositories/default-tenant.js"),
     ]);
 
-    const repo = createSocialCredentialsRepo(getDb(), getCredentialCipher());
+    // Single-tenant bridge (pre-P9): CSRF refresh writes back to
+    // social_credentials, which requires a concrete tenant_id.
+    const repo = createSocialCredentialsRepo(
+      getDb(),
+      getCredentialCipher(),
+      await primeDefaultTenantScope(getDb()),
+    );
 
     return {
       rettiwtCtor: Rettiwt as unknown as new (opts: {

@@ -341,10 +341,17 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
       return c.json({ error: parsed.error.message }, 400);
     }
     try {
+      // Bind the session tenant scope into the hydrate fn so its raw_items
+      // write (pipeline repo) stamps the same tenant as the archive.
+      const scope = tenantScopeFromContext(c);
+      const hydrate = deps.hydrateAddedPost;
       const ranked = await addPostToArchive(runId, parsed.data, {
-        archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)),
-        rawItemsRepo: deps.getRawItemsRepo(tenantScopeFromContext(c)),
-        hydrateAddedPost: deps.hydrateAddedPost,
+        archiveRepo: deps.getArchiveRepo(scope),
+        rawItemsRepo: deps.getRawItemsRepo(scope),
+        hydrateAddedPost: hydrate
+          ? (url, sourceType, options) =>
+              hydrate(url, sourceType, { ...options, scope })
+          : undefined,
       });
       logger.info(
         { event: "archive.add-post", runId },
@@ -618,7 +625,7 @@ function createDefaultHydrateAddedPost(): HydrateAddedPostFn {
       "@newsletter/pipeline/add-post"
     );
     return hydrateAddedPost(url, sourceType, {
-      rawItemsRepo: createPipelineRawItemsRepo(defaultGetDb()),
+      rawItemsRepo: createPipelineRawItemsRepo(defaultGetDb(), options?.scope),
       signal: options?.signal,
     });
   };

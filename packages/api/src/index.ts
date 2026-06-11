@@ -120,7 +120,24 @@ if (adminSeedPassword) {
   if (seeded) logger.info("seeded bootstrap admin user");
 }
 
-const runArchivesRepoForSubscribe = createRunArchivesRepo(getDb());
+// Single-tenant bridge (pre-P9): sessionless write paths (public subscribe,
+// LinkedIn OAuth callback) must still stamp a concrete tenant_id — resolve
+// the AGENTLOOP tenant once at bootstrap. P5 host resolution / P9 job
+// threading replace this with per-request tenant contexts.
+const defaultTenant = await createTenantsRepo(getDb()).findBySlug("agentloop");
+const defaultTenantScope = defaultTenant
+  ? ({ tenantId: defaultTenant.id, role: "tenant_admin" } as const)
+  : undefined;
+if (!defaultTenantScope) {
+  logger.warn(
+    "no agentloop tenant found — sessionless tenant-owned writes will fail until it exists",
+  );
+}
+
+const runArchivesRepoForSubscribe = createRunArchivesRepo(
+  getDb(),
+  defaultTenantScope,
+);
 configurePostHog(async () => createUserSettingsRepo(getDb()).get());
 
 const slackNotifier = createSlackNotifier({
@@ -132,8 +149,8 @@ const slackNotifier = createSlackNotifier({
 });
 
 const subscribeRouter = createSubscribeRouter({
-  subscribersRepo: createSubscribersRepo(getDb()),
-  feedbackEventsRepo: createFeedbackEventsRepo(getDb()),
+  subscribersRepo: createSubscribersRepo(getDb(), defaultTenantScope),
+  feedbackEventsRepo: createFeedbackEventsRepo(getDb(), defaultTenantScope),
   feedbackCampaign: process.env.FEEDBACK_CAMPAIGN ?? "2026-06-reading-check",
   sessionSecret,
   baseUrl: apiBaseUrl,
@@ -179,10 +196,11 @@ const webhooksRouter = createWebhooksRouter({
 });
 
 const linkedInOAuthDeps = {
+  // OAuth callback is state-gated (no session) — stamp the bridge tenant.
   getCredRepo: () =>
-    createSocialCredentialsRepo(getDb(), getCredentialCipher()),
+    createSocialCredentialsRepo(getDb(), getCredentialCipher(), defaultTenantScope),
   getTokenRepo: () =>
-    createSocialTokensRepo(getDb(), getCredentialCipher()),
+    createSocialTokensRepo(getDb(), getCredentialCipher(), defaultTenantScope),
   redis: oauthRedis,
   env: process.env,
 };

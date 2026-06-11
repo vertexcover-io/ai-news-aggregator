@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { getDb as defaultGetDb } from "@newsletter/shared";
+import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
 import {
   linkedinUpsertSchema,
   twitterCollectorUpsertSchema,
@@ -17,13 +19,13 @@ import {
 } from "@api/repositories/social-tokens.js";
 
 export interface AdminSocialCredentialsRouterDeps {
-  getRepo: () => SocialCredentialsRepo;
+  getRepo: (scope?: TenantScope) => SocialCredentialsRepo;
   /**
    * Token repo, used to also clear the OAuth access/refresh token when LinkedIn
    * credentials are cleared. Optional so existing callers/tests that only set
    * getRepo keep working (the token clear is then skipped).
    */
-  getTokenRepo?: () => SocialTokensRepo;
+  getTokenRepo?: (scope?: TenantScope) => SocialTokensRepo;
 }
 
 // Public URL slug → internal storage key. The slug stays kebab-case in the URL
@@ -41,7 +43,7 @@ export function createAdminSocialCredentialsRouter(
   const app = new Hono();
 
   app.get("/", async (c) => {
-    const status = await deps.getRepo().getStatus();
+    const status = await deps.getRepo(tenantScopeFromContext(c)).getStatus();
     return c.json(status);
   });
 
@@ -54,7 +56,7 @@ export function createAdminSocialCredentialsRouter(
         400,
       );
     }
-    const { updatedAt } = await deps.getRepo().upsertLinkedIn(parsed.data);
+    const { updatedAt } = await deps.getRepo(tenantScopeFromContext(c)).upsertLinkedIn(parsed.data);
     return c.json({ ok: true, configured: true, updatedAt });
   });
 
@@ -67,7 +69,7 @@ export function createAdminSocialCredentialsRouter(
         400,
       );
     }
-    const { updatedAt } = await deps.getRepo().upsertTwitter(parsed.data);
+    const { updatedAt } = await deps.getRepo(tenantScopeFromContext(c)).upsertTwitter(parsed.data);
     return c.json({ ok: true, configured: true, updatedAt });
   });
 
@@ -81,7 +83,7 @@ export function createAdminSocialCredentialsRouter(
       );
     }
     const { updatedAt } = await deps
-      .getRepo()
+      .getRepo(tenantScopeFromContext(c))
       .upsertTwitterCollector(parsed.data);
     return c.json({ ok: true, configured: true, updatedAt });
   });
@@ -92,12 +94,12 @@ export function createAdminSocialCredentialsRouter(
     if (key === undefined) {
       return c.json({ error: "invalid_platform" }, 400);
     }
-    const removed = await deps.getRepo().delete(key);
+    const removed = await deps.getRepo(tenantScopeFromContext(c)).delete(key);
     // Clearing LinkedIn credentials must also clear the OAuth access/refresh
     // token — otherwise the connection still shows "Connected" with an orphaned
     // social_tokens row after the client creds are gone.
     if (key === "linkedin" && deps.getTokenRepo) {
-      await deps.getTokenRepo().deleteToken("linkedin");
+      await deps.getTokenRepo(tenantScopeFromContext(c)).deleteToken("linkedin");
     }
     return c.json({ ok: true, removed });
   });
@@ -107,9 +109,9 @@ export function createAdminSocialCredentialsRouter(
 
 export function createDefaultAdminSocialCredentialsRouter(): Hono {
   return createAdminSocialCredentialsRouter({
-    getRepo: () =>
-      createSocialCredentialsRepo(defaultGetDb(), getCredentialCipher()),
-    getTokenRepo: () =>
-      createSocialTokensRepo(defaultGetDb(), getCredentialCipher()),
+    getRepo: (scope) =>
+      createSocialCredentialsRepo(defaultGetDb(), getCredentialCipher(), scope),
+    getTokenRepo: (scope) =>
+      createSocialTokensRepo(defaultGetDb(), getCredentialCipher(), scope),
   });
 }

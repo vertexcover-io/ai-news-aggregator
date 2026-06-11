@@ -4,6 +4,7 @@ import { getDb } from "@newsletter/shared";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { createLogger } from "@newsletter/shared/logger";
 import { startRun } from "@newsletter/shared";
+import { getDefaultTenantScope } from "@pipeline/repositories/default-tenant.js";
 import type { RunProcessJobPayload, UserSettings } from "@newsletter/shared";
 import {
   createUserSettingsRepo,
@@ -81,7 +82,8 @@ export function createDailyRunWorker(
   const queue =
     options.queue ?? new Queue<RunProcessJobPayload>("processing", { connection });
   const userSettingsRepo =
-    options.userSettingsRepo ?? createUserSettingsRepo(getDb());
+    options.userSettingsRepo ??
+    createUserSettingsRepo(getDb(), getDefaultTenantScope());
 
   const deps: DailyRunDeps = { redis, queue, userSettingsRepo };
 

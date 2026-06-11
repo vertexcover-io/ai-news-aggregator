@@ -39,9 +39,11 @@ const REPO_ROOT = resolve(HERE, "../../../..");
 config({ path: resolve(REPO_ROOT, ".env") });
 
 const { getDb } = await import("@newsletter/shared/db");
+const { ensureE2eTenant } = await import("./helpers/tenant.js");
 
 const db = getDb();
-const repo = createMustReadRepo(db);
+const tenantCtx = await ensureE2eTenant();
+const repo = createMustReadRepo(db, tenantCtx);
 
 const URL_PREFIX = "https://admin-must-read-e2e.example.com/";
 

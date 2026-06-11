@@ -23,9 +23,12 @@ const { createArchivesSearchRouter } = await import(
   "@api/routes/archives-search.js"
 );
 
+const { ensureE2eTenant } = await import("./helpers/tenant.js");
+
 const db = getDb();
-const archiveRepo = createRunArchivesRepo(db);
-const rawItemsRepo = createRawItemsRepo(db);
+const tenantCtx = await ensureE2eTenant();
+const archiveRepo = createRunArchivesRepo(db, tenantCtx);
+const rawItemsRepo = createRawItemsRepo(db, tenantCtx);
 
 interface SearchResp {
   archives: { runId: string; runDate: string; digestHeadline: string | null }[];
@@ -73,6 +76,7 @@ async function insertRaw(
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: tenantCtx.tenantId,
       sourceType: "hn",
       externalId,
       title,
@@ -146,6 +150,7 @@ async function insertArchive(opts: {
     : null;
   await db.insert(runArchives).values({
     id: opts.id,
+    tenantId: tenantCtx.tenantId,
     status: "completed",
     rankedItems: refs,
     topN: 1,

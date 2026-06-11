@@ -6,6 +6,8 @@ import { eq } from "drizzle-orm";
 import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import type { AppDb } from "@newsletter/shared/db";
 import type { RedditCollectConfig } from "@pipeline/types.js";
 
@@ -14,8 +16,12 @@ config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
 describe("Reddit Collector E2E", () => {
   let db: AppDb;
 
-  beforeAll(() => {
+  let tenant: TenantContext;
+
+  beforeAll(async () => {
     db = getTestDb();
+    // tenant_id is NOT NULL on raw_items — repo writes stamp the e2e tenant
+    tenant = await ensurePipelineTenant();
   });
 
   beforeEach(async () => {
@@ -31,7 +37,7 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db, tenant) }, cfg);
 
     expect(result.itemsFetched).toBeGreaterThan(0);
     expect(result.itemsStored).toBeGreaterThan(0);
@@ -58,7 +64,7 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 3,
     };
 
-    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db, tenant) }, cfg);
 
     expect(result.commentsFetched).toBe(0);
 
@@ -77,11 +83,11 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    await collectReddit({ rawItemsRepo: createRawItemsRepo(db, tenant) }, cfg);
     const firstRunRows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
     const firstRunCount = firstRunRows.length;
 
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    await collectReddit({ rawItemsRepo: createRawItemsRepo(db, tenant) }, cfg);
     const secondRunRows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
 
     expect(secondRunRows.length).toBe(firstRunCount);
@@ -107,7 +113,7 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    await collectReddit({ rawItemsRepo: createRawItemsRepo(db, tenant) }, cfg);
 
     const rows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
     for (const row of rows) {

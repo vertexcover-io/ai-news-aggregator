@@ -15,6 +15,7 @@ const REPO_ROOT = resolve(HERE, "../../../..");
 config({ path: resolve(REPO_ROOT, ".env") });
 
 const { getDb, rawItems, runArchives } = await import("@newsletter/shared/db");
+const { ensureE2eTenant } = await import("./helpers/tenant.js");
 const migrationsDir = resolve(HERE, "../../../shared/src/db/migrations");
 
 function readSearchMigration(): string {
@@ -41,6 +42,7 @@ async function applyMigration(): Promise<void> {
 }
 
 const db = getDb();
+const tenantCtx = await ensureE2eTenant();
 const seedRunId = "11111111-1111-1111-1111-111111111111";
 const seedExternalId = `phase2-search-${Date.now()}`;
 let seedRawItemId = 0;
@@ -52,6 +54,7 @@ beforeAll(async () => {
   const inserted = await db
     .insert(rawItems)
     .values({
+      tenantId: tenantCtx.tenantId,
       sourceType: "hn",
       externalId: seedExternalId,
       title: "Quantum Cromulence in Café Society",
@@ -74,6 +77,7 @@ beforeAll(async () => {
 
   await db.insert(runArchives).values({
     id: seedRunId,
+    tenantId: tenantCtx.tenantId,
     status: "completed",
     rankedItems: [
       {

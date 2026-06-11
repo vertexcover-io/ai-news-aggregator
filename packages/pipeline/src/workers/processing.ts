@@ -55,6 +55,10 @@ import {
 } from "@pipeline/repositories/social-credentials.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import {
+  getDefaultTenantScope,
+  primeDefaultTenantScope,
+} from "@pipeline/repositories/default-tenant.js";
+import {
   resolveLinkedInCredentials,
   resolveTwitterCollectorCookie,
   resolveTwitterOAuth1Credentials,
@@ -216,12 +220,15 @@ export function createProcessingWorker(
 
 function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   const db = getDb();
+  // Single-tenant bridge (pre-P9): index.ts primes the AGENTLOOP scope before
+  // the worker is constructed, so every write stamps a concrete tenant_id.
+  const scope = getDefaultTenantScope();
   const runState: RunStateService = createRunStateService(connection);
-  const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db);
-  const candidatesRepo: CandidatesRepo = createCandidatesRepo(db);
-  const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db);
-  const runLogRepo = createRunLogRepo(db);
-  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db);
+  const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db, scope);
+  const candidatesRepo: CandidatesRepo = createCandidatesRepo(db, scope);
+  const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db, scope);
+  const runLogRepo = createRunLogRepo(db, scope);
+  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db, scope);
   const loadFn: LoadCandidatesFn = loadCandidatesSince;
   // TAVILY_API_KEY resolved at worker startup. Env-driven only (no DB equivalent),
   // so process-startup resolution is correct — no per-job refresh needed.
@@ -295,7 +302,10 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
 
 function buildDefaultDailyRunDeps(connection: IORedis): DailyRunDeps {
   const db = getDb();
-  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db);
+  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(
+    db,
+    getDefaultTenantScope(),
+  );
   const queue = new Queue<RunProcessJobPayload>("processing", { connection });
   return {
     redis: connection,
@@ -365,8 +375,12 @@ function warnInvalidTwitterConfig(
 
 export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
   const db = getDb();
-  const archiveRepo = createRunArchivesRepo(db);
-  const rawItemsRepo = createRawItemsRepo(db);
+  // Rebuilt per job (see createProcessingWorker note) — resolve the
+  // single-tenant bridge scope here so email_sends/run_archives writes stamp
+  // a concrete tenant_id even if the entrypoint prime was skipped.
+  const scope = await primeDefaultTenantScope(db);
+  const archiveRepo = createRunArchivesRepo(db, scope);
+  const rawItemsRepo = createRawItemsRepo(db, scope);
   const socialTokensRepo = getSharedSocialTokensRepo();
   const socialCredentialsRepo = getSharedSocialCredentialsRepo();
   const slackNotifier = createSlackNotifier({
@@ -445,8 +459,8 @@ export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
 
   return {
     emailProvider: createEmailProvider(),
-    subscribersRepo: createPipelineSubscribersRepo(db),
-    emailSendsRepo: createPipelineEmailSendsRepo(db),
+    subscribersRepo: createPipelineSubscribersRepo(db, scope),
+    emailSendsRepo: createPipelineEmailSendsRepo(db, scope),
     archiveRepo,
     rawItemsRepo,
     renderNewsletter,
@@ -481,7 +495,11 @@ function buildDefaultSocialHealthDeps(): SocialHealthDeps {
 
 let cachedSocialTokensRepo: SocialTokensRepo | undefined;
 function getSharedSocialTokensRepo(): SocialTokensRepo {
-  cachedSocialTokensRepo ??= createSocialTokensRepo(getDb(), getCredentialCipher());
+  cachedSocialTokensRepo ??= createSocialTokensRepo(
+    getDb(),
+    getCredentialCipher(),
+    getDefaultTenantScope(),
+  );
   return cachedSocialTokensRepo;
 }
 
@@ -490,6 +508,7 @@ function getSharedSocialCredentialsRepo(): SocialCredentialsRepo {
   cachedSocialCredentialsRepo ??= createSocialCredentialsRepo(
     getDb(),
     getCredentialCipher(),
+    getDefaultTenantScope(),
   );
   return cachedSocialCredentialsRepo;
 }

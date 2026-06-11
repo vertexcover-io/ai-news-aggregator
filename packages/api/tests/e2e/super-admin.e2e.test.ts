@@ -84,7 +84,11 @@ function buildTestApp(): Hono {
   credsApp.route(
     "/",
     createAdminSocialCredentialsRouter({
-      getRepo: () => createSocialCredentialsRepo(db, cipher),
+      getRepo: () =>
+        createSocialCredentialsRepo(db, cipher, {
+          tenantId: tenantBId,
+          role: "tenant_admin",
+        }),
     }),
   );
   app.route("/api/admin/social-credentials", credsApp);
@@ -333,7 +337,10 @@ describe("super-admin console backend (P6)", () => {
   it("test_REQ_082_app_secrets_absent_from_tenant_responses", async () => {
     const app = buildTestApp();
     // Store app-level LinkedIn credentials (client secret = sentinel).
-    const credsRepo = createSocialCredentialsRepo(db, cipher);
+    const credsRepo = createSocialCredentialsRepo(db, cipher, {
+      tenantId: tenantBId,
+      role: "tenant_admin",
+    });
     await credsRepo.upsertLinkedIn({
       clientId: `client-${STAMP}`,
       clientSecret: SECRET_SENTINEL,

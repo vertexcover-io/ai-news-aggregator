@@ -10,6 +10,7 @@ import {
   createRawItemsRepo,
   type RawItemsRepo,
 } from "@pipeline/repositories/raw-items.js";
+import { primeDefaultTenantScope } from "@pipeline/repositories/default-tenant.js";
 import {
   createRunStateService,
   type RunSourceType,
@@ -40,11 +41,20 @@ const logger = createLogger("worker:collection");
 
 let defaultDepsInstance: CollectionWorkerDeps | null = null;
 
-function getDefaultDeps(): CollectionWorkerDeps {
-  defaultDepsInstance ??= {
-    rawItemsRepo: createRawItemsRepo(getDb()),
-    runState: createRunStateService(createRedisConnection()),
-  };
+/**
+ * Async so the first job can resolve the default (AGENTLOOP) tenant scope
+ * before any raw_items write — tenant_id is NOT NULL with no DB DEFAULT.
+ * Per-tenant job payloads replace this in P9.
+ */
+async function getDefaultDeps(): Promise<CollectionWorkerDeps> {
+  if (!defaultDepsInstance) {
+    const db = getDb();
+    const scope = await primeDefaultTenantScope(db);
+    defaultDepsInstance = {
+      rawItemsRepo: createRawItemsRepo(db, scope),
+      runState: createRunStateService(createRedisConnection()),
+    };
+  }
   return defaultDepsInstance;
 }
 
@@ -91,8 +101,9 @@ async function dispatchCollector(
 
 export async function handleCollectionJob(
   job: CollectionJobLike,
-  deps: CollectionWorkerDeps = getDefaultDeps(),
+  deps?: CollectionWorkerDeps,
 ): Promise<CollectorResult> {
+  deps ??= await getDefaultDeps();
   const runId = job.data.runId;
   const startedAt = Date.now();
 

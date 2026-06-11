@@ -44,6 +44,8 @@ import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { createEmailProvider } from "@pipeline/lib/email-provider.js";
 import { renderNewsletter } from "@pipeline/lib/email-render.js";
 import { getTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import { getTestRedis, closeTestRedis } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { NewsletterSendJobPayload } from "@newsletter/shared";
 
@@ -61,8 +63,11 @@ const RESEND_TEST_RECIPIENTS = [
 describe("Newsletter send — real Resend e2e", () => {
   let runArchiveId: string;
   let subscriberIds: string[];
+  // tenant_id is NOT NULL on raw_items/run_archives/subscribers/email_sends
+  let tenant: TenantContext;
 
-  beforeAll(() => {
+  beforeAll(async () => {
+    tenant = await ensurePipelineTenant();
     if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY.startsWith("re_your_")) {
       throw new Error(
         "RESEND_API_KEY missing or placeholder. Set it in .env.harness for this test.",
@@ -84,6 +89,7 @@ describe("Newsletter send — real Resend e2e", () => {
     await db.insert(rawItems).values([
       {
         sourceType: "hn",
+        tenantId: tenant.tenantId,
         externalId: `e2e-${randomUUID()}`,
         title: "OpenAI ships GPT-9 — preview release notes",
         url: "https://example.com/openai-gpt9",
@@ -101,6 +107,7 @@ describe("Newsletter send — real Resend e2e", () => {
       },
       {
         sourceType: "hn",
+        tenantId: tenant.tenantId,
         externalId: `e2e-${randomUUID()}`,
         title: "Anthropic launches autonomous agents API",
         url: "https://example.com/anthropic-agents",
@@ -124,6 +131,7 @@ describe("Newsletter send — real Resend e2e", () => {
     runArchiveId = randomUUID();
     await db.insert(runArchives).values({
       id: runArchiveId,
+      tenantId: tenant.tenantId,
       status: "completed",
       rankedItems: insertedRaw.map((row, idx) => ({
         rawItemId: row.id,
@@ -140,6 +148,7 @@ describe("Newsletter send — real Resend e2e", () => {
       .values(
         RESEND_TEST_RECIPIENTS.map((email) => ({
           email,
+          tenantId: tenant.tenantId,
           status: "confirmed" as const,
           subscribedAt: new Date(),
         })),
@@ -159,10 +168,10 @@ describe("Newsletter send — real Resend e2e", () => {
 
     const deps = {
       emailProvider: createEmailProvider(),
-      subscribersRepo: createPipelineSubscribersRepo(db),
-      emailSendsRepo: createPipelineEmailSendsRepo(db),
-      archiveRepo: createRunArchivesRepo(db),
-      rawItemsRepo: createRawItemsRepo(db),
+      subscribersRepo: createPipelineSubscribersRepo(db, tenant),
+      emailSendsRepo: createPipelineEmailSendsRepo(db, tenant),
+      archiveRepo: createRunArchivesRepo(db, tenant),
+      rawItemsRepo: createRawItemsRepo(db, tenant),
       renderNewsletter,
       sessionSecret: process.env.SESSION_SECRET ?? "test-session-secret",
       fromMail: RESEND_FROM,
@@ -223,10 +232,10 @@ describe("Newsletter send — real Resend e2e", () => {
 
     const deps = {
       emailProvider: createEmailProvider(),
-      subscribersRepo: createPipelineSubscribersRepo(db),
-      emailSendsRepo: createPipelineEmailSendsRepo(db),
-      archiveRepo: createRunArchivesRepo(db),
-      rawItemsRepo: createRawItemsRepo(db),
+      subscribersRepo: createPipelineSubscribersRepo(db, tenant),
+      emailSendsRepo: createPipelineEmailSendsRepo(db, tenant),
+      archiveRepo: createRunArchivesRepo(db, tenant),
+      rawItemsRepo: createRawItemsRepo(db, tenant),
       renderNewsletter,
       sessionSecret: process.env.SESSION_SECRET ?? "test-session-secret",
       fromMail: RESEND_FROM,
