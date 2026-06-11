@@ -21,7 +21,14 @@ import type {
 import type { RunCostBreakdown } from "@shared/types/cost-breakdown.js";
 import type { EncryptedBlob } from "@shared/services/credential-cipher.js";
 import type { EditType, PreReviewSnapshot } from "@shared/review-edits/types.js";
-import type { AuditAction, OnboardingState, TenantStatus, UserRole } from "@shared/types/tenant.js";
+import type {
+  AuditAction,
+  OnboardingState,
+  SendingDomainRecord,
+  SendingDomainStatus,
+  TenantStatus,
+  UserRole,
+} from "@shared/types/tenant.js";
 import type { SourceConfig, SourceHealth } from "@shared/types/source.js";
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter" | "web_search";
@@ -62,6 +69,16 @@ export const tenants = pgTable(
     featureDeliverability: boolean("feature_deliverability").notNull().default(false),
     featureEval: boolean("feature_eval").notNull().default(false),
     onboardingState: jsonb("onboarding_state").$type<OnboardingState | null>(),
+    /**
+     * Per-tenant Resend sending domain (P14, REQ-084/085). All nullable —
+     * a tenant without a registered domain has every field null, and the
+     * broadcast gate (REQ-053) treats that as "not verified".
+     */
+    sendingDomainName: text("sending_domain_name"),
+    /** Resend domain id returned by `domains.create` (drives `domains.get`). */
+    sendingDomainId: text("sending_domain_id"),
+    sendingDomainStatus: text("sending_domain_status").$type<SendingDomainStatus>(),
+    sendingDomainRecords: jsonb("sending_domain_records").$type<SendingDomainRecord[] | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

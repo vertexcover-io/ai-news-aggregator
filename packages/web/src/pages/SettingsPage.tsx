@@ -37,6 +37,7 @@ import { DEFAULT_SHORTLIST_PROMPT } from "@newsletter/shared/constants";
 import { SaveBar } from "../components/settings/SaveBar";
 import { SocialCredentialsPanel } from "../components/SocialCredentialsPanel";
 import { TenantSourcesPanel } from "../components/settings/TenantSourcesPanel";
+import { SendingDomainPanel } from "../components/settings/SendingDomainPanel";
 
 function getDefaults(): SettingsFormValues {
   return {
@@ -251,6 +252,11 @@ export function SettingsPage(): ReactElement {
         <TenantSourcesPanel />
 
         <SocialCredentialsPanel />
+
+        {/* Sending-domain verification (P14, REQ-084/085): the broadcast is
+            gated on a verified domain; transactional mail stays on the
+            shared platform sender. */}
+        <SendingDomainPanel />
 
         <SaveBar
           formId="settings-form"

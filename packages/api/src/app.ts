@@ -99,6 +99,13 @@ export interface BuildAppDeps {
    */
   tenantSourcesRouter?: Hono;
   /**
+   * Sending-domain routes (P14, REQ-084/085): GET/POST /api/settings/domain +
+   * POST /api/settings/domain/verify, auth-gated. Mounted on its own path so
+   * the settings router stays untouched. Optional ONLY so existing unit tests
+   * composing buildApp keep working — index.ts always provides it.
+   */
+  sendingDomainRouter?: Hono;
+  /**
    * Onboarding wizard routes (P11, REQ-030–038): GET/PATCH /api/onboarding,
    * slug-available, generate-prompts, discover-sources, activate — mounted
    * gated at /api/onboarding (the wizard is a tenant_admin surface).
@@ -213,6 +220,13 @@ export function buildApp(deps: BuildAppDeps): Hono {
   app.route("/api/admin", adminApp);
 
   app.route("/api/runs", gatedWrap(gate, deps.runsRouter));
+
+  // Sending-domain panel (P14) — its own sub-app: the settings router's
+  // GET "/" / PUT "/" never match /domain paths, but mounting separately
+  // keeps the dependency graphs of the two routers independent.
+  if (deps.sendingDomainRouter) {
+    app.route("/api/settings/domain", gatedWrap(gate, deps.sendingDomainRouter));
+  }
   app.route("/api/settings", gatedWrap(gate, deps.settingsRouter));
 
   // Tenant source management (P8) — auth-gated; requests that the public

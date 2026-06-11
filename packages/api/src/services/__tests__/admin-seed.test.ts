@@ -18,6 +18,10 @@ const TENANT: TenantRow = {
   featureDeliverability: false,
   featureEval: false,
   onboardingState: null,
+  sendingDomainName: null,
+  sendingDomainId: null,
+  sendingDomainStatus: null,
+  sendingDomainRecords: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

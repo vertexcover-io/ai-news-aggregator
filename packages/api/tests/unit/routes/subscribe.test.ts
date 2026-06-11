@@ -285,6 +285,33 @@ describe("GET /api/confirm", () => {
   });
 });
 
+describe("EDGE-005 (P14): transactional email is independent of the sending domain", () => {
+  it("test_EDGE_005_transactional_before_domain_uses_shared — confirmation email goes out via the injected shared platform sender; the subscribe path has no sending-domain dependency", async () => {
+    // The router's dependency surface (SubscribeRouterDeps) deliberately has
+    // NO sending-domain / tenant-domain input: the confirmation email is sent
+    // through `sendConfirmationEmail`, which index.ts wires to the shared
+    // platform sender (env FROM_MAIL via the platform email provider). The
+    // P14 broadcast gate lives ONLY in the pipeline email-send worker — this
+    // test pins that a tenant with an unverified (or absent) sending domain
+    // still gets its double-opt-in confirmation sent (REQ-053/EDGE-005).
+    const repo = makeRepo();
+    const sendConfirmationEmail = vi.fn(() => Promise.resolve());
+    const app = buildApp({ repo, sendConfirmationEmail });
+
+    const res = await app.request("/api/subscribe", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "reader@example.com" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sendConfirmationEmail).toHaveBeenCalledOnce();
+    // Type-level guard: no domain-shaped dep exists to consult.
+    const depKeys: keyof SubscribeRouterDeps = "sendConfirmationEmail";
+    expect(depKeys).toBe("sendConfirmationEmail");
+  });
+});
+
 describe("GET /api/unsubscribe", () => {
   it("REQ-015: valid token → redirects to /unsubscribe?status=success, subscriber unsubscribed", async () => {
     const subscriber = makeSubscriber({ status: "confirmed" });

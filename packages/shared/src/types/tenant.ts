@@ -227,3 +227,37 @@ export interface AuthMeResponse {
    */
   impersonation?: { tenant: SessionTenant } | null;
 }
+
+/* ── Sending-domain wire types (P14: REQ-084/085, REQ-053) ──────────────── */
+
+/**
+ * Tenant-facing domain status, collapsed from Resend's six-state
+ * `DomainStatus`: `verified` ⇐ verified; `failed` ⇐ failed/partially_failed
+ * (reasons surfaced per record, REQ-085); everything else (pending,
+ * not_started, partially_verified) ⇐ `pending`. Broadcasts are gated on
+ * `verified` (REQ-053/EDGE-006).
+ */
+export type SendingDomainStatus = "pending" | "verified" | "failed";
+
+/** One DNS record the tenant must create, as returned by Resend (REQ-084). */
+export interface SendingDomainRecord {
+  /** Resend record group: SPF | DKIM | Receiving | Tracking | TrackingCAA. */
+  record: string;
+  /** DNS record type: TXT | MX | CNAME | CAA. */
+  type: string;
+  name: string;
+  value: string;
+  ttl?: string;
+  priority?: number;
+  /** Per-record verification state (pending | verified | failed | …). */
+  status: string;
+}
+
+/** Sending-domain panel payload (GET/POST /api/settings/domain[/verify]). */
+export interface SendingDomainWire {
+  domain: string;
+  status: SendingDomainStatus;
+  records: SendingDomainRecord[];
+  /** Human-readable failure reasons; present only when status = "failed". */
+  reasons?: string[];
+}

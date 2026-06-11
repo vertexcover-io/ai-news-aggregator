@@ -55,7 +55,8 @@ function pgReady(port) {
 }
 
 async function main() {
-  const [pgPort, redisPort, apiPort, webPort] = await Promise.all([
+  const [pgPort, redisPort, apiPort, webPort, fakeResendPort] = await Promise.all([
+    freePort(),
     freePort(),
     freePort(),
     freePort(),
@@ -82,6 +83,11 @@ async function main() {
     // Point confirm/unsubscribe/feedback redirects at the hermetic web server
     // instead of whatever the API's .env declares (e.g. localhost:5173).
     NEWSLETTER_BASE_URL: `http://127.0.0.1:${webPort}`,
+    // P14 sending-domain e2e: the Resend SDK honors RESEND_BASE_URL, so the
+    // API's domains calls hit the in-spec fake server on this port — a real
+    // Resend request is impossible (S-web-04). The spec that needs it starts
+    // the listener; for all other specs nothing listens and nothing calls.
+    E2E_FAKE_RESEND_PORT: String(fakeResendPort),
   };
   env.E2E_ADMIN_PASSWORD = env.ADMIN_PASSWORD;
 

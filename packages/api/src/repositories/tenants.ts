@@ -3,6 +3,8 @@ import { tenants } from "@newsletter/shared/db";
 import type { AppDb, TenantRow } from "@newsletter/shared/db";
 import type {
   OnboardingState,
+  SendingDomainRecord,
+  SendingDomainStatus,
   TenantStatus,
 } from "@newsletter/shared/types/tenant";
 
@@ -56,6 +58,22 @@ export interface TenantsRepo {
     id: string,
     profile: OnboardingCompletionProfile,
   ): Promise<TenantRow | null>;
+  /**
+   * Persists the tenant's Resend sending-domain state (P14, REQ-084/085):
+   * {name, domainId, status, records} as returned by `domains.create` /
+   * `domains.get`. The broadcast gate (REQ-053) reads `sendingDomainStatus`.
+   */
+  updateSendingDomain(
+    id: string,
+    patch: SendingDomainPatch,
+  ): Promise<TenantRow | null>;
+}
+
+export interface SendingDomainPatch {
+  sendingDomainName: string;
+  sendingDomainId: string;
+  sendingDomainStatus: SendingDomainStatus;
+  sendingDomainRecords: SendingDomainRecord[];
 }
 
 export interface OnboardingCompletionProfile {
@@ -152,6 +170,18 @@ export function createTenantsRepo(
           status: "active",
           updatedAt: new Date(),
         })
+        .where(eq(tenants.id, id))
+        .returning();
+      return rows[0] ?? null;
+    },
+
+    async updateSendingDomain(
+      id: string,
+      patch: SendingDomainPatch,
+    ): Promise<TenantRow | null> {
+      const rows = await db
+        .update(tenants)
+        .set({ ...patch, updatedAt: new Date() })
         .where(eq(tenants.id, id))
         .returning();
       return rows[0] ?? null;

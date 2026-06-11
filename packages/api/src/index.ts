@@ -23,6 +23,7 @@ import { createDefaultBrandingRouter } from "@api/routes/branding.js";
 import { createDefaultPublicSourcesRouter } from "@api/routes/sources.js";
 import { createDefaultTenantSourcesRouter } from "@api/routes/tenant-sources.js";
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
+import { createDefaultSendingDomainRouter } from "@api/routes/sending-domain.js";
 import { createDefaultCollectorHealthRouter } from "@api/routes/collector-health.js";
 import { createDefaultAdminSocialCredentialsRouter } from "@api/routes/admin-social-credentials.js";
 import {
@@ -299,6 +300,9 @@ const app = buildApp({
   adminMustReadRouter: createDefaultAdminMustReadRouter(),
   runsRouter: createDefaultRunsRouter(),
   settingsRouter: createDefaultSettingsRouter(),
+  // Sending-domain verification panel (P14, REQ-084/085) — full-access
+  // Resend key required for the Domains API (see services/sending-domain.ts).
+  sendingDomainRouter: createDefaultSendingDomainRouter(),
   collectorHealthRouter: createDefaultCollectorHealthRouter(),
   // Public tenant branding payload + logo bytes (P7).
   brandingRouter: createDefaultBrandingRouter(),

@@ -3,6 +3,7 @@ import type { EmailProvider, RankedItemRef, RecapContent, SlackNotifier, Subscri
 import { EmailSendError } from "@newsletter/shared";
 import { withUtmSource } from "@newsletter/shared/utils";
 import type { PipelineSubscribersRepo } from "@pipeline/repositories/subscribers.js";
+import type { PipelineTenantsRepo } from "@pipeline/repositories/tenants.js";
 import type { PipelineEmailSendsRepo } from "@pipeline/repositories/email-sends.js";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { RawItemsRepo, RawItemRow } from "@pipeline/repositories/raw-items.js";
@@ -80,6 +81,15 @@ export interface NewsletterRenderProps {
 export interface EmailSendDeps {
   emailProvider: EmailProvider;
   subscribersRepo: PipelineSubscribersRepo;
+  /**
+   * P14 (REQ-053/EDGE-006): tenant sending-domain lookup for the broadcast
+   * gate. OPTIONAL with a fail-open default so legacy callers/tests keep the
+   * pre-P14 behavior; production (`buildDefaultPublishDeps`) always provides
+   * it, which makes the gate active: a broadcast is BLOCKED unless the job
+   * tenant's domain status is `verified`. Targeted sends (welcome/back-issue)
+   * and API-side transactional mail are never gated (EDGE-005).
+   */
+  tenantsRepo?: Pick<PipelineTenantsRepo, "getSendingDomainStatus">;
   emailSendsRepo: PipelineEmailSendsRepo;
   archiveRepo: RunArchivesRepo;
   rawItemsRepo: RawItemsRepo;
@@ -195,6 +205,35 @@ export async function handleEmailSendJob(
   // would silently no-op. Per-subscriber dedup (the `email_sends` table) already
   // prevents duplicate delivery in both modes.
   if (isBroadcast && archive.emailSentAt !== null) return;
+
+  // P14 broadcast gate (REQ-053/EDGE-006): the subscriber broadcast goes out
+  // from the tenant's own sending domain, so it is BLOCKED until that domain
+  // is verified with Resend. Targeted sends (the welcome back-issue) and all
+  // API-side transactional mail use the shared platform sender and are never
+  // gated (EDGE-005). `tenantsRepo` is optional for legacy callers — absent
+  // means pre-P14 single-tenant behavior (no gate).
+  if (isBroadcast && deps.tenantsRepo !== undefined) {
+    const domainStatus = await deps.tenantsRepo.getSendingDomainStatus();
+    if (domainStatus !== "verified") {
+      logger.warn(
+        {
+          event: "newsletter-send.broadcast_blocked",
+          runId: archive.id,
+          jobId: job.id,
+          reason: "sending_domain_not_verified",
+          domainStatus: domainStatus ?? "none",
+        },
+        "newsletter-send: broadcast blocked — tenant sending domain not verified",
+      );
+      await deps.slackNotifier?.notifyPublishFailed({
+        runId: archive.id,
+        channel: "email-send",
+        reason: "sending_domain_not_verified",
+      });
+      return;
+    }
+  }
+
   const runId = archive.id;
 
   const rawIds = archive.rankedItems.map((r) => r.rawItemId);

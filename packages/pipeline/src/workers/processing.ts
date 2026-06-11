@@ -84,6 +84,7 @@ import { createRunLogRepo } from "@pipeline/repositories/run-logs.js";
 import {
   createPipelineSubscribersRepo,
 } from "@pipeline/repositories/subscribers.js";
+import { createPipelineTenantsRepo } from "@pipeline/repositories/tenants.js";
 import {
   createPipelineEmailSendsRepo,
 } from "@pipeline/repositories/email-sends.js";
@@ -557,6 +558,12 @@ export async function buildDefaultPublishDeps(
   return {
     emailProvider: createEmailProvider(),
     subscribersRepo: createPipelineSubscribersRepo(db, scope),
+    // P14 (REQ-053): always provided in production — the broadcast gate is
+    // active, blocking the subscriber broadcast until the job tenant's
+    // sending domain is verified (EDGE-006). NOTE (ops): existing tenants
+    // (incl. tenant-0/AGENTLOOP) must register+verify their domain via
+    // /admin/settings before their next scheduled broadcast.
+    tenantsRepo: createPipelineTenantsRepo(db, scope),
     emailSendsRepo: createPipelineEmailSendsRepo(db, scope),
     archiveRepo,
     rawItemsRepo,

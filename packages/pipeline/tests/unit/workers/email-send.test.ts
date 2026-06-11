@@ -5,6 +5,7 @@ import type { SubscriberSelect } from "@newsletter/shared";
 import { EmailSendError } from "@newsletter/shared";
 
 const { handleEmailSendJob, resolveSendRate, getSharedPacer, resetSharedPacerForTests, createSendPacer } = await import("@pipeline/workers/email-send.js");
+const { handleLinkedInPostJob } = await import("@pipeline/workers/linkedin-post.js");
 
 function makeSubscriber(overrides: Partial<SubscriberSelect> = {}): SubscriberSelect {
   return {
@@ -135,6 +136,124 @@ function makeSlackNotifier(overrides: Partial<NonNullable<EmailSendDeps["slackNo
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P14: sending-domain broadcast gate (REQ-053 / EDGE-005 / EDGE-006, REQ-052)
+// ─────────────────────────────────────────────────────────────────────────────
+describe("sending-domain broadcast gate (P14)", () => {
+  function makeTenantsRepo(status: "pending" | "verified" | "failed" | null): {
+    getSendingDomainStatus: ReturnType<typeof vi.fn>;
+  } {
+    return { getSendingDomainStatus: vi.fn(() => Promise.resolve(status)) };
+  }
+
+  it.each([
+    ["pending", "pending" as const],
+    ["failed", "failed" as const],
+    ["absent (never registered)", null],
+  ])(
+    "test_REQ_053_broadcast_blocked_without_domain_transactional_ok — %s domain blocks the broadcast but the targeted (welcome/transactional) send still goes out",
+    async (_label, status) => {
+      const archive = makeArchive();
+      const tenantsRepo = makeTenantsRepo(status);
+      const slackNotifier = makeSlackNotifier();
+      const deps = makeDeps(archive, { tenantsRepo, slackNotifier });
+
+      // Broadcast: BLOCKED with a clear status, no archive marker stamped.
+      await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+      expect(deps.emailProvider.send).not.toHaveBeenCalled();
+      expect(deps.archiveRepo.markEmailSent).not.toHaveBeenCalled();
+      expect(slackNotifier.notifyPublishFailed).toHaveBeenCalledWith({
+        runId: archive.id,
+        channel: "email-send",
+        reason: "sending_domain_not_verified",
+      });
+
+      // Targeted send (EDGE-005 counterpart): goes out via the shared
+      // platform sender (deps.fromMail) regardless of domain status.
+      await handleEmailSendJob(deps, {
+        name: "email-send",
+        id: "job-2",
+        data: { runId: archive.id, subscriberIds: ["sub-1"] },
+      });
+      expect(deps.emailProvider.send).toHaveBeenCalledOnce();
+      expect(deps.emailProvider.send).toHaveBeenCalledWith(
+        expect.objectContaining({ from: deps.fromMail }),
+      );
+      expect(deps.archiveRepo.markEmailSent).not.toHaveBeenCalled();
+    },
+  );
+
+  it("allows the broadcast when the tenant sending domain is verified", async () => {
+    const archive = makeArchive();
+    const deps = makeDeps(archive, { tenantsRepo: makeTenantsRepo("verified") });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(deps.emailProvider.send).toHaveBeenCalledOnce();
+    expect(deps.archiveRepo.markEmailSent).toHaveBeenCalledOnce();
+  });
+
+  it("legacy deps without a tenantsRepo stay ungated (back-compat default)", async () => {
+    const archive = makeArchive();
+    const deps = makeDeps(archive);
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(deps.emailProvider.send).toHaveBeenCalledOnce();
+    expect(deps.archiveRepo.markEmailSent).toHaveBeenCalledOnce();
+  });
+
+  it("test_EDGE_006_publish_without_domain_blocks_broadcast_allows_social — social publish proceeds while the email broadcast is blocked", async () => {
+    const archive = makeArchive();
+    const deps = makeDeps(archive, { tenantsRepo: makeTenantsRepo("pending") });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+    expect(deps.emailProvider.send).not.toHaveBeenCalled();
+
+    // LinkedIn publish of the SAME archive is untouched by the domain gate.
+    const linkedinNotifier = {
+      notifyArchiveReady: vi.fn(() => Promise.resolve({ status: "posted" as const })),
+    };
+    await handleLinkedInPostJob(
+      {
+        archiveRepo: deps.archiveRepo,
+        linkedinNotifier,
+        slackNotifier: deps.slackNotifier,
+      },
+      { name: "linkedin-post", id: "job-2", data: { runId: archive.id } },
+    );
+    expect(linkedinNotifier.notifyArchiveReady).toHaveBeenCalledWith({
+      runId: archive.id,
+    });
+  });
+
+  it("test_REQ_052_broadcast_only_confirmed_of_tenant — a verified broadcast resolves recipients via the tenant-scoped listConfirmed, never findByIds", async () => {
+    const archive = makeArchive();
+    const confirmed = [
+      makeSubscriber({ id: "sub-1", email: "a@example.com" }),
+      makeSubscriber({ id: "sub-2", email: "b@example.com" }),
+    ];
+    const deps = makeDeps(archive, {
+      tenantsRepo: makeTenantsRepo("verified"),
+      subscribersRepo: {
+        listConfirmed: vi.fn(() => Promise.resolve(confirmed)),
+        findByIds: vi.fn(() => Promise.resolve([])),
+      },
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(deps.subscribersRepo.listConfirmed).toHaveBeenCalledOnce();
+    expect(deps.subscribersRepo.findByIds).not.toHaveBeenCalled();
+    expect(deps.emailProvider.send).toHaveBeenCalledTimes(2);
+    const sentTo = (deps.emailProvider.send as ReturnType<typeof vi.fn>).mock.calls
+      .map((call) => (call[0] as { to: string[] }).to)
+      .flat()
+      .sort();
+    expect(sentTo).toEqual(["a@example.com", "b@example.com"]);
+  });
 });
 
 describe("handleEmailSendJob", () => {

@@ -64,6 +64,13 @@ export default defineConfig({
         // at the browser network layer (page.route) instead.
         ANTHROPIC_API_KEY: "",
         TAVILY_API_KEY: "",
+        // P14 sending-domain: force the Resend SDK at the in-spec fake server
+        // (run-e2e.mjs allocates the port) with a hard-coded fake key so a
+        // real key from .env can never be used and no request can leave the
+        // machine (S-web-04). The sending-domain spec starts the listener.
+        RESEND_BASE_URL: `http://127.0.0.1:${process.env.E2E_FAKE_RESEND_PORT ?? "0"}`,
+        RESEND_API_KEY: "re_e2e_fake_key",
+        RESEND_FULL_ACCESS_API_KEY: "re_e2e_fake_key",
       },
     },
     {
