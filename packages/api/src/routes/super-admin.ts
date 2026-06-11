@@ -25,18 +25,33 @@ import {
   IMPERSONATION_COOKIE_NAME,
   IMPERSONATION_MAX_AGE_MS,
 } from "@api/auth/session.js";
-import type { TenantsRepo, TenantRow } from "@api/repositories/tenants.js";
+import type {
+  TenantsRepo,
+  TenantRow,
+  TenantWithStats,
+} from "@api/repositories/tenants.js";
 import type { AuditLogRepo } from "@api/repositories/audit-log.js";
 
 export interface SuperAdminRouterDeps {
   sessionSecret: string;
-  getTenantsRepo: () => Pick<TenantsRepo, "findById" | "listAll">;
+  getTenantsRepo: () => Pick<
+    TenantsRepo,
+    "findById" | "listAllWithStats"
+  >;
   getAuditLogRepo: () => AuditLogRepo;
 }
 
 export interface TenantSummary extends SessionTenant {
   /** ISO timestamp. */
   createdAt: string;
+}
+
+/** TenantSummary + the console list stats (P15, REQ-100). */
+export interface TenantListEntry extends TenantSummary {
+  ownerEmail: string | null;
+  subscriberCount: number;
+  /** ISO timestamp of the latest completed run; null when never ran. */
+  lastRunAt: string | null;
 }
 
 /** Summary projection — explicitly NEVER the raw row (no logoBytes, NF6). */
@@ -50,6 +65,15 @@ function toTenantSummary(row: TenantRow): TenantSummary {
   };
 }
 
+function toTenantListEntry(row: TenantWithStats): TenantListEntry {
+  return {
+    ...toTenantSummary(row.tenant),
+    ownerEmail: row.ownerEmail,
+    subscriberCount: row.subscriberCount,
+    lastRunAt: row.lastRunAt === null ? null : row.lastRunAt.toISOString(),
+  };
+}
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -58,8 +82,8 @@ export function createSuperAdminRouter(deps: SuperAdminRouterDeps): Hono {
   app.use("*", requireSuperAdmin(deps.sessionSecret));
 
   app.get("/tenants", async (c) => {
-    const rows = await deps.getTenantsRepo().listAll();
-    return c.json({ tenants: rows.map(toTenantSummary) });
+    const rows = await deps.getTenantsRepo().listAllWithStats();
+    return c.json({ tenants: rows.map(toTenantListEntry) });
   });
 
   app.post("/impersonate/exit", async (c) => {

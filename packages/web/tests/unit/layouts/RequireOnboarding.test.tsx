@@ -1,6 +1,9 @@
 /**
  * P11: RequireOnboarding gate — pending_setup tenants are funnelled into the
  * wizard; active tenants can't re-enter it (REQ-030/035 routing side).
+ * P15: a super_admin session without a live impersonation never lands on a
+ * tenant surface — it is sent to the tenant-list console (REQ-100); while
+ * impersonating it passes through to the tenant dashboard (REQ-101).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -50,6 +53,7 @@ function renderAt(path: string): void {
               <Route path="/admin" element={<div>DASHBOARD SURFACE</div>} />
             </Route>
           </Route>
+          <Route path="/admin/tenants" element={<div>CONSOLE SURFACE</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -77,7 +81,7 @@ describe("RequireOnboarding", () => {
     expect(await screen.findByText("DASHBOARD SURFACE")).toBeTruthy();
   });
 
-  it("super_admin (no tenant) → passes through untouched", async () => {
+  it("super_admin without impersonation → redirected to the tenant-list console (REQ-100)", async () => {
     mockFetchMe.mockResolvedValue({
       user: {
         id: "su",
@@ -87,8 +91,29 @@ describe("RequireOnboarding", () => {
         role: "super_admin",
       },
       tenant: null,
+      impersonation: null,
+    });
+    renderAt("/admin");
+    expect(await screen.findByText("CONSOLE SURFACE")).toBeTruthy();
+    expect(screen.queryByText("DASHBOARD SURFACE")).toBeNull();
+  });
+
+  it("super_admin while impersonating → passes through to the tenant dashboard (REQ-101)", async () => {
+    mockFetchMe.mockResolvedValue({
+      user: {
+        id: "su",
+        tenantId: null,
+        email: "s@a.c",
+        name: "S",
+        role: "super_admin",
+      },
+      tenant: null,
+      impersonation: {
+        tenant: { id: "t1", slug: "acting", name: "Acting", status: "active" },
+      },
     });
     renderAt("/admin");
     expect(await screen.findByText("DASHBOARD SURFACE")).toBeTruthy();
+    expect(screen.queryByText("CONSOLE SURFACE")).toBeNull();
   });
 });

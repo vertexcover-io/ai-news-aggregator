@@ -7,6 +7,12 @@ import { apiFetch } from "./client";
 
 export interface SuperTenantSummary extends SessionTenant {
   createdAt: string;
+  /** Earliest tenant_admin's email; null when the tenant has no owner yet. */
+  ownerEmail: string | null;
+  /** Confirmed subscribers only. */
+  subscriberCount: number;
+  /** ISO timestamp of the latest completed run; null when never ran. */
+  lastRunAt: string | null;
 }
 
 export async function listTenants(): Promise<SuperTenantSummary[]> {

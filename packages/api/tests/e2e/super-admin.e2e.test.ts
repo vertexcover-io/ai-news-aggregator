@@ -1,7 +1,7 @@
 /**
  * P6 integration: super-admin console backend + audited impersonation against
  * the real DB (routes/super-admin.ts, repositories/audit-log.ts,
- * repositories/tenants.ts listAll, auth/session.ts impersonation token,
+ * repositories/tenants.ts listAllWithStats, auth/session.ts impersonation token,
  * auth/middleware.ts requireAuth swap, routes/auth.ts /me impersonation).
  *
  * REQ-100: GET /api/super/tenants lists tenants — super_admin only.
@@ -19,10 +19,18 @@ import { config } from "dotenv";
 const REPO_ROOT = resolve(__dirname, "../../../..");
 config({ path: resolve(REPO_ROOT, ".env") });
 
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { Hono } from "hono";
 import { inArray } from "drizzle-orm";
-import { getDb, users, tenants, auditLog } from "@newsletter/shared/db";
+import {
+  getDb,
+  users,
+  tenants,
+  auditLog,
+  subscribers,
+  runArchives,
+} from "@newsletter/shared/db";
 import type { AuditLogRow } from "@newsletter/shared/db";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createSuperAdminRouter } from "@api/routes/super-admin.js";
@@ -155,10 +163,34 @@ beforeAll(async () => {
     })
     .returning();
   tenantAdminId = adminRow.id;
+  // Stats fixtures for the P15 console list: tenant B has one confirmed
+  // subscriber (counted) + one pending (not counted) and a completed run.
+  await db.insert(subscribers).values([
+    {
+      email: `${STAMP}-sub-confirmed@example.com`,
+      status: "confirmed",
+      tenantId: tenantBId,
+    },
+    {
+      email: `${STAMP}-sub-pending@example.com`,
+      status: "pending",
+      tenantId: tenantBId,
+    },
+  ]);
+  await db.insert(runArchives).values({
+    id: randomUUID(),
+    status: "completed",
+    rankedItems: [],
+    topN: 10,
+    completedAt: new Date("2026-06-10T08:00:00Z"),
+    tenantId: tenantBId,
+  });
 });
 
 afterAll(async () => {
   await db.delete(auditLog).where(inArray(auditLog.tenantId, [tenantAId, tenantBId]));
+  await db.delete(subscribers).where(inArray(subscribers.tenantId, [tenantBId]));
+  await db.delete(runArchives).where(inArray(runArchives.tenantId, [tenantBId]));
   await db.delete(users).where(inArray(users.id, [superId, tenantAdminId]));
   await db.delete(tenants).where(inArray(tenants.id, [tenantAId, tenantBId]));
 });
@@ -182,13 +214,23 @@ describe("super-admin console backend (P6)", () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      tenants: { id: string; slug: string; name: string; status: string }[];
+      tenants: {
+        id: string;
+        slug: string;
+        name: string;
+        status: string;
+        ownerEmail: string | null;
+        subscriberCount: number;
+        lastRunAt: string | null;
+      }[];
     };
     const ids = body.tenants.map((t) => t.id);
     expect(ids).toContain(tenantAId);
     expect(ids).toContain(tenantBId);
     // Serializer exposes only the summary fields — never logo bytes or any
-    // raw row spill (REQ-082/NF6 discipline for super responses too).
+    // raw row spill (REQ-082/NF6 discipline for super responses too). A bare
+    // tenant (no owner / subscribers / runs) degrades to null/0/null (P15
+    // console list fields).
     const entry = body.tenants.find((t) => t.id === tenantAId);
     expect(entry).toEqual({
       id: tenantAId,
@@ -196,7 +238,16 @@ describe("super-admin console backend (P6)", () => {
       name: `P6 Tenant A ${STAMP}`,
       status: "active",
       createdAt: expect.any(String) as unknown as string,
+      ownerEmail: null,
+      subscriberCount: 0,
+      lastRunAt: null,
     });
+    // Tenant B carries the P15 console stats: owner = its tenant_admin,
+    // confirmed subscribers only, latest completed run timestamp.
+    const entryB = body.tenants.find((t) => t.id === tenantBId);
+    expect(entryB?.ownerEmail).toBe(`${STAMP}-admin@example.com`);
+    expect(entryB?.subscriberCount).toBe(1);
+    expect(entryB?.lastRunAt).toBe("2026-06-10T08:00:00.000Z");
   });
 
   it("test_REQ_101_impersonation_sets_acting_tenant", async () => {

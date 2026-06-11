@@ -27,10 +27,12 @@ import { AdminMustReadEditPage } from "./pages/admin/AdminMustReadEditPage";
 import { UnsubscribePage } from "./pages/UnsubscribePage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { TermsPage } from "./pages/TermsPage";
+import { SuperAdminTenantsPage } from "./pages/SuperAdminTenantsPage";
 import { PublicLayout } from "./layouts/PublicLayout";
 import { AdminLayout } from "./layouts/AdminLayout";
 import { RequireAdmin } from "./layouts/RequireAdmin";
 import { RequireOnboarding } from "./layouts/RequireOnboarding";
+import { RequireSuperAdmin } from "./layouts/RequireSuperAdmin";
 
 export const routes: RouteObject[] = [
   {
@@ -57,6 +59,12 @@ export const routes: RouteObject[] = [
     path: "/admin",
     element: <RequireAdmin />,
     children: [
+      {
+        // Super-admin console (P15, REQ-100): super_admin sessions land
+        // here; RequireSuperAdmin bounces tenant admins to their dashboard.
+        element: <RequireSuperAdmin />,
+        children: [{ path: "tenants", element: <SuperAdminTenantsPage /> }],
+      },
       {
         // pending_setup → funnelled into the wizard; active → wizard exits
         // to the dashboard (P11, REQ-030/035).
