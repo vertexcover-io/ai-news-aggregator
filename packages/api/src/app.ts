@@ -68,6 +68,14 @@ export interface BuildAppDeps {
    * buildApp keep working — index.ts always provides it.
    */
   superAdminRouter?: Hono;
+  /**
+   * Tenant source management (P8, REQ-070/072/074): GET/POST /api/sources +
+   * PATCH/DELETE /api/sources/:id, auth-gated. Mounted on /api/sources AFTER
+   * the public summary router, so GET /api/sources/summary stays public and
+   * everything else on the path requires a session. Optional ONLY so existing
+   * unit tests composing buildApp keep working — index.ts always provides it.
+   */
+  tenantSourcesRouter?: Hono;
 }
 
 /**
@@ -116,7 +124,9 @@ export function buildApp(deps: BuildAppDeps): Hono {
   app.route("/api/home", deps.publicHomeRouter);
   app.route("/api/must-read", deps.publicMustReadRouter);
 
-  // Public sources summary (no admin gate).
+  // Public sources summary (no admin gate). Must be mounted BEFORE the
+  // auth-gated tenant sources router below so /api/sources/summary stays
+  // public while source management requires a session.
   app.route("/api/sources", deps.publicSourcesRouter);
 
   // Public tenant branding (P7) — payload + logo bytes.
@@ -158,6 +168,12 @@ export function buildApp(deps: BuildAppDeps): Hono {
 
   app.route("/api/runs", gatedWrap(gate, deps.runsRouter));
   app.route("/api/settings", gatedWrap(gate, deps.settingsRouter));
+
+  // Tenant source management (P8) — auth-gated; requests that the public
+  // summary router above already handled (GET /summary) never reach this.
+  if (deps.tenantSourcesRouter) {
+    app.route("/api/sources", gatedWrap(gate, deps.tenantSourcesRouter));
+  }
 
   // Super-admin console (self-gated via requireSuperAdmin inside the router).
   if (deps.superAdminRouter) {

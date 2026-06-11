@@ -22,6 +22,7 @@ import type { RunCostBreakdown } from "@shared/types/cost-breakdown.js";
 import type { EncryptedBlob } from "@shared/services/credential-cipher.js";
 import type { EditType, PreReviewSnapshot } from "@shared/review-edits/types.js";
 import type { AuditAction, OnboardingState, TenantStatus, UserRole } from "@shared/types/tenant.js";
+import type { SourceConfig, SourceHealth } from "@shared/types/source.js";
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter" | "web_search";
 
@@ -466,3 +467,33 @@ export const reviewEdits = pgTable("review_edits", {
 
 export type ReviewEditInsert = typeof reviewEdits.$inferInsert;
 export type ReviewEditSelect = typeof reviewEdits.$inferSelect;
+
+/**
+ * Normalized per-tenant sources (P8, REQ-070). One row per collectable
+ * identity (subreddit, blog listing URL, Twitter handle/list, HN, web-search
+ * query). Lifted from the legacy `user_settings.*Config` JSONB by
+ * packages/scripts/src/lift-sources.ts; the pipeline keeps reading
+ * user_settings until P9 flips collection onto enabled rows (REQ-073).
+ *
+ * tenant_id is NOT NULL with no DEFAULT: the table is born post-P4, so every
+ * writer already stamps a concrete tenant via the repository ctx.
+ */
+export const sources = pgTable(
+  "sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull(),
+    type: text("type").$type<SourceType>().notNull(),
+    config: jsonb("config").$type<SourceConfig>().notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    lastHealth: jsonb("last_health").$type<SourceHealth | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("sources_tenant_id_enabled_idx").on(t.tenantId, t.enabled),
+  ],
+);
+
+export type SourceRow = typeof sources.$inferSelect;
+export type SourceInsert = typeof sources.$inferInsert;

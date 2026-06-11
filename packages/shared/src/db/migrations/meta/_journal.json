@@ -309,6 +309,13 @@
       "when": 1781157927897,
       "tag": "0043_absent_loa",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1781167276455,
+      "tag": "0044_clear_king_cobra",
+      "breakpoints": true
     }
   ]
 }

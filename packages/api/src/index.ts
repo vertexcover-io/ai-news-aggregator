@@ -21,6 +21,7 @@ import { createDefaultPublicHomeRouter } from "@api/routes/home.js";
 import { createDefaultPublicMustReadRouter } from "@api/routes/must-read.js";
 import { createDefaultBrandingRouter } from "@api/routes/branding.js";
 import { createDefaultPublicSourcesRouter } from "@api/routes/sources.js";
+import { createDefaultTenantSourcesRouter } from "@api/routes/tenant-sources.js";
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
 import { createDefaultCollectorHealthRouter } from "@api/routes/collector-health.js";
 import { createDefaultAdminSocialCredentialsRouter } from "@api/routes/admin-social-credentials.js";
@@ -259,6 +260,8 @@ const app = buildApp({
   publicMustReadRouter: createDefaultPublicMustReadRouter(),
   archivesSearchRouter: createDefaultArchivesSearchRouter(),
   publicSourcesRouter: createDefaultPublicSourcesRouter(),
+  // Tenant source management (P8) — auth-gated /api/sources CRUD.
+  tenantSourcesRouter: createDefaultTenantSourcesRouter(),
   adminArchivesRouter: createDefaultAdminArchivesRouter(),
   adminRunsRouter: createDefaultAdminRunsRouter(),
   adminEvalRouter: createDefaultAdminEvalRouter(),

@@ -100,7 +100,8 @@ function makeApp(
     publicHomeRouter: new Hono(),
     publicMustReadRouter: new Hono(),
     archivesSearchRouter: new Hono(),
-    publicSourcesRouter: new Hono(),
+    publicSourcesRouter: makeStubPublicSourcesRouter(),
+    tenantSourcesRouter: makeStubTenantSourcesRouter(),
     adminArchivesRouter: createAdminArchivesRouter(deps),
     adminRunsRouter: new Hono(),
     adminEvalRouter: new Hono(),
@@ -118,6 +119,18 @@ function makeApp(
     linkedInOAuthCallbackRouter: new Hono(),
     collectorHealthRouter: new Hono(),
   });
+}
+
+function makeStubPublicSourcesRouter(): Hono {
+  const app = new Hono();
+  app.get("/summary", (c) => c.json({ totals: [] }));
+  return app;
+}
+
+function makeStubTenantSourcesRouter(): Hono {
+  const app = new Hono();
+  app.get("/", (c) => c.json({ sources: [] }));
+  return app;
 }
 
 function makeStubAuthRouter(): Hono {
@@ -236,6 +249,23 @@ describe("route gating (phase 4)", () => {
       headers: { cookie: `${COOKIE_NAME}=tampered.cookie` },
     });
     expect(res.status).toBe(401);
+  });
+
+  it("REQ-074: /api/sources management is gated; /api/sources/summary stays public", async () => {
+    const app = makeApp();
+
+    // Public summary (pre-existing public sources surface) — no cookie needed.
+    const summary = await app.request("/api/sources/summary");
+    expect(summary.status).toBe(200);
+
+    // Tenant source management requires a session.
+    const anon = await app.request("/api/sources");
+    expect(anon.status).toBe(401);
+    const ok = await app.request("/api/sources", {
+      headers: { cookie: sessionCookie() },
+    });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ sources: [] });
   });
 
   it("settings is also gated", async () => {
