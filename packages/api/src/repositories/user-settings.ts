@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { userSettings } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { UserSettings } from "@newsletter/shared";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 export type UserSettingsUpsertInput = Omit<UserSettings, "id" | "updatedAt" | "scheduleTime"> & {
   readonly scheduleTime?: string;
@@ -53,13 +54,14 @@ function toDomain(
 
 export function createUserSettingsRepo(
   db: Pick<AppDb, "select" | "insert">,
+  ctx: TenantContext,
 ): UserSettingsRepo {
   return {
     async get(): Promise<UserSettings | null> {
       const rows = await db
         .select()
         .from(userSettings)
-        .where(eq(userSettings.singleton, true))
+        .where(eq(userSettings.tenantId, ctx.tenantId))
         .limit(1);
       if (rows.length === 0) return null;
       return toDomain(rows[0]);
@@ -71,7 +73,7 @@ export function createUserSettingsRepo(
       const [row] = await db
         .insert(userSettings)
         .values({
-          singleton: true,
+          tenantId: ctx.tenantId,
           topN: input.topN,
           halfLifeHours: input.halfLifeHours,
           hnEnabled: input.hnEnabled,
@@ -103,7 +105,7 @@ export function createUserSettingsRepo(
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: userSettings.singleton,
+          target: userSettings.tenantId,
           set: {
             topN: input.topN,
             halfLifeHours: input.halfLifeHours,

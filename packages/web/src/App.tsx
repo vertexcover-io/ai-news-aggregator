@@ -12,6 +12,9 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 import { SourcesPage } from "./pages/SourcesPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { ConfirmPage } from "./pages/ConfirmPage";
+import { SignupPage } from "./pages/SignupPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { EvalManualFixturePage } from "./pages/EvalManualFixturePage";
@@ -45,6 +48,9 @@ export const routes: RouteObject[] = [
     ],
   },
   { path: "/admin/login", element: <AdminLoginPage /> },
+  { path: "/signup", element: <SignupPage /> },
+  { path: "/forgot-password", element: <ForgotPasswordPage /> },
+  { path: "/reset-password", element: <ResetPasswordPage /> },
   {
     path: "/admin",
     element: <RequireAdmin />,

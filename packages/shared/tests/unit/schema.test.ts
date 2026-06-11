@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type { RawItemInsert } from "@shared/db/schema.js";
+import {
+  tenants,
+  users,
+  rawItems,
+  runArchives,
+  runLogs,
+  reviewEdits,
+  emailSends,
+  subscribers,
+  feedbackEvents,
+  sesEvents,
+  evalRuns,
+  mustReadEntries,
+  userSettings,
+  socialCredentials,
+  socialTokens,
+} from "@shared/db/schema.js";
+import { RESERVED_SLUGS } from "@shared/constants/slugs.js";
 import type {
   RunSubmitTwitterConfig,
   RunSubmitTwitterUser,
@@ -30,6 +48,86 @@ describe("schema: rawItems — run_id column (REQ-001)", () => {
     };
     // runId is absent — must compile and be undefined at runtime
     expect(insert.runId).toBeUndefined();
+  });
+});
+
+// Phase 1: Multi-tenant schema (REQ-010)
+describe("schema: tenancy tables and columns (REQ-010)", () => {
+  it("tenants table exists with expected columns", () => {
+    expect(tenants).toBeDefined();
+    // Spot-check key columns
+    expect(tenants.id).toBeDefined();
+    expect(tenants.slug).toBeDefined();
+    expect(tenants.name).toBeDefined();
+    expect(tenants.status).toBeDefined();
+    expect(tenants.customDomain).toBeDefined();
+    expect(tenants.headline).toBeDefined();
+    expect(tenants.topicStrip).toBeDefined();
+    expect(tenants.subtagline).toBeDefined();
+    expect(tenants.logoBytes).toBeDefined();
+    expect(tenants.logoContentType).toBeDefined();
+    expect(tenants.featureCanon).toBeDefined();
+    expect(tenants.featureDeliverability).toBeDefined();
+    expect(tenants.featureEval).toBeDefined();
+    expect(tenants.onboardingState).toBeDefined();
+    expect(tenants.createdAt).toBeDefined();
+    expect(tenants.updatedAt).toBeDefined();
+  });
+
+  it("users table exists with expected columns", () => {
+    expect(users).toBeDefined();
+    expect(users.id).toBeDefined();
+    expect(users.tenantId).toBeDefined();
+    expect(users.email).toBeDefined();
+    expect(users.name).toBeDefined();
+    expect(users.passwordHash).toBeDefined();
+    expect(users.role).toBeDefined();
+    expect(users.createdAt).toBeDefined();
+    expect(users.updatedAt).toBeDefined();
+  });
+
+  const TENANT_OWNED_TABLES = [
+    "rawItems",
+    "runArchives",
+    "runLogs",
+    "reviewEdits",
+    "emailSends",
+    "subscribers",
+    "feedbackEvents",
+    "sesEvents",
+    "evalRuns",
+    "mustReadEntries",
+    "userSettings",
+    "socialCredentials",
+    "socialTokens",
+  ] as const;
+
+  it.each(TENANT_OWNED_TABLES)("%s has a nullable tenant_id column", (tableName) => {
+    const tableMap: Record<string, unknown> = {
+      rawItems,
+      runArchives,
+      runLogs,
+      reviewEdits,
+      emailSends,
+      subscribers,
+      feedbackEvents,
+      sesEvents,
+      evalRuns,
+      mustReadEntries,
+      userSettings,
+      socialCredentials,
+      socialTokens,
+    };
+    const table = tableMap[tableName];
+    expect(table, `Table ${tableName} should be defined`).toBeDefined();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tenantIdCol = (table as any).tenantId;
+    expect(tenantIdCol, `${tableName} should have tenantId column`).toBeDefined();
+  });
+
+  it("RESERVED_SLUGS has at least 30 reserved words", () => {
+    expect(Array.isArray(RESERVED_SLUGS)).toBe(true);
+    expect(RESERVED_SLUGS.length).toBeGreaterThanOrEqual(30);
   });
 });
 

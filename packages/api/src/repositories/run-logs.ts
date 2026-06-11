@@ -2,6 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { runLogs } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import type { RunLogEntry } from "@newsletter/shared";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 export interface RunLogSourceLookup {
   readonly sourceType: SourceType;
@@ -17,11 +18,11 @@ export interface RunLogRepo {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function createRunLogRepo(db: Pick<AppDb, "select">): RunLogRepo {
+export function createRunLogRepo(db: Pick<AppDb, "select">, ctx: TenantContext): RunLogRepo {
   return {
     async listForRun(runId: string): Promise<RunLogEntry[]> {
       if (!UUID_RE.test(runId)) return [];
-      const rows = await selectLogs(db, runId);
+      const rows = await selectLogs(db, runId, ctx);
       return rows.map(toRunLogEntry);
     },
     async listForRunSource(
@@ -29,11 +30,11 @@ export function createRunLogRepo(db: Pick<AppDb, "select">): RunLogRepo {
       source: RunLogSourceLookup,
     ): Promise<RunLogEntry[]> {
       if (!UUID_RE.test(runId)) return [];
-      const exactRows = await selectLogs(db, runId, source.identifier);
+      const exactRows = await selectLogs(db, runId, ctx, source.identifier);
       if (exactRows.length > 0) return exactRows.map(toRunLogEntry);
 
       if (source.identifier === source.sourceType) return [];
-      const fallbackRows = await selectLogs(db, runId, source.sourceType);
+      const fallbackRows = await selectLogs(db, runId, ctx, source.sourceType);
       return fallbackRows.map(toRunLogEntry);
     },
   };
@@ -66,18 +67,17 @@ interface RunLogSelectedRow {
 function selectLogs(
   db: Pick<AppDb, "select">,
   runId: string,
+  ctx: TenantContext,
   source?: string,
 ): Promise<RunLogSelectedRow[]> {
-  const runPredicate = eq(runLogs.runId, runId);
-  const predicate =
-    source === undefined
-      ? runPredicate
-      : and(runPredicate, eq(runLogs.source, source));
+  const conditions: ReturnType<typeof eq>[] = [eq(runLogs.runId, runId)];
+  if (!ctx.allTenants) conditions.push(eq(runLogs.tenantId, ctx.tenantId));
+  if (source !== undefined) conditions.push(eq(runLogs.source, source));
 
   return db
     .select(RUN_LOG_SELECT)
     .from(runLogs)
-    .where(predicate)
+    .where(and(...conditions))
     .orderBy(asc(runLogs.id));
 }
 

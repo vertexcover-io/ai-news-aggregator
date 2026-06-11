@@ -12,11 +12,13 @@ import {
 } from "@newsletter/shared/services";
 import type { HealthCheckCollector } from "@newsletter/shared/types";
 import type { UserSettings } from "@newsletter/shared";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
+import { resolveTenantCtx } from "@api/lib/tenant-ctx.js";
 
 export interface CollectorHealthRouterDeps {
   collectorHealthQueue: Pick<Queue, "add">;
   store: CollectorHealthStore;
-  getSettings: () => Promise<UserSettings | null>;
+  getSettings: (ctx: TenantContext) => Promise<UserSettings | null>;
 }
 
 const checkBodySchema = z.object({
@@ -57,7 +59,7 @@ export function createCollectorHealthRouter(deps: CollectorHealthRouterDeps): Ho
       targets = [parsed.data.collector];
     } else {
       // REQ-002: absent -> all enabled from settings
-      const settings = await deps.getSettings();
+      const settings = await deps.getSettings(resolveTenantCtx(c));
       targets = settings !== null ? enabledCollectors(settings) : [];
     }
 
@@ -97,12 +99,12 @@ export function createDefaultCollectorHealthRouter(): Hono {
   return createCollectorHealthRouter({
     collectorHealthQueue: getDefaultCollectorHealthQueue(),
     store: createCollectorHealthStore(redis),
-    getSettings: async () => {
+    getSettings: async (ctx) => {
       // Settings are read lazily per-request — no startup caching
       // to honour the "takes effect without restart" freshness promise.
       const { createUserSettingsRepo } = await import("@api/repositories/user-settings.js");
       const { getDb } = await import("@newsletter/shared");
-      return createUserSettingsRepo(getDb()).get();
+      return createUserSettingsRepo(getDb(), ctx).get();
     },
   });
 }

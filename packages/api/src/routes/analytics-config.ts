@@ -5,9 +5,11 @@ import {
   type UserSettingsRepo,
 } from "@api/repositories/user-settings.js";
 import { resolvePostHogConfig } from "@newsletter/shared/analytics";
+import { resolveTenantCtx } from "@api/lib/tenant-ctx.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 export interface AnalyticsConfigRouterDeps {
-  getSettingsRepo: () => UserSettingsRepo;
+  getSettingsRepo: (ctx: TenantContext) => UserSettingsRepo;
 }
 
 export function createAnalyticsConfigRouter(
@@ -16,7 +18,7 @@ export function createAnalyticsConfigRouter(
   const app = new Hono();
 
   app.get("/", async (c) => {
-    const settings = await deps.getSettingsRepo().get();
+    const settings = await deps.getSettingsRepo(resolveTenantCtx(c)).get();
     return c.json(resolvePostHogConfig(settings));
   });
 
@@ -25,7 +27,6 @@ export function createAnalyticsConfigRouter(
 
 export function createDefaultAnalyticsConfigRouter(): Hono {
   return createAnalyticsConfigRouter({
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getSettingsRepo: (ctx) => createUserSettingsRepo(defaultGetDb(), ctx),
   });
 }
-

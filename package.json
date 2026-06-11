@@ -44,6 +44,9 @@
     "overrides": {
       "ws": "8.21.0",
       "engine.io": "6.6.8"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "argon2"
+    ]
   }
 }

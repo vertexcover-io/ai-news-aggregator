@@ -146,6 +146,73 @@ The rule explicitly allows:
    `@newsletter/shared/db/*`, `drizzle-orm`, or `drizzle-orm/*` — this rule
    only targets the two restricted sources.
 
+## Phase 4: Tenant scoping (REQ-014)
+
+In repository files, every query against a **tenant-owned table** must
+include a `tenantId` filter. The rule tracks imports of tenant-owned table
+symbols and flags any file that uses one without also referencing its
+`.tenantId` property.
+
+**Tenant-owned tables:** `rawItems`, `runArchives`, `runLogs`,
+`socialCredentials`, `socialTokens`, `userSettings`, `mustReadEntries`,
+`subscribers`, `emailSends`, `feedbackEvents`, `sesEvents`, `evalRuns`,
+`reviewEdits`.
+
+**Exempt:** `users` (login-by-email is cross-tenant), `tenants` (the
+tenant definition table itself).
+
+### Valid (scoped)
+
+```ts
+// packages/api/src/repositories/run-archives.ts
+import { eq, and } from "drizzle-orm";
+import { runArchives } from "@newsletter/shared/db";
+
+export function findById(db: any, tenantId: string) {
+  return db.select().from(runArchives)
+    .where(and(eq(runArchives.id, id), eq(runArchives.tenantId, tenantId)));
+}
+```
+
+### Valid (allowlisted — users table)
+
+```ts
+// packages/api/src/repositories/users.ts
+import { eq } from "drizzle-orm";
+import { users } from "@newsletter/shared/db";
+
+export function findByEmail(db: any, email: string) {
+  return db.select().from(users).where(eq(users.email, email));
+}
+```
+
+### Valid (escape hatch — withAllTenants)
+
+```ts
+// packages/api/src/repositories/run-archives.ts
+import { eq } from "drizzle-orm";
+import { runArchives } from "@newsletter/shared/db";
+import { withAllTenants } from "@newsletter/shared/types/tenant-context";
+
+export function superAdminList(db: any, ctx: TenantContext) {
+  const allCtx = withAllTenants(ctx);
+  return db.select().from(runArchives).where(eq(runArchives.id, id));
+}
+```
+
+### Invalid (unscoped)
+
+```ts
+// packages/api/src/repositories/run-archives.ts
+import { eq } from "drizzle-orm";
+import { runArchives } from "@newsletter/shared/db";
+
+export function badQuery(db: any) {
+  return db.select().from(runArchives).where(eq(runArchives.id, "x"));
+  // => unscopedTenantQuery: must include tenantId filter
+}
+```
+
 ## When to disable
 
 Do not disable per line. If you genuinely need runtime DB access, add a

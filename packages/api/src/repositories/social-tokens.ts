@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { socialTokens } from "@newsletter/shared/db";
 import type { AppDb, SocialTokenEncryptedFields } from "@newsletter/shared/db";
 import type { SocialTokenMetadata } from "@newsletter/shared/types";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 export type SocialPlatform = "linkedin" | "twitter";
 
@@ -33,6 +34,7 @@ export interface SocialTokensRepo {
 
 export function createSocialTokensRepo(
   db: Pick<AppDb, "select" | "insert" | "delete">,
+  ctx: TenantContext,
   cipher: CredentialCipher,
 ): SocialTokensRepo {
   return {
@@ -51,6 +53,7 @@ export function createSocialTokensRepo(
         .insert(socialTokens)
         .values({
           platform,
+          tenantId: ctx.tenantId,
           encryptedFields,
           expiresAt: input.expiresAt,
           metadata: input.metadata ?? null,
@@ -69,10 +72,12 @@ export function createSocialTokensRepo(
 
     async getLinkedIn(): Promise<SocialTokenRecord | null> {
       try {
+        const conditions = [eq(socialTokens.platform, "linkedin")];
+        if (!ctx.allTenants) conditions.push(eq(socialTokens.tenantId, ctx.tenantId));
         const rows = await db
           .select()
           .from(socialTokens)
-          .where(eq(socialTokens.platform, "linkedin"))
+          .where(and(...conditions))
           .limit(1);
         if (rows.length === 0) return null;
         const row = rows[0];
@@ -91,9 +96,11 @@ export function createSocialTokensRepo(
     },
 
     async deleteToken(platform: SocialPlatform): Promise<boolean> {
+      const conditions = [eq(socialTokens.platform, platform)];
+      if (!ctx.allTenants) conditions.push(eq(socialTokens.tenantId, ctx.tenantId));
       const result = await db
         .delete(socialTokens)
-        .where(eq(socialTokens.platform, platform))
+        .where(and(...conditions))
         .returning({ platform: socialTokens.platform });
       return result.length > 0;
     },

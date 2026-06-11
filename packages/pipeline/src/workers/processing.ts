@@ -105,6 +105,9 @@ import { shortlistCandidates } from "@pipeline/processors/shortlist.js";
 import { renderNewsletter } from "@pipeline/lib/email-render.js";
 import { createEmailProvider } from "@pipeline/lib/email-provider.js";
 
+import { BOOTSTRAP_TENANT_ID } from "@newsletter/shared/types/tenant-context";
+const bootstrapCtx = { tenantId: BOOTSTRAP_TENANT_ID, role: "super_admin" as const };
+
 const logger = createLogger("worker:processing");
 
 export interface CreateProcessingWorkerOptions {
@@ -217,11 +220,11 @@ export function createProcessingWorker(
 function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
   const db = getDb();
   const runState: RunStateService = createRunStateService(connection);
-  const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db);
-  const candidatesRepo: CandidatesRepo = createCandidatesRepo(db);
-  const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db);
-  const runLogRepo = createRunLogRepo(db);
-  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db);
+  const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db, bootstrapCtx);
+  const candidatesRepo: CandidatesRepo = createCandidatesRepo(db, bootstrapCtx);
+  const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db, bootstrapCtx);
+  const runLogRepo = createRunLogRepo(db, bootstrapCtx);
+  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db, bootstrapCtx);
   const loadFn: LoadCandidatesFn = loadCandidatesSince;
   // TAVILY_API_KEY resolved at worker startup. Env-driven only (no DB equivalent),
   // so process-startup resolution is correct — no per-job refresh needed.
@@ -295,7 +298,7 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
 
 function buildDefaultDailyRunDeps(connection: IORedis): DailyRunDeps {
   const db = getDb();
-  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db);
+  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db, bootstrapCtx);
   const queue = new Queue<RunProcessJobPayload>("processing", { connection });
   return {
     redis: connection,
@@ -365,8 +368,8 @@ function warnInvalidTwitterConfig(
 
 export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
   const db = getDb();
-  const archiveRepo = createRunArchivesRepo(db);
-  const rawItemsRepo = createRawItemsRepo(db);
+  const archiveRepo = createRunArchivesRepo(db, bootstrapCtx);
+  const rawItemsRepo = createRawItemsRepo(db, bootstrapCtx);
   const socialTokensRepo = getSharedSocialTokensRepo();
   const socialCredentialsRepo = getSharedSocialCredentialsRepo();
   const slackNotifier = createSlackNotifier({
@@ -445,8 +448,8 @@ export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
 
   return {
     emailProvider: createEmailProvider(),
-    subscribersRepo: createPipelineSubscribersRepo(db),
-    emailSendsRepo: createPipelineEmailSendsRepo(db),
+    subscribersRepo: createPipelineSubscribersRepo(db, bootstrapCtx),
+    emailSendsRepo: createPipelineEmailSendsRepo(db, bootstrapCtx),
     archiveRepo,
     rawItemsRepo,
     renderNewsletter,
@@ -481,14 +484,14 @@ function buildDefaultSocialHealthDeps(): SocialHealthDeps {
 
 let cachedSocialTokensRepo: SocialTokensRepo | undefined;
 function getSharedSocialTokensRepo(): SocialTokensRepo {
-  cachedSocialTokensRepo ??= createSocialTokensRepo(getDb(), getCredentialCipher());
+  cachedSocialTokensRepo ??= createSocialTokensRepo(getDb(), bootstrapCtx, getCredentialCipher());
   return cachedSocialTokensRepo;
 }
 
 let cachedSocialCredentialsRepo: SocialCredentialsRepo | undefined;
 function getSharedSocialCredentialsRepo(): SocialCredentialsRepo {
   cachedSocialCredentialsRepo ??= createSocialCredentialsRepo(
-    getDb(),
+    getDb(), bootstrapCtx,
     getCredentialCipher(),
   );
   return cachedSocialCredentialsRepo;

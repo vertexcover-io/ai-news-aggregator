@@ -6,6 +6,7 @@ import {
   getDb as defaultGetDb,
   safeTimezone,
 } from "@newsletter/shared";
+import { BOOTSTRAP_TENANT_ID } from "@newsletter/shared/types/tenant-context";
 import { GroundTruthSchema } from "@newsletter/shared/types/eval-ranking-schemas";
 import { EvalRunRequestSchema } from "@newsletter/shared/types/eval-ranking-schemas";
 import {
@@ -39,6 +40,7 @@ import {
 } from "@api/repositories/eval-runs.js";
 import { runEvalOrchestrator, type RunEvalFn } from "@api/services/eval-run-orchestrator.js";
 
+const bootstrapCtx = { tenantId: BOOTSTRAP_TENANT_ID, role: "super_admin" as const };
 const listRunsQuerySchema = z.object({
   page: z.coerce
     .number()
@@ -400,14 +402,14 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
 
 export function createDefaultAdminEvalRouter(): Hono {
   return createAdminEvalRouter({
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
-    getEvalRunsRepo: () => createEvalRunsRepo(defaultGetDb()),
+    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb(), bootstrapCtx),
+    getEvalRunsRepo: () => createEvalRunsRepo(defaultGetDb(), bootstrapCtx),
     listCalendarRunsByDate: async (dateISO, timezone) => {
-      const repo = createEvalExportsRepo(defaultGetDb());
+      const repo = createEvalExportsRepo(defaultGetDb(), bootstrapCtx);
       return repo.listCompletedRunsByDate(dateISO, timezone);
     },
     getCalendarRunDetail: async (runId) => {
-      const repo = createEvalExportsRepo(defaultGetDb());
+      const repo = createEvalExportsRepo(defaultGetDb(), bootstrapCtx);
       return repo.getCompletedRunDetail(runId);
     },
   });

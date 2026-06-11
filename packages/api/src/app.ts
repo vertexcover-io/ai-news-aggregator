@@ -2,9 +2,13 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { MiddlewareHandler } from "hono";
 import { captureException } from "@api/lib/posthog.js";
+import { resolveTenant } from "@api/middleware/resolve-tenant.js";
+import type { ResolveTenantConfig } from "@api/middleware/resolve-tenant.js";
 
 export interface BuildAppDeps {
   sessionSecret: string;
+  /** Tenant resolution config. When provided, the resolve-tenant middleware is mounted. */
+  resolveTenantConfig?: ResolveTenantConfig;
   publicArchivesRouter: Hono;
   publicHomeRouter: Hono;
   publicMustReadRouter: Hono;
@@ -42,6 +46,22 @@ export interface BuildAppDeps {
   linkedInOAuthCallbackRouter: Hono;
   /** Admin-gated collector health check trigger + snapshot routes. */
   collectorHealthRouter: Hono;
+  /**
+   * Public auth routes: signup, login, logout, forgot-password, reset-password, me.
+   * Mounted at /api/auth — ungated (signup/login/logout are public by design).
+   * Optional during migration — tests that don't test auth can omit it.
+   */
+  authRouter?: Hono;
+  /** Phase 7: Public branding endpoint (GET /api/branding). */
+  brandingRouter?: Hono;
+  /** Phase 7: Public logo serving (GET /logo). */
+  logoRouter?: Hono;
+  /** Phase 6: Super-admin routes behind requireSuperAdmin (GET /api/super/tenants, etc.). */
+  superAdminRouter?: Hono;
+  /** Phase 6: requireSuperAdmin middleware factory. */
+  requireSuperAdminFactory?: (secret: string) => MiddlewareHandler;
+  /** Phase 8: Admin-gated sources CRUD routes. */
+  adminSourcesRouter?: Hono;
 }
 
 const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
@@ -68,6 +88,17 @@ export function buildApp(deps: BuildAppDeps): Hono {
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
+  // Phase 5: Host → tenant resolution middleware.
+  // Mounted early so all downstream routes can read c.get('hostClassification').
+  if (deps.resolveTenantConfig) {
+    app.use("*", resolveTenant(deps.resolveTenantConfig));
+  }
+
+  // Public auth routes (signup, login, logout, forgot, reset, me).
+  if (deps.authRouter) {
+    app.route("/api/auth", deps.authRouter);
+  }
+
   // Public subscribe/confirm/unsubscribe routes.
   app.route("/api", deps.subscribeRouter);
 
@@ -88,6 +119,14 @@ export function buildApp(deps: BuildAppDeps): Hono {
 
   // Public sources summary (no admin gate).
   app.route("/api/sources", deps.publicSourcesRouter);
+
+  // Phase 7: Public branding + logo (no auth required).
+  if (deps.brandingRouter) {
+    app.route("/api/branding", deps.brandingRouter);
+  }
+  if (deps.logoRouter) {
+    app.route("/logo", deps.logoRouter);
+  }
 
   // LinkedIn OAuth callback — mounted BEFORE adminApp so the gate does not
   // intercept requests to this path. LinkedIn redirects the user's browser here
@@ -125,7 +164,17 @@ export function buildApp(deps: BuildAppDeps): Hono {
   adminApp.route("/must-read", deps.adminMustReadRouter);
   adminApp.route("/analytics", deps.analyticsRouter);
   adminApp.route("/collector-health", deps.collectorHealthRouter);
+  // Phase 8: Admin-gated sources CRUD.
+  if (deps.adminSourcesRouter) {
+    adminApp.route("/sources", deps.adminSourcesRouter);
+  }
   app.route("/api/admin", adminApp);
+
+  // Phase 6: Super-admin routes behind requireSuperAdmin.
+  if (deps.superAdminRouter && deps.requireSuperAdminFactory) {
+    const superGate = deps.requireSuperAdminFactory(deps.sessionSecret);
+    app.route("/api/super", gatedWrap(superGate, deps.superAdminRouter));
+  }
 
   app.route("/api/runs", gatedWrap(gate, deps.runsRouter));
   app.route("/api/settings", gatedWrap(gate, deps.settingsRouter));

@@ -5,6 +5,9 @@ import { createRedisConnection } from "@newsletter/shared/redis";
 import { createLogger } from "@newsletter/shared/logger";
 import { startRun } from "@newsletter/shared";
 import type { RunProcessJobPayload, UserSettings } from "@newsletter/shared";
+
+import { BOOTSTRAP_TENANT_ID } from "@newsletter/shared/types/tenant-context";
+const bootstrapCtx = { tenantId: BOOTSTRAP_TENANT_ID, role: "super_admin" as const };
 import {
   createUserSettingsRepo,
   type UserSettingsRepo,
@@ -81,7 +84,7 @@ export function createDailyRunWorker(
   const queue =
     options.queue ?? new Queue<RunProcessJobPayload>("processing", { connection });
   const userSettingsRepo =
-    options.userSettingsRepo ?? createUserSettingsRepo(getDb());
+    options.userSettingsRepo ?? createUserSettingsRepo(getDb(), bootstrapCtx);
 
   const deps: DailyRunDeps = { redis, queue, userSettingsRepo };
 

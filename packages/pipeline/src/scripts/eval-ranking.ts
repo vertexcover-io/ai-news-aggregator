@@ -7,6 +7,9 @@ config({ path: resolve(import.meta.dirname, "../../../../.env") });
 import { getDb } from "@newsletter/shared/db";
 import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 import { EvalCache } from "@pipeline/eval/cache.js";
+
+import { BOOTSTRAP_TENANT_ID } from "@newsletter/shared/types/tenant-context";
+const bootstrapCtx = { tenantId: BOOTSTRAP_TENANT_ID, role: "super_admin" as const };
 import {
   runEvalCli,
   type RunEvalCliOptions,
@@ -68,7 +71,7 @@ async function main(): Promise<number> {
 
   const loadPromptFromDb = async (): Promise<string> => {
     const db = getDb();
-    const repo = createUserSettingsRepo(db);
+    const repo = createUserSettingsRepo(db, bootstrapCtx);
     const settings = await repo.get();
     if (settings === null) {
       throw new Error(

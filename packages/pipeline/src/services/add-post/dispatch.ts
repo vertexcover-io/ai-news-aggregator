@@ -1,4 +1,7 @@
 import type { RawItemInsert } from "@newsletter/shared/db";
+
+import { BOOTSTRAP_TENANT_ID } from "@newsletter/shared/types/tenant-context";
+const bootstrapCtx = { tenantId: BOOTSTRAP_TENANT_ID, role: "super_admin" as const };
 import {
   fetchHnPost as defaultFetchHnPost,
   parseHnItemIdFromUrl,
@@ -122,7 +125,7 @@ async function loadTwitterDefaults(): Promise<{
       import("rettiwt-api"),
     ]);
 
-    const repo = createSocialCredentialsRepo(getDb(), getCredentialCipher());
+    const repo = createSocialCredentialsRepo(getDb(), bootstrapCtx, getCredentialCipher());
 
     return {
       rettiwtCtor: Rettiwt as unknown as new (opts: {

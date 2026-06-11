@@ -37,6 +37,9 @@ import { createWebSearchProvider } from "@pipeline/collectors/web-search/provide
 import { Rettiwt } from "rettiwt-api";
 import type { UserSettings } from "@newsletter/shared";
 
+import { BOOTSTRAP_TENANT_ID } from "@newsletter/shared/types/tenant-context";
+const bootstrapCtx = { tenantId: BOOTSTRAP_TENANT_ID, role: "super_admin" as const };
+
 export interface CollectorHealthJobData {
   collectors?: HealthCheckCollector[];
   trigger: CollectorHealthTrigger;
@@ -416,12 +419,12 @@ export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
   const db = getDb();
 
   return {
-    userSettingsRepo: createUserSettingsRepo(db),
+    userSettingsRepo: createUserSettingsRepo(db, bootstrapCtx),
     store: createCollectorHealthStore(createRedisConnection()),
     runCollectorHealthCheck: defaultRunCollectorHealthCheck,
     // Per-job factory so credentials are always fresh (S-pipeline-03 / D-051)
     buildHealthCheckDeps: async (): Promise<HealthCheckDeps> => {
-      const credentialsRepo = createSocialCredentialsRepo(getDb(), getCredentialCipher());
+      const credentialsRepo = createSocialCredentialsRepo(getDb(), bootstrapCtx, getCredentialCipher());
       const twitterCookie = await resolveTwitterCollectorCookie({
         repo: credentialsRepo,
         env: process.env,
