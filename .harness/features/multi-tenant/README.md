@@ -2,7 +2,7 @@
 
 **Final verification verdict:** ✅ **PASS** — functional verification passed with all 29 UI claims independently re-proven via Playwright MCP; quality gate green (typecheck, lint, and the full api/web/shared/pipeline/scripts/eslint-plugin suites). See [verification/proof-report.md](verification/proof-report.md).
 
-> **PR:** _to be filled in after creation_
+> **PR:** https://github.com/vertexcover-io/ai-news-aggregator/pull/284
 
 ## What was built
 
