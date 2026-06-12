@@ -13,6 +13,7 @@
  *   - run-process completion path with rankedItems persisted to Redis
  *   - All-collectors-failed terminal state (REQ-010)
  */
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import {
   describe,
   it,
@@ -114,7 +115,7 @@ describe("run flow end-to-end (single-job)", () => {
     db = getTestDb();
     const connection = getTestRedis();
     const runStateService = createRunStateService(connection);
-    const repo = createRawItemsRepo(db);
+    const repo = createRawItemsRepo(db, TENANT_ZERO_ID);
 
     rankFnImpl = defaultRankFn;
     scenario = { hnMode: "seed", redditMode: "seed" };
@@ -238,10 +239,10 @@ describe("run flow end-to-end (single-job)", () => {
         handleRunProcessJob(
           {
             runState: runStateService,
-            rawItemsRepo: createRawItemsRepo(db),
-            candidatesRepo: createCandidatesRepo(db),
-            archiveRepo: createRunArchivesRepo(db),
-            runLogRepo: createRunLogRepo(db),
+            rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID),
+            candidatesRepo: createCandidatesRepo(db, TENANT_ZERO_ID),
+            archiveRepo: createRunArchivesRepo(db, TENANT_ZERO_ID),
+            runLogRepo: createRunLogRepo(db, TENANT_ZERO_ID),
             loadFn: loadCandidatesSince,
             shortlistFn: (candidates) =>
               Promise.resolve({ shortlist: candidates, breakdowns: [] }),

@@ -1,3 +1,4 @@
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -132,7 +133,7 @@ describe("VS-1: getCompletedRunDetail deduplicates URL duplicates in sourcePool"
       rawWindow: [],
     });
 
-    const repo = createEvalExportsRepo(db);
+    const repo = createEvalExportsRepo(db, TENANT_ZERO_ID);
     const detail = await repo.getCompletedRunDetail("run-001");
 
     if (detail === null) throw new Error("expected detail to be non-null");
@@ -171,7 +172,7 @@ describe("VS-1: getCompletedRunDetail deduplicates URL duplicates in sourcePool"
       rawWindow: [],
     });
 
-    const repo = createEvalExportsRepo(db);
+    const repo = createEvalExportsRepo(db, TENANT_ZERO_ID);
     const detail = await repo.getCompletedRunDetail("run-001");
 
     if (detail === null) throw new Error("expected detail to be non-null");
@@ -200,7 +201,7 @@ describe("VS-2: getCompletedRunDetail loads by run_id and falls back to window",
       rawWindow,
     });
 
-    const repo = createEvalExportsRepo(db);
+    const repo = createEvalExportsRepo(db, TENANT_ZERO_ID);
     const detail = await repo.getCompletedRunDetail("run-001");
 
     if (detail === null) throw new Error("expected detail to be non-null");
@@ -225,7 +226,7 @@ describe("VS-2: getCompletedRunDetail loads by run_id and falls back to window",
       rawWindow,
     });
 
-    const repo = createEvalExportsRepo(db);
+    const repo = createEvalExportsRepo(db, TENANT_ZERO_ID);
     const detail = await repo.getCompletedRunDetail("run-001");
 
     if (detail === null) throw new Error("expected detail to be non-null");
@@ -243,7 +244,7 @@ describe("VS-2: getCompletedRunDetail loads by run_id and falls back to window",
       rawWindow: [],
     });
 
-    const repo = createEvalExportsRepo(db);
+    const repo = createEvalExportsRepo(db, TENANT_ZERO_ID);
     const detail = await repo.getCompletedRunDetail("nonexistent");
     expect(detail).toBeNull();
   });
@@ -331,8 +332,8 @@ describe("VS-3 (REQ-009): listCompletedRunsByDate itemCount == getCompletedRunDe
       rawWindow: [],
     });
 
-    const repoForList = createEvalExportsRepo(dbForList);
-    const repoForDetail = createEvalExportsRepo(dbForDetail);
+    const repoForList = createEvalExportsRepo(dbForList, TENANT_ZERO_ID);
+    const repoForDetail = createEvalExportsRepo(dbForDetail, TENANT_ZERO_ID);
 
     const summaries = await repoForList.listCompletedRunsByDate("2026-05-22", "UTC");
     const detail = await repoForDetail.getCompletedRunDetail("run-001");
@@ -379,7 +380,7 @@ describe("REQ-008/EDGE-005: previousRanking renders even when id absent from ded
       rawWindow: [],
     });
 
-    const repo = createEvalExportsRepo(db);
+    const repo = createEvalExportsRepo(db, TENANT_ZERO_ID);
     const detail = await repo.getCompletedRunDetail("run-001");
 
     if (detail === null) throw new Error("expected detail to be non-null");

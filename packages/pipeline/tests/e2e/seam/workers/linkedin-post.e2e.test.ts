@@ -1,3 +1,4 @@
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
@@ -63,6 +64,7 @@ async function seedReviewedArchive(
 ): Promise<string> {
   const runId = randomUUID();
   const raw: RawItemInsert = {
+    tenantId: TENANT_ZERO_ID,
     sourceType: "hn",
     externalId: `linkedin-worker-${runId}`,
     title: "Agent benchmarks reshape enterprise buying",
@@ -86,6 +88,7 @@ async function seedReviewedArchive(
   }
 
   await db.insert(runArchives).values({
+    tenantId: TENANT_ZERO_ID,
     id: runId,
     status: "completed",
     rankedItems: [
@@ -109,7 +112,7 @@ async function seedReviewedArchive(
 }
 
 async function seedLinkedInToken(db: AppDb): Promise<void> {
-  await createSocialTokensRepo(db, getCredentialCipher()).saveToken("linkedin", {
+  await createSocialTokensRepo(db, TENANT_ZERO_ID, getCredentialCipher()).saveToken("linkedin", {
     accessToken: "linkedin-access-token",
     refreshToken: "",
     expiresAt: new Date(Date.now() + 60 * 60 * 1000),
@@ -162,12 +165,12 @@ describe("linkedin-post worker e2e", () => {
       }),
     );
 
-    const archiveRepo = createRunArchivesRepo(db);
+    const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
     const notifier = createLinkedInNotifier({
       apiClient: createLinkedInApiClient(),
       archives: archiveRepo,
-      rawItems: createRawItemsRepo(db),
-      tokens: createSocialTokensRepo(db, getCredentialCipher()),
+      rawItems: createRawItemsRepo(db, TENANT_ZERO_ID),
+      tokens: createSocialTokensRepo(db, TENANT_ZERO_ID, getCredentialCipher()),
       config: {
         clientId: "linkedin-client-id",
         clientSecret: "linkedin-client-secret",
@@ -209,12 +212,12 @@ describe("linkedin-post worker e2e", () => {
       }),
     );
 
-    const archiveRepo = createRunArchivesRepo(db);
+    const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
     const notifier = createLinkedInNotifier({
       apiClient: createLinkedInApiClient(),
       archives: archiveRepo,
-      rawItems: createRawItemsRepo(db),
-      tokens: createSocialTokensRepo(db, getCredentialCipher()),
+      rawItems: createRawItemsRepo(db, TENANT_ZERO_ID),
+      tokens: createSocialTokensRepo(db, TENANT_ZERO_ID, getCredentialCipher()),
       config: {
         clientId: "linkedin-client-id",
         clientSecret: "linkedin-client-secret",
@@ -259,12 +262,12 @@ describe("linkedin-post worker e2e", () => {
       }),
     );
 
-    const archiveRepo = createRunArchivesRepo(db);
+    const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
     const notifier = createLinkedInNotifier({
       apiClient: createLinkedInApiClient(),
       archives: archiveRepo,
-      rawItems: createRawItemsRepo(db),
-      tokens: createSocialTokensRepo(db, getCredentialCipher()),
+      rawItems: createRawItemsRepo(db, TENANT_ZERO_ID),
+      tokens: createSocialTokensRepo(db, TENANT_ZERO_ID, getCredentialCipher()),
       config: {
         clientId: "linkedin-client-id",
         clientSecret: "linkedin-client-secret",
@@ -308,13 +311,13 @@ describe("linkedin-post worker e2e", () => {
       }),
     );
 
-    const archiveRepo = createRunArchivesRepo(db);
+    const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
     const makeNotifier = () =>
       createLinkedInNotifier({
         apiClient: createLinkedInApiClient(),
         archives: archiveRepo,
-        rawItems: createRawItemsRepo(db),
-        tokens: createSocialTokensRepo(db, getCredentialCipher()),
+        rawItems: createRawItemsRepo(db, TENANT_ZERO_ID),
+        tokens: createSocialTokensRepo(db, TENANT_ZERO_ID, getCredentialCipher()),
         config: {
           clientId: "linkedin-client-id",
           clientSecret: "linkedin-client-secret",
@@ -355,12 +358,12 @@ describe("linkedin-post worker e2e", () => {
       }),
     );
 
-    const archiveRepo = createRunArchivesRepo(db);
+    const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
     const notifier = createLinkedInNotifier({
       apiClient: createLinkedInApiClient(),
       archives: archiveRepo,
-      rawItems: createRawItemsRepo(db),
-      tokens: createSocialTokensRepo(db, getCredentialCipher()),
+      rawItems: createRawItemsRepo(db, TENANT_ZERO_ID),
+      tokens: createSocialTokensRepo(db, TENANT_ZERO_ID, getCredentialCipher()),
       config: {
         clientId: "linkedin-client-id",
         clientSecret: "linkedin-client-secret",

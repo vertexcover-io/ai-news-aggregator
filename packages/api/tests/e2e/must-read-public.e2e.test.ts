@@ -3,6 +3,8 @@
  * Covers REQ-014, REQ-015, NF-004.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { Hono } from "hono";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +19,7 @@ const REPO_ROOT = resolve(HERE, "../../../..");
 config({ path: resolve(REPO_ROOT, ".env") });
 
 const db = getDb();
-const repo = createMustReadRepo(db);
+const repo = createMustReadRepo(db, TENANT_ZERO_ID);
 
 const URL_PREFIX = "https://must-read-public.example.com/";
 
@@ -34,6 +36,7 @@ afterEach(wipe);
 
 function buildApp(): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route(
     "/api/must-read",
     createPublicMustReadRouter({

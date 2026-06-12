@@ -70,7 +70,6 @@ async function main() {
     REDIS_URL: `redis://127.0.0.1:${redisPort}`,
     E2E_API_BASE: `http://127.0.0.1:${apiPort}`,
     PLAYWRIGHT_BASE_URL: `http://127.0.0.1:${webPort}`,
-    ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ?? "vertexcover@123",
     // Shared HMAC secret for subscriber tokens — the API server (token issue +
     // verify) and the specs (which forge expired/edge-case tokens) must agree.
     SESSION_SECRET:
@@ -80,7 +79,6 @@ async function main() {
     // instead of whatever the API's .env declares (e.g. localhost:5173).
     NEWSLETTER_BASE_URL: `http://127.0.0.1:${webPort}`,
   };
-  env.E2E_ADMIN_PASSWORD = env.ADMIN_PASSWORD;
 
   let pgCid = "";
   let redisCid = "";

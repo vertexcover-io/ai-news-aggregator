@@ -5,6 +5,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import posthog from "posthog-js";
 import { PostHogProvider } from "@posthog/react";
 import { routes } from "./App.tsx";
+import { TenantConfigProvider } from "./components/shell/TenantConfigProvider";
 import { Toaster } from "@/components/ui/sonner";
 import { initBrowserAnalytics } from "./lib/analytics";
 import "./index.css";
@@ -37,7 +38,9 @@ createRoot(rootEl).render(
   <StrictMode>
     <AnalyticsProvider>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <TenantConfigProvider>
+          <RouterProvider router={router} />
+        </TenantConfigProvider>
         <Toaster />
       </QueryClientProvider>
     </AnalyticsProvider>

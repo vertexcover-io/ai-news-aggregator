@@ -96,7 +96,7 @@ describe("test_EDGE_007_api_runtime_settings_refresh", () => {
     expect(callCount1).toBe(1);
 
     // Simulate operator update at runtime via refreshPostHogConfig
-    refreshPostHogConfig({
+    refreshPostHogConfig("00000000-0000-0000-0000-000000000000", {
       posthogEnabled: true,
       posthogProjectToken: "phc_new_token",
       posthogHost: "https://eu.i.posthog.com",

@@ -12,7 +12,9 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
-    "lint": {},
+    "lint": {
+      "dependsOn": ["@newsletter/eslint-plugin#build"]
+    },
     "test:unit": {
       "dependsOn": ["^build"]
     },

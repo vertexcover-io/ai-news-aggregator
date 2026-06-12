@@ -1,7 +1,7 @@
 /**
  * Phase 4 e2e: admin must-read CRUD + preview against the real DB.
  * Covers REQ-020, REQ-021, REQ-022, REQ-023, REQ-024, REQ-025, REQ-026, REQ-027,
- *        NF-002, NF-006, NF-008, EDGE-004, EDGE-006, EDGE-008, EDGE-009, EDGE-010.
+ *        NF-002, NF-008 (NF-006 moved to auth.e2e.test.ts), EDGE-004, EDGE-006, EDGE-008, EDGE-009, EDGE-010.
  */
 import {
   describe,
@@ -14,6 +14,8 @@ import {
   afterEach,
 } from "vitest";
 import { Hono } from "hono";
+import { setTestTenant } from "../helpers/tenant.js";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { sql } from "drizzle-orm";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,9 +29,6 @@ import {
   type FetchPageStaticFn,
 } from "@api/routes/admin-must-read.js";
 import { createMustReadRepo } from "@api/repositories/must-read.js";
-import { buildApp } from "@api/app.js";
-import { createAdminRouter } from "@api/routes/admin.js";
-import { requireAdmin } from "@api/auth/middleware.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
@@ -38,7 +37,7 @@ config({ path: resolve(REPO_ROOT, ".env") });
 const { getDb } = await import("@newsletter/shared/db");
 
 const db = getDb();
-const repo = createMustReadRepo(db);
+const repo = createMustReadRepo(db, TENANT_ZERO_ID);
 
 const URL_PREFIX = "https://admin-must-read-e2e.example.com/";
 
@@ -57,6 +56,7 @@ function buildRouterApp(
   previewTimeoutMs?: number,
 ): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route(
     "/admin/must-read",
     createAdminMustReadRouter({
@@ -447,52 +447,7 @@ describe("EDGE-008: client aborts mid-extraction; no row created", () => {
   });
 });
 
-describe("NF-006: SameSite cookie on /api/admin/login", () => {
-  function buildFullApp(): Hono {
-    const adminPassword = "test-pw-nf006";
-    const sessionSecret = "test-secret-at-least-32-bytes-long-x";
-    return buildApp({
-      sessionSecret,
-      publicArchivesRouter: new Hono(),
-      publicHomeRouter: new Hono(),
-      publicMustReadRouter: new Hono(),
-      archivesSearchRouter: new Hono(),
-      adminArchivesRouter: new Hono(),
-      adminRunsRouter: new Hono(),
-      adminSocialCredentialsRouter: new Hono(),
-      adminMustReadRouter: new Hono(),
-      publicSourcesRouter: new Hono(),
-      adminEvalRouter: new Hono(),
-      runsRouter: new Hono(),
-      settingsRouter: new Hono(),
-      adminRouter: createAdminRouter({
-        adminPassword,
-        sessionSecret,
-        logger: { info: vi.fn(), warn: vi.fn() },
-      }),
-      requireAdminFactory: requireAdmin,
-      subscribeRouter: new Hono(),
-      webhooksRouter: new Hono(),
-      analyticsRouter: new Hono(),
-      analyticsConfigRouter: new Hono(),
-      linkedInOAuthRouter: new Hono(),
-      linkedInOAuthCallbackRouter: new Hono(),
-    });
-  }
-
-  it("Set-Cookie on /api/admin/login contains SameSite=Lax or SameSite=Strict", async () => {
-    const app = buildFullApp();
-    const res = await app.request("/api/admin/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: "test-pw-nf006" }),
-    });
-    expect(res.status).toBe(200);
-    const setCookie = res.headers.get("set-cookie");
-    if (!setCookie) throw new Error("expected Set-Cookie header");
-    expect(setCookie).toMatch(/SameSite=(Lax|Strict)/i);
-  });
-});
+// NF-006 (SameSite session cookie) is now covered by tests/e2e/auth.e2e.test.ts.
 
 // Ensures the previous SameSite test does not leak side effects.
 afterEach(() => {

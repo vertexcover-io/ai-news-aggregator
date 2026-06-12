@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 import { z } from "zod";
 import {
   createLogger,
@@ -21,9 +22,9 @@ import {
 } from "@api/repositories/user-settings.js";
 
 export interface ArchivesSearchRouterDeps {
-  getArchiveRepo: () => RunArchivesRepo;
-  getRawItemsRepo: () => RawItemsRepo;
-  getSettingsRepo?: () => Pick<UserSettingsRepo, "get">;
+  getArchiveRepo: (tenantId: string) => RunArchivesRepo;
+  getRawItemsRepo: (tenantId: string) => RawItemsRepo;
+  getSettingsRepo?: (tenantId: string) => Pick<UserSettingsRepo, "get">;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -38,9 +39,10 @@ const querySchema = z.object({
 
 async function getConfiguredTimezone(
   deps: Pick<ArchivesSearchRouterDeps, "getSettingsRepo">,
+  tenantId: string,
 ): Promise<string> {
   if (deps.getSettingsRepo === undefined) return "UTC";
-  const settings = await deps.getSettingsRepo().get();
+  const settings = await deps.getSettingsRepo(tenantId).get();
   return safeTimezone(settings?.scheduleTimezone);
 }
 
@@ -67,7 +69,7 @@ export function createArchivesSearchRouter(
     }
     const { q, from, to, limit } = parsed.data;
 
-    const timezone = await getConfiguredTimezone(deps);
+    const timezone = await getConfiguredTimezone(deps, getTenantId(c));
     const fromDate = from ? startOfDateInTimezone(from, timezone) : undefined;
     const toDate = to ? endOfDateInTimezone(to, timezone) : undefined;
     if (fromDate === null || toDate === null) {
@@ -78,12 +80,12 @@ export function createArchivesSearchRouter(
     }
 
     const start = Date.now();
-    const result = await deps.getArchiveRepo().searchReviewed({
+    const result = await deps.getArchiveRepo(getTenantId(c)).searchReviewed({
       q,
       from: fromDate,
       to: toDate,
       limit,
-      rawItemsRepo: deps.getRawItemsRepo(),
+      rawItemsRepo: deps.getRawItemsRepo(getTenantId(c)),
       timezone,
     });
     const durationMs = Date.now() - start;
@@ -118,8 +120,8 @@ export function createArchivesSearchRouter(
 
 export function createDefaultArchivesSearchRouter(): Hono {
   return createArchivesSearchRouter({
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getArchiveRepo: (tenantId) => createRunArchivesRepo(defaultGetDb(), tenantId),
+    getRawItemsRepo: (tenantId) => createRawItemsRepo(defaultGetDb(), tenantId),
+    getSettingsRepo: (tenantId) => createUserSettingsRepo(defaultGetDb(), tenantId),
   });
 }

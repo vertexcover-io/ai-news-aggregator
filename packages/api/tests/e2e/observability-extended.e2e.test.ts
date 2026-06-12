@@ -13,6 +13,8 @@
  * Requires Postgres + Redis from `pnpm infra:up`.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
@@ -26,8 +28,8 @@ import { createRawItemsRepo } from "@api/repositories/raw-items.js";
 import { createRunArchivesRepo } from "@api/repositories/run-archives.js";
 import { createRunLogRepo } from "@api/repositories/run-logs.js";
 import { createAdminRunsRouter } from "@api/routes/admin-runs.js";
-import { requireAdmin } from "@api/auth/middleware.js";
-import { issueToken } from "@api/auth/session.js";
+import { requireUser } from "@api/auth/middleware.js";
+import { makeSessionCookie } from "@api-tests/helpers/auth.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
@@ -37,16 +39,17 @@ const SESSION_SECRET = "observability-extended-e2e-secret-at-least-32b";
 
 const db = getDb();
 const redis = createRedisConnection();
-const rawItemsRepo = createRawItemsRepo(db);
-const archiveRepo = createRunArchivesRepo(db);
-const runLogRepo = createRunLogRepo(db);
+const rawItemsRepo = createRawItemsRepo(db, TENANT_ZERO_ID);
+const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
+const runLogRepo = createRunLogRepo(db, TENANT_ZERO_ID);
 
 const seededRunIds = new Set<string>();
 const seededRawItemIds = new Set<number>();
 
 function buildGatedApp(): Hono {
   const app = new Hono();
-  app.use("/api/admin/*", requireAdmin(SESSION_SECRET));
+  app.use("*", setTestTenant());
+  app.use("/api/admin/*", requireUser(SESSION_SECRET));
   app.route(
     "/api/admin/runs",
     createAdminRunsRouter({
@@ -60,7 +63,7 @@ function buildGatedApp(): Hono {
 }
 
 function adminCookie(): string {
-  return `admin_session=${issueToken(SESSION_SECRET, Date.now())}`;
+  return makeSessionCookie(SESSION_SECRET);
 }
 
 beforeAll(async () => {
@@ -87,6 +90,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
   it("returns 200 with all seeded events in logs[] and error rows in failures[]", async () => {
     const runId = randomUUID();
     await db.insert(runArchives).values({
+      tenantId: TENANT_ZERO_ID,
       id: runId,
       status: "completed",
       rankedItems: [],
@@ -100,6 +104,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
 
     await db.insert(runLogs).values([
       {
+        tenantId: TENANT_ZERO_ID,
         runId,
         level: "info",
         stage: "collect",
@@ -109,6 +114,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
         context: { listingUrl: "https://cursor.com/blog", discovered: 12 },
       },
       {
+        tenantId: TENANT_ZERO_ID,
         runId,
         level: "warn",
         stage: "collect",
@@ -122,6 +128,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
         },
       },
       {
+        tenantId: TENANT_ZERO_ID,
         runId,
         level: "info",
         stage: "collect",
@@ -131,6 +138,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
         context: { url: "https://cursor.com/blog/post-1" },
       },
       {
+        tenantId: TENANT_ZERO_ID,
         runId,
         level: "error",
         stage: "collect",
@@ -144,6 +152,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
         },
       },
       {
+        tenantId: TENANT_ZERO_ID,
         runId,
         level: "info",
         stage: "collect",
@@ -153,6 +162,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
         context: { jobs: 1, requestsFinished: 3, requestsFailed: 0 },
       },
       {
+        tenantId: TENANT_ZERO_ID,
         runId,
         level: "error",
         stage: "enrich",
@@ -232,6 +242,7 @@ describe("VS-7: GET /api/admin/runs/:runId/sources/blog:cursor.com/items returns
     };
 
     await db.insert(runArchives).values({
+      tenantId: TENANT_ZERO_ID,
       id: runId,
       status: "completed",
       rankedItems: [],
@@ -253,6 +264,8 @@ describe("VS-7: GET /api/admin/runs/:runId/sources/blog:cursor.com/items returns
       const [row] = await db
         .insert(rawItems)
         .values({
+          tenantId: TENANT_ZERO_ID,
+          tenantId: TENANT_ZERO_ID,
           runId,
           sourceType: "blog",
           externalId: `cursor-${idx}-${randomUUID()}`,
@@ -318,6 +331,7 @@ describe("VS-8: legacy archive with listing-URL identifier returns 200 + empty i
     };
 
     await db.insert(runArchives).values({
+      tenantId: TENANT_ZERO_ID,
       id: runId,
       status: "completed",
       rankedItems: [],

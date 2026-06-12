@@ -13,14 +13,20 @@
     "test:e2e": "vitest run --project e2e",
     "test:watch": "vitest --project unit",
     "lint": "eslint .",
-    "bench:search": "tsx scripts/seed-search-perf.ts"
+    "bench:search": "tsx scripts/seed-search-perf.ts",
+    "seed:super-admins": "tsx scripts/seed-super-admins.ts",
+    "migrate:agentloop": "tsx scripts/migrate-agentloop.ts",
+    "verify:migration": "tsx scripts/verify-tenant-migration.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "2.0.74",
     "@aws-sdk/client-sesv2": "3.1042.0",
     "@hono/node-server": "1.19.14",
     "@newsletter/pipeline": "workspace:*",
     "@newsletter/shared": "workspace:*",
     "@react-email/components": "1.0.12",
+    "ai": "5.0.169",
+    "bcryptjs": "^3.0.3",
     "bullmq": "5.78.0",
     "dotenv": "16.5.0",
     "drizzle-orm": "0.45.2",
@@ -32,6 +38,7 @@
     "react-dom": "19.2.4",
     "resend": "6.12.2",
     "rettiwt-api": "7.0.3",
+    "twitter-api-v2": "1.29.0",
     "zod": "4.3.6"
   },
   "devDependencies": {

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { Hono } from "hono";
+import { setTestTenant } from "../../helpers/tenant.js";
 import { createAnalyticsConfigRouter } from "@api/routes/analytics-config.js";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
 import type { UserSettings } from "@newsletter/shared";
@@ -38,9 +40,11 @@ function makeRepo(settings: UserSettings | null): UserSettingsRepo {
 
 describe("GET /api/public/analytics-config", () => {
   it("returns disabled config when settings are absent and no env fallback exists", async () => {
-    const app = createAnalyticsConfigRouter({
+    const app = new Hono();
+    app.use("*", setTestTenant());
+    app.route("/", createAnalyticsConfigRouter({
       getSettingsRepo: () => makeRepo(null),
-    });
+    }));
     const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
@@ -51,7 +55,9 @@ describe("GET /api/public/analytics-config", () => {
   });
 
   it("returns token and host when PostHog is enabled in settings", async () => {
-    const app = createAnalyticsConfigRouter({
+    const app = new Hono();
+    app.use("*", setTestTenant());
+    app.route("/", createAnalyticsConfigRouter({
       getSettingsRepo: () =>
         makeRepo(
           makeSettings({
@@ -60,7 +66,7 @@ describe("GET /api/public/analytics-config", () => {
             posthogHost: "https://us.i.posthog.com",
           }),
         ),
-    });
+    }));
     const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
@@ -71,7 +77,9 @@ describe("GET /api/public/analytics-config", () => {
   });
 
   it("returns disabled config when PostHog settings are incomplete", async () => {
-    const app = createAnalyticsConfigRouter({
+    const app = new Hono();
+    app.use("*", setTestTenant());
+    app.route("/", createAnalyticsConfigRouter({
       getSettingsRepo: () =>
         makeRepo(
           makeSettings({
@@ -80,7 +88,7 @@ describe("GET /api/public/analytics-config", () => {
             posthogHost: "https://us.i.posthog.com",
           }),
         ),
-    });
+    }));
     const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({

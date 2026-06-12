@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
 import { Hono } from "hono";
 import type IORedis from "ioredis";
 import type { Queue, JobsOptions } from "bullmq";
@@ -63,6 +64,7 @@ function makeApp(opts: {
   repo?: RawItemsRepo;
 }): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   const router = createRunsRouter({
     redis: opts.redis as unknown as IORedis,
     processingQueue: opts.q.queue as unknown as Queue,
@@ -205,6 +207,7 @@ describe("POST /api/runs", () => {
       >[0]["logger"],
     });
     const app = new Hono();
+  app.use("*", setTestTenant());
     app.route("/api/runs", router);
 
     const res = await app.request("/api/runs", {
@@ -430,6 +433,7 @@ function makePostApp(opts: {
   archive: RunArchiveRow | null;
 }): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   const router = createRunsRouter({
     redis: makeRedis() as unknown as IORedis,
     processingQueue: opts.q.queue as unknown as Queue,

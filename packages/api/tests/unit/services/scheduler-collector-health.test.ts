@@ -1,11 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import type { UserSettings } from "@newsletter/shared";
 import {
-  COLLECTOR_HEALTH_SCHEDULER_KEY,
   COLLECTOR_HEALTH_LEAD_MINUTES,
+  schedulerKeyFor,
   toCronMinusMinutes,
   reconcileCollectorHealthSchedule,
 } from "@api/services/scheduler.js";
+
+const TENANT_A = "aaaaaaaa-0000-4000-8000-000000000001";
+const COLLECTOR_HEALTH_KEY_A = schedulerKeyFor("collector-health", TENANT_A);
 
 function baseSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
@@ -56,13 +59,13 @@ describe("reconcileCollectorHealthSchedule", () => {
     const queue = makeQueue();
     const settings = baseSettings({ pipelineTime: "09:30", scheduleTimezone: "America/New_York" });
 
-    await reconcileCollectorHealthSchedule(queue, settings);
+    await reconcileCollectorHealthSchedule(queue, TENANT_A, settings);
 
     const expectedPattern = toCronMinusMinutes("09:30", COLLECTOR_HEALTH_LEAD_MINUTES);
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      COLLECTOR_HEALTH_SCHEDULER_KEY,
+      COLLECTOR_HEALTH_KEY_A,
       { pattern: expectedPattern, tz: "America/New_York" },
-      { name: "collector-health", data: { trigger: "scheduled" } },
+      { name: "collector-health", data: { trigger: "scheduled", tenantId: TENANT_A } },
     );
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
   });
@@ -75,20 +78,28 @@ describe("reconcileCollectorHealthSchedule", () => {
   it("REQ-012: scheduleEnabled=false -> removeJobScheduler, no upsert", async () => {
     const queue = makeQueue();
 
-    await reconcileCollectorHealthSchedule(queue, baseSettings({ scheduleEnabled: false }));
+    await reconcileCollectorHealthSchedule(
+      queue,
+      TENANT_A,
+      baseSettings({ scheduleEnabled: false }),
+    );
 
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(COLLECTOR_HEALTH_SCHEDULER_KEY);
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(COLLECTOR_HEALTH_KEY_A);
     expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
   });
 
   it("EDGE-007: pipelineTime '00:15' -> pattern '45 23 * * *' (wraps before midnight)", async () => {
     const queue = makeQueue();
-    await reconcileCollectorHealthSchedule(queue, baseSettings({ pipelineTime: "00:15" }));
+    await reconcileCollectorHealthSchedule(
+      queue,
+      TENANT_A,
+      baseSettings({ pipelineTime: "00:15" }),
+    );
 
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      COLLECTOR_HEALTH_SCHEDULER_KEY,
+      COLLECTOR_HEALTH_KEY_A,
       { pattern: "45 23 * * *", tz: "America/New_York" },
-      { name: "collector-health", data: { trigger: "scheduled" } },
+      { name: "collector-health", data: { trigger: "scheduled", tenantId: TENANT_A } },
     );
   });
 });

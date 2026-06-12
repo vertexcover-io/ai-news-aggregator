@@ -7,6 +7,7 @@
  *
  * Requires a real Postgres test DB (DATABASE_URL in .env.test).
  */
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
@@ -52,7 +53,7 @@ describe("run-archives repo e2e — pre_review_snapshot (REQ-001, REQ-008, EDGE-
   // REQ-001: snapshot is written on a successful upsert and round-trips correctly
   it("populates pre_review_snapshot after a completed upsert (REQ-001)", async () => {
     const runId = randomUUID();
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, TENANT_ZERO_ID);
     const snapshot = makeSnapshot("initial");
 
     await repo.upsert({
@@ -80,7 +81,7 @@ describe("run-archives repo e2e — pre_review_snapshot (REQ-001, REQ-008, EDGE-
   // REQ-008: a second upsert that OMITS preReviewSnapshot must not overwrite the existing value
   it("does NOT overwrite pre_review_snapshot on a subsequent upsert that omits the field (REQ-008)", async () => {
     const runId = randomUUID();
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, TENANT_ZERO_ID);
     const snapshot = makeSnapshot("first");
 
     // First upsert — writes snapshot
@@ -117,7 +118,7 @@ describe("run-archives repo e2e — pre_review_snapshot (REQ-001, REQ-008, EDGE-
   // EDGE-006: failed-status upsert does not write a snapshot
   it("does not write pre_review_snapshot when status is 'failed' (EDGE-006)", async () => {
     const runId = randomUUID();
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, TENANT_ZERO_ID);
 
     await repo.upsert({
       id: runId,
@@ -139,7 +140,7 @@ describe("run-archives repo e2e — pre_review_snapshot (REQ-001, REQ-008, EDGE-
   // Verify COALESCE semantics: if the existing snapshot is null, the new value wins
   it("writes snapshot on first upsert even when previous value was null (COALESCE semantics)", async () => {
     const runId = randomUUID();
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, TENANT_ZERO_ID);
 
     // First upsert without snapshot
     await repo.upsert({

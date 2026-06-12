@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import {
   createSocialCredentialsRepo,
   type SocialCredentialsRepo,
@@ -27,15 +28,21 @@ interface FakeDb {
 }
 
 function extractPlatformFromPredicate(predicate: unknown): Platform | null {
-  // Drizzle's eq(column, value) returns an SQL object with `queryChunks` array.
-  // The literal value sits inside a `Param { value }` entry.
-  const p = predicate as { queryChunks?: unknown[] } | null;
-  if (!p || !Array.isArray(p.queryChunks)) return null;
-  for (const chunk of p.queryChunks) {
-    if (chunk === "linkedin" || chunk === "twitter") return chunk;
-    if (chunk && typeof chunk === "object" && "value" in chunk) {
-      const v = (chunk as { value: unknown }).value;
-      if (v === "linkedin" || v === "twitter") return v;
+  // The repo composes and(eq(tenantId), eq(platform)): the platform Param sits
+  // inside a nested SQL chunk, so walk the predicate tree recursively.
+  if (predicate === "linkedin" || predicate === "twitter") return predicate;
+  if (predicate === null || typeof predicate !== "object") return null;
+  if ("value" in predicate) {
+    const v = (predicate as { value: unknown }).value;
+    if (v === "linkedin" || v === "twitter") return v;
+  }
+  if ("queryChunks" in predicate) {
+    const chunks = (predicate as { queryChunks: unknown }).queryChunks;
+    if (Array.isArray(chunks)) {
+      for (const chunk of chunks) {
+        const found = extractPlatformFromPredicate(chunk);
+        if (found !== null) return found;
+      }
     }
   }
   return null;
@@ -117,7 +124,7 @@ function makeRepoWithCipher(): {
   };
   const cipher = getCredentialCipher(env);
   const fake = makeFakeDb();
-  const repo = createSocialCredentialsRepo(fake.db, cipher);
+  const repo = createSocialCredentialsRepo(fake.db, TENANT_ZERO_ID, cipher);
   return { repo, fake };
 }
 

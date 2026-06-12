@@ -6,16 +6,10 @@
  *   - api dev server on :3000 (Vite proxies /api -> :3000)
  *   - web dev server on :5173 (Playwright baseURL)
  */
-import { test, expect, type Page } from "@playwright/test";
-import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
+import { test, expect } from "@playwright/test";
+import { adminLogin, API_BASE, makeDbClient } from "./_infra";
 
 
-async function adminLogin(page: Page): Promise<void> {
-  const res = await page.request.post(`${API_BASE}/api/admin/login`, {
-    data: { password: ADMIN_PASSWORD },
-  });
-  expect(res.ok()).toBe(true);
-}
 
 async function resetCredentials(): Promise<void> {
   const client = makeDbClient();

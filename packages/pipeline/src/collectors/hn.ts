@@ -1,4 +1,4 @@
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemUpsert } from "@pipeline/repositories/raw-items.js";
 import type {
   CollectorResult,
   RawItemComment,
@@ -78,7 +78,7 @@ export function parseHnItemIdFromUrl(url: string): string | null {
 export async function fetchHnPost(
   url: string,
   deps: FetchHnPostDeps = {},
-): Promise<RawItemInsert> {
+): Promise<RawItemUpsert> {
   const id = parseHnItemIdFromUrl(url);
   if (!id) {
     throw new UrlParseError(`not a recognized HN item URL: ${url}`);
@@ -322,8 +322,8 @@ async function fetchComments(
   }
 }
 
-function parseStories(response: AlgoliaStorySearchResponse): RawItemInsert[] {
-  const items: RawItemInsert[] = [];
+function parseStories(response: AlgoliaStorySearchResponse): RawItemUpsert[] {
+  const items: RawItemUpsert[] = [];
 
   for (const hit of response.hits) {
     if (!hit.title || !hit.objectID) {
@@ -375,7 +375,7 @@ export async function collectHn(
   );
 
   const seenIds = new Set<string>();
-  const allItems: RawItemInsert[] = [];
+  const allItems: RawItemUpsert[] = [];
   const unitResults: SourceUnitResult[] = [];
 
   for (const feed of feeds) {

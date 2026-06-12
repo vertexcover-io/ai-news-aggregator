@@ -1,4 +1,10 @@
+import {
+  APP_CREDENTIALS_TENANT_ID,
+  TENANT_ZERO_ID,
+} from "@newsletter/shared/constants";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const TENANT_A = "11111111-1111-1111-1111-111111111111";
 
 const mockLoggerInfo = vi.fn();
 const mockLoggerWarn = vi.fn();
@@ -83,7 +89,11 @@ vi.mock("@pipeline/social/twitter/api-client.js", () => ({
   createTwitterApiClient: vi.fn(() => ({ fake: "twitter-client" })),
 }));
 vi.mock("@pipeline/repositories/social-tokens.js", () => ({
-  createSocialTokensRepo: vi.fn(() => ({ fake: "social-tokens" })),
+  createSocialTokensRepo: vi.fn(() => ({
+    fake: "social-tokens",
+    getToken: vi.fn().mockResolvedValue(null),
+    withTokenLock: vi.fn(),
+  })),
 }));
 vi.mock("@pipeline/repositories/social-credentials.js", () => ({
   createSocialCredentialsRepo: vi.fn(() => ({
@@ -123,6 +133,19 @@ vi.mock("@pipeline/repositories/candidates.js", () => ({
 }));
 vi.mock("@pipeline/repositories/user-settings.js", () => ({
   createUserSettingsRepo: vi.fn(() => ({})),
+  createNotificationSettingsRepo: vi.fn(() => ({
+    get: vi.fn().mockResolvedValue(null),
+  })),
+}));
+vi.mock("@pipeline/repositories/sending-domains.js", () => ({
+  createPipelineSendingDomainsRepo: vi.fn(() => ({
+    get: vi.fn().mockResolvedValue(null),
+  })),
+}));
+vi.mock("@pipeline/repositories/tenants.js", () => ({
+  createPipelineTenantsRepo: vi.fn(() => ({
+    findById: vi.fn().mockResolvedValue(null),
+  })),
 }));
 vi.mock("@pipeline/services/run-state.js", () => ({
   createRunStateService: vi.fn(() => ({})),
@@ -207,25 +230,25 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
     });
 
     it("constructs linkedinNotifier when LINKEDIN_CLIENT_ID + SECRET set; null otherwise", async () => {
-      const depsWithout = await buildDefaultNewsletterSendDeps();
+      const depsWithout = await buildDefaultNewsletterSendDeps(TENANT_ZERO_ID);
       expect(depsWithout.linkedinNotifier).toBeNull();
 
       process.env.LINKEDIN_CLIENT_ID = "li-id";
       process.env.LINKEDIN_CLIENT_SECRET = "li-secret";
-      const depsWith = await buildDefaultNewsletterSendDeps();
+      const depsWith = await buildDefaultNewsletterSendDeps(TENANT_ZERO_ID);
       expect(depsWith.linkedinNotifier).not.toBeNull();
       expect(mockCreateLinkedInNotifier).toHaveBeenCalled();
     });
 
     it("constructs twitterNotifier when all OAuth1 credentials are set; null otherwise", async () => {
-      const depsWithout = await buildDefaultNewsletterSendDeps();
+      const depsWithout = await buildDefaultNewsletterSendDeps(TENANT_ZERO_ID);
       expect(depsWithout.twitterNotifier).toBeNull();
 
       process.env.TWITTER_API_KEY = "tw-api-key";
       process.env.TWITTER_API_SECRET = "tw-api-secret";
       process.env.TWITTER_ACCESS_TOKEN = "tw-access-token";
       process.env.TWITTER_ACCESS_TOKEN_SECRET = "tw-access-secret";
-      const depsWith = await buildDefaultNewsletterSendDeps();
+      const depsWith = await buildDefaultNewsletterSendDeps(TENANT_ZERO_ID);
       expect(depsWith.twitterNotifier).not.toBeNull();
       expect(mockCreateTwitterNotifier).toHaveBeenCalled();
     });
@@ -234,7 +257,7 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
       process.env.TWITTER_API_KEY = "tw-api-key";
       process.env.TWITTER_ACCESS_TOKEN = "tw-access-token";
 
-      const deps = await buildDefaultNewsletterSendDeps();
+      const deps = await buildDefaultNewsletterSendDeps(TENANT_ZERO_ID);
 
       expect(deps.twitterNotifier).toBeNull();
       expect(mockCreateTwitterNotifier).not.toHaveBeenCalled();
@@ -249,8 +272,61 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
 
     it("returns linkedinNotifier=null when only LINKEDIN_CLIENT_ID is set (missing secret)", async () => {
       process.env.LINKEDIN_CLIENT_ID = "li-id";
-      const deps = await buildDefaultNewsletterSendDeps();
+      const deps = await buildDefaultNewsletterSendDeps(TENANT_ZERO_ID);
       expect(deps.linkedinNotifier).toBeNull();
+    });
+
+    it("resolves the LinkedIn client from the APP credentials store, never the job tenant's (REQ-082)", async () => {
+      const { createSocialCredentialsRepo } = await import(
+        "@pipeline/repositories/social-credentials.js"
+      );
+      const mocked = vi.mocked(createSocialCredentialsRepo);
+      const previous = mocked.getMockImplementation();
+      // DB-managed app client: only the APP store has the LinkedIn row.
+      mocked.mockImplementation(((_db: unknown, tenantId: string) => ({
+        getLinkedIn: vi
+          .fn()
+          .mockResolvedValue(
+            tenantId === APP_CREDENTIALS_TENANT_ID
+              ? { clientId: "app-li-id", clientSecret: "app-li-secret", apiVersion: null }
+              : null,
+          ),
+        getTwitter: vi.fn().mockResolvedValue(null),
+      })) as never);
+      try {
+        const deps = await buildDefaultNewsletterSendDeps(TENANT_A);
+        // No env vars set (describe beforeEach) — the notifier only exists if
+        // the app-store row was read; resolving from the job tenant's store
+        // would yield null and silently disable tenant LinkedIn posting.
+        expect(deps.linkedinNotifier).not.toBeNull();
+        expect(mocked).toHaveBeenCalledWith(
+          expect.anything(),
+          APP_CREDENTIALS_TENANT_ID,
+          expect.anything(),
+        );
+      } finally {
+        if (previous) mocked.mockImplementation(previous);
+      }
+    });
+
+    it("builds public links on the tenant's host for non-zero tenants; tenant 0 keeps the env base URL (F14)", async () => {
+      const { createPipelineTenantsRepo } = await import(
+        "@pipeline/repositories/tenants.js"
+      );
+      vi.mocked(createPipelineTenantsRepo).mockReturnValueOnce({
+        findById: vi
+          .fn()
+          .mockResolvedValue({ id: TENANT_A, name: "Acme", slug: "acme" }),
+      });
+      process.env.NEWSLETTER_BASE_URL = "https://newsletter.vertexcover.io";
+      process.env.PUBLIC_BASE_URL = "https://newsletter.vertexcover.io";
+      delete process.env.APP_ROOT_DOMAIN;
+
+      const deps = await buildDefaultNewsletterSendDeps(TENANT_A);
+      expect(deps.baseUrl).toBe("https://acme.lvh.me");
+
+      const deps0 = await buildDefaultNewsletterSendDeps(TENANT_ZERO_ID);
+      expect(deps0.baseUrl).toBe("https://newsletter.vertexcover.io");
     });
   });
 

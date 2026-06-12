@@ -18,8 +18,14 @@ export interface RawItemRow {
   metadata: RawItemMetadata;
 }
 
+/**
+ * Tenant-agnostic item payload produced by collectors. The repo stamps the
+ * tenant id at write time — call sites never carry tenant context.
+ */
+export type RawItemUpsert = Omit<RawItemInsert, "tenantId">;
+
 export interface RawItemsRepo {
-  upsertItems(items: RawItemInsert[]): Promise<void>;
+  upsertItems(items: RawItemUpsert[]): Promise<void>;
   findExistingExternalIds(
     sourceType: SourceType,
     externalIds: string[],
@@ -34,23 +40,25 @@ export interface RawItemsRepo {
 
 export function createRawItemsRepo(
   db: Pick<AppDb, "insert" | "select" | "update">,
+  tenantId: string,
 ): RawItemsRepo {
   return {
-    async upsertItems(items: RawItemInsert[]): Promise<void> {
+    async upsertItems(items: RawItemUpsert[]): Promise<void> {
       if (items.length === 0) return;
       const now = new Date();
       // Postgres rejects an INSERT ... ON CONFLICT batch where two input rows
       // resolve to the same conflict target (21000: "cannot affect row a
-      // second time"). Collapse in-batch duplicates by (sourceType,
-      // externalId); last write wins, matching ON CONFLICT DO UPDATE
-      // semantics if the duplicates had been issued as separate statements.
+      // second time"). Collapse in-batch duplicates by (sourceType, externalId)
+      // — tenantId is constant for the repo; last write wins, matching
+      // ON CONFLICT DO UPDATE semantics if the duplicates had been issued as
+      // separate statements.
       const deduped = Array.from(
         new Map(
           items.map((i) => [`${i.sourceType}::${i.externalId}`, i]),
         ).values(),
-      );
+      ).map((i): RawItemInsert => ({ ...i, tenantId }));
       await db.insert(rawItems).values(deduped).onConflictDoUpdate({
-        target: [rawItems.sourceType, rawItems.externalId],
+        target: [rawItems.tenantId, rawItems.sourceType, rawItems.externalId],
         set: {
           engagement: sql.raw(`excluded.${rawItems.engagement.name}`),
           metadata: sql.raw(`excluded.${rawItems.metadata.name}`),
@@ -73,6 +81,7 @@ export function createRawItemsRepo(
         .from(rawItems)
         .where(
           and(
+            eq(rawItems.tenantId, tenantId),
             eq(rawItems.sourceType, sourceType),
             inArray(rawItems.externalId, externalIds),
           ),
@@ -103,6 +112,7 @@ export function createRawItemsRepo(
         .from(rawItems)
         .where(
           and(
+            eq(rawItems.tenantId, tenantId),
             eq(rawItems.sourceType, sourceType),
             eq(rawItems.externalId, externalId),
           ),
@@ -129,7 +139,7 @@ export function createRawItemsRepo(
           metadata: rawItems.metadata,
         })
         .from(rawItems)
-        .where(inArray(rawItems.id, ids));
+        .where(and(eq(rawItems.tenantId, tenantId), inArray(rawItems.id, ids)));
     },
 
     async updateRecapData(updates: { id: number; recap: RecapContent }[]): Promise<void> {
@@ -142,7 +152,7 @@ export function createRawItemsRepo(
             metadata: sql`jsonb_set(coalesce(${rawItems.metadata}, '{}'), '{recap}', ${JSON.stringify(recap)}::jsonb)`,
             updatedAt: now,
           })
-          .where(eq(rawItems.id, id));
+          .where(and(eq(rawItems.tenantId, tenantId), eq(rawItems.id, id)));
       }
     },
   };

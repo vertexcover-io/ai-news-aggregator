@@ -1,14 +1,10 @@
 import type IORedis from "ioredis";
 import { Queue } from "bullmq";
 import { createRedisConnection, startRun } from "@newsletter/shared";
-import {
-  DEFAULT_RANKING_PROMPT,
-  DEFAULT_SHORTLIST_PROMPT,
-} from "@newsletter/shared/constants";
 import type {
+  RunCollectorsPayload,
   RunProcessJobPayload,
   RunSubmitPayload,
-  UserSettings,
 } from "@newsletter/shared";
 
 export interface CreatedRun {
@@ -26,6 +22,7 @@ function getDefaultProcessingQueue(): Queue<RunProcessJobPayload> {
 
 export interface CreateRunOptions {
   halfLifeHours?: number;
+  tenantId?: string;
 }
 
 export async function createRun(
@@ -34,39 +31,17 @@ export async function createRun(
   processingQueue: Queue<RunProcessJobPayload> = getDefaultProcessingQueue(),
   options: CreateRunOptions = {},
 ): Promise<CreatedRun> {
-  const settings: UserSettings = {
-    id: "adhoc",
-    topN: payload.topN,
-    halfLifeHours: options.halfLifeHours ?? null,
-    hnEnabled: payload.hn !== undefined,
-    hnConfig: payload.hn ?? null,
-    redditEnabled: payload.reddit !== undefined,
-    redditConfig: payload.reddit ?? null,
-    webEnabled: payload.web !== undefined,
-    webConfig: payload.web ?? null,
-    twitterEnabled: payload.twitter !== undefined,
-    twitterConfig: payload.twitter ?? null,
-    webSearchEnabled: false,
-    webSearchConfig: null,
-    posthogEnabled: false,
-    posthogProjectToken: null,
-    posthogHost: null,
-    scheduleTime: "00:00",
-    pipelineTime: "00:00",
-    emailTime: "00:30",
-    linkedinTime: "00:30",
-    twitterTime: "00:30",
-    scheduleTimezone: "UTC",
-    scheduleEnabled: false,
-    emailEnabled: true,
-    linkedinEnabled: true,
-    twitterPostEnabled: true,
-    autoReview: false,
-    rankingPrompt: DEFAULT_RANKING_PROMPT,
-    shortlistPrompt: DEFAULT_SHORTLIST_PROMPT,
-    shortlistSize: 30,
-    updatedAt: new Date().toISOString(),
+  const collectors: RunCollectorsPayload = {
+    ...(payload.hn !== undefined ? { hn: payload.hn } : {}),
+    ...(payload.reddit !== undefined ? { reddit: payload.reddit } : {}),
+    ...(payload.web !== undefined ? { web: payload.web } : {}),
+    ...(payload.twitter !== undefined ? { twitter: payload.twitter } : {}),
   };
 
-  return startRun(settings, { redis, queue: processingQueue });
+  return startRun(
+    { topN: payload.topN, halfLifeHours: options.halfLifeHours ?? null },
+    collectors,
+    { redis, queue: processingQueue },
+    { tenantId: options.tenantId },
+  );
 }

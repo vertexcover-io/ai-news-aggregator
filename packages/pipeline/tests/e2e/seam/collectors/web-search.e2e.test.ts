@@ -1,3 +1,4 @@
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
@@ -50,7 +51,7 @@ describe("Web-search collector seam E2E", () => {
 
       const result = await collectWebSearch(
         {
-          rawItemsRepo: createRawItemsRepo(db),
+          rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID),
           provider: createWebSearchProvider("tavily", { tavilyApiKey }),
         },
         collectorConfig,

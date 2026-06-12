@@ -4,6 +4,7 @@
  * separate subscriber to verify run:cancel:<id> messages.
  */
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
 import { Hono } from "hono";
 import type { Queue } from "bullmq";
 import { createRedisConnection, runCancelChannel } from "@newsletter/shared";
@@ -54,6 +55,7 @@ function makeArchiveRepo(archive: RunArchiveRow | null): RunArchivesRepo {
 
 function buildApp(opts: { archive?: RunArchiveRow | null }): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   const queue = {
     add: vi.fn(() => Promise.resolve({ id: "noop" })),
     name: "processing",

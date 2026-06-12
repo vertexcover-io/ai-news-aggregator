@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant, TEST_TENANT_ID } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import type { RankedItemRef } from "@newsletter/shared";
 import { createAdminArchivesRouter } from "@api/routes/archives.js";
@@ -76,6 +77,7 @@ function buildApp(opts: {
   processingQueue?: Pick<Queue, "add">;
 }): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   const router = createAdminArchivesRouter({
     getArchiveRepo: () => opts.archiveRepo,
     getRawItemsRepo: () => opts.rawRepo ?? makeRawRepo(),
@@ -104,7 +106,7 @@ describe("POST /api/admin/archives/:runId/send", () => {
     expect(res.status).toBe(202);
     expect(addSpy).toHaveBeenCalledWith(
       "email-send",
-      { runId: "run-1" },
+      { runId: "run-1", tenantId: TEST_TENANT_ID },
       { jobId: "email-send-run-1", delay: 0 },
     );
   });

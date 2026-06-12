@@ -3,6 +3,7 @@
  * Real Redis, fake processing Queue, fake settings + archive repos.
  */
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
 import { Hono } from "hono";
 import type { Queue, JobsOptions } from "bullmq";
 import { createRedisConnection } from "@newsletter/shared";
@@ -15,6 +16,7 @@ import { createRunsRouter } from "@api/routes/runs.js";
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
 import type { RunArchivesRepo } from "@api/repositories/run-archives.js";
+import type { SourceRecord, SourcesRepo } from "@api/repositories/sources.js";
 
 const redis = createRedisConnection();
 const seededKeys: string[] = [];
@@ -104,11 +106,37 @@ function buildSettings(overrides?: Partial<UserSettings>): UserSettings {
   return { ...base, ...overrides };
 }
 
+const defaultSourceRows: SourceRecord[] = [
+  {
+    id: "99999999-9999-4999-8999-999999999999",
+    type: "hn",
+    config: { sinceDays: 1, pointsThreshold: 50 },
+    enabled: true,
+    health: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  } as SourceRecord,
+];
+
+function makeSourcesRepo(rows: SourceRecord[]): SourcesRepo {
+  return {
+    list: vi.fn(() => Promise.resolve(rows)),
+    listEnabled: vi.fn(() => Promise.resolve(rows.filter((r) => r.enabled))),
+    getById: vi.fn(() => Promise.resolve(null)),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    updateHealth: vi.fn(),
+  } as unknown as SourcesRepo;
+}
+
 function buildApp(opts: {
   q: ReturnType<typeof makeQueue>;
   settings: UserSettings | null;
+  sourceRows?: SourceRecord[];
 }): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route(
     "/api/runs",
     createRunsRouter({
@@ -116,6 +144,7 @@ function buildApp(opts: {
       processingQueue: opts.q.queue as unknown as Queue,
       getRawItemsRepo: () => makeRawItemsRepo(),
       getSettingsRepo: () => makeSettingsRepo(opts.settings),
+      getSourcesRepo: () => makeSourcesRepo(opts.sourceRows ?? defaultSourceRows),
       getArchiveRepo: () => makeArchiveRepo(),
     }),
   );
@@ -169,10 +198,10 @@ describe("POST /api/runs/now (e2e)", () => {
     expect(q.calls).toHaveLength(0);
   });
 
-  it("REQ-N3: returns 409 when no sources enabled; queue not called", async () => {
+  it("REQ-N3: returns 409 when no enabled source rows exist; queue not called", async () => {
     const q = makeQueue();
     const settings = buildSettings({ hnEnabled: false, hnConfig: null });
-    const app = buildApp({ q, settings });
+    const app = buildApp({ q, settings, sourceRows: [] });
     const res = await app.request("/api/runs/now", { method: "POST" });
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string };

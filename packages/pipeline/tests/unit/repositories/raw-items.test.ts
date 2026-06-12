@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items";
+import { rawItems } from "@newsletter/shared/db";
 import type { AppDb, RawItemInsert } from "@newsletter/shared/db";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 
 interface FakeDbResult {
   db: Pick<AppDb, "insert" | "select">;
@@ -37,7 +39,7 @@ function createFakeDb(rows: { externalId: string }[]): FakeDbResult {
 describe("createRawItemsRepo.findExistingExternalIds", () => {
   it("REQ-030: returns empty Set without calling db.select when input is empty", async () => {
     const { db, selectSpy } = createFakeDb([]);
-    const repo = createRawItemsRepo(db);
+    const repo = createRawItemsRepo(db, TENANT_ZERO_ID);
 
     const result = await repo.findExistingExternalIds("blog", []);
 
@@ -51,7 +53,7 @@ describe("createRawItemsRepo.findExistingExternalIds", () => {
       { externalId: "a" },
       { externalId: "c" },
     ]);
-    const repo = createRawItemsRepo(db);
+    const repo = createRawItemsRepo(db, TENANT_ZERO_ID);
 
     const result = await repo.findExistingExternalIds("blog", ["a", "b", "c"]);
 
@@ -63,7 +65,7 @@ describe("createRawItemsRepo.findExistingExternalIds", () => {
 
   it("REQ-030: returns empty Set when DB returns 0 rows for non-empty input", async () => {
     const { db } = createFakeDb([]);
-    const repo = createRawItemsRepo(db);
+    const repo = createRawItemsRepo(db, TENANT_ZERO_ID);
 
     const result = await repo.findExistingExternalIds("blog", ["a", "b", "c"]);
 
@@ -74,6 +76,7 @@ describe("createRawItemsRepo.findExistingExternalIds", () => {
 
 interface CapturedUpsert {
   setArg: Record<string, unknown> | null;
+  targetArg: unknown[] | null;
   valuesCalled: boolean;
 }
 
@@ -81,13 +84,14 @@ function createUpsertCapturingDb(): {
   db: Pick<AppDb, "insert" | "select">;
   captured: CapturedUpsert;
 } {
-  const captured: CapturedUpsert = { setArg: null, valuesCalled: false };
+  const captured: CapturedUpsert = { setArg: null, targetArg: null, valuesCalled: false };
 
   const valuesBuilder = {
     onConflictDoUpdate: (
-      arg: { set: Record<string, unknown> },
+      arg: { target: unknown[]; set: Record<string, unknown> },
     ): Promise<unknown> => {
       captured.setArg = arg.set;
+      captured.targetArg = arg.target;
       return Promise.resolve();
     },
   };
@@ -155,9 +159,10 @@ function createUpsertCapturingDbFull(): {
 describe("createRawItemsRepo.upsertItems", () => {
   it("bumps collectedAt on conflict so re-collected items stay in the loader window", async () => {
     const { db, captured } = createUpsertCapturingDb();
-    const repo = createRawItemsRepo(db);
+    const repo = createRawItemsRepo(db, TENANT_ZERO_ID);
 
     const item: RawItemInsert = {
+      tenantId: TENANT_ZERO_ID,
       sourceType: "hn",
       externalId: "12345",
       title: "Some title",
@@ -179,12 +184,43 @@ describe("createRawItemsRepo.upsertItems", () => {
     expect(captured.setArg.collectedAt).toBeInstanceOf(Date);
   });
 
+  // Post-0042 the unique constraint is (tenant_id, source_type, external_id);
+  // ON CONFLICT must target exactly that index or Postgres rejects the insert.
+  it("targets the tenant-scoped unique (tenantId, sourceType, externalId) on conflict", async () => {
+    const { db, captured } = createUpsertCapturingDb();
+    const repo = createRawItemsRepo(db, TENANT_ZERO_ID);
+
+    await repo.upsertItems([
+      {
+        tenantId: TENANT_ZERO_ID,
+        sourceType: "hn",
+        externalId: "1",
+        title: "t",
+        url: "https://example.com/1",
+        author: null,
+        content: null,
+        publishedAt: null,
+        collectedAt: new Date(),
+        engagement: { points: 0, commentCount: 0 },
+        metadata: { comments: [] },
+        updatedAt: new Date(),
+      },
+    ]);
+
+    expect(captured.targetArg).toEqual([
+      rawItems.tenantId,
+      rawItems.sourceType,
+      rawItems.externalId,
+    ]);
+  });
+
   // VS-4b (REQ-003): upsertItems called without runId does not error; item has no runId stamped
   it("VS-4b: upsertItems succeeds when item has no runId (add-post path leaves run_id NULL)", async () => {
     const { db, captured } = createUpsertCapturingDbFull();
-    const repo = createRawItemsRepo(db);
+    const repo = createRawItemsRepo(db, TENANT_ZERO_ID);
 
     const item: RawItemInsert = {
+      tenantId: TENANT_ZERO_ID,
       sourceType: "blog",
       externalId: "post-1",
       title: "A blog post",

@@ -13,6 +13,7 @@ const MESSAGE_ID = "ses-msg-abc123";
 function makeEmailSend(overrides: Partial<EmailSendSelect> = {}): EmailSendSelect {
   return {
     id: "00000000-0000-0000-0000-000000000099",
+    tenantId: "00000000-0000-0000-0000-000000000000",
     subscriberId: SUBSCRIBER_ID,
     runArchiveId: "00000000-0000-0000-0000-000000000010",
     messageId: MESSAGE_ID,
@@ -146,9 +147,9 @@ function makeDeps(opts: {
 function buildApp(deps: TestDeps): Hono {
   const app = new Hono();
   app.route("/webhooks", createWebhooksRouter({
-    sesEventsRepo: deps.sesEventsRepo,
-    emailSendsRepo: deps.emailSendsRepo,
-    subscribersRepo: deps.subscribersRepo,
+    getSesEventsRepo: () => deps.sesEventsRepo,
+    emailSendLookup: { findByMessageId: (id) => deps.emailSendsRepo.findByMessageId(id) },
+    getSubscribersRepo: () => deps.subscribersRepo,
     verifySns: deps.verifySns,
     slackNotifier: deps.slackNotifier,
     logger: {

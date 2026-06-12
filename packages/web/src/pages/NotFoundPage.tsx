@@ -1,13 +1,17 @@
 import type { ReactElement } from "react";
-import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { setMeta } from "../lib/meta";
+import {
+  useTenantConfig,
+  useTenantPageTitle,
+} from "../components/shell/TenantConfigProvider";
 
 export function NotFoundPage(): ReactElement {
-  useEffect(() => {
-    document.title = "Not found — AgentLoop";
+  const flags = useTenantConfig()?.flags;
+  useTenantPageTitle((config) => {
     setMeta("description", "The page you were looking for isn't here.");
-  }, []);
+    return `Not found — ${config.name}`;
+  });
 
   return (
     <main className="mx-auto max-w-[680px] px-4 sm:px-6 md:px-8 py-24 text-center">
@@ -34,18 +38,22 @@ export function NotFoundPage(): ReactElement {
         >
           Today&apos;s issue →
         </Link>
-        <Link
-          to="/must-read"
-          className="font-mono uppercase text-[11.5px] tracking-[0.2em] text-[#6b6557] hover:text-[#14110d]"
-        >
-          The canon →
-        </Link>
-        <Link
-          to="/built"
-          className="font-mono uppercase text-[11.5px] tracking-[0.2em] text-[#6b6557] hover:text-[#14110d]"
-        >
-          How it&apos;s built →
-        </Link>
+        {flags?.canon ? (
+          <Link
+            to="/must-read"
+            className="font-mono uppercase text-[11.5px] tracking-[0.2em] text-[#6b6557] hover:text-[#14110d]"
+          >
+            The canon →
+          </Link>
+        ) : null}
+        {flags?.built ? (
+          <Link
+            to="/built"
+            className="font-mono uppercase text-[11.5px] tracking-[0.2em] text-[#6b6557] hover:text-[#14110d]"
+          >
+            How it&apos;s built →
+          </Link>
+        ) : null}
       </nav>
     </main>
   );

@@ -125,6 +125,7 @@ export function deriveRawItemIdentifierSql(): typeof DERIVED_IDENTIFIER_SQL {
 
 export function createRawItemsRepo(
   db: Pick<AppDb, "select" | "execute">,
+  tenantId: string,
 ): RawItemsRepo {
   return {
     async findByIds(ids: number[]): Promise<RawItemRow[]> {
@@ -144,20 +145,20 @@ export function createRawItemsRepo(
           metadata: rawItems.metadata,
         })
         .from(rawItems)
-        .where(inArray(rawItems.id, ids));
+        .where(and(eq(rawItems.tenantId, tenantId), inArray(rawItems.id, ids)));
       return rows;
     },
     async listForRun(
       runId: string,
       callDeps: ListForRunDeps,
     ): Promise<RawItemSummary[]> {
-      return listRawItemsForRun(runId, { db, ...callDeps });
+      return listRawItemsForRun(runId, { db, tenantId, ...callDeps });
     },
     async listForRunWithEnrichment(
       runId: string,
       callDeps: ListForRunDeps,
     ): Promise<RawItemWithEnrichment[]> {
-      return listRawItemsForRunWithEnrichment(runId, { db, ...callDeps });
+      return listRawItemsForRunWithEnrichment(runId, { db, tenantId, ...callDeps });
     },
     async aggregateBySourceAndIdentifier(
       opts: AggregateBySourceAndIdentifierOpts,
@@ -176,7 +177,8 @@ export function createRawItemsRepo(
           COUNT(*) AS fetched_count,
           MAX(collected_at) AS last_collected_at
         FROM raw_items
-        WHERE collected_at >= ${opts.from.toISOString()}::timestamptz
+        WHERE tenant_id = ${tenantId}
+          AND collected_at >= ${opts.from.toISOString()}::timestamptz
           AND collected_at <  ${opts.to.toISOString()}::timestamptz
         GROUP BY source_type, identifier
       `);
@@ -201,6 +203,7 @@ export function createRawItemsRepo(
 
 export interface ListRawItemsForRunDeps {
   db: Pick<AppDb, "select">;
+  tenantId: string;
   archiveRepo: Pick<RunArchivesRepo, "findById">;
   redis: Pick<IORedis, "get">;
 }
@@ -270,6 +273,7 @@ export async function listRawItemsForRun(
     .from(rawItems)
     .where(
       and(
+        eq(rawItems.tenantId, deps.tenantId),
         gte(rawItems.collectedAt, window.startedAt),
         inArray(rawItems.sourceType, window.sourceTypes),
       ),
@@ -327,7 +331,7 @@ async function listRawItemsForRunWithEnrichment(
   const byRunId = await deps.db
     .select(RAW_ITEM_WITH_ENRICHMENT_SELECT)
     .from(rawItems)
-    .where(eq(rawItems.runId, runId))
+    .where(and(eq(rawItems.tenantId, deps.tenantId), eq(rawItems.runId, runId)))
     .orderBy(
       sql`${rawItems.sourceType} ASC`,
       sql`COALESCE(${rawItems.publishedAt}, ${rawItems.collectedAt}) DESC`,
@@ -347,7 +351,13 @@ async function listRawItemsForRunWithEnrichment(
   const fallbackRows = await deps.db
     .select(RAW_ITEM_WITH_ENRICHMENT_SELECT)
     .from(rawItems)
-    .where(and(windowPredicate, inArray(rawItems.sourceType, window.sourceTypes)))
+    .where(
+      and(
+        eq(rawItems.tenantId, deps.tenantId),
+        windowPredicate,
+        inArray(rawItems.sourceType, window.sourceTypes),
+      ),
+    )
     .orderBy(
       sql`${rawItems.sourceType} ASC`,
       sql`COALESCE(${rawItems.publishedAt}, ${rawItems.collectedAt}) DESC`,

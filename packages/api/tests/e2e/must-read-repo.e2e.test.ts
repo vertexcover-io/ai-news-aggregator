@@ -3,6 +3,7 @@
  * Covers REQ-023, REQ-024, REQ-026, REQ-027, NF-003, EDGE-009, EDGE-013.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { sql } from "drizzle-orm";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +17,7 @@ const { getDb } = await import("@newsletter/shared/db");
 const { createMustReadRepo } = await import("@api/repositories/must-read.js");
 
 const db = getDb();
-const repo = createMustReadRepo(db);
+const repo = createMustReadRepo(db, TENANT_ZERO_ID);
 
 const URL_PREFIX = `https://must-read-repo.example.com/`;
 

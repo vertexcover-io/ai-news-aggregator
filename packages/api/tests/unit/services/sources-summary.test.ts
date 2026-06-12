@@ -11,6 +11,8 @@ import type {
   RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
+import type { SourceRecord, SourcesRepo } from "@api/repositories/sources.js";
+import { settingsToSourceRows } from "@newsletter/shared/services/sources-assembler";
 
 const NOW = new Date("2026-05-23T12:00:00.000Z");
 const FROM = new Date("2026-05-16T12:00:00.000Z");
@@ -62,7 +64,7 @@ function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
     topN: 12,
     halfLifeHours: 24,
     hnEnabled: true,
-    hnConfig: null,
+    hnConfig: { sinceDays: 1 },
     redditEnabled: true,
     redditConfig: {
       subreddits: ["LocalLLaMA"],
@@ -114,12 +116,46 @@ function makeSettingsRepo(s: UserSettings | null): UserSettingsRepo {
   };
 }
 
+// Configured sections now derive from the sources table; mirror the
+// settings fixture into enabled source rows (the write-through sync shape).
+function makeSourcesRepoFromSettings(
+  s: UserSettings | null,
+): Pick<SourcesRepo, "listEnabled"> {
+  const rows = s ? settingsToSourceRows(s) : [];
+  return {
+    listEnabled: () =>
+      Promise.resolve(
+        rows
+          .filter((r) => r.enabled)
+          .map(
+            (r, i) =>
+              ({
+                id: `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`,
+                type: r.type,
+                config: r.config,
+                enabled: true,
+                health: null,
+                createdAt: NOW,
+                updatedAt: NOW,
+              }) as SourceRecord,
+          ),
+      ),
+  };
+}
+
+function makeDeps(s: UserSettings | null) {
+  return {
+    userSettingsRepo: makeSettingsRepo(s),
+    sourcesRepo: makeSourcesRepoFromSettings(s),
+  };
+}
+
 describe("buildSourcesSummary", () => {
   it("emits range with runsInRange and ISO from/to", async () => {
     const result = await buildSourcesSummary({
       rawItemsRepo: makeRawItemsRepo([]),
       runArchivesRepo: makeRunArchivesRepo({ runsInRange: 5 }),
-      userSettingsRepo: makeSettingsRepo(makeSettings()),
+      ...makeDeps(makeSettings()),
       from: FROM,
       to: TO,
       now: () => NOW,
@@ -154,7 +190,7 @@ describe("buildSourcesSummary", () => {
     const result = await buildSourcesSummary({
       rawItemsRepo: makeRawItemsRepo(agg),
       runArchivesRepo: makeRunArchivesRepo({}),
-      userSettingsRepo: makeSettingsRepo(makeSettings()),
+      ...makeDeps(makeSettings()),
       from: FROM,
       to: TO,
       now: () => NOW,
@@ -176,7 +212,7 @@ describe("buildSourcesSummary", () => {
     const result = await buildSourcesSummary({
       rawItemsRepo: makeRawItemsRepo(agg),
       runArchivesRepo: makeRunArchivesRepo({}),
-      userSettingsRepo: makeSettingsRepo(makeSettings()),
+      ...makeDeps(makeSettings()),
       from: FROM,
       to: TO,
       now: () => NOW,
@@ -185,11 +221,11 @@ describe("buildSourcesSummary", () => {
     expect(ws?.rows[0]?.fetchedCount).toBe(10);
   });
 
-  it("builds configured rows per source type from user_settings", async () => {
+  it("builds configured rows per source type from the sources table", async () => {
     const result = await buildSourcesSummary({
       rawItemsRepo: makeRawItemsRepo([]),
       runArchivesRepo: makeRunArchivesRepo({}),
-      userSettingsRepo: makeSettingsRepo(
+      ...makeDeps(
         makeSettings({
           twitterEnabled: true,
           twitterConfig: {
@@ -227,7 +263,7 @@ describe("buildSourcesSummary", () => {
     const result = await buildSourcesSummary({
       rawItemsRepo: makeRawItemsRepo([]),
       runArchivesRepo: makeRunArchivesRepo({}),
-      userSettingsRepo: makeSettingsRepo(
+      ...makeDeps(
         makeSettings({ hnEnabled: false, redditEnabled: false }),
       ),
       from: FROM,
@@ -262,7 +298,7 @@ describe("buildSourcesSummary", () => {
     const result = await buildSourcesSummary({
       rawItemsRepo: makeRawItemsRepo(agg),
       runArchivesRepo: makeRunArchivesRepo({ failures }),
-      userSettingsRepo: makeSettingsRepo(makeSettings()),
+      ...makeDeps(makeSettings()),
       from: FROM,
       to: TO,
       now: () => NOW,
@@ -288,7 +324,7 @@ describe("buildSourcesSummary", () => {
     const result = await buildSourcesSummary({
       rawItemsRepo: makeRawItemsRepo([]),
       runArchivesRepo: makeRunArchivesRepo({ failures }),
-      userSettingsRepo: makeSettingsRepo(makeSettings()),
+      ...makeDeps(makeSettings()),
       from: FROM,
       to: TO,
       now: () => NOW,
@@ -325,7 +361,7 @@ describe("buildSourcesSummary", () => {
     const result = await buildSourcesSummary({
       rawItemsRepo: makeRawItemsRepo(agg),
       runArchivesRepo: makeRunArchivesRepo({}),
-      userSettingsRepo: makeSettingsRepo(
+      ...makeDeps(
         makeSettings({
           redditConfig: {
             subreddits: ["Alpha", "zeta"],
@@ -350,7 +386,7 @@ describe("buildSourcesSummary", () => {
     const result = await buildSourcesSummary({
       rawItemsRepo: makeRawItemsRepo([]),
       runArchivesRepo: makeRunArchivesRepo({}),
-      userSettingsRepo: makeSettingsRepo(null),
+      ...makeDeps(null),
       from: FROM,
       to: TO,
       now: () => NOW,

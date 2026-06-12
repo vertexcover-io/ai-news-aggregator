@@ -1,6 +1,8 @@
 import { useEffect, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 import { setMeta } from "../lib/meta";
+import { useTenantConfig } from "../components/shell/TenantConfigProvider";
+import { NotFoundPage } from "./NotFoundPage";
 import { PipelineDiagram } from "../components/built/PipelineDiagram";
 import { DefinitionTable } from "../components/built/DefinitionTable";
 import { InlineSubscribeCard } from "../components/shell/InlineSubscribeCard";
@@ -184,13 +186,20 @@ function CodeTerm({ code }: { code: string }): ReactElement {
 }
 
 export function BuiltPage(): ReactElement {
+  const config = useTenantConfig();
+  const builtEnabled = config?.flags.built !== false;
+
   useEffect(() => {
+    if (!builtEnabled) return;
     document.title = "How AgentLoop is built — AgentLoop";
     setMeta(
       "description",
       "How the AgentLoop newsletter and the harness behind it are built.",
     );
-  }, []);
+  }, [builtEnabled]);
+
+  // REQ-042: the Built story is tenant-0 only.
+  if (!builtEnabled) return <NotFoundPage />;
 
   return (
     <main className="font-serif">

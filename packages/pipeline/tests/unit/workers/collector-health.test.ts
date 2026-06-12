@@ -62,6 +62,7 @@ vi.mock("@pipeline/repositories/social-credentials.js", () => ({
 
 vi.mock("@pipeline/repositories/user-settings.js", () => ({
   createUserSettingsRepo: vi.fn(() => ({ get: vi.fn().mockResolvedValue(null) })),
+  createNotificationSettingsRepo: vi.fn(() => ({ get: vi.fn().mockResolvedValue(null) })),
 }));
 
 vi.mock("@pipeline/services/credential-resolver.js", () => ({
@@ -277,14 +278,17 @@ function makeFakeHealthCheckDeps(): HealthCheckDeps {
   };
 }
 
+function makeNotifier() {
+  return { notifyCollectorFailures: vi.fn().mockResolvedValue(undefined) };
+}
+
 function makeDeps(overrides: Partial<CollectorHealthJobDeps> = {}): CollectorHealthJobDeps {
   return {
     userSettingsRepo: makeUserSettingsRepo(),
     store: makeStore(),
     runCollectorHealthCheck: makeRunCollectorHealthCheck(),
     buildHealthCheckDeps: vi.fn().mockResolvedValue(makeFakeHealthCheckDeps()),
-    slackWebhookUrl: undefined,
-    postToWebhook: vi.fn().mockResolvedValue({ ok: true, status: 200 }),
+    notifier: makeNotifier(),
     capturePipelineEvent: vi.fn(),
     logger: makeLogger(),
     ...overrides,
@@ -380,17 +384,13 @@ describe("handleCollectorHealthJob", () => {
     expect(hnResult?.[0]?.status).toBe("healthy");
   });
 
-  it("≥1 failure + webhook set → exactly one postToWebhook call with consolidated message (REQ-014)", async () => {
-    const postToWebhook = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+  it("≥1 failure → exactly one notifyCollectorFailures call with consolidated failures (REQ-014/REQ-091)", async () => {
+    const notifier = makeNotifier();
     const runCheck = makeRunCollectorHealthCheck({
       hn: makeHealthOutcome("failed"),
       reddit: makeHealthOutcome("failed"),
     });
-    const deps = makeDeps({
-      runCollectorHealthCheck: runCheck,
-      slackWebhookUrl: "https://hooks.slack.com/services/T/B/C",
-      postToWebhook,
-    });
+    const deps = makeDeps({ runCollectorHealthCheck: runCheck, notifier });
 
     await handleCollectorHealthJob(deps, {
       name: "collector-health",
@@ -398,21 +398,19 @@ describe("handleCollectorHealthJob", () => {
       data: { collectors: ["hn", "reddit"], trigger: "manual" },
     });
 
-    // Exactly one postToWebhook call
-    expect(postToWebhook).toHaveBeenCalledOnce();
-
-    // Payload must contain both failures
-    const callArgs = postToWebhook.mock.calls[0] as [{ url: string; blocks: unknown[] }];
-    expect(callArgs[0].url).toBe("https://hooks.slack.com/services/T/B/C");
-    expect(callArgs[0].blocks).toBeDefined();
+    expect(notifier.notifyCollectorFailures).toHaveBeenCalledOnce();
+    expect(notifier.notifyCollectorFailures).toHaveBeenCalledWith({
+      failures: expect.arrayContaining([
+        expect.objectContaining({ collector: "hn" }),
+        expect.objectContaining({ collector: "reddit" }),
+      ]) as unknown,
+      trigger: "manual",
+    });
   });
 
-  it("all collectors healthy + webhook set → no postToWebhook (REQ-014)", async () => {
-    const postToWebhook = vi.fn();
-    const deps = makeDeps({
-      slackWebhookUrl: "https://hooks.slack.com/services/T/B/C",
-      postToWebhook,
-    });
+  it("all collectors healthy → no notifyCollectorFailures call (REQ-014)", async () => {
+    const notifier = makeNotifier();
+    const deps = makeDeps({ notifier });
 
     await handleCollectorHealthJob(deps, {
       name: "collector-health",
@@ -420,64 +418,15 @@ describe("handleCollectorHealthJob", () => {
       data: { collectors: ["hn"], trigger: "manual" },
     });
 
-    expect(postToWebhook).not.toHaveBeenCalled();
+    expect(notifier.notifyCollectorFailures).not.toHaveBeenCalled();
   });
 
-  it("webhook unset → no postToWebhook, job ok (REQ-015)", async () => {
-    const postToWebhook = vi.fn();
-    const runCheck = makeRunCollectorHealthCheck({ hn: makeHealthOutcome("failed") });
-    const deps = makeDeps({
-      runCollectorHealthCheck: runCheck,
-      slackWebhookUrl: undefined,
-      postToWebhook,
-    });
-
-    await expect(
-      handleCollectorHealthJob(deps, {
-        name: "collector-health",
-        id: "job-6",
-        data: { collectors: ["hn"], trigger: "manual" },
-      }),
-    ).resolves.toBeUndefined();
-
-    expect(postToWebhook).not.toHaveBeenCalled();
-  });
-
-  it("webhook non-2xx → warn log, job ok, does not throw (REQ-016)", async () => {
+  it("notifier throws → warn log, job ok, does not throw (REQ-016)", async () => {
     const logger = makeLogger();
-    const postToWebhook = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    const notifier = makeNotifier();
+    notifier.notifyCollectorFailures.mockRejectedValue(new Error("network error"));
     const runCheck = makeRunCollectorHealthCheck({ hn: makeHealthOutcome("failed") });
-    const deps = makeDeps({
-      runCollectorHealthCheck: runCheck,
-      slackWebhookUrl: "https://hooks.slack.com/services/T/B/C",
-      postToWebhook,
-      logger,
-    });
-
-    await expect(
-      handleCollectorHealthJob(deps, {
-        name: "collector-health",
-        id: "job-7",
-        data: { collectors: ["hn"], trigger: "manual" },
-      }),
-    ).resolves.toBeUndefined();
-
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ event: "slack.collector_health.failed" }),
-      expect.any(String),
-    );
-  });
-
-  it("webhook throws → warn log, job ok, does not throw (REQ-016)", async () => {
-    const logger = makeLogger();
-    const postToWebhook = vi.fn().mockRejectedValue(new Error("network error"));
-    const runCheck = makeRunCollectorHealthCheck({ hn: makeHealthOutcome("failed") });
-    const deps = makeDeps({
-      runCollectorHealthCheck: runCheck,
-      slackWebhookUrl: "https://hooks.slack.com/services/T/B/C",
-      postToWebhook,
-      logger,
-    });
+    const deps = makeDeps({ runCollectorHealthCheck: runCheck, notifier, logger });
 
     await expect(
       handleCollectorHealthJob(deps, {

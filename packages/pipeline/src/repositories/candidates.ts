@@ -1,4 +1,4 @@
-import { and, gte, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 import { rawItems } from "@newsletter/shared/db";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import type { RawItemMetadata } from "@newsletter/shared";
@@ -21,6 +21,7 @@ export interface CandidatesRepo {
 
 export function createCandidatesRepo(
   db: Pick<AppDb, "select">,
+  tenantId: string,
 ): CandidatesRepo {
   return {
     async findSince(
@@ -43,6 +44,7 @@ export function createCandidatesRepo(
         .from(rawItems)
         .where(
           and(
+            eq(rawItems.tenantId, tenantId),
             gte(rawItems.collectedAt, since),
             inArray(rawItems.sourceType, sourceTypes),
           ),

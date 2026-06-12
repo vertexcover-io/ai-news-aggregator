@@ -6,8 +6,8 @@
  *   - api dev server on :3000 (proxied via /api on the web server)
  *   - web dev server on :5174 (Playwright baseURL override)
  */
-import { test, expect, type Page } from "@playwright/test";
-import { ADMIN_PASSWORD, makeDbClient } from "./_infra";
+import { test, expect } from "@playwright/test";
+import { adminLogin, makeDbClient } from "./_infra";
 
 // The settings form requires non-empty ranking/shortlist prompts to save. Seed
 // a valid singleton row so Save fires a PUT regardless of prior DB state.
@@ -32,12 +32,6 @@ async function resetSettings(): Promise<void> {
 // The hermetic runner provisions PLAYWRIGHT_BASE_URL with the ephemeral port.
 const WEB_BASE = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5173";
 
-async function adminLogin(page: Page): Promise<void> {
-  const res = await page.request.post(`${WEB_BASE}/api/admin/login`, {
-    data: { password: ADMIN_PASSWORD },
-  });
-  expect(res.ok()).toBe(true);
-}
 
 test.describe("Web Search settings round-trip (VS-0.5)", () => {
   test.beforeEach(async () => {

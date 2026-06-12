@@ -15,6 +15,7 @@
  * This file's tests MUST FAIL against the current implementation. They
  * pass once upsertItems is fixed to dedup within the batch.
  */
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
@@ -58,7 +59,7 @@ describe("createRawItemsRepo.upsertItems — within-batch dedup", () => {
   // in one batch must NOT crash. This is the exact failure mode from
   // run b91d826e.
   it("does not throw when batch contains two items with the same (sourceType, externalId)", async () => {
-    const repo = createRawItemsRepo(getTestDb());
+    const repo = createRawItemsRepo(getTestDb(), TENANT_ZERO_ID);
 
     const dup1 = makeItem({ title: "First copy" });
     const dup2 = makeItem({ title: "Second copy (cross-linked)" });
@@ -74,7 +75,7 @@ describe("createRawItemsRepo.upsertItems — within-batch dedup", () => {
   // semantics, matching what ON CONFLICT DO UPDATE would have produced if
   // the duplicates had been issued as separate statements.
   it("last write wins when batch contains duplicates", async () => {
-    const repo = createRawItemsRepo(getTestDb());
+    const repo = createRawItemsRepo(getTestDb(), TENANT_ZERO_ID);
 
     const first = makeItem({
       title: "First copy",
@@ -103,7 +104,7 @@ describe("createRawItemsRepo.upsertItems — within-batch dedup", () => {
   // EDGE: different externalId values in the same batch must continue
   // to work (no false-positive dedup).
   it("inserts two distinct items in the same batch without dedup", async () => {
-    const repo = createRawItemsRepo(getTestDb());
+    const repo = createRawItemsRepo(getTestDb(), TENANT_ZERO_ID);
 
     const a = makeItem({
       externalId: "https://hugobowne.substack.com/p/post-a",
@@ -133,7 +134,7 @@ describe("createRawItemsRepo.upsertItems — within-batch dedup", () => {
   // EDGE: same externalId but different sourceType is NOT a duplicate
   // (the conflict target is the composite key).
   it("does not dedup when externalId matches but sourceType differs", async () => {
-    const repo = createRawItemsRepo(getTestDb());
+    const repo = createRawItemsRepo(getTestDb(), TENANT_ZERO_ID);
 
     // Contrived but legal: a Reddit post and a blog post happen to share
     // the same externalId string (unlikely for URL-based IDs, but the

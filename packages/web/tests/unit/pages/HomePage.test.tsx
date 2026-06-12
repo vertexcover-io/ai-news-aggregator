@@ -9,6 +9,7 @@ import type {
 } from "@newsletter/shared/types";
 import { HomePage } from "../../../src/pages/HomePage";
 import { PublicLayout } from "../../../src/layouts/PublicLayout";
+import { makeTenantConfig, withTenantConfig } from "../helpers/tenantConfig";
 
 vi.mock("../../../src/api/home", () => ({
   getHome: vi.fn(),
@@ -62,7 +63,10 @@ function makeCanon(overrides: Partial<PublicMustReadEntry> = {}): PublicMustRead
   };
 }
 
-function renderHome(payload: HomePagePayload): ReturnType<typeof render> {
+function renderHome(
+  payload: HomePagePayload,
+  config = makeTenantConfig(),
+): ReturnType<typeof render> {
   mockGetHome.mockResolvedValue(payload);
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -71,11 +75,14 @@ function renderHome(payload: HomePagePayload): ReturnType<typeof render> {
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={["/"]}>
-        <Routes>
-          <Route element={<PublicLayout />}>
-            <Route index element={<HomePage />} />
-          </Route>
-        </Routes>
+        {withTenantConfig(
+          <Routes>
+            <Route element={<PublicLayout />}>
+              <Route index element={<HomePage />} />
+            </Route>
+          </Routes>,
+          config,
+        )}
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -123,6 +130,14 @@ describe("HomePage", () => {
     expect(block?.textContent).toContain("The piece that named the shift");
     const link = block?.querySelector(`a[href="${canon.url}"]`);
     expect(link).not.toBeNull();
+  });
+
+  it("EDGE-014: featuredCanon is hidden when the tenant's canon flag is off, even if the API returns it", () => {
+    renderHome(
+      { todaysIssue: null, featuredCanon: makeCanon(), recentIssues: [] },
+      makeTenantConfig({ flags: { canon: false } }),
+    );
+    expect(document.querySelector('[data-section="from-the-canon"]')).toBeNull();
   });
 
   it("REQ-006: recent-issues section contains ≤10 rows and does NOT duplicate todaysIssue runId", () => {

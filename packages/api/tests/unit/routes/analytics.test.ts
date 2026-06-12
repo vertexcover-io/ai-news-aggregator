@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { setTestTenant } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import type { AnalyticsMetrics } from "@newsletter/shared";
 import { createAnalyticsRouter } from "@api/routes/analytics.js";
@@ -31,7 +32,8 @@ function makeRepo(metrics: Partial<MetricsResult> = {}): AnalyticsRepo {
 
 function buildApp(repo: AnalyticsRepo): Hono {
   const app = new Hono();
-  app.route("/api/admin/analytics", createAnalyticsRouter({ analyticsRepo: repo }));
+  app.use("*", setTestTenant());
+  app.route("/api/admin/analytics", createAnalyticsRouter({ getAnalyticsRepo: () => repo }));
   return app;
 }
 

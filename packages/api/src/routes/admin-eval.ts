@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import {
@@ -94,16 +95,18 @@ export type CreateManualFixtureFn = (
   opts?: { name?: string; model?: string },
 ) => Promise<CreateManualFixtureResult>;
 export type ListCalendarRunsByDateFn = (
+  tenantId: string,
   dateISO: string,
   timezone: string,
 ) => Promise<CalendarRunSummary[]>;
 export type GetCalendarRunDetailFn = (
+  tenantId: string,
   runId: string,
 ) => Promise<CalendarRunDetail | null>;
 
 export interface AdminEvalRouterDeps {
-  getSettingsRepo: () => UserSettingsRepo;
-  getEvalRunsRepo?: () => EvalRunsRepo;
+  getSettingsRepo: (tenantId: string) => UserSettingsRepo;
+  getEvalRunsRepo?: (tenantId: string) => EvalRunsRepo;
   listFixtures?: ListFixturesFn;
   readFixture?: ReadFixtureFn;
   readGroundTruth?: ReadGroundTruthFn;
@@ -185,9 +188,10 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
         400,
       );
     }
-    const settings = await deps.getSettingsRepo().get();
+    const tenantId = getTenantId(c);
+    const settings = await deps.getSettingsRepo(tenantId).get();
     const timezone = safeTimezone(settings?.scheduleTimezone);
-    const runs = await listCalendarRunsByDateFn(parsed.data.date, timezone);
+    const runs = await listCalendarRunsByDateFn(tenantId, parsed.data.date, timezone);
     return c.json({ date: parsed.data.date, runs });
   });
 
@@ -196,7 +200,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
       return c.json({ error: "calendar_runs_repo_unavailable" }, 500);
     }
     const runId = c.req.param("runId");
-    const detail = await getCalendarRunDetailFn(runId);
+    const detail = await getCalendarRunDetailFn(getTenantId(c), runId);
     if (detail === null) {
       return c.json({ error: "run_not_found" }, 404);
     }
@@ -204,7 +208,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
   });
 
   app.get("/runs", async (c) => {
-    const evalRunsRepo = deps.getEvalRunsRepo?.();
+    const evalRunsRepo = deps.getEvalRunsRepo?.(getTenantId(c));
     if (evalRunsRepo === undefined) {
       return c.json({ error: "eval_runs_repo_unavailable" }, 500);
     }
@@ -234,7 +238,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
   });
 
   app.get("/runs/:id", async (c) => {
-    const evalRunsRepo = deps.getEvalRunsRepo?.();
+    const evalRunsRepo = deps.getEvalRunsRepo?.(getTenantId(c));
     if (evalRunsRepo === undefined) {
       return c.json({ error: "eval_runs_repo_unavailable" }, 500);
     }
@@ -349,7 +353,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
         422,
       );
     }
-    const repo = deps.getSettingsRepo();
+    const repo = deps.getSettingsRepo(getTenantId(c));
     const current = await repo.get();
     if (current === null) {
       return c.json({ error: "settings_not_initialised" }, 409);
@@ -376,6 +380,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
       );
     }
     const req = parsed.data;
+    const tenantId = getTenantId(c);
 
     return streamSSE(c, async (stream) => {
       await runEvalOrchestrator({
@@ -383,11 +388,13 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
         cacheDir,
         fixturesDir,
         groundtruthDir,
-        evalRunsRepo: deps.getEvalRunsRepo?.(),
-        getSettingsRepo: deps.getSettingsRepo,
+        evalRunsRepo: deps.getEvalRunsRepo?.(tenantId),
+        getSettingsRepo: () => deps.getSettingsRepo(tenantId),
         readFixtureFn,
         readGroundTruthFn,
-        getCalendarRunDetailFn,
+        getCalendarRunDetailFn: getCalendarRunDetailFn
+          ? (runId) => getCalendarRunDetailFn(tenantId, runId)
+          : undefined,
         runEvalFn,
         emit: (event) => stream.writeSSE(event),
         logger,
@@ -400,14 +407,14 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
 
 export function createDefaultAdminEvalRouter(): Hono {
   return createAdminEvalRouter({
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
-    getEvalRunsRepo: () => createEvalRunsRepo(defaultGetDb()),
-    listCalendarRunsByDate: async (dateISO, timezone) => {
-      const repo = createEvalExportsRepo(defaultGetDb());
+    getSettingsRepo: (tenantId) => createUserSettingsRepo(defaultGetDb(), tenantId),
+    getEvalRunsRepo: (tenantId) => createEvalRunsRepo(defaultGetDb(), tenantId),
+    listCalendarRunsByDate: async (tenantId, dateISO, timezone) => {
+      const repo = createEvalExportsRepo(defaultGetDb(), tenantId);
       return repo.listCompletedRunsByDate(dateISO, timezone);
     },
-    getCalendarRunDetail: async (runId) => {
-      const repo = createEvalExportsRepo(defaultGetDb());
+    getCalendarRunDetail: async (tenantId, runId) => {
+      const repo = createEvalExportsRepo(defaultGetDb(), tenantId);
       return repo.getCompletedRunDetail(runId);
     },
   });

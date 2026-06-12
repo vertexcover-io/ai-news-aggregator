@@ -3,9 +3,13 @@ import { z } from "zod";
 import { createLogger } from "@newsletter/shared";
 import type { FeedbackRating, SlackNotifier } from "@newsletter/shared";
 import { issueSubscriberToken, verifySubscriberToken } from "@api/lib/subscriber-token.js";
-import type { SubscribersRepo } from "@api/repositories/subscribers.js";
+import type {
+  SubscribersRepo,
+  SubscriberTenantLookup,
+} from "@api/repositories/subscribers.js";
 import type { FeedbackEventsRepo } from "@api/repositories/feedback-events.js";
 import { captureAnalytics } from "@api/lib/posthog.js";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 
 const FEEDBACK_RATINGS: readonly FeedbackRating[] = ["love", "meh", "nah"];
 
@@ -14,16 +18,24 @@ function parseRating(value: string | undefined): FeedbackRating | null {
 }
 
 export interface SubscribeRouterDeps {
-  subscribersRepo: SubscribersRepo;
-  feedbackEventsRepo: FeedbackEventsRepo;
+  getSubscribersRepo: (tenantId: string) => SubscribersRepo;
+  /** Global token->subscriber resolution: confirm/unsubscribe/feedback links
+   * carry only a signed subscriber token, so the subscriber row is the tenant
+   * resolution for those flows. */
+  subscriberLookup: SubscriberTenantLookup;
+  getFeedbackEventsRepo: (tenantId: string) => FeedbackEventsRepo;
   /** Campaign id stamped on every feedback event (one-time reader-feedback send). */
   feedbackCampaign: string;
   sessionSecret: string;
   baseUrl: string;
   webBaseUrl: string;
   sendConfirmationEmail: (email: string, confirmUrl: string) => Promise<void>;
-  sendNewsletterToSubscriber: (runId: string, subscriberId: string) => Promise<void>;
-  getMostRecentReviewedArchiveId: () => Promise<string | null>;
+  sendNewsletterToSubscriber: (
+    runId: string,
+    subscriberId: string,
+    tenantId: string,
+  ) => Promise<void>;
+  getMostRecentReviewedArchiveId: (tenantId: string) => Promise<string | null>;
   slackNotifier: SlackNotifier;
   logger?: ReturnType<typeof createLogger>;
 }
@@ -63,7 +75,9 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
 
     const { email } = parsed.data;
     const masked = maskEmail(email);
-    const existing = await deps.subscribersRepo.findByEmail(email);
+    const tenantId = getTenantId(c);
+    const subscribersRepo = deps.getSubscribersRepo(tenantId);
+    const existing = await subscribersRepo.findByEmail(email);
     if (existing) {
       logger.info(
         { event: "subscribe.duplicate", subscriberId: existing.id, email: masked, status: existing.status },
@@ -75,7 +89,7 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
     const PG_UNIQUE_VIOLATION = "23505";
     let subscriber;
     try {
-      subscriber = await deps.subscribersRepo.create({
+      subscriber = await subscribersRepo.create({
         email,
         status: "pending",
       });
@@ -100,6 +114,7 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       "subscribe: new subscriber persisted (pending)",
     );
     void captureAnalytics({
+      tenantId,
       distinctId: subscriber.id,
       event: "subscriber_created",
     });
@@ -112,7 +127,7 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       confirmTokenExpiresAt,
     );
 
-    await deps.subscribersRepo.updateConfirmToken(
+    await subscribersRepo.updateConfirmToken(
       subscriber.id,
       confirmToken,
       confirmTokenExpiresAt,
@@ -161,8 +176,17 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       return c.redirect(`${deps.webBaseUrl}/confirm?status=invalid`);
     }
 
+    const known = await deps.subscriberLookup.findById(result.subscriberId);
+    if (known === null) {
+      logger.warn(
+        { event: "confirm.subscriber_missing", subscriberId: result.subscriberId },
+        "confirm: token valid but subscriber not found",
+      );
+      return c.redirect(`${deps.webBaseUrl}/confirm?status=invalid`);
+    }
+    const subscribersRepo = deps.getSubscribersRepo(known.tenantId);
     const { changed: confirmChanged, next: confirmNext, row: confirmRow } =
-      await deps.subscribersRepo.updateStatus(result.subscriberId, "confirmed", {
+      await subscribersRepo.updateStatus(result.subscriberId, "confirmed", {
         subscribedAt: new Date(),
         confirmToken: null,
         confirmTokenExpiresAt: null,
@@ -173,12 +197,13 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       "confirm: subscriber moved pending -> confirmed",
     );
     void captureAnalytics({
+      tenantId: known.tenantId,
       distinctId: result.subscriberId,
       event: "subscriber_confirmed",
     });
 
     if (confirmChanged && confirmNext === "confirmed") {
-      const totalConfirmed = await deps.subscribersRepo.countConfirmed();
+      const totalConfirmed = await subscribersRepo.countConfirmed();
       void deps.slackNotifier
         .notifySubscriberConfirmed({ email: confirmRow.email, totalConfirmed })
         .catch((err: unknown) => {
@@ -192,10 +217,14 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
         });
     }
 
-    const recentArchiveId = await deps.getMostRecentReviewedArchiveId();
+    const recentArchiveId = await deps.getMostRecentReviewedArchiveId(known.tenantId);
     if (recentArchiveId) {
       try {
-        await deps.sendNewsletterToSubscriber(recentArchiveId, result.subscriberId);
+        await deps.sendNewsletterToSubscriber(
+          recentArchiveId,
+          result.subscriberId,
+          known.tenantId,
+        );
         logger.info(
           {
             event: "confirm.welcome_send_enqueued",
@@ -224,9 +253,13 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
     const token = c.req.query("token") ?? "";
     const result = verifySubscriberToken(token, "unsub", deps.sessionSecret);
 
-    if (result.valid) {
+    const known = result.valid
+      ? await deps.subscriberLookup.findById(result.subscriberId)
+      : null;
+    if (result.valid && known !== null) {
+      const subscribersRepo = deps.getSubscribersRepo(known.tenantId);
       const { changed: unsubChanged, next: unsubNext, row: unsubRow } =
-        await deps.subscribersRepo.updateStatus(result.subscriberId, "unsubscribed", {
+        await subscribersRepo.updateStatus(result.subscriberId, "unsubscribed", {
           unsubscribedAt: new Date(),
         });
       logger.info(
@@ -234,12 +267,13 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
         "unsubscribe: subscriber unsubscribed",
       );
       void captureAnalytics({
+        tenantId: known.tenantId,
         distinctId: result.subscriberId,
         event: "subscriber_unsubscribed",
         properties: { via: "GET" },
       });
       if (unsubChanged && unsubNext === "unsubscribed") {
-        const totalConfirmed = await deps.subscribersRepo.countConfirmed();
+        const totalConfirmed = await subscribersRepo.countConfirmed();
         void deps.slackNotifier
           .notifySubscriberRemoved({ email: unsubRow.email, via: "unsubscribe-link", totalConfirmed })
           .catch((err: unknown) => {
@@ -254,7 +288,11 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       }
     } else {
       logger.warn(
-        { event: "unsubscribe.invalid_token", via: "GET", reason: result.reason },
+        {
+          event: "unsubscribe.invalid_token",
+          via: "GET",
+          reason: result.valid ? "subscriber_missing" : result.reason,
+        },
         "unsubscribe: invalid/expired token (still returning success to prevent enumeration)",
       );
     }
@@ -282,9 +320,13 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
 
     if (token) {
       const result = verifySubscriberToken(token, "unsub", deps.sessionSecret);
-      if (result.valid) {
+      const known = result.valid
+        ? await deps.subscriberLookup.findById(result.subscriberId)
+        : null;
+      if (result.valid && known !== null) {
+        const subscribersRepo = deps.getSubscribersRepo(known.tenantId);
         const { changed: oneClickChanged, next: oneClickNext, row: oneClickRow } =
-          await deps.subscribersRepo.updateStatus(result.subscriberId, "unsubscribed", {
+          await subscribersRepo.updateStatus(result.subscriberId, "unsubscribed", {
             unsubscribedAt: new Date(),
           });
         logger.info(
@@ -292,12 +334,13 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
           "unsubscribe: subscriber unsubscribed (one-click)",
         );
         void captureAnalytics({
+          tenantId: known.tenantId,
           distinctId: result.subscriberId,
           event: "subscriber_unsubscribed",
           properties: { via: "POST" },
         });
         if (oneClickChanged && oneClickNext === "unsubscribed") {
-          const totalConfirmed = await deps.subscribersRepo.countConfirmed();
+          const totalConfirmed = await subscribersRepo.countConfirmed();
           void deps.slackNotifier
             .notifySubscriberRemoved({ email: oneClickRow.email, via: "one-click", totalConfirmed })
             .catch((err: unknown) => {
@@ -312,7 +355,11 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
         }
       } else {
         logger.warn(
-          { event: "unsubscribe.invalid_token", via: "POST", reason: result.reason },
+          {
+            event: "unsubscribe.invalid_token",
+            via: "POST",
+            reason: result.valid ? "subscriber_missing" : result.reason,
+          },
           "unsubscribe: invalid token on one-click POST",
         );
       }
@@ -353,7 +400,7 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       return c.redirect(`${deps.webBaseUrl}/feedback?status=invalid`);
     }
 
-    const subscriber = await deps.subscribersRepo.findById(result.subscriberId);
+    const subscriber = await deps.subscriberLookup.findById(result.subscriberId);
     if (!subscriber) {
       logger.warn(
         { event: "feedback.subscriber_missing", subscriberId: result.subscriberId },
@@ -362,12 +409,13 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       return c.redirect(`${deps.webBaseUrl}/feedback?status=invalid`);
     }
 
-    const isFirstTap = !(await deps.feedbackEventsRepo.hasPriorEvent(
+    const feedbackEventsRepo = deps.getFeedbackEventsRepo(subscriber.tenantId);
+    const isFirstTap = !(await feedbackEventsRepo.hasPriorEvent(
       result.subscriberId,
       deps.feedbackCampaign,
     ));
 
-    await deps.feedbackEventsRepo.insertEvent({
+    await feedbackEventsRepo.insertEvent({
       subscriberId: result.subscriberId,
       campaign: deps.feedbackCampaign,
       rating,

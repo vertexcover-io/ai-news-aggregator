@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useState,
   type ChangeEvent,
   type ReactElement,
@@ -6,6 +7,7 @@ import {
 } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { BrandMark } from "./BrandMark";
+import { useTenantConfig } from "./TenantConfigProvider";
 import { postSubscribe } from "../../api/subscribe";
 import { captureBrowserEvent } from "../../lib/analytics";
 import { markSubscribed } from "../../lib/subscriptionStorage";
@@ -79,7 +81,16 @@ function FooterSubscribeField(): ReactElement {
 
 export function Footer(): ReactElement {
   const { pathname } = useLocation();
-  const showColophon = pathname !== "/built";
+  const config = useTenantConfig();
+  const flags = config?.flags;
+  const name = config?.name ?? "";
+  const showColophon = flags?.built === true && pathname !== "/built";
+
+  const navLinks: { to: string; label: string }[] = [];
+  if (flags?.canon) navLinks.push({ to: "/must-read", label: "MUST READ" });
+  navLinks.push({ to: "/sources", label: "SOURCES" });
+  if (flags?.built) navLinks.push({ to: "/built", label: "HOW IT'S BUILT" });
+
   return (
     <footer className="mt-18">
       {showColophon ? (
@@ -105,10 +116,41 @@ export function Footer(): ReactElement {
           <span className="flex items-center gap-2">
             <BrandMark size={18} className="shrink-0 text-[#8c3a1e]" />
             <strong className="text-[#14110d] font-semibold tracking-[0.16em]">
-              AGENTLOOP
+              {name}
             </strong>
           </span>
-          A{" "}
+          {flags?.built ? (
+            <>
+              A{" "}
+              <a
+                href="https://blog.vertexcover.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
+              >
+                Vertexcover Labs
+              </a>{" "}
+              publication
+            </>
+          ) : null}
+        </div>
+        <div>
+          <FooterSubscribeField />
+        </div>
+        <div className="font-mono uppercase text-[10.5px] tracking-[0.22em] text-[#6b6557] text-left sm:text-right">
+          {navLinks.map((link, idx) => (
+            <Fragment key={link.to}>
+              {idx > 0 ? <span className="mx-2 text-[#e7e2d6]">·</span> : null}
+              <Link to={link.to} className="text-[#6b6557] hover:text-[#8c3a1e]">
+                {link.label}
+              </Link>
+            </Fragment>
+          ))}
+        </div>
+      </div>
+      <div className="py-5 text-center font-mono uppercase text-[10px] tracking-[0.22em] text-[#6b6557]">
+        © {new Date().getFullYear()}{" "}
+        {flags?.built ? (
           <a
             href="https://blog.vertexcover.io"
             target="_blank"
@@ -116,36 +158,10 @@ export function Footer(): ReactElement {
             className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
           >
             Vertexcover Labs
-          </a>{" "}
-          publication
-        </div>
-        <div>
-          <FooterSubscribeField />
-        </div>
-        <div className="font-mono uppercase text-[10.5px] tracking-[0.22em] text-[#6b6557] text-left sm:text-right">
-          <Link to="/must-read" className="text-[#6b6557] hover:text-[#8c3a1e]">
-            MUST READ
-          </Link>
-          <span className="mx-2 text-[#e7e2d6]">·</span>
-          <Link to="/sources" className="text-[#6b6557] hover:text-[#8c3a1e]">
-            SOURCES
-          </Link>
-          <span className="mx-2 text-[#e7e2d6]">·</span>
-          <Link to="/built" className="text-[#6b6557] hover:text-[#8c3a1e]">
-            HOW IT&apos;S BUILT
-          </Link>
-        </div>
-      </div>
-      <div className="py-5 text-center font-mono uppercase text-[10px] tracking-[0.22em] text-[#6b6557]">
-        © {new Date().getFullYear()}{" "}
-        <a
-          href="https://blog.vertexcover.io"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
-        >
-          Vertexcover Labs
-        </a>
+          </a>
+        ) : (
+          name
+        )}
       </div>
     </footer>
   );

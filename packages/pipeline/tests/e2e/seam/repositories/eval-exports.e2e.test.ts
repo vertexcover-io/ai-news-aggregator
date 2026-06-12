@@ -10,6 +10,7 @@
  *   EDGE-001 (REQ-004): multi-run isolation — R2 items excluded from R's pool
  *   REQ-005/EDGE-003: legacy fallback — null run_id, window fallback, pool deduped
  */
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
@@ -44,6 +45,7 @@ async function seedArchive(
     rationale: "seeded",
   }));
   await db.insert(runArchives).values({
+    tenantId: TENANT_ZERO_ID,
     id: opts.id,
     status: "completed",
     rankedItems,
@@ -89,6 +91,7 @@ describe("eval-exports repo e2e — VS-5", () => {
         .insert(rawItems)
         .values([
           {
+            tenantId: TENANT_ZERO_ID,
             sourceType: "hn",
             externalId: `${runId}-A`,
             title: "Item A",
@@ -98,6 +101,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             runId,
           },
           {
+            tenantId: TENANT_ZERO_ID,
             // duplicate of A — same canonical URL (UTM stripped), lower engagement
             sourceType: "reddit",
             externalId: `${runId}-A-dup`,
@@ -108,6 +112,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             runId,
           },
           {
+            tenantId: TENANT_ZERO_ID,
             sourceType: "hn",
             externalId: `${runId}-B`,
             title: "Item B",
@@ -117,6 +122,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             runId,
           },
           {
+            tenantId: TENANT_ZERO_ID,
             sourceType: "hn",
             externalId: `${runId}-C`,
             title: "Item C",
@@ -126,6 +132,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             runId,
           },
           {
+            tenantId: TENANT_ZERO_ID,
             sourceType: "hn",
             externalId: `${runId}-D`,
             title: "Item D",
@@ -149,7 +156,7 @@ describe("eval-exports repo e2e — VS-5", () => {
         topN: 5,
       });
 
-      const repo = createEvalExportsRepo(db);
+      const repo = createEvalExportsRepo(db, TENANT_ZERO_ID);
       const detail = await repo.getCompletedRunDetail(runId);
 
       expect(detail).not.toBeNull();
@@ -201,6 +208,7 @@ describe("eval-exports repo e2e — VS-5", () => {
         .insert(rawItems)
         .values([
           {
+            tenantId: TENANT_ZERO_ID,
             sourceType: "hn",
             externalId: `${runR}-X`,
             title: "Run R - Item X",
@@ -210,6 +218,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             runId: runR,
           },
           {
+            tenantId: TENANT_ZERO_ID,
             sourceType: "hn",
             externalId: `${runR}-Y`,
             title: "Run R - Item Y",
@@ -224,6 +233,7 @@ describe("eval-exports repo e2e — VS-5", () => {
       // Seed items for run R2 (same day, different run_id)
       await db.insert(rawItems).values([
         {
+          tenantId: TENANT_ZERO_ID,
           sourceType: "hn",
           externalId: `${runR2}-Z`,
           title: "Run R2 - Item Z",
@@ -250,7 +260,7 @@ describe("eval-exports repo e2e — VS-5", () => {
         topN: 5,
       });
 
-      const repo = createEvalExportsRepo(db);
+      const repo = createEvalExportsRepo(db, TENANT_ZERO_ID);
       const detailR = await repo.getCompletedRunDetail(runR);
 
       expect(detailR).not.toBeNull();
@@ -285,6 +295,7 @@ describe("eval-exports repo e2e — VS-5", () => {
         .insert(rawItems)
         .values([
           {
+            tenantId: TENANT_ZERO_ID,
             sourceType: "hn",
             externalId: `${runR3}-legacy-P`,
             title: "Legacy Item P",
@@ -295,6 +306,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             // runId is omitted → NULL
           },
           {
+            tenantId: TENANT_ZERO_ID,
             // duplicate of P, lower engagement
             sourceType: "reddit",
             externalId: `${runR3}-legacy-P-dup`,
@@ -305,6 +317,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             collectedAt: new Date(startedAt.getTime() + 2000),
           },
           {
+            tenantId: TENANT_ZERO_ID,
             sourceType: "hn",
             externalId: `${runR3}-legacy-Q`,
             title: "Legacy Item Q",
@@ -326,7 +339,7 @@ describe("eval-exports repo e2e — VS-5", () => {
         topN: 5,
       });
 
-      const repo = createEvalExportsRepo(db);
+      const repo = createEvalExportsRepo(db, TENANT_ZERO_ID);
       const detail = await repo.getCompletedRunDetail(runR3);
 
       expect(detail).not.toBeNull();

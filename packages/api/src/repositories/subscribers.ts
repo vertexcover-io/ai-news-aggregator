@@ -13,7 +13,7 @@ export interface SubscribersRepo {
   findByEmail(email: string): Promise<SubscriberSelect | null>;
   findById(id: string): Promise<SubscriberSelect | null>;
   findByIds(ids: string[]): Promise<SubscriberSelect[]>;
-  create(insert: SubscriberInsert): Promise<SubscriberSelect>;
+  create(insert: Omit<SubscriberInsert, "tenantId">): Promise<SubscriberSelect>;
   updateConfirmToken(
     id: string,
     confirmToken: string,
@@ -35,13 +35,14 @@ export interface SubscribersRepo {
 
 export function createSubscribersRepo(
   db: Pick<AppDb, "select" | "insert" | "update">,
+  tenantId: string,
 ): SubscribersRepo {
   return {
     async findByEmail(email: string): Promise<SubscriberSelect | null> {
       const rows = await db
         .select()
         .from(subscribers)
-        .where(eq(subscribers.email, email))
+        .where(and(eq(subscribers.tenantId, tenantId), eq(subscribers.email, email)))
         .limit(1);
       return rows[0] ?? null;
     },
@@ -50,18 +51,24 @@ export function createSubscribersRepo(
       const rows = await db
         .select()
         .from(subscribers)
-        .where(eq(subscribers.id, id))
+        .where(and(eq(subscribers.tenantId, tenantId), eq(subscribers.id, id)))
         .limit(1);
       return rows[0] ?? null;
     },
 
     async findByIds(ids: string[]): Promise<SubscriberSelect[]> {
       if (ids.length === 0) return [];
-      return db.select().from(subscribers).where(inArray(subscribers.id, ids));
+      return db
+        .select()
+        .from(subscribers)
+        .where(and(eq(subscribers.tenantId, tenantId), inArray(subscribers.id, ids)));
     },
 
-    async create(insert: SubscriberInsert): Promise<SubscriberSelect> {
-      const [row] = await db.insert(subscribers).values(insert).returning();
+    async create(insert: Omit<SubscriberInsert, "tenantId">): Promise<SubscriberSelect> {
+      const [row] = await db
+        .insert(subscribers)
+        .values({ ...insert, tenantId })
+        .returning();
       return row;
     },
 
@@ -73,7 +80,7 @@ export function createSubscribersRepo(
       await db
         .update(subscribers)
         .set({ confirmToken, confirmTokenExpiresAt, updatedAt: new Date() })
-        .where(eq(subscribers.id, id));
+        .where(and(eq(subscribers.tenantId, tenantId), eq(subscribers.id, id)));
     },
 
     async updateStatus(
@@ -89,7 +96,13 @@ export function createSubscribersRepo(
       const updatedRows = await db
         .update(subscribers)
         .set({ status, updatedAt: new Date(), ...(extra ?? {}) })
-        .where(and(eq(subscribers.id, id), ne(subscribers.status, status)))
+        .where(
+          and(
+            eq(subscribers.tenantId, tenantId),
+            eq(subscribers.id, id),
+            ne(subscribers.status, status),
+          ),
+        )
         .returning();
       for (const updated of updatedRows) {
         return { changed: true, next: status, row: updated };
@@ -97,7 +110,7 @@ export function createSubscribersRepo(
       const currentRows = await db
         .select()
         .from(subscribers)
-        .where(eq(subscribers.id, id))
+        .where(and(eq(subscribers.tenantId, tenantId), eq(subscribers.id, id)))
         .limit(1);
       for (const current of currentRows) {
         return { changed: false, next: current.status, row: current };
@@ -109,15 +122,40 @@ export function createSubscribersRepo(
       return db
         .select()
         .from(subscribers)
-        .where(eq(subscribers.status, "confirmed"));
+        .where(and(eq(subscribers.tenantId, tenantId), eq(subscribers.status, "confirmed")));
     },
 
     async countConfirmed(): Promise<number> {
       const [row] = await db
         .select({ value: count() })
         .from(subscribers)
-        .where(eq(subscribers.status, "confirmed"));
+        .where(and(eq(subscribers.tenantId, tenantId), eq(subscribers.status, "confirmed")));
       return row.value;
+    },
+  };
+}
+
+export interface SubscriberTenantLookup {
+  findById(id: string): Promise<SubscriberSelect | null>;
+}
+
+/**
+ * NOT tenant-scoped by design: confirm/unsubscribe/feedback links arrive on
+ * arbitrary hosts carrying only a signed subscriber token — the subscriber row
+ * IS the tenancy resolution for those flows (same shape as the SES webhook's
+ * messageId lookup). Use only from token-verified paths.
+ */
+export function createSubscriberTenantLookup(
+  db: Pick<AppDb, "select">,
+): SubscriberTenantLookup {
+  return {
+    async findById(id: string): Promise<SubscriberSelect | null> {
+      const rows = await db
+        .select()
+        .from(subscribers)
+        .where(eq(subscribers.id, id))
+        .limit(1);
+      return rows[0] ?? null;
     },
   };
 }

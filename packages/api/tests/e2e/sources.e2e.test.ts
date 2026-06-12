@@ -16,6 +16,7 @@ import {
   it,
 } from "vitest";
 import { Hono } from "hono";
+import { setTestTenant } from "../helpers/tenant.js";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,7 +37,7 @@ import type {
   UserSettings,
 } from "@newsletter/shared";
 import { deriveRawItemIdentifier } from "@newsletter/shared/services";
-import { SOURCE_TYPE_ORDER } from "@newsletter/shared/constants";
+import { SOURCE_TYPE_ORDER, TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import {
   createRawItemsRepo,
   deriveRawItemIdentifierSql,
@@ -44,15 +45,27 @@ import {
 import { createRunArchivesRepo } from "@api/repositories/run-archives.js";
 import { createUserSettingsRepo } from "@api/repositories/user-settings.js";
 import { createPublicSourcesRouter } from "@api/routes/sources.js";
+import {
+  createSourcesRepo,
+  type SourceCreateInput,
+  type SourceRecord,
+} from "@api/repositories/sources.js";
+import { settingsToSourceRows } from "@newsletter/shared/services/sources-assembler";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
 config({ path: resolve(REPO_ROOT, ".env") });
 
 const db = getDb();
-const rawItemsRepo = createRawItemsRepo(db);
-const archiveRepo = createRunArchivesRepo(db);
-const settingsRepo = createUserSettingsRepo(db);
+const rawItemsRepo = createRawItemsRepo(db, TENANT_ZERO_ID);
+const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
+const settingsRepo = createUserSettingsRepo(db, TENANT_ZERO_ID);
+const sourcesRepo = createSourcesRepo(db, TENANT_ZERO_ID);
+// seedSettings write-through-syncs sources rows — snapshot and restore
+// tenant 0's rows so the suite leaves the dev DB untouched.
+let savedSourceRows: SourceRecord[] = [];
+const toCreateInput = (r: SourceRecord): SourceCreateInput =>
+  ({ type: r.type, config: r.config, enabled: r.enabled }) as SourceCreateInput;
 
 const seedPrefix = `phase4-sources-${String(Date.now())}`;
 const seededRawItemIds = new Set<number>();
@@ -74,12 +87,14 @@ let savedSettings: UserSettings | null = null;
 
 function buildApp(): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route(
     "/api/sources",
     createPublicSourcesRouter({
       getRawItemsRepo: () => rawItemsRepo,
       getArchiveRepo: () => archiveRepo,
       getSettingsRepo: () => settingsRepo,
+      getSourcesRepo: () => sourcesRepo,
     }),
   );
   return app;
@@ -147,6 +162,8 @@ async function insertRawItem(opts: InsertRawItemArgs): Promise<number> {
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: TENANT_ZERO_ID,
+      tenantId: TENANT_ZERO_ID,
       sourceType: opts.sourceType,
       externalId: `${seedPrefix}-${opts.externalId}`,
       title: opts.title,
@@ -179,6 +196,7 @@ async function insertArchive(opts: InsertArchiveArgs): Promise<string> {
     }),
   );
   await db.insert(runArchives).values({
+    tenantId: TENANT_ZERO_ID,
     id: runId,
     status: "completed",
     rankedItems,
@@ -387,6 +405,7 @@ async function seedSettings(rankingPrompt: string): Promise<UserSettings> {
   const next: UserSettings = {
     ...base,
     hnEnabled: true,
+    hnConfig: base.hnConfig ?? { sinceDays: 1 },
     redditEnabled: true,
     redditConfig: {
       subreddits: ["LocalLLaMA", "MachineLearning"],
@@ -412,6 +431,9 @@ async function seedSettings(rankingPrompt: string): Promise<UserSettings> {
     rankingPrompt,
   };
   await settingsRepo.upsert(next);
+  // Mirror the production write-through sync: configured sources derive
+  // from the sources table, not the legacy user_settings columns.
+  await sourcesRepo.replaceAll(settingsToSourceRows(next));
   return next;
 }
 
@@ -446,6 +468,7 @@ function record(id: string, name: string, fn: () => void | Promise<void>) {
 }
 
 beforeAll(async () => {
+  savedSourceRows = await sourcesRepo.list();
   const existing = await settingsRepo.get();
   settingsRowExisted = existing !== null;
   if (existing) {
@@ -468,6 +491,7 @@ afterAll(async () => {
   } else if (!settingsRowExisted) {
     await db.delete(userSettings).where(eq(userSettings.singleton, true));
   }
+  await sourcesRepo.replaceAll(savedSourceRows.map(toCreateInput));
 
   const reportPath = resolve(
     REPO_ROOT,

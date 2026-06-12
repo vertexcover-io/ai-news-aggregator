@@ -7,6 +7,8 @@
  * REQ-024 (404 for unknown run), REQ-025 (admin gate), REQ-026 (logs ordered by id).
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
@@ -21,8 +23,8 @@ import { createRawItemsRepo } from "@api/repositories/raw-items.js";
 import { createRunArchivesRepo } from "@api/repositories/run-archives.js";
 import { createRunLogRepo } from "@api/repositories/run-logs.js";
 import { createAdminRunsRouter } from "@api/routes/admin-runs.js";
-import { requireAdmin } from "@api/auth/middleware.js";
-import { issueToken } from "@api/auth/session.js";
+import { requireUser } from "@api/auth/middleware.js";
+import { makeSessionCookie } from "@api-tests/helpers/auth.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
@@ -32,9 +34,9 @@ const SESSION_SECRET = "run-observability-e2e-secret-at-least-32b";
 
 const db = getDb();
 const redis = createRedisConnection();
-const rawItemsRepo = createRawItemsRepo(db);
-const archiveRepo = createRunArchivesRepo(db);
-const runLogRepo = createRunLogRepo(db);
+const rawItemsRepo = createRawItemsRepo(db, TENANT_ZERO_ID);
+const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
+const runLogRepo = createRunLogRepo(db, TENANT_ZERO_ID);
 
 const seededRunIds = new Set<string>();
 const seededRedisKeys = new Set<string>();
@@ -92,7 +94,8 @@ const observabilitySchema = z.object({
 
 function buildGatedApp(): Hono {
   const app = new Hono();
-  app.use("/api/admin/*", requireAdmin(SESSION_SECRET));
+  app.use("*", setTestTenant());
+  app.use("/api/admin/*", requireUser(SESSION_SECRET));
   app.route(
     "/api/admin/runs",
     createAdminRunsRouter({
@@ -106,7 +109,7 @@ function buildGatedApp(): Hono {
 }
 
 function adminCookie(): string {
-  return `admin_session=${issueToken(SESSION_SECRET, Date.now())}`;
+  return makeSessionCookie(SESSION_SECRET);
 }
 
 const telemetry: RunSourceTelemetry = {
@@ -148,6 +151,7 @@ const telemetry: RunSourceTelemetry = {
 async function seedHistoricalRun(): Promise<string> {
   const runId = randomUUID();
   await db.insert(runArchives).values({
+    tenantId: TENANT_ZERO_ID,
     id: runId,
     status: "completed",
     rankedItems: [],
@@ -163,6 +167,7 @@ async function seedHistoricalRun(): Promise<string> {
 
   await db.insert(runLogs).values([
     {
+      tenantId: TENANT_ZERO_ID,
       runId,
       level: "info",
       stage: "collecting",
@@ -172,6 +177,7 @@ async function seedHistoricalRun(): Promise<string> {
       context: null,
     },
     {
+      tenantId: TENANT_ZERO_ID,
       runId,
       level: "info",
       stage: "collecting",
@@ -181,6 +187,7 @@ async function seedHistoricalRun(): Promise<string> {
       context: { durationMs: 5000 },
     },
     {
+      tenantId: TENANT_ZERO_ID,
       runId,
       level: "error",
       stage: "collecting",
@@ -217,6 +224,7 @@ async function seedLiveRun(): Promise<string> {
 
   await db.insert(runLogs).values([
     {
+      tenantId: TENANT_ZERO_ID,
       runId,
       level: "info",
       stage: "queued",
@@ -226,6 +234,7 @@ async function seedLiveRun(): Promise<string> {
       context: null,
     },
     {
+      tenantId: TENANT_ZERO_ID,
       runId,
       level: "info",
       stage: "processing",
@@ -235,6 +244,7 @@ async function seedLiveRun(): Promise<string> {
       context: { inputCount: 12, outputCount: 10 },
     },
     {
+      tenantId: TENANT_ZERO_ID,
       runId,
       level: "info",
       stage: "shortlisting",

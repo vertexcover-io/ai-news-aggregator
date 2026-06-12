@@ -1,7 +1,7 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
-import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
+import { adminLogin, makeDbClient } from "./_infra";
 
 
 interface SeededReview {
@@ -11,12 +11,6 @@ interface SeededReview {
   readonly keptTitle: string;
 }
 
-async function adminLogin(page: Page): Promise<void> {
-  const res = await page.request.post(`${API_BASE}/api/admin/login`, {
-    data: { password: ADMIN_PASSWORD },
-  });
-  expect(res.ok()).toBe(true);
-}
 
 async function seedRawItem(
   client: Client,

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
 import { Hono } from "hono";
 import type IORedis from "ioredis";
 import type {
@@ -13,8 +14,8 @@ import type {
   RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
 import { createAdminRunsRouter } from "@api/routes/admin-runs.js";
-import { requireAdmin } from "@api/auth/middleware.js";
-import { issueToken } from "@api/auth/session.js";
+import { requireUser } from "@api/auth/middleware.js";
+import { makeSessionCookie } from "@api-tests/helpers/auth.js";
 import { NotFoundError } from "@api/lib/errors.js";
 
 const SESSION_SECRET = "test-session-secret";
@@ -58,8 +59,9 @@ function makeApp(opts: {
   protected?: boolean;
 }): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   if (opts.protected) {
-    app.use("/api/admin/*", requireAdmin(SESSION_SECRET));
+    app.use("/api/admin/*", requireUser(SESSION_SECRET));
   }
   const router = createAdminRunsRouter({
     redis: makeRedis(),
@@ -72,8 +74,7 @@ function makeApp(opts: {
 }
 
 function adminCookie(): string {
-  const token = issueToken(SESSION_SECRET, Date.now());
-  return `admin_session=${token}`;
+  return makeSessionCookie(SESSION_SECRET);
 }
 
 describe("GET /api/admin/runs/:runId/sources", () => {

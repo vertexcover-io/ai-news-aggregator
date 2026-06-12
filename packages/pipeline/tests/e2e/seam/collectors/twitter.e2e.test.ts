@@ -1,3 +1,4 @@
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
@@ -114,7 +115,7 @@ describe("Twitter collector seam E2E", () => {
     const result = await collectTwitter(
       {
         client: createRettiwtClient({ rettiwt: createFixtureRettiwtFacade() }),
-        rawItemsRepo: createRawItemsRepo(db),
+        rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID),
         sleep: () => Promise.resolve(),
         now: () => NOW,
       },

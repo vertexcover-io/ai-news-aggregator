@@ -26,7 +26,12 @@ function makeFakeDb(initial: StoredArchive): {
   const db = {
     select: () => ({
       from: () => ({
-        where: () => Promise.resolve([store.row]),
+        // findById awaits where() directly; list() (tenant-scoped) chains
+        // .orderBy().limit() after it.
+        where: () =>
+          Object.assign(Promise.resolve([store.row]), {
+            orderBy: () => ({ limit: () => Promise.resolve([store.row]) }),
+          }),
         orderBy: () => ({
           limit: () => Promise.resolve([store.row]),
         }),
@@ -100,7 +105,12 @@ function makeFakeDbReviewed(rows: StoredArchive[]): Pick<AppDb, "select" | "upda
     select: () => ({
       from: () => ({
         where: () => ({
-          orderBy: () => Promise.resolve(rows.filter((r) => r.reviewed)),
+          // listReviewed awaits orderBy() directly; list() (now tenant-scoped,
+          // so it also goes through where()) chains .limit() after it.
+          orderBy: () =>
+            Object.assign(Promise.resolve(rows.filter((r) => r.reviewed)), {
+              limit: () => Promise.resolve(rows),
+            }),
         }),
         orderBy: () => ({
           limit: () => Promise.resolve(rows),
@@ -120,7 +130,7 @@ function makeFakeDbReviewed(rows: StoredArchive[]): Pick<AppDb, "select" | "upda
 describe("RunArchivesRepo.findById — startedAt and sourceTypes (REQ-012, EDGE-006)", () => {
   it("returns startedAt: null and sourceTypes: null for a legacy row without those fields", async () => {
     const { db } = makeFakeDb(makeDefaultArchive({ id: "11111111-1111-1111-1111-111111111111", startedAt: null, sourceTypes: null }));
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000");
     const row = await repo.findById("11111111-1111-1111-1111-111111111111");
     expect(row).not.toBeNull();
     if (row === null) return;
@@ -131,7 +141,7 @@ describe("RunArchivesRepo.findById — startedAt and sourceTypes (REQ-012, EDGE-
   it("returns correct Date for startedAt when present", async () => {
     const startedAt = new Date("2026-04-10T08:00:00Z");
     const { db } = makeFakeDb(makeDefaultArchive({ id: "22222222-2222-2222-2222-222222222222", startedAt, sourceTypes: ["hn", "reddit"] }));
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000");
     const row = await repo.findById("22222222-2222-2222-2222-222222222222");
     expect(row).not.toBeNull();
     if (row === null) return;
@@ -144,7 +154,7 @@ describe("RunArchivesRepo.list — startedAt and sourceTypes (REQ-012)", () => {
   it("includes startedAt and sourceTypes in each listed row", async () => {
     const startedAt = new Date("2026-04-10T07:00:00Z");
     const { db } = makeFakeDb(makeDefaultArchive({ startedAt, sourceTypes: ["hn"] }));
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000");
     const rows = await repo.list(10);
     expect(rows).toHaveLength(1);
     expect(rows[0].startedAt).toEqual(startedAt);
@@ -169,7 +179,7 @@ describe("RunArchivesRepo.updateRankedItems (REQ-160)", () => {
       startedAt: null,
       sourceTypes: null,
     });
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000");
 
     const newItems: RankedItemRef[] = [
       { rawItemId: 7, score: 0.9, rationale: "new top" },
@@ -218,7 +228,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
       { id: 40, title: "D", sourceType: "reddit" },
     ];
     const { repo, spy } = makeFakeRawItemsRepo(rawRows);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(result).toHaveLength(1);
     expect(result[0].topItems).toHaveLength(3);
     expect(result[0].topItems[0]).toMatchObject({ id: 10, title: "A", sourceType: "hn" });
@@ -243,7 +253,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
       { id: 3, title: "Three", sourceType: "reddit" },
     ];
     const { repo } = makeFakeRawItemsRepo(rawRows);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(result[0].topItems).toHaveLength(2);
     expect(result[0].topItems[0].id).toBe(7);
     expect(result[0].topItems[1].id).toBe(3);
@@ -281,7 +291,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
       { id: 300, title: "source-300", sourceType: "hn" },
     ];
     const { repo } = makeFakeRawItemsRepo(rawRows);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(result[0].topItems[0].title).toBe("ref-override");
     expect(result[0].topItems[1].title).toBe("ai-title-200");
     expect(result[0].topItems[2].title).toBe("source-300");
@@ -298,7 +308,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
       { id: 7, title: "Seven", sourceType: "hn", metadata: { comments: [], recap: { title: "T", summary: "raw", bullets: [], bottomLine: "" } } },
     ];
     const { repo } = makeFakeRawItemsRepo(rawRows);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(result[0].leadSummary).toBe("override");
   });
 
@@ -313,7 +323,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
       { id: 7, title: "Seven", sourceType: "hn", metadata: { comments: [], recap: { title: "T", summary: "raw summary", bullets: [], bottomLine: "" } } },
     ];
     const { repo } = makeFakeRawItemsRepo(rawRows);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(result[0].leadSummary).toBe("raw summary");
   });
 
@@ -322,7 +332,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     const archive = makeDefaultArchive({ reviewed: true, rankedItems: [] });
     const db = makeFakeDbReviewed([archive]);
     const { repo } = makeFakeRawItemsRepo([]);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(result[0].storyCount).toBe(0);
     expect(result[0].topItems).toEqual([]);
     expect(result[0].leadSummary).toBeNull();
@@ -339,7 +349,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
       { id: 7, title: "Seven", sourceType: "hn", metadata: { comments: [] } },
     ];
     const { repo } = makeFakeRawItemsRepo(rawRows);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(result[0].leadSummary).toBeNull();
   });
 
@@ -354,7 +364,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
       { id: 7, title: "Seven", sourceType: "hn", metadata: { comments: [], recap: { title: "T", summary: "raw", bullets: [], bottomLine: "" } } },
     ];
     const { repo } = makeFakeRawItemsRepo(rawRows);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(result[0].leadSummary).toBe("");
   });
 
@@ -369,7 +379,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
       { id: 7, title: "Seven", sourceType: "hn", metadata: { comments: [], recap: undefined } },
     ];
     const { repo } = makeFakeRawItemsRepo(rawRows);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(result[0].leadSummary).toBeNull();
   });
 
@@ -396,7 +406,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
       sourceType: "hn" as SourceType,
     }));
     const { repo, spy } = makeFakeRawItemsRepo(rawRows);
-    await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(spy.mock.calls).toHaveLength(1);
     expect(spy.mock.calls[0][0]).toHaveLength(15);
   });
@@ -427,7 +437,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     const db = makeFakeDbReviewed(archives);
     const rawRows: Partial<RawItemRow>[] = [{ id: sharedId, title: "Shared", sourceType: "hn" }];
     const { repo, spy } = makeFakeRawItemsRepo(rawRows);
-    await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(spy.mock.calls).toHaveLength(1);
     expect(spy.mock.calls[0][0]).toHaveLength(1);
     expect(spy.mock.calls[0][0][0]).toBe(sharedId);
@@ -442,7 +452,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     const db = makeFakeDbReviewed([archive]);
     const rawRows: Partial<RawItemRow>[] = [{ id: 7, title: "Real Title From Raw", sourceType: "hn" }];
     const { repo } = makeFakeRawItemsRepo(rawRows);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(result[0].topItems[0].title).toBe("Real Title From Raw");
   });
 
@@ -450,7 +460,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
   it("returns [] and never calls findByIds when no reviewed archives exist (EDGE-001)", async () => {
     const db = makeFakeDbReviewed([]);
     const { repo, spy } = makeFakeRawItemsRepo([]);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(result).toEqual([]);
     expect(spy.mock.calls).toHaveLength(0);
   });
@@ -463,7 +473,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     });
     const db = makeFakeDbReviewed([archive]);
     const { repo } = makeFakeRawItemsRepo([]);
-    const result = await createRunArchivesRepo(db).listReviewed({
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({
       rawItemsRepo: repo,
       timezone: "Asia/Kolkata",
     });
@@ -476,7 +486,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     const archive = makeDefaultArchive({ reviewed: true, rankedItems: [] });
     const db = makeFakeDbReviewed([archive]);
     const { repo } = makeFakeRawItemsRepo([]);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(result[0].topItems).toEqual([]);
     expect(result[0].leadSummary).toBeNull();
     expect(result[0].storyCount).toBe(0);
@@ -491,7 +501,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
     const db = makeFakeDbReviewed([archive]);
     const rawRows: Partial<RawItemRow>[] = [{ id: 5, title: "Five", sourceType: "hn" }];
     const { repo } = makeFakeRawItemsRepo(rawRows);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     expect(result[0].topItems).toHaveLength(1);
     expect(result[0].topItems[0].id).toBe(5);
   });
@@ -513,7 +523,7 @@ describe("RunArchivesRepo.listReviewed — hydration", () => {
       { id: 3, title: "Three", sourceType: "hn" },
     ];
     const { repo } = makeFakeRawItemsRepo(rawRows);
-    const result = await createRunArchivesRepo(db).listReviewed({ rawItemsRepo: repo });
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").listReviewed({ rawItemsRepo: repo });
     // EDGE-004: exactly 3 — no truncation or "+ N more" concern; UI handles that separately
     expect(result[0].topItems).toHaveLength(3);
   });
@@ -567,7 +577,7 @@ describe("RunArchivesRepo social-marker methods", () => {
 
   it("markLinkedInPosted sets timestamp + socialMetadata when permalink present", async () => {
     const { db, setSpy } = makeUpdateCaptureDb();
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000");
     const at = new Date("2026-05-11T12:00:00Z");
     await repo.markLinkedInPosted("run-1", at, "urn:li:share:42");
     const patch = setSpy.mock.calls[0]?.[0];
@@ -577,7 +587,7 @@ describe("RunArchivesRepo social-marker methods", () => {
 
   it("markLinkedInPosted writes only timestamp when permalink is null", async () => {
     const { db, setSpy } = makeUpdateCaptureDb();
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000");
     const at = new Date("2026-05-11T12:00:00Z");
     await repo.markLinkedInPosted("run-1", at, null);
     const patch = setSpy.mock.calls[0]?.[0];
@@ -587,7 +597,7 @@ describe("RunArchivesRepo social-marker methods", () => {
 
   it("markTwitterPosted sets timestamp + socialMetadata", async () => {
     const { db, setSpy } = makeUpdateCaptureDb();
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000");
     const at = new Date("2026-05-11T12:00:00Z");
     await repo.markTwitterPosted("run-1", at, "https://x.com/i/web/status/9");
     const patch = setSpy.mock.calls[0]?.[0];
@@ -597,7 +607,7 @@ describe("RunArchivesRepo social-marker methods", () => {
 
   it("recordSocialFailure writes only social_metadata error, no posted_at", async () => {
     const { db, setSpy } = makeUpdateCaptureDb();
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000");
     await repo.recordSocialFailure("run-1", "twitter", "rate limited");
     const patch = setSpy.mock.calls[0]?.[0];
     expect(patch.twitterPostedAt).toBeUndefined();
@@ -714,14 +724,14 @@ describe("RunArchivesRepo.delete (REQ-8, REQ-9, REQ-12)", () => {
 describe("findMostRecentReviewed", () => {
   it("returns null when no reviewed archives exist", async () => {
     const db = makeFakeDbForMostRecent([]);
-    const result = await createRunArchivesRepo(db).findMostRecentReviewed();
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").findMostRecentReviewed();
     expect(result).toBeNull();
   });
 
   it("ignores non-reviewed archives", async () => {
     const archive = makeDefaultArchive({ reviewed: false });
     const db = makeFakeDbForMostRecent([archive]);
-    const result = await createRunArchivesRepo(db).findMostRecentReviewed();
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").findMostRecentReviewed();
     expect(result).toBeNull();
   });
 
@@ -731,7 +741,7 @@ describe("findMostRecentReviewed", () => {
       reviewed: true,
     });
     const db = makeFakeDbForMostRecent([archive]);
-    const result = await createRunArchivesRepo(db).findMostRecentReviewed();
+    const result = await createRunArchivesRepo(db, "00000000-0000-0000-0000-000000000000").findMostRecentReviewed();
     expect(result).toEqual({ id: "00000000-0000-0000-0000-0000000000aa" });
   });
   // The "most recent when multiple exist" ordering is enforced by the SQL

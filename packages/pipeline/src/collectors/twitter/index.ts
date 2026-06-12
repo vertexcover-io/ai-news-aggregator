@@ -1,5 +1,5 @@
 import type { CollectorResult, SourceUnitResult } from "@newsletter/shared/types";
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemUpsert } from "@pipeline/repositories/raw-items.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type {
   NormalizedTweet,
@@ -189,9 +189,9 @@ async function fetchSource(
   return { tweets: all, pagesFetched };
 }
 
-function dedupByExternalId(items: RawItemInsert[]): RawItemInsert[] {
+function dedupByExternalId(items: RawItemUpsert[]): RawItemUpsert[] {
   const seen = new Set<string>();
-  const out: RawItemInsert[] = [];
+  const out: RawItemUpsert[] = [];
   for (const item of items) {
     if (seen.has(item.externalId)) continue;
     seen.add(item.externalId);
@@ -217,7 +217,7 @@ function buildSourceMeta(source: Source, userIdToHandle: Map<string, string>): S
 }
 
 async function enrichAndStoreItems(
-  items: RawItemInsert[],
+  items: RawItemUpsert[],
   deps: TwitterCollectorDeps,
 ): Promise<void> {
   if (deps.enrichment) {
@@ -302,7 +302,7 @@ export async function collectTwitter(
     userIdToHandle.set(u.userId, u.handle);
   }
 
-  const batch: RawItemInsert[] = [];
+  const batch: RawItemUpsert[] = [];
   const failures: TwitterCollectorFailure[] = [];
   const unitResults: SourceUnitResult[] = [];
 
@@ -523,7 +523,7 @@ function isAuthClass(err: unknown): boolean {
 export async function fetchTwitterPost(
   url: string,
   deps: FetchTwitterPostDeps = {},
-): Promise<RawItemInsert> {
+): Promise<RawItemUpsert> {
   const id = parseTweetIdFromUrl(url);
   if (id === null) {
     throw new Error(`not a twitter status URL: ${url}`);

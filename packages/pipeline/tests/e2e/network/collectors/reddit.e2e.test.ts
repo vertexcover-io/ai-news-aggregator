@@ -1,3 +1,4 @@
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
@@ -31,7 +32,7 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID) }, cfg);
 
     expect(result.itemsFetched).toBeGreaterThan(0);
     expect(result.itemsStored).toBeGreaterThan(0);
@@ -58,7 +59,7 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 3,
     };
 
-    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    const result = await collectReddit({ rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID) }, cfg);
 
     expect(result.commentsFetched).toBe(0);
 
@@ -77,11 +78,11 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    await collectReddit({ rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID) }, cfg);
     const firstRunRows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
     const firstRunCount = firstRunRows.length;
 
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    await collectReddit({ rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID) }, cfg);
     const secondRunRows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
 
     expect(secondRunRows.length).toBe(firstRunCount);
@@ -107,7 +108,7 @@ describe("Reddit Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectReddit({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    await collectReddit({ rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID) }, cfg);
 
     const rows = await db.select().from(rawItems).where(eq(rawItems.sourceType, "reddit"));
     for (const row of rows) {

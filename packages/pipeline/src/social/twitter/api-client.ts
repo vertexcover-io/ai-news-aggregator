@@ -46,8 +46,22 @@ export function createTwitterApiClient(
   options: CreateTwitterApiClientOptions = {},
 ): TwitterApiClient {
   const Ctor = options.TwitterApiCtor ?? TwitterApi;
-  const client = new Ctor(credentials);
+  return wrapTwitterApi(new Ctor(credentials));
+}
 
+/**
+ * OAuth2 user-context client: a bare bearer access token (per-tenant token
+ * obtained via the Twitter OAuth2 PKCE flow, REQ-081).
+ */
+export function createBearerTwitterApiClient(
+  accessToken: string,
+  options: CreateTwitterApiClientOptions = {},
+): TwitterApiClient {
+  const Ctor = options.TwitterApiCtor ?? TwitterApi;
+  return wrapTwitterApi(new Ctor(accessToken));
+}
+
+function wrapTwitterApi(client: TwitterApi): TwitterApiClient {
   const run = async <T>(
     fn: () => Promise<T>,
   ): Promise<

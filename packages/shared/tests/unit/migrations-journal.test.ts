@@ -41,6 +41,15 @@ describe("migrations journal integrity", () => {
     });
   });
 
+  it("ends with the three multi-tenant migrations in EC12 order (add-nullable -> backfill -> enforce)", () => {
+    const lastThree = journal.entries.slice(-3).map((e) => e.tag);
+    expect(lastThree).toEqual([
+      "0040_multi_tenant_tables",
+      "0041_backfill_tenant_zero",
+      "0042_enforce_tenant_id",
+    ]);
+  });
+
   it("has a SQL file for every journal entry and vice versa", () => {
     const sqlFiles = readdirSync(migrationsDir)
       .filter((f) => f.endsWith(".sql"))

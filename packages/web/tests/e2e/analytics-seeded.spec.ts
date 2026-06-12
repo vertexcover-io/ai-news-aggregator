@@ -7,7 +7,7 @@
  */
 import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
+import { adminLogin, API_BASE, makeDbClient } from "./_infra";
 
 
 interface SeedIds {
@@ -124,13 +124,6 @@ async function seedAnalyticsData(): Promise<SeedIds> {
   }
 }
 
-async function adminLogin(page: import("@playwright/test").Page): Promise<void> {
-  // Use the API request method to set the cookie via fetch then navigate.
-  const res = await page.request.post(`${API_BASE}/api/admin/login`, {
-    data: { password: ADMIN_PASSWORD },
-  });
-  expect(res.ok()).toBe(true);
-}
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);

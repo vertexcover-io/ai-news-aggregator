@@ -1,8 +1,13 @@
 import { postToWebhook } from "@newsletter/shared";
 import { createLogger, type Logger } from "@newsletter/shared/logger";
 
+import { jobTenantId } from "@pipeline/lib/job-tenant.js";
+import type { SocialTokensRepo } from "@pipeline/repositories/social-tokens.js";
+import {
+  checkTenantSocialHealth,
+  type SocialHealthIssue,
+} from "@pipeline/services/social-health.js";
 import type { TwitterApiClient } from "@pipeline/social/twitter/types.js";
-import { truncate } from "@pipeline/social/utils.js";
 
 const logger = createLogger("worker:social-health");
 
@@ -13,19 +18,31 @@ export interface SocialHealthJobLike {
 }
 
 export interface SocialHealthDeps {
-  twitterApiClient: TwitterApiClient | null;
-  logger?: Logger;
+  /** Twitter posting client the tenant's publish jobs would use, or null. */
+  getTwitterClient: (tenantId: string) => Promise<TwitterApiClient | null>;
+  getTokensRepo: (tenantId: string) => Pick<SocialTokensRepo, "getToken">;
   slackWebhookUrl?: string;
+  logger?: Logger;
   fetchFn?: typeof fetch;
+  now?: () => Date;
 }
 
-function buildSlackBlocks(status: number, body: string): unknown[] {
+function describeIssue(issue: SocialHealthIssue): string {
+  const status = issue.status !== undefined ? ` (status ${issue.status})` : "";
+  const detail = issue.detail !== undefined ? `\nResponse: ${issue.detail}` : "";
+  return `• *${issue.platform}*: ${issue.reason}${status}${detail}`;
+}
+
+function buildSlackBlocks(
+  tenantId: string,
+  issues: SocialHealthIssue[],
+): unknown[] {
   return [
     {
       type: "header",
       text: {
         type: "plain_text",
-        text: "🔴 X credential health check failed",
+        text: "🔴 Social credential health check failed",
         emoji: true,
       },
     },
@@ -33,7 +50,7 @@ function buildSlackBlocks(status: number, body: string): unknown[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `X auto-post credentials failed validation before the daily run.\nStatus: ${status}\nResponse: ${truncate(body)}`,
+        text: `Social posting credentials failed validation before the daily run.\nTenant: ${tenantId}\n${issues.map(describeIssue).join("\n")}`,
       },
     },
   ];
@@ -46,34 +63,44 @@ export async function handleSocialHealthJob(
   if (job.name !== "social-health") return;
 
   const log = deps.logger ?? logger;
-  if (deps.twitterApiClient === null) {
-    log.warn(
+  const tenantId = jobTenantId(job.data);
+
+  const twitterClient = await deps.getTwitterClient(tenantId);
+  const { checkedPlatforms, issues } = await checkTenantSocialHealth({
+    tokens: deps.getTokensRepo(tenantId),
+    twitterClient,
+    now: deps.now,
+  });
+
+  if (checkedPlatforms.length === 0) {
+    log.info(
       {
-        event: "social.twitter.health_skipped",
-        reason: "not_configured",
+        event: "social.health_noop",
+        reason: "nothing_connected",
+        tenantId,
         jobId: job.id,
       },
-      "twitter credential health check skipped",
+      "social credential health check skipped (nothing connected)",
     );
     return;
   }
 
-  const result = await deps.twitterApiClient.validateCredentials();
-  if (result.ok) {
+  if (issues.length === 0) {
     log.info(
-      { event: "social.twitter.health_ok", jobId: job.id },
-      "twitter credential health check passed",
+      {
+        event: "social.health_ok",
+        tenantId,
+        platforms: checkedPlatforms,
+        jobId: job.id,
+      },
+      "social credential health check passed",
     );
     return;
   }
 
   log.error(
-    {
-      event: "social.twitter.health_failed",
-      jobId: job.id,
-      status: result.status,
-    },
-    "twitter credential health check failed",
+    { event: "social.health_failed", tenantId, issues, jobId: job.id },
+    "social credential health check failed",
   );
 
   if (deps.slackWebhookUrl === undefined || deps.slackWebhookUrl === "") {
@@ -82,17 +109,18 @@ export async function handleSocialHealthJob(
 
   const slackResult = await postToWebhook({
     url: deps.slackWebhookUrl,
-    blocks: buildSlackBlocks(result.status, result.body),
+    blocks: buildSlackBlocks(tenantId, issues),
     fetchFn: deps.fetchFn,
   });
   if (!slackResult.ok) {
     log.error(
       {
-        event: "social.twitter.health_slack_failed",
+        event: "social.health_slack_failed",
+        tenantId,
         jobId: job.id,
         status: slackResult.status,
       },
-      "twitter credential health slack alert failed",
+      "social credential health slack alert failed",
     );
   }
 }

@@ -12,6 +12,7 @@
  * The default sender `onboarding@resend.dev` works without domain verification,
  * which lets this test run before the news.vertexcover.io DKIM records are live.
  */
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
@@ -83,6 +84,7 @@ describe("Newsletter send — real Resend e2e", () => {
     // Seed raw items
     await db.insert(rawItems).values([
       {
+        tenantId: TENANT_ZERO_ID,
         sourceType: "hn",
         externalId: `e2e-${randomUUID()}`,
         title: "OpenAI ships GPT-9 — preview release notes",
@@ -100,6 +102,7 @@ describe("Newsletter send — real Resend e2e", () => {
         },
       },
       {
+        tenantId: TENANT_ZERO_ID,
         sourceType: "hn",
         externalId: `e2e-${randomUUID()}`,
         title: "Anthropic launches autonomous agents API",
@@ -123,6 +126,7 @@ describe("Newsletter send — real Resend e2e", () => {
 
     runArchiveId = randomUUID();
     await db.insert(runArchives).values({
+      tenantId: TENANT_ZERO_ID,
       id: runArchiveId,
       status: "completed",
       rankedItems: insertedRaw.map((row, idx) => ({
@@ -139,6 +143,7 @@ describe("Newsletter send — real Resend e2e", () => {
       .insert(subscribers)
       .values(
         RESEND_TEST_RECIPIENTS.map((email) => ({
+          tenantId: TENANT_ZERO_ID,
           email,
           status: "confirmed" as const,
           subscribedAt: new Date(),
@@ -159,10 +164,10 @@ describe("Newsletter send — real Resend e2e", () => {
 
     const deps = {
       emailProvider: createEmailProvider(),
-      subscribersRepo: createPipelineSubscribersRepo(db),
-      emailSendsRepo: createPipelineEmailSendsRepo(db),
-      archiveRepo: createRunArchivesRepo(db),
-      rawItemsRepo: createRawItemsRepo(db),
+      subscribersRepo: createPipelineSubscribersRepo(db, TENANT_ZERO_ID),
+      emailSendsRepo: createPipelineEmailSendsRepo(db, TENANT_ZERO_ID),
+      archiveRepo: createRunArchivesRepo(db, TENANT_ZERO_ID),
+      rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID),
       renderNewsletter,
       sessionSecret: process.env.SESSION_SECRET ?? "test-session-secret",
       fromMail: RESEND_FROM,
@@ -223,10 +228,10 @@ describe("Newsletter send — real Resend e2e", () => {
 
     const deps = {
       emailProvider: createEmailProvider(),
-      subscribersRepo: createPipelineSubscribersRepo(db),
-      emailSendsRepo: createPipelineEmailSendsRepo(db),
-      archiveRepo: createRunArchivesRepo(db),
-      rawItemsRepo: createRawItemsRepo(db),
+      subscribersRepo: createPipelineSubscribersRepo(db, TENANT_ZERO_ID),
+      emailSendsRepo: createPipelineEmailSendsRepo(db, TENANT_ZERO_ID),
+      archiveRepo: createRunArchivesRepo(db, TENANT_ZERO_ID),
+      rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID),
       renderNewsletter,
       sessionSecret: process.env.SESSION_SECRET ?? "test-session-secret",
       fromMail: RESEND_FROM,

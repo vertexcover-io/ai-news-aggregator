@@ -129,14 +129,14 @@ const baseInput = {
 describe("UserSettingsRepo", () => {
   it("get() returns null when no row exists", async () => {
     const { db } = makeFakeDb();
-    const repo = createUserSettingsRepo(db);
+    const repo = createUserSettingsRepo(db, "00000000-0000-0000-0000-000000000000");
     const result = await repo.get();
     expect(result).toBeNull();
   });
 
   it("upsert() persists row; get() returns the persisted value", async () => {
     const { db } = makeFakeDb();
-    const repo = createUserSettingsRepo(db);
+    const repo = createUserSettingsRepo(db, "00000000-0000-0000-0000-000000000000");
     const saved = await repo.upsert(baseInput);
     expect(saved.topN).toBe(10);
     expect(saved.scheduleTime).toBe("09:30");
@@ -151,7 +151,7 @@ describe("UserSettingsRepo", () => {
 
   it("upsert() twice keeps exactly one row (singleton)", async () => {
     const { db, rows } = makeFakeDb();
-    const repo = createUserSettingsRepo(db);
+    const repo = createUserSettingsRepo(db, "00000000-0000-0000-0000-000000000000");
     await repo.upsert(baseInput);
     await repo.upsert({
       ...baseInput,
@@ -166,7 +166,7 @@ describe("UserSettingsRepo", () => {
 
   it("PHASE2-C2: upsert() twice updates rankingPrompt", async () => {
     const { db } = makeFakeDb();
-    const repo = createUserSettingsRepo(db);
+    const repo = createUserSettingsRepo(db, "00000000-0000-0000-0000-000000000000");
     await repo.upsert({ ...baseInput, rankingPrompt: "First prompt" });
     await repo.upsert({ ...baseInput, rankingPrompt: "Second prompt\nwith newline" });
     const got = await repo.get();
@@ -175,7 +175,7 @@ describe("UserSettingsRepo", () => {
 
   it("REQ-005: second upsert overwrites prior webSearchConfig queries", async () => {
     const { db } = makeFakeDb();
-    const repo = createUserSettingsRepo(db);
+    const repo = createUserSettingsRepo(db, "00000000-0000-0000-0000-000000000000");
     const configA = {
       provider: "tavily" as const,
       queries: [{ query: "query A", sinceDays: 7, maxItems: 5 }],

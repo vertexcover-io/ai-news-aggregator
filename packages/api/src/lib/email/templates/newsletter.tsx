@@ -24,6 +24,12 @@ export interface NewsletterStory {
   readVerb: string;
 }
 
+/** Tenant branding; omit for the AGENTLOOP (tenant 0) defaults. */
+export interface EmailBranding {
+  name: string;
+  logoUrl?: string;
+}
+
 export interface NewsletterEmailProps {
   stories: NewsletterStory[];
   issueDate: string;
@@ -31,6 +37,7 @@ export interface NewsletterEmailProps {
   unsubscribeUrl: string;
   baseUrl: string;
   replyToEmail?: string;
+  branding?: EmailBranding;
 }
 
 const MAX_STORIES = 5;
@@ -42,8 +49,10 @@ export function NewsletterEmail({
   unsubscribeUrl,
   baseUrl,
   replyToEmail,
+  branding,
 }: NewsletterEmailProps): React.ReactElement {
   const displayStories = stories.slice(0, MAX_STORIES);
+  const brandLabel = (branding?.name ?? "AI Newsletter").toUpperCase();
 
   return (
     <Html lang="en">
@@ -65,6 +74,14 @@ export function NewsletterEmail({
         >
           {/* Header */}
           <Section style={{ marginBottom: "32px" }}>
+            {branding?.logoUrl !== undefined ? (
+              <Img
+                src={branding.logoUrl}
+                alt={branding.name}
+                height="32"
+                style={{ height: "32px", width: "auto", margin: "0 0 12px" }}
+              />
+            ) : null}
             <Text
               style={{
                 fontSize: "11px",
@@ -75,7 +92,7 @@ export function NewsletterEmail({
                 margin: "0 0 8px",
               }}
             >
-              AI NEWSLETTER · ISSUE {issueNumber}
+              {brandLabel} · ISSUE {issueNumber}
             </Text>
             <Text
               style={{

@@ -4,9 +4,9 @@
  * Security design for the callback route:
  * The LinkedIn authorization server redirects the user's browser to the
  * callback URL AFTER they approve the app. At that point, the browser has no
- * admin_session cookie on the request (the redirect originates from LinkedIn's
+ * session cookie on the request (the redirect originates from LinkedIn's
  * servers, not from a page that already holds the cookie). Therefore the
- * callback CANNOT be behind requireAdmin.
+ * callback CANNOT be behind requireUser.
  *
  * Instead, security is provided by the state parameter:
  *   - POST /start generates a cryptographically random 32-byte state, stores it
@@ -16,7 +16,7 @@
  *     This CSRF protection means the callback is as safe as the state secret.
  *
  * Mounting strategy in app.ts:
- *   1. createLinkedInOAuthRouter  → mount INSIDE adminApp (behind requireAdmin).
+ *   1. createLinkedInOAuthRouter  → mount INSIDE adminApp (behind requireUser).
  *      Handles: POST /start, GET /status.
  *   2. createLinkedInOAuthCallbackRouter → mount OUTSIDE adminApp at the full
  *      path /api/admin/social-credentials/linkedin/oauth/callback.
@@ -28,6 +28,8 @@
 
 import { randomBytes } from "node:crypto";
 import { Hono } from "hono";
+import { APP_CREDENTIALS_TENANT_ID } from "@newsletter/shared/constants";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { SocialCredentialsRepo } from "@api/repositories/social-credentials.js";
 import type { SocialTokensRepo } from "@api/repositories/social-tokens.js";
@@ -46,8 +48,8 @@ export interface OAuthRedis {
 }
 
 export interface LinkedInOAuthRouterDeps {
-  getCredRepo: () => SocialCredentialsRepo;
-  getTokenRepo: () => SocialTokensRepo;
+  getCredRepo: (tenantId: string) => SocialCredentialsRepo;
+  getTokenRepo: (tenantId: string) => SocialTokensRepo;
   redis: OAuthRedis;
   /** Process env (for PUBLIC_BASE_URL and env-fallback credentials). */
   env: NodeJS.ProcessEnv | Record<string, string | undefined>;
@@ -83,7 +85,7 @@ function settingsRedirectUrl(
 
 /**
  * Admin-gated routes: POST /start, GET /status.
- * Mount this inside adminApp (behind requireAdmin).
+ * Mount this inside adminApp (behind requireUser).
  */
 export function createLinkedInOAuthRouter(
   deps: LinkedInOAuthRouterDeps,
@@ -92,7 +94,11 @@ export function createLinkedInOAuthRouter(
 
   // POST /start → resolve client creds, generate state, store in Redis, return authorize URL.
   app.post("/start", async (c) => {
-    const credRepo = deps.getCredRepo();
+    const tenantId = getTenantId(c);
+    // REQ-080/REQ-082: tenants connect with the SHARED app client — an
+    // app-level secret resolved from the app credentials store (tenant 0),
+    // never from the requesting tenant's row.
+    const credRepo = deps.getCredRepo(APP_CREDENTIALS_TENANT_ID);
     const creds = await resolveLinkedInClient({
       repo: credRepo,
       env: deps.env as NodeJS.ProcessEnv,
@@ -105,8 +111,15 @@ export function createLinkedInOAuthRouter(
     const state = randomBytes(32).toString("hex");
     const redirectUri = buildRedirectUri(deps.env as Record<string, string | undefined>);
 
-    // Store state in Redis (consume-once CSRF token).
-    await deps.redis.set(stateKey(state), "1", "EX", STATE_TTL_SECONDS);
+    // Store state in Redis (consume-once CSRF token). The blob carries the
+    // initiating tenant: the callback has no session, so this is how the
+    // token save is bound to the right tenant.
+    await deps.redis.set(
+      stateKey(state),
+      JSON.stringify({ tenantId }),
+      "EX",
+      STATE_TTL_SECONDS,
+    );
 
     const authorizeUrl = buildAuthorizeUrl({
       clientId: creds.clientId,
@@ -118,11 +131,14 @@ export function createLinkedInOAuthRouter(
   });
 
   // GET /status → reports full LinkedIn connection status (REQ-011).
+  // clientConfigured reflects the shared app client (app store); the token
+  // is the requesting tenant's own.
   app.get("/status", async (c) => {
-    const credRepo = deps.getCredRepo();
+    const tenantId = getTenantId(c);
+    const credRepo = deps.getCredRepo(APP_CREDENTIALS_TENANT_ID);
     const status = await credRepo.getStatus();
 
-    const tokenRepo = deps.getTokenRepo();
+    const tokenRepo = deps.getTokenRepo(tenantId);
     const tokenRow = await tokenRepo.getLinkedIn().catch(() => null);
 
     const connected = tokenRow !== null;
@@ -139,6 +155,14 @@ export function createLinkedInOAuthRouter(
       expiresAt,
       hasRefreshToken,
     });
+  });
+
+  // DELETE / → disconnect: remove this tenant's LinkedIn OAuth token.
+  // (The shared app client credentials are super-admin managed and untouched.)
+  app.delete("/", async (c) => {
+    const tenantId = getTenantId(c);
+    const removed = await deps.getTokenRepo(tenantId).deleteToken("linkedin");
+    return c.json({ ok: true, removed });
   });
 
   return app;
@@ -199,12 +223,24 @@ export function createLinkedInOAuthCallbackRouter(
     // Consume the state immediately so it cannot be replayed.
     await deps.redis.del(stateKey(state));
 
+    let tenantId: string;
+    try {
+      const blob = JSON.parse(storedValue) as { tenantId?: unknown };
+      if (typeof blob.tenantId !== "string") {
+        return errorRedirect("state");
+      }
+      tenantId = blob.tenantId;
+    } catch {
+      return errorRedirect("state");
+    }
+
     if (!code) {
       return errorRedirect("state");
     }
 
-    // Resolve client credentials (needed for token exchange).
-    const credRepo = deps.getCredRepo();
+    // Resolve the SHARED app client credentials (needed for token exchange) —
+    // app store, not the state tenant's row (REQ-080/REQ-082).
+    const credRepo = deps.getCredRepo(APP_CREDENTIALS_TENANT_ID);
     const creds = await resolveLinkedInClient({
       repo: credRepo,
       env: deps.env as NodeJS.ProcessEnv,
@@ -257,7 +293,7 @@ export function createLinkedInOAuthCallbackRouter(
 
     // Persist encrypted token. The cipher is baked into the repo factory
     // (injected via deps.getTokenRepo); this route does not handle encryption directly.
-    const tokenRepo = deps.getTokenRepo();
+    const tokenRepo = deps.getTokenRepo(tenantId);
     await tokenRepo.saveToken("linkedin", {
       accessToken: exchangeResult.parsed.accessToken,
       refreshToken: exchangeResult.parsed.refreshToken,

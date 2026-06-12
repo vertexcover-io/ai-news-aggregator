@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import type IORedis from "ioredis";
 import type { Queue, JobsOptions } from "bullmq";
@@ -75,6 +76,7 @@ function buildApp(opts: {
 }): Hono {
   const q = makeQueue();
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route(
     "/api/runs",
     createRunsRouter({

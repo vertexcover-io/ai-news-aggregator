@@ -389,7 +389,10 @@ function NewsletterEmail({
   replyToEmail,
   digestHeadline,
   digestSummary,
+  branding,
 }: NewsletterRenderProps): React.ReactElement {
+  // NF3: no branding prop ⇒ AGENTLOOP defaults render exactly as before.
+  const brandName = branding?.name ?? "The Daily Read";
   const displayStories = stories;
   const totalCount = displayStories.length;
   const firstStoryTitle = totalCount > 0 ? displayStories[0].title : null;
@@ -432,6 +435,19 @@ function NewsletterEmail({
       React.createElement(
         Container,
         { style: { maxWidth: "600px", margin: "0 auto", padding: "0 28px" } },
+        // Tenant logo (only when branding provides one)
+        branding?.logoUrl !== undefined
+          ? React.createElement(
+              Section,
+              { style: { textAlign: "center", padding: "8px 0 0" } },
+              React.createElement(Img, {
+                src: branding.logoUrl,
+                alt: brandName,
+                height: "36",
+                style: { height: "36px", width: "auto", margin: "0 auto", display: "block" },
+              }),
+            )
+          : null,
         // Date eyebrow
         React.createElement(
           Section,
@@ -660,23 +676,30 @@ function NewsletterEmail({
             React.createElement(
               "span",
               { style: { color: COLORS.ink, fontWeight: 500 } },
-              "The Daily Read",
+              brandName,
             ),
-            " · Made by ",
-            React.createElement(
-              Link,
-              {
-                href: "https://vertexcover.io",
-                target: "_blank",
-                style: {
-                  color: COLORS.muted,
-                  borderBottom: `1px solid ${COLORS.line}`,
-                  paddingBottom: "1px",
-                  textDecoration: "none",
-                },
-              },
-              "Vertexcover Labs",
-            ),
+            // The "Made by Vertexcover Labs" credit belongs to the AGENTLOOP
+            // default only — tenant-branded issues show just the tenant name.
+            ...(branding === undefined
+              ? [
+                  " · Made by ",
+                  React.createElement(
+                    Link,
+                    {
+                      key: "made-by",
+                      href: "https://vertexcover.io",
+                      target: "_blank",
+                      style: {
+                        color: COLORS.muted,
+                        borderBottom: `1px solid ${COLORS.line}`,
+                        paddingBottom: "1px",
+                        textDecoration: "none",
+                      },
+                    },
+                    "Vertexcover Labs",
+                  ),
+                ]
+              : []),
           ),
           React.createElement(
             Text,

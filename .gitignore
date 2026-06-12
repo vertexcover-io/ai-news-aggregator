@@ -1,3 +1,4 @@
+.DS_Store
 node_modules/
 dist/
 .playwright-mcp/
@@ -15,6 +16,8 @@ docs/*
 !docs/plans/
 !docs/mocks/
 !docs/mocks/**
+!docs/multi-tenant/
+!docs/multi-tenant/**
 
 # Unified .harness layout: knowledge/ + features/ are committed; runtime/ is per-run scratch
 .harness/runtime/

@@ -4,6 +4,7 @@
  * insert + first-tap detection SQL used by the GET /api/feedback route.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { sql } from "drizzle-orm";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,8 +19,8 @@ const { createFeedbackEventsRepo } = await import("@api/repositories/feedback-ev
 const { createSubscribersRepo } = await import("@api/repositories/subscribers.js");
 
 const db = getDb();
-const repo = createFeedbackEventsRepo(db);
-const subscribersRepo = createSubscribersRepo(db);
+const repo = createFeedbackEventsRepo(db, TENANT_ZERO_ID);
+const subscribersRepo = createSubscribersRepo(db, TENANT_ZERO_ID);
 
 const CAMPAIGN = "e2e-feedback-events-test";
 const EMAIL = "feedback-events-repo-e2e@example.com";

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 import { createLogger, getDb as defaultGetDb } from "@newsletter/shared";
 import type { HomePagePayload, PublicMustReadEntry } from "@newsletter/shared";
 import {
@@ -22,9 +23,9 @@ const RECENT_LIMIT = 10;
 const RECENT_FETCH_LIMIT = RECENT_LIMIT + 1;
 
 export interface PublicHomeRouterDeps {
-  getArchiveRepo: () => RunArchivesRepo;
-  getRawItemsRepo: () => RawItemsRepo;
-  getMustReadRepo: () => MustReadRepo;
+  getArchiveRepo: (tenantId: string) => RunArchivesRepo;
+  getRawItemsRepo: (tenantId: string) => RawItemsRepo;
+  getMustReadRepo: (tenantId: string) => MustReadRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -35,9 +36,10 @@ export function createPublicHomeRouter(deps: PublicHomeRouterDeps): Hono {
   app.get("/", async (c) => {
     try {
       const since = new Date(Date.now() - FORTY_EIGHT_HOURS_MS);
-      const archiveRepo = deps.getArchiveRepo();
-      const rawItemsRepo = deps.getRawItemsRepo();
-      const mustReadRepo = deps.getMustReadRepo();
+      const tenantId = getTenantId(c);
+      const archiveRepo = deps.getArchiveRepo(tenantId);
+      const rawItemsRepo = deps.getRawItemsRepo(tenantId);
+      const mustReadRepo = deps.getMustReadRepo(tenantId);
 
       const [todaysIssueRow, featuredRow, recentArchives] = await Promise.all([
         archiveRepo.findLatestReviewedSince(since),
@@ -79,8 +81,8 @@ export function createPublicHomeRouter(deps: PublicHomeRouterDeps): Hono {
 
 export function createDefaultPublicHomeRouter(): Hono {
   return createPublicHomeRouter({
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getMustReadRepo: () => createMustReadRepo(defaultGetDb()),
+    getArchiveRepo: (tenantId) => createRunArchivesRepo(defaultGetDb(), tenantId),
+    getRawItemsRepo: (tenantId) => createRawItemsRepo(defaultGetDb(), tenantId),
+    getMustReadRepo: (tenantId) => createMustReadRepo(defaultGetDb(), tenantId),
   });
 }

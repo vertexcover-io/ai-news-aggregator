@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemUpsert } from "@pipeline/repositories/raw-items.js";
 import type { CollectorResult, RunSubmitWebSearchConfig, SourceUnitResult } from "@newsletter/shared/types";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -24,7 +24,7 @@ function toRawItem(
   result: WebSearchResult,
   providerName: string,
   query: string,
-): RawItemInsert {
+): RawItemUpsert {
   const now = new Date();
   return {
     sourceType: "web_search",
@@ -95,7 +95,7 @@ export async function collectWebSearch(
   }));
 
   // Build URL-keyed map (dedup: keep higher rawScore winner)
-  const itemsMap = new Map<string, RawItemInsert>();
+  const itemsMap = new Map<string, RawItemUpsert>();
   const unitResults: SourceUnitResult[] = [];
   let totalFetched = 0;
 

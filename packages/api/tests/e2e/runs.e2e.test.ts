@@ -3,6 +3,7 @@
  * Verifies POST/GET /api/runs end-to-end through Hono.
  */
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
 import { Hono } from "hono";
 import type { Queue, JobsOptions } from "bullmq";
 import { createRedisConnection } from "@newsletter/shared";
@@ -44,6 +45,7 @@ function buildApp(opts: {
   repo?: RawItemsRepo;
 }): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route(
     "/api/runs",
     createRunsRouter({

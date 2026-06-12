@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
+    "test:bundle": "pnpm build && vitest run --project unit tests/unit/bundle-secret-scan.test.ts",
     "test:e2e": "node tests/e2e/run-e2e.mjs"
   },
   "dependencies": {

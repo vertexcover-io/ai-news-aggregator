@@ -46,11 +46,19 @@ function parseOrNever(
   }
 }
 
-export function createCollectorHealthStore(redis: RedisLike): CollectorHealthStore {
+// Tenant-scoped: per-tenant scheduled checks would otherwise clobber each
+// other's snapshots (and leak reason/detail strings across tenants).
+export function createCollectorHealthStore(
+  redis: RedisLike,
+  tenantId: string,
+): CollectorHealthStore {
   return {
     async set(result: CollectorHealthResult): Promise<void> {
       // No "EX" — persists forever (REQ-007)
-      await redis.set(collectorHealthKey(result.collector), JSON.stringify(result));
+      await redis.set(
+        collectorHealthKey(tenantId, result.collector),
+        JSON.stringify(result),
+      );
     },
 
     async setRunning(
@@ -68,11 +76,16 @@ export function createCollectorHealthStore(redis: RedisLike): CollectorHealthSto
         detail: null,
       };
       // No "EX" — persists forever (REQ-007)
-      await redis.set(collectorHealthKey(collector), JSON.stringify(placeholder));
+      await redis.set(
+        collectorHealthKey(tenantId, collector),
+        JSON.stringify(placeholder),
+      );
     },
 
     async getSnapshot(): Promise<CollectorHealthSnapshot> {
-      const keys = HEALTH_CHECKABLE_COLLECTORS.map(collectorHealthKey);
+      const keys = HEALTH_CHECKABLE_COLLECTORS.map((c) =>
+        collectorHealthKey(tenantId, c),
+      );
       const values = await redis.mget(...keys);
       const collectors = HEALTH_CHECKABLE_COLLECTORS.map((c, i) =>
         parseOrNever(values[i] ?? null, c),

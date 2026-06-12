@@ -203,3 +203,5 @@ export * from "./home.js";
 export * from "./sources-summary.js";
 export type { Candidate } from "./candidate.js";
 export * from "./collector-health.js";
+export * from "./tenant.js";
+export * from "./auth.js";

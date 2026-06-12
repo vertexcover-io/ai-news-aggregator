@@ -12,7 +12,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Client } from "pg";
 import { randomUUID } from "node:crypto";
-import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
+import { adminLogin, makeDbClient } from "./_infra";
 
 
 interface SeededArchives {
@@ -157,12 +157,6 @@ async function seedDryRunWithItems(): Promise<{ runId: string }> {
   }
 }
 
-async function adminLogin(page: Page): Promise<void> {
-  const res = await page.request.post(`${API_BASE}/api/admin/login`, {
-    data: { password: ADMIN_PASSWORD },
-  });
-  expect(res.ok()).toBe(true);
-}
 
 async function openKebabMenuForRun(page: Page, runId: string): Promise<void> {
   const row = page.locator(`[data-run-id="${runId}"]`).first();

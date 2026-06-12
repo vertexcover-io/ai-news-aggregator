@@ -35,6 +35,14 @@ export async function setup(): Promise<void> {
     migrationsFolder: resolve(import.meta.dirname, "../../../../../packages/shared/src/db/migrations"),
   });
 
+  // The 0041 backfill only creates tenant 0 when legacy data exists; a fresh
+  // test DB needs it seeded explicitly so tenant-scoped repos can write rows.
+  await migrationSql`
+    INSERT INTO tenants (id, slug, name, status)
+    VALUES ('00000000-0000-0000-0000-000000000000', 'agentloop', 'AGENTLOOP', 'active')
+    ON CONFLICT (id) DO NOTHING
+  `;
+
   console.log("Migrations applied to newsletter_test");
   await migrationSql.end();
 }

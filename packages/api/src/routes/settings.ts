@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { z } from "zod";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 import type { Queue } from "bullmq";
 import {
   createLogger,
@@ -16,14 +18,26 @@ import {
   type UserSettingsUpsertBody,
 } from "@api/lib/validate.js";
 import {
+  createNotificationSettingsRepo,
   createUserSettingsRepo,
+  type NotificationSettingsRepo,
   type UserSettingsRepo,
   type UserSettingsUpsertInput,
 } from "@api/repositories/user-settings.js";
+import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import {
-  reconcilePipelineSchedule,
-  reconcileCollectorHealthSchedule,
-} from "@api/services/scheduler.js";
+  createSourcesRepo,
+  type SourcesRepo,
+} from "@api/repositories/sources.js";
+import { createTenantsRepo } from "@api/repositories/tenants.js";
+import {
+  createTenantFeaturesRepo,
+  type TenantFeaturesRepo,
+  type TenantFeatureFlags,
+} from "@api/repositories/tenant-features.js";
+import { settingsToSourceRows } from "@newsletter/shared/services/sources-assembler";
+import { reconcileAllForTenant } from "@api/services/scheduler.js";
 import {
   defaultRettiwtFactory,
   resolveTwitterHandles,
@@ -34,10 +48,42 @@ import { captureAnalytics, refreshPostHogConfig } from "@api/lib/posthog.js";
 
 type RettiwtFactory = TwitterHandleResolverDeps["rettiwtFactory"];
 
+/** REQ-094: shortlist size is not tenant-settable. Internal default for new
+ * rows; existing rows (e.g. tenant 0) keep their DB value. Mirrors the
+ * pipeline fallback in run-process.ts. */
+const INTERNAL_SHORTLIST_SIZE = 30;
+
+const featureTogglesSchema = z.object({
+  canonEnabled: z.boolean().optional(),
+  deliverabilityEnabled: z.boolean().optional(),
+  evalEnabled: z.boolean().optional(),
+});
+
+const DEFAULT_FEATURE_FLAGS: TenantFeatureFlags = {
+  canonEnabled: false,
+  deliverabilityEnabled: false,
+  evalEnabled: false,
+};
+
+/** REQ-094: the shortlist size never leaves the API on tenant surfaces. */
+function stripShortlistSize<T extends { shortlistSize?: number }>(
+  settings: T,
+): Omit<T, "shortlistSize"> {
+  const { shortlistSize: _shortlistSize, ...rest } = settings;
+  return rest;
+}
+
 export interface SettingsRouterDeps {
-  getSettingsRepo: () => UserSettingsRepo;
+  getSettingsRepo: (tenantId: string) => UserSettingsRepo;
+  getNotificationSettingsRepo: (tenantId: string) => NotificationSettingsRepo;
+  /** Encrypts the Slack webhook at rest (REQ-092); same KEK as social credentials. */
+  cipher: Pick<CredentialCipher, "encrypt">;
+  getSourcesRepo: (tenantId: string) => Pick<SourcesRepo, "replaceAll">;
   processingQueue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">;
   collectorHealthQueue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">;
+  isTenantActive: (tenantId: string) => Promise<boolean>;
+  /** Feature toggles live on the tenants row (REQ-093), not user_settings. */
+  tenantFeatures: TenantFeaturesRepo;
   resolveHandles?: (
     handles: string[],
     deps: TwitterHandleResolverDeps,
@@ -94,8 +140,20 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
   const app = new Hono();
 
   app.get("/", async (c) => {
-    const settings = await deps.getSettingsRepo().get();
-    return c.json(settings);
+    const tenantId = getTenantId(c);
+    const settings = await deps.getSettingsRepo(tenantId).get();
+    if (settings === null) return c.json(null);
+    const notification = await deps.getNotificationSettingsRepo(tenantId).get();
+    const features =
+      (await deps.tenantFeatures.get(tenantId)) ?? DEFAULT_FEATURE_FLAGS;
+    // NF6/REQ-092: never echo the webhook (encrypted or decrypted) — only a
+    // configured/not-configured boolean leaves the API.
+    return c.json({
+      ...stripShortlistSize(settings),
+      ...features,
+      notificationEmail: notification?.notificationEmail ?? null,
+      hasSlackWebhook: (notification?.slackWebhookEncrypted ?? null) !== null,
+    });
   });
 
   app.put("/", async (c) => {
@@ -106,7 +164,14 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       return c.json({ error: "invalid json" }, 400);
     }
 
-    const parsed = userSettingsUpsertSchema.safeParse(body);
+    // REQ-094: the shortlist size is not tenant-settable — any client value
+    // is discarded before validation and the DB value (or internal default)
+    // is used instead.
+    const sanitizedBody =
+      typeof body === "object" && body !== null
+        ? { ...body, shortlistSize: INTERNAL_SHORTLIST_SIZE }
+        : body;
+    const parsed = userSettingsUpsertSchema.safeParse(sanitizedBody);
     if (!parsed.success) {
       const fields = parsed.error.issues
         .map((issue) => issue.path[0])
@@ -120,6 +185,15 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
         400,
       );
     }
+
+    const togglesParsed = featureTogglesSchema.safeParse(sanitizedBody);
+    if (!togglesParsed.success) {
+      return c.json(
+        { error: togglesParsed.error.message, issues: togglesParsed.error.issues },
+        400,
+      );
+    }
+    const toggles = togglesParsed.data;
 
     let resolvedTwitterConfig: RunSubmitTwitterConfig | null;
     try {
@@ -204,13 +278,70 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       autoReview: parsed.data.autoReview,
       rankingPrompt: parsed.data.rankingPrompt,
       shortlistPrompt: parsed.data.shortlistPrompt,
-      shortlistSize: parsed.data.shortlistSize,
+      shortlistSize: INTERNAL_SHORTLIST_SIZE,
     };
 
-    const saved = await deps.getSettingsRepo().upsert(upsertInput);
-    refreshPostHogConfig(saved);
-    await reconcilePipelineSchedule(deps.processingQueue, saved);
-    await reconcileCollectorHealthSchedule(deps.collectorHealthQueue, saved);
+    const tenantId = getTenantId(c);
+    const settingsRepo = deps.getSettingsRepo(tenantId);
+    // REQ-094: keep whatever the row already holds (tenant 0 keeps its tuned
+    // value); only brand-new rows get the internal default.
+    const existing = await settingsRepo.get();
+    if (existing !== null) upsertInput.shortlistSize = existing.shortlistSize;
+    const saved = await settingsRepo.upsert(upsertInput);
+    // REQ-092: persist notification channels after the row exists. Omitted
+    // fields stay untouched; the webhook is encrypted before it touches the DB.
+    const notificationRepo = deps.getNotificationSettingsRepo(tenantId);
+    if (
+      parsed.data.notificationEmail !== undefined ||
+      parsed.data.slackWebhookUrl !== undefined
+    ) {
+      await notificationRepo.update({
+        ...(parsed.data.notificationEmail !== undefined
+          ? { notificationEmail: parsed.data.notificationEmail }
+          : {}),
+        ...(parsed.data.slackWebhookUrl !== undefined
+          ? {
+              slackWebhookEncrypted:
+                parsed.data.slackWebhookUrl === null
+                  ? null
+                  : deps.cipher.encrypt(parsed.data.slackWebhookUrl),
+            }
+          : {}),
+      });
+    }
+    const notification = await notificationRepo.get();
+    // REQ-093: feature toggles persist on the tenants row; omitted toggles
+    // stay untouched.
+    const hasToggleUpdate =
+      toggles.canonEnabled !== undefined ||
+      toggles.deliverabilityEnabled !== undefined ||
+      toggles.evalEnabled !== undefined;
+    const features =
+      (hasToggleUpdate
+        ? await deps.tenantFeatures.update(tenantId, toggles)
+        : await deps.tenantFeatures.get(tenantId)) ?? DEFAULT_FEATURE_FLAGS;
+    // Transitional write-through: the legacy settings UI is still the
+    // source-list editor, but runs read the sources table — sync the
+    // exploded rows so saves keep affecting collection. Removed when the
+    // Settings panel migrates to /api/admin/sources (REQ-074). Saves
+    // replace the tenant's rows wholesale, so rows added via
+    // /api/admin/sources in between are superseded by the settings save.
+    await deps.getSourcesRepo(tenantId).replaceAll(settingsToSourceRows(saved));
+    refreshPostHogConfig(tenantId, saved);
+    // REQ-063: a settings save reconciles only the caller's own schedulers —
+    // keys and job data are tenant-scoped, so tenants cannot touch each other's.
+    // Non-active tenants (pending_setup) get no schedulers until activation,
+    // which runs its own reconcile (Phase 11).
+    if (await deps.isTenantActive(tenantId)) {
+      await reconcileAllForTenant(
+        {
+          processingQueue: deps.processingQueue,
+          collectorHealthQueue: deps.collectorHealthQueue,
+        },
+        tenantId,
+        saved,
+      );
+    }
     logger.info(
       {
         event: "settings.saved",
@@ -221,6 +352,7 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
       "settings.saved",
     );
     void captureAnalytics({
+      tenantId,
       distinctId: "admin",
       event: "settings_updated",
       properties: {
@@ -230,7 +362,12 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
         top_n: saved.topN,
       },
     });
-    return c.json(saved);
+    return c.json({
+      ...stripShortlistSize(saved),
+      ...features,
+      notificationEmail: notification?.notificationEmail ?? null,
+      hasSlackWebhook: (notification?.slackWebhookEncrypted ?? null) !== null,
+    });
   });
 
   return app;
@@ -254,8 +391,17 @@ function getDefaultCollectorHealthQueue(): Queue {
 
 export function createDefaultSettingsRouter(): Hono {
   return createSettingsRouter({
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getSettingsRepo: (tenantId) => createUserSettingsRepo(defaultGetDb(), tenantId),
+    getNotificationSettingsRepo: (tenantId) =>
+      createNotificationSettingsRepo(defaultGetDb(), tenantId),
+    cipher: getCredentialCipher(),
+    getSourcesRepo: (tenantId) => createSourcesRepo(defaultGetDb(), tenantId),
     processingQueue: getDefaultProcessingQueue(),
     collectorHealthQueue: getDefaultCollectorHealthQueue(),
+    isTenantActive: async (tenantId) => {
+      const tenant = await createTenantsRepo(defaultGetDb()).findById(tenantId);
+      return tenant?.status === "active";
+    },
+    tenantFeatures: createTenantFeaturesRepo(defaultGetDb()),
   });
 }

@@ -153,6 +153,11 @@ const userSettingsCommonShape = {
     .max(20000, "Shortlist prompt too long (max 20000 chars)")
     .refine((v) => v.trim().length > 0, "Shortlist prompt is required"),
   shortlistSize: z.number().int().min(5).max(100),
+  // REQ-092: per-tenant notification channels. `undefined` = leave unchanged,
+  // `null` = clear. The webhook is encrypted before persistence and never
+  // echoed back (responses expose only `hasSlackWebhook`).
+  notificationEmail: z.email().nullable().optional(),
+  slackWebhookUrl: z.url().nullable().optional(),
 } as const;
 
 interface SourceEnabledPayload {

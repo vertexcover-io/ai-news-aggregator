@@ -2,16 +2,16 @@ import type {
   EnrichedLinkContent,
   EnrichmentSkipReason,
   EnrichmentTelemetry,
-  RawItemInsert,
   RawItemMetadata,
 } from "@newsletter/shared";
+import type { RawItemUpsert } from "@pipeline/repositories/raw-items.js";
 import { enrichOne } from "@pipeline/services/link-enrichment/fetcher.js";
 import type { EnrichmentContext, EnrichmentCounters } from "@pipeline/services/link-enrichment/types.js";
 import { shouldEnrich } from "@pipeline/services/link-enrichment/url-classifier.js";
 
 const FAILURE_REASON_MAX_LEN = 120;
 
-function attach(item: RawItemInsert, enriched: EnrichedLinkContent): void {
+function attach(item: RawItemUpsert, enriched: EnrichedLinkContent): void {
   const existing: RawItemMetadata = item.metadata ?? { comments: [] };
   item.metadata = { ...existing, enrichedLink: enriched };
 }
@@ -30,7 +30,7 @@ function hostnameOf(url: string): string {
 
 function logEnrichmentFailure(
   ctx: EnrichmentContext,
-  item: RawItemInsert,
+  item: RawItemUpsert,
   failureReason: string,
 ): void {
   if (!ctx.runLogger) return;
@@ -52,9 +52,9 @@ function logEnrichmentFailure(
 }
 
 export async function enrichRawItems(
-  items: RawItemInsert[],
+  items: RawItemUpsert[],
   ctx: EnrichmentContext,
-): Promise<RawItemInsert[]> {
+): Promise<RawItemUpsert[]> {
   for (const item of items) {
     if (ctx.signal?.aborted) {
       const enriched: EnrichedLinkContent = {

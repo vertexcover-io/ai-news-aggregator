@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { PublicMustReadEntry } from "@newsletter/shared/types";
 import { MustReadPage } from "../../../src/pages/MustReadPage";
 import { PublicLayout } from "../../../src/layouts/PublicLayout";
+import { withTenantConfig } from "../helpers/tenantConfig";
 
 vi.mock("../../../src/api/must-read", () => ({
   listMustRead: vi.fn(),
@@ -52,11 +53,13 @@ function renderPage(entries: PublicMustReadEntry[]): ReturnType<typeof render> {
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={["/must-read"]}>
-        <Routes>
-          <Route element={<PublicLayout />}>
-            <Route path="/must-read" element={<MustReadPage />} />
-          </Route>
-        </Routes>
+        {withTenantConfig(
+          <Routes>
+            <Route element={<PublicLayout />}>
+              <Route path="/must-read" element={<MustReadPage />} />
+            </Route>
+          </Routes>,
+        )}
       </MemoryRouter>
     </QueryClientProvider>,
   );

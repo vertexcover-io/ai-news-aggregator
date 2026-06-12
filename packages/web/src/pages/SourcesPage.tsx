@@ -1,5 +1,6 @@
-import { useEffect, type ReactElement } from "react";
+import { type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTenantPageTitle } from "../components/shell/TenantConfigProvider";
 import type {
   ConfiguredSection,
   SourcesSummaryResponse,
@@ -114,13 +115,13 @@ function Shell({ children }: { children: ReactElement }): ReactElement {
 }
 
 export function SourcesPage(): ReactElement {
-  useEffect(() => {
-    document.title = "Sources · AgentLoop";
+  useTenantPageTitle((config) => {
     setMeta(
       "description",
-      "The reading list behind the AgentLoop newsletter.",
+      `The reading list behind the ${config.name} newsletter.`,
     );
-  }, []);
+    return `Sources · ${config.name}`;
+  });
 
   const { data, isLoading, isError } = useQuery<SourcesSummaryResponse>({
     queryKey: ["sources-summary"],

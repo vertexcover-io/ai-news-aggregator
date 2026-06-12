@@ -1,17 +1,20 @@
 import { describe, it, expect, vi } from "vitest";
 import type { UserSettings } from "@newsletter/shared";
 import {
-  DAILY_RUN_SCHEDULER_KEY,
-  EMAIL_SEND_SCHEDULER_KEY,
-  LINKEDIN_POST_SCHEDULER_KEY,
-  PIPELINE_RUN_SCHEDULER_KEY,
-  SOCIAL_HEALTH_SCHEDULER_KEY,
-  TWITTER_POST_SCHEDULER_KEY,
+  LEGACY_COLLECTOR_HEALTH_SCHEDULER_KEY,
+  LEGACY_PROCESSING_SCHEDULER_KEYS,
+} from "@newsletter/shared";
+import {
   reconcilePipelineSchedule,
-  reconcileDailyRunSchedule,
+  reconcileSchedulesForActiveTenants,
+  removeLegacySchedulers,
+  schedulerKeyFor,
   toCronMinusMinutes,
   toCron,
 } from "@api/services/scheduler.js";
+
+const TENANT_A = "aaaaaaaa-0000-4000-8000-000000000001";
+const TENANT_B = "bbbbbbbb-0000-4000-8000-000000000002";
 
 function baseSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
@@ -72,51 +75,63 @@ describe("toCronMinusMinutes", () => {
   });
 });
 
-describe("reconcilePipelineSchedule", () => {
-  it("upserts standing pipeline, health, and enabled publish channel schedulers", async () => {
+describe("reconcilePipelineSchedule (per-tenant, REQ-062)", () => {
+  it("upserts tenant-keyed pipeline, health, and publish schedulers with {tenantId} data", async () => {
     const queue = makeQueue();
 
-    await reconcilePipelineSchedule(queue, baseSettings());
+    await reconcilePipelineSchedule(queue, TENANT_A, baseSettings());
 
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      PIPELINE_RUN_SCHEDULER_KEY,
+      `pipeline-run:${TENANT_A}`,
       { pattern: "30 9 * * *", tz: "America/New_York" },
-      { name: "pipeline-run", data: {} },
+      { name: "pipeline-run", data: { tenantId: TENANT_A } },
     );
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      SOCIAL_HEALTH_SCHEDULER_KEY,
+      `social-health:${TENANT_A}`,
       { pattern: "15 9 * * *", tz: "America/New_York" },
-      { name: "social-health", data: {} },
+      { name: "social-health", data: { tenantId: TENANT_A } },
     );
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      EMAIL_SEND_SCHEDULER_KEY,
+      `email-send:${TENANT_A}`,
       { pattern: "0 10 * * *", tz: "America/New_York" },
-      { name: "email-send", data: {} },
+      { name: "email-send", data: { tenantId: TENANT_A } },
     );
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      LINKEDIN_POST_SCHEDULER_KEY,
+      `linkedin-post:${TENANT_A}`,
       { pattern: "15 10 * * *", tz: "America/New_York" },
-      { name: "linkedin-post", data: {} },
+      { name: "linkedin-post", data: { tenantId: TENANT_A } },
     );
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      TWITTER_POST_SCHEDULER_KEY,
+      `twitter-post:${TENANT_A}`,
       { pattern: "30 10 * * *", tz: "America/New_York" },
-      { name: "twitter-post", data: {} },
+      { name: "twitter-post", data: { tenantId: TENANT_A } },
     );
     expect(queue.removeJobScheduler).not.toHaveBeenCalled();
   });
 
-  it("removes all standing schedulers when the schedule is disabled", async () => {
+  it("removes only the disabled tenant's standing schedulers (REQ-063)", async () => {
     const queue = makeQueue();
 
-    await reconcilePipelineSchedule(queue, baseSettings({ scheduleEnabled: false }));
+    await reconcilePipelineSchedule(
+      queue,
+      TENANT_A,
+      baseSettings({ scheduleEnabled: false }),
+    );
 
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(PIPELINE_RUN_SCHEDULER_KEY);
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(SOCIAL_HEALTH_SCHEDULER_KEY);
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(EMAIL_SEND_SCHEDULER_KEY);
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(LINKEDIN_POST_SCHEDULER_KEY);
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(TWITTER_POST_SCHEDULER_KEY);
+    for (const kind of [
+      "pipeline-run",
+      "social-health",
+      "email-send",
+      "linkedin-post",
+      "twitter-post",
+    ] as const) {
+      expect(queue.removeJobScheduler).toHaveBeenCalledWith(
+        schedulerKeyFor(kind, TENANT_A),
+      );
+    }
     expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
+    const removedKeys = queue.removeJobScheduler.mock.calls.map((c) => c[0] as string);
+    expect(removedKeys.every((k) => k.endsWith(`:${TENANT_A}`))).toBe(true);
   });
 
   it("removes disabled channel schedulers while keeping enabled channels", async () => {
@@ -124,68 +139,80 @@ describe("reconcilePipelineSchedule", () => {
 
     await reconcilePipelineSchedule(
       queue,
+      TENANT_A,
       baseSettings({ linkedinEnabled: false, twitterPostEnabled: false }),
     );
 
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      EMAIL_SEND_SCHEDULER_KEY,
+      `email-send:${TENANT_A}`,
       { pattern: "0 10 * * *", tz: "America/New_York" },
-      { name: "email-send", data: {} },
+      { name: "email-send", data: { tenantId: TENANT_A } },
     );
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(LINKEDIN_POST_SCHEDULER_KEY);
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(TWITTER_POST_SCHEDULER_KEY);
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(`linkedin-post:${TENANT_A}`);
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(`twitter-post:${TENANT_A}`);
   });
 });
 
-describe("reconcileDailyRunSchedule", () => {
-  it("REQ-014/REQ-021: enabled -> upsertJobScheduler with correct pattern + tz", async () => {
-    const queue = makeQueue();
-    await reconcileDailyRunSchedule(queue, baseSettings());
-    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      DAILY_RUN_SCHEDULER_KEY,
-      { pattern: "30 9 * * *", tz: "America/New_York" },
-      { name: "daily-run", data: {} },
+describe("reconcileSchedulesForActiveTenants (boot, REQ-063)", () => {
+  it("reconciles every active tenant and skips tenants without settings", async () => {
+    const processingQueue = makeQueue();
+    const collectorHealthQueue = makeQueue();
+    const pendingTenant = "cccccccc-0000-4000-8000-000000000003";
+    const settingsByTenant: Record<string, UserSettings | null> = {
+      [TENANT_A]: baseSettings(),
+      [TENANT_B]: baseSettings({ pipelineTime: "07:00", scheduleTime: "07:00" }),
+      [pendingTenant]: baseSettings(),
+    };
+
+    await reconcileSchedulesForActiveTenants({
+      processingQueue,
+      collectorHealthQueue,
+      // pending_setup tenants never appear here — listActive filters by status.
+      listActiveTenants: () => Promise.resolve([{ id: TENANT_A }, { id: TENANT_B }]),
+      getSettings: (tenantId) => Promise.resolve(settingsByTenant[tenantId] ?? null),
+    });
+
+    const upsertedKeys = processingQueue.upsertJobScheduler.mock.calls.map(
+      (c) => c[0] as string,
     );
-    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
-      SOCIAL_HEALTH_SCHEDULER_KEY,
-      { pattern: "15 9 * * *", tz: "America/New_York" },
-      { name: "social-health", data: {} },
-    );
-    expect(queue.removeJobScheduler).not.toHaveBeenCalled();
+    expect(upsertedKeys).toContain(`pipeline-run:${TENANT_A}`);
+    expect(upsertedKeys).toContain(`pipeline-run:${TENANT_B}`);
+    expect(upsertedKeys.some((k) => k.endsWith(`:${pendingTenant}`))).toBe(false);
+    expect(collectorHealthQueue.upsertJobScheduler).toHaveBeenCalledTimes(2);
   });
 
-  it("REQ-022: disabled -> removeJobScheduler called", async () => {
-    const queue = makeQueue();
-    await reconcileDailyRunSchedule(
-      queue,
-      baseSettings({ scheduleEnabled: false }),
-    );
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(
-      DAILY_RUN_SCHEDULER_KEY,
-    );
-    expect(queue.removeJobScheduler).toHaveBeenCalledWith(
-      SOCIAL_HEALTH_SCHEDULER_KEY,
-    );
-    expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
-  });
+  it("skips active tenants that have no settings row yet", async () => {
+    const processingQueue = makeQueue();
+    const collectorHealthQueue = makeQueue();
 
-  it("REQ-020/REQ-021: enabled-then-disabled is idempotent", async () => {
-    const queue = makeQueue();
-    await reconcileDailyRunSchedule(queue, baseSettings());
-    await reconcileDailyRunSchedule(
-      queue,
-      baseSettings({ scheduleEnabled: false }),
+    await reconcileSchedulesForActiveTenants({
+      processingQueue,
+      collectorHealthQueue,
+      listActiveTenants: () => Promise.resolve([{ id: TENANT_A }, { id: TENANT_B }]),
+      getSettings: (tenantId) =>
+        Promise.resolve(tenantId === TENANT_A ? baseSettings() : null),
+    });
+
+    const upsertedKeys = processingQueue.upsertJobScheduler.mock.calls.map(
+      (c) => c[0] as string,
     );
-    await reconcileDailyRunSchedule(
-      queue,
-      baseSettings({ scheduleEnabled: false }),
-    );
-    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(2);
-    expect(queue.removeJobScheduler).toHaveBeenCalledTimes(4);
+    expect(upsertedKeys.every((k) => k.endsWith(`:${TENANT_A}`))).toBe(true);
   });
-  // The removed DST test asserted that Intl.DateTimeFormat renders two UTC
-  // instants as 09:30 in America/New_York — it exercised the platform's
-  // timezone engine, not the scheduler. The scheduler only emits the tz-naive
-  // cron string (tested by toCron) + the IANA tz string (passed through to
-  // upsertJobScheduler), both covered above.
+});
+
+describe("removeLegacySchedulers", () => {
+  it("removes every pre-multi-tenancy ':default' key from both queues", async () => {
+    const processingQueue = makeQueue();
+    const collectorHealthQueue = makeQueue();
+
+    await removeLegacySchedulers({ processingQueue, collectorHealthQueue });
+
+    for (const key of LEGACY_PROCESSING_SCHEDULER_KEYS) {
+      expect(processingQueue.removeJobScheduler).toHaveBeenCalledWith(key);
+    }
+    expect(collectorHealthQueue.removeJobScheduler).toHaveBeenCalledWith(
+      LEGACY_COLLECTOR_HEALTH_SCHEDULER_KEY,
+    );
+    expect(processingQueue.upsertJobScheduler).not.toHaveBeenCalled();
+  });
 });

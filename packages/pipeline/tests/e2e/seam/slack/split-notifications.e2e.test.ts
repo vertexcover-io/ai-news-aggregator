@@ -18,6 +18,7 @@
  * suites in packages/pipeline/tests/unit/workers/. This file targets the
  * notifier↔repo seam specifically.
  */
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
@@ -51,7 +52,7 @@ interface TestHarness {
 
 function buildHarness(): TestHarness {
   const db = getTestDb();
-  const archiveRepo = createRunArchivesRepo(db);
+  const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
   const captures: CapturedPost[] = [];
   let responseStatus = 200;
 

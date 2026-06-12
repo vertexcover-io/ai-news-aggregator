@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
-import { requireAdmin } from "../../auth/middleware.js";
-import { issueToken, COOKIE_NAME } from "../../auth/session.js";
+import { APP_CREDENTIALS_TENANT_ID } from "@newsletter/shared/constants";
+import { requireUser } from "../../auth/middleware.js";
+import { issueSession, COOKIE_NAME } from "../../auth/session.js";
 import type { SocialTokensRepo, SaveSocialTokenInput } from "../../repositories/social-tokens.js";
 import type {
   SocialCredentialsRepo,
@@ -20,7 +21,10 @@ const REDIRECT_URI = `${PUBLIC_BASE_URL}/api/admin/social-credentials/linkedin/o
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function authCookie(): string {
-  const token = issueToken(SESSION_SECRET);
+  const token = issueSession(
+    { uid: "test-user", tid: "test-tenant", role: "tenant_admin" },
+    SESSION_SECRET,
+  );
   return `${COOKIE_NAME}=${token}`;
 }
 
@@ -65,7 +69,6 @@ function makeCredRepo(
     }),
     getLinkedIn: vi.fn().mockResolvedValue(record),
     upsertLinkedIn: vi.fn().mockResolvedValue({ updatedAt: new Date().toISOString() }),
-    upsertTwitter: vi.fn().mockResolvedValue({ updatedAt: new Date().toISOString() }),
     upsertTwitterCollector: vi.fn().mockResolvedValue({ updatedAt: new Date().toISOString() }),
     delete: vi.fn().mockResolvedValue(true),
   };
@@ -86,6 +89,20 @@ function makeTokenRepo(existingRow?: {
   metadata?: { personUrn?: string; name?: string } | null;
 }): { repo: SocialTokensRepo; saved: SavedToken[] } {
   const saved: SavedToken[] = [];
+  const getLinkedIn = (): Promise<{
+    accessToken: string;
+    refreshToken: string | null;
+    expiresAt: Date;
+    metadata: { personUrn?: string; name?: string } | null;
+  } | null> => {
+    if (!existingRow) return Promise.resolve(null);
+    return Promise.resolve({
+      accessToken: existingRow.accessToken,
+      refreshToken: existingRow.refreshToken,
+      expiresAt: existingRow.expiresAt,
+      metadata: existingRow.metadata ?? null,
+    });
+  };
   const repo: SocialTokensRepo = {
     saveToken(_platform: string, input: SaveSocialTokenInput): Promise<void> {
       saved.push({
@@ -96,20 +113,10 @@ function makeTokenRepo(existingRow?: {
       });
       return Promise.resolve();
     },
-    getLinkedIn(): Promise<{
-      accessToken: string;
-      refreshToken: string | null;
-      expiresAt: Date;
-      metadata: { personUrn?: string; name?: string } | null;
-    } | null> {
-      if (!existingRow) return Promise.resolve(null);
-      return Promise.resolve({
-        accessToken: existingRow.accessToken,
-        refreshToken: existingRow.refreshToken,
-        expiresAt: existingRow.expiresAt,
-        metadata: existingRow.metadata ?? null,
-      });
+    getToken(platform): ReturnType<typeof getLinkedIn> {
+      return platform === "linkedin" ? getLinkedIn() : Promise.resolve(null);
     },
+    getLinkedIn,
     deleteToken(): Promise<boolean> {
       return Promise.resolve(existingRow !== undefined);
     },
@@ -132,7 +139,7 @@ function buildTestApp(deps: LinkedInOAuthRouterDeps): Hono {
   );
 
   // Admin-gated start + status routes (mirror app.ts gate).
-  const gate = requireAdmin(SESSION_SECRET);
+  const gate = requireUser(SESSION_SECRET);
   const startRouter = createLinkedInOAuthRouter(deps);
   const gatedApp = new Hono();
   gatedApp.use("*", gate);
@@ -706,6 +713,9 @@ describe("GET /callback — name persistence", () => {
         savedTokens.push({ platform, input });
         return Promise.resolve();
       },
+      getToken() {
+        return Promise.resolve(null);
+      },
       getLinkedIn() {
         return Promise.resolve(null);
       },
@@ -748,5 +758,160 @@ describe("GET /callback — name persistence", () => {
 
     expect(savedTokens.length).toBe(1);
     expect(savedTokens[0].input.metadata?.name).toBe("Jane Doe");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REQ-080/REQ-082: the OAuth client is the SHARED app client — resolved from
+// the app credentials store (tenant 0), never the requesting tenant's row.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("shared app client resolution", () => {
+  it("/start resolves client creds from the APP store, not the session tenant's store", async () => {
+    const { redis } = makeRedis();
+    const { repo: tokenRepo } = makeTokenRepo();
+    const credRepoTenants: string[] = [];
+    const deps: LinkedInOAuthRouterDeps = {
+      getCredRepo: (tenantId: string) => {
+        credRepoTenants.push(tenantId);
+        return makeCredRepo(linkedInRecord);
+      },
+      getTokenRepo: () => tokenRepo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+    };
+
+    const app = buildTestApp(deps);
+    const res = await app.request(
+      "/api/admin/social-credentials/linkedin/oauth/start",
+      { method: "POST", headers: { cookie: authCookie() } },
+    );
+
+    expect(res.status).toBe(200);
+    // Session tenant is "test-tenant" — the cred repo must be the app store.
+    expect(credRepoTenants).toEqual([APP_CREDENTIALS_TENANT_ID]);
+  });
+
+  it("callback resolves exchange creds from the APP store but saves the token under the STATE tenant", async () => {
+    const { redis } = makeRedis();
+    const credRepoTenants: string[] = [];
+    const tokenRepoTenants: string[] = [];
+    const { repo: tokenRepo, saved } = makeTokenRepo();
+    let fetchCount = 0;
+    const fetchFn = vi.fn((): Promise<Response> => {
+      fetchCount++;
+      if (fetchCount === 1) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ access_token: "at", refresh_token: "rt", expires_in: 3600 }),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ sub: "p-1" }), { status: 200 }),
+      );
+    }) as typeof fetch;
+
+    const deps: LinkedInOAuthRouterDeps = {
+      getCredRepo: (tenantId: string) => {
+        credRepoTenants.push(tenantId);
+        return makeCredRepo(linkedInRecord);
+      },
+      getTokenRepo: (tenantId: string) => {
+        tokenRepoTenants.push(tenantId);
+        return tokenRepo;
+      },
+      redis,
+      env: { PUBLIC_BASE_URL },
+      fetchFn,
+    };
+
+    const app = buildTestApp(deps);
+    const startRes = await app.request(
+      "/api/admin/social-credentials/linkedin/oauth/start",
+      { method: "POST", headers: { cookie: authCookie() } },
+    );
+    const body = (await startRes.json()) as { authorizeUrl: string };
+    const state = new URL(body.authorizeUrl).searchParams.get("state") ?? "";
+
+    const res = await app.request(
+      `/api/admin/social-credentials/linkedin/oauth/callback?code=c&state=${state}`,
+    );
+
+    expect(res.status).toBe(302);
+    expect(saved.length).toBe(1);
+    expect(credRepoTenants).toEqual([
+      APP_CREDENTIALS_TENANT_ID, // /start
+      APP_CREDENTIALS_TENANT_ID, // /callback exchange creds
+    ]);
+    // Token save bound to the state's tenant (the session tenant from /start).
+    expect(tokenRepoTenants).toEqual(["test-tenant"]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE / — tenant disconnect clears only the tenant's token.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("DELETE / (disconnect)", () => {
+  it("removes the requesting tenant's linkedin token; app client creds untouched", async () => {
+    const { redis } = makeRedis();
+    const credDelete = vi.fn().mockResolvedValue(true);
+    const credRepo: SocialCredentialsRepo = {
+      ...makeCredRepo(linkedInRecord),
+      delete: credDelete,
+    };
+    const deletedPlatforms: string[] = [];
+    const tokenRepoTenants: string[] = [];
+    const { repo } = makeTokenRepo({
+      accessToken: "at",
+      refreshToken: "rt",
+      expiresAt: new Date(),
+    });
+    const tokenRepo: SocialTokensRepo = {
+      ...repo,
+      deleteToken(platform): Promise<boolean> {
+        deletedPlatforms.push(platform);
+        return Promise.resolve(true);
+      },
+    };
+    const deps: LinkedInOAuthRouterDeps = {
+      getCredRepo: () => credRepo,
+      getTokenRepo: (tenantId: string) => {
+        tokenRepoTenants.push(tenantId);
+        return tokenRepo;
+      },
+      redis,
+      env: { PUBLIC_BASE_URL },
+    };
+
+    const app = buildTestApp(deps);
+    const res = await app.request(
+      "/api/admin/social-credentials/linkedin/oauth",
+      { method: "DELETE", headers: { cookie: authCookie() } },
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, removed: true });
+    expect(deletedPlatforms).toEqual(["linkedin"]);
+    expect(tokenRepoTenants).toEqual(["test-tenant"]);
+    expect(credDelete).not.toHaveBeenCalled();
+  });
+
+  it("disconnect is session-gated (no cookie → 401)", async () => {
+    const { redis } = makeRedis();
+    const { repo: tokenRepo } = makeTokenRepo();
+    const deps: LinkedInOAuthRouterDeps = {
+      getCredRepo: () => makeCredRepo(linkedInRecord),
+      getTokenRepo: () => tokenRepo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+    };
+
+    const app = buildTestApp(deps);
+    const res = await app.request(
+      "/api/admin/social-credentials/linkedin/oauth",
+      { method: "DELETE" },
+    );
+    expect(res.status).toBe(401);
   });
 });

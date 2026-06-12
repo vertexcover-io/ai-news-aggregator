@@ -19,9 +19,14 @@ import {
   chunk,
   classifyDeliveryFailure,
 } from "@pipeline/lib/email-send-common.js";
+import type {
+  BroadcastSender,
+  EmailBranding,
+} from "@pipeline/services/email-broadcast.js";
 
 export type { SendPacer };
 export { createSendPacer };
+export type { BroadcastSender, EmailBranding };
 
 const logger = createLogger("worker:email-send");
 
@@ -75,6 +80,7 @@ export interface NewsletterRenderProps {
   replyToEmail?: string;
   digestHeadline?: string | null;
   digestSummary?: string | null;
+  branding?: EmailBranding;
 }
 
 export interface EmailSendDeps {
@@ -85,7 +91,16 @@ export interface EmailSendDeps {
   rawItemsRepo: RawItemsRepo;
   renderNewsletter: (props: NewsletterRenderProps) => Promise<string>;
   sessionSecret: string;
+  /** Shared platform sender — always used for targeted/transactional sends (EDGE-005). */
   fromMail: string;
+  /**
+   * Per-tenant broadcast sender resolution (REQ-053). "blocked" skips the
+   * broadcast cleanly; undefined preserves the legacy fromMail behavior
+   * (tenant 0 / NF3, and existing tests).
+   */
+  broadcastSender?: BroadcastSender;
+  /** Tenant branding for templates; undefined ⇒ AGENTLOOP defaults (NF3). */
+  branding?: EmailBranding;
   replyToEmail?: string;
   baseUrl: string;
   slackNotifier?: SlackNotifier;
@@ -196,6 +211,43 @@ export async function handleEmailSendJob(
   if (isBroadcast && archive.emailSentAt !== null) return;
   const runId = archive.id;
 
+  // REQ-053/EDGE-006: no verified sending domain ⇒ the broadcast is skipped
+  // cleanly (run-visible via the publish-failed notification + log), never
+  // crashed. Targeted welcome sends are transactional (EDGE-005) and always go
+  // out from the shared platform sender below.
+  if (isBroadcast && deps.broadcastSender?.kind === "blocked") {
+    logger.warn(
+      {
+        event: "newsletter-send.broadcast_blocked",
+        runId,
+        jobId: job.id,
+        reason: deps.broadcastSender.reason,
+      },
+      "newsletter-send: broadcast blocked — sending domain not verified",
+    );
+    try {
+      await deps.slackNotifier?.notifyPublishFailed({
+        runId,
+        channel: "email-send",
+        reason: deps.broadcastSender.reason,
+      });
+    } catch (err) {
+      logger.error(
+        {
+          event: "slack.notify.unexpected_throw",
+          runId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "slack.notify.unexpected_throw",
+      );
+    }
+    return;
+  }
+  const fromMail =
+    isBroadcast && deps.broadcastSender?.kind === "send"
+      ? deps.broadcastSender.from
+      : deps.fromMail;
+
   const rawIds = archive.rankedItems.map((r) => r.rawItemId);
   const rawRows = await deps.rawItemsRepo.findByIds(rawIds);
   const stories = hydrateItems(archive.rankedItems, rawRows, archive.completedAt);
@@ -223,7 +275,9 @@ export async function handleEmailSendJob(
   }
 
   const issueDate = formatArchiveDate(archive.completedAt);
-  const subject = `AI Newsletter — ${issueDate}`;
+  // Branded tenants get their newsletter name in the subject; tenant 0 keeps
+  // the legacy platform subject (NF3).
+  const subject = `${deps.branding?.name ?? "AI Newsletter"} — ${issueDate}`;
   const batches = chunk(toSend, BATCH_SIZE);
 
   if (toSend.length > 0) {
@@ -261,6 +315,7 @@ export async function handleEmailSendJob(
             replyToEmail: deps.replyToEmail,
             digestHeadline: archive.digestHeadline,
             digestSummary: archive.digestSummary,
+            branding: deps.branding,
           });
 
           const MAX_ATTEMPTS = 2;
@@ -269,7 +324,7 @@ export async function handleEmailSendJob(
             try {
               const result = await deps.emailProvider.send({
                 to: [subscriber.email],
-                from: deps.fromMail,
+                from: fromMail,
                 replyTo: deps.replyToEmail,
                 subject,
                 html,

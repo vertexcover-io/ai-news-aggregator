@@ -392,6 +392,158 @@ describe("handleEmailSendJob", () => {
   });
 });
 
+// ─── Phase 7: broadcast sending-domain gate (REQ-053 / EDGE-005/006 / NF3) ───
+
+describe("handleEmailSendJob — broadcast sending-domain gate", () => {
+  it("verified sending domain: broadcast goes out from the domain sender", async () => {
+    const archive = makeArchive();
+    const deps = makeDeps(archive, {
+      broadcastSender: { kind: "send", from: "newsletter@acme.com" },
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "newsletter@acme.com" }),
+    );
+    expect(deps.archiveRepo.markEmailSent).toHaveBeenCalledOnce();
+  });
+
+  it("blocked: broadcast is skipped cleanly with a run-visible reason (EDGE-006)", async () => {
+    const archive = makeArchive();
+    const notifyPublishFailed = vi.fn(() => Promise.resolve());
+    const deps = makeDeps(archive, {
+      broadcastSender: { kind: "blocked", reason: "no_sending_domain" },
+      slackNotifier: makeSlackNotifier({ notifyPublishFailed }),
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(deps.emailProvider.send).not.toHaveBeenCalled();
+    expect(deps.archiveRepo.markEmailSent).not.toHaveBeenCalled();
+    expect(notifyPublishFailed).toHaveBeenCalledWith({
+      runId: archive.id,
+      channel: "email-send",
+      reason: "no_sending_domain",
+    });
+  });
+
+  it("blocked: a Slack notifier throw does not crash the skip", async () => {
+    const archive = makeArchive();
+    const deps = makeDeps(archive, {
+      broadcastSender: { kind: "blocked", reason: "sending_domain_not_verified" },
+      slackNotifier: makeSlackNotifier({
+        notifyPublishFailed: vi.fn(() => Promise.reject(new Error("slack down"))),
+      }),
+    });
+
+    await expect(
+      handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} }),
+    ).resolves.toBeUndefined();
+    expect(deps.emailProvider.send).not.toHaveBeenCalled();
+  });
+
+  it("no broadcastSender dep: legacy env fromMail behavior is preserved (NF3)", async () => {
+    const archive = makeArchive();
+    const deps = makeDeps(archive);
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "newsletter@example.com" }),
+    );
+  });
+
+  it("targeted welcome send stays transactional: shared sender even when broadcast is blocked (EDGE-005)", async () => {
+    const archive = makeArchive({ id: "00000000-0000-0000-0000-000000000123" });
+    const newSubscriber = makeSubscriber({ id: "new-sub", email: "new@example.com" });
+    const notifyPublishFailed = vi.fn(() => Promise.resolve());
+    const deps = makeDeps(null, {
+      broadcastSender: { kind: "blocked", reason: "no_sending_domain" },
+      archiveRepo: {
+        ...makeDeps(null).archiveRepo,
+        findById: vi.fn(() => Promise.resolve(archive)),
+        findLatestTerminal: vi.fn(() => Promise.resolve(null)),
+      },
+      subscribersRepo: {
+        listConfirmed: vi.fn(() => Promise.resolve([makeSubscriber()])),
+        findByIds: vi.fn(() => Promise.resolve([newSubscriber])),
+      },
+      slackNotifier: makeSlackNotifier({ notifyPublishFailed }),
+    });
+
+    await handleEmailSendJob(deps, {
+      name: "email-send",
+      id: "welcome-job",
+      data: { runId: archive.id, subscriberIds: ["new-sub"] },
+    });
+
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "newsletter@example.com" }),
+    );
+    expect(notifyPublishFailed).not.toHaveBeenCalled();
+  });
+
+  it("targeted send uses the shared sender even when a verified domain exists (EDGE-005)", async () => {
+    const archive = makeArchive({ id: "00000000-0000-0000-0000-000000000123" });
+    const newSubscriber = makeSubscriber({ id: "new-sub", email: "new@example.com" });
+    const deps = makeDeps(null, {
+      broadcastSender: { kind: "send", from: "newsletter@acme.com" },
+      archiveRepo: {
+        ...makeDeps(null).archiveRepo,
+        findById: vi.fn(() => Promise.resolve(archive)),
+        findLatestTerminal: vi.fn(() => Promise.resolve(null)),
+      },
+      subscribersRepo: {
+        listConfirmed: vi.fn(() => Promise.resolve([makeSubscriber()])),
+        findByIds: vi.fn(() => Promise.resolve([newSubscriber])),
+      },
+    });
+
+    await handleEmailSendJob(deps, {
+      name: "email-send",
+      id: "welcome-job",
+      data: { runId: archive.id, subscriberIds: ["new-sub"] },
+    });
+
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "newsletter@example.com" }),
+    );
+  });
+
+  it("threads tenant branding into the newsletter render", async () => {
+    const archive = makeArchive();
+    const deps = makeDeps(archive, {
+      branding: { name: "Acme AI Weekly" },
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(deps.renderNewsletter).toHaveBeenCalledWith(
+      expect.objectContaining({ branding: { name: "Acme AI Weekly" } }),
+    );
+  });
+
+  it("branded tenants get their newsletter name in the subject; unbranded keeps the platform subject", async () => {
+    const archive = makeArchive();
+    const branded = makeDeps(archive, { branding: { name: "Acme AI Weekly" } });
+    await handleEmailSendJob(branded, { name: "email-send", id: "job-1", data: {} });
+    expect(branded.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: expect.stringMatching(/^Acme AI Weekly — /) as string,
+      }),
+    );
+
+    const unbranded = makeDeps(makeArchive());
+    await handleEmailSendJob(unbranded, { name: "email-send", id: "job-2", data: {} });
+    expect(unbranded.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: expect.stringMatching(/^AI Newsletter — /) as string,
+      }),
+    );
+  });
+});
+
 // ─── Phase 2: Rate resolution ─────────────────────────────────────────────────
 
 describe("resolveSendRate (REQ-003/004/005)", () => {

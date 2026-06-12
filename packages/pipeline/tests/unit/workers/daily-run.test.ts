@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { UserSettings } from "@newsletter/shared";
+import type { SourceRecord, SourcesRepo } from "@pipeline/repositories/sources.js";
 
 const mockLoggerInfo = vi.fn();
 const mockLoggerWarn = vi.fn();
@@ -52,7 +53,7 @@ function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
     topN: 5,
     halfLifeHours: 24,
     hnEnabled: true,
-    hnConfig: { limit: 10, minPoints: 5, type: "top" },
+    hnConfig: { sinceDays: 1 },
     redditEnabled: false,
     redditConfig: null,
     webEnabled: false,
@@ -64,6 +65,34 @@ function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
     scheduleEnabled: true,
     updatedAt: "2026-04-14T00:00:00.000Z",
     ...overrides,
+  } as UserSettings;
+}
+
+function makeSourceRow(
+  type: SourceRecord["type"],
+  config: unknown,
+  enabled = true,
+): SourceRecord {
+  return {
+    id: "99999999-9999-4999-8999-999999999999",
+    type,
+    config,
+    enabled,
+    health: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  } as SourceRecord;
+}
+
+function makeSourcesRepo(rows: SourceRecord[]): SourcesRepo {
+  return {
+    list: vi.fn(() => Promise.resolve(rows)),
+    listEnabled: vi.fn(() => Promise.resolve(rows.filter((r) => r.enabled))),
+    getById: vi.fn(() => Promise.resolve(null)),
+    create: vi.fn(() => Promise.reject(new Error("not used"))),
+    update: vi.fn(() => Promise.resolve(null)),
+    delete: vi.fn(() => Promise.resolve(false)),
+    updateHealth: vi.fn(() => Promise.resolve(null)),
   };
 }
 
@@ -75,18 +104,22 @@ interface JobLike {
 
 const baseJob: JobLike = { name: "daily-run", id: "job-1", data: {} };
 
+const hnRow = () => makeSourceRow("hn", { sinceDays: 1 });
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
 describe("createDailyRunWorker", () => {
-  it("calls startRun with settings when a daily-run job fires and sources are enabled", async () => {
+  it("calls startRun with collectors assembled from the enabled source rows", async () => {
     const settings = makeSettings();
     const userSettingsRepo = { get: vi.fn(() => Promise.resolve(settings)) };
+    const sourcesRepo = makeSourcesRepo([hnRow()]);
     mockStartRun.mockResolvedValueOnce({ runId: "new-run" });
 
     const worker = createDailyRunWorker({
       userSettingsRepo,
+      sourcesRepo,
       redis: { fake: "redis" } as never,
       queue: { add: vi.fn() } as never,
     });
@@ -94,12 +127,15 @@ describe("createDailyRunWorker", () => {
     await worker.handler(baseJob);
 
     expect(userSettingsRepo.get).toHaveBeenCalledOnce();
+    expect(sourcesRepo.listEnabled).toHaveBeenCalledOnce();
     expect(mockStartRun).toHaveBeenCalledOnce();
-    const [settingsArg, depsArg] = mockStartRun.mock.calls[0] as [
+    const [settingsArg, collectorsArg, depsArg] = mockStartRun.mock.calls[0] as [
       UserSettings,
+      Record<string, unknown>,
       { redis: unknown; queue: unknown },
     ];
     expect(settingsArg).toBe(settings);
+    expect(collectorsArg).toEqual({ hn: { sinceDays: 1 } });
     expect(depsArg.redis).toEqual({ fake: "redis" });
     expect(depsArg.queue).toBeDefined();
   });
@@ -111,6 +147,7 @@ describe("createDailyRunWorker", () => {
 
     const worker = createDailyRunWorker({
       userSettingsRepo,
+      sourcesRepo: makeSourcesRepo([hnRow()]),
       redis: { fake: "redis" } as never,
       queue: { add: vi.fn() } as never,
     });
@@ -119,8 +156,32 @@ describe("createDailyRunWorker", () => {
 
     expect(userSettingsRepo.get).toHaveBeenCalledOnce();
     expect(mockStartRun).toHaveBeenCalledOnce();
-    const [settingsArg] = mockStartRun.mock.calls[0] as [UserSettings];
-    expect(settingsArg).toBe(settings);
+  });
+
+  // REQ-073: disabled rows must not be collected.
+  it("REQ-073: excludes disabled source rows from the assembled collectors", async () => {
+    const settings = makeSettings();
+    const userSettingsRepo = { get: vi.fn(() => Promise.resolve(settings)) };
+    const sourcesRepo = makeSourcesRepo([
+      hnRow(),
+      makeSourceRow("reddit", { subreddit: "MachineLearning", sinceDays: 1 }, false),
+    ]);
+    mockStartRun.mockResolvedValueOnce({ runId: "new-run" });
+
+    const worker = createDailyRunWorker({
+      userSettingsRepo,
+      sourcesRepo,
+      redis: { fake: "redis" } as never,
+      queue: { add: vi.fn() } as never,
+    });
+
+    await worker.handler(baseJob);
+
+    const [, collectorsArg] = mockStartRun.mock.calls[0] as [
+      UserSettings,
+      Record<string, unknown>,
+    ];
+    expect(collectorsArg).toEqual({ hn: { sinceDays: 1 } });
   });
 
   it("logs a warning and skips when user_settings is missing", async () => {
@@ -128,6 +189,7 @@ describe("createDailyRunWorker", () => {
 
     const worker = createDailyRunWorker({
       userSettingsRepo,
+      sourcesRepo: makeSourcesRepo([hnRow()]),
       redis: { fake: "redis" } as never,
       queue: { add: vi.fn() } as never,
     });
@@ -143,17 +205,15 @@ describe("createDailyRunWorker", () => {
     expect(call).toBeDefined();
   });
 
-  it("logs a warning and skips when all source toggles are disabled", async () => {
-    const settings = makeSettings({
-      hnConfig: null,
-      redditConfig: null,
-      webConfig: null,
-      twitterConfig: null,
-      });
-    const userSettingsRepo = { get: vi.fn(() => Promise.resolve(settings)) };
+  // REQ-073: no enabled rows ⇒ nothing to collect ⇒ skip.
+  it("logs a warning and skips when the tenant has no enabled source rows", async () => {
+    const userSettingsRepo = { get: vi.fn(() => Promise.resolve(makeSettings())) };
 
     const worker = createDailyRunWorker({
       userSettingsRepo,
+      sourcesRepo: makeSourcesRepo([
+        makeSourceRow("hn", { sinceDays: 1 }, false),
+      ]),
       redis: { fake: "redis" } as never,
       queue: { add: vi.fn() } as never,
     });
@@ -167,12 +227,66 @@ describe("createDailyRunWorker", () => {
       return typeof msg === "string" && msg.startsWith("daily-run skipped");
     });
     expect(call).toBeDefined();
+  });
+
+  // REQ-066: the jitter window is parsed once at composition; the handler
+  // injects the global Math.random into computeJitterMs at the call site.
+  it("REQ-066: passes a jittered startDelayMs through to startRun", async () => {
+    const randSpy = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    try {
+      const userSettingsRepo = { get: vi.fn(() => Promise.resolve(makeSettings())) };
+      mockStartRun.mockResolvedValueOnce({ runId: "new-run" });
+
+      const worker = createDailyRunWorker({
+        userSettingsRepo,
+        sourcesRepo: makeSourcesRepo([hnRow()]),
+        redis: { fake: "redis" } as never,
+        queue: { add: vi.fn() } as never,
+        startJitterMs: 1000,
+      });
+
+      await worker.handler(baseJob);
+
+      const [, , , optsArg] = mockStartRun.mock.calls[0] as [
+        unknown,
+        unknown,
+        unknown,
+        { tenantId: string; startDelayMs: number },
+      ];
+      expect(optsArg.startDelayMs).toBe(500);
+    } finally {
+      randSpy.mockRestore();
+    }
+  });
+
+  it("REQ-066: startJitterMs 0 disables the delay", async () => {
+    const userSettingsRepo = { get: vi.fn(() => Promise.resolve(makeSettings())) };
+    mockStartRun.mockResolvedValueOnce({ runId: "new-run" });
+
+    const worker = createDailyRunWorker({
+      userSettingsRepo,
+      sourcesRepo: makeSourcesRepo([hnRow()]),
+      redis: { fake: "redis" } as never,
+      queue: { add: vi.fn() } as never,
+      startJitterMs: 0,
+    });
+
+    await worker.handler(baseJob);
+
+    const [, , , optsArg] = mockStartRun.mock.calls[0] as [
+      unknown,
+      unknown,
+      unknown,
+      { startDelayMs: number },
+    ];
+    expect(optsArg.startDelayMs).toBe(0);
   });
 
   it("noops when job.name is not 'daily-run'", async () => {
     const userSettingsRepo = { get: vi.fn(() => Promise.resolve(makeSettings())) };
     const worker = createDailyRunWorker({
       userSettingsRepo,
+      sourcesRepo: makeSourcesRepo([hnRow()]),
       redis: { fake: "redis" } as never,
       queue: { add: vi.fn() } as never,
     });

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { setTestTenant } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import type { UserSettings } from "@newsletter/shared";
 import { createPublicSourcesRouter } from "@api/routes/sources.js";
@@ -8,6 +9,7 @@ import type {
 } from "@api/repositories/raw-items.js";
 import type { RunArchivesRepo } from "@api/repositories/run-archives.js";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
+import type { SourceRecord, SourcesRepo } from "@api/repositories/sources.js";
 
 const NOW = new Date("2026-05-23T12:00:00.000Z");
 
@@ -84,14 +86,33 @@ function makeSettingsRepo(): UserSettingsRepo {
   };
 }
 
+function makeSourcesRepo(): Pick<SourcesRepo, "listEnabled"> {
+  return {
+    listEnabled: () =>
+      Promise.resolve([
+        {
+          id: "00000000-0000-0000-0000-000000000001",
+          type: "hn",
+          config: { sinceDays: 1 },
+          enabled: true,
+          health: null,
+          createdAt: NOW,
+          updatedAt: NOW,
+        } as SourceRecord,
+      ]),
+  };
+}
+
 function buildApp(agg: RawItemsAggregateRow[]): Hono {
   const router = createPublicSourcesRouter({
     getRawItemsRepo: () => makeRawItemsRepo(agg),
     getArchiveRepo: () => makeRunArchivesRepo(),
     getSettingsRepo: () => makeSettingsRepo(),
+    getSourcesRepo: () => makeSourcesRepo(),
     now: () => NOW,
   });
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route("/api/sources", router);
   return app;
 }

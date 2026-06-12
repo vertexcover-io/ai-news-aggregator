@@ -13,16 +13,9 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { DEFAULT_RANKING_PROMPT } from "@newsletter/shared/constants";
-import { ADMIN_PASSWORD, makeDbClient } from "./_infra";
+import { adminLogin, makeDbClient } from "./_infra";
 
 
-async function adminLogin(page: Page): Promise<void> {
-  // Use the Vite proxy so the session cookie is scoped to the page origin.
-  const res = await page.request.post("/api/admin/login", {
-    data: { password: ADMIN_PASSWORD },
-  });
-  expect(res.ok()).toBe(true);
-}
 
 async function readPromptFromDb(): Promise<string | null> {
   const client = makeDbClient();

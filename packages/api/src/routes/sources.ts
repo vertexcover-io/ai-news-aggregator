@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 import { createLogger, getDb as defaultGetDb } from "@newsletter/shared";
 import { buildSourcesSummary } from "@api/services/sources-summary.js";
 import {
@@ -13,11 +14,16 @@ import {
   createUserSettingsRepo,
   type UserSettingsRepo,
 } from "@api/repositories/user-settings.js";
+import {
+  createSourcesRepo,
+  type SourcesRepo,
+} from "@api/repositories/sources.js";
 
 export interface SourcesRouterDeps {
-  getRawItemsRepo: () => RawItemsRepo;
-  getArchiveRepo: () => RunArchivesRepo;
-  getSettingsRepo: () => UserSettingsRepo;
+  getRawItemsRepo: (tenantId: string) => RawItemsRepo;
+  getArchiveRepo: (tenantId: string) => RunArchivesRepo;
+  getSettingsRepo: (tenantId: string) => UserSettingsRepo;
+  getSourcesRepo: (tenantId: string) => Pick<SourcesRepo, "listEnabled">;
   logger?: ReturnType<typeof createLogger>;
   now?: () => Date;
 }
@@ -79,10 +85,12 @@ export function createPublicSourcesRouter(deps: SourcesRouterDeps): Hono {
       return c.json({ error: r.message }, 400);
     }
     try {
+      const tenantId = getTenantId(c);
       const summary = await buildSourcesSummary({
-        rawItemsRepo: deps.getRawItemsRepo(),
-        runArchivesRepo: deps.getArchiveRepo(),
-        userSettingsRepo: deps.getSettingsRepo(),
+        rawItemsRepo: deps.getRawItemsRepo(tenantId),
+        runArchivesRepo: deps.getArchiveRepo(tenantId),
+        userSettingsRepo: deps.getSettingsRepo(tenantId),
+        sourcesRepo: deps.getSourcesRepo(tenantId),
         from: r.range.from,
         to: r.range.to,
         now: deps.now,
@@ -99,8 +107,9 @@ export function createPublicSourcesRouter(deps: SourcesRouterDeps): Hono {
 
 export function createDefaultPublicSourcesRouter(): Hono {
   return createPublicSourcesRouter({
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getRawItemsRepo: (tenantId) => createRawItemsRepo(defaultGetDb(), tenantId),
+    getArchiveRepo: (tenantId) => createRunArchivesRepo(defaultGetDb(), tenantId),
+    getSettingsRepo: (tenantId) => createUserSettingsRepo(defaultGetDb(), tenantId),
+    getSourcesRepo: (tenantId) => createSourcesRepo(defaultGetDb(), tenantId),
   });
 }

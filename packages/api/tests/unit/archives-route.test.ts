@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
 import { Hono } from "hono";
 import type {
   RunState,
@@ -66,6 +67,7 @@ function makeApp(opts: {
   settingsRepo?: Pick<UserSettingsRepo, "get">;
 }): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   const router = createArchivesRouter({
     getRawItemsRepo: () => opts.repo ?? makeRepo(),
     getArchiveRepo: () => opts.archiveRepo,
@@ -255,6 +257,7 @@ describe("GET /api/archives/:runId", () => {
       isDryRun: true,
     } as unknown as RunArchiveRow);
     const app = new Hono();
+  app.use("*", setTestTenant());
     const adminRouter = createAdminArchivesRouter({
       getRawItemsRepo: () => makeRepo(),
       getArchiveRepo: () => archiveRepo,
@@ -270,6 +273,7 @@ describe("GET /api/archives/:runId", () => {
   it("Phase 5: admin GET /api/admin/archives/:runId returns 404 when archive not found", async () => {
     const archiveRepo = makeArchiveRepo(null);
     const app = new Hono();
+  app.use("*", setTestTenant());
     const adminRouter = createAdminArchivesRouter({
       getRawItemsRepo: () => makeRepo(),
       getArchiveRepo: () => archiveRepo,
@@ -383,6 +387,7 @@ describe("GET /api/admin/archives/:runId — review/publish field exposure (REQ-
   function makeAdminApp(row: RunArchiveRow | null): Hono {
     const archiveRepo = makeArchiveRepo(row);
     const app = new Hono();
+  app.use("*", setTestTenant());
     app.route(
       "/api/admin/archives",
       createAdminArchivesRouter({
@@ -453,6 +458,7 @@ describe("GET /api/admin/archives/:runId — review/publish field exposure (REQ-
     } as RunArchiveRow);
 
     const publicApp = new Hono();
+    publicApp.use("*", setTestTenant());
     publicApp.route(
       "/api/archives",
       createPublicArchivesRouter({
@@ -1109,6 +1115,7 @@ describe("POST /api/archives/:runId/regenerate-digest-meta", () => {
     const seededRepo = (): RawItemsRepo => makeRepo([rawRow(1)]);
 
     const publicApp = new Hono();
+    publicApp.use("*", setTestTenant());
     publicApp.route(
       "/api/archives",
       createPublicArchivesRouter({
@@ -1126,6 +1133,7 @@ describe("POST /api/archives/:runId/regenerate-digest-meta", () => {
     expect(generateDigestMeta).not.toHaveBeenCalled();
 
     const adminApp = new Hono();
+    adminApp.use("*", setTestTenant());
     adminApp.route(
       "/api/archives",
       createAdminArchivesRouter({
@@ -1219,6 +1227,7 @@ describe("PATCH /api/archives/:runId — draft vs publish (Phase 1)", () => {
     settingsRepo?: Pick<UserSettingsRepo, "get">;
   }): Hono {
     const app = new Hono();
+  app.use("*", setTestTenant());
     const router = createArchivesRouter({
       getRawItemsRepo: () => opts.rawItemsRepo ?? makeRepo([makeRawForId(1)]),
       getArchiveRepo: () => opts.archiveRepo,
