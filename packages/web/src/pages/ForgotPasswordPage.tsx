@@ -3,6 +3,13 @@ import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { forgotPassword } from "@/api/auth";
 import { Button } from "@/components/ui/button";
+import { AuthCard } from "@/components/auth/AuthCard";
+import {
+  authInputClass,
+  FieldLabel,
+  FormError,
+  Help,
+} from "@/components/auth/fields";
 
 export function ForgotPasswordPage(): ReactElement {
   const [email, setEmail] = useState("");
@@ -22,62 +29,59 @@ export function ForgotPasswordPage(): ReactElement {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div
-        className="rounded-lg border bg-card shadow-sm p-6 flex flex-col gap-4"
-        style={{ width: "min(380px, 100%)" }}
-      >
-        <h1 className="text-xl font-semibold text-center">Reset password</h1>
-        {mutation.isSuccess ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            If an account exists for that email, a reset link is on its way.
-            It expires in 30 minutes.
-          </p>
-        ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="email" className="text-sm font-medium">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                required
-                autoFocus
-                autoComplete="email"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (error) setError(null);
-                }}
-                className="h-11 min-h-[44px] rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-              />
-            </div>
-            {error !== null && (
-              <p
-                role="alert"
-                aria-live="polite"
-                className="text-sm text-destructive"
-              >
-                {error}
-              </p>
-            )}
-            <Button
-              type="submit"
-              disabled={mutation.isPending}
-              className="min-h-[44px] px-4"
-            >
-              {mutation.isPending ? "Sending…" : "Send reset link"}
-            </Button>
-          </form>
-        )}
-        <Link
-          to="/admin/login"
-          className="inline-flex items-center justify-center min-h-[44px] px-2 text-sm text-muted-foreground hover:text-foreground"
+    <AuthCard kicker="Password reset" heading="Forgot your password?">
+      {mutation.isSuccess ? (
+        <p
+          className="flex items-start gap-2.5 text-[12.5px] leading-relaxed text-mute"
+          role="status"
         >
-          ← Back to sign in
-        </Link>
-      </div>
-    </div>
+          <span
+            aria-hidden
+            className="mt-1.5 inline-block size-2 shrink-0 rounded-full bg-ok"
+          />
+          If an account exists for that email, a reset link is on its way. It
+          expires in 30 minutes.
+        </p>
+      ) : (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-[18px]">
+          <Help>
+            Enter the email on your account and we’ll send a reset link.
+          </Help>
+          <div className="flex flex-col gap-2">
+            <FieldLabel htmlFor="email">Email</FieldLabel>
+            <input
+              id="email"
+              type="email"
+              required
+              autoFocus
+              autoComplete="email"
+              placeholder="ada@studio.com"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (error) setError(null);
+              }}
+              className={authInputClass}
+            />
+          </div>
+          {error !== null && <FormError>{error}</FormError>}
+          <Button
+            type="submit"
+            variant="ink"
+            disabled={mutation.isPending}
+            className="min-h-[44px] px-4 py-3"
+          >
+            {mutation.isPending ? "Sending…" : "Send reset link"}
+          </Button>
+        </form>
+      )}
+      <hr className="my-[22px] border-0 border-t border-line" />
+      <Link
+        to="/admin/login"
+        className="inline-flex min-h-[44px] items-center justify-center px-2 font-mono text-[11px] uppercase tracking-[0.16em] text-mute hover:text-ink"
+      >
+        ← Back to sign in
+      </Link>
+    </AuthCard>
   );
 }

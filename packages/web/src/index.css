@@ -23,6 +23,8 @@
   --color-rust: #8c3a1e;
   --color-rust-deep: #6e2d17;
   --color-chip: #f1ede2;
+  --color-danger: #9e2b1a;
+  --color-ok: #2f6f3e;
 }
 
 @custom-variant dark (&:is(.dark *));

@@ -20,6 +20,8 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         link: "text-primary underline-offset-4 hover:underline",
+        rust: "bg-rust text-cream hover:bg-rust-deep focus-visible:border-rust focus-visible:ring-rust/20",
+        ink: "bg-ink text-cream hover:bg-black focus-visible:border-ink focus-visible:ring-ink/20",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",

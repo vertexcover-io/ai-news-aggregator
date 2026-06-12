@@ -7,9 +7,16 @@ import {
   FieldValidationError,
 } from "@/api/auth";
 import { Button } from "@/components/ui/button";
-
-const INPUT_CLASS =
-  "h-11 min-h-[44px] rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthBrandAside } from "@/components/auth/AuthBrandAside";
+import {
+  authInputClass,
+  Kicker,
+  FieldLabel,
+  FormError,
+  Help,
+  DisplayHeading,
+} from "@/components/auth/fields";
 
 export function SignupPage(): ReactElement {
   const [name, setName] = useState("");
@@ -52,112 +59,127 @@ export function SignupPage(): ReactElement {
     mutation.mutate();
   }
 
+  const passwordMismatch = error === "Passwords do not match";
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div
-        className="rounded-lg border bg-card shadow-sm p-6 flex flex-col gap-4"
-        style={{ width: "min(400px, 100%)" }}
-      >
-        <h1 className="text-xl font-semibold text-center">
-          Start your newsletter
-        </h1>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="name" className="text-sm font-medium">
-              Your name
-            </label>
-            <input
-              id="name"
-              type="text"
-              required
-              autoFocus
-              autoComplete="name"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-              }}
-              className={INPUT_CLASS}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="email" className="text-sm font-medium">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              autoComplete="email"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                if (error) setError(null);
-              }}
-              className={INPUT_CLASS}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="password" className="text-sm font-medium">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              minLength={8}
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                if (error) setError(null);
-              }}
-              className={INPUT_CLASS}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="confirmPassword" className="text-sm font-medium">
-              Confirm password
-            </label>
-            <input
-              id="confirmPassword"
-              type="password"
-              required
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(e) => {
-                setConfirmPassword(e.target.value);
-                if (error) setError(null);
-              }}
-              className={INPUT_CLASS}
-            />
-          </div>
-          {error !== null && (
-            <p
-              role="alert"
-              aria-live="polite"
-              className="text-sm text-destructive"
-            >
-              {error}
-            </p>
-          )}
-          <Button
-            type="submit"
-            disabled={mutation.isPending}
-            className="min-h-[44px] px-4"
-          >
-            {mutation.isPending ? "Creating account…" : "Create account"}
-          </Button>
-        </form>
-        <p className="text-center text-sm text-muted-foreground">
-          Already have an account?{" "}
-          <Link
-            to="/admin/login"
-            className="text-foreground underline underline-offset-4"
-          >
-            Sign in
-          </Link>
-        </p>
+    <AuthShell
+      aside={
+        <AuthBrandAside
+          kicker="Run your own newsletter"
+          headline="Curate the day’s signal."
+          accent="Send it before coffee."
+          lede="Sign up, point it at your sources, and review a ranked digest every morning — no infrastructure to run."
+          steps={["01 Account", "02 Brand", "03 Sources", "04 Go live"]}
+        />
+      }
+    >
+      <div className="mb-6 text-center">
+        <Kicker tone="rust">Create account</Kicker>
+        <DisplayHeading className="mt-1">Start your newsletter</DisplayHeading>
       </div>
-    </div>
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-[18px]">
+        <div className="flex flex-col gap-2">
+          <FieldLabel htmlFor="name">Your name</FieldLabel>
+          <input
+            id="name"
+            type="text"
+            required
+            autoFocus
+            autoComplete="name"
+            placeholder="Ada Lovelace"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+            }}
+            className={authInputClass}
+          />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <FieldLabel htmlFor="email">Email</FieldLabel>
+          <input
+            id="email"
+            type="email"
+            required
+            autoComplete="email"
+            placeholder="ada@studio.com"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (error) setError(null);
+            }}
+            className={authInputClass}
+          />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-2">
+              <FieldLabel htmlFor="password">Password</FieldLabel>
+              <input
+                id="password"
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                placeholder="••••••••"
+                aria-invalid={passwordMismatch}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (error) setError(null);
+                }}
+                className={authInputClass}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <FieldLabel htmlFor="confirmPassword">Confirm</FieldLabel>
+              <input
+                id="confirmPassword"
+                type="password"
+                required
+                autoComplete="new-password"
+                placeholder="••••••••"
+                aria-label="Confirm password"
+                aria-invalid={passwordMismatch}
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  if (error) setError(null);
+                }}
+                className={authInputClass}
+              />
+            </div>
+          </div>
+          {error !== null && <FormError>{error}</FormError>}
+        </div>
+
+        <Button
+          type="submit"
+          variant="rust"
+          disabled={mutation.isPending}
+          className="min-h-[44px] px-4 py-3"
+        >
+          {mutation.isPending ? "Creating account…" : "Create account →"}
+        </Button>
+        <Help className="text-center">
+          You’ll head straight into setup. No email verification needed.
+        </Help>
+      </form>
+
+      <p className="mt-[22px] text-center text-[13px] text-mute">
+        Already have an account?{" "}
+        <Link
+          to="/admin/login"
+          className="border-b border-rust text-rust hover:text-rust-deep"
+        >
+          Log in
+        </Link>
+      </p>
+      <p className="mt-[18px] text-center text-[11.5px] leading-relaxed text-mute">
+        By creating an account you agree to the Terms &amp; Privacy Policy.
+      </p>
+    </AuthShell>
   );
 }

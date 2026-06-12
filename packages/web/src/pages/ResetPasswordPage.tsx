@@ -7,9 +7,15 @@ import {
   FieldValidationError,
 } from "@/api/auth";
 import { Button } from "@/components/ui/button";
+import { AuthCard } from "@/components/auth/AuthCard";
+import {
+  authInputClass,
+  FieldLabel,
+  FormError,
+} from "@/components/auth/fields";
+import { cn } from "@/lib/utils";
 
-const INPUT_CLASS =
-  "h-11 min-h-[44px] rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]";
+const MIN_PASSWORD_LENGTH = 8;
 
 export function ResetPasswordPage(): ReactElement {
   const [searchParams] = useSearchParams();
@@ -54,98 +60,84 @@ export function ResetPasswordPage(): ReactElement {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <div
-          className="rounded-lg border bg-card shadow-sm p-6 flex flex-col gap-4"
-          style={{ width: "min(380px, 100%)" }}
+      <AuthCard kicker="Choose a new password" heading="Set your password">
+        <p className="text-sm text-danger" role="alert">
+          This reset link is missing its token. Request a new one.
+        </p>
+        <Link
+          to="/forgot-password"
+          className="mt-4 inline-flex min-h-[44px] items-center justify-center px-2 font-mono text-[11px] uppercase tracking-[0.16em] text-rust hover:text-rust-deep"
         >
-          <h1 className="text-xl font-semibold text-center">
-            Choose a new password
-          </h1>
-          <p className="text-sm text-destructive" role="alert">
-            This reset link is missing its token. Request a new one.
-          </p>
-          <Link
-            to="/forgot-password"
-            className="inline-flex items-center justify-center min-h-[44px] px-2 text-sm text-muted-foreground hover:text-foreground"
-          >
-            Request a new link
-          </Link>
-        </div>
-      </div>
+          Request a new link
+        </Link>
+      </AuthCard>
     );
   }
 
+  const meetsLength = password.length >= MIN_PASSWORD_LENGTH;
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div
-        className="rounded-lg border bg-card shadow-sm p-6 flex flex-col gap-4"
-        style={{ width: "min(380px, 100%)" }}
-      >
-        <h1 className="text-xl font-semibold text-center">
-          Choose a new password
-        </h1>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="password" className="text-sm font-medium">
-              New password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              minLength={8}
-              autoFocus
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                if (error) setError(null);
-              }}
-              className={INPUT_CLASS}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="confirmPassword" className="text-sm font-medium">
-              Confirm password
-            </label>
-            <input
-              id="confirmPassword"
-              type="password"
-              required
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(e) => {
-                setConfirmPassword(e.target.value);
-                if (error) setError(null);
-              }}
-              className={INPUT_CLASS}
-            />
-          </div>
-          {error !== null && (
-            <p
-              role="alert"
-              aria-live="polite"
-              className="text-sm text-destructive"
-            >
-              {error}
-            </p>
-          )}
-          <Button
-            type="submit"
-            disabled={mutation.isPending}
-            className="min-h-[44px] px-4"
+    <AuthCard kicker="Choose a new password" heading="Set your password">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-[18px]">
+        <div className="flex flex-col gap-2">
+          <FieldLabel htmlFor="password">New password</FieldLabel>
+          <input
+            id="password"
+            type="password"
+            required
+            minLength={MIN_PASSWORD_LENGTH}
+            autoFocus
+            autoComplete="new-password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (error) setError(null);
+            }}
+            className={authInputClass}
+          />
+          <p
+            className={cn(
+              "font-mono text-[11px] tracking-[0.02em]",
+              meetsLength ? "text-ok" : "text-mute",
+            )}
           >
-            {mutation.isPending ? "Saving…" : "Set new password"}
-          </Button>
-        </form>
-        <Link
-          to="/admin/login"
-          className="inline-flex items-center justify-center min-h-[44px] px-2 text-sm text-muted-foreground hover:text-foreground"
+            {meetsLength ? "✓" : "•"} At least {MIN_PASSWORD_LENGTH} characters
+          </p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <FieldLabel htmlFor="confirmPassword">Confirm password</FieldLabel>
+          <input
+            id="confirmPassword"
+            type="password"
+            required
+            autoComplete="new-password"
+            placeholder="••••••••"
+            value={confirmPassword}
+            onChange={(e) => {
+              setConfirmPassword(e.target.value);
+              if (error) setError(null);
+            }}
+            className={authInputClass}
+          />
+        </div>
+        {error !== null && <FormError>{error}</FormError>}
+        <Button
+          type="submit"
+          variant="rust"
+          disabled={mutation.isPending}
+          className="min-h-[44px] px-4 py-3"
         >
-          ← Back to sign in
-        </Link>
-      </div>
-    </div>
+          {mutation.isPending ? "Saving…" : "Set new password"}
+        </Button>
+      </form>
+      <hr className="my-[22px] border-0 border-t border-line" />
+      <Link
+        to="/admin/login"
+        className="inline-flex min-h-[44px] items-center justify-center px-2 font-mono text-[11px] uppercase tracking-[0.16em] text-mute hover:text-ink"
+      >
+        ← Back to sign in
+      </Link>
+    </AuthCard>
   );
 }
