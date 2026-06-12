@@ -16,32 +16,19 @@ import { Separator } from "@/components/ui/separator";
 import {
   useDeleteSocialCredentials,
   useLinkedInOAuthStatus,
-  useSaveLinkedInCredentials,
-  useSaveTwitterCollectorCookie,
   useSaveTwitterCredentials,
   useSocialCredentialsStatus,
   startLinkedInOAuth,
   SocialCredentialsApiError,
   type LinkedInStatus,
-  type TwitterCollectorStatus,
   type TwitterStatus,
 } from "../api/socialCredentials";
-
-interface LinkedInFormValues {
-  clientId: string;
-  clientSecret: string;
-  apiVersion: string;
-}
 
 interface TwitterFormValues {
   apiKey: string;
   apiSecret: string;
   accessToken: string;
   accessTokenSecret: string;
-}
-
-interface TwitterCollectorFormValues {
-  apiKey: string;
 }
 
 function formatUpdatedAt(iso: string | null): string {
@@ -110,6 +97,7 @@ function LinkedInConnectionSection({
   clientConfigured,
 }: LinkedInConnectionSectionProps): ReactElement {
   const oauthStatus = useLinkedInOAuthStatus();
+  const disconnect = useDeleteSocialCredentials();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Handle ?linkedin=connected / ?linkedin=error on mount (REQ-012).
@@ -182,9 +170,34 @@ function LinkedInConnectionSection({
         >
           {connected ? "Reconnect LinkedIn" : "Connect LinkedIn"}
         </Button>
+        {connected ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-testid="linkedin-disconnect-btn"
+            disabled={disconnect.isPending}
+            onClick={() => {
+              disconnect.mutate("linkedin", {
+                onSuccess: () => {
+                  toast.success("LinkedIn disconnected");
+                  void oauthStatus.refetch();
+                },
+                onError: (err: unknown) => {
+                  const message =
+                    err instanceof Error ? err.message : "Failed to disconnect";
+                  toast.error(message);
+                },
+              });
+            }}
+          >
+            {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
+          </Button>
+        ) : null}
         {isConnectDisabled ? (
           <p className="text-xs text-muted-foreground">
-            Save Client ID &amp; Secret first
+            The shared LinkedIn app is not configured yet — ask a platform
+            super admin to set it up
           </p>
         ) : null}
       </div>
@@ -196,64 +209,12 @@ interface LinkedInSectionProps {
   status: LinkedInStatus;
 }
 
+/**
+ * P12 (REQ-082): the LinkedIn app client (id/secret) is an APP-LEVEL shared
+ * secret managed by platform super admins — tenants only connect/disconnect
+ * their own account. The configured flag below reflects the shared client.
+ */
 function LinkedInSection({ status }: LinkedInSectionProps): ReactElement {
-  const form = useForm<LinkedInFormValues>({
-    defaultValues: { clientId: "", clientSecret: "", apiVersion: "202511" },
-  });
-  const save = useSaveLinkedInCredentials();
-  const remove = useDeleteSocialCredentials();
-  const [confirming, setConfirming] = useState(false);
-
-  const onSubmit = form.handleSubmit((values) => {
-    const trimmedId = values.clientId.trim();
-    const trimmedSecret = values.clientSecret.trim();
-    const trimmedVersion = values.apiVersion.trim();
-    if (!trimmedId || !trimmedSecret) {
-      toast.error("LinkedIn clientId and clientSecret are required");
-      return;
-    }
-    save.mutate(
-      {
-        clientId: trimmedId,
-        clientSecret: trimmedSecret,
-        apiVersion: trimmedVersion || undefined,
-      },
-      {
-        onSuccess: () => {
-          toast.success("LinkedIn credentials saved");
-          form.reset({
-            clientId: "",
-            clientSecret: "",
-            apiVersion: trimmedVersion || "202511",
-          });
-        },
-        onError: (err: unknown) => {
-          const message =
-            err instanceof SocialCredentialsApiError
-              ? err.message
-              : err instanceof Error
-                ? err.message
-                : "Failed to save LinkedIn credentials";
-          toast.error(message);
-        },
-      },
-    );
-  });
-
-  function handleClear(): void {
-    remove.mutate("linkedin", {
-      onSuccess: () => {
-        toast.success("LinkedIn credentials cleared");
-        setConfirming(false);
-      },
-      onError: (err: unknown) => {
-        const message = err instanceof Error ? err.message : "Failed to clear";
-        toast.error(message);
-        setConfirming(false);
-      },
-    });
-  }
-
   return (
     <section data-testid="linkedin-section" className="space-y-3">
       <div className="flex items-center justify-between gap-3">
@@ -264,94 +225,11 @@ function LinkedInSection({ status }: LinkedInSectionProps): ReactElement {
           extra={status.apiVersion ? `apiVersion ${status.apiVersion}` : null}
         />
       </div>
+      <p className="text-xs text-muted-foreground">
+        Auto-posting uses the platform&apos;s shared LinkedIn app. Connect your
+        LinkedIn account to publish issues to your own profile.
+      </p>
       <LinkedInConnectionSection clientConfigured={status.configured} />
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void onSubmit(e);
-        }}
-        className="space-y-3"
-      >
-        <div className="grid gap-1.5">
-          <Label htmlFor="linkedin-clientId">Client ID</Label>
-          <Input
-            id="linkedin-clientId"
-            type="password"
-            autoComplete="off"
-            placeholder="Not stored locally — enter to update"
-            {...form.register("clientId")}
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="linkedin-clientSecret">Client Secret</Label>
-          <Input
-            id="linkedin-clientSecret"
-            type="password"
-            autoComplete="off"
-            placeholder="Not stored locally — enter to update"
-            {...form.register("clientSecret")}
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="linkedin-apiVersion">API version</Label>
-          <Input
-            id="linkedin-apiVersion"
-            type="text"
-            autoComplete="off"
-            placeholder="202511"
-            {...form.register("apiVersion")}
-          />
-          <p className="text-xs text-muted-foreground">
-            Optional. Defaults to <code>202511</code>.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="submit"
-            data-testid="linkedin-save"
-            disabled={save.isPending}
-          >
-            {save.isPending ? "Saving…" : "Save LinkedIn"}
-          </Button>
-          {status.configured && !confirming ? (
-            <Button
-              type="button"
-              variant="outline"
-              data-testid="linkedin-clear"
-              onClick={() => {
-                setConfirming(true);
-              }}
-            >
-              Clear Credentials
-            </Button>
-          ) : null}
-          {status.configured && confirming ? (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                Are you sure?
-              </span>
-              <Button
-                type="button"
-                variant="destructive"
-                data-testid="linkedin-clear-confirm"
-                disabled={remove.isPending}
-                onClick={handleClear}
-              >
-                {remove.isPending ? "Clearing…" : "Yes, clear"}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setConfirming(false);
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      </form>
     </section>
   );
 }
@@ -534,147 +412,6 @@ function TwitterSection({ status }: TwitterSectionProps): ReactElement {
   );
 }
 
-interface TwitterCollectorSectionProps {
-  status: TwitterCollectorStatus;
-}
-
-function TwitterCollectorSection({
-  status,
-}: TwitterCollectorSectionProps): ReactElement {
-  const form = useForm<TwitterCollectorFormValues>({
-    defaultValues: { apiKey: "" },
-  });
-  const save = useSaveTwitterCollectorCookie();
-  const remove = useDeleteSocialCredentials();
-  const [confirming, setConfirming] = useState(false);
-
-  const onSubmit = form.handleSubmit((values) => {
-    const trimmed = values.apiKey.trim();
-    if (!trimmed) {
-      toast.error("Base64 cookie blob is required");
-      return;
-    }
-    save.mutate(
-      { apiKey: trimmed },
-      {
-        onSuccess: () => {
-          toast.success("Twitter collector cookies saved");
-          form.reset({ apiKey: "" });
-        },
-        onError: (err: unknown) => {
-          const message =
-            err instanceof SocialCredentialsApiError
-              ? err.message
-              : err instanceof Error
-                ? err.message
-                : "Failed to save Twitter collector cookies";
-          toast.error(message);
-        },
-      },
-    );
-  });
-
-  function handleClear(): void {
-    remove.mutate("twitter-collector", {
-      onSuccess: () => {
-        toast.success("Twitter collector cookies cleared");
-        setConfirming(false);
-      },
-      onError: (err: unknown) => {
-        const message = err instanceof Error ? err.message : "Failed to clear";
-        toast.error(message);
-        setConfirming(false);
-      },
-    });
-  }
-
-  return (
-    <section
-      data-testid="twitter-collector-card"
-      className="space-y-3"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-base font-semibold">Twitter collector cookies</h3>
-        <StatusPill
-          configured={status.configured}
-          updatedAt={status.updatedAt}
-        />
-      </div>
-      <p className="text-xs text-muted-foreground">
-        The base64-encoded Twitter/X session cookie blob used by the read-only
-        collector (rettiwt-api). Generate it from a browser session; rotate it
-        when X invalidates cookies. Falls back to <code>RETTIWT_API_KEY</code>{" "}
-        env var when this field is empty.
-      </p>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void onSubmit(e);
-        }}
-        className="space-y-3"
-      >
-        <div className="grid gap-1.5">
-          <Label htmlFor="twitter-collector-apiKey">Base64 cookie blob</Label>
-          <Input
-            id="twitter-collector-apiKey"
-            type="password"
-            autoComplete="off"
-            placeholder="Not stored locally — paste to update"
-            data-testid="twitter-collector-apiKey-input"
-            {...form.register("apiKey")}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="submit"
-            data-testid="twitter-collector-save"
-            disabled={save.isPending}
-          >
-            {save.isPending ? "Saving…" : "Save cookies"}
-          </Button>
-          {status.configured && !confirming ? (
-            <Button
-              type="button"
-              variant="outline"
-              data-testid="twitter-collector-clear"
-              onClick={() => {
-                setConfirming(true);
-              }}
-            >
-              Clear cookies
-            </Button>
-          ) : null}
-          {status.configured && confirming ? (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                Are you sure?
-              </span>
-              <Button
-                type="button"
-                variant="destructive"
-                data-testid="twitter-collector-clear-confirm"
-                disabled={remove.isPending}
-                onClick={handleClear}
-              >
-                {remove.isPending ? "Clearing…" : "Yes, clear"}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setConfirming(false);
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      </form>
-    </section>
-  );
-}
-
 export function SocialCredentialsPanel(): ReactElement {
   const statusQuery = useSocialCredentialsStatus();
 
@@ -683,9 +420,9 @@ export function SocialCredentialsPanel(): ReactElement {
       <CardHeader>
         <CardTitle>Social posting credentials</CardTitle>
         <CardDescription>
-          Configure LinkedIn and Twitter/X auto-posting. Secrets are encrypted at
-          rest. Existing values are never displayed — saving replaces all fields
-          for that platform.
+          Connect LinkedIn and configure Twitter/X auto-posting. Secrets are
+          encrypted at rest. Existing values are never displayed — saving
+          replaces all fields for that platform.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -700,10 +437,6 @@ export function SocialCredentialsPanel(): ReactElement {
             <LinkedInSection status={statusQuery.data.linkedin} />
             <Separator />
             <TwitterSection status={statusQuery.data.twitter} />
-            <Separator />
-            <TwitterCollectorSection
-              status={statusQuery.data.twitterCollector}
-            />
           </>
         ) : null}
       </CardContent>

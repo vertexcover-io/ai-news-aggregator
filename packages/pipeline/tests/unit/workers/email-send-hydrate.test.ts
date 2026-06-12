@@ -115,6 +115,12 @@ async function captureStories(archive: PipelineRunArchiveRow, row: RawItemRow) {
       updateRecapData: vi.fn(),
       listForRun: vi.fn(() => Promise.resolve([])),
     },
+    // Verified tenant: the (fail-closed, always-on) broadcast gate passes so
+    // hydration is exercised end-to-end.
+    tenantsRepo: {
+      getSendingDomainStatus: vi.fn(() => Promise.resolve("verified" as const)),
+      getSendingDomainName: vi.fn(() => Promise.resolve(null)),
+    },
     renderNewsletter: vi.fn((props) => {
       capturedStories = props.stories;
       return Promise.resolve("<html>newsletter</html>");

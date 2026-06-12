@@ -6,6 +6,8 @@ import { rawItems } from "@newsletter/shared/db";
 import { collectWeb, fetchMarkdown, extractPostFields } from "@pipeline/collectors/web.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import type { AppDb } from "@newsletter/shared/db";
 import type { WebCollectConfig } from "@pipeline/types.js";
 
@@ -37,8 +39,12 @@ const BROKEN_SOURCE = {
 describe.skipIf(!process.env.ANTHROPIC_API_KEY)("Web Collector E2E", () => {
   let db: AppDb;
 
-  beforeAll(() => {
+  let tenant: TenantContext;
+
+  beforeAll(async () => {
     db = getTestDb();
+    // tenant_id is NOT NULL on raw_items — repo writes stamp the e2e tenant
+    tenant = await ensurePipelineTenant();
   });
 
   beforeEach(async () => {
@@ -58,7 +64,7 @@ describe.skipIf(!process.env.ANTHROPIC_API_KEY)("Web Collector E2E", () => {
       };
 
       const result = await collectWeb(
-        { rawItemsRepo: createRawItemsRepo(db) },
+        { rawItemsRepo: createRawItemsRepo(db, tenant) },
         cfg,
       );
 
@@ -104,7 +110,7 @@ describe.skipIf(!process.env.ANTHROPIC_API_KEY)("Web Collector E2E", () => {
       };
 
       const result = await collectWeb(
-        { rawItemsRepo: createRawItemsRepo(db) },
+        { rawItemsRepo: createRawItemsRepo(db, tenant) },
         cfg,
       );
 
@@ -132,7 +138,7 @@ describe.skipIf(!process.env.ANTHROPIC_API_KEY)("Web Collector E2E", () => {
       };
 
       await expect(
-        collectWeb({ rawItemsRepo: createRawItemsRepo(db) }, cfg),
+        collectWeb({ rawItemsRepo: createRawItemsRepo(db, tenant) }, cfg),
       ).rejects.toThrow(/all sources failed/);
     },
     60_000,

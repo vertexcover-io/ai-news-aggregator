@@ -5,6 +5,7 @@ import { Queue, QueueEvents, Worker } from "bullmq";
 import { rawItems } from "@newsletter/shared/db";
 import { handleCollectionJob } from "@pipeline/workers/collection.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
 import { getTestRedis, closeTestRedis } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { AppDb } from "@newsletter/shared/db";
 import type { CollectorResult } from "@newsletter/shared/types";
@@ -35,14 +36,19 @@ describe("Collection Worker E2E", () => {
   let queueEvents: QueueEvents;
   let worker: Worker;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     db = getTestDb();
+    // tenant_id is NOT NULL — prime the single-tenant bridge before the
+    // worker's default deps build the raw-items repo
+    await ensurePipelineTenant();
     const connection = getTestRedis();
     queue = new Queue("collection-e2e-test", { connection });
     queueEvents = new QueueEvents("collection-e2e-test", { connection });
     worker = new Worker(
       "collection-e2e-test",
-      handleCollectionJob,
+      // wrap like production (src/workers/collection.ts) — BullMQ passes the
+      // lock token as arg 2, which must NOT be treated as injected deps
+      (job) => handleCollectionJob(job),
       { connection },
     );
 

@@ -6,9 +6,8 @@ import {
   createAdminArchivesRouter,
   type ArchivesRouterDeps,
 } from "@api/routes/archives.js";
-import { createAdminRouter } from "@api/routes/admin.js";
-import { requireAdmin } from "@api/auth/middleware.js";
-import { COOKIE_NAME } from "@api/auth/session.js";
+import { requireAuth } from "@api/auth/middleware.js";
+import { COOKIE_NAME, issueToken } from "@api/auth/session.js";
 import type {
   ArchiveListItem,
   RankedItemRef,
@@ -19,7 +18,6 @@ import type {
   RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
 
-const ADMIN_PASSWORD = "shared-password";
 const SESSION_SECRET = "test-session-secret";
 
 function makeRawItemsRepo(): RawItemsRepo {
@@ -102,7 +100,8 @@ function makeApp(
     publicHomeRouter: new Hono(),
     publicMustReadRouter: new Hono(),
     archivesSearchRouter: new Hono(),
-    publicSourcesRouter: new Hono(),
+    publicSourcesRouter: makeStubPublicSourcesRouter(),
+    tenantSourcesRouter: makeStubTenantSourcesRouter(),
     adminArchivesRouter: createAdminArchivesRouter(deps),
     adminRunsRouter: new Hono(),
     adminEvalRouter: new Hono(),
@@ -110,12 +109,8 @@ function makeApp(
     adminMustReadRouter: new Hono(),
     runsRouter: makeStubRunsRouter(),
     settingsRouter: makeStubSettingsRouter(),
-    adminRouter: createAdminRouter({
-      adminPassword: ADMIN_PASSWORD,
-      sessionSecret: SESSION_SECRET,
-      logger: { info: vi.fn(), warn: vi.fn() },
-    }),
-    requireAdminFactory: requireAdmin,
+    authRouter: makeStubAuthRouter(),
+    requireAuthFactory: requireAuth,
     subscribeRouter: makeStubSubscribeRouter(),
     webhooksRouter: makeStubWebhooksRouter(),
     analyticsRouter: makeStubAnalyticsRouter(),
@@ -126,21 +121,34 @@ function makeApp(
   });
 }
 
-function parseSessionCookie(setCookie: string | null): string {
-  if (!setCookie) throw new Error("expected Set-Cookie header");
-  const match = new RegExp(`${COOKIE_NAME}=([^;]+)`).exec(setCookie);
-  if (!match) throw new Error(`no ${COOKIE_NAME} in ${setCookie}`);
-  return `${COOKIE_NAME}=${match[1]}`;
+function makeStubPublicSourcesRouter(): Hono {
+  const app = new Hono();
+  app.get("/summary", (c) => c.json({ totals: [] }));
+  return app;
 }
 
-async function loginAndGetCookie(app: Hono): Promise<string> {
-  const res = await app.request("/api/admin/login", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ password: ADMIN_PASSWORD }),
-  });
-  expect(res.status).toBe(200);
-  return parseSessionCookie(res.headers.get("set-cookie"));
+function makeStubTenantSourcesRouter(): Hono {
+  const app = new Hono();
+  app.get("/", (c) => c.json({ sources: [] }));
+  return app;
+}
+
+function makeStubAuthRouter(): Hono {
+  const app = new Hono();
+  app.post("/login", (c) => c.json({ ok: true }));
+  return app;
+}
+
+function sessionCookie(): string {
+  const token = issueToken(
+    {
+      userId: "00000000-0000-4000-8000-000000000001",
+      tenantId: "00000000-0000-4000-8000-000000000002",
+      role: "tenant_admin",
+    },
+    SESSION_SECRET,
+  );
+  return `${COOKIE_NAME}=${token}`;
 }
 
 describe("route gating (phase 4)", () => {
@@ -175,35 +183,26 @@ describe("route gating (phase 4)", () => {
     expect(res.status).toBe(200);
   });
 
-  it("3. POST /api/admin/login with correct password sets cookie", async () => {
+  it("3. /api/auth routes are mounted outside the cookie gate", async () => {
     const app = makeApp();
-    const res = await app.request("/api/admin/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ password: ADMIN_PASSWORD }),
-    });
+    const res = await app.request("/api/auth/login", { method: "POST" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
-    const setCookie = res.headers.get("set-cookie");
-    expect(setCookie).toBeTruthy();
-    expect(setCookie).toContain(`${COOKIE_NAME}=`);
   });
 
-  it("4. GET /api/admin/me without cookie → 401", async () => {
+  it("4. GET /api/admin/archives/:runId without cookie → 401", async () => {
     const app = makeApp();
-    const res = await app.request("/api/admin/me");
+    const res = await app.request("/api/admin/archives/run-1");
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
   });
 
-  it("5. GET /api/admin/me with session cookie → 200", async () => {
+  it("5. gated admin route with a session cookie is not 401", async () => {
     const app = makeApp();
-    const cookie = await loginAndGetCookie(app);
-    const res = await app.request("/api/admin/me", {
-      headers: { cookie },
+    const res = await app.request("/api/admin/archives/run-1", {
+      headers: { cookie: sessionCookie() },
     });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ admin: true });
+    expect(res.status).not.toBe(401);
   });
 
   it("6. GET /api/runs without cookie → 401", async () => {
@@ -215,8 +214,9 @@ describe("route gating (phase 4)", () => {
 
   it("7. GET /api/runs with cookie is not 401", async () => {
     const app = makeApp();
-    const cookie = await loginAndGetCookie(app);
-    const res = await app.request("/api/runs", { headers: { cookie } });
+    const res = await app.request("/api/runs", {
+      headers: { cookie: sessionCookie() },
+    });
     expect(res.status).not.toBe(401);
     expect(res.status).toBe(200);
   });
@@ -243,45 +243,41 @@ describe("route gating (phase 4)", () => {
     expect(await res.json()).toEqual({ error: "unauthorized" });
   });
 
-  it("10. POST /api/admin/logout clears cookie; subsequent /me → 401", async () => {
+  it("10. a tampered session cookie is rejected with 401", async () => {
     const app = makeApp();
-    const cookie = await loginAndGetCookie(app);
-
-    const logoutRes = await app.request("/api/admin/logout", {
-      method: "POST",
-      headers: { cookie },
+    const res = await app.request("/api/runs", {
+      headers: { cookie: `${COOKIE_NAME}=tampered.cookie` },
     });
-    expect(logoutRes.status).toBe(200);
-    const clearCookie = logoutRes.headers.get("set-cookie");
-    expect(clearCookie).toBeTruthy();
-    expect(clearCookie).toMatch(/Max-Age=0/i);
+    expect(res.status).toBe(401);
+  });
 
-    // After the browser processes Max-Age=0 the cookie would be gone;
-    // simulate by dropping it from subsequent request.
-    const meRes = await app.request("/api/admin/me");
-    expect(meRes.status).toBe(401);
+  it("REQ-074: /api/sources management is gated; /api/sources/summary stays public", async () => {
+    const app = makeApp();
+
+    // Public summary (pre-existing public sources surface) — no cookie needed.
+    const summary = await app.request("/api/sources/summary");
+    expect(summary.status).toBe(200);
+
+    // Tenant source management requires a session.
+    const anon = await app.request("/api/sources");
+    expect(anon.status).toBe(401);
+    const ok = await app.request("/api/sources", {
+      headers: { cookie: sessionCookie() },
+    });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ sources: [] });
   });
 
   it("settings is also gated", async () => {
     const app = makeApp();
     const res = await app.request("/api/settings");
     expect(res.status).toBe(401);
-    const cookie = await loginAndGetCookie(app);
-    const ok = await app.request("/api/settings", { headers: { cookie } });
+    const ok = await app.request("/api/settings", {
+      headers: { cookie: sessionCookie() },
+    });
     expect(ok.status).toBe(200);
   });
 
-  it("POST /api/admin/login remains reachable without a cookie", async () => {
-    const app = makeApp();
-    const res = await app.request("/api/admin/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ password: "wrong-password" }),
-    });
-    // Should hit the handler (not the gate) even without a cookie.
-    expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: "invalid_password" });
-  });
 
   it("REQ-052: GET /api/runs without cookie returns 401 with no cost-related strings in body", async () => {
     const app = makeApp();

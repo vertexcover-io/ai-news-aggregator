@@ -68,6 +68,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@ai-sdk/anthropic':
+        specifier: 2.0.74
+        version: 2.0.74(zod@4.3.6)
       '@aws-sdk/client-sesv2':
         specifier: 3.1042.0
         version: 3.1042.0
@@ -83,6 +86,12 @@ importers:
       '@react-email/components':
         specifier: 1.0.12
         version: 1.0.12(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@tavily/core':
+        specifier: 0.7.3
+        version: 0.7.3
+      ai:
+        specifier: 5.0.169
+        version: 5.0.169(zod@4.3.6)
       bullmq:
         specifier: 5.78.0
         version: 5.78.0
@@ -116,6 +125,9 @@ importers:
       rettiwt-api:
         specifier: 7.0.3
         version: 7.0.3(patch_hash=cf58694866c74347a978be3eadc200dc71a265f766231b297fe6643b8f37da2a)
+      twitter-api-v2:
+        specifier: 1.29.0
+        version: 1.29.0
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -284,6 +296,40 @@ importers:
         specifier: 3.2.1
         version: 3.2.1(@types/debug@4.1.13)(@types/node@22.15.3)(jiti@2.6.1)(jsdom@26.0.0)(lightningcss@1.32.0)(msw@2.7.0(@types/node@22.15.3)(typescript@5.8.3))(tsx@4.19.4)(yaml@2.8.3)
 
+  packages/scripts:
+    dependencies:
+      '@newsletter/shared':
+        specifier: workspace:*
+        version: link:../shared
+      bullmq:
+        specifier: 5.78.0
+        version: 5.78.0
+      dotenv:
+        specifier: 16.5.0
+        version: 16.5.0
+      ioredis:
+        specifier: 5.10.1
+        version: 5.10.1
+      postgres:
+        specifier: 3.4.7
+        version: 3.4.7
+    devDependencies:
+      '@types/node':
+        specifier: 22.15.3
+        version: 22.15.3
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(pg@8.20.0)(postgres@3.4.7)
+      tsx:
+        specifier: 4.19.4
+        version: 4.19.4
+      typescript:
+        specifier: 5.8.3
+        version: 5.8.3
+      vitest:
+        specifier: 3.2.1
+        version: 3.2.1(@types/debug@4.1.13)(@types/node@22.15.3)(jiti@2.6.1)(jsdom@29.0.2(@noble/hashes@2.2.0))(lightningcss@1.32.0)(msw@2.7.0(@types/node@22.15.3)(typescript@5.8.3))(tsx@4.19.4)(yaml@2.8.3)
+
   packages/shared:
     dependencies:
       bullmq:
@@ -311,6 +357,9 @@ importers:
       '@types/node':
         specifier: 22.15.3
         version: 22.15.3
+      dotenv:
+        specifier: 16.5.0
+        version: 16.5.0
       drizzle-kit:
         specifier: 0.31.10
         version: 0.31.10

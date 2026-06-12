@@ -257,7 +257,7 @@ describe("collectHn", () => {
   });
 
   // Ask HN / Show HN self-posts have story_text and null url
-  it("uses story_text as content and empty string url for self-posts", async () => {
+  it("uses story_text as content and the HN permalink as url for self-posts", async () => {
     const askHn = {
       ...hnAlgoliaStoriesFixture,
       hits: [
@@ -279,7 +279,7 @@ describe("collectHn", () => {
     await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    expect(rows[0].url).toBe("");
+    expect(rows[0].url).toBe("https://news.ycombinator.com/item?id=55555555");
     expect(rows[0].content).toBe("I'm building an agent and wondering about defenses...");
   });
 

@@ -26,6 +26,14 @@ import {
   type RawItemsRepo,
 } from "@api/repositories/raw-items.js";
 import {
+  scopedTenantId,
+  type TenantScope,
+} from "@newsletter/shared/types/tenant-context";
+import {
+  tenantScopeFromContext,
+  tenantScopeFromPublicHost,
+} from "@api/auth/tenant-scope.js";
+import {
   createRunArchivesRepo,
   type RunArchiveRow,
   type RunArchivesRepo,
@@ -60,10 +68,10 @@ import {
 import { captureAnalytics } from "@api/lib/posthog.js";
 
 export interface ArchivesRouterDeps {
-  getRawItemsRepo: () => RawItemsRepo;
-  getArchiveRepo: () => RunArchivesRepo;
-  getReviewEditsRepo?: () => ReviewEditsRepo;
-  getSettingsRepo?: () => Pick<UserSettingsRepo, "get">;
+  getRawItemsRepo: (scope?: TenantScope) => RawItemsRepo;
+  getArchiveRepo: (scope?: TenantScope) => RunArchivesRepo;
+  getReviewEditsRepo?: (scope?: TenantScope) => ReviewEditsRepo;
+  getSettingsRepo?: (scope?: TenantScope) => Pick<UserSettingsRepo, "get">;
   hydrateAddedPost?: HydrateAddedPostFn;
   generateRecapFn?: GenerateRecapFn;
   generateDigestMeta?: GenerateDigestMetaFn;
@@ -74,9 +82,10 @@ export interface ArchivesRouterDeps {
 
 async function getConfiguredTimezone(
   deps: Pick<ArchivesRouterDeps, "getSettingsRepo">,
+  scope?: TenantScope,
 ): Promise<string> {
   if (deps.getSettingsRepo === undefined) return "UTC";
-  const settings = await deps.getSettingsRepo().get();
+  const settings = await deps.getSettingsRepo(scope).get();
   return safeTimezone(settings?.scheduleTimezone);
 }
 
@@ -95,9 +104,11 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
   const archives = new Hono();
 
   archives.get("/", async (c) => {
-    const timezone = await getConfiguredTimezone(deps);
-    const items = await deps.getArchiveRepo().listReviewed({
-      rawItemsRepo: deps.getRawItemsRepo(),
+    // Public reads are fenced by the Host-resolved tenant (P7, REQ-044).
+    const scope = tenantScopeFromPublicHost(c);
+    const timezone = await getConfiguredTimezone(deps, scope);
+    const items = await deps.getArchiveRepo(scope).listReviewed({
+      rawItemsRepo: deps.getRawItemsRepo(scope),
       timezone,
     });
     return c.json({ archives: items } satisfies ArchiveListResponse);
@@ -105,11 +116,13 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
 
   archives.get("/:runId", async (c) => {
     const runId = c.req.param("runId");
+    const scope = tenantScopeFromPublicHost(c);
     try {
-      const archive = await deps.getArchiveRepo().findById(runId);
+      // Cross-host ids fall out of the tenant fence → not-found (REQ-044).
+      const archive = await deps.getArchiveRepo(scope).findById(runId);
       if (!archive) return c.json({ error: "not found" }, 404);
       if (!archive.reviewed) return c.json({ error: "not found" }, 404);
-      const timezone = await getConfiguredTimezone(deps);
+      const timezone = await getConfiguredTimezone(deps, scope);
 
       // REQ-011: public route never serializes shortlistedItemIds
       const state = {
@@ -133,7 +146,7 @@ export function createPublicArchivesRouter(deps: ArchivesRouterDeps): Hono {
 
       if (archive.status === "completed" && Array.isArray(archive.rankedItems)) {
         const hydrated = await hydrateRankedItems(
-          deps.getRawItemsRepo(),
+          deps.getRawItemsRepo(scope),
           archive.rankedItems,
           archive.completedAt,
         );
@@ -157,7 +170,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
   archives.get("/:runId", async (c) => {
     const runId = c.req.param("runId");
     try {
-      const archive = await deps.getArchiveRepo().findById(runId);
+      const archive = await deps.getArchiveRepo(tenantScopeFromContext(c)).findById(runId);
       if (!archive) return c.json({ error: "not found" }, 404);
       const timezone = await getConfiguredTimezone(deps);
 
@@ -203,7 +216,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         twitterPostedAt: archive.twitterPostedAt?.toISOString() ?? null,
       };
 
-      const reviewEditsRepo = deps.getReviewEditsRepo?.();
+      const reviewEditsRepo = deps.getReviewEditsRepo?.(tenantScopeFromContext(c));
       const reviewEdits = reviewEditsRepo
         ? await reviewEditsRepo.listForRun(runId)
         : [];
@@ -216,7 +229,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
 
       if (archive.status === "completed" && Array.isArray(archive.rankedItems)) {
         const hydrated = await hydrateRankedItems(
-          deps.getRawItemsRepo(),
+          deps.getRawItemsRepo(tenantScopeFromContext(c)),
           archive.rankedItems,
           archive.completedAt,
         );
@@ -245,9 +258,9 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     const publish = parsed.data.publish ?? true;
     try {
       const updated = await patchArchive(runId, parsed.data, {
-        archiveRepo: deps.getArchiveRepo(),
-        rawItemsRepo: deps.getRawItemsRepo(),
-        reviewEditsRepo: deps.getReviewEditsRepo?.(),
+        archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)),
+        rawItemsRepo: deps.getRawItemsRepo(tenantScopeFromContext(c)),
+        reviewEditsRepo: deps.getReviewEditsRepo?.(tenantScopeFromContext(c)),
       });
       logger.info(
         { event: "archive.patched", runId, count: parsed.data.rankedItems.length, publish },
@@ -259,7 +272,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
         properties: { run_id: runId, item_count: parsed.data.rankedItems.length },
       });
       if (publish && deps.processingQueue && deps.getSettingsRepo) {
-        const settings = await deps.getSettingsRepo().get();
+        const settings = await deps.getSettingsRepo(tenantScopeFromContext(c)).get();
         if (settings) {
           const channels = selectImmediatePublishChannels({
             settings,
@@ -272,9 +285,19 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
             "twitter-post": updated.twitterPostedAt,
           };
           const enqueued: PublishChannel[] = [];
+          // P9 (REQ-060): publish jobs carry the session tenant so the worker
+          // scopes its publish deps to the originating tenant.
+          const publishTenantId = scopedTenantId(tenantScopeFromContext(c));
           for (const channel of channels) {
             if (sentAt[channel] != null) continue;
-            await deps.processingQueue.add(channel, { runId }, { jobId: jobIdFor(channel, runId), delay: 0 });
+            await deps.processingQueue.add(
+              channel,
+              {
+                runId,
+                ...(publishTenantId !== undefined ? { tenantId: publishTenantId } : {}),
+              },
+              { jobId: jobIdFor(channel, runId), delay: 0 },
+            );
             enqueued.push(channel);
           }
           const pastDue = new Set<PublishChannel>(channels);
@@ -305,12 +328,17 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
 
   archives.post("/:runId/send", async (c) => {
     const runId = c.req.param("runId");
-    const archive = await deps.getArchiveRepo().findById(runId);
+    const archive = await deps.getArchiveRepo(tenantScopeFromContext(c)).findById(runId);
     if (!archive) return c.json({ error: "not found" }, 404);
     if (deps.processingQueue) {
+      // P9 (REQ-060): force-send carries the session tenant.
+      const sendTenantId = scopedTenantId(tenantScopeFromContext(c));
       await deps.processingQueue.add(
         "email-send",
-        { runId },
+        {
+          runId,
+          ...(sendTenantId !== undefined ? { tenantId: sendTenantId } : {}),
+        },
         { jobId: jobIdFor("email-send", runId), delay: 0 },
       );
       logger.info(
@@ -339,10 +367,17 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
       return c.json({ error: parsed.error.message }, 400);
     }
     try {
+      // Bind the session tenant scope into the hydrate fn so its raw_items
+      // write (pipeline repo) stamps the same tenant as the archive.
+      const scope = tenantScopeFromContext(c);
+      const hydrate = deps.hydrateAddedPost;
       const ranked = await addPostToArchive(runId, parsed.data, {
-        archiveRepo: deps.getArchiveRepo(),
-        rawItemsRepo: deps.getRawItemsRepo(),
-        hydrateAddedPost: deps.hydrateAddedPost,
+        archiveRepo: deps.getArchiveRepo(scope),
+        rawItemsRepo: deps.getRawItemsRepo(scope),
+        hydrateAddedPost: hydrate
+          ? (url, sourceType, options) =>
+              hydrate(url, sourceType, { ...options, scope })
+          : undefined,
       });
       logger.info(
         { event: "archive.add-post", runId },
@@ -397,8 +432,8 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     }
     try {
       const meta = await regenerateDigestMeta(runId, parsed.data, {
-        archiveRepo: deps.getArchiveRepo(),
-        rawItemsRepo: deps.getRawItemsRepo(),
+        archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)),
+        rawItemsRepo: deps.getRawItemsRepo(tenantScopeFromContext(c)),
         generateDigestMeta: deps.generateDigestMeta,
       });
       logger.info(
@@ -450,7 +485,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
           selectedSourceTypes,
           shortlistedOnly,
         },
-        { archiveRepo: deps.getArchiveRepo() },
+        { archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)) },
       );
       return c.json(result);
     } catch (err) {
@@ -461,9 +496,9 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
 
   archives.get("/:runId/source-facets", async (c) => {
     const runId = c.req.param("runId");
-    const archive = await deps.getArchiveRepo().findById(runId);
+    const archive = await deps.getArchiveRepo(tenantScopeFromContext(c)).findById(runId);
     if (!archive) return c.json({ error: "not found" }, 404);
-    const facets = await deps.getArchiveRepo().getSourceFacets(runId);
+    const facets = await deps.getArchiveRepo(tenantScopeFromContext(c)).getSourceFacets(runId);
     return c.json({ facets });
   });
 
@@ -482,8 +517,8 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     try {
       const generateRecapFn = deps.generateRecapFn ?? createDefaultGenerateRecapFn();
       const ranked = await promoteItem(runId, parsed.data, {
-        archiveRepo: deps.getArchiveRepo(),
-        rawItemsRepo: deps.getRawItemsRepo(),
+        archiveRepo: deps.getArchiveRepo(tenantScopeFromContext(c)),
+        rawItemsRepo: deps.getRawItemsRepo(tenantScopeFromContext(c)),
         generateRecapFn,
       });
       logger.info(
@@ -513,7 +548,7 @@ export function createAdminArchivesRouter(deps: ArchivesRouterDeps): Hono {
     if (!parsed.success) {
       return c.json({ error: "invalid runId" }, 400);
     }
-    const result = await deps.getArchiveRepo().delete(runId);
+    const result = await deps.getArchiveRepo(tenantScopeFromContext(c)).delete(runId);
     // Always attempt Redis cleanup, even when the DB row was absent: a ghost
     // run (Redis run-state present but archive upsert never reached) is
     // exactly the case where Delete must work. `redis.del` returns the number
@@ -597,10 +632,10 @@ function getDefaultProcessingQueue(): Queue {
 
 function createDefaultArchivesDeps(): ArchivesRouterDeps {
   return {
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getReviewEditsRepo: () => createReviewEditsRepo(defaultGetDb()),
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getRawItemsRepo: (scope) => createRawItemsRepo(defaultGetDb(), scope),
+    getArchiveRepo: (scope) => createRunArchivesRepo(defaultGetDb(), scope),
+    getReviewEditsRepo: (scope) => createReviewEditsRepo(defaultGetDb(), scope),
+    getSettingsRepo: (scope) => createUserSettingsRepo(defaultGetDb(), scope),
     hydrateAddedPost: createDefaultHydrateAddedPost(),
     generateRecapFn: createDefaultGenerateRecapFn(),
     generateDigestMeta: createDefaultGenerateDigestMetaFn(),
@@ -616,7 +651,7 @@ function createDefaultHydrateAddedPost(): HydrateAddedPostFn {
       "@newsletter/pipeline/add-post"
     );
     return hydrateAddedPost(url, sourceType, {
-      rawItemsRepo: createPipelineRawItemsRepo(defaultGetDb()),
+      rawItemsRepo: createPipelineRawItemsRepo(defaultGetDb(), options?.scope),
       signal: options?.signal,
     });
   };

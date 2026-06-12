@@ -9,7 +9,12 @@ export default tseslint.config(
       "**/dist/",
       "**/node_modules/",
       "**/*.config.*",
-      "**/scripts/",
+      // Operator/build helper script dirs (NOT the @newsletter/scripts package,
+      // which is linted like any other workspace package).
+      "scripts/",
+      "packages/api/scripts/",
+      "packages/web/scripts/",
+      "packages/pipeline/src/scripts/",
       "**/tests/e2e/*.mjs",
       ".worktrees/",
     ],

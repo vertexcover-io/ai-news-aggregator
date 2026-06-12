@@ -4,10 +4,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { BuiltPage } from "../../../src/pages/BuiltPage";
 import { PublicLayout } from "../../../src/layouts/PublicLayout";
+import { AGENTLOOP_BRANDING } from "../../helpers/branding";
 import { PIPELINE_STAGES } from "../../../src/components/built/PipelineDiagram";
 
 vi.mock("../../../src/api/subscribe", () => ({
   postSubscribe: vi.fn(),
+}));
+
+vi.mock("../../../src/api/branding", () => ({
+  getBranding: vi.fn(() => Promise.resolve(AGENTLOOP_BRANDING)),
 }));
 
 vi.mock("../../../src/lib/analytics", () => ({
@@ -20,6 +25,7 @@ function renderBuilt(): ReturnType<typeof render> {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
+  qc.setQueryData(["branding"], AGENTLOOP_BRANDING);
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={["/built"]}>

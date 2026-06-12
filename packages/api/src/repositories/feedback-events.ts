@@ -1,6 +1,6 @@
-import { and, count, eq } from "drizzle-orm";
-import { feedbackEvents } from "@newsletter/shared/db";
-import type { AppDb } from "@newsletter/shared/db";
+import { count, eq } from "drizzle-orm";
+import { feedbackEvents, scopedTenantId, tenantScoped } from "@newsletter/shared/db";
+import type { AppDb, TenantScope } from "@newsletter/shared/db";
 import type { FeedbackEventInsert, FeedbackEventSelect } from "@newsletter/shared";
 
 export interface FeedbackEventsRepo {
@@ -15,10 +15,11 @@ export interface FeedbackEventsRepo {
 
 export function createFeedbackEventsRepo(
   db: Pick<AppDb, "select" | "insert">,
+  ctx?: TenantScope,
 ): FeedbackEventsRepo {
   return {
     async insertEvent(insert: FeedbackEventInsert): Promise<FeedbackEventSelect> {
-      const [row] = await db.insert(feedbackEvents).values(insert).returning();
+      const [row] = await db.insert(feedbackEvents).values({ ...insert, tenantId: scopedTenantId(ctx) ?? insert.tenantId }).returning();
       return row;
     },
 
@@ -27,7 +28,9 @@ export function createFeedbackEventsRepo(
         .select({ value: count() })
         .from(feedbackEvents)
         .where(
-          and(
+          tenantScoped(
+            feedbackEvents.tenantId,
+            ctx,
             eq(feedbackEvents.subscriberId, subscriberId),
             eq(feedbackEvents.campaign, campaign),
           ),

@@ -26,8 +26,9 @@ import { createRawItemsRepo } from "@api/repositories/raw-items.js";
 import { createRunArchivesRepo } from "@api/repositories/run-archives.js";
 import { createRunLogRepo } from "@api/repositories/run-logs.js";
 import { createAdminRunsRouter } from "@api/routes/admin-runs.js";
-import { requireAdmin } from "@api/auth/middleware.js";
+import { requireAuth } from "@api/auth/middleware.js";
 import { issueToken } from "@api/auth/session.js";
+import { ensureE2eTenant } from "./helpers/tenant.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
@@ -37,16 +38,17 @@ const SESSION_SECRET = "observability-extended-e2e-secret-at-least-32b";
 
 const db = getDb();
 const redis = createRedisConnection();
-const rawItemsRepo = createRawItemsRepo(db);
-const archiveRepo = createRunArchivesRepo(db);
-const runLogRepo = createRunLogRepo(db);
+const tenantCtx = await ensureE2eTenant();
+const rawItemsRepo = createRawItemsRepo(db, tenantCtx);
+const archiveRepo = createRunArchivesRepo(db, tenantCtx);
+const runLogRepo = createRunLogRepo(db, tenantCtx);
 
 const seededRunIds = new Set<string>();
 const seededRawItemIds = new Set<number>();
 
 function buildGatedApp(): Hono {
   const app = new Hono();
-  app.use("/api/admin/*", requireAdmin(SESSION_SECRET));
+  app.use("/api/admin/*", requireAuth(SESSION_SECRET));
   app.route(
     "/api/admin/runs",
     createAdminRunsRouter({
@@ -60,7 +62,7 @@ function buildGatedApp(): Hono {
 }
 
 function adminCookie(): string {
-  return `admin_session=${issueToken(SESSION_SECRET, Date.now())}`;
+  return `admin_session=${issueToken({ userId: "00000000-0000-4000-8000-000000000001", tenantId: null, role: "tenant_admin" }, SESSION_SECRET, Date.now())}`;
 }
 
 beforeAll(async () => {
@@ -88,6 +90,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
     const runId = randomUUID();
     await db.insert(runArchives).values({
       id: runId,
+      tenantId: tenantCtx.tenantId,
       status: "completed",
       rankedItems: [],
       topN: 10,
@@ -101,6 +104,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
     await db.insert(runLogs).values([
       {
         runId,
+        tenantId: tenantCtx.tenantId,
         level: "info",
         stage: "collect",
         source: "blog",
@@ -110,6 +114,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
       },
       {
         runId,
+        tenantId: tenantCtx.tenantId,
         level: "warn",
         stage: "collect",
         source: "blog",
@@ -123,6 +128,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
       },
       {
         runId,
+        tenantId: tenantCtx.tenantId,
         level: "info",
         stage: "collect",
         source: "blog",
@@ -132,6 +138,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
       },
       {
         runId,
+        tenantId: tenantCtx.tenantId,
         level: "error",
         stage: "collect",
         source: "blog",
@@ -145,6 +152,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
       },
       {
         runId,
+        tenantId: tenantCtx.tenantId,
         level: "info",
         stage: "collect",
         source: "blog",
@@ -154,6 +162,7 @@ describe("VS-6: GET /api/admin/runs/:runId/observability surfaces new log events
       },
       {
         runId,
+        tenantId: tenantCtx.tenantId,
         level: "error",
         stage: "enrich",
         source: "blog",
@@ -233,6 +242,7 @@ describe("VS-7: GET /api/admin/runs/:runId/sources/blog:cursor.com/items returns
 
     await db.insert(runArchives).values({
       id: runId,
+      tenantId: tenantCtx.tenantId,
       status: "completed",
       rankedItems: [],
       topN: 10,
@@ -254,6 +264,7 @@ describe("VS-7: GET /api/admin/runs/:runId/sources/blog:cursor.com/items returns
         .insert(rawItems)
         .values({
           runId,
+          tenantId: tenantCtx.tenantId,
           sourceType: "blog",
           externalId: `cursor-${idx}-${randomUUID()}`,
           title: `Cursor post ${idx + 1}`,
@@ -319,6 +330,7 @@ describe("VS-8: legacy archive with listing-URL identifier returns 200 + empty i
 
     await db.insert(runArchives).values({
       id: runId,
+      tenantId: tenantCtx.tenantId,
       status: "completed",
       rankedItems: [],
       topN: 10,

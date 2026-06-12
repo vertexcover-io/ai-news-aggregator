@@ -1,5 +1,6 @@
 export type NotificationKey =
   | "reviewPending"
+  | "reviewPendingEmail"
   | "reviewWarning"
   | "emailFailure"
   | "linkedinFailure"

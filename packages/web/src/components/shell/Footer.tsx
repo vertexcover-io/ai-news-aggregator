@@ -6,6 +6,7 @@ import {
 } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { BrandMark } from "./BrandMark";
+import { useTenantBranding } from "../../hooks/useTenantBranding";
 import { postSubscribe } from "../../api/subscribe";
 import { captureBrowserEvent } from "../../lib/analytics";
 import { markSubscribed } from "../../lib/subscriptionStorage";
@@ -79,7 +80,9 @@ function FooterSubscribeField(): ReactElement {
 
 export function Footer(): ReactElement {
   const { pathname } = useLocation();
-  const showColophon = pathname !== "/built";
+  const branding = useTenantBranding();
+  // Colophon + "How it's built" are AGENTLOOP-only surfaces (REQ-042).
+  const showColophon = branding.isTenantZero && pathname !== "/built";
   return (
     <footer className="mt-18">
       {showColophon ? (
@@ -103,12 +106,67 @@ export function Footer(): ReactElement {
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_1.2fr_1fr] gap-4 sm:gap-8 items-center pt-6 pb-2">
         <div className="font-mono uppercase text-[10.5px] tracking-[0.22em] text-[#6b6557]">
           <span className="flex items-center gap-2">
-            <BrandMark size={18} className="shrink-0 text-[#8c3a1e]" />
+            {branding.logoUrl ? (
+              <img
+                src={branding.logoUrl}
+                alt=""
+                className="shrink-0 h-[18px] w-[18px] object-contain"
+              />
+            ) : (
+              <BrandMark
+                size={18}
+                label={branding.name}
+                className="shrink-0 text-[#8c3a1e]"
+              />
+            )}
             <strong className="text-[#14110d] font-semibold tracking-[0.16em]">
-              AGENTLOOP
+              {branding.name}
             </strong>
           </span>
-          A{" "}
+          {branding.isTenantZero ? (
+            <>
+              A{" "}
+              <a
+                href="https://blog.vertexcover.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
+              >
+                Vertexcover Labs
+              </a>{" "}
+              publication
+            </>
+          ) : null}
+        </div>
+        <div>
+          <FooterSubscribeField />
+        </div>
+        <div className="font-mono uppercase text-[10.5px] tracking-[0.22em] text-[#6b6557] text-left sm:text-right">
+          {/* Per-tenant footer nav mirrors the masthead derivation (REQ-042). */}
+          {branding.flags.canon ? (
+            <>
+              <Link to="/must-read" className="text-[#6b6557] hover:text-[#8c3a1e]">
+                MUST READ
+              </Link>
+              <span className="mx-2 text-[#e7e2d6]">·</span>
+            </>
+          ) : null}
+          <Link to="/sources" className="text-[#6b6557] hover:text-[#8c3a1e]">
+            SOURCES
+          </Link>
+          {branding.isTenantZero ? (
+            <>
+              <span className="mx-2 text-[#e7e2d6]">·</span>
+              <Link to="/built" className="text-[#6b6557] hover:text-[#8c3a1e]">
+                HOW IT&apos;S BUILT
+              </Link>
+            </>
+          ) : null}
+        </div>
+      </div>
+      <div className="py-5 text-center font-mono uppercase text-[10px] tracking-[0.22em] text-[#6b6557]">
+        © {new Date().getFullYear()}{" "}
+        {branding.isTenantZero ? (
           <a
             href="https://blog.vertexcover.io"
             target="_blank"
@@ -116,36 +174,10 @@ export function Footer(): ReactElement {
             className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
           >
             Vertexcover Labs
-          </a>{" "}
-          publication
-        </div>
-        <div>
-          <FooterSubscribeField />
-        </div>
-        <div className="font-mono uppercase text-[10.5px] tracking-[0.22em] text-[#6b6557] text-left sm:text-right">
-          <Link to="/must-read" className="text-[#6b6557] hover:text-[#8c3a1e]">
-            MUST READ
-          </Link>
-          <span className="mx-2 text-[#e7e2d6]">·</span>
-          <Link to="/sources" className="text-[#6b6557] hover:text-[#8c3a1e]">
-            SOURCES
-          </Link>
-          <span className="mx-2 text-[#e7e2d6]">·</span>
-          <Link to="/built" className="text-[#6b6557] hover:text-[#8c3a1e]">
-            HOW IT&apos;S BUILT
-          </Link>
-        </div>
-      </div>
-      <div className="py-5 text-center font-mono uppercase text-[10px] tracking-[0.22em] text-[#6b6557]">
-        © {new Date().getFullYear()}{" "}
-        <a
-          href="https://blog.vertexcover.io"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[#6b6557] underline decoration-dotted underline-offset-[3px] hover:text-[#14110d]"
-        >
-          Vertexcover Labs
-        </a>
+          </a>
+        ) : (
+          branding.name
+        )}
       </div>
     </footer>
   );

@@ -17,6 +17,19 @@ export default defineConfig({
           globals: false,
         },
       },
+      {
+        resolve: { alias },
+        test: {
+          name: "e2e",
+          include: ["tests/e2e/**/*.e2e.test.ts"],
+          testTimeout: 60000,
+          hookTimeout: 60000,
+          globals: false,
+          fileParallelism: false,
+          pool: "forks",
+          poolOptions: { forks: { singleFork: true } },
+        },
+      },
     ],
   },
 });

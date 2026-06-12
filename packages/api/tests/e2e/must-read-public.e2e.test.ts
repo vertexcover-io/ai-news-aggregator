@@ -11,13 +11,15 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@newsletter/shared/db";
 import { createMustReadRepo } from "@api/repositories/must-read.js";
 import { createPublicMustReadRouter } from "@api/routes/must-read.js";
+import { ensureE2eTenant } from "./helpers/tenant.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
 config({ path: resolve(REPO_ROOT, ".env") });
 
 const db = getDb();
-const repo = createMustReadRepo(db);
+const tenantCtx = await ensureE2eTenant();
+const repo = createMustReadRepo(db, tenantCtx);
 
 const URL_PREFIX = "https://must-read-public.example.com/";
 

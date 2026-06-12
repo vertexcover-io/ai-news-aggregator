@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-tenant — new pages & components</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<style>
+  .gallery { display:grid; grid-template-columns: repeat(auto-fill, minmax(290px,1fr)); gap:18px; }
+  .mk-card { display:flex; flex-direction:column; border:1px solid var(--line); border-radius:var(--radius-xl); background:var(--cream-elev); overflow:hidden; text-decoration:none; color:inherit; transition: box-shadow .15s, transform .15s; }
+  .mk-card:hover { box-shadow:0 12px 30px rgba(20,17,13,.1); transform:translateY(-2px); }
+  .mk-card .thumb { height:120px; background:linear-gradient(135deg,#f3efe6,#e8e2d4); border-bottom:1px solid var(--line); display:grid; place-items:center; color:var(--rust); font-size:30px; }
+  .mk-card .body { padding:16px 18px; }
+  .mk-card h3 { font-family:var(--font-serif); font-weight:500; font-size:18px; margin:0 0 5px; }
+  .mk-card p { font-size:12.5px; color:var(--mute); margin:0 0 10px; line-height:1.5; }
+  .mk-card .ids { font-family:var(--font-mono); font-size:9.5px; letter-spacing:.06em; color:var(--mute-2); }
+  .sech { font-family:var(--font-mono); font-size:11px; letter-spacing:.2em; text-transform:uppercase; color:var(--mute); margin:30px 0 14px; }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <p class="kicker kicker-rust">VER-110 · Multi-tenancy</p>
+    <h1 class="display" style="margin-bottom:8px">New pages &amp; components</h1>
+    <p class="lede" style="max-width:64ch">Static HTML mocks of every surface this feature adds, built on the existing AGENTLOOP “Daily Read” theme — cream <span class="code">#fbfaf7</span>, rust <span class="code">#8c3a1e</span>, Newsreader + Geist&nbsp;Mono.</p>
+
+    <div class="sech">Onboarding · auth (app.ourdomain.com)</div>
+    <div class="gallery">
+      <a class="mk-card" href="signup.html"><div class="thumb">✎</div><div class="body"><h3>Sign up</h3><p>Name, email, password + confirm. Logs in straight to setup; no verification.</p><span class="ids">REQ-001…003</span></div></a>
+      <a class="mk-card" href="forgot-password.html"><div class="thumb">⟲</div><div class="body"><h3>Forgot password</h3><p>Request a single-use reset link from the shared sender; no email enumeration.</p><span class="ids">REQ-004</span></div></a>
+      <a class="mk-card" href="reset-password.html"><div class="thumb">🔑</div><div class="body"><h3>Reset password</h3><p>Set a new password from a single-use, short-lived link.</p><span class="ids">REQ-004</span></div></a>
+      <a class="mk-card" href="onboarding.html"><div class="thumb">✦</div><div class="body"><h3>Onboarding wizard</h3><p>8-step resumable carousel with a live homepage preview. Slug check, prompt-gen, source pills, schedule.</p><span class="ids">REQ-030…039 · F20–F29</span></div></a>
+    </div>
+
+    <div class="sech">Tenant dashboard — new settings panels</div>
+    <div class="gallery">
+      <a class="mk-card" href="settings.html"><div class="thumb">⚙</div><div class="body"><h3>Settings (new panels)</h3><p>Branding, <strong>Sources</strong> (LLM+Tavily discovery, pills, health), social OAuth connect, sending-domain verification, notifications, feature flags — all in one Settings page, as today.</p><span class="ids">REQ-040,050,070–073,080–085,092,093</span></div></a>
+    </div>
+
+    <div class="sech">Super admin · impersonation</div>
+    <div class="gallery">
+      <a class="mk-card" href="super-admin.html"><div class="thumb">▦</div><div class="body"><h3>Tenant list</h3><p>All tenants with status, subscribers, last run; open any one. App-credentials owner.</p><span class="ids">REQ-100,082</span></div></a>
+      <a class="mk-card" href="impersonation.html"><div class="thumb">◎</div><div class="body"><h3>Impersonation banner</h3><p>A tenant dashboard rendered as-is under the “viewing as” banner with one-click exit.</p><span class="ids">REQ-101…103</span></div></a>
+    </div>
+
+    <div class="sech">Public site (per-tenant, &lt;slug&gt;.ourdomain.com)</div>
+    <div class="gallery">
+      <a class="mk-card" href="public-home.html"><div class="thumb">❧</div><div class="body"><h3>Public homepage</h3><p><strong>Identical AGENTLOOP layout</strong> — only the configured slots differ (logo, name, headline, topic strip, subtagline). Per-tenant nav: no Must&nbsp;Read (Canon off) / no Built (tenant-0 only).</p><span class="ids">REQ-040…044</span></div></a>
+    </div>
+
+    <hr class="divider" style="margin-top:34px">
+    <p class="help">Open <span class="code">index.html</span> in a browser. The onboarding wizard is interactive — switch steps and type the name/headline/slug to watch the live preview update. All files share <span class="code">theme.css</span>.</p>
+  </div>
+</body>
+</html>

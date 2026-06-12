@@ -1,6 +1,6 @@
-import type { AppDb } from "@newsletter/shared/db";
-import { subscribers, emailSends, sesEvents } from "@newsletter/shared/db";
-import { and, gte, lt, eq, count } from "drizzle-orm";
+import type { AppDb, TenantScope } from "@newsletter/shared/db";
+import { subscribers, emailSends, sesEvents, tenantScoped } from "@newsletter/shared/db";
+import { gte, lt, eq, count } from "drizzle-orm";
 
 export interface AnalyticsRepo {
   getMetrics(params: { from: Date; to: Date }): Promise<{
@@ -14,7 +14,10 @@ export interface AnalyticsRepo {
   }>;
 }
 
-export function createAnalyticsRepo(db: Pick<AppDb, "select">): AnalyticsRepo {
+export function createAnalyticsRepo(
+  db: Pick<AppDb, "select">,
+  ctx?: TenantScope,
+): AnalyticsRepo {
   return {
     async getMetrics({ from, to }) {
       const [
@@ -29,31 +32,31 @@ export function createAnalyticsRepo(db: Pick<AppDb, "select">): AnalyticsRepo {
         db
           .select({ value: count() })
           .from(subscribers)
-          .where(and(gte(subscribers.subscribedAt, from), lt(subscribers.subscribedAt, to))),
+          .where(tenantScoped(subscribers.tenantId, ctx, gte(subscribers.subscribedAt, from), lt(subscribers.subscribedAt, to))),
         db
           .select({ value: count() })
           .from(subscribers)
-          .where(and(gte(subscribers.unsubscribedAt, from), lt(subscribers.unsubscribedAt, to))),
+          .where(tenantScoped(subscribers.tenantId, ctx, gte(subscribers.unsubscribedAt, from), lt(subscribers.unsubscribedAt, to))),
         db
           .select({ value: count() })
           .from(emailSends)
-          .where(and(gte(emailSends.sentAt, from), lt(emailSends.sentAt, to))),
+          .where(tenantScoped(emailSends.tenantId, ctx, gte(emailSends.sentAt, from), lt(emailSends.sentAt, to))),
         db
           .select({ value: count() })
           .from(sesEvents)
-          .where(and(eq(sesEvents.eventType, "bounce"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
+          .where(tenantScoped(sesEvents.tenantId, ctx, eq(sesEvents.eventType, "bounce"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
         db
           .select({ value: count() })
           .from(sesEvents)
-          .where(and(eq(sesEvents.eventType, "complaint"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
+          .where(tenantScoped(sesEvents.tenantId, ctx, eq(sesEvents.eventType, "complaint"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
         db
           .select({ value: count() })
           .from(sesEvents)
-          .where(and(eq(sesEvents.eventType, "open"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
+          .where(tenantScoped(sesEvents.tenantId, ctx, eq(sesEvents.eventType, "open"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
         db
           .select({ value: count() })
           .from(sesEvents)
-          .where(and(eq(sesEvents.eventType, "click"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
+          .where(tenantScoped(sesEvents.tenantId, ctx, eq(sesEvents.eventType, "click"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
       ]);
 
       return {

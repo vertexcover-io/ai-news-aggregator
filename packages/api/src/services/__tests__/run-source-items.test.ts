@@ -239,4 +239,34 @@ describe("buildRunSourceItems", () => {
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
+
+  it("test_REQ_013_source_items_tenant_fence: another tenant's live state reads as not-found", async () => {
+    const liveState: RunState = {
+      id: RUN_ID,
+      status: "running",
+      stage: "collecting",
+      topN: 10,
+      startedAt: "2026-06-11T10:00:00.000Z",
+      updatedAt: "2026-06-11T10:01:00.000Z",
+      completedAt: null,
+      sources: {},
+      rankedItems: null,
+      shortlistedItemIds: null,
+      warnings: [],
+      error: null,
+      tenantId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    };
+    await expect(
+      buildRunSourceItems(RUN_ID, encodeURIComponent("reddit:r/AI_Agents"), {
+        redis: makeRedis(liveState),
+        archiveRepo: makeArchiveRepo(null),
+        rawItemsRepo: makeRawRepo([]),
+        runLogRepo: makeLogRepo([]),
+        requesterScope: {
+          tenantId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          role: "tenant_admin",
+        },
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
 });

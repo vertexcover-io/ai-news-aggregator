@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import type { UserSettings } from "@newsletter/shared";
 import { HEALTH_CHECKABLE_COLLECTORS } from "@newsletter/shared";
 import type { CollectorHealthSnapshot } from "@newsletter/shared/types";
-import { requireAdmin } from "@api/auth/middleware.js";
+import { requireAuth } from "@api/auth/middleware.js";
 import { issueToken } from "@api/auth/session.js";
 import { createCollectorHealthRouter } from "@api/routes/collector-health.js";
 import type { CollectorHealthRouterDeps } from "@api/routes/collector-health.js";
@@ -11,7 +11,7 @@ import type { CollectorHealthRouterDeps } from "@api/routes/collector-health.js"
 const SESSION_SECRET = "test-session-secret-32-chars-ok!";
 
 function adminCookie(): string {
-  const token = issueToken(SESSION_SECRET, Date.now());
+  const token = issueToken({ userId: "00000000-0000-4000-8000-000000000001", tenantId: null, role: "tenant_admin" }, SESSION_SECRET, Date.now());
   return `admin_session=${token}`;
 }
 
@@ -88,7 +88,7 @@ function baseSettings(overrides: Partial<UserSettings> = {}): UserSettings {
 function buildApp(deps: CollectorHealthRouterDeps, withAuth = false): Hono {
   const app = new Hono();
   if (withAuth) {
-    app.use("/api/admin/*", requireAdmin(SESSION_SECRET));
+    app.use("/api/admin/*", requireAuth(SESSION_SECRET));
   }
   app.route("/api/admin/collector-health", createCollectorHealthRouter(deps));
   return app;
@@ -302,5 +302,42 @@ describe("GET /api/admin/collector-health", () => {
     });
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe("tenant scoping", () => {
+  it("getSettings receives the SESSION tenant scope (not unscoped)", async () => {
+    const TENANT_X = "11111111-1111-1111-1111-111111111111";
+    const scopes: unknown[] = [];
+    const { Hono } = await import("hono");
+    const outer = new Hono();
+    outer.use("*", async (c, next) => {
+      c.set("tenantCtx", {
+        userId: "u1",
+        tenantId: TENANT_X,
+        role: "tenant_admin",
+      });
+      await next();
+    });
+    outer.route(
+      "/",
+      createCollectorHealthRouter({
+        collectorHealthQueue: { add: vi.fn() },
+        store: makeStore(),
+        getSettings: (scope?: unknown) => {
+          scopes.push(scope);
+          return Promise.resolve(null);
+        },
+      }),
+    );
+    const res = await outer.request("/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(202);
+    expect(scopes).toEqual([
+      { tenantId: TENANT_X, userId: "u1", role: "tenant_admin" },
+    ]);
   });
 });

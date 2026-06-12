@@ -21,18 +21,6 @@ export interface ArchiveListResponse {
   archives: ArchiveListItem[];
 }
 
-export interface AdminLoginRequest {
-  password: string;
-}
-
-export interface AdminLoginResponse {
-  ok: true;
-}
-
-export interface AdminMeResponse {
-  admin: true;
-}
-
 /** Shared shape for the curated ranked-items patch payload — used by both the
  * API server (as the parsed request body) and the web client (as the request
  * body type sent to PATCH /api/admin/archives/:runId). */

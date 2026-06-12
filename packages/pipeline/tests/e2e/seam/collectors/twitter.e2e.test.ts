@@ -11,6 +11,8 @@ import {
 } from "@pipeline/collectors/twitter/clients/rettiwt.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { getTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import type { AppDb } from "@newsletter/shared/db";
 import type { TwitterCollectConfig } from "@pipeline/types.js";
 
@@ -84,9 +86,12 @@ function createFixtureRettiwtFacade(): RettiwtFacade {
 
 describe("Twitter collector seam E2E", () => {
   let db: AppDb;
+  // tenant_id is NOT NULL on raw_items — repo writes stamp the e2e tenant
+  let tenant: TenantContext;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     db = getTestDb();
+    tenant = await ensurePipelineTenant();
   });
 
   beforeEach(async () => {
@@ -114,7 +119,7 @@ describe("Twitter collector seam E2E", () => {
     const result = await collectTwitter(
       {
         client: createRettiwtClient({ rettiwt: createFixtureRettiwtFacade() }),
-        rawItemsRepo: createRawItemsRepo(db),
+        rawItemsRepo: createRawItemsRepo(db, tenant),
         sleep: () => Promise.resolve(),
         now: () => NOW,
       },

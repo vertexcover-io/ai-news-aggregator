@@ -11,6 +11,10 @@ import { BuiltPage } from "./pages/BuiltPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { SourcesPage } from "./pages/SourcesPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
+import { SignupPage } from "./pages/SignupPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
 import { ConfirmPage } from "./pages/ConfirmPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
@@ -23,9 +27,12 @@ import { AdminMustReadEditPage } from "./pages/admin/AdminMustReadEditPage";
 import { UnsubscribePage } from "./pages/UnsubscribePage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { TermsPage } from "./pages/TermsPage";
+import { SuperAdminTenantsPage } from "./pages/SuperAdminTenantsPage";
 import { PublicLayout } from "./layouts/PublicLayout";
 import { AdminLayout } from "./layouts/AdminLayout";
 import { RequireAdmin } from "./layouts/RequireAdmin";
+import { RequireOnboarding } from "./layouts/RequireOnboarding";
+import { RequireSuperAdmin } from "./layouts/RequireSuperAdmin";
 
 export const routes: RouteObject[] = [
   {
@@ -45,13 +52,28 @@ export const routes: RouteObject[] = [
     ],
   },
   { path: "/admin/login", element: <AdminLoginPage /> },
+  { path: "/signup", element: <SignupPage /> },
+  { path: "/forgot-password", element: <ForgotPasswordPage /> },
+  { path: "/reset-password", element: <ResetPasswordPage /> },
   {
     path: "/admin",
     element: <RequireAdmin />,
     children: [
       {
-        element: <AdminLayout />,
+        // Super-admin console (P15, REQ-100): super_admin sessions land
+        // here; RequireSuperAdmin bounces tenant admins to their dashboard.
+        element: <RequireSuperAdmin />,
+        children: [{ path: "tenants", element: <SuperAdminTenantsPage /> }],
+      },
+      {
+        // pending_setup → funnelled into the wizard; active → wizard exits
+        // to the dashboard (P11, REQ-030/035).
+        element: <RequireOnboarding />,
         children: [
+          { path: "onboarding", element: <OnboardingPage /> },
+          {
+            element: <AdminLayout />,
+            children: [
           { index: true, element: <DashboardPage /> },
           { path: "runs/:runId", element: <RunObservabilityPage /> },
           { path: "review/:runId", element: <ReviewPage /> },
@@ -65,6 +87,8 @@ export const routes: RouteObject[] = [
           { path: "must-read", element: <AdminMustReadListPage /> },
           { path: "must-read/new", element: <AdminMustReadEditPage /> },
           { path: "must-read/:id", element: <AdminMustReadEditPage /> },
+            ],
+          },
         ],
       },
     ],

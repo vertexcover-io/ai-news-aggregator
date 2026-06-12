@@ -87,11 +87,19 @@ vi.mock("@pipeline/repositories/social-tokens.js", () => ({
 }));
 vi.mock("@pipeline/repositories/social-credentials.js", () => ({
   createSocialCredentialsRepo: vi.fn(() => ({
-    getLinkedIn: vi.fn().mockResolvedValue(null),
     getTwitter: vi.fn().mockResolvedValue(null),
-    upsertLinkedIn: vi.fn(),
     upsertTwitter: vi.fn(),
     delete: vi.fn(),
+  })),
+}));
+// App-level store (P12): LinkedIn client + collector cookie resolve here; the
+// env-fallback paths under test need the DB store to report "no row".
+vi.mock("@pipeline/repositories/app-credentials.js", () => ({
+  createAppCredentialsRepo: vi.fn(() => ({
+    getLinkedInClient: vi.fn().mockResolvedValue(null),
+    getTwitterCollector: vi.fn().mockResolvedValue(null),
+    getTwitterClient: vi.fn().mockResolvedValue(null),
+    upsertTwitterCollector: vi.fn(),
   })),
 }));
 vi.mock("@newsletter/shared/services/credential-cipher", () => ({
@@ -124,6 +132,20 @@ vi.mock("@pipeline/repositories/candidates.js", () => ({
 vi.mock("@pipeline/repositories/user-settings.js", () => ({
   createUserSettingsRepo: vi.fn(() => ({})),
 }));
+// Single-tenant bridge: unit tests run "legacy unscoped" — the fake db has no
+// .select, so the prime/lookup must be stubbed out (scope = undefined).
+// jobTenantContext stays REAL (pure, no DB) so P9 per-job scoping behaves as
+// in production.
+vi.mock("@pipeline/repositories/default-tenant.js", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@pipeline/repositories/default-tenant.js")
+  >();
+  return {
+    ...actual,
+    getDefaultTenantScope: vi.fn(() => undefined),
+    primeDefaultTenantScope: vi.fn(() => Promise.resolve(undefined)),
+  };
+});
 vi.mock("@pipeline/services/run-state.js", () => ({
   createRunStateService: vi.fn(() => ({})),
 }));
@@ -159,6 +181,11 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
       runProcessDeps: { fake: "rp-deps" } as never,
       dailyRunDeps: { fake: "dr-deps" } as never,
       connection: { fake: "redis" } as never,
+      // no-op semaphore: the fake connection cannot eval Lua
+      runConcurrencyLimiter: {
+        acquire: () => Promise.resolve(() => Promise.resolve()),
+        inUse: () => Promise.resolve(0),
+      },
     });
     return w as unknown as { handler: (job: unknown) => Promise<unknown> };
   }
@@ -190,6 +217,86 @@ describe("createProcessingWorker (single dispatcher Worker on 'processing' queue
     expect(mockHandleSocialHealthJob).toHaveBeenCalledOnce();
     expect(mockHandleDailyRunJob).not.toHaveBeenCalled();
     expect(mockHandleRunProcessJob).not.toHaveBeenCalled();
+  });
+
+  // P10 (REQ-065): run-process jobs go through the global Redis semaphore —
+  // a slot is acquired (waiting if the cap is saturated) before the run
+  // executes and released afterwards, success or failure.
+  describe("global run-concurrency cap wiring", () => {
+    function makeCappedWorker(): {
+      handler: (job: unknown) => Promise<unknown>;
+      acquire: ReturnType<typeof vi.fn>;
+      release: ReturnType<typeof vi.fn>;
+      order: string[];
+    } {
+      const order: string[] = [];
+      const release = vi.fn(() => {
+        order.push("release");
+        return Promise.resolve();
+      });
+      const acquire = vi.fn((holderId: string) => {
+        order.push(`acquire:${holderId}`);
+        return Promise.resolve(release);
+      });
+      const w = createProcessingWorker({
+        runProcessDeps: { fake: "rp-deps" } as never,
+        dailyRunDeps: { fake: "dr-deps" } as never,
+        connection: { fake: "redis" } as never,
+        runConcurrencyLimiter: { acquire, inUse: vi.fn() } as never,
+      });
+      return {
+        ...(w as unknown as { handler: (job: unknown) => Promise<unknown> }),
+        acquire,
+        release,
+        order,
+      };
+    }
+
+    it("test_REQ_065_run_process_waits_for_a_slot_then_releases", async () => {
+      mockHandleRunProcessJob.mockImplementation(() => Promise.resolve({ rankedCount: 1 }));
+      const worker = makeCappedWorker();
+
+      await worker.handler({ name: "run-process", id: "j1", data: { runId: "r-cap" } });
+
+      expect(worker.acquire).toHaveBeenCalledWith("r-cap");
+      expect(worker.order[0]).toBe("acquire:r-cap");
+      expect(worker.order.at(-1)).toBe("release");
+      expect(mockHandleRunProcessJob).toHaveBeenCalledOnce();
+    });
+
+    it("releases the slot even when the run fails", async () => {
+      mockHandleRunProcessJob.mockRejectedValue(new Error("run exploded"));
+      const worker = makeCappedWorker();
+
+      await expect(
+        worker.handler({ name: "run-process", id: "j2", data: { runId: "r-boom" } }),
+      ).rejects.toThrow("run exploded");
+
+      expect(worker.release).toHaveBeenCalledOnce();
+    });
+
+    it("does not gate non-run job types on the run semaphore", async () => {
+      mockHandleDailyRunJob.mockResolvedValue(undefined);
+      const worker = makeCappedWorker();
+
+      await worker.handler({ name: "daily-run", id: "j3", data: {} });
+
+      expect(worker.acquire).not.toHaveBeenCalled();
+    });
+
+    it("sets worker concurrency above the run cap so capped runs parallelize", async () => {
+      const { PROCESSING_WORKER_CONCURRENCY, MAX_CONCURRENT_RUNS } = await import(
+        "@pipeline/services/concurrency.js"
+      );
+      const w = createProcessingWorker({
+        runProcessDeps: { fake: "rp-deps" } as never,
+        dailyRunDeps: { fake: "dr-deps" } as never,
+        connection: { fake: "redis" } as never,
+      }) as unknown as { options: { concurrency?: number } };
+
+      expect(w.options.concurrency).toBe(PROCESSING_WORKER_CONCURRENCY);
+      expect(PROCESSING_WORKER_CONCURRENCY).toBeGreaterThan(MAX_CONCURRENT_RUNS);
+    });
   });
 
   describe("buildDefaultNewsletterSendDeps env-var construction", () => {

@@ -1,7 +1,7 @@
-import { and, between, eq, gte, inArray, sql } from "drizzle-orm";
+import { between, eq, gte, inArray, sql } from "drizzle-orm";
 import type IORedis from "ioredis";
-import { rawItems } from "@newsletter/shared/db";
-import type { AppDb, SourceType } from "@newsletter/shared/db";
+import { isTenantContext, rawItems, tenantScoped } from "@newsletter/shared/db";
+import type { AppDb, SourceType, TenantScope } from "@newsletter/shared/db";
 import { runKey } from "@newsletter/shared";
 import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import type {
@@ -125,6 +125,7 @@ export function deriveRawItemIdentifierSql(): typeof DERIVED_IDENTIFIER_SQL {
 
 export function createRawItemsRepo(
   db: Pick<AppDb, "select" | "execute">,
+  ctx?: TenantScope,
 ): RawItemsRepo {
   return {
     async findByIds(ids: number[]): Promise<RawItemRow[]> {
@@ -144,20 +145,20 @@ export function createRawItemsRepo(
           metadata: rawItems.metadata,
         })
         .from(rawItems)
-        .where(inArray(rawItems.id, ids));
+        .where(tenantScoped(rawItems.tenantId, ctx, inArray(rawItems.id, ids)));
       return rows;
     },
     async listForRun(
       runId: string,
       callDeps: ListForRunDeps,
     ): Promise<RawItemSummary[]> {
-      return listRawItemsForRun(runId, { db, ...callDeps });
+      return listRawItemsForRun(runId, { db, ctx, ...callDeps });
     },
     async listForRunWithEnrichment(
       runId: string,
       callDeps: ListForRunDeps,
     ): Promise<RawItemWithEnrichment[]> {
-      return listRawItemsForRunWithEnrichment(runId, { db, ...callDeps });
+      return listRawItemsForRunWithEnrichment(runId, { db, ctx, ...callDeps });
     },
     async aggregateBySourceAndIdentifier(
       opts: AggregateBySourceAndIdentifierOpts,
@@ -178,6 +179,7 @@ export function createRawItemsRepo(
         FROM raw_items
         WHERE collected_at >= ${opts.from.toISOString()}::timestamptz
           AND collected_at <  ${opts.to.toISOString()}::timestamptz
+          ${isTenantContext(ctx) ? sql`AND tenant_id = ${ctx.tenantId}` : sql``}
         GROUP BY source_type, identifier
       `);
       return rows.map((r) => ({
@@ -203,6 +205,8 @@ export interface ListRawItemsForRunDeps {
   db: Pick<AppDb, "select">;
   archiveRepo: Pick<RunArchivesRepo, "findById">;
   redis: Pick<IORedis, "get">;
+  /** Tenant scope for raw_items reads; omitted = legacy single-tenant mode. */
+  ctx?: TenantScope;
 }
 
 const SOURCE_KEY_TO_TYPE: Partial<Record<string, SourceType>> = {
@@ -269,7 +273,9 @@ export async function listRawItemsForRun(
     })
     .from(rawItems)
     .where(
-      and(
+      tenantScoped(
+        rawItems.tenantId,
+        deps.ctx,
         gte(rawItems.collectedAt, window.startedAt),
         inArray(rawItems.sourceType, window.sourceTypes),
       ),
@@ -327,7 +333,7 @@ async function listRawItemsForRunWithEnrichment(
   const byRunId = await deps.db
     .select(RAW_ITEM_WITH_ENRICHMENT_SELECT)
     .from(rawItems)
-    .where(eq(rawItems.runId, runId))
+    .where(tenantScoped(rawItems.tenantId, deps.ctx, eq(rawItems.runId, runId)))
     .orderBy(
       sql`${rawItems.sourceType} ASC`,
       sql`COALESCE(${rawItems.publishedAt}, ${rawItems.collectedAt}) DESC`,
@@ -347,7 +353,7 @@ async function listRawItemsForRunWithEnrichment(
   const fallbackRows = await deps.db
     .select(RAW_ITEM_WITH_ENRICHMENT_SELECT)
     .from(rawItems)
-    .where(and(windowPredicate, inArray(rawItems.sourceType, window.sourceTypes)))
+    .where(tenantScoped(rawItems.tenantId, deps.ctx, windowPredicate, inArray(rawItems.sourceType, window.sourceTypes)))
     .orderBy(
       sql`${rawItems.sourceType} ASC`,
       sql`COALESCE(${rawItems.publishedAt}, ${rawItems.collectedAt}) DESC`,

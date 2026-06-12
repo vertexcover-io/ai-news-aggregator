@@ -28,17 +28,22 @@ import {
 } from "@api/routes/admin-must-read.js";
 import { createMustReadRepo } from "@api/repositories/must-read.js";
 import { buildApp } from "@api/app.js";
-import { createAdminRouter } from "@api/routes/admin.js";
-import { requireAdmin } from "@api/auth/middleware.js";
+import { createAuthRouter } from "@api/routes/auth.js";
+import { requireAuth } from "@api/auth/middleware.js";
+import { hashPassword } from "@api/services/password.js";
+import type { UsersRepo } from "@api/repositories/users.js";
+import type { TenantsRepo } from "@api/repositories/tenants.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
 config({ path: resolve(REPO_ROOT, ".env") });
 
 const { getDb } = await import("@newsletter/shared/db");
+const { ensureE2eTenant } = await import("./helpers/tenant.js");
 
 const db = getDb();
-const repo = createMustReadRepo(db);
+const tenantCtx = await ensureE2eTenant();
+const repo = createMustReadRepo(db, tenantCtx);
 
 const URL_PREFIX = "https://admin-must-read-e2e.example.com/";
 
@@ -447,10 +452,24 @@ describe("EDGE-008: client aborts mid-extraction; no row created", () => {
   });
 });
 
-describe("NF-006: SameSite cookie on /api/admin/login", () => {
-  function buildFullApp(): Hono {
-    const adminPassword = "test-pw-nf006";
+describe("NF-006: SameSite cookie on /api/auth/login", () => {
+  async function buildFullApp(): Promise<Hono> {
     const sessionSecret = "test-secret-at-least-32-bytes-long-x";
+    const passwordHash = await hashPassword("test-pw-nf006");
+    const fakeUsersRepo = {
+      findByEmail: vi.fn(() =>
+        Promise.resolve({
+          id: "00000000-0000-4000-8000-0000000000aa",
+          tenantId: null,
+          email: "nf006@example.com",
+          name: "NF006",
+          passwordHash,
+          role: "tenant_admin",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      ),
+    } as unknown as UsersRepo;
     return buildApp({
       sessionSecret,
       publicArchivesRouter: new Hono(),
@@ -465,27 +484,35 @@ describe("NF-006: SameSite cookie on /api/admin/login", () => {
       adminEvalRouter: new Hono(),
       runsRouter: new Hono(),
       settingsRouter: new Hono(),
-      adminRouter: createAdminRouter({
-        adminPassword,
+      authRouter: createAuthRouter({
         sessionSecret,
+        getUsersRepo: () => fakeUsersRepo,
+        getTenantsRepo: () => ({}) as TenantsRepo,
+        resetTokenStore: {
+          save: () => Promise.resolve(),
+          consume: () => Promise.resolve(null),
+        },
+        sendResetEmail: () => Promise.resolve(),
+        webBaseUrl: "http://web.test",
         logger: { info: vi.fn(), warn: vi.fn() },
       }),
-      requireAdminFactory: requireAdmin,
+      requireAuthFactory: requireAuth,
       subscribeRouter: new Hono(),
       webhooksRouter: new Hono(),
       analyticsRouter: new Hono(),
       analyticsConfigRouter: new Hono(),
+      collectorHealthRouter: new Hono(),
       linkedInOAuthRouter: new Hono(),
       linkedInOAuthCallbackRouter: new Hono(),
     });
   }
 
-  it("Set-Cookie on /api/admin/login contains SameSite=Lax or SameSite=Strict", async () => {
-    const app = buildFullApp();
-    const res = await app.request("/api/admin/login", {
+  it("Set-Cookie on /api/auth/login contains SameSite=Lax or SameSite=Strict", async () => {
+    const app = await buildFullApp();
+    const res = await app.request("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: "test-pw-nf006" }),
+      body: JSON.stringify({ email: "nf006@example.com", password: "test-pw-nf006" }),
     });
     expect(res.status).toBe(200);
     const setCookie = res.headers.get("set-cookie");

@@ -26,10 +26,22 @@ import {
   type CollectorHealthOutcome,
 } from "@pipeline/services/collector-health/index.js";
 import type { UserSettingsRepo } from "@pipeline/repositories/user-settings.js";
-import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 import {
-  createSocialCredentialsRepo,
-} from "@pipeline/repositories/social-credentials.js";
+  getDefaultTenantScope,
+  jobTenantContext,
+} from "@pipeline/repositories/default-tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
+import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
+import { createPipelineTenantsRepo } from "@pipeline/repositories/tenants.js";
+import {
+  resolveTenantNotificationChannels,
+  type TenantNotificationChannels,
+} from "@pipeline/services/tenant-notify.js";
+import {
+  createNotificationEmailSender,
+  type NotificationEmailSender,
+} from "@pipeline/services/notification-email.js";
+import { createAppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { resolveTwitterCollectorCookie } from "@pipeline/services/credential-resolver.js";
 import { runWebCrawl } from "@pipeline/services/web-crawler.js";
@@ -40,6 +52,8 @@ import type { UserSettings } from "@newsletter/shared";
 export interface CollectorHealthJobData {
   collectors?: HealthCheckCollector[];
   trigger: CollectorHealthTrigger;
+  /** Originating tenant (P9, REQ-060); legacy entries fall back to the bridge. */
+  tenantId?: string;
 }
 
 export interface CollectorHealthJobLike {
@@ -52,6 +66,13 @@ type PostToWebhookFn = typeof postToWebhook;
 
 export interface CollectorHealthJobDeps {
   userSettingsRepo: UserSettingsRepo;
+  /**
+   * Per-job settings repo factory (P9, REQ-061): when present, the handler
+   * loads settings scoped to the job's tenant (`data.tenantId`) instead of
+   * the fixed `userSettingsRepo` (kept for injected-test deps and legacy
+   * single-tenant wiring).
+   */
+  getUserSettingsRepo?: (ctx?: TenantContext) => UserSettingsRepo;
   store: CollectorHealthStore;
   runCollectorHealthCheck: (
     collector: CheckableCollector,
@@ -61,6 +82,16 @@ export interface CollectorHealthJobDeps {
   /** Factory called per-job so credentials are always fresh (S-pipeline-03 / D-051) */
   buildHealthCheckDeps: () => Promise<HealthCheckDeps>;
   slackWebhookUrl: string | undefined;
+  /**
+   * Per-job tenant channel resolution (P16, REQ-091): when present, the
+   * failure alert goes to the JOB tenant's webhook/email instead of the
+   * fixed `slackWebhookUrl` (kept as the legacy fallback for injected test
+   * deps). Stays MARKERLESS either way (D-111).
+   */
+  resolveNotificationChannels?: (
+    ctx?: TenantContext,
+  ) => Promise<TenantNotificationChannels>;
+  notificationEmailSender?: NotificationEmailSender;
   postToWebhook: PostToWebhookFn;
   /** Emits one `collector_preflight_failed` PostHog event per failed collector. Silent no-op when PostHog is unconfigured. */
   capturePipelineEvent: (event: string, properties?: Record<string, unknown>) => void;
@@ -188,11 +219,18 @@ export async function handleCollectorHealthJob(
   // failure inside the catch block.
   const payloadCollectors = job.data.collectors ?? [];
 
+  // P9 (REQ-061): scheduled entries carry the owning tenant — load THAT
+  // tenant's settings. Legacy entries (no tenantId) keep the fixed repo.
+  const settingsRepo =
+    deps.getUserSettingsRepo !== undefined
+      ? deps.getUserSettingsRepo(jobTenantContext(job.data) ?? getDefaultTenantScope())
+      : deps.userSettingsRepo;
+
   let settings: Awaited<ReturnType<typeof deps.userSettingsRepo.get>>;
   let targets: HealthCheckCollector[];
 
   try {
-    settings = await deps.userSettingsRepo.get();
+    settings = await settingsRepo.get();
 
     if (payloadCollectors.length > 0) {
       targets = payloadCollectors;
@@ -355,8 +393,59 @@ export async function handleCollectorHealthJob(
     "collector health job completed",
   );
 
-  // Post Slack alert if there are failures and webhook is configured
-  if (failures.length === 0 || deps.slackWebhookUrl === undefined || deps.slackWebhookUrl === "") {
+  if (failures.length === 0) {
+    return;
+  }
+
+  // P16 (REQ-091): resolve the JOB tenant's channels — its decrypted webhook
+  // and/or notification email; legacy wiring keeps the fixed global webhook.
+  // D-111 holds: no notification_state marker, the alert re-fires every
+  // failed check.
+  const channels: TenantNotificationChannels =
+    deps.resolveNotificationChannels !== undefined
+      ? await deps.resolveNotificationChannels(
+          jobTenantContext(job.data) ?? getDefaultTenantScope(),
+        )
+      : {
+          slackWebhookUrl: deps.slackWebhookUrl,
+          notifyEmail: undefined,
+          notifyReviewReady: true,
+          notifyErrors: true,
+        };
+
+  if (!channels.notifyErrors) {
+    log.info(
+      { event: "collector_health.alert_skipped", reason: "toggle_off", jobId: job.id },
+      "collector health alert skipped (tenant error alerts off)",
+    );
+    return;
+  }
+
+  if (
+    channels.notifyEmail !== undefined &&
+    deps.notificationEmailSender !== undefined
+  ) {
+    try {
+      await deps.notificationEmailSender.send({
+        to: channels.notifyEmail,
+        subject: "Collector health check failed",
+        text: failures
+          .map((f) => `${f.collector}: ${f.reason}`)
+          .join("\n"),
+      });
+    } catch (err) {
+      log.warn(
+        {
+          event: "collector_health.email_alert_failed",
+          error: err instanceof Error ? err.message : String(err),
+          jobId: job.id,
+        },
+        "collector health email alert failed",
+      );
+    }
+  }
+
+  if (channels.slackWebhookUrl === undefined || channels.slackWebhookUrl === "") {
     return;
   }
 
@@ -364,7 +453,7 @@ export async function handleCollectorHealthJob(
 
   try {
     const webhookResult = await deps.postToWebhook({
-      url: deps.slackWebhookUrl,
+      url: channels.slackWebhookUrl,
       blocks: message.blocks,
     });
 
@@ -416,14 +505,22 @@ export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
   const db = getDb();
 
   return {
-    userSettingsRepo: createUserSettingsRepo(db),
+    userSettingsRepo: createUserSettingsRepo(db, getDefaultTenantScope()),
+    // P9 (REQ-061): the handler prefers this factory, scoping settings to the
+    // job's tenant; the fixed repo above remains the legacy fallback.
+    getUserSettingsRepo: (ctx?: TenantContext) => createUserSettingsRepo(db, ctx),
     store: createCollectorHealthStore(createRedisConnection()),
     runCollectorHealthCheck: defaultRunCollectorHealthCheck,
     // Per-job factory so credentials are always fresh (S-pipeline-03 / D-051)
     buildHealthCheckDeps: async (): Promise<HealthCheckDeps> => {
-      const credentialsRepo = createSocialCredentialsRepo(getDb(), getCredentialCipher());
+      // Shared collector cookie is APP-LEVEL (P12, REQ-086) — resolved from
+      // app_credentials, never tenant-scoped.
+      const appCredentialsRepo = createAppCredentialsRepo(
+        getDb(),
+        getCredentialCipher(),
+      );
       const twitterCookie = await resolveTwitterCollectorCookie({
-        repo: credentialsRepo,
+        appRepo: appCredentialsRepo,
         env: process.env,
       });
       const tavilyApiKey = process.env.TAVILY_API_KEY;
@@ -443,6 +540,16 @@ export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
       };
     },
     slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
+    // P16 (REQ-091): per-job tenant channel resolution — decrypts the JOB
+    // tenant's webhook at send time; global env webhook stays the fallback.
+    resolveNotificationChannels: (ctx?: TenantContext) =>
+      resolveTenantNotificationChannels({
+        tenantsRepo: createPipelineTenantsRepo(getDb(), ctx),
+        cipher: getCredentialCipher(),
+        env: process.env,
+        logger: createLogger("tenant-notify"),
+      }),
+    notificationEmailSender: createNotificationEmailSender(),
     postToWebhook,
     capturePipelineEvent,
     logger: createLogger("worker:collector-health"),

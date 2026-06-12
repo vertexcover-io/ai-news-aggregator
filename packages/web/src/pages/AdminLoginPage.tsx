@@ -1,9 +1,18 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { login, LoginFailedError } from "@/api/admin";
-import { useAdminSession } from "@/hooks/useAdminSession";
+import { login, LoginFailedError } from "@/api/auth";
+import { useSession } from "@/hooks/useSession";
 import { Button } from "@/components/ui/button";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthBrandAside } from "@/components/auth/AuthBrandAside";
+import {
+  authInputClass,
+  Kicker,
+  FieldLabel,
+  FormError,
+  DisplayHeading,
+} from "@/components/auth/fields";
 
 function resolveNext(search: string): string {
   const raw = new URLSearchParams(search).get("next");
@@ -16,12 +25,13 @@ function resolveNext(search: string): string {
 }
 
 export function AdminLoginPage(): ReactElement {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const session = useAdminSession();
+  const session = useSession();
 
   useEffect(() => {
     if (session.data) {
@@ -30,14 +40,14 @@ export function AdminLoginPage(): ReactElement {
   }, [session.data, location.search, navigate]);
 
   const mutation = useMutation({
-    mutationFn: (pwd: string) => login({ password: pwd }),
+    mutationFn: () => login({ email, password }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin", "me"] });
+      await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
       void navigate(resolveNext(location.search));
     },
     onError: (err: unknown) => {
       if (err instanceof LoginFailedError) {
-        setError("Incorrect password.");
+        setError("Incorrect email or password.");
       } else {
         setError("Something went wrong. Try again.");
       }
@@ -47,54 +57,88 @@ export function AdminLoginPage(): ReactElement {
   function handleSubmit(e: React.BaseSyntheticEvent): void {
     e.preventDefault();
     setError(null);
-    mutation.mutate(password);
+    mutation.mutate();
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div
-        className="rounded-lg border bg-card shadow-sm p-6 flex flex-col gap-4"
-        style={{ width: "min(360px, 100%)" }}
-      >
-        <h1 className="text-xl font-semibold text-center">Admin</h1>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="password" className="text-sm font-medium">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              autoFocus
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                if (error) setError(null);
-              }}
-              className="h-11 min-h-[44px] rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-            />
-          </div>
-          {error !== null && (
-            <p
-              role="alert"
-              aria-live="polite"
-              className="text-sm text-destructive"
-            >
-              {error}
-            </p>
-          )}
-          <Button type="submit" disabled={mutation.isPending} className="min-h-[44px] px-4">
-            {mutation.isPending ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-        <Link
-          to="/"
-          className="inline-flex items-center justify-center min-h-[44px] px-2 text-sm text-muted-foreground hover:text-foreground"
+    <AuthShell
+      aside={
+        <AuthBrandAside
+          kicker="Welcome back"
+          headline="The day’s signal,"
+          accent="ranked before coffee."
+          lede="Sign in to review this morning’s digest, tune your sources, and ship to your readers."
+          tagline="Curate · Review · Publish"
+        />
+      }
+    >
+      <div className="mb-6 text-center">
+        <Kicker tone="rust">Sign in</Kicker>
+        <DisplayHeading className="mt-1">Sign in</DisplayHeading>
+      </div>
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-[18px]">
+        <div className="flex flex-col gap-2">
+          <FieldLabel htmlFor="email">Email</FieldLabel>
+          <input
+            id="email"
+            type="email"
+            required
+            autoFocus
+            autoComplete="email"
+            placeholder="ada@studio.com"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (error) setError(null);
+            }}
+            className={authInputClass}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <FieldLabel htmlFor="password">Password</FieldLabel>
+          <input
+            id="password"
+            type="password"
+            required
+            autoComplete="current-password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (error) setError(null);
+            }}
+            className={authInputClass}
+          />
+        </div>
+        {error !== null && <FormError>{error}</FormError>}
+        <Button
+          type="submit"
+          variant="ink"
+          disabled={mutation.isPending}
+          className="min-h-[44px] px-4 py-3"
         >
-          ← Back to archive
+          {mutation.isPending ? "Signing in…" : "Sign in"}
+        </Button>
+      </form>
+
+      <div className="mt-5 flex items-center justify-between text-[13px]">
+        <Link
+          to="/forgot-password"
+          className="text-mute hover:text-ink"
+        >
+          Forgot password?
+        </Link>
+        <Link to="/signup" className="text-rust hover:text-rust-deep">
+          Create account
         </Link>
       </div>
-    </div>
+      <Link
+        to="/"
+        className="mt-2 inline-flex min-h-[44px] items-center justify-center px-2 font-mono text-[11px] uppercase tracking-[0.16em] text-mute hover:text-ink"
+      >
+        ← Back to archive
+      </Link>
+    </AuthShell>
   );
 }

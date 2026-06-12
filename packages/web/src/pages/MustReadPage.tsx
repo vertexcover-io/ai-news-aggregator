@@ -2,6 +2,10 @@ import { useEffect, type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listMustRead } from "../api/must-read";
 import { setMeta } from "../lib/meta";
+import {
+  brandDisplayName,
+  useTenantBranding,
+} from "../hooks/useTenantBranding";
 import { MustReadEntryView } from "../components/must-read/MustReadEntryView";
 import { InlineSubscribeCard } from "../components/shell/InlineSubscribeCard";
 
@@ -25,10 +29,11 @@ function lastRevised(entries: { addedAt: string }[]): string {
 }
 
 export function MustReadPage(): ReactElement {
+  const branding = useTenantBranding();
   useEffect(() => {
-    document.title = "Must Read — AgentLoop";
+    document.title = `Must Read — ${brandDisplayName(branding)}`;
     setMeta("description", TAGLINE);
-  }, []);
+  }, [branding]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["must-read", "list"],

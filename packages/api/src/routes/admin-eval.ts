@@ -29,6 +29,8 @@ import {
   writeGroundTruth as defaultWriteGroundTruth,
   type CreateManualFixtureResult,
 } from "@newsletter/pipeline/eval";
+import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
 import {
   createUserSettingsRepo,
   type UserSettingsRepo,
@@ -102,8 +104,8 @@ export type GetCalendarRunDetailFn = (
 ) => Promise<CalendarRunDetail | null>;
 
 export interface AdminEvalRouterDeps {
-  getSettingsRepo: () => UserSettingsRepo;
-  getEvalRunsRepo?: () => EvalRunsRepo;
+  getSettingsRepo: (scope?: TenantScope) => UserSettingsRepo;
+  getEvalRunsRepo?: (scope?: TenantScope) => EvalRunsRepo;
   listFixtures?: ListFixturesFn;
   readFixture?: ReadFixtureFn;
   readGroundTruth?: ReadGroundTruthFn;
@@ -185,7 +187,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
         400,
       );
     }
-    const settings = await deps.getSettingsRepo().get();
+    const settings = await deps.getSettingsRepo(tenantScopeFromContext(c)).get();
     const timezone = safeTimezone(settings?.scheduleTimezone);
     const runs = await listCalendarRunsByDateFn(parsed.data.date, timezone);
     return c.json({ date: parsed.data.date, runs });
@@ -349,7 +351,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
         422,
       );
     }
-    const repo = deps.getSettingsRepo();
+    const repo = deps.getSettingsRepo(tenantScopeFromContext(c));
     const current = await repo.get();
     if (current === null) {
       return c.json({ error: "settings_not_initialised" }, 409);
@@ -383,7 +385,7 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
         cacheDir,
         fixturesDir,
         groundtruthDir,
-        evalRunsRepo: deps.getEvalRunsRepo?.(),
+        evalRunsRepo: deps.getEvalRunsRepo?.(tenantScopeFromContext(c)),
         getSettingsRepo: deps.getSettingsRepo,
         readFixtureFn,
         readGroundTruthFn,
@@ -400,8 +402,8 @@ export function createAdminEvalRouter(deps: AdminEvalRouterDeps): Hono {
 
 export function createDefaultAdminEvalRouter(): Hono {
   return createAdminEvalRouter({
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
-    getEvalRunsRepo: () => createEvalRunsRepo(defaultGetDb()),
+    getSettingsRepo: (scope) => createUserSettingsRepo(defaultGetDb(), scope),
+    getEvalRunsRepo: (scope) => createEvalRunsRepo(defaultGetDb(), scope),
     listCalendarRunsByDate: async (dateISO, timezone) => {
       const repo = createEvalExportsRepo(defaultGetDb());
       return repo.listCompletedRunsByDate(dateISO, timezone);

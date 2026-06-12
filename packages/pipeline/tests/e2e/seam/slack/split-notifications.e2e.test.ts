@@ -30,6 +30,8 @@ import {
 import { createLogger } from "@newsletter/shared/logger";
 import { createRunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 
 config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
 
@@ -49,9 +51,12 @@ interface TestHarness {
   archiveRepo: ReturnType<typeof createRunArchivesRepo>;
 }
 
+// tenant_id is NOT NULL on run_archives — repo writes stamp the e2e tenant
+let tenant: TenantContext;
+
 function buildHarness(): TestHarness {
   const db = getTestDb();
-  const archiveRepo = createRunArchivesRepo(db);
+  const archiveRepo = createRunArchivesRepo(db, tenant);
   const captures: CapturedPost[] = [];
   let responseStatus = 200;
 
@@ -140,11 +145,12 @@ async function insertArchive(
 }
 
 describe("Slack split-notifications (E2E seam)", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     // Surface env errors early
     if (!process.env.DATABASE_URL) {
       throw new Error("DATABASE_URL not set — check .env.test");
     }
+    tenant = await ensurePipelineTenant();
   });
 
   beforeEach(async () => {

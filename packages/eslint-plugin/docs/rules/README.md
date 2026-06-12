@@ -17,7 +17,7 @@ Use this decision tree before writing any new enforcement logic:
 | Rule | Description |
 |------|-------------|
 | [`collector-return-shape`](./collector-return-shape.md) | Exported functions in `packages/pipeline/src/collectors/**` must return `Promise<CollectorResult>` (type-aware). |
-| [`enforce-repository-access`](./enforce-repository-access.md) | Value imports of `@newsletter/shared/db` and `drizzle-orm` are only allowed inside repository modules. Type-only imports are allowed everywhere. |
+| [`enforce-repository-access`](./enforce-repository-access.md) | Value imports of `@newsletter/shared/db` and `drizzle-orm` are only allowed inside repository modules (type-only imports allowed everywhere); inside repositories, queries against tenant-owned tables must carry a tenant scope (`tenantScoped`/`scopedTenantId`/`withAllTenants`). |
 
 ## Shipping a new rule
 

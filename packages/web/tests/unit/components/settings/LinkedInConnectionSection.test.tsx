@@ -29,14 +29,10 @@ vi.mock("../../../../src/api/socialCredentials", () => ({
   getSocialCredentialsStatus: vi.fn(),
   fetchLinkedInOAuthStatus: vi.fn(),
   startLinkedInOAuth: vi.fn(),
-  putLinkedInCredentials: vi.fn(),
   putTwitterCredentials: vi.fn(),
-  putTwitterCollectorCookie: vi.fn(),
   deleteSocialCredentials: vi.fn(),
   useSocialCredentialsStatus: vi.fn(),
-  useSaveLinkedInCredentials: vi.fn(),
   useSaveTwitterCredentials: vi.fn(),
-  useSaveTwitterCollectorCookie: vi.fn(),
   useDeleteSocialCredentials: vi.fn(),
   useLinkedInOAuthStatus: vi.fn(),
   SocialCredentialsApiError: class SocialCredentialsApiError extends Error {
@@ -63,9 +59,7 @@ vi.mock("sonner", () => ({
 import { toast } from "sonner";
 import {
   useSocialCredentialsStatus,
-  useSaveLinkedInCredentials,
   useSaveTwitterCredentials,
-  useSaveTwitterCollectorCookie,
   useDeleteSocialCredentials,
   useLinkedInOAuthStatus,
   fetchLinkedInOAuthStatus,
@@ -74,9 +68,7 @@ import {
 import { SocialCredentialsPanel } from "../../../../src/components/SocialCredentialsPanel";
 
 const mockUseSocialCredentialsStatus = useSocialCredentialsStatus as unknown as MockInstance;
-const mockUseSaveLinkedInCredentials = useSaveLinkedInCredentials as unknown as MockInstance;
 const mockUseSaveTwitterCredentials = useSaveTwitterCredentials as unknown as MockInstance;
-const mockUseSaveTwitterCollectorCookie = useSaveTwitterCollectorCookie as unknown as MockInstance;
 const mockUseDeleteSocialCredentials = useDeleteSocialCredentials as unknown as MockInstance;
 const mockUseLinkedInOAuthStatus = useLinkedInOAuthStatus as unknown as MockInstance;
 // fetchLinkedInOAuthStatus is mocked but used indirectly via the hook mock
@@ -86,7 +78,7 @@ const mockToastSuccess = toast.success as unknown as MockInstance;
 const mockToastError = toast.error as unknown as MockInstance;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function noopMutation(): ReturnType<typeof useSaveLinkedInCredentials> {
+function noopMutation(): ReturnType<typeof useSaveTwitterCredentials> {
   return {
     mutate: vi.fn(),
     mutateAsync: vi.fn(),
@@ -104,7 +96,7 @@ function noopMutation(): ReturnType<typeof useSaveLinkedInCredentials> {
     failureReason: null,
     isPaused: false,
     submittedAt: 0,
-  } as unknown as ReturnType<typeof useSaveLinkedInCredentials>;
+  } as unknown as ReturnType<typeof useSaveTwitterCredentials>;
 }
 
 const defaultCredentialsStatus = {
@@ -126,9 +118,7 @@ function setupDefaultHooks(overrides: {
     isLoading: false,
     isError: false,
   });
-  mockUseSaveLinkedInCredentials.mockReturnValue(noopMutation());
   mockUseSaveTwitterCredentials.mockReturnValue(noopMutation());
-  mockUseSaveTwitterCollectorCookie.mockReturnValue(noopMutation());
   mockUseDeleteSocialCredentials.mockReturnValue(noopMutation());
 
   const defaultOAuth = {
@@ -237,7 +227,7 @@ describe("LinkedIn Connection section", () => {
     it("hint text is visible", () => {
       renderPanel();
       const connection = screen.getByTestId("linkedin-connection");
-      expect(connection.textContent).toContain("Save Client ID");
+      expect(connection.textContent).toContain("ask a platform");
     });
   });
 

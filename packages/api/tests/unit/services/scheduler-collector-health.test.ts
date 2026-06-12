@@ -81,6 +81,38 @@ describe("reconcileCollectorHealthSchedule", () => {
     expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
   });
 
+  // P10 (REQ-062, D-110): collector-health stays a sibling PER-TENANT key on
+  // its dedicated queue — `collector-health:<tenantId>` — and a tenant-scoped
+  // reconcile retires the legacy singleton key.
+  it("REQ-062: keys the collector-health entry per tenant on its dedicated queue", async () => {
+    const queue = makeQueue();
+    const tenantId = "11111111-2222-3333-4444-555555555555";
+
+    await reconcileCollectorHealthSchedule(queue, baseSettings(), tenantId);
+
+    const expectedPattern = toCronMinusMinutes("09:30", COLLECTOR_HEALTH_LEAD_MINUTES);
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      `collector-health:${tenantId}`,
+      { pattern: expectedPattern, tz: "America/New_York" },
+      { name: "collector-health", data: { trigger: "scheduled", tenantId } },
+    );
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(COLLECTOR_HEALTH_SCHEDULER_KEY);
+  });
+
+  it("REQ-062: disabled schedule removes the tenant's collector-health key", async () => {
+    const queue = makeQueue();
+    const tenantId = "22222222-3333-4444-5555-666666666666";
+
+    await reconcileCollectorHealthSchedule(
+      queue,
+      baseSettings({ scheduleEnabled: false }),
+      tenantId,
+    );
+
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(`collector-health:${tenantId}`);
+    expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
+  });
+
   it("EDGE-007: pipelineTime '00:15' -> pattern '45 23 * * *' (wraps before midnight)", async () => {
     const queue = makeQueue();
     await reconcileCollectorHealthSchedule(queue, baseSettings({ pipelineTime: "00:15" }));

@@ -44,15 +44,17 @@ import {
 import { createRunArchivesRepo } from "@api/repositories/run-archives.js";
 import { createUserSettingsRepo } from "@api/repositories/user-settings.js";
 import { createPublicSourcesRouter } from "@api/routes/sources.js";
+import { ensureE2eTenant } from "./helpers/tenant.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
 config({ path: resolve(REPO_ROOT, ".env") });
 
 const db = getDb();
-const rawItemsRepo = createRawItemsRepo(db);
-const archiveRepo = createRunArchivesRepo(db);
-const settingsRepo = createUserSettingsRepo(db);
+const tenantCtx = await ensureE2eTenant();
+const rawItemsRepo = createRawItemsRepo(db, tenantCtx);
+const archiveRepo = createRunArchivesRepo(db, tenantCtx);
+const settingsRepo = createUserSettingsRepo(db, tenantCtx);
 
 const seedPrefix = `phase4-sources-${String(Date.now())}`;
 const seededRawItemIds = new Set<number>();
@@ -147,6 +149,7 @@ async function insertRawItem(opts: InsertRawItemArgs): Promise<number> {
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: tenantCtx.tenantId,
       sourceType: opts.sourceType,
       externalId: `${seedPrefix}-${opts.externalId}`,
       title: opts.title,
@@ -180,6 +183,7 @@ async function insertArchive(opts: InsertArchiveArgs): Promise<string> {
   );
   await db.insert(runArchives).values({
     id: runId,
+    tenantId: tenantCtx.tenantId,
     status: "completed",
     rankedItems,
     topN: rankedItems.length,

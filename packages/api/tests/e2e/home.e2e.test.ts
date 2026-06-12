@@ -28,15 +28,17 @@ import { createRawItemsRepo } from "@api/repositories/raw-items.js";
 import { createRunArchivesRepo } from "@api/repositories/run-archives.js";
 import { createMustReadRepo } from "@api/repositories/must-read.js";
 import { createPublicHomeRouter } from "@api/routes/home.js";
+import { ensureE2eTenant } from "./helpers/tenant.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
 config({ path: resolve(REPO_ROOT, ".env") });
 
 const db = getDb();
-const rawItemsRepo = createRawItemsRepo(db);
-const archiveRepo = createRunArchivesRepo(db);
-const mustReadRepo = createMustReadRepo(db);
+const tenantCtx = await ensureE2eTenant();
+const rawItemsRepo = createRawItemsRepo(db, tenantCtx);
+const archiveRepo = createRunArchivesRepo(db, tenantCtx);
+const mustReadRepo = createMustReadRepo(db, tenantCtx);
 
 const MUST_READ_PREFIX = "https://home-e2e-must-read.example.com/";
 const RAW_PREFIX = `home-e2e-${String(Date.now())}`;
@@ -120,6 +122,7 @@ async function insertRawItem(opts: {
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: tenantCtx.tenantId,
       sourceType: "hn",
       externalId: `${RAW_PREFIX}-${opts.externalId}`,
       title: opts.title,
@@ -157,6 +160,7 @@ async function insertArchive(opts: {
   }));
   await db.insert(runArchives).values({
     id: runId,
+    tenantId: tenantCtx.tenantId,
     status: "completed",
     rankedItems,
     topN: rankedItems.length,

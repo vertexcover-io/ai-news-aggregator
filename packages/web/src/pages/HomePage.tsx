@@ -2,39 +2,25 @@ import { useEffect, type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getHome } from "../api/home";
 import { setMeta } from "../lib/meta";
+import {
+  brandDisplayName,
+  useTenantBranding,
+} from "../hooks/useTenantBranding";
 import { ArchiveRow } from "../components/archive-listing/ArchiveRow";
+import { Hero } from "../components/home/Hero";
 import { TodaysIssueBlock } from "../components/home/TodaysIssueBlock";
 import { FromTheCanonBlock } from "../components/home/FromTheCanonBlock";
 import { ElsewhereStrip } from "../components/home/ElsewhereStrip";
 import { InlineSubscribeCard } from "../components/shell/InlineSubscribeCard";
 
-const TAGLINE = "The daily read for people who ship with agents.";
-
-function Hero(): ReactElement {
-  return (
-    <section className="pt-16 pb-14 text-center">
-      <h1 className="font-serif font-medium text-[clamp(40px,6.4vw,68px)] leading-[1.02] tracking-[-0.018em] m-0 mx-auto max-w-[14ch] text-[#14110d]">
-        The daily read for people who ship with{" "}
-        <span className="text-[#8c3a1e] italic font-medium">agents.</span>
-      </h1>
-      <div className="mt-9 mx-auto font-mono text-[11px] tracking-[0.22em] uppercase text-[#14110d] max-w-[820px] leading-[2]">
-        AGENTIC&nbsp;CODING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> HARNESS&nbsp;ENGINEERING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> CONTEXT&nbsp;ENGINEERING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> THE&nbsp;SOFTWARE&nbsp;FACTORY
-      </div>
-      <div className="mt-5 mx-auto font-mono text-[10.5px] tracking-[0.16em] uppercase text-[#6b6557] max-w-[760px]">
-        No model releases. No benchmarks. No discourse. Just the craft.
-      </div>
-    </section>
-  );
-}
-
 export function HomePage(): ReactElement {
+  const branding = useTenantBranding();
+  const displayName = brandDisplayName(branding);
+  const headline = branding.headline;
   useEffect(() => {
-    document.title = "AgentLoop — The daily read for people who ship with agents.";
-    setMeta("description", TAGLINE);
-  }, []);
+    document.title = headline ? `${displayName} — ${headline}` : displayName;
+    setMeta("description", headline ?? "");
+  }, [displayName, headline]);
 
   const { data } = useQuery({
     queryKey: ["home"],
@@ -52,7 +38,7 @@ export function HomePage(): ReactElement {
   return (
     <>
       <hr className="border-0 border-t-2 border-[#14110d] m-0" />
-      <Hero />
+      <Hero branding={branding} />
       <hr className="border-0 border-t-2 border-[#14110d] m-0" />
 
       {todaysIssue ? <TodaysIssueBlock issue={todaysIssue} /> : null}

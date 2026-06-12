@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
-import { requireAdmin } from "../../auth/middleware.js";
+import { requireAuth } from "../../auth/middleware.js";
 import { issueToken, COOKIE_NAME } from "../../auth/session.js";
 import type { SocialTokensRepo, SaveSocialTokenInput } from "../../repositories/social-tokens.js";
 import type {
-  SocialCredentialsRepo,
-  LinkedInCredentialRecord,
-} from "../../repositories/social-credentials.js";
+  AppCredentialsRepo,
+  LinkedInClientRecord,
+} from "../../repositories/app-credentials.js";
 import type { LinkedInOAuthRouterDeps } from "../../routes/linkedin-oauth.js";
 import {
   createLinkedInOAuthRouter,
@@ -20,7 +20,7 @@ const REDIRECT_URI = `${PUBLIC_BASE_URL}/api/admin/social-credentials/linkedin/o
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function authCookie(): string {
-  const token = issueToken(SESSION_SECRET);
+  const token = issueToken({ userId: "00000000-0000-4000-8000-000000000001", tenantId: null, role: "tenant_admin" }, SESSION_SECRET);
   return `${COOKIE_NAME}=${token}`;
 }
 
@@ -53,21 +53,16 @@ function makeRedis(): InMemoryRedis {
   };
 }
 
-/** In-memory social-credentials repo with optional LinkedIn record. */
+/** In-memory app-credentials store (P12) with optional LinkedIn client record. */
 function makeCredRepo(
-  record: LinkedInCredentialRecord | null,
-): SocialCredentialsRepo {
+  record: LinkedInClientRecord | null,
+): Pick<AppCredentialsRepo, "getLinkedInClient" | "getStatus"> {
   return {
     getStatus: vi.fn().mockResolvedValue({
-      linkedin: { configured: record !== null, apiVersion: null, updatedAt: null },
-      twitter: { configured: false, updatedAt: null },
+      linkedinClient: { configured: record !== null, apiVersion: null, updatedAt: null },
       twitterCollector: { configured: false, updatedAt: null },
     }),
-    getLinkedIn: vi.fn().mockResolvedValue(record),
-    upsertLinkedIn: vi.fn().mockResolvedValue({ updatedAt: new Date().toISOString() }),
-    upsertTwitter: vi.fn().mockResolvedValue({ updatedAt: new Date().toISOString() }),
-    upsertTwitterCollector: vi.fn().mockResolvedValue({ updatedAt: new Date().toISOString() }),
-    delete: vi.fn().mockResolvedValue(true),
+    getLinkedInClient: vi.fn().mockResolvedValue(record),
   };
 }
 
@@ -110,6 +105,9 @@ function makeTokenRepo(existingRow?: {
         metadata: existingRow.metadata ?? null,
       });
     },
+    getTwitter(): Promise<null> {
+      return Promise.resolve(null);
+    },
     deleteToken(): Promise<boolean> {
       return Promise.resolve(existingRow !== undefined);
     },
@@ -132,7 +130,7 @@ function buildTestApp(deps: LinkedInOAuthRouterDeps): Hono {
   );
 
   // Admin-gated start + status routes (mirror app.ts gate).
-  const gate = requireAdmin(SESSION_SECRET);
+  const gate = requireAuth(SESSION_SECRET);
   const startRouter = createLinkedInOAuthRouter(deps);
   const gatedApp = new Hono();
   gatedApp.use("*", gate);
@@ -143,7 +141,7 @@ function buildTestApp(deps: LinkedInOAuthRouterDeps): Hono {
 }
 
 // ── fixtures ──────────────────────────────────────────────────────────────────
-const linkedInRecord: LinkedInCredentialRecord = {
+const linkedInRecord: LinkedInClientRecord = {
   clientId: "test-client-id",
   clientSecret: "test-client-secret",
   apiVersion: "202511",
@@ -163,7 +161,7 @@ describe("POST /start", () => {
     const credRepo = makeCredRepo(linkedInRecord);
     const { repo: tokenRepo } = makeTokenRepo();
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -196,7 +194,7 @@ describe("POST /start", () => {
     const credRepo = makeCredRepo(null); // DB empty
     const { repo: tokenRepo } = makeTokenRepo();
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: {}, // no env creds either
@@ -219,7 +217,7 @@ describe("POST /start", () => {
     const credRepo = makeCredRepo(null); // DB empty
     const { repo: tokenRepo } = makeTokenRepo();
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: {
@@ -245,7 +243,7 @@ describe("POST /start", () => {
     const credRepo = makeCredRepo(linkedInRecord);
     const { repo: tokenRepo } = makeTokenRepo();
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -306,7 +304,7 @@ describe("GET /callback", () => {
     const { repo: tokenRepo, saved } = makeTokenRepo();
     const fetchFn = makeFetchSuccess();
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -338,7 +336,7 @@ describe("GET /callback", () => {
     const credRepo = makeCredRepo(linkedInRecord);
     const { repo: tokenRepo, saved } = makeTokenRepo();
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -363,7 +361,7 @@ describe("GET /callback", () => {
     const credRepo = makeCredRepo(linkedInRecord);
     const { repo: tokenRepo, saved } = makeTokenRepo();
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -388,7 +386,7 @@ describe("GET /callback", () => {
     const credRepo = makeCredRepo(linkedInRecord);
     const { repo: tokenRepo } = makeTokenRepo();
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -424,7 +422,7 @@ describe("GET /callback", () => {
     }) as typeof fetch;
 
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -467,7 +465,7 @@ describe("GET /callback", () => {
     }) as typeof fetch;
 
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -514,7 +512,7 @@ describe("GET /callback", () => {
     }) as typeof fetch;
 
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -542,7 +540,7 @@ describe("GET /callback", () => {
     const credRepo = makeCredRepo(linkedInRecord);
     const { repo: tokenRepo } = makeTokenRepo();
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -580,7 +578,7 @@ describe("GET /status", () => {
       metadata: { personUrn: "urn:li:person:123", name: "Alice Smith" },
     });
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -612,7 +610,7 @@ describe("GET /status", () => {
     const credRepo = makeCredRepo(linkedInRecord);
     const { repo: tokenRepo } = makeTokenRepo(); // no row
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -647,7 +645,7 @@ describe("GET /status", () => {
       metadata: null,
     });
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -670,7 +668,7 @@ describe("GET /status", () => {
     const credRepo = makeCredRepo(linkedInRecord);
     const { repo: tokenRepo } = makeTokenRepo();
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },
@@ -709,6 +707,9 @@ describe("GET /callback — name persistence", () => {
       getLinkedIn() {
         return Promise.resolve(null);
       },
+      getTwitter() {
+        return Promise.resolve(null);
+      },
       deleteToken() {
         return Promise.resolve(false);
       },
@@ -733,7 +734,7 @@ describe("GET /callback — name persistence", () => {
     }) as typeof fetch;
 
     const deps: LinkedInOAuthRouterDeps = {
-      getCredRepo: () => credRepo,
+      getAppCredsRepo: () => credRepo,
       getTokenRepo: () => tokenRepo,
       redis,
       env: { PUBLIC_BASE_URL },

@@ -46,8 +46,23 @@ export function createTwitterApiClient(
   options: CreateTwitterApiClientOptions = {},
 ): TwitterApiClient {
   const Ctor = options.TwitterApiCtor ?? TwitterApi;
-  const client = new Ctor(credentials);
+  return wrapTwitterApi(new Ctor(credentials));
+}
 
+/**
+ * Per-tenant OAuth2 posting client (P13, REQ-081): built from the tenant's
+ * user-context access token (3-legged OAuth2). Same `TwitterApiClient`
+ * surface as the OAuth1 client — `client.v2.tweet(...)` underneath.
+ */
+export function createTwitterOAuth2ApiClient(
+  accessToken: string,
+  options: CreateTwitterApiClientOptions = {},
+): TwitterApiClient {
+  const Ctor = options.TwitterApiCtor ?? TwitterApi;
+  return wrapTwitterApi(new Ctor(accessToken));
+}
+
+function wrapTwitterApi(client: TwitterApi): TwitterApiClient {
   const run = async <T>(
     fn: () => Promise<T>,
   ): Promise<

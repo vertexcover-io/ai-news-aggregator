@@ -162,6 +162,8 @@ export class EmailSendError extends Error {
 export interface NewsletterSendJobPayload {
   runId: string;
   subscriberIds: string[] | "all";
+  /** Originating tenant (REQ-060, P9). Optional only for in-flight legacy jobs. */
+  tenantId?: string;
 }
 
 export interface AnalyticsMetrics {
@@ -201,5 +203,6 @@ export * from "./cost-breakdown.js";
 export * from "./must-read.js";
 export * from "./home.js";
 export * from "./sources-summary.js";
+export * from "./source.js";
 export type { Candidate } from "./candidate.js";
 export * from "./collector-health.js";

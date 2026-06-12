@@ -30,6 +30,7 @@ import {
   createAdminArchivesRouter,
   createPublicArchivesRouter,
 } from "@api/routes/archives.js";
+import { ensureE2eTenant } from "./helpers/tenant.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
@@ -37,9 +38,10 @@ config({ path: resolve(REPO_ROOT, ".env") });
 
 const db = getDb();
 const redis = createRedisConnection();
-const rawItemsRepo = createRawItemsRepo(db);
-const archiveRepo = createRunArchivesRepo(db);
-const reviewEditsRepo = createReviewEditsRepo(db);
+const tenantCtx = await ensureE2eTenant();
+const rawItemsRepo = createRawItemsRepo(db, tenantCtx);
+const archiveRepo = createRunArchivesRepo(db, tenantCtx);
+const reviewEditsRepo = createReviewEditsRepo(db, tenantCtx);
 
 // Track seeded resources for cleanup
 const seededRunIds = new Set<string>();
@@ -81,6 +83,7 @@ async function insertRawItem(externalId: string, recap?: {
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: tenantCtx.tenantId,
       sourceType: "hn",
       externalId: `${seedPrefix}-${externalId}`,
       title: `Title for ${externalId}`,
@@ -121,6 +124,7 @@ async function insertArchive(opts: {
 
   await db.insert(runArchives).values({
     id: runId,
+    tenantId: tenantCtx.tenantId,
     status: "completed",
     rankedItems,
     topN: rankedItems.length,

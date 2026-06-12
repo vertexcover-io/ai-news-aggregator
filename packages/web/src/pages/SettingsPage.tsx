@@ -32,10 +32,13 @@ import { ScheduleSection } from "../components/settings/ScheduleSection";
 import { AnalyticsSection } from "../components/settings/AnalyticsSection";
 import { RankingPromptSection } from "../components/settings/RankingPromptSection";
 import { ShortlistPromptSection } from "../components/settings/ShortlistPromptSection";
-import { ShortlistSizeField } from "../components/settings/ShortlistSizeField";
 import { DEFAULT_SHORTLIST_PROMPT } from "@newsletter/shared/constants";
 import { SaveBar } from "../components/settings/SaveBar";
 import { SocialCredentialsPanel } from "../components/SocialCredentialsPanel";
+import { TenantSourcesPanel } from "../components/settings/TenantSourcesPanel";
+import { SendingDomainPanel } from "../components/settings/SendingDomainPanel";
+import { NotificationsPanel } from "../components/settings/NotificationsPanel";
+import { FeaturesPanel } from "../components/settings/FeaturesPanel";
 
 function getDefaults(): SettingsFormValues {
   return {
@@ -239,13 +242,30 @@ export function SettingsPage(): ReactElement {
               register={form.register}
               control={form.control}
             />
-            <ShortlistSizeField />
+            {/* REQ-094: the shortlist-size control is hidden from the tenant
+                dashboard — the form keeps the persisted value (internal
+                default for new tenants) and submits it unchanged. */}
             <ShortlistPromptSection />
             <RankingPromptSection />
           </form>
         </FormProvider>
 
+        {/* Normalized per-tenant source rows (P8, REQ-074): managed inside
+            Settings — never a standalone admin page. */}
+        <TenantSourcesPanel />
+
         <SocialCredentialsPanel />
+
+        {/* Sending-domain verification (P14, REQ-084/085): the broadcast is
+            gated on a verified domain; transactional mail stays on the
+            shared platform sender. */}
+        <SendingDomainPanel />
+
+        {/* Per-tenant notification channels (P16, REQ-090–092). */}
+        <NotificationsPanel />
+
+        {/* Optional feature flags, all off by default (P16, REQ-093). */}
+        <FeaturesPanel />
 
         <SaveBar
           formId="settings-form"

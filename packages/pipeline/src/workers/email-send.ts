@@ -3,6 +3,7 @@ import type { EmailProvider, RankedItemRef, RecapContent, SlackNotifier, Subscri
 import { EmailSendError } from "@newsletter/shared";
 import { withUtmSource } from "@newsletter/shared/utils";
 import type { PipelineSubscribersRepo } from "@pipeline/repositories/subscribers.js";
+import type { PipelineTenantsRepo } from "@pipeline/repositories/tenants.js";
 import type { PipelineEmailSendsRepo } from "@pipeline/repositories/email-sends.js";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { RawItemsRepo, RawItemRow } from "@pipeline/repositories/raw-items.js";
@@ -80,6 +81,19 @@ export interface NewsletterRenderProps {
 export interface EmailSendDeps {
   emailProvider: EmailProvider;
   subscribersRepo: PipelineSubscribersRepo;
+  /**
+   * P14 (REQ-053/EDGE-006): tenant sending-domain lookup for the broadcast
+   * gate. REQUIRED — fail-closed: the gate cannot be disabled by omitting the
+   * repo (a previous optional-with-fail-open default let exactly that happen).
+   * Production (`buildDefaultPublishDeps`) wires `createPipelineTenantsRepo`,
+   * and a broadcast is BLOCKED unless the job tenant's domain status is
+   * `verified`. Targeted sends (welcome/back-issue) and API-side transactional
+   * mail use the shared platform sender and are never gated (EDGE-005).
+   */
+  tenantsRepo: Pick<
+    PipelineTenantsRepo,
+    "getSendingDomainStatus" | "getSendingDomainName"
+  >;
   emailSendsRepo: PipelineEmailSendsRepo;
   archiveRepo: RunArchivesRepo;
   rawItemsRepo: RawItemsRepo;
@@ -96,7 +110,8 @@ export interface EmailSendDeps {
 export interface EmailSendJobLike {
   name: string;
   id?: string;
-  data: { runId?: string; subscriberIds?: string[] | "all" };
+  /** `tenantId` (P9, REQ-060): consumed by the dispatcher to scope publish deps. */
+  data: { runId?: string; subscriberIds?: string[] | "all"; tenantId?: string };
 }
 
 function isRetryable(err: unknown): boolean {
@@ -194,6 +209,45 @@ export async function handleEmailSendJob(
   // would silently no-op. Per-subscriber dedup (the `email_sends` table) already
   // prevents duplicate delivery in both modes.
   if (isBroadcast && archive.emailSentAt !== null) return;
+
+  // P14 broadcast gate (REQ-053/EDGE-006): the subscriber broadcast goes out
+  // from the tenant's own sending domain, so it is BLOCKED until that domain
+  // is verified with Resend. Targeted sends (the welcome back-issue) and all
+  // API-side transactional mail use the shared platform sender and are never
+  // gated (EDGE-005). FAIL-CLOSED: `tenantsRepo` is required, so the gate runs
+  // on every broadcast — an untyped caller omitting it gets a thrown TypeError
+  // here, before any email goes out (never a silent bypass).
+  // Broadcasts from a tenant with a registered+verified domain go out from
+  // `newsletter@<domain>` (REQ-084 follow-through; design VS-2.3). Targeted
+  // sends and tenants without a domain NAME (the grandfathered tenant 0)
+  // keep the shared platform sender.
+  let fromAddress = deps.fromMail;
+  if (isBroadcast) {
+    const domainStatus = await deps.tenantsRepo.getSendingDomainStatus();
+    if (domainStatus !== "verified") {
+      logger.warn(
+        {
+          event: "newsletter-send.broadcast_blocked",
+          runId: archive.id,
+          jobId: job.id,
+          reason: "sending_domain_not_verified",
+          domainStatus: domainStatus ?? "none",
+        },
+        "newsletter-send: broadcast blocked — tenant sending domain not verified",
+      );
+      await deps.slackNotifier?.notifyPublishFailed({
+        runId: archive.id,
+        channel: "email-send",
+        reason: "sending_domain_not_verified",
+      });
+      return;
+    }
+    const domainName = await deps.tenantsRepo.getSendingDomainName();
+    if (domainName !== null) {
+      fromAddress = `newsletter@${domainName}`;
+    }
+  }
+
   const runId = archive.id;
 
   const rawIds = archive.rankedItems.map((r) => r.rawItemId);
@@ -269,7 +323,7 @@ export async function handleEmailSendJob(
             try {
               const result = await deps.emailProvider.send({
                 to: [subscriber.email],
-                from: deps.fromMail,
+                from: fromAddress,
                 replyTo: deps.replyToEmail,
                 subject,
                 html,
