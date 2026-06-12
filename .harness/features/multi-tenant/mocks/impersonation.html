@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viewing as The Inference — Super admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<style>
+  .appbar { top: 38px; } /* sits under the banner */
+  .banner-impersonate { position: sticky; top:0; z-index: 40; }
+  .run-status { font-family:var(--font-mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; }
+</style>
+</head>
+<body>
+  <!-- IMPERSONATION BANNER (super-admin component) -->
+  <div class="banner-impersonate">
+    <span>You’re viewing <b>The&nbsp;Inference</b> as super admin · changes are audited</span>
+    <a class="exit" href="#">Exit impersonation ✕</a>
+  </div>
+
+  <!-- the tenant's own dashboard, rendered as-is -->
+  <div class="appbar"><div class="appbar-inner">
+    <a class="brand" href="#"><svg class="brandmark" width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="45" stroke="currentColor" stroke-width="5" stroke-linecap="round" pathLength="360" stroke-dasharray="344 360" stroke-dashoffset="-55"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wordmark">The Inference</span></a>
+    <nav><a class="active" href="#">Dashboard</a><a href="#">Review</a><a href="#">Sources</a><a href="#">Settings</a><span class="avatar">AL</span></nav>
+  </div></div>
+
+  <div class="shell">
+    <div class="between" style="margin-bottom:24px">
+      <div><p class="kicker kicker-rust">Tenant dashboard</p><h1 class="display">Runs</h1></div>
+      <div class="row"><button class="btn btn-outline">Run now (dry)</button><button class="btn btn-rust">Run now</button></div>
+    </div>
+
+    <div class="note" style="margin-bottom:22px">Scheduled daily at <b>06:00 America/New_York</b> · email at 07:30 · next run in ~14h.</div>
+
+    <div class="card" style="padding:0">
+      <table class="t" style="margin:6px">
+        <thead><tr><th style="padding-left:18px">Run</th><th>Status</th><th>Ranked</th><th>Cost</th><th>Completed</th><th></th></tr></thead>
+        <tbody>
+          <tr class="clickable"><td style="padding-left:18px"><strong>Jun 09</strong><div class="help" style="margin:0">#a91f…</div></td><td><span class="run-status accent">● Ready to review</span></td><td class="kv">12</td><td class="kv" style="color:var(--mute)">$0.21</td><td class="kv" style="color:var(--mute)">2h ago</td><td style="text-align:right;padding-right:18px"><button class="btn btn-outline btn-sm">Review →</button></td></tr>
+          <tr class="clickable"><td style="padding-left:18px"><strong>Jun 08</strong></td><td><span class="run-status" style="color:var(--ok)">● Published</span></td><td class="kv">11</td><td class="kv" style="color:var(--mute)">$0.19</td><td class="kv" style="color:var(--mute)">1d ago</td><td style="text-align:right;padding-right:18px"><button class="btn btn-ghost btn-sm">View</button></td></tr>
+          <tr class="clickable"><td style="padding-left:18px"><strong>Jun 07</strong></td><td><span class="run-status" style="color:var(--ok)">● Published</span></td><td class="kv">10</td><td class="kv" style="color:var(--mute)">$0.18</td><td class="kv" style="color:var(--mute)">2d ago</td><td style="text-align:right;padding-right:18px"><button class="btn btn-ghost btn-sm">View</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

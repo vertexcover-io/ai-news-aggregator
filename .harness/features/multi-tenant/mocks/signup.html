@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign up — AGENTLOOP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<style>
+  .auth-wrap { min-height: 100vh; display: grid; grid-template-columns: 1.05fr 1fr; }
+  .auth-aside { background: var(--ink); color: var(--cream); padding: 56px 56px; display: flex; flex-direction: column; justify-content: space-between; }
+  .auth-aside .wordmark { font-family: var(--font-mono); font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; font-size: 16px; color: #fff; }
+  .auth-aside h1 { font-family: var(--font-serif); font-weight: 500; font-size: clamp(30px,3.6vw,46px); line-height: 1.08; letter-spacing: -0.018em; margin: 0; color: var(--cream); }
+  .auth-aside h1 em { color: #e98f6e; font-style: italic; }
+  .auth-aside .steps { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(251,250,247,.55); line-height: 2.1; }
+  .auth-aside .steps span { color: #e98f6e; }
+  .auth-main { display: grid; place-items: center; padding: 40px 24px; }
+  .auth-card { width: min(380px, 100%); }
+  .auth-card .ey { text-align: center; margin-bottom: 26px; }
+  .auth-card form { margin-top: 6px; }
+  .field-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .err { color: var(--danger); font-size: 12px; margin: 6px 0 0; font-family: var(--font-mono); letter-spacing: .02em; }
+  .input.invalid { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(158,43,26,.12); }
+  .legal { text-align: center; font-size: 11.5px; color: var(--mute); margin-top: 18px; line-height: 1.6; }
+  .switch-auth { text-align: center; font-size: 13px; color: var(--mute); margin-top: 22px; }
+  .switch-auth a { color: var(--rust); text-decoration: none; border-bottom: 1px solid var(--rust); }
+  @media (max-width: 880px){ .auth-wrap { grid-template-columns: 1fr; } .auth-aside { display: none; } }
+</style>
+</head>
+<body>
+<div class="auth-wrap">
+
+  <aside class="auth-aside">
+    <div class="row" style="gap:10px">
+      <svg class="brandmark" style="color:#e98f6e" width="26" height="26" viewBox="0 0 100 100" fill="none" aria-label="logo">
+        <circle cx="50" cy="50" r="45" stroke="currentColor" stroke-width="5" stroke-linecap="round" pathLength="360" stroke-dasharray="344 360" stroke-dashoffset="-55"/>
+        <circle cx="50" cy="50" r="12" fill="currentColor"/>
+      </svg>
+      <span class="wordmark">AGENTLOOP</span>
+    </div>
+
+    <div>
+      <p class="kicker" style="color:rgba(251,250,247,.55)">Run your own newsletter</p>
+      <h1>Curate the day’s signal. <em>Send it before coffee.</em></h1>
+      <p class="lede" style="color:rgba(251,250,247,.72); margin-top:18px; max-width:40ch">
+        Sign up, point it at your sources, and review a ranked digest every morning — no infrastructure to run.
+      </p>
+    </div>
+
+    <div class="steps">
+      01 Account <span>→</span> 02 Brand <span>→</span> 03 Sources <span>→</span> 04 Go live
+    </div>
+  </aside>
+
+  <main class="auth-main">
+    <div class="auth-card">
+      <div class="ey">
+        <p class="kicker kicker-rust">Create account</p>
+        <h2 class="display">Start your newsletter</h2>
+      </div>
+
+      <form onsubmit="return false">
+        <div class="field">
+          <label class="label" for="name">Your name</label>
+          <input class="input" id="name" type="text" placeholder="Ada Lovelace" autocomplete="name">
+        </div>
+
+        <div class="field">
+          <label class="label" for="email">Work email</label>
+          <input class="input" id="email" type="email" placeholder="ada@studio.com" autocomplete="email">
+        </div>
+
+        <div class="field">
+          <div class="field-2">
+            <div>
+              <label class="label" for="pw">Password</label>
+              <input class="input" id="pw" type="password" placeholder="••••••••" autocomplete="new-password">
+            </div>
+            <div>
+              <label class="label" for="pw2">Confirm</label>
+              <input class="input invalid" id="pw2" type="password" placeholder="••••••••" autocomplete="new-password">
+            </div>
+          </div>
+          <p class="err">Passwords don’t match.</p>
+        </div>
+
+        <button class="btn btn-rust btn-block" style="margin-top:6px; padding:12px">Create account &nbsp;→</button>
+        <p class="help" style="text-align:center; margin-top:12px">You’ll head straight into setup. No email verification needed.</p>
+      </form>
+
+      <p class="switch-auth">Already have an account? <a href="#">Log in</a></p>
+      <p class="legal">By creating an account you agree to the Terms & Privacy Policy.</p>
+    </div>
+  </main>
+
+</div>
+</body>
+</html>
