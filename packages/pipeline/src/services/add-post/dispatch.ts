@@ -1,4 +1,5 @@
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemUpsert } from "@pipeline/repositories/raw-items.js";
+import { APP_CREDENTIALS_TENANT_ID } from "@newsletter/shared/constants";
 import {
   fetchHnPost as defaultFetchHnPost,
   parseHnItemIdFromUrl,
@@ -30,19 +31,19 @@ export function detectAddPostSourceType(url: string): AddPostSourceType {
 }
 
 export interface DispatchFetchDeps {
-  fetchHnPost?: (url: string, deps?: FetchHnPostDeps) => Promise<RawItemInsert>;
+  fetchHnPost?: (url: string, deps?: FetchHnPostDeps) => Promise<RawItemUpsert>;
   fetchRedditPost?: (
     url: string,
     deps?: FetchRedditPostDeps,
-  ) => Promise<RawItemInsert>;
+  ) => Promise<RawItemUpsert>;
   fetchWebPost?: (
     url: string,
     deps?: FetchWebPostDeps,
-  ) => Promise<RawItemInsert>;
+  ) => Promise<RawItemUpsert>;
   fetchTwitterPost?: (
     url: string,
     deps?: FetchTwitterPostDeps,
-  ) => Promise<RawItemInsert>;
+  ) => Promise<RawItemUpsert>;
   fetchFn?: typeof fetch;
   signal?: AbortSignal;
 }
@@ -51,7 +52,7 @@ export async function dispatchFetch(
   url: string,
   sourceType: AddPostSourceType,
   deps: DispatchFetchDeps = {},
-): Promise<RawItemInsert> {
+): Promise<RawItemUpsert> {
   const forwarded = { signal: deps.signal, fetchFn: deps.fetchFn };
   switch (sourceType) {
     case "hn": {
@@ -122,7 +123,12 @@ async function loadTwitterDefaults(): Promise<{
       import("rettiwt-api"),
     ]);
 
-    const repo = createSocialCredentialsRepo(getDb(), getCredentialCipher());
+    // Shared collector cookie = app-level credential (F62/F66): tenant 0 store.
+    const repo = createSocialCredentialsRepo(
+      getDb(),
+      APP_CREDENTIALS_TENANT_ID,
+      getCredentialCipher(),
+    );
 
     return {
       rettiwtCtor: Rettiwt as unknown as new (opts: {

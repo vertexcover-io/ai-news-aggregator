@@ -101,7 +101,7 @@ describe("AnalyticsRepo.getMetrics — positional count mapping", () => {
     "REQ-AR01/02/04: $name",
     async ({ counts, expected }) => {
       const db = makeFakeDb(counts);
-      const repo = createAnalyticsRepo(db);
+      const repo = createAnalyticsRepo(db, "00000000-0000-0000-0000-000000000000");
       const result = await repo.getMetrics({ from, to });
       expect(result).toEqual(expected);
     },

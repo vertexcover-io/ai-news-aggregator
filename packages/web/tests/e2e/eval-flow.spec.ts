@@ -14,18 +14,12 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { DEFAULT_RANKING_PROMPT } from "@newsletter/shared/constants";
-import { ADMIN_PASSWORD, makeDbClient } from "./_infra";
+import { adminLogin, makeDbClient } from "./_infra";
 
 
 const SCREENSHOT_DIR =
   "../../.harness/features/ranking-eval-pipeline/verification/screenshots";
 
-async function adminLogin(page: Page): Promise<void> {
-  const res = await page.request.post("/api/admin/login", {
-    data: { password: ADMIN_PASSWORD },
-  });
-  expect(res.ok()).toBe(true);
-}
 
 async function seedDefaultViaUi(page: Page): Promise<void> {
   await adminLogin(page);

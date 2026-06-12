@@ -55,6 +55,12 @@ vi.mock("@pipeline/repositories/run-logs.js", () => ({
   createRunLogRepo: vi.fn(() => ({ append: vi.fn(() => Promise.resolve()) })),
 }));
 
+vi.mock("@pipeline/repositories/user-settings.js", () => ({
+  createUserSettingsRepo: vi.fn(() => ({
+    get: vi.fn(() => Promise.resolve(null)),
+  })),
+}));
+
 vi.mock("@newsletter/shared/logger", () => ({
   createLogger: vi.fn(() => ({
     debug: vi.fn(),

@@ -1,51 +1,63 @@
+/**
+ * Social credential management.
+ *
+ * Two tiers (REQ-082):
+ *   - App-level secrets — the shared LinkedIn OAuth client and the shared
+ *     Twitter collector cookie — are SUPER-ADMIN only and always live in the
+ *     app credentials store (tenant 0), regardless of the requesting host.
+ *   - Tenant-level: tenants connect LinkedIn/Twitter via OAuth only. Manual
+ *     Twitter API-key entry was removed (REQ-081/REQ-086); DELETE /twitter
+ *     remains to clear legacy tenant-0 manual rows.
+ *
+ * Responses never contain secret material — only configured/updatedAt
+ * booleans and timestamps (NF6/REQ-125).
+ */
+
 import { Hono } from "hono";
+import { APP_CREDENTIALS_TENANT_ID } from "@newsletter/shared/constants";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { getDb as defaultGetDb } from "@newsletter/shared";
+import { requireSuperAdmin } from "@api/auth/middleware.js";
 import {
   linkedinUpsertSchema,
   twitterCollectorUpsertSchema,
-  twitterUpsertSchema,
 } from "@api/lib/validate-social-credentials.js";
 import {
   createSocialCredentialsRepo,
-  type SocialCredentialPlatform,
   type SocialCredentialsRepo,
 } from "@api/repositories/social-credentials.js";
-import {
-  createSocialTokensRepo,
-  type SocialTokensRepo,
-} from "@api/repositories/social-tokens.js";
 
 export interface AdminSocialCredentialsRouterDeps {
-  getRepo: () => SocialCredentialsRepo;
-  /**
-   * Token repo, used to also clear the OAuth access/refresh token when LinkedIn
-   * credentials are cleared. Optional so existing callers/tests that only set
-   * getRepo keep working (the token clear is then skipped).
-   */
-  getTokenRepo?: () => SocialTokensRepo;
+  getRepo: (tenantId: string) => SocialCredentialsRepo;
+  /** Verifies the session cookie for the super-admin-only routes. */
+  sessionSecret: string;
 }
-
-// Public URL slug → internal storage key. The slug stays kebab-case in the URL
-// for HTTP convention; the storage layer uses snake_case for the Postgres enum
-// value.
-const PLATFORM_SLUG_TO_KEY: Partial<Record<string, SocialCredentialPlatform>> = {
-  linkedin: "linkedin",
-  twitter: "twitter",
-  "twitter-collector": "twitter_collector",
-};
 
 export function createAdminSocialCredentialsRouter(
   deps: AdminSocialCredentialsRouterDeps,
 ): Hono {
   const app = new Hono();
+  const superAdmin = requireSuperAdmin(deps.sessionSecret);
+  const appRepo = (): SocialCredentialsRepo =>
+    deps.getRepo(APP_CREDENTIALS_TENANT_ID);
 
+  // Status: app-level entries (linkedin client, collector cookie) come from
+  // the app store; the legacy manual twitter entry is tenant-scoped.
   app.get("/", async (c) => {
-    const status = await deps.getRepo().getStatus();
-    return c.json(status);
+    const [appStatus, tenantStatus] = await Promise.all([
+      appRepo().getStatus(),
+      deps.getRepo(getTenantId(c)).getStatus(),
+    ]);
+    return c.json({
+      linkedin: appStatus.linkedin,
+      twitter: tenantStatus.twitter,
+      twitterCollector: appStatus.twitterCollector,
+    });
   });
 
-  app.put("/linkedin", async (c) => {
+  // Shared LinkedIn OAuth app client — super admin, app store (REQ-082).
+  app.put("/linkedin", superAdmin, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = linkedinUpsertSchema.safeParse(body);
     if (!parsed.success) {
@@ -54,24 +66,17 @@ export function createAdminSocialCredentialsRouter(
         400,
       );
     }
-    const { updatedAt } = await deps.getRepo().upsertLinkedIn(parsed.data);
+    const { updatedAt } = await appRepo().upsertLinkedIn(parsed.data);
     return c.json({ ok: true, configured: true, updatedAt });
   });
 
-  app.put("/twitter", async (c) => {
-    const body: unknown = await c.req.json().catch(() => null);
-    const parsed = twitterUpsertSchema.safeParse(body);
-    if (!parsed.success) {
-      return c.json(
-        { error: "invalid_body", issues: parsed.error.issues },
-        400,
-      );
-    }
-    const { updatedAt } = await deps.getRepo().upsertTwitter(parsed.data);
-    return c.json({ ok: true, configured: true, updatedAt });
+  app.delete("/linkedin", superAdmin, async (c) => {
+    const removed = await appRepo().delete("linkedin");
+    return c.json({ ok: true, removed });
   });
 
-  app.put("/twitter-collector", async (c) => {
+  // Shared Twitter collector cookie — super admin, app store (REQ-086).
+  app.put("/twitter-collector", superAdmin, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = twitterCollectorUpsertSchema.safeParse(body);
     if (!parsed.success) {
@@ -80,26 +85,24 @@ export function createAdminSocialCredentialsRouter(
         400,
       );
     }
-    const { updatedAt } = await deps
-      .getRepo()
-      .upsertTwitterCollector(parsed.data);
+    const { updatedAt } = await appRepo().upsertTwitterCollector(parsed.data);
     return c.json({ ok: true, configured: true, updatedAt });
   });
 
-  app.delete("/:platform", async (c) => {
-    const slug = c.req.param("platform");
-    const key = PLATFORM_SLUG_TO_KEY[slug];
-    if (key === undefined) {
-      return c.json({ error: "invalid_platform" }, 400);
-    }
-    const removed = await deps.getRepo().delete(key);
-    // Clearing LinkedIn credentials must also clear the OAuth access/refresh
-    // token — otherwise the connection still shows "Connected" with an orphaned
-    // social_tokens row after the client creds are gone.
-    if (key === "linkedin" && deps.getTokenRepo) {
-      await deps.getTokenRepo().deleteToken("linkedin");
-    }
+  app.delete("/twitter-collector", superAdmin, async (c) => {
+    const removed = await appRepo().delete("twitter_collector");
     return c.json({ ok: true, removed });
+  });
+
+  // Legacy manual Twitter OAuth1 keys: entry removed (REQ-081 — tenants
+  // connect via OAuth only); deletion remains to clear old rows.
+  app.delete("/twitter", async (c) => {
+    const removed = await deps.getRepo(getTenantId(c)).delete("twitter");
+    return c.json({ ok: true, removed });
+  });
+
+  app.delete("/:platform", (c) => {
+    return c.json({ error: "invalid_platform" }, 400);
   });
 
   return app;
@@ -107,9 +110,10 @@ export function createAdminSocialCredentialsRouter(
 
 export function createDefaultAdminSocialCredentialsRouter(): Hono {
   return createAdminSocialCredentialsRouter({
-    getRepo: () =>
-      createSocialCredentialsRepo(defaultGetDb(), getCredentialCipher()),
-    getTokenRepo: () =>
-      createSocialTokensRepo(defaultGetDb(), getCredentialCipher()),
+    getRepo: (tenantId) =>
+      createSocialCredentialsRepo(defaultGetDb(), tenantId, getCredentialCipher()),
+    // Validated at startup in index.ts — safe to assert here.
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    sessionSecret: process.env.SESSION_SECRET!,
   });
 }

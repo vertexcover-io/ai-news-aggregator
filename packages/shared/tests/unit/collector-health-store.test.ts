@@ -31,6 +31,9 @@ class FakeRedis {
   }
 }
 
+const TENANT_A = "11111111-1111-4111-8111-111111111111";
+const TENANT_B = "22222222-2222-4222-8222-222222222222";
+
 describe("createCollectorHealthStore", () => {
   let redis: FakeRedis;
 
@@ -40,7 +43,7 @@ describe("createCollectorHealthStore", () => {
 
   // REQ-005, REQ-006: set then getSnapshot round-trips a healthy result
   it("set then getSnapshot returns the stored healthy result (REQ-005/REQ-006)", async () => {
-    const store = createCollectorHealthStore(redis);
+    const store = createCollectorHealthStore(redis, TENANT_A);
     const result: CollectorHealthResult = {
       collector: "hn",
       status: "healthy",
@@ -60,7 +63,7 @@ describe("createCollectorHealthStore", () => {
 
   // REQ-005, REQ-006: set then getSnapshot round-trips a failed result
   it("set then getSnapshot returns the stored failed result (REQ-005/REQ-006)", async () => {
-    const store = createCollectorHealthStore(redis);
+    const store = createCollectorHealthStore(redis, TENANT_A);
     const result: CollectorHealthResult = {
       collector: "twitter",
       status: "failed",
@@ -80,14 +83,14 @@ describe("createCollectorHealthStore", () => {
 
   // REQ-008, EDGE-006: getSnapshot always returns exactly 5 entries
   it("getSnapshot returns exactly 5 entries even when nothing is set (REQ-008/EDGE-006)", async () => {
-    const store = createCollectorHealthStore(redis);
+    const store = createCollectorHealthStore(redis, TENANT_A);
     const snapshot = await store.getSnapshot();
     expect(snapshot.collectors).toHaveLength(5);
   });
 
   // REQ-008, EDGE-006: unset collectors synthesize status:"never"
   it("unset collectors come back as status:never with all nulls (REQ-008/EDGE-006)", async () => {
-    const store = createCollectorHealthStore(redis);
+    const store = createCollectorHealthStore(redis, TENANT_A);
     const snapshot = await store.getSnapshot();
     for (const entry of snapshot.collectors) {
       expect(entry.status).toBe("never");
@@ -101,7 +104,7 @@ describe("createCollectorHealthStore", () => {
 
   // REQ-008: snapshot entries are in HEALTH_CHECKABLE_COLLECTORS order
   it("getSnapshot entries are ordered per HEALTH_CHECKABLE_COLLECTORS (REQ-008)", async () => {
-    const store = createCollectorHealthStore(redis);
+    const store = createCollectorHealthStore(redis, TENANT_A);
     const snapshot = await store.getSnapshot();
     const returned = snapshot.collectors.map((c) => c.collector);
     expect(returned).toEqual([...HEALTH_CHECKABLE_COLLECTORS]);
@@ -109,7 +112,7 @@ describe("createCollectorHealthStore", () => {
 
   // REQ-007: set uses NO TTL — assert ttl(key) === -1 (persistent)
   it("set stores the key with no TTL — ttl returns -1 (REQ-007)", async () => {
-    const store = createCollectorHealthStore(redis);
+    const store = createCollectorHealthStore(redis, TENANT_A);
     const result: CollectorHealthResult = {
       collector: "reddit",
       status: "healthy",
@@ -121,13 +124,13 @@ describe("createCollectorHealthStore", () => {
     };
 
     await store.set(result);
-    const ttl = await redis.ttl(collectorHealthKey("reddit"));
+    const ttl = await redis.ttl(collectorHealthKey(TENANT_A, "reddit"));
     expect(ttl).toBe(-1); // persistent, no expiry
   });
 
   // REQ-003: setRunning writes status:"running" with correct trigger and durationMs:null
   it("setRunning writes status:running, correct trigger, durationMs:null (REQ-003)", async () => {
-    const store = createCollectorHealthStore(redis);
+    const store = createCollectorHealthStore(redis, TENANT_A);
     const now = new Date("2026-06-03T10:00:00.000Z");
 
     await store.setRunning("blog", "manual", now);
@@ -145,18 +148,18 @@ describe("createCollectorHealthStore", () => {
 
   // setRunning also has no TTL
   it("setRunning stores key with no TTL (REQ-007)", async () => {
-    const store = createCollectorHealthStore(redis);
+    const store = createCollectorHealthStore(redis, TENANT_A);
     await store.setRunning("web_search", "scheduled", new Date());
-    const ttl = await redis.ttl(collectorHealthKey("web_search"));
+    const ttl = await redis.ttl(collectorHealthKey(TENANT_A, "web_search"));
     expect(ttl).toBe(-1);
   });
 
   // Malformed JSON at a key → synthesize "never" (defensive read at boundary)
   it("malformed JSON at a Redis key is treated as never (defensive read)", async () => {
     // Manually corrupt a key in the fake store
-    await redis.set(collectorHealthKey("hn"), "{this is not json}");
+    await redis.set(collectorHealthKey(TENANT_A, "hn"), "{this is not json}");
 
-    const store = createCollectorHealthStore(redis);
+    const store = createCollectorHealthStore(redis, TENANT_A);
     const snapshot = await store.getSnapshot();
 
     const entry = snapshot.collectors.find((c) => c.collector === "hn");
@@ -165,9 +168,46 @@ describe("createCollectorHealthStore", () => {
     expect(entry?.checkedAt).toBeNull();
   });
 
+  // Cross-tenant isolation: scheduler.ts creates one scheduled collector-health
+  // job PER TENANT, so results must land under tenant-scoped keys — tenant B's
+  // check must not clobber tenant A's snapshot or leak reason/detail strings.
+  it(
+    "keeps one tenant's snapshot isolated from another tenant's scheduled check",
+    async () => {
+      const tenantAStore = createCollectorHealthStore(redis, TENANT_A);
+      const tenantBStore = createCollectorHealthStore(redis, TENANT_B);
+
+      await tenantAStore.set({
+        collector: "reddit",
+        status: "healthy",
+        trigger: "scheduled",
+        checkedAt: "2026-06-10T09:00:00.000Z",
+        durationMs: 200,
+        reason: null,
+        detail: null,
+      });
+      await tenantBStore.set({
+        collector: "reddit",
+        status: "failed",
+        trigger: "scheduled",
+        checkedAt: "2026-06-10T09:05:00.000Z",
+        durationMs: 900,
+        reason: "tenant-b: r/secretsub returned 403",
+        detail: null,
+      });
+
+      const tenantASnapshot = await tenantAStore.getSnapshot();
+      const reddit = tenantASnapshot.collectors.find(
+        (c) => c.collector === "reddit",
+      );
+      expect(reddit?.status).toBe("healthy");
+      expect(reddit?.reason ?? "").not.toContain("tenant-b");
+    },
+  );
+
   // Partial snapshot: one set, rest never
   it("returns set collector alongside never-synthesized ones", async () => {
-    const store = createCollectorHealthStore(redis);
+    const store = createCollectorHealthStore(redis, TENANT_A);
     await store.set({
       collector: "reddit",
       status: "healthy",

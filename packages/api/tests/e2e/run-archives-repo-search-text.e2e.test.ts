@@ -4,6 +4,7 @@
  * removed-item case.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { sql } from "drizzle-orm";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,8 +22,8 @@ const { createRunArchivesRepo } = await import(
 const { createRawItemsRepo } = await import("@api/repositories/raw-items.js");
 
 const db = getDb();
-const repo = createRunArchivesRepo(db);
-const rawRepo = createRawItemsRepo(db);
+const repo = createRunArchivesRepo(db, TENANT_ZERO_ID);
+const rawRepo = createRawItemsRepo(db, TENANT_ZERO_ID);
 
 const seedRunId = "22222222-2222-2222-2222-222222222222";
 const seedExternalIdA = `phase3-search-A-${Date.now()}`;
@@ -39,6 +40,8 @@ beforeAll(async () => {
   const [{ id: idA }] = await db
     .insert(rawItems)
     .values({
+      tenantId: TENANT_ZERO_ID,
+      tenantId: TENANT_ZERO_ID,
       sourceType: "hn",
       externalId: seedExternalIdA,
       title: "Quantum Cromulence in Café Society",
@@ -61,6 +64,8 @@ beforeAll(async () => {
   const [{ id: idB }] = await db
     .insert(rawItems)
     .values({
+      tenantId: TENANT_ZERO_ID,
+      tenantId: TENANT_ZERO_ID,
       sourceType: "reddit",
       externalId: seedExternalIdB,
       title: "REMOVED_ITEM_TITLE_TOKEN",
@@ -81,6 +86,7 @@ beforeAll(async () => {
   rawItemIdB = idB;
 
   await db.insert(runArchives).values({
+    tenantId: TENANT_ZERO_ID,
     id: seedRunId,
     status: "completed",
     rankedItems: [],

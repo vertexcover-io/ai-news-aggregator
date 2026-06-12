@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 import { createLogger, getDb as defaultGetDb } from "@newsletter/shared";
 import type { PublicMustReadEntry } from "@newsletter/shared";
 import {
@@ -8,7 +9,7 @@ import {
 } from "@api/repositories/must-read.js";
 
 export interface PublicMustReadRouterDeps {
-  getMustReadRepo: () => MustReadRepo;
+  getMustReadRepo: (tenantId: string) => MustReadRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -20,7 +21,7 @@ export function createPublicMustReadRouter(
 
   app.get("/", async (c) => {
     try {
-      const rows = await deps.getMustReadRepo().listPublic();
+      const rows = await deps.getMustReadRepo(getTenantId(c)).listPublic();
       const body: PublicMustReadEntry[] = rows.map(toPublicWire);
       return c.json(body);
     } catch (err) {
@@ -34,6 +35,6 @@ export function createPublicMustReadRouter(
 
 export function createDefaultPublicMustReadRouter(): Hono {
   return createPublicMustReadRouter({
-    getMustReadRepo: () => createMustReadRepo(defaultGetDb()),
+    getMustReadRepo: (tenantId) => createMustReadRepo(defaultGetDb(), tenantId),
   });
 }

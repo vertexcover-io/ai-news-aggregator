@@ -1,5 +1,5 @@
 import { desc } from "drizzle-orm";
-import { bigserial, boolean, index, integer, jsonb, pgTable, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigserial, boolean, customType, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type {
   NotificationState,
   RawItemEngagement,
@@ -15,8 +15,10 @@ import type {
   RunSubmitTwitterConfig,
   RunSubmitWebConfig,
   RunSubmitWebSearchConfig,
+  RunSubmitWebSource,
   SocialMetadata,
   SocialTokenMetadata,
+  WebSearchQueryConfig,
 } from "@shared/types/index.js";
 import type { RunCostBreakdown } from "@shared/types/cost-breakdown.js";
 import type { EncryptedBlob } from "@shared/services/credential-cipher.js";
@@ -24,8 +26,161 @@ import type { EditType, PreReviewSnapshot } from "@shared/review-edits/types.js"
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter" | "web_search";
 
+const bytea = customType<{ data: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
+
+export type TenantStatus = "pending_setup" | "active";
+
+export interface TenantOnboarding {
+  furthestStep: number;
+  completed: string[];
+  /** Newsletter description typed for prompt generation; persists so the
+   * wizard's resume path keeps the discovery topic (REQ-032). */
+  description?: string;
+}
+
+export const tenants = pgTable("tenants", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull().unique(),
+  previousSlug: text("previous_slug"),
+  name: text("name").notNull(),
+  status: text("status").$type<TenantStatus>().notNull().default("pending_setup"),
+  headline: text("headline"),
+  topicStrip: text("topic_strip"),
+  subtagline: text("subtagline"),
+  logo: bytea("logo"),
+  logoContentType: text("logo_content_type"),
+  logoVersion: integer("logo_version").notNull().default(0),
+  canonEnabled: boolean("canon_enabled").notNull().default(false),
+  deliverabilityEnabled: boolean("deliverability_enabled").notNull().default(false),
+  evalEnabled: boolean("eval_enabled").notNull().default(false),
+  onboarding: jsonb("onboarding").$type<TenantOnboarding | null>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type TenantInsert = typeof tenants.$inferInsert;
+export type TenantSelect = typeof tenants.$inferSelect;
+
+export type UserRole = "tenant_admin" | "super_admin";
+
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").references(() => tenants.id),
+    email: text("email").notNull().unique(),
+    name: text("name"),
+    passwordHash: text("password_hash").notNull(),
+    role: text("role").$type<UserRole>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("users_tenant_id_uq").on(t.tenantId)],
+);
+
+export type UserInsert = typeof users.$inferInsert;
+export type UserSelect = typeof users.$inferSelect;
+
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type PasswordResetTokenInsert = typeof passwordResetTokens.$inferInsert;
+export type PasswordResetTokenSelect = typeof passwordResetTokens.$inferSelect;
+
+export const impersonationEvents = pgTable("impersonation_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  superAdminUserId: uuid("super_admin_user_id").notNull().references(() => users.id),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
+  action: text("action").$type<"start" | "stop">().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type ImpersonationEventInsert = typeof impersonationEvents.$inferInsert;
+export type ImpersonationEventSelect = typeof impersonationEvents.$inferSelect;
+
+export type SendingDomainStatus = "pending" | "verified" | "failed";
+
+export interface SendingDomainDnsRecord {
+  record: string;
+  name: string;
+  type: string;
+  value: string;
+  status?: string;
+}
+
+export const sendingDomains = pgTable("sending_domains", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id).unique(),
+  domain: text("domain").notNull(),
+  resendDomainId: text("resend_domain_id"),
+  status: text("status").$type<SendingDomainStatus>().notNull().default("pending"),
+  dnsRecords: jsonb("dns_records").$type<SendingDomainDnsRecord[] | null>(),
+  failureReason: text("failure_reason"),
+  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type SendingDomainInsert = typeof sendingDomains.$inferInsert;
+export type SendingDomainSelect = typeof sendingDomains.$inferSelect;
+
+export type TenantSourceType = "hn" | "reddit" | "web" | "twitter" | "web_search";
+
+export interface SourceRedditConfig {
+  subreddit: string;
+  sort?: "hot" | "new" | "top";
+  limit?: number;
+  sinceDays: number;
+}
+
+export type SourceTwitterConfig =
+  | { kind: "list"; listId: string }
+  | { kind: "user"; handle: string; userId: string };
+
+export type SourceConfig =
+  | RunSubmitHnConfig
+  | SourceRedditConfig
+  | RunSubmitWebSource
+  | SourceTwitterConfig
+  | WebSearchQueryConfig;
+
+export interface SourceHealth {
+  status: "ok" | "failing";
+  lastCheckedAt: string;
+  message?: string;
+}
+
+export const sources = pgTable(
+  "sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
+    type: text("type").$type<TenantSourceType>().notNull(),
+    config: jsonb("config").$type<SourceConfig>().notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    health: jsonb("health").$type<SourceHealth | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("sources_tenant_id_type_idx").on(t.tenantId, t.type)],
+);
+
+export type SourceInsert = typeof sources.$inferInsert;
+export type SourceSelect = typeof sources.$inferSelect;
+
 export const rawItems = pgTable("raw_items", {
   id: serial("id").primaryKey(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
   sourceType: text("source_type").$type<SourceType>().notNull(),
   externalId: text("external_id").notNull(),
   title: text("title").notNull(),
@@ -42,14 +197,16 @@ export const rawItems = pgTable("raw_items", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   runId: uuid("run_id"),
 }, (t) => [
-  unique("raw_items_source_type_external_id_unique").on(t.sourceType, t.externalId),
+  unique("raw_items_tenant_source_type_external_id_unique").on(t.tenantId, t.sourceType, t.externalId),
   index("raw_items_run_id_idx").on(t.runId),
+  index("raw_items_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type RawItemInsert = typeof rawItems.$inferInsert;
 
 export const runArchives = pgTable("run_archives", {
   id: uuid("id").primaryKey(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
   status: text("status").$type<"completed" | "failed" | "cancelled">().notNull(),
   rankedItems: jsonb("ranked_items").$type<RankedItemRef[]>().notNull(),
   topN: integer("top_n").notNull(),
@@ -79,12 +236,13 @@ export const runArchives = pgTable("run_archives", {
   runFunnel: jsonb("run_funnel").$type<RunFunnel | null>(),
   shortlistedItemIds: jsonb("shortlisted_item_ids").$type<number[] | null>(),
   preReviewSnapshot: jsonb("pre_review_snapshot").$type<PreReviewSnapshot | null>(),
-});
+}, (t) => [index("run_archives_tenant_id_idx").on(t.tenantId)]);
 
 export const runLogs = pgTable(
   "run_logs",
   {
     id: bigserial("id", { mode: "number" }).primaryKey(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
     runId: uuid("run_id").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     level: text("level").$type<RunLogLevel>().notNull(),
@@ -94,7 +252,10 @@ export const runLogs = pgTable(
     message: text("message").notNull(),
     context: jsonb("context").$type<RunLogContext | null>(),
   },
-  (t) => [index("run_logs_run_id_id_idx").on(t.runId, t.id)],
+  (t) => [
+    index("run_logs_run_id_id_idx").on(t.runId, t.id),
+    index("run_logs_tenant_id_idx").on(t.tenantId),
+  ],
 );
 
 export type RunLogRow = typeof runLogs.$inferSelect;
@@ -105,15 +266,20 @@ export interface SocialTokenEncryptedFields {
   refreshToken: EncryptedBlob;
 }
 
-export const socialTokens = pgTable("social_tokens", {
-  platform: text("platform").primaryKey().$type<"linkedin" | "twitter">(),
-  encryptedFields: jsonb("encrypted_fields")
-    .notNull()
-    .$type<SocialTokenEncryptedFields>(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  metadata: jsonb("metadata").$type<SocialTokenMetadata | null>(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const socialTokens = pgTable(
+  "social_tokens",
+  {
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
+    platform: text("platform").$type<"linkedin" | "twitter">().notNull(),
+    encryptedFields: jsonb("encrypted_fields")
+      .notNull()
+      .$type<SocialTokenEncryptedFields>(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    metadata: jsonb("metadata").$type<SocialTokenMetadata | null>(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.platform] })],
+);
 
 export type SocialTokenInsert = typeof socialTokens.$inferInsert;
 export type SocialTokenSelect = typeof socialTokens.$inferSelect;
@@ -136,17 +302,22 @@ export interface TwitterCollectorEncryptedFields {
 
 export type SocialCredentialPlatform = "linkedin" | "twitter" | "twitter_collector";
 
-export const socialCredentials = pgTable("social_credentials", {
-  platform: text("platform").primaryKey().$type<SocialCredentialPlatform>(),
-  encryptedFields: jsonb("encrypted_fields")
-    .notNull()
-    .$type<
-      LinkedInEncryptedFields | TwitterEncryptedFields | TwitterCollectorEncryptedFields
-    >(),
-  metadata: jsonb("metadata").$type<{ apiVersion?: string } | null>(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedBy: text("updated_by"),
-});
+export const socialCredentials = pgTable(
+  "social_credentials",
+  {
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
+    platform: text("platform").$type<SocialCredentialPlatform>().notNull(),
+    encryptedFields: jsonb("encrypted_fields")
+      .notNull()
+      .$type<
+        LinkedInEncryptedFields | TwitterEncryptedFields | TwitterCollectorEncryptedFields
+      >(),
+    metadata: jsonb("metadata").$type<{ apiVersion?: string } | null>(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by"),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.platform] })],
+);
 
 export type SocialCredentialInsert = typeof socialCredentials.$inferInsert;
 export type SocialCredentialSelect = typeof socialCredentials.$inferSelect;
@@ -157,6 +328,7 @@ export const userSettings = pgTable(
   "user_settings",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
     singleton: boolean("singleton").notNull().default(true),
     topN: integer("top_n").notNull(),
     shortlistSize: integer("shortlist_size").notNull(),
@@ -186,9 +358,11 @@ export const userSettings = pgTable(
     linkedinEnabled: boolean("linkedin_enabled").notNull().default(true),
     twitterPostEnabled: boolean("twitter_post_enabled").notNull().default(true),
     autoReview: boolean("auto_review").notNull().default(false),
+    notificationEmail: text("notification_email"),
+    slackWebhookEncrypted: jsonb("slack_webhook_encrypted").$type<EncryptedBlob | null>(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("user_settings_singleton_uq").on(t.singleton)],
+  (t) => [uniqueIndex("user_settings_tenant_uq").on(t.tenantId)],
 );
 
 export type UserSettingsInsert = typeof userSettings.$inferInsert;
@@ -198,7 +372,8 @@ export const mustReadEntries = pgTable(
   "must_read_entries",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    url: text("url").notNull().unique(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
+    url: text("url").notNull(),
     title: text("title").notNull(),
     author: text("author"),
     year: integer("year"),
@@ -206,7 +381,10 @@ export const mustReadEntries = pgTable(
     addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("must_read_entries_added_at_idx").on(desc(t.addedAt))],
+  (t) => [
+    index("must_read_entries_added_at_idx").on(desc(t.addedAt)),
+    unique("must_read_entries_tenant_url_unique").on(t.tenantId, t.url),
+  ],
 );
 
 export type MustReadEntry = typeof mustReadEntries.$inferSelect;
@@ -216,6 +394,7 @@ export type SubscriberStatus = "pending" | "confirmed" | "unsubscribed" | "bounc
 
 export const subscribers = pgTable("subscribers", {
   id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
   email: text("email").notNull(),
   status: text("status").$type<SubscriberStatus>().notNull().default("pending"),
   confirmToken: text("confirm_token"),
@@ -225,7 +404,8 @@ export const subscribers = pgTable("subscribers", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  uniqueIndex("subscribers_email_uq").on(t.email),
+  uniqueIndex("subscribers_tenant_email_uq").on(t.tenantId, t.email),
+  index("subscribers_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type SubscriberInsert = typeof subscribers.$inferInsert;
@@ -233,12 +413,14 @@ export type SubscriberSelect = typeof subscribers.$inferSelect;
 
 export const emailSends = pgTable("email_sends", {
   id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
   subscriberId: uuid("subscriber_id").notNull().references(() => subscribers.id),
   runArchiveId: uuid("run_archive_id").notNull().references(() => runArchives.id),
   messageId: text("message_id"),
   sentAt: timestamp("sent_at").notNull().defaultNow(),
 }, (t) => [
   unique("email_sends_subscriber_archive_uq").on(t.subscriberId, t.runArchiveId),
+  index("email_sends_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type EmailSendInsert = typeof emailSends.$inferInsert;
@@ -253,6 +435,7 @@ export type FeedbackRating = "love" | "meh" | "nah";
 // never upserted in place.
 export const feedbackEvents = pgTable("feedback_events", {
   id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
   subscriberId: uuid("subscriber_id").notNull().references(() => subscribers.id),
   campaign: text("campaign").notNull(),
   rating: text("rating").$type<FeedbackRating>().notNull(),
@@ -270,6 +453,7 @@ export type SesEventType = "delivery" | "bounce" | "complaint" | "open" | "click
 
 export const sesEvents = pgTable("ses_events", {
   id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
   messageId: text("message_id").notNull(),
   eventType: text("event_type").$type<SesEventType>().notNull(),
   subscriberId: uuid("subscriber_id"),
@@ -285,6 +469,7 @@ export type SesEventSelect = typeof sesEvents.$inferSelect;
 
 export const evalRuns = pgTable("eval_runs", {
   id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
   mode: text("mode").notNull(),
   fixtureId: text("fixture_id"),
   date: text("date"),
@@ -309,6 +494,7 @@ export type EvalRunSelect = typeof evalRuns.$inferSelect;
 
 export const reviewEdits = pgTable("review_edits", {
   id: bigserial("id", { mode: "bigint" }).primaryKey(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
   runId: uuid("run_id").notNull().references(() => runArchives.id, { onDelete: "cascade" }),
   editType: text("edit_type").$type<EditType>().notNull(),
   rawItemId: integer("raw_item_id"),

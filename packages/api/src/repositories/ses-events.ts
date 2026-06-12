@@ -3,17 +3,18 @@ import type { AppDb } from "@newsletter/shared/db";
 import type { SesEventInsert, SesEventSelect } from "@newsletter/shared";
 
 export interface SesEventsRepo {
-  upsert(insert: SesEventInsert): Promise<SesEventSelect>;
+  upsert(insert: Omit<SesEventInsert, "tenantId">): Promise<SesEventSelect>;
 }
 
 export function createSesEventsRepo(
   db: Pick<AppDb, "insert">,
+  tenantId: string,
 ): SesEventsRepo {
   return {
-    async upsert(insert: SesEventInsert): Promise<SesEventSelect> {
+    async upsert(insert: Omit<SesEventInsert, "tenantId">): Promise<SesEventSelect> {
       const [row] = await db
         .insert(sesEvents)
-        .values(insert)
+        .values({ ...insert, tenantId })
         .onConflictDoUpdate({
           target: [sesEvents.messageId, sesEvents.eventType],
           set: { occurredAt: insert.occurredAt },

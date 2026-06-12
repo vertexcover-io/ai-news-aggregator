@@ -4,9 +4,9 @@ import { resolve, join } from "node:path";
 import type IORedis from "ioredis";
 import type { Queue, JobsOptions } from "bullmq";
 import { startRun } from "@shared/run-start.js";
-import type { RunProcessJobPayload } from "@shared/run-start.js";
-import type { UserSettings } from "@shared/types/settings.js";
-import type { RunState } from "@shared/types/run.js";
+import { TENANT_ZERO_ID } from "@shared/constants/tenant.js";
+import type { RunProcessJobPayload, StartRunSettings } from "@shared/run-start.js";
+import type { RunCollectorsPayload, RunState } from "@shared/types/run.js";
 
 interface RedisEntry {
   value: string;
@@ -41,22 +41,14 @@ function makeQueue(): {
   return { add, queue };
 }
 
-const baseSettings: UserSettings = {
-  id: "settings-id",
+const baseSettings: StartRunSettings = {
   topN: 10,
   halfLifeHours: 24,
-  hnEnabled: true,
-  hnConfig: { sinceDays: 1 },
-  redditEnabled: true,
-  redditConfig: { subreddits: ["LocalLLaMA"], sinceDays: 1 },
-  webEnabled: false,
-  webConfig: null,
-  twitterEnabled: false,
-  twitterConfig: null,
-  scheduleTime: "07:00",
-  scheduleTimezone: "America/Los_Angeles",
-  scheduleEnabled: false,
-  updatedAt: "2026-04-14T00:00:00.000Z",
+};
+
+const baseCollectors: RunCollectorsPayload = {
+  hn: { sinceDays: 1 },
+  reddit: { subreddits: ["LocalLLaMA"], sinceDays: 1 },
 };
 
 describe("startRun", () => {
@@ -65,7 +57,7 @@ describe("startRun", () => {
     const q = makeQueue();
     const fixedId = "11111111-2222-3333-4444-555555555555";
 
-    const { runId } = await startRun(baseSettings, {
+    const { runId } = await startRun(baseSettings, baseCollectors, {
       redis: redis as unknown as IORedis,
       queue: q.queue,
       runId: () => fixedId,
@@ -103,7 +95,7 @@ describe("startRun", () => {
     const q = makeQueue();
     const fixedId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
-    const { runId } = await startRun(baseSettings, {
+    const { runId } = await startRun(baseSettings, baseCollectors, {
       redis: redis as unknown as IORedis,
       queue: q.queue,
       runId: () => fixedId,
@@ -128,20 +120,13 @@ describe("startRun", () => {
     expect(payload.halfLifeHours).toBe(24);
   });
 
-  it("includes web source when webConfig is set and omits disabled sources", async () => {
+  it("includes the web source and omits absent collectors", async () => {
     const redis = makeRedis();
     const q = makeQueue();
     const fixedId = "cccccccc-dddd-eeee-ffff-000000000000";
 
-    const webSettings: UserSettings = {
-      ...baseSettings,
-      hnEnabled: false,
-      hnConfig: null,
-      redditEnabled: false,
-      redditConfig: null,
-      halfLifeHours: null,
-      webEnabled: true,
-      webConfig: {
+    const collectors: RunCollectorsPayload = {
+      web: {
         sources: [
           { name: "Anthropic", listingUrl: "https://www.anthropic.com/research" },
         ],
@@ -150,7 +135,7 @@ describe("startRun", () => {
       },
     };
 
-    await startRun(webSettings, {
+    await startRun({ topN: 10, halfLifeHours: null }, collectors, {
       redis: redis as unknown as IORedis,
       queue: q.queue,
       runId: () => fixedId,
@@ -170,25 +155,19 @@ describe("startRun", () => {
     const [, data] = q.add.mock.calls[0] ?? [];
     const payload = data as RunProcessJobPayload;
     expect(payload.sourceTypes).toEqual(["blog"]);
-    expect(payload.collectors.web).toEqual(webSettings.webConfig);
+    expect(payload.collectors.web).toEqual(collectors.web);
     expect(payload.collectors.hn).toBeUndefined();
     expect(payload.collectors.reddit).toBeUndefined();
     expect(payload.halfLifeHours).toBeUndefined();
   });
 
-  it("omits disabled collectors even when their configs are preserved", async () => {
+  // REQ-073: only the collectors passed in (assembled from enabled rows) run.
+  it("REQ-073: enqueues no collectors when the assembled payload is empty", async () => {
     const redis = makeRedis();
     const q = makeQueue();
     const fixedId = "eeeeeeee-ffff-0000-1111-222222222222";
 
-    const settings: UserSettings = {
-      ...baseSettings,
-      hnEnabled: false,
-      redditEnabled: false,
-      redditConfig: { subreddits: ["LocalLLaMA"], sinceDays: 1 },
-    };
-
-    await startRun(settings, {
+    await startRun(baseSettings, {}, {
       redis: redis as unknown as IORedis,
       queue: q.queue,
       runId: () => fixedId,
@@ -197,30 +176,22 @@ describe("startRun", () => {
     const entry = redis.store.get(`run:${fixedId}`);
     if (!entry) throw new Error("expected redis entry");
     const state = JSON.parse(entry.value) as RunState;
-    expect(state.sources.hn).toBeUndefined();
-    expect(state.sources.reddit).toBeUndefined();
+    expect(state.sources).toEqual({});
 
     const [, data] = q.add.mock.calls[0] ?? [];
     const payload = data as RunProcessJobPayload;
     expect(payload.sourceTypes).toEqual([]);
-    expect(payload.collectors.hn).toBeUndefined();
-    expect(payload.collectors.reddit).toBeUndefined();
+    expect(payload.collectors).toEqual({});
   });
 
-  // REQ-024: twitterConfig flows from settings to job payload
-  it("REQ-024: puts twitter on payload.collectors when settings has twitterConfig", async () => {
+  // REQ-024: twitterConfig flows into the job payload
+  it("REQ-024: puts twitter on payload.collectors when provided", async () => {
     const redis = makeRedis();
     const q = makeQueue();
     const fixedId = "ddddddd1-eeee-ffff-0000-111111111111";
 
-    const twitterSettings: UserSettings = {
-      ...baseSettings,
-      hnEnabled: false,
-      hnConfig: null,
-      redditEnabled: false,
-      redditConfig: null,
-      twitterEnabled: true,
-      twitterConfig: {
+    const collectors: RunCollectorsPayload = {
+      twitter: {
         listIds: ["12345"],
         users: [{ handle: "openai", userId: "9999" }],
         maxTweetsPerSource: 50,
@@ -228,7 +199,7 @@ describe("startRun", () => {
       },
     };
 
-    await startRun(twitterSettings, {
+    await startRun(baseSettings, collectors, {
       redis: redis as unknown as IORedis,
       queue: q.queue,
       runId: () => fixedId,
@@ -236,17 +207,16 @@ describe("startRun", () => {
 
     const [, data] = q.add.mock.calls[0] ?? [];
     const payload = data as RunProcessJobPayload;
-    expect(payload.collectors.twitter).toEqual(twitterSettings.twitterConfig);
+    expect(payload.collectors.twitter).toEqual(collectors.twitter);
     expect(payload.sourceTypes).toContain("twitter");
   });
 
-  // REQ-024: twitter omitted when twitterConfig is null
-  it("REQ-024: omits twitter from payload when twitterConfig is null", async () => {
+  it("REQ-024: omits twitter from payload when not provided", async () => {
     const redis = makeRedis();
     const q = makeQueue();
     const fixedId = "ddddddd2-eeee-ffff-0000-222222222222";
 
-    await startRun(baseSettings, {
+    await startRun(baseSettings, baseCollectors, {
       redis: redis as unknown as IORedis,
       queue: q.queue,
       runId: () => fixedId,
@@ -265,6 +235,7 @@ describe("startRun", () => {
 
     await startRun(
       baseSettings,
+      baseCollectors,
       {
         redis: redis as unknown as IORedis,
         queue: q.queue,
@@ -283,7 +254,7 @@ describe("startRun", () => {
     const q = makeQueue();
     const fixedId = "dddddd00-0000-0000-0000-000000000002";
 
-    await startRun(baseSettings, {
+    await startRun(baseSettings, baseCollectors, {
       redis: redis as unknown as IORedis,
       queue: q.queue,
       runId: () => fixedId,
@@ -295,26 +266,20 @@ describe("startRun", () => {
     expect(Object.prototype.hasOwnProperty.call(payload, "dryRun")).toBe(false);
   });
 
-  // PHASE5-C4: webSearch flows from settings to job payload when enabled
-  it("PHASE5-C4: puts webSearch on payload.collectors when webSearchEnabled is true with config", async () => {
+  // PHASE5-C4: webSearch flows into the job payload
+  it("PHASE5-C4: puts webSearch on payload.collectors when provided", async () => {
     const redis = makeRedis();
     const q = makeQueue();
     const fixedId = "phase5-web-search-enabled-111";
 
-    const webSearchSettings = {
-      ...baseSettings,
-      hnEnabled: false,
-      hnConfig: null,
-      redditEnabled: false,
-      redditConfig: null,
-      webSearchEnabled: true,
-      webSearchConfig: {
-        provider: "tavily" as const,
+    const collectors: RunCollectorsPayload = {
+      webSearch: {
+        provider: "tavily",
         queries: [{ query: "AI news", sinceDays: 1, maxItems: 10 }],
       },
     };
 
-    await startRun(webSearchSettings, {
+    await startRun(baseSettings, collectors, {
       redis: redis as unknown as IORedis,
       queue: q.queue,
       runId: () => fixedId,
@@ -323,42 +288,86 @@ describe("startRun", () => {
     const [, data] = q.add.mock.calls[0] ?? [];
     const payload = data as RunProcessJobPayload;
     expect(payload.sourceTypes).toContain("web_search");
-    expect(payload.collectors.webSearch).toEqual(webSearchSettings.webSearchConfig);
+    expect(payload.collectors.webSearch).toEqual(collectors.webSearch);
     expect(payload.collectors.hn).toBeUndefined();
-    expect(payload.collectors.reddit).toBeUndefined();
   });
 
-  // PHASE5-C5: webSearch omitted from payload when webSearchEnabled is false
-  it("PHASE5-C5: omits webSearch from payload when webSearchEnabled is false", async () => {
+  it("defaults payload.tenantId to TENANT_ZERO_ID when opts.tenantId is absent", async () => {
     const redis = makeRedis();
     const q = makeQueue();
-    const fixedId = "phase5-web-search-disabled-222";
 
-    const settings = {
-      ...baseSettings,
-      webSearchEnabled: false,
-      webSearchConfig: {
-        provider: "tavily" as const,
-        queries: [{ query: "AI news", sinceDays: 1, maxItems: 10 }],
-      },
-    };
-
-    await startRun(settings, {
+    await startRun(baseSettings, baseCollectors, {
       redis: redis as unknown as IORedis,
       queue: q.queue,
-      runId: () => fixedId,
+      runId: () => "dddddd00-0000-0000-0000-000000000003",
     });
 
     const [, data] = q.add.mock.calls[0] ?? [];
     const payload = data as RunProcessJobPayload;
-    expect(payload.collectors.webSearch).toBeUndefined();
-    expect(payload.sourceTypes).not.toContain("web_search");
+    expect(payload.tenantId).toBe(TENANT_ZERO_ID);
+  });
+
+  it("propagates opts.tenantId into the job payload", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const tenantId = "aaaaaaaa-0000-0000-0000-000000000042";
+
+    await startRun(
+      baseSettings,
+      baseCollectors,
+      {
+        redis: redis as unknown as IORedis,
+        queue: q.queue,
+        runId: () => "dddddd00-0000-0000-0000-000000000004",
+      },
+      { tenantId },
+    );
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as RunProcessJobPayload;
+    expect(payload.tenantId).toBe(tenantId);
+  });
+
+  it("REQ-066: passes opts.startDelayMs through as the BullMQ delay", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    await startRun(
+      baseSettings,
+      baseCollectors,
+      {
+        redis: redis as unknown as IORedis,
+        queue: q.queue,
+        runId: () => "eeeeee00-0000-0000-0000-000000000005",
+      },
+      { startDelayMs: 90_000 },
+    );
+
+    const [, , opts] = q.add.mock.calls[0] ?? [];
+    expect((opts as JobsOptions).delay).toBe(90_000);
+  });
+
+  it("omits the delay option when startDelayMs is absent or 0", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    await startRun(
+      baseSettings,
+      baseCollectors,
+      {
+        redis: redis as unknown as IORedis,
+        queue: q.queue,
+        runId: () => "eeeeee00-0000-0000-0000-000000000006",
+      },
+      { startDelayMs: 0 },
+    );
+
+    const [, , opts] = q.add.mock.calls[0] ?? [];
+    expect(opts as JobsOptions).not.toHaveProperty("delay");
   });
 
   it("generates a uuid for runId when no generator is injected", async () => {
     const redis = makeRedis();
     const q = makeQueue();
-    const { runId } = await startRun(baseSettings, {
+    const { runId } = await startRun(baseSettings, baseCollectors, {
       redis: redis as unknown as IORedis,
       queue: q.queue,
     });

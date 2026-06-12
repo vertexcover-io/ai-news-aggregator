@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { userSettings } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type { UserSettings } from "@newsletter/shared";
+import type { EncryptedBlob } from "@newsletter/shared/services/credential-cipher";
 
 export type UserSettingsUpsertInput = Omit<UserSettings, "id" | "updatedAt" | "scheduleTime"> & {
   readonly scheduleTime?: string;
@@ -10,6 +11,60 @@ export type UserSettingsUpsertInput = Omit<UserSettings, "id" | "updatedAt" | "s
 export interface UserSettingsRepo {
   get(): Promise<UserSettings | null>;
   upsert(input: UserSettingsUpsertInput): Promise<UserSettings>;
+}
+
+export interface TenantNotificationSettings {
+  notificationEmail: string | null;
+  slackWebhookEncrypted: EncryptedBlob | null;
+}
+
+export interface NotificationSettingsUpdate {
+  notificationEmail?: string | null;
+  slackWebhookEncrypted?: EncryptedBlob | null;
+}
+
+export interface NotificationSettingsRepo {
+  get(): Promise<TenantNotificationSettings | null>;
+  /** Partial update: omitted fields stay untouched; null clears. No-op when the settings row is missing. */
+  update(input: NotificationSettingsUpdate): Promise<void>;
+}
+
+export function createNotificationSettingsRepo(
+  db: Pick<AppDb, "select" | "update">,
+  tenantId: string,
+): NotificationSettingsRepo {
+  return {
+    async get(): Promise<TenantNotificationSettings | null> {
+      const rows = await db
+        .select({
+          notificationEmail: userSettings.notificationEmail,
+          slackWebhookEncrypted: userSettings.slackWebhookEncrypted,
+        })
+        .from(userSettings)
+        .where(eq(userSettings.tenantId, tenantId))
+        .limit(1);
+      if (rows.length === 0) return null;
+      return {
+        notificationEmail: rows[0].notificationEmail ?? null,
+        slackWebhookEncrypted: rows[0].slackWebhookEncrypted ?? null,
+      };
+    },
+
+    async update(input: NotificationSettingsUpdate): Promise<void> {
+      const set: Partial<typeof userSettings.$inferInsert> = {};
+      if (input.notificationEmail !== undefined) {
+        set.notificationEmail = input.notificationEmail;
+      }
+      if (input.slackWebhookEncrypted !== undefined) {
+        set.slackWebhookEncrypted = input.slackWebhookEncrypted;
+      }
+      if (Object.keys(set).length === 0) return;
+      await db
+        .update(userSettings)
+        .set({ ...set, updatedAt: new Date() })
+        .where(eq(userSettings.tenantId, tenantId));
+    },
+  };
 }
 
 function toDomain(
@@ -53,13 +108,14 @@ function toDomain(
 
 export function createUserSettingsRepo(
   db: Pick<AppDb, "select" | "insert">,
+  tenantId: string,
 ): UserSettingsRepo {
   return {
     async get(): Promise<UserSettings | null> {
       const rows = await db
         .select()
         .from(userSettings)
-        .where(eq(userSettings.singleton, true))
+        .where(eq(userSettings.tenantId, tenantId))
         .limit(1);
       if (rows.length === 0) return null;
       return toDomain(rows[0]);
@@ -71,6 +127,7 @@ export function createUserSettingsRepo(
       const [row] = await db
         .insert(userSettings)
         .values({
+          tenantId,
           singleton: true,
           topN: input.topN,
           halfLifeHours: input.halfLifeHours,
@@ -103,7 +160,7 @@ export function createUserSettingsRepo(
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: userSettings.singleton,
+          target: userSettings.tenantId,
           set: {
             topN: input.topN,
             halfLifeHours: input.halfLifeHours,

@@ -281,6 +281,27 @@
       "when": 1780914135371,
       "tag": "0039_narrow_silver_samurai",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1781085511203,
+      "tag": "0040_multi_tenant_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1781085511204,
+      "tag": "0041_backfill_tenant_zero",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1781085511205,
+      "tag": "0042_enforce_tenant_id",
+      "breakpoints": true
     }
   ]
 }

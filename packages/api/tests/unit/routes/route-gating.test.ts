@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import { buildApp } from "@api/app.js";
 import {
@@ -6,9 +7,9 @@ import {
   createAdminArchivesRouter,
   type ArchivesRouterDeps,
 } from "@api/routes/archives.js";
-import { createAdminRouter } from "@api/routes/admin.js";
-import { requireAdmin } from "@api/auth/middleware.js";
-import { COOKIE_NAME } from "@api/auth/session.js";
+import { createAuthRouter } from "@api/routes/auth.js";
+import { requireUser } from "@api/auth/middleware.js";
+import { makeSessionCookie } from "@api-tests/helpers/auth.js";
 import type {
   ArchiveListItem,
   RankedItemRef,
@@ -18,8 +19,9 @@ import type {
   RunArchiveRow,
   RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
+import type { UsersRepo } from "@api/repositories/users.js";
+import type { PasswordResetTokensRepo } from "@api/repositories/password-reset-tokens.js";
 
-const ADMIN_PASSWORD = "shared-password";
 const SESSION_SECRET = "test-session-secret";
 
 function makeRawItemsRepo(): RawItemsRepo {
@@ -49,6 +51,27 @@ function makeArchivesDeps(
   return {
     getRawItemsRepo: () => makeRawItemsRepo(),
     getArchiveRepo: () => archiveRepo,
+  };
+}
+
+function makeStubUsersRepo(): UsersRepo {
+  return {
+    findByEmail: vi.fn(() => Promise.resolve(null)),
+    findById: vi.fn(() => Promise.resolve(null)),
+    findTenantById: vi.fn(() => Promise.resolve(null)),
+    createTenantAdminWithTenant: vi.fn(() =>
+      Promise.reject(new Error("not used")),
+    ),
+    updatePassword: vi.fn(() => Promise.resolve()),
+    createSuperAdmin: vi.fn(() => Promise.reject(new Error("not used"))),
+  };
+}
+
+function makeStubResetRepo(): PasswordResetTokensRepo {
+  return {
+    create: vi.fn(() => Promise.reject(new Error("not used"))),
+    findValidByHash: vi.fn(() => Promise.resolve(null)),
+    consume: vi.fn(() => Promise.resolve(true)),
   };
 }
 
@@ -97,6 +120,7 @@ function makeApp(
 ): Hono {
   const deps = makeArchivesDeps(archiveRepo);
   return buildApp({
+    publicTenantMiddleware: setTestTenant(),
     sessionSecret: SESSION_SECRET,
     publicArchivesRouter: createPublicArchivesRouter(deps),
     publicHomeRouter: new Hono(),
@@ -108,14 +132,20 @@ function makeApp(
     adminEvalRouter: new Hono(),
     adminSocialCredentialsRouter: new Hono(),
     adminMustReadRouter: new Hono(),
+    adminSourcesRouter: new Hono(),
     runsRouter: makeStubRunsRouter(),
     settingsRouter: makeStubSettingsRouter(),
-    adminRouter: createAdminRouter({
-      adminPassword: ADMIN_PASSWORD,
+    authRouter: createAuthRouter({
       sessionSecret: SESSION_SECRET,
-      logger: { info: vi.fn(), warn: vi.fn() },
+      getUsersRepo: makeStubUsersRepo,
+      getResetTokensRepo: makeStubResetRepo,
+      emailProvider: {
+        send: vi.fn(() => Promise.resolve({ messageId: "m" })),
+      },
+      fromEmail: "platform@example.com",
+      webBaseUrl: "https://app.example.com",
     }),
-    requireAdminFactory: requireAdmin,
+    requireUserFactory: requireUser,
     subscribeRouter: makeStubSubscribeRouter(),
     webhooksRouter: makeStubWebhooksRouter(),
     analyticsRouter: makeStubAnalyticsRouter(),
@@ -123,27 +153,18 @@ function makeApp(
     linkedInOAuthRouter: new Hono(),
     linkedInOAuthCallbackRouter: new Hono(),
     collectorHealthRouter: new Hono(),
+    sendingDomainRouter: new Hono(),
+    twitterOAuthRouter: new Hono(),
+    twitterOAuthCallbackRouter: new Hono(),
+    publicTenantConfigRouter: new Hono(),
+    publicTenantLogoRouter: new Hono(),
+    adminBrandingRouter: new Hono(),
   });
 }
 
-function parseSessionCookie(setCookie: string | null): string {
-  if (!setCookie) throw new Error("expected Set-Cookie header");
-  const match = new RegExp(`${COOKIE_NAME}=([^;]+)`).exec(setCookie);
-  if (!match) throw new Error(`no ${COOKIE_NAME} in ${setCookie}`);
-  return `${COOKIE_NAME}=${match[1]}`;
-}
+const cookie = makeSessionCookie(SESSION_SECRET);
 
-async function loginAndGetCookie(app: Hono): Promise<string> {
-  const res = await app.request("/api/admin/login", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ password: ADMIN_PASSWORD }),
-  });
-  expect(res.status).toBe(200);
-  return parseSessionCookie(res.headers.get("set-cookie"));
-}
-
-describe("route gating (phase 4)", () => {
+describe("route gating", () => {
   it("1. GET /api/archives is public (200 without cookie)", async () => {
     const archiveRepo = makeArchiveRepo({
       list: [{ runId: "run-1", runDate: "2026-04-15", storyCount: 3 }],
@@ -175,53 +196,27 @@ describe("route gating (phase 4)", () => {
     expect(res.status).toBe(200);
   });
 
-  it("3. POST /api/admin/login with correct password sets cookie", async () => {
+  it("3. GET /api/auth/me without cookie → 401", async () => {
     const app = makeApp();
-    const res = await app.request("/api/admin/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ password: ADMIN_PASSWORD }),
-    });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
-    const setCookie = res.headers.get("set-cookie");
-    expect(setCookie).toBeTruthy();
-    expect(setCookie).toContain(`${COOKIE_NAME}=`);
-  });
-
-  it("4. GET /api/admin/me without cookie → 401", async () => {
-    const app = makeApp();
-    const res = await app.request("/api/admin/me");
+    const res = await app.request("/api/auth/me");
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
   });
 
-  it("5. GET /api/admin/me with session cookie → 200", async () => {
-    const app = makeApp();
-    const cookie = await loginAndGetCookie(app);
-    const res = await app.request("/api/admin/me", {
-      headers: { cookie },
-    });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ admin: true });
-  });
-
-  it("6. GET /api/runs without cookie → 401", async () => {
+  it("4. GET /api/runs without cookie → 401", async () => {
     const app = makeApp();
     const res = await app.request("/api/runs");
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
   });
 
-  it("7. GET /api/runs with cookie is not 401", async () => {
+  it("5. GET /api/runs with session cookie is not 401", async () => {
     const app = makeApp();
-    const cookie = await loginAndGetCookie(app);
     const res = await app.request("/api/runs", { headers: { cookie } });
-    expect(res.status).not.toBe(401);
     expect(res.status).toBe(200);
   });
 
-  it("8. PATCH /api/admin/archives/:runId without cookie → 401", async () => {
+  it("6. PATCH /api/admin/archives/:runId without cookie → 401", async () => {
     const app = makeApp();
     const res = await app.request("/api/admin/archives/run-1", {
       method: "PATCH",
@@ -232,7 +227,7 @@ describe("route gating (phase 4)", () => {
     expect(await res.json()).toEqual({ error: "unauthorized" });
   });
 
-  it("9. POST /api/admin/archives/:runId/add-post without cookie → 401", async () => {
+  it("7. POST /api/admin/archives/:runId/add-post without cookie → 401", async () => {
     const app = makeApp();
     const res = await app.request("/api/admin/archives/run-1/add-post", {
       method: "POST",
@@ -243,44 +238,46 @@ describe("route gating (phase 4)", () => {
     expect(await res.json()).toEqual({ error: "unauthorized" });
   });
 
-  it("10. POST /api/admin/logout clears cookie; subsequent /me → 401", async () => {
-    const app = makeApp();
-    const cookie = await loginAndGetCookie(app);
-
-    const logoutRes = await app.request("/api/admin/logout", {
-      method: "POST",
-      headers: { cookie },
-    });
-    expect(logoutRes.status).toBe(200);
-    const clearCookie = logoutRes.headers.get("set-cookie");
-    expect(clearCookie).toBeTruthy();
-    expect(clearCookie).toMatch(/Max-Age=0/i);
-
-    // After the browser processes Max-Age=0 the cookie would be gone;
-    // simulate by dropping it from subsequent request.
-    const meRes = await app.request("/api/admin/me");
-    expect(meRes.status).toBe(401);
-  });
-
-  it("settings is also gated", async () => {
+  it("8. settings is also gated", async () => {
     const app = makeApp();
     const res = await app.request("/api/settings");
     expect(res.status).toBe(401);
-    const cookie = await loginAndGetCookie(app);
     const ok = await app.request("/api/settings", { headers: { cookie } });
     expect(ok.status).toBe(200);
   });
 
-  it("POST /api/admin/login remains reachable without a cookie", async () => {
+  it("8b. GET /api/admin/sources without cookie → 401", async () => {
     const app = makeApp();
-    const res = await app.request("/api/admin/login", {
+    const res = await app.request("/api/admin/sources");
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("9. a legacy admin_session cookie no longer passes the gate", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/runs", {
+      headers: { cookie: `admin_session=${Date.now()}.deadbeef` },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("POST /api/auth/login remains reachable without a cookie", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ password: "wrong-password" }),
+      body: JSON.stringify({ email: "a@b.com", password: "wrong-password" }),
     });
     // Should hit the handler (not the gate) even without a cookie.
     expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: "invalid_password" });
+    expect(await res.json()).toEqual({ error: "invalid_credentials" });
+  });
+
+  it("POST /api/auth/logout remains reachable without a cookie", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/auth/logout", { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toMatch(/Max-Age=0/i);
   });
 
   it("REQ-052: GET /api/runs without cookie returns 401 with no cost-related strings in body", async () => {

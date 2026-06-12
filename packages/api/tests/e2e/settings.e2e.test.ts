@@ -3,11 +3,23 @@
  * Verifies PUT -> GET round-trip and scheduler reconciliation using a mocked queue.
  */
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { getDb, userSettings } from "@newsletter/shared/db";
 import { createSettingsRouter } from "@api/routes/settings.js";
-import { createUserSettingsRepo } from "@api/repositories/user-settings.js";
+import { createTenantFeaturesRepo } from "@api/repositories/tenant-features.js";
+import {
+  createNotificationSettingsRepo,
+  createUserSettingsRepo,
+} from "@api/repositories/user-settings.js";
+import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import {
+  createSourcesRepo,
+  type SourceCreateInput,
+  type SourceRecord,
+} from "@api/repositories/sources.js";
 
 function makeQueue() {
   return {
@@ -17,13 +29,22 @@ function makeQueue() {
 }
 
 const db = getDb();
+const sourcesRepo = createSourcesRepo(db, TENANT_ZERO_ID);
+
+// PUT /api/settings write-through-syncs the tenant's sources rows — snapshot
+// and restore tenant 0's rows so the suite leaves the dev DB untouched.
+let savedSourceRows: SourceRecord[] = [];
+const toCreateInput = (r: SourceRecord): SourceCreateInput =>
+  ({ type: r.type, config: r.config, enabled: r.enabled }) as SourceCreateInput;
 
 beforeAll(async () => {
+  savedSourceRows = await sourcesRepo.list();
   await db.delete(userSettings).where(eq(userSettings.singleton, true));
 });
 
 afterAll(async () => {
   await db.delete(userSettings).where(eq(userSettings.singleton, true));
+  await sourcesRepo.replaceAll(savedSourceRows.map(toCreateInput));
 });
 
 beforeEach(async () => {
@@ -32,6 +53,7 @@ beforeEach(async () => {
 
 function buildApp(queue: ReturnType<typeof makeQueue>) {
   const app = new Hono();
+  app.use("*", setTestTenant());
   // Separate mock for the dedicated collector-health queue (D-110) so the
   // processing-queue scheduler-call assertions below are not affected by the
   // collector-health reconcile.
@@ -39,9 +61,15 @@ function buildApp(queue: ReturnType<typeof makeQueue>) {
   app.route(
     "/api/settings",
     createSettingsRouter({
-      getSettingsRepo: () => createUserSettingsRepo(db),
+      getSettingsRepo: () => createUserSettingsRepo(db, TENANT_ZERO_ID),
+      getNotificationSettingsRepo: () =>
+        createNotificationSettingsRepo(db, TENANT_ZERO_ID),
+      cipher: getCredentialCipher(),
+      getSourcesRepo: () => createSourcesRepo(db, TENANT_ZERO_ID),
       processingQueue: queue as never,
       collectorHealthQueue: collectorHealthQueue as never,
+      isTenantActive: () => Promise.resolve(true),
+      tenantFeatures: createTenantFeaturesRepo(db),
     }),
   );
   return app;
@@ -133,6 +161,24 @@ describe("Settings routes (e2e)", () => {
     expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(10);
   });
 
+  it("write-through sync: PUT replaces the tenant's sources rows with the exploded configs", async () => {
+    const app = buildApp(makeQueue());
+    const put = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validBody),
+    });
+    expect(put.status).toBe(200);
+
+    const rows = await sourcesRepo.list();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      type: "hn",
+      config: { sinceDays: 1 },
+      enabled: true,
+    });
+  });
+
   it("REQ-013: rejects scheduleEnabled=true with no sources", async () => {
     const app = buildApp(makeQueue());
     const res = await app.request("/api/settings", {
@@ -151,5 +197,44 @@ describe("Settings routes (e2e)", () => {
         }),
     });
     expect(res.status).toBe(400);
+  });
+
+  it("REQ-092: notification email + slack webhook persist; webhook stored encrypted and never echoed", async () => {
+    const app = buildApp(makeQueue());
+    const webhook = "https://hooks.slack.com/services/T/B/e2e-secret";
+
+    const put = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        notificationEmail: "ops@e2e.example.com",
+        slackWebhookUrl: webhook,
+      }),
+    });
+    expect(put.status).toBe(200);
+    const putBody = (await put.json()) as Record<string, unknown>;
+    expect(putBody.notificationEmail).toBe("ops@e2e.example.com");
+    expect(putBody.hasSlackWebhook).toBe(true);
+    expect(JSON.stringify(putBody)).not.toContain(webhook);
+
+    const rows = await db
+      .select()
+      .from(userSettings)
+      .where(eq(userSettings.singleton, true));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].notificationEmail).toBe("ops@e2e.example.com");
+    const blob = rows[0].slackWebhookEncrypted;
+    if (blob === null || blob === undefined) {
+      throw new Error("expected slack_webhook_encrypted to be stored");
+    }
+    expect(JSON.stringify(blob)).not.toContain(webhook);
+    expect(getCredentialCipher().decrypt(blob)).toBe(webhook);
+
+    const got = await app.request("/api/settings");
+    const getBody = (await got.json()) as Record<string, unknown>;
+    expect(getBody.notificationEmail).toBe("ops@e2e.example.com");
+    expect(getBody.hasSlackWebhook).toBe(true);
+    expect(JSON.stringify(getBody)).not.toContain(webhook);
   });
 });

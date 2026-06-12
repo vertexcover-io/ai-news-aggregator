@@ -1,4 +1,4 @@
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemUpsert } from "@pipeline/repositories/raw-items.js";
 import type { RawItemMetadata, RawItemSourceUnit } from "@newsletter/shared/types";
 import type { NormalizedTweet } from "@pipeline/collectors/twitter/types.js";
 
@@ -13,7 +13,7 @@ function makeTitle(fullText: string): string {
 export function tweetToRawItem(
   t: NormalizedTweet,
   sourceUnit?: RawItemSourceUnit,
-): RawItemInsert {
+): RawItemUpsert {
   const external =
     typeof t.externalUrl === "string" && t.externalUrl.length > 0 ? t.externalUrl : undefined;
   const content = t.quotedTweet

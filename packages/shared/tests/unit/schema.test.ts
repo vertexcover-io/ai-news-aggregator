@@ -1,5 +1,23 @@
+import { getTableColumns, getTableName } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import type { RawItemInsert } from "@shared/db/schema.js";
+import {
+  emailSends,
+  evalRuns,
+  feedbackEvents,
+  mustReadEntries,
+  rawItems,
+  reviewEdits,
+  runArchives,
+  runLogs,
+  sendingDomains,
+  sesEvents,
+  socialCredentials,
+  socialTokens,
+  sources,
+  subscribers,
+  userSettings,
+} from "@shared/db/schema.js";
 import type {
   RunSubmitTwitterConfig,
   RunSubmitTwitterUser,
@@ -60,4 +78,35 @@ describe("types: RunSubmitTwitterConfig", () => {
     };
     expect(payload.twitter?.listIds).toEqual(["1"]);
   });
+});
+
+// REQ-010 — every tenant-owned table carries tenant_id
+describe("schema: tenant-owned tables expose tenantId (REQ-010)", () => {
+  const tenantOwnedTables = [
+    rawItems,
+    runArchives,
+    runLogs,
+    reviewEdits,
+    emailSends,
+    subscribers,
+    feedbackEvents,
+    sesEvents,
+    evalRuns,
+    mustReadEntries,
+    userSettings,
+    socialCredentials,
+    socialTokens,
+    sources,
+    sendingDomains,
+  ];
+
+  it.each(tenantOwnedTables.map((t) => [getTableName(t), t] as const))(
+    "%s has a non-null tenant_id column",
+    (_name, table) => {
+      const columns = getTableColumns(table);
+      expect(columns).toHaveProperty("tenantId");
+      expect(columns.tenantId.name).toBe("tenant_id");
+      expect(columns.tenantId.notNull).toBe(true);
+    },
+  );
 });

@@ -1,7 +1,7 @@
 import { generateObject } from "ai";
 import type { LanguageModel, LanguageModelUsage, ProviderMetadata } from "ai";
 import { z } from "zod";
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemUpsert } from "@pipeline/repositories/raw-items.js";
 import { createLogger } from "@newsletter/shared/logger";
 import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import type { SourceUnitResult } from "@newsletter/shared/types";
@@ -299,13 +299,13 @@ interface DetailPhaseDeps {
 }
 
 interface DetailPhaseResult {
-  allItems: RawItemInsert[];
+  allItems: RawItemUpsert[];
   allFailures: CollectorFailure[];
   itemsBySource: Map<string, number>;
 }
 
 interface ExtractPostResult {
-  item: RawItemInsert | null;
+  item: RawItemUpsert | null;
   failure: CollectorFailure | null;
 }
 
@@ -348,7 +348,7 @@ async function reconcileDetailPhase(
   deps: DetailPhaseDeps,
 ): Promise<DetailPhaseResult> {
   const { llmModel, reportExtraction, runLogger } = deps;
-  const allItems: RawItemInsert[] = [];
+  const allItems: RawItemUpsert[] = [];
   const allFailures: CollectorFailure[] = [];
   const itemsBySource = new Map<string, number>();
 
@@ -538,7 +538,7 @@ export function buildRawItem(
   markdownBody: string,
   fields: ExtractedFields,
   structuredPublishedAt: Date | null = null,
-): RawItemInsert {
+): RawItemUpsert {
   const now = new Date();
   const author = fields.author.trim();
   return {
@@ -583,7 +583,7 @@ function extractTitle(markdown: string, url: string): string {
 export async function fetchWebPost(
   url: string,
   deps: FetchWebPostDeps = {},
-): Promise<RawItemInsert> {
+): Promise<RawItemUpsert> {
   logger.info({ event: "web.single.fetch", url }, "web.single.fetch");
   const r = await fetchAdaptive(url, "article", { signal: deps.signal, fetchFn: deps.fetchFn });
   const title = (r.title?.trim() !== "" ? r.title?.trim() : undefined) ?? extractTitle(r.markdown, url);

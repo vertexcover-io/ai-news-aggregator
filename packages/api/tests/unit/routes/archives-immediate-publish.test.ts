@@ -6,6 +6,7 @@
  *         EDGE-003, EDGE-004, EDGE-006, EDGE-007, EDGE-008
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { setTestTenant, TEST_TENANT_ID } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import type { UserSettings } from "@newsletter/shared";
 import type { Queue } from "bullmq";
@@ -202,6 +203,7 @@ function buildApp(opts: BuildAppOpts): {
   }
 
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route("/api/admin/archives", createAdminArchivesRouter(deps));
   return { app, addSpy };
 }
@@ -338,7 +340,7 @@ describe("PATCH /api/admin/archives/:runId — immediate publish block", () => {
     for (const channel of expected) {
       expect(addSpy).toHaveBeenCalledWith(
         channel,
-        { runId: "run-uuid-1" },
+        { runId: "run-uuid-1", tenantId: TEST_TENANT_ID },
         { jobId: jobIdFor(channel), delay: 0 },
       );
     }
@@ -382,6 +384,7 @@ describe("PATCH /api/admin/archives/:runId — immediate publish block", () => {
         makeArchiveRow({ reviewed: true }),
       );
       const app = new Hono();
+  app.use("*", setTestTenant());
       app.route(
         "/api/admin/archives",
         createAdminArchivesRouter({
@@ -434,6 +437,7 @@ describe("PATCH /api/admin/archives/:runId — immediate publish block", () => {
       makeArchiveRow({ reviewed: true }),
     );
     const app = new Hono();
+  app.use("*", setTestTenant());
     app.route(
       "/api/admin/archives",
       createAdminArchivesRouter({
@@ -506,6 +510,7 @@ describe("PATCH /api/admin/archives/:runId — immediate publish block", () => {
     });
     const archiveRepo = makeArchiveRepo(makeArchiveRow({ reviewed: true }), updatedRow);
     const app = new Hono();
+  app.use("*", setTestTenant());
     app.route(
       "/api/admin/archives",
       createAdminArchivesRouter({

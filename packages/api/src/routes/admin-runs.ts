@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 import type IORedis from "ioredis";
 import { z } from "zod";
 import {
@@ -33,9 +34,9 @@ const runIdSchema = z.string().regex(UUID_RE);
 
 export interface AdminRunsRouterDeps {
   redis: IORedis;
-  getRawItemsRepo: () => RawItemsRepo;
-  getArchiveRepo: () => RunArchivesRepo;
-  getRunLogRepo: () => RunLogRepo;
+  getRawItemsRepo: (tenantId: string) => RawItemsRepo;
+  getArchiveRepo: (tenantId: string) => RunArchivesRepo;
+  getRunLogRepo: (tenantId: string) => RunLogRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -55,9 +56,9 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
         c.req.param("sourceKey"),
         {
           redis: deps.redis,
-          archiveRepo: deps.getArchiveRepo(),
-          rawItemsRepo: deps.getRawItemsRepo(),
-          runLogRepo: deps.getRunLogRepo(),
+          archiveRepo: deps.getArchiveRepo(getTenantId(c)),
+          rawItemsRepo: deps.getRawItemsRepo(getTenantId(c)),
+          runLogRepo: deps.getRunLogRepo(getTenantId(c)),
         },
       );
       return c.json(body);
@@ -80,8 +81,8 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
       return c.json({ error: "invalid runId" }, 400);
     }
     try {
-      const items = await deps.getRawItemsRepo().listForRun(parsed.data, {
-        archiveRepo: deps.getArchiveRepo(),
+      const items = await deps.getRawItemsRepo(getTenantId(c)).listForRun(parsed.data, {
+        archiveRepo: deps.getArchiveRepo(getTenantId(c)),
         redis: deps.redis,
       });
       const body: RunSourcesResponse = { runId: parsed.data, items };
@@ -103,8 +104,8 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
     try {
       const body: RunObservability = await buildRunObservability(parsed.data, {
         redis: deps.redis,
-        archiveRepo: deps.getArchiveRepo(),
-        runLogRepo: deps.getRunLogRepo(),
+        archiveRepo: deps.getArchiveRepo(getTenantId(c)),
+        runLogRepo: deps.getRunLogRepo(getTenantId(c)),
       });
       return c.json(body);
     } catch (err) {
@@ -122,8 +123,8 @@ export function createAdminRunsRouter(deps: AdminRunsRouterDeps): Hono {
 export function createDefaultAdminRunsRouter(): Hono {
   return createAdminRunsRouter({
     redis: createRedisConnection(),
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getRunLogRepo: () => createRunLogRepo(defaultGetDb()),
+    getRawItemsRepo: (tenantId) => createRawItemsRepo(defaultGetDb(), tenantId),
+    getArchiveRepo: (tenantId) => createRunArchivesRepo(defaultGetDb(), tenantId),
+    getRunLogRepo: (tenantId) => createRunLogRepo(defaultGetDb(), tenantId),
   });
 }

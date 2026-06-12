@@ -1,7 +1,7 @@
 ---
 governs: packages/shared/src/scheduling/
 last_verified_sha: ad0153a
-key_files: [tz.ts, published-at.ts, immediate-publish.ts, job-ids.ts]
+key_files: [tz.ts, published-at.ts, immediate-publish.ts, job-ids.ts, jitter.ts]
 flow_fns: [tz.ts::dateAtTzTime, tz.ts::publishDateForWindow, published-at.ts::resolveScheduledPublishAt, immediate-publish.ts::selectImmediatePublishChannels]
 decisions: [D-108, D-112]
 status: active
@@ -18,6 +18,9 @@ Pure functions for resolving publish dates from user-configured HH:MM times in n
 - resolveScheduledPublishAt(input) → Date | null — computes scheduled publish datetime; returns null on missing/malformed settings
 - selectImmediatePublishChannels(input) → PublishChannel[] — returns past-due channels (now > scheduled moment)
 - jobIdFor(channel, runId) → string — "{channel}-{runId}" (dash, NOT colon — see Gotchas)
+- schedulerKeyFor(kind, tenantId) → string — "{kind}:{tenantId}" per-tenant BullMQ scheduler key; SchedulerKind = pipeline-run | email-send | linkedin-post | twitter-post | collector-health | social-health
+- LEGACY_PROCESSING_SCHEDULER_KEYS / LEGACY_COLLECTOR_HEALTH_SCHEDULER_KEY — pre-multi-tenancy "<kind>:default" keys, consumed only by removeLegacySchedulers at API boot
+- computeJitterMs(rand, maxMs) → number — uniform [0, maxMs) scheduled-run start jitter (REQ-066); parsePipelineStartJitterMs(env) with DEFAULT_PIPELINE_START_JITTER_MS = 180000
 
 ## Depends on / used by
 Uses: Intl.DateTimeFormat (pure TypeScript, no dependencies)
@@ -54,7 +57,7 @@ publishDateForWindow(input) → Date:
 1. publishDateForWindow throws on publishTime === pipelineTime (ambiguous moment). Callers catch and gracefully degrade.
 2. dateFromTzParts uses iterative convergence for DST transitions.
 3. **publishDateForWindow anchors the publish DAY on the run-completion instant, not on a publishTime-vs-pipelineTime comparison.** The old heuristic (`publishMinutes < pipelineMinutes ? +1 day`) double-counted the midnight rollover when a late-night run (e.g. pipelineTime 23:59) crossed midnight before finishing — `completedParts` had already rolled to the next calendar day — and scheduled the digest a full day late. Now it picks the first occurrence of publishTime at-or-after `completedAt`. (D-108)
-4. **jobIdFor uses a `-` delimiter, NOT `:`.** bullmq ≥5.x `validateOptions` rejects custom job ids containing `:` (the Redis key delimiter). The scheduler KEY constants (`*_SCHEDULER_KEY`) still contain `:` — they are exempt because BullMQ generates their job ids internally as `repeat:<key>:<ts>`; only the custom `jobIdFor` ids passed to `Queue.add` are constrained. (D-112)
+4. **jobIdFor uses a `-` delimiter, NOT `:`.** bullmq ≥5.x `validateOptions` rejects custom job ids containing `:` (the Redis key delimiter). Scheduler KEYS from `schedulerKeyFor` (and the legacy `*:default` cleanup constants) still contain `:` — they are exempt because BullMQ generates their job ids internally as `repeat:<key>:<ts>`; only the custom `jobIdFor` ids passed to `Queue.add` are constrained. (D-112)
 
 ## Decisions
 ### D-108 — publishDateForWindow anchors the publish day on the completion instant

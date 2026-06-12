@@ -3,6 +3,7 @@ import { config } from "dotenv";
 import { resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import { rawItems } from "@newsletter/shared/db";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import type { AppDb } from "@newsletter/shared/db";
 
@@ -23,6 +24,7 @@ describe("Database Schema E2E", () => {
     const [item] = await db
       .insert(rawItems)
       .values({
+        tenantId: TENANT_ZERO_ID,
         sourceType: "hn",
         externalId: "12345",
         title: "Test Article",
@@ -42,6 +44,7 @@ describe("Database Schema E2E", () => {
 
   it("enforces unique constraint on (source_type, external_id)", async () => {
     await db.insert(rawItems).values({
+      tenantId: TENANT_ZERO_ID,
       sourceType: "hn",
       externalId: "99999",
       title: "First Insert",
@@ -51,13 +54,14 @@ describe("Database Schema E2E", () => {
     await db
       .insert(rawItems)
       .values({
+        tenantId: TENANT_ZERO_ID,
         sourceType: "hn",
         externalId: "99999",
         title: "Updated Title",
         url: "https://example.com/updated",
       })
       .onConflictDoUpdate({
-        target: [rawItems.sourceType, rawItems.externalId],
+        target: [rawItems.tenantId, rawItems.sourceType, rawItems.externalId],
         set: {
           title: "Updated Title",
           url: "https://example.com/updated",
@@ -88,6 +92,7 @@ describe("Database Schema E2E", () => {
     const [inserted] = await db
       .insert(rawItems)
       .values({
+        tenantId: TENANT_ZERO_ID,
         sourceType: "hn",
         externalId: "77777",
         title: "JSONB Test",

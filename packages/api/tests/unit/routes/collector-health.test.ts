@@ -1,18 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { setTestTenant, TEST_TENANT_ID } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import type { UserSettings } from "@newsletter/shared";
 import { HEALTH_CHECKABLE_COLLECTORS } from "@newsletter/shared";
 import type { CollectorHealthSnapshot } from "@newsletter/shared/types";
-import { requireAdmin } from "@api/auth/middleware.js";
-import { issueToken } from "@api/auth/session.js";
+import { requireUser } from "@api/auth/middleware.js";
+import { makeSessionCookie } from "@api-tests/helpers/auth.js";
 import { createCollectorHealthRouter } from "@api/routes/collector-health.js";
 import type { CollectorHealthRouterDeps } from "@api/routes/collector-health.js";
 
 const SESSION_SECRET = "test-session-secret-32-chars-ok!";
 
 function adminCookie(): string {
-  const token = issueToken(SESSION_SECRET, Date.now());
-  return `admin_session=${token}`;
+  return makeSessionCookie(SESSION_SECRET);
 }
 
 function makeQueue() {
@@ -87,8 +87,9 @@ function baseSettings(overrides: Partial<UserSettings> = {}): UserSettings {
 
 function buildApp(deps: CollectorHealthRouterDeps, withAuth = false): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   if (withAuth) {
-    app.use("/api/admin/*", requireAdmin(SESSION_SECRET));
+    app.use("/api/admin/*", requireUser(SESSION_SECRET));
   }
   app.route("/api/admin/collector-health", createCollectorHealthRouter(deps));
   return app;
@@ -108,7 +109,7 @@ describe("POST /api/admin/collector-health/check", () => {
   it("REQ-001/003: POST with collector='hn' -> 202 {enqueued:['hn']}, queue.add called, store.setRunning called", async () => {
     const app = buildApp({
       collectorHealthQueue: queue as never,
-      store,
+      getStore: () => store,
       getSettings: () => Promise.resolve(settings),
     });
 
@@ -123,7 +124,7 @@ describe("POST /api/admin/collector-health/check", () => {
     expect(body.enqueued).toEqual(["hn"]);
     expect(queue.add).toHaveBeenCalledWith(
       "collector-health",
-      { collectors: ["hn"], trigger: "manual" },
+      { collectors: ["hn"], trigger: "manual", tenantId: TEST_TENANT_ID },
     );
     expect(store.setRunning).toHaveBeenCalledWith("hn", "manual", expect.any(Date));
   });
@@ -132,7 +133,7 @@ describe("POST /api/admin/collector-health/check", () => {
     // settings has hn + reddit enabled, web/twitter/webSearch disabled
     const app = buildApp({
       collectorHealthQueue: queue as never,
-      store,
+      getStore: () => store,
       getSettings: () => Promise.resolve(settings),
     });
 
@@ -162,7 +163,7 @@ describe("POST /api/admin/collector-health/check", () => {
     });
     const app = buildApp({
       collectorHealthQueue: queue as never,
-      store,
+      getStore: () => store,
       getSettings: () => Promise.resolve(noEnabled),
     });
 
@@ -182,7 +183,7 @@ describe("POST /api/admin/collector-health/check", () => {
     const noTwitter = baseSettings({ twitterEnabled: false });
     const app = buildApp({
       collectorHealthQueue: queue as never,
-      store,
+      getStore: () => store,
       getSettings: () => Promise.resolve(noTwitter),
     });
 
@@ -197,7 +198,7 @@ describe("POST /api/admin/collector-health/check", () => {
     expect(body.enqueued).toEqual(["twitter"]);
     expect(queue.add).toHaveBeenCalledWith(
       "collector-health",
-      { collectors: ["twitter"], trigger: "manual" },
+      { collectors: ["twitter"], trigger: "manual", tenantId: TEST_TENANT_ID },
     );
   });
 
@@ -205,7 +206,7 @@ describe("POST /api/admin/collector-health/check", () => {
     const app = buildApp(
       {
         collectorHealthQueue: queue as never,
-        store,
+        getStore: () => store,
         getSettings: () => Promise.resolve(settings),
       },
       true, // with auth
@@ -224,7 +225,7 @@ describe("POST /api/admin/collector-health/check", () => {
     const app = buildApp(
       {
         collectorHealthQueue: queue as never,
-        store,
+        getStore: () => store,
         getSettings: () => Promise.resolve(settings),
       },
       true,
@@ -257,7 +258,7 @@ describe("GET /api/admin/collector-health", () => {
   it("REQ-008: GET -> snapshot with length 5 (one per HEALTH_CHECKABLE_COLLECTORS)", async () => {
     const app = buildApp({
       collectorHealthQueue: queue as never,
-      store,
+      getStore: () => store,
       getSettings: () => Promise.resolve(settings),
     });
 
@@ -273,11 +274,25 @@ describe("GET /api/admin/collector-health", () => {
     }
   });
 
+  it("resolves the snapshot store for the caller's tenant (cross-tenant isolation)", async () => {
+    const getStore = vi.fn(() => store);
+    const app = buildApp({
+      collectorHealthQueue: queue as never,
+      getStore,
+      getSettings: () => Promise.resolve(settings),
+    });
+
+    const res = await app.request("/api/admin/collector-health");
+
+    expect(res.status).toBe(200);
+    expect(getStore).toHaveBeenCalledWith(TEST_TENANT_ID);
+  });
+
   it("REQ-023: unauthenticated GET -> 401", async () => {
     const app = buildApp(
       {
         collectorHealthQueue: queue as never,
-        store,
+        getStore: () => store,
         getSettings: () => Promise.resolve(settings),
       },
       true,
@@ -291,7 +306,7 @@ describe("GET /api/admin/collector-health", () => {
     const app = buildApp(
       {
         collectorHealthQueue: queue as never,
-        store,
+        getStore: () => store,
         getSettings: () => Promise.resolve(settings),
       },
       true,

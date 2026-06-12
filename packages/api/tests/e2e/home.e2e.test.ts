@@ -7,6 +7,8 @@
  * reviewed=false for the duration of the test, then restores them in cleanup.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
@@ -34,9 +36,9 @@ const REPO_ROOT = resolve(HERE, "../../../..");
 config({ path: resolve(REPO_ROOT, ".env") });
 
 const db = getDb();
-const rawItemsRepo = createRawItemsRepo(db);
-const archiveRepo = createRunArchivesRepo(db);
-const mustReadRepo = createMustReadRepo(db);
+const rawItemsRepo = createRawItemsRepo(db, TENANT_ZERO_ID);
+const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
+const mustReadRepo = createMustReadRepo(db, TENANT_ZERO_ID);
 
 const MUST_READ_PREFIX = "https://home-e2e-must-read.example.com/";
 const RAW_PREFIX = `home-e2e-${String(Date.now())}`;
@@ -47,6 +49,7 @@ let hiddenRunIds: string[] = [];
 
 function buildApp(): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route(
     "/api/home",
     createPublicHomeRouter({
@@ -120,6 +123,8 @@ async function insertRawItem(opts: {
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: TENANT_ZERO_ID,
+      tenantId: TENANT_ZERO_ID,
       sourceType: "hn",
       externalId: `${RAW_PREFIX}-${opts.externalId}`,
       title: opts.title,
@@ -156,6 +161,7 @@ async function insertArchive(opts: {
     rationale: `r${String(i)}`,
   }));
   await db.insert(runArchives).values({
+    tenantId: TENANT_ZERO_ID,
     id: runId,
     status: "completed",
     rankedItems,

@@ -1,3 +1,4 @@
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { describe, it, expect, vi } from "vitest";
 import { canonicalizeUrl } from "@pipeline/processors/dedup.js";
 
@@ -19,7 +20,7 @@ describe("run-archives repository", () => {
       const { createRunArchivesRepo } = await import(
         "@pipeline/repositories/run-archives.js"
       );
-      const repo = createRunArchivesRepo(db as never);
+      const repo = createRunArchivesRepo(db as never, TENANT_ZERO_ID);
       const at = new Date("2026-05-11T12:00:00Z");
       await repo.markLinkedInPosted("run-x", at, "urn:li:share:123");
       const patch = setSpy.mock.calls[0]?.[0];
@@ -32,7 +33,7 @@ describe("run-archives repository", () => {
       const { createRunArchivesRepo } = await import(
         "@pipeline/repositories/run-archives.js"
       );
-      const repo = createRunArchivesRepo(db as never);
+      const repo = createRunArchivesRepo(db as never, TENANT_ZERO_ID);
       const at = new Date("2026-05-11T12:00:00Z");
       await repo.markLinkedInPosted("run-x", at, null);
       const patch = setSpy.mock.calls[0]?.[0];
@@ -45,7 +46,7 @@ describe("run-archives repository", () => {
       const { createRunArchivesRepo } = await import(
         "@pipeline/repositories/run-archives.js"
       );
-      const repo = createRunArchivesRepo(db as never);
+      const repo = createRunArchivesRepo(db as never, TENANT_ZERO_ID);
       const at = new Date("2026-05-11T12:00:00Z");
       await repo.markTwitterPosted("run-x", at, "https://x.com/i/web/status/1");
       const patch = setSpy.mock.calls[0]?.[0];
@@ -58,7 +59,7 @@ describe("run-archives repository", () => {
       const { createRunArchivesRepo } = await import(
         "@pipeline/repositories/run-archives.js"
       );
-      const repo = createRunArchivesRepo(db as never);
+      const repo = createRunArchivesRepo(db as never, TENANT_ZERO_ID);
       await repo.recordSocialFailure("run-x", "linkedin", "401 Unauthorized");
       const patch = setSpy.mock.calls[0]?.[0];
       expect(patch.linkedinPostedAt).toBeUndefined();
@@ -97,7 +98,7 @@ describe("run-archives repository", () => {
       const { createRunArchivesRepo } = await import(
         "@pipeline/repositories/run-archives.js"
       );
-      const repo = createRunArchivesRepo(db as never);
+      const repo = createRunArchivesRepo(db as never, TENANT_ZERO_ID);
       const result = await repo.getPublishedCanonicalUrls();
 
       expect(result).toBeInstanceOf(Set);
@@ -139,7 +140,7 @@ describe("run-archives repository", () => {
       const { createRunArchivesRepo } = await import(
         "@pipeline/repositories/run-archives.js"
       );
-      const repo = createRunArchivesRepo(db as never);
+      const repo = createRunArchivesRepo(db as never, TENANT_ZERO_ID);
       const result = await repo.getPublishedCanonicalUrls();
 
       expect(result).toBeInstanceOf(Set);
@@ -162,7 +163,7 @@ describe("run-archives repository", () => {
       const { createRunArchivesRepo } = await import(
         "@pipeline/repositories/run-archives.js"
       );
-      const repo = createRunArchivesRepo(db as never);
+      const repo = createRunArchivesRepo(db as never, TENANT_ZERO_ID);
       const result = await repo.getPublishedCanonicalUrls();
 
       expect(result).toBeInstanceOf(Set);

@@ -1,8 +1,18 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import type { UserSettings } from "@newsletter/shared";
 import { createSettingsRouter } from "@api/routes/settings.js";
-import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
+import type {
+  NotificationSettingsRepo,
+  TenantNotificationSettings,
+  UserSettingsRepo,
+} from "@api/repositories/user-settings.js";
+import type { EncryptedBlob } from "@newsletter/shared/services/credential-cipher";
+import type {
+  TenantFeatureFlags,
+  TenantFeaturesRepo,
+} from "@api/repositories/tenant-features.js";
 
 function makeRepo(initial: UserSettings | null = null): {
   repo: UserSettingsRepo;
@@ -27,6 +37,8 @@ function makeRepo(initial: UserSettings | null = null): {
         webConfig: input.webConfig,
         twitterEnabled: input.twitterEnabled,
         twitterConfig: input.twitterConfig,
+        webSearchEnabled: input.webSearchEnabled ?? false,
+        webSearchConfig: input.webSearchConfig ?? null,
         posthogEnabled: input.posthogEnabled,
         posthogProjectToken: input.posthogProjectToken,
         posthogHost: input.posthogHost,
@@ -56,10 +68,59 @@ function makeRepo(initial: UserSettings | null = null): {
   } as { repo: UserSettingsRepo; store: { current: UserSettings | null }; upsertCalls: number };
 }
 
+function makeNotificationRepo(
+  initial: TenantNotificationSettings = { notificationEmail: null, slackWebhookEncrypted: null },
+) {
+  const store = { current: { ...initial } };
+  const repo: NotificationSettingsRepo = {
+    get: vi.fn(() => Promise.resolve({ ...store.current })),
+    update: vi.fn((input) => {
+      if (input.notificationEmail !== undefined) {
+        store.current.notificationEmail = input.notificationEmail;
+      }
+      if (input.slackWebhookEncrypted !== undefined) {
+        store.current.slackWebhookEncrypted = input.slackWebhookEncrypted;
+      }
+      return Promise.resolve();
+    }),
+  };
+  return { repo, store };
+}
+
+function makeCipher() {
+  return {
+    encrypt: vi.fn(
+      (plaintext: string): EncryptedBlob => ({ ct: `enc(${plaintext})`, iv: "iv", tag: "tag" }),
+    ),
+  };
+}
+
+function makeFeaturesRepo(
+  initial: TenantFeatureFlags = {
+    canonEnabled: false,
+    deliverabilityEnabled: false,
+    evalEnabled: false,
+  },
+) {
+  const store = { current: { ...initial } };
+  const repo: TenantFeaturesRepo = {
+    get: vi.fn(() => Promise.resolve({ ...store.current })),
+    update: vi.fn((_tenantId: string, patch: Partial<TenantFeatureFlags>) => {
+      store.current = { ...store.current, ...patch };
+      return Promise.resolve({ ...store.current });
+    }),
+  };
+  return { repo, store };
+}
+
 function makeQueue() {
   const upsertJobScheduler = vi.fn(() => Promise.resolve({ id: "sched" }));
   const removeJobScheduler = vi.fn(() => Promise.resolve(true));
   return { upsertJobScheduler, removeJobScheduler };
+}
+
+function makeSourcesSync() {
+  return { replaceAll: vi.fn(() => Promise.resolve([])) };
 }
 
 function buildApp(
@@ -68,14 +129,27 @@ function buildApp(
   resolveHandles?: (
     handles: string[],
   ) => Promise<{ handle: string; userId: string }[]>,
+  sourcesSync: ReturnType<typeof makeSourcesSync> = makeSourcesSync(),
+  tenantId?: string,
+  isTenantActive: (tenantId: string) => Promise<boolean> = () =>
+    Promise.resolve(true),
+  notificationRepo: NotificationSettingsRepo = makeNotificationRepo().repo,
+  cipher: ReturnType<typeof makeCipher> = makeCipher(),
+  tenantFeatures: TenantFeaturesRepo = makeFeaturesRepo().repo,
 ) {
   const app = new Hono();
+  app.use("*", setTestTenant(tenantId));
   app.route(
     "/api/settings",
     createSettingsRouter({
       getSettingsRepo: () => repo,
+      getNotificationSettingsRepo: () => notificationRepo,
+      cipher,
+      getSourcesRepo: () => sourcesSync,
       processingQueue: queue as never,
       collectorHealthQueue: queue as never,
+      isTenantActive,
+      tenantFeatures,
       resolveHandles: resolveHandles
         ? (handles) => resolveHandles(handles)
         : undefined,
@@ -336,6 +410,57 @@ describe("PUT /api/settings", () => {
     expect(store.current?.hnConfig).toEqual({ sinceDays: 3, keywords: ["agents"] });
   });
 
+  // Phase 6 removed the tenant-0 gate: every tenant's PUT reconciles its OWN
+  // schedulers (REQ-063) — keys and job data are scoped to the caller's tenant.
+  it("REQ-063: a non-zero tenant's PUT reconciles that tenant's schedulers, not tenant 0's", async () => {
+    const tenantId = "aaaaaaaa-0000-4000-8000-000000000042";
+    const { repo } = makeRepo(null);
+    const queue = makeQueue();
+    const app = buildApp(repo, queue, undefined, makeSourcesSync(), tenantId);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validBody),
+    });
+    expect(res.status).toBe(200);
+    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(6);
+    const calls = queue.upsertJobScheduler.mock.calls as unknown as [
+      string,
+      unknown,
+      { data: Record<string, unknown> },
+    ][];
+    for (const [key, , template] of calls) {
+      expect(key.endsWith(`:${tenantId}`)).toBe(true);
+      expect(template.data.tenantId).toBe(tenantId);
+    }
+  });
+
+  // A pending_setup tenant must not get live schedulers from a settings save —
+  // activation (Phase 11) runs the reconcile once the tenant goes active.
+  it("non-active tenant: PUT saves settings but skips scheduler reconcile", async () => {
+    const { repo, store } = makeRepo(null);
+    const queue = makeQueue();
+    const isTenantActive = vi.fn(() => Promise.resolve(false));
+    const app = buildApp(
+      repo,
+      queue,
+      undefined,
+      makeSourcesSync(),
+      undefined,
+      isTenantActive,
+    );
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validBody),
+    });
+    expect(res.status).toBe(200);
+    expect(store.current).not.toBeNull();
+    expect(isTenantActive).toHaveBeenCalled();
+    expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
+    expect(queue.removeJobScheduler).not.toHaveBeenCalled();
+  });
+
   it("REQ-014/REQ-022: disabled schedule removes the scheduler", async () => {
     const { repo } = makeRepo(null);
     const queue = makeQueue();
@@ -582,5 +707,388 @@ describe("PUT /api/settings", () => {
       body: "not-json{",
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("PUT /api/settings sources write-through sync", () => {
+  it("replaces the tenant's sources rows with the exploded legacy configs", async () => {
+    const { repo } = makeRepo(null);
+    const sourcesSync = makeSourcesSync();
+    const app = buildApp(repo, makeQueue(), undefined, sourcesSync);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        redditEnabled: true,
+        redditConfig: { subreddits: ["LocalLLaMA", "MachineLearning"], sinceDays: 2 },
+        webEnabled: false,
+        webConfig: {
+          sources: [{ name: "Anthropic", listingUrl: "https://www.anthropic.com/news" }],
+          maxItems: 10,
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(sourcesSync.replaceAll).toHaveBeenCalledTimes(1);
+    expect(sourcesSync.replaceAll).toHaveBeenCalledWith([
+      { type: "hn", config: { sinceDays: 1 }, enabled: true },
+      { type: "reddit", config: { subreddit: "LocalLLaMA", sinceDays: 2 }, enabled: true },
+      { type: "reddit", config: { subreddit: "MachineLearning", sinceDays: 2 }, enabled: true },
+      {
+        type: "web",
+        config: { name: "Anthropic", listingUrl: "https://www.anthropic.com/news" },
+        enabled: false,
+      },
+    ]);
+  });
+
+  it("does not touch the sources table when validation fails", async () => {
+    const { repo } = makeRepo(null);
+    const sourcesSync = makeSourcesSync();
+    const app = buildApp(repo, makeQueue(), undefined, sourcesSync);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topN: "nope" }),
+    });
+    expect(res.status).toBe(400);
+    expect(sourcesSync.replaceAll).not.toHaveBeenCalled();
+  });
+});
+
+describe("notification settings (REQ-092)", () => {
+  function buildNotifApp(
+    notif: ReturnType<typeof makeNotificationRepo>,
+    cipher = makeCipher(),
+  ) {
+    const { repo } = makeRepo(null);
+    return buildApp(
+      repo,
+      makeQueue(),
+      undefined,
+      makeSourcesSync(),
+      undefined,
+      undefined,
+      notif.repo,
+      cipher,
+    );
+  }
+
+  it("PUT persists notificationEmail and stores the webhook encrypted, never echoing it back", async () => {
+    const notif = makeNotificationRepo();
+    const cipher = makeCipher();
+    const app = buildNotifApp(notif, cipher);
+    const webhook = "https://hooks.slack.com/services/T/B/SECRET";
+
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        notificationEmail: "ops@tenant.io",
+        slackWebhookUrl: webhook,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(cipher.encrypt).toHaveBeenCalledWith(webhook);
+    expect(notif.store.current.notificationEmail).toBe("ops@tenant.io");
+    expect(notif.store.current.slackWebhookEncrypted).toEqual({
+      ct: `enc(${webhook})`,
+      iv: "iv",
+      tag: "tag",
+    });
+
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.notificationEmail).toBe("ops@tenant.io");
+    expect(body.hasSlackWebhook).toBe(true);
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain(webhook);
+    expect(serialized).not.toContain("enc(");
+    expect(serialized).not.toContain("slackWebhookUrl");
+    expect(serialized).not.toContain("slackWebhookEncrypted");
+  });
+
+  it("GET exposes notificationEmail + hasSlackWebhook but no webhook material", async () => {
+    const notif = makeNotificationRepo({
+      notificationEmail: "ops@tenant.io",
+      slackWebhookEncrypted: { ct: "secret-ct", iv: "iv", tag: "tag" },
+    });
+    const { repo } = makeRepo(null);
+    const app = buildApp(
+      repo,
+      makeQueue(),
+      undefined,
+      makeSourcesSync(),
+      undefined,
+      undefined,
+      notif.repo,
+    );
+    // Seed a settings row so GET returns a body.
+    await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validBody),
+    });
+
+    const res = await app.request("/api/settings");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.notificationEmail).toBe("ops@tenant.io");
+    expect(body.hasSlackWebhook).toBe(true);
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("secret-ct");
+    expect(serialized).not.toContain("slackWebhookEncrypted");
+  });
+
+  it("PUT without notification fields leaves them untouched", async () => {
+    const notif = makeNotificationRepo({
+      notificationEmail: "keep@tenant.io",
+      slackWebhookEncrypted: { ct: "keep-ct", iv: "iv", tag: "tag" },
+    });
+    const app = buildNotifApp(notif);
+
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validBody),
+    });
+
+    expect(res.status).toBe(200);
+    expect(notif.repo.update).not.toHaveBeenCalled();
+    expect(notif.store.current.notificationEmail).toBe("keep@tenant.io");
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.notificationEmail).toBe("keep@tenant.io");
+    expect(body.hasSlackWebhook).toBe(true);
+  });
+
+  it("PUT with nulls clears both channels", async () => {
+    const notif = makeNotificationRepo({
+      notificationEmail: "old@tenant.io",
+      slackWebhookEncrypted: { ct: "old-ct", iv: "iv", tag: "tag" },
+    });
+    const cipher = makeCipher();
+    const app = buildNotifApp(notif, cipher);
+
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        notificationEmail: null,
+        slackWebhookUrl: null,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(cipher.encrypt).not.toHaveBeenCalled();
+    expect(notif.store.current.notificationEmail).toBeNull();
+    expect(notif.store.current.slackWebhookEncrypted).toBeNull();
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.notificationEmail).toBeNull();
+    expect(body.hasSlackWebhook).toBe(false);
+  });
+
+  it("rejects an invalid notificationEmail", async () => {
+    const app = buildNotifApp(makeNotificationRepo());
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...validBody, notificationEmail: "not-an-email" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an invalid slackWebhookUrl", async () => {
+    const app = buildNotifApp(makeNotificationRepo());
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...validBody, slackWebhookUrl: "not-a-url" }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+function buildFeaturesApp(
+  features: ReturnType<typeof makeFeaturesRepo>,
+  repo: UserSettingsRepo = makeRepo(null).repo,
+) {
+  return buildApp(
+    repo,
+    makeQueue(),
+    undefined,
+    makeSourcesSync(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    features.repo,
+  );
+}
+
+describe("feature toggles (REQ-093)", () => {
+  it("test_REQ_093_feature_flags_default_off_independent: GET reports all three off by default", async () => {
+    const features = makeFeaturesRepo();
+    const app = buildFeaturesApp(features);
+    await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validBody),
+    });
+
+    const res = await app.request("/api/settings");
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.canonEnabled).toBe(false);
+    expect(body.deliverabilityEnabled).toBe(false);
+    expect(body.evalEnabled).toBe(false);
+  });
+
+  it("PUT persists each toggle independently on the tenants accessor", async () => {
+    const features = makeFeaturesRepo();
+    const app = buildFeaturesApp(features);
+
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...validBody, canonEnabled: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(features.store.current).toEqual({
+      canonEnabled: true,
+      deliverabilityEnabled: false,
+      evalEnabled: false,
+    });
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.canonEnabled).toBe(true);
+    expect(body.evalEnabled).toBe(false);
+
+    const res2 = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...validBody, evalEnabled: true }),
+    });
+    expect(res2.status).toBe(200);
+    // canonEnabled stays on: toggles are independent and omitted ones untouched.
+    expect(features.store.current).toEqual({
+      canonEnabled: true,
+      deliverabilityEnabled: false,
+      evalEnabled: true,
+    });
+  });
+
+  it("PUT without toggle fields never calls update", async () => {
+    const features = makeFeaturesRepo();
+    const app = buildFeaturesApp(features);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validBody),
+    });
+    expect(res.status).toBe(200);
+    expect(features.repo.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-boolean toggle values", async () => {
+    const features = makeFeaturesRepo();
+    const app = buildFeaturesApp(features);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...validBody, canonEnabled: "yes" }),
+    });
+    expect(res.status).toBe(400);
+    expect(features.repo.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("shortlist size is not tenant-settable (REQ-094)", () => {
+  it("PUT ignores a client-sent shortlistSize and applies the internal default on new rows", async () => {
+    const { repo } = makeRepo(null);
+    const upsertSpy = vi.spyOn(repo, "upsert");
+    const app = buildApp(repo, makeQueue());
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...validBody, shortlistSize: 99 }),
+    });
+    expect(res.status).toBe(200);
+    expect(upsertSpy.mock.calls[0][0].shortlistSize).toBe(30);
+  });
+
+  it("PUT preserves the existing DB value (tenant 0 keeps its tuned size)", async () => {
+    const existing = {
+      id: "id-1",
+      topN: 5,
+      halfLifeHours: null,
+      hnEnabled: true,
+      hnConfig: { sinceDays: 1 },
+      redditEnabled: false,
+      redditConfig: null,
+      webEnabled: false,
+      webConfig: null,
+      twitterEnabled: false,
+      twitterConfig: null,
+      webSearchEnabled: false,
+      webSearchConfig: null,
+      posthogEnabled: false,
+      posthogProjectToken: null,
+      posthogHost: null,
+      scheduleTime: "08:00",
+      pipelineTime: "08:00",
+      emailTime: "08:30",
+      linkedinTime: "08:45",
+      twitterTime: "09:00",
+      scheduleTimezone: "UTC",
+      scheduleEnabled: false,
+      emailEnabled: true,
+      linkedinEnabled: true,
+      twitterPostEnabled: true,
+      autoReview: false,
+      rankingPrompt: "Default ranking prompt",
+      shortlistPrompt: "Default shortlist prompt",
+      shortlistSize: 55,
+      updatedAt: new Date().toISOString(),
+    } as UserSettings;
+    const { repo } = makeRepo(existing);
+    const upsertSpy = vi.spyOn(repo, "upsert");
+    const app = buildApp(repo, makeQueue());
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...validBody, shortlistSize: 10 }),
+    });
+    expect(res.status).toBe(200);
+    expect(upsertSpy.mock.calls[0][0].shortlistSize).toBe(55);
+  });
+
+  it("accepts a body WITHOUT shortlistSize (the field is gone from the tenant UI)", async () => {
+    const { repo } = makeRepo(null);
+    const app = buildApp(repo, makeQueue());
+    const { shortlistSize: _omitted, ...bodyWithout } = validBody;
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bodyWithout),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("GET and PUT responses never serialize shortlistSize", async () => {
+    const { repo } = makeRepo(null);
+    const app = buildApp(repo, makeQueue());
+    const putRes = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validBody),
+    });
+    expect(putRes.status).toBe(200);
+    const putBody = (await putRes.json()) as Record<string, unknown>;
+    expect("shortlistSize" in putBody).toBe(false);
+
+    const getRes = await app.request("/api/settings");
+    const getBody = (await getRes.json()) as Record<string, unknown>;
+    expect("shortlistSize" in getBody).toBe(false);
   });
 });

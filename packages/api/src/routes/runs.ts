@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 import type IORedis from "ioredis";
 import { Queue } from "bullmq";
 import {
@@ -33,6 +34,11 @@ import {
   createUserSettingsRepo,
   type UserSettingsRepo,
 } from "@api/repositories/user-settings.js";
+import {
+  createSourcesRepo,
+  type SourcesRepo,
+} from "@api/repositories/sources.js";
+import { assembleRunConfigs } from "@newsletter/shared/services/sources-assembler";
 import { listRuns } from "@api/services/run-list.js";
 import { captureAnalytics } from "@api/lib/posthog.js";
 
@@ -40,9 +46,10 @@ export interface RunsRouterDeps {
   redis: IORedis;
   publisher?: IORedis;
   processingQueue: Queue<RunProcessJobPayload>;
-  getRawItemsRepo: () => RawItemsRepo;
-  getSettingsRepo?: () => UserSettingsRepo;
-  getArchiveRepo?: () => RunArchivesRepo;
+  getRawItemsRepo: (tenantId: string) => RawItemsRepo;
+  getSettingsRepo?: (tenantId: string) => UserSettingsRepo;
+  getSourcesRepo?: (tenantId: string) => SourcesRepo;
+  getArchiveRepo?: (tenantId: string) => RunArchivesRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -68,7 +75,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       parsed.data,
       deps.redis,
       deps.processingQueue,
-      { halfLifeHours: parsed.data.halfLifeHours },
+      { halfLifeHours: parsed.data.halfLifeHours, tenantId: getTenantId(c) },
     );
     const sources = Object.keys(parsed.data).filter(
       (k) => k !== "topN" && k !== "halfLifeHours",
@@ -78,6 +85,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       "run.started",
     );
     void captureAnalytics({
+      tenantId: getTenantId(c),
       distinctId: "admin",
       event: "run_started",
       properties: { run_id: runId, top_n: parsed.data.topN, sources },
@@ -86,21 +94,23 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
   });
 
   runs.post("/now", async (c) => {
-    const settingsRepo = deps.getSettingsRepo?.();
+    const settingsRepo = deps.getSettingsRepo?.(getTenantId(c));
     if (!settingsRepo) {
       return c.json({ error: "settings repository not configured" }, 500);
+    }
+    const sourcesRepo = deps.getSourcesRepo?.(getTenantId(c));
+    if (!sourcesRepo) {
+      return c.json({ error: "sources repository not configured" }, 500);
     }
     const settings = await settingsRepo.get();
     if (!settings) {
       return c.json({ error: "settings not configured" }, 409);
     }
-    const anySource =
-      (settings.hnEnabled && settings.hnConfig !== null) ||
-      (settings.redditEnabled && settings.redditConfig !== null) ||
-      (settings.webEnabled && settings.webConfig !== null) ||
-      (settings.twitterEnabled && settings.twitterConfig !== null) ||
-      (settings.webSearchEnabled && settings.webSearchConfig !== null);
-    if (!anySource) {
+    // REQ-073: collection runs off the tenant's enabled source rows; the
+    // legacy settings JSONB only contributes the collector tuning knobs.
+    const enabledSources = await sourcesRepo.listEnabled();
+    const collectors = assembleRunConfigs(enabledSources, settings);
+    if (Object.keys(collectors).length === 0) {
       return c.json({ error: "no sources enabled" }, 409);
     }
 
@@ -120,14 +130,16 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
 
     const { runId } = await startRun(
       settings,
+      collectors,
       { redis: deps.redis, queue: deps.processingQueue },
-      { dryRun },
+      { dryRun, tenantId: getTenantId(c) },
     );
     logger.info(
       { event: "run.now", runId, topN: settings.topN, dryRun },
       "run.now",
     );
     void captureAnalytics({
+      tenantId: getTenantId(c),
       distinctId: "admin",
       event: "run_now_triggered",
       properties: { run_id: runId, top_n: settings.topN, dry_run: dryRun },
@@ -148,11 +160,11 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       }
       limit = parsed;
     }
-    const archiveRepo = deps.getArchiveRepo?.();
+    const archiveRepo = deps.getArchiveRepo?.(getTenantId(c));
     if (!archiveRepo) {
       return c.json({ error: "archive repository not configured" }, 500);
     }
-    const settings = await deps.getSettingsRepo?.().get();
+    const settings = await deps.getSettingsRepo?.(getTenantId(c)).get();
     const timezone = safeTimezone(settings?.scheduleTimezone);
     const runsList = await listRuns(limit, {
       redis: deps.redis,
@@ -171,7 +183,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     const state = JSON.parse(raw) as RunState;
     if (state.status === "completed" && Array.isArray(state.rankedItems)) {
       const hydrated = await hydrateRankedItems(
-        deps.getRawItemsRepo(),
+        deps.getRawItemsRepo(getTenantId(c)),
         state.rankedItems,
         null,
       );
@@ -182,7 +194,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
 
   runs.post("/:runId/cancel", async (c) => {
     const runId = c.req.param("runId");
-    const archiveRepo = deps.getArchiveRepo?.();
+    const archiveRepo = deps.getArchiveRepo?.(getTenantId(c));
     if (!archiveRepo) {
       return c.json({ error: "archive repository not configured" }, 500);
     }
@@ -228,7 +240,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       return c.json({ error: "invalid runId: must be a UUID" }, 400);
     }
 
-    const archiveRepo = deps.getArchiveRepo?.();
+    const archiveRepo = deps.getArchiveRepo?.(getTenantId(c));
     if (!archiveRepo) {
       return c.json({ error: "archive repository not configured" }, 500);
     }
@@ -257,10 +269,14 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
     // Social post jobs carry only { runId } but share the processing queue.
     // Queue<RunProcessJobPayload> is structurally compatible via BullMQ's base class —
     // casting through the base QueueBase which exposes an untyped add.
-    await (deps.processingQueue as Queue).add(jobName, { runId });
+    await (deps.processingQueue as Queue).add(jobName, {
+      runId,
+      tenantId: getTenantId(c),
+    });
 
     logger.info({ event: "run.post.manual", runId, channel }, "run.post.manual");
     void captureAnalytics({
+      tenantId: getTenantId(c),
       distinctId: "admin",
       event: "run_post_manual_triggered",
       properties: { run_id: runId, channel },
@@ -285,8 +301,9 @@ export function createDefaultRunsRouter(): Hono {
     redis: createRedisConnection(),
     publisher: createRedisConnection(),
     processingQueue: getDefaultProcessingQueue(),
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
+    getRawItemsRepo: (tenantId) => createRawItemsRepo(defaultGetDb(), tenantId),
+    getSettingsRepo: (tenantId) => createUserSettingsRepo(defaultGetDb(), tenantId),
+    getSourcesRepo: (tenantId) => createSourcesRepo(defaultGetDb(), tenantId),
+    getArchiveRepo: (tenantId) => createRunArchivesRepo(defaultGetDb(), tenantId),
   });
 }

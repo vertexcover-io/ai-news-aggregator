@@ -9,6 +9,8 @@
  *  - Hit the webhooks router via a fully-wired Hono app and a real Postgres DB.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { config } from "dotenv";
 import { resolve } from "node:path";
 import { execSync } from "node:child_process";
@@ -27,7 +29,7 @@ import {
 import { createLogger } from "@newsletter/shared";
 import { createWebhooksRouter } from "@api/routes/webhooks.js";
 import { createSesEventsRepo } from "@api/repositories/ses-events.js";
-import { createEmailSendsRepo } from "@api/repositories/email-sends.js";
+import { createEmailSendTenantLookup } from "@api/repositories/email-sends.js";
 import { createSubscribersRepo } from "@api/repositories/subscribers.js";
 import {
   verifySnsMessage,
@@ -165,13 +167,28 @@ function buildSignedSubscriptionConfirmation(input: SubConfirmInput): string {
 function buildApp(certFetcher: CertFetcher): Hono {
   const logger = createLogger("test-sns-webhook");
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route(
     "/api/webhooks",
     createWebhooksRouter({
-      sesEventsRepo: createSesEventsRepo(db),
-      emailSendsRepo: createEmailSendsRepo(db),
-      subscribersRepo: createSubscribersRepo(db),
+      getSesEventsRepo: (tenantId) => createSesEventsRepo(db, tenantId),
+      emailSendLookup: createEmailSendTenantLookup(db),
+      getSubscribersRepo: (tenantId) => createSubscribersRepo(db, tenantId),
       verifySns: (raw: string) => verifySnsMessage(raw, certFetcher),
+      slackNotifier: {
+        notifyNewsletterSent: () => Promise.resolve(),
+        notifyReviewPending: () => Promise.resolve(),
+        notifyReviewWarning: () => Promise.resolve(),
+        notifyPublishFailed: () => Promise.resolve(),
+        notifyPublishUnavailable: () => Promise.resolve(),
+        notifySourceDistribution: () => Promise.resolve(),
+        notifyEmailDelivery: () => Promise.resolve(),
+        notifyLinkedinPosted: () => Promise.resolve(),
+        notifyTwitterPosted: () => Promise.resolve(),
+        notifySubscriberConfirmed: () => Promise.resolve(),
+        notifySubscriberRemoved: () => Promise.resolve(),
+        notifyFeedbackReceived: () => Promise.resolve(),
+      },
       logger,
     }),
   );
@@ -184,6 +201,7 @@ async function insertSubscriber(email: string, status: "confirmed" | "pending" =
   const [row] = await db
     .insert(subscribers)
     .values({
+      tenantId: TENANT_ZERO_ID,
       email,
       status,
       subscribedAt: new Date(),
@@ -196,6 +214,8 @@ async function insertRunArchive() {
   const [row] = await db
     .insert(runArchives)
     .values({
+      tenantId: TENANT_ZERO_ID,
+      tenantId: TENANT_ZERO_ID,
       id: randomUUID(),
       status: "completed",
       rankedItems: [],
@@ -214,7 +234,7 @@ async function insertEmailSend(
 ) {
   const [row] = await db
     .insert(emailSends)
-    .values({ subscriberId, runArchiveId, messageId })
+    .values({ tenantId: TENANT_ZERO_ID, subscriberId, runArchiveId, messageId })
     .returning();
   return row;
 }

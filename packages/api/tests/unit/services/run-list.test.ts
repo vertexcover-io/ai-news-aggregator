@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../../helpers/tenant.js";
 import { EventEmitter } from "node:events";
 import type IORedis from "ioredis";
 import { Hono } from "hono";
@@ -635,6 +636,7 @@ describe("GET /api/runs", () => {
   function buildApp() {
     const entries = new Map<string, RedisEntry>();
     const app = new Hono();
+    app.use("*", setTestTenant());
     const redis = makeRedis(entries);
     app.route(
       "/api/runs",

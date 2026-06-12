@@ -68,6 +68,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@ai-sdk/anthropic':
+        specifier: 2.0.74
+        version: 2.0.74(zod@4.3.6)
       '@aws-sdk/client-sesv2':
         specifier: 3.1042.0
         version: 3.1042.0
@@ -83,6 +86,12 @@ importers:
       '@react-email/components':
         specifier: 1.0.12
         version: 1.0.12(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      ai:
+        specifier: 5.0.169
+        version: 5.0.169(zod@4.3.6)
+      bcryptjs:
+        specifier: ^3.0.3
+        version: 3.0.3
       bullmq:
         specifier: 5.78.0
         version: 5.78.0
@@ -116,6 +125,9 @@ importers:
       rettiwt-api:
         specifier: 7.0.3
         version: 7.0.3(patch_hash=cf58694866c74347a978be3eadc200dc71a265f766231b297fe6643b8f37da2a)
+      twitter-api-v2:
+        specifier: 1.29.0
+        version: 1.29.0
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -3336,6 +3348,10 @@ packages:
   baseline-browser-mapping@2.10.13:
     resolution: {integrity: sha512-BL2sTuHOdy0YT1lYieUxTw/QMtPBC3pmlJC6xk8BBYVv6vcw3SGdKemQ+Xsx9ik2F/lYDO9tqsFQH1r9PFuHKw==}
     engines: {node: '>=6.0.0'}
+    hasBin: true
+
+  bcryptjs@3.0.3:
+    resolution: {integrity: sha512-GlF5wPWnSa/X5LKM1o0wz0suXIINz1iHRLvTS+sLyi7XPbe5ycmYI3DlZqVGZZtDgl4DmasFg7gOB3JYbphV5g==}
     hasBin: true
 
   bidi-js@1.0.3:
@@ -9020,6 +9036,8 @@ snapshots:
   base64-js@1.5.1: {}
 
   baseline-browser-mapping@2.10.13: {}
+
+  bcryptjs@3.0.3: {}
 
   bidi-js@1.0.3:
     dependencies:

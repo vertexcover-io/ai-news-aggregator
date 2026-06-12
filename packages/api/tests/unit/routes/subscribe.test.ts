@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import type { SubscriberSelect, SubscriberInsert, SubscriberStatus, SlackNotifier } from "@newsletter/shared";
 import type { FeedbackEventInsert, FeedbackEventSelect, FeedbackRating } from "@newsletter/shared";
@@ -38,6 +39,7 @@ const BASE_URL = "https://example.com";
 function makeSubscriber(overrides: Partial<SubscriberSelect> = {}): SubscriberSelect {
   return {
     id: "00000000-0000-0000-0000-000000000001",
+    tenantId: "00000000-0000-0000-0000-000000000000",
     email: "test@example.com",
     status: "pending",
     confirmToken: null,
@@ -119,13 +121,15 @@ function buildApp(opts: {
   slackNotifier?: SlackNotifier;
   sendConfirmationEmail?: (email: string, confirmUrl: string) => Promise<void>;
   sendNewsletterToSubscriber?: (runId: string, subscriberId: string) => Promise<void>;
-  getMostRecentReviewedArchiveId?: () => Promise<string | null>;
+  getMostRecentReviewedArchiveId?: (tenantId: string) => Promise<string | null>;
   logger?: ReturnType<typeof makeLogger>;
 }): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   const router = createSubscribeRouter({
-    subscribersRepo: opts.repo,
-    feedbackEventsRepo: opts.feedbackRepo ?? makeFeedbackRepo(),
+    getSubscribersRepo: () => opts.repo,
+    subscriberLookup: { findById: (id) => opts.repo.findById(id) },
+    getFeedbackEventsRepo: () => opts.feedbackRepo ?? makeFeedbackRepo(),
     feedbackCampaign: FEEDBACK_CAMPAIGN,
     sessionSecret: SECRET,
     baseUrl: BASE_URL,
@@ -265,7 +269,11 @@ describe("GET /api/confirm", () => {
     const res = await app.request(`/api/confirm?token=${token}`);
 
     expect(res.status).toBe(302);
-    expect(sendNewsletterToSubscriber).toHaveBeenCalledWith("archive-123", subscriber.id);
+    expect(sendNewsletterToSubscriber).toHaveBeenCalledWith(
+      "archive-123",
+      subscriber.id,
+      subscriber.tenantId,
+    );
   });
 
   it("EDGE-005: when no reviewed archive exists, sendNewsletterToSubscriber is NOT called", async () => {

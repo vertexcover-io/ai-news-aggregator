@@ -67,7 +67,7 @@ function makeFakeDb(initial: SubscriberSelect | null): {
 describe("createSubscribersRepo.updateStatus", () => {
   it("returns {changed:true, next:'confirmed'} when row was pending", async () => {
     const { db } = makeFakeDb(makeRow({ status: "pending" }));
-    const repo = createSubscribersRepo(db);
+    const repo = createSubscribersRepo(db, "00000000-0000-0000-0000-000000000000");
 
     const result = await repo.updateStatus("00000000-0000-0000-0000-000000000001", "confirmed", {
       subscribedAt: new Date("2026-01-02T00:00:00Z"),
@@ -83,7 +83,7 @@ describe("createSubscribersRepo.updateStatus", () => {
 
   it("returns {changed:false, next:'confirmed'} on second call with same status", async () => {
     const { db } = makeFakeDb(makeRow({ status: "confirmed" }));
-    const repo = createSubscribersRepo(db);
+    const repo = createSubscribersRepo(db, "00000000-0000-0000-0000-000000000000");
 
     const result = await repo.updateStatus("00000000-0000-0000-0000-000000000001", "confirmed");
 
@@ -94,7 +94,7 @@ describe("createSubscribersRepo.updateStatus", () => {
 
   it("throws when id does not exist (update branch — no row returned and select empty)", async () => {
     const { db } = makeFakeDb(null);
-    const repo = createSubscribersRepo(db);
+    const repo = createSubscribersRepo(db, "00000000-0000-0000-0000-000000000000");
 
     await expect(
       repo.updateStatus("00000000-0000-0000-0000-000000000099", "confirmed"),
@@ -104,7 +104,7 @@ describe("createSubscribersRepo.updateStatus", () => {
   it("preserves extra fields on the changed branch (subscribedAt, unsubscribedAt, confirmToken nullables)", async () => {
     const subscribedAt = new Date("2026-03-15T10:00:00Z");
     const { db } = makeFakeDb(makeRow({ status: "pending", confirmToken: "tok", confirmTokenExpiresAt: new Date() }));
-    const repo = createSubscribersRepo(db);
+    const repo = createSubscribersRepo(db, "00000000-0000-0000-0000-000000000000");
 
     const result = await repo.updateStatus("00000000-0000-0000-0000-000000000001", "confirmed", {
       subscribedAt,
@@ -121,7 +121,7 @@ describe("createSubscribersRepo.updateStatus", () => {
   it("extra fields are NOT applied on the no-op branch", async () => {
     const originalSubscribedAt = new Date("2026-01-01T00:00:00Z");
     const { db } = makeFakeDb(makeRow({ status: "confirmed", subscribedAt: originalSubscribedAt }));
-    const repo = createSubscribersRepo(db);
+    const repo = createSubscribersRepo(db, "00000000-0000-0000-0000-000000000000");
 
     const result = await repo.updateStatus("00000000-0000-0000-0000-000000000001", "confirmed", {
       subscribedAt: new Date("2026-06-01T00:00:00Z"),

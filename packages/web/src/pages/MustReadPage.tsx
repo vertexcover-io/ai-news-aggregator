@@ -1,9 +1,14 @@
-import { useEffect, type ReactElement } from "react";
+import { type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listMustRead } from "../api/must-read";
 import { setMeta } from "../lib/meta";
 import { MustReadEntryView } from "../components/must-read/MustReadEntryView";
 import { InlineSubscribeCard } from "../components/shell/InlineSubscribeCard";
+import {
+  useTenantConfig,
+  useTenantPageTitle,
+} from "../components/shell/TenantConfigProvider";
+import { NotFoundPage } from "./NotFoundPage";
 
 const TAGLINE =
   "The seminal reading on agentic coding, harness engineering, and the software factory. Annotated and kept current.";
@@ -25,15 +30,21 @@ function lastRevised(entries: { addedAt: string }[]): string {
 }
 
 export function MustReadPage(): ReactElement {
-  useEffect(() => {
-    document.title = "Must Read — AgentLoop";
+  const config = useTenantConfig();
+  const canonEnabled = config?.flags.canon !== false;
+  useTenantPageTitle((cfg) => {
     setMeta("description", TAGLINE);
-  }, []);
+    return `Must Read — ${cfg.name}`;
+  });
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["must-read", "list"],
     queryFn: listMustRead,
+    enabled: canonEnabled,
   });
+
+  // EDGE-014: Canon off hides the page (nav is hidden too); data is retained.
+  if (!canonEnabled) return <NotFoundPage />;
 
   const entries = data ?? [];
   const sorted = [...entries].sort(

@@ -1,3 +1,4 @@
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
@@ -55,6 +56,7 @@ async function seedReviewedArchive(
 ): Promise<string> {
   const runId = randomUUID();
   const raw: RawItemInsert = {
+    tenantId: TENANT_ZERO_ID,
     sourceType: "hn",
     externalId: `twitter-worker-${runId}`,
     title: "Small models gain enterprise traction",
@@ -78,6 +80,7 @@ async function seedReviewedArchive(
   }
 
   await db.insert(runArchives).values({
+    tenantId: TENANT_ZERO_ID,
     id: runId,
     status: "completed",
     rankedItems: [
@@ -101,7 +104,7 @@ async function seedReviewedArchive(
 }
 
 function createNotifier(db: AppDb) {
-  const archiveRepo = createRunArchivesRepo(db);
+  const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
   return {
     archiveRepo,
     notifier: createTwitterNotifier({
@@ -112,7 +115,7 @@ function createNotifier(db: AppDb) {
         accessSecret: "twitter-access-secret",
       }),
       archives: archiveRepo,
-      rawItems: createRawItemsRepo(db),
+      rawItems: createRawItemsRepo(db, TENANT_ZERO_ID),
       config: {
         publicArchiveBaseUrl: "https://newsletter.example.com",
       },

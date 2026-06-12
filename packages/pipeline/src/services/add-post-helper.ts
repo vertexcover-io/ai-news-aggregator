@@ -1,4 +1,4 @@
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemUpsert } from "@pipeline/repositories/raw-items.js";
 import type { ItemPreview, RankedItem } from "@newsletter/shared";
 import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import { MARKDOWN_EXCERPT_MAX } from "@newsletter/shared/constants";
@@ -31,19 +31,19 @@ export type { AddPostSourceType };
 
 export interface AddPostDeps {
   rawItemsRepo: RawItemsRepo;
-  fetchHnPost?: (url: string, deps?: FetchHnPostDeps) => Promise<RawItemInsert>;
+  fetchHnPost?: (url: string, deps?: FetchHnPostDeps) => Promise<RawItemUpsert>;
   fetchRedditPost?: (
     url: string,
     deps?: FetchRedditPostDeps,
-  ) => Promise<RawItemInsert>;
+  ) => Promise<RawItemUpsert>;
   fetchWebPost?: (
     url: string,
     deps?: FetchWebPostDeps,
-  ) => Promise<RawItemInsert>;
+  ) => Promise<RawItemUpsert>;
   fetchTwitterPost?: (
     url: string,
     deps?: FetchTwitterPostDeps,
-  ) => Promise<RawItemInsert>;
+  ) => Promise<RawItemUpsert>;
   generateRecap?: typeof defaultGenerateRecap;
   fetchFn?: typeof fetch;
   recapOptions?: GenerateRecapOptions;
@@ -129,7 +129,7 @@ export async function hydrateAddedPost(
   });
 
   const existingComments = raw.metadata?.comments ?? [];
-  const withFlag: RawItemInsert = {
+  const withFlag: RawItemUpsert = {
     ...raw,
     metadata: {
       ...(raw.metadata ?? { comments: [] }),

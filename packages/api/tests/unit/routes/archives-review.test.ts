@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import type { RankedItem, RankedItemRef } from "@newsletter/shared";
 import { createArchivesRouter } from "@api/routes/archives.js";
@@ -69,10 +70,11 @@ interface MakeAppOpts {
 
 function makeApp(opts: MakeAppOpts): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   const router = createArchivesRouter({
     getArchiveRepo: () => opts.archiveRepo,
     getRawItemsRepo: () => opts.rawRepo ?? makeRawRepo([]),
-    hydrateAddedPost: opts.hydrateAddedPost ?? vi.fn(),
+    hydrateAddedPost: () => opts.hydrateAddedPost ?? vi.fn(),
   });
   app.route("/api/archives", router);
   return app;

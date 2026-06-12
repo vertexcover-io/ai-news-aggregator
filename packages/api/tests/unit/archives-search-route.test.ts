@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
 import { Hono } from "hono";
 import type { ArchiveListItem } from "@newsletter/shared";
 import { createArchivesSearchRouter } from "@api/routes/archives-search.js";
@@ -72,6 +73,7 @@ function makeApp(opts: {
   const archiveRepo = opts.archiveRepo ?? makeRepo();
   const logger = opts.logger ?? makeLogger();
   const app = new Hono();
+  app.use("*", setTestTenant());
   const router = createArchivesSearchRouter({
     getArchiveRepo: () => archiveRepo,
     getRawItemsRepo: () => opts.rawItemsRepo ?? makeRawRepo(),

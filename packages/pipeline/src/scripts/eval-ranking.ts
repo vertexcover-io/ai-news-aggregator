@@ -5,6 +5,7 @@ import { parseArgs } from "node:util";
 config({ path: resolve(import.meta.dirname, "../../../../.env") });
 
 import { getDb } from "@newsletter/shared/db";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 import { EvalCache } from "@pipeline/eval/cache.js";
 import {
@@ -68,7 +69,8 @@ async function main(): Promise<number> {
 
   const loadPromptFromDb = async (): Promise<string> => {
     const db = getDb();
-    const repo = createUserSettingsRepo(db);
+    // Offline operator CLI — reads tenant 0's settings (transitional, REQ-061).
+    const repo = createUserSettingsRepo(db, TENANT_ZERO_ID);
     const settings = await repo.get();
     if (settings === null) {
       throw new Error(

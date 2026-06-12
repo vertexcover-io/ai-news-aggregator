@@ -8,8 +8,8 @@ import type {
 } from "@newsletter/shared/types/eval-ranking";
 import { EvalRunRequestSchema } from "@newsletter/shared/types/eval-ranking-schemas";
 import { createAdminEvalRouter } from "../admin-eval.js";
-import { requireAdmin } from "../../auth/middleware.js";
-import { issueToken, COOKIE_NAME } from "../../auth/session.js";
+import { requireUser } from "../../auth/middleware.js";
+import { issueSession, COOKIE_NAME } from "../../auth/session.js";
 import type {
   CreateManualFixtureResult,
   RunEvalOutput,
@@ -20,7 +20,10 @@ import type { EvalRunsRepo } from "@api/repositories/eval-runs.js";
 const SESSION_SECRET = "test-session-secret-32-chars-1234";
 
 function authedHeaders(): Record<string, string> {
-  const token = issueToken(SESSION_SECRET);
+  const token = issueSession(
+    { uid: "test-user", tid: "test-tenant", role: "tenant_admin" },
+    SESSION_SECRET,
+  );
   return { cookie: `${COOKIE_NAME}=${token}` };
 }
 
@@ -155,7 +158,7 @@ function makeRouter(overrides: Partial<Parameters<typeof createAdminEvalRouter>[
     ...overrides,
   });
   const app = new Hono();
-  app.use("/api/admin/*", requireAdmin(SESSION_SECRET));
+  app.use("/api/admin/*", requireUser(SESSION_SECRET));
   app.route("/api/admin/eval", router);
   return { app, upsert };
 }
@@ -550,7 +553,7 @@ describe("POST /run SSE", () => {
     });
     expect(res.status).toBe(200);
     const text = await res.text();
-    expect(getCalendarRunDetail).toHaveBeenCalledWith("run-1");
+    expect(getCalendarRunDetail).toHaveBeenCalledWith("test-tenant", "run-1");
     expect(runEval).toHaveBeenCalledOnce();
     expect(runEval).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -637,7 +640,7 @@ describe("POST /run SSE", () => {
         },
       ],
     };
-    const getCalendarRunDetail = vi.fn((runId: string) =>
+    const getCalendarRunDetail = vi.fn((_tenantId: string, runId: string) =>
       runId === "missing" ? Promise.resolve(null) : Promise.resolve(okDetail),
     );
     const runEval = vi.fn(
@@ -708,6 +711,7 @@ describe("POST /run SSE", () => {
       runs: { runId: string; itemCount: number; digestHeadline: string }[];
     };
     expect(listCalendarRunsByDate).toHaveBeenCalledWith(
+      "test-tenant",
       "2026-05-22",
       "Asia/Kolkata",
     );

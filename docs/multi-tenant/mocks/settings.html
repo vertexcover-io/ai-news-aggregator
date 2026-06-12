@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings — Tenant dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<style>
+  .settings-grid { display:grid; grid-template-columns: 200px 1fr; gap: 36px; align-items:start; }
+  .sidenav { position: sticky; top: 80px; }
+  .sidenav a { display:block; font-family: var(--font-mono); font-size: 11px; letter-spacing:.12em; text-transform:uppercase; color: var(--mute); text-decoration:none; padding: 8px 10px; border-radius: 7px; }
+  .sidenav a:hover { background: rgba(20,17,13,.03); color: var(--ink); }
+  .sidenav a.active { background: var(--chip); color: var(--rust); }
+  .logo-now { width:56px; height:56px; border-radius:10px; background:#2a261f; display:grid; place-items:center; color:#e98f6e; font-size:22px; }
+  .dropzone { border:1.5px dashed var(--line-strong); border-radius: 10px; padding: 16px 18px; text-align:center; background: var(--cream); cursor:pointer; flex:1; }
+  .dropzone:hover { border-color: var(--rust); }
+  .connect-row { display:flex; align-items:center; justify-content:space-between; border:1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom:12px; }
+  .connect-row .l { display:flex; align-items:center; gap:12px; }
+  .ico { width:36px; height:36px; border-radius:8px; display:grid; place-items:center; color:#fff; font-family:var(--font-mono); font-weight:600; font-size:14px; }
+  .dns { width:100%; }
+  @media(max-width:820px){ .settings-grid{ grid-template-columns:1fr; } .sidenav{ position:static; display:flex; gap:6px; overflow:auto; } }
+</style>
+</head>
+<body>
+  <!-- app bar -->
+  <div class="appbar"><div class="appbar-inner">
+    <a class="brand" href="#"><svg class="brandmark" width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="45" stroke="currentColor" stroke-width="5" stroke-linecap="round" pathLength="360" stroke-dasharray="344 360" stroke-dashoffset="-55"/><circle cx="50" cy="50" r="12" fill="currentColor"/></svg><span class="wordmark">The Inference</span></a>
+    <nav><a href="#">Dashboard</a><a href="#">Review</a><a href="#">Sources</a><a class="active" href="#">Settings</a><span class="avatar">AL</span></nav>
+  </div></div>
+
+  <div class="shell">
+    <p class="kicker kicker-rust">Tenant settings</p>
+    <h1 class="display" style="margin-bottom:28px">Settings</h1>
+
+    <div class="settings-grid">
+      <nav class="sidenav">
+        <a class="active" href="#branding">Branding</a>
+        <a href="#sources">Sources</a>
+        <a href="#social">Social</a>
+        <a href="#domain">Sending domain</a>
+        <a href="#notify">Notifications</a>
+        <a href="#features">Features</a>
+        <a href="#">Schedule</a>
+        <a href="#">Prompts</a>
+      </nav>
+
+      <div>
+        <!-- BRANDING -->
+        <section id="branding" class="card">
+          <div class="card-head"><div><h3 class="card-title">Branding</h3><p class="card-sub">Shown on your public site and in emails.</p></div></div>
+          <div class="field"><label class="label">Newsletter name</label><input class="input" value="The Inference"></div>
+          <div class="field">
+            <label class="label">Logo</label>
+            <div class="row" style="gap:14px; align-items:stretch">
+              <div class="logo-now">✦</div>
+              <div class="dropzone"><p style="margin:2px 0; font-size:13px">Replace logo — <span class="accent">browse</span></p><p class="help" style="margin:0">PNG · JPEG · SVG · WebP · ≤ 512 KB</p></div>
+            </div>
+          </div>
+          <div class="field" style="margin:0"><label class="label">Headline</label><textarea class="textarea" style="min-height:64px">The daily read for people building with *inference.*</textarea>
+            <p class="help">Wrap a phrase in *asterisks* to accent it in rust.</p></div>
+          <hr class="divider"><div class="between"><span class="help" style="margin:0">Subdomain: <span class="code">theinference.ourdomain.com</span></span><button class="btn btn-primary btn-sm">Save branding</button></div>
+        </section>
+
+        <!-- SOURCES (lives inside Settings, as today — not a separate page) -->
+        <section id="sources" class="card">
+          <div class="card-head"><div><h3 class="card-title">Sources</h3><p class="card-sub">Where your pipeline collects from. Discover new ones, add your own, toggle any off.</p></div><span class="badge">5 active</span></div>
+
+          <label class="label">Discover sources</label>
+          <div class="row" style="gap:8px; margin-bottom:14px"><input class="input" value="speculative decoding & KV-cache optimization" placeholder="Search a topic…"><button class="btn btn-rust">Search</button></div>
+          <p class="help" style="margin:-6px 0 12px">From your topic (LLM + Tavily). Click a suggestion to add it.</p>
+          <div class="pill-row" style="margin-bottom:18px">
+            <button class="pill pill-suggest"><span class="plus">+</span> PyTorch blog</button>
+            <button class="pill pill-suggest"><span class="plus">+</span> Fireworks.ai blog</button>
+            <button class="pill pill-suggest"><span class="plus">+</span> r/mlops</button>
+            <button class="pill pill-suggest"><span class="plus">+</span> @danielhanchen</button>
+          </div>
+
+          <div class="field" style="margin-bottom:18px"><label class="label">Add manually</label>
+            <div class="row" style="gap:8px">
+              <select class="select" style="max-width:140px"><option>RSS / Blog</option><option>Reddit</option><option>Hacker News</option><option>GitHub</option><option>X / Twitter</option></select>
+              <input class="input" placeholder="https://example.com/feed.xml or r/… or @handle">
+              <button class="btn btn-outline">Add</button>
+            </div>
+          </div>
+
+          <label class="label">Your sources</label>
+          <table class="t" style="margin-top:6px">
+            <thead><tr><th>Source</th><th>Type</th><th>Health</th><th style="text-align:right">On</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Hacker News</strong></td><td><span class="badge">HN</span></td><td><span class="badge badge-ok"><span class="dot dot-ok"></span> Healthy</span></td><td style="text-align:right"><label class="switch"><input type="checkbox" checked><span class="track"></span><span class="thumb"></span></label></td></tr>
+              <tr><td><strong>r/LocalLLaMA</strong></td><td><span class="badge">Reddit</span></td><td><span class="badge badge-ok"><span class="dot dot-ok"></span> Healthy</span></td><td style="text-align:right"><label class="switch"><input type="checkbox" checked><span class="track"></span><span class="thumb"></span></label></td></tr>
+              <tr><td><strong>vLLM blog</strong></td><td><span class="badge">RSS</span></td><td><span class="badge badge-warn"><span class="dot dot-warn"></span> Slow</span></td><td style="text-align:right"><label class="switch"><input type="checkbox" checked><span class="track"></span><span class="thumb"></span></label></td></tr>
+              <tr><td><strong>@tri_dao</strong><div class="help" style="margin:0">via shared collector</div></td><td><span class="badge">X</span></td><td><span class="badge badge-ok"><span class="dot dot-ok"></span> Healthy</span></td><td style="text-align:right"><label class="switch"><input type="checkbox" checked><span class="track"></span><span class="thumb"></span></label></td></tr>
+              <tr><td><strong>Together.ai blog</strong></td><td><span class="badge">RSS</span></td><td><span class="badge badge-danger"><span class="dot dot-danger"></span> 404</span></td><td style="text-align:right"><label class="switch"><input type="checkbox"><span class="track"></span><span class="thumb"></span></label></td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- SOCIAL -->
+        <section id="social" class="card">
+          <div class="card-head"><div><h3 class="card-title">Social posting</h3><p class="card-sub">Connect via OAuth — no API keys or secrets to manage.</p></div></div>
+          <div class="connect-row">
+            <div class="l"><span class="ico" style="background:#0a66c2">in</span><div><div style="font-weight:600;font-size:14px">LinkedIn</div><div class="help" style="margin:0">Connected as <b>The Inference</b> · token valid</div></div></div>
+            <div class="row"><span class="badge badge-ok"><span class="dot dot-ok"></span> Connected</span><button class="btn btn-ghost btn-sm">Disconnect</button></div>
+          </div>
+          <div class="connect-row" style="margin-bottom:0">
+            <div class="l"><span class="ico" style="background:#111">𝕏</span><div><div style="font-weight:600;font-size:14px">Twitter / X</div><div class="help" style="margin:0">Authorize posting via OAuth</div></div></div>
+            <button class="btn btn-outline btn-sm">Connect with X</button>
+          </div>
+          <div class="note" style="margin-top:16px">The Twitter collector that scrapes content is shared and managed by us — it never appears here and needs nothing from you.</div>
+        </section>
+
+        <!-- SENDING DOMAIN -->
+        <section id="domain" class="card">
+          <div class="card-head"><div><h3 class="card-title">Sending domain</h3><p class="card-sub">Verify a domain to broadcast to your subscribers. Until then the broadcast is paused; confirmations &amp; resets still send from our shared address.</p></div><span class="badge badge-warn"><span class="dot dot-warn"></span> Pending</span></div>
+          <div class="field"><label class="label">Domain</label><div class="row" style="gap:8px"><input class="input" value="theinference.com"><button class="btn btn-outline">Re-check</button></div></div>
+          <label class="label">Add these DNS records</label>
+          <table class="t dns">
+            <thead><tr><th>Type</th><th>Name</th><th>Value</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td class="kv">TXT</td><td><span class="code">_resend</span></td><td><span class="code">resend-verify=ab12…</span></td><td><span class="badge badge-ok">Found</span></td></tr>
+              <tr><td class="kv">MX</td><td><span class="code">send</span></td><td><span class="code">feedback-smtp.resend.com</span></td><td><span class="badge badge-ok">Found</span></td></tr>
+              <tr><td class="kv">TXT</td><td><span class="code">resend._domainkey</span></td><td><span class="code">p=MIGfMA0GCSq…</span></td><td><span class="badge badge-warn">Waiting</span></td></tr>
+            </tbody>
+          </table>
+          <hr class="divider"><div class="between"><span class="help" style="margin:0">DNS can take up to 48h to propagate.</span><button class="btn btn-primary btn-sm">Verify domain</button></div>
+        </section>
+
+        <!-- NOTIFICATIONS -->
+        <section id="notify" class="card">
+          <div class="card-head"><div><h3 class="card-title">Notifications</h3><p class="card-sub">Where we ping you when a run is ready to review or something fails.</p></div></div>
+          <div class="field"><label class="label">Notification email</label><input class="input" value="ada@studio.com"></div>
+          <div class="field" style="margin:0"><label class="label">Slack incoming webhook</label>
+            <input class="input" type="password" value="https://hooks.slack.com/services/T000/B000/xxxxxxxx">
+            <p class="help">Create an Incoming Webhook in your Slack workspace and paste the URL. Stored encrypted.</p></div>
+          <hr class="divider">
+          <div class="toggle-row" style="border:0; padding-top:0">
+            <div class="meta"><h4>Review-ready alerts</h4><p>Notify me when a daily run finishes and is ready to curate.</p></div>
+            <label class="switch"><input type="checkbox" checked><span class="track"></span><span class="thumb"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div class="meta"><h4>Error alerts</h4><p>Notify me when a collector fails or a run crashes.</p></div>
+            <label class="switch"><input type="checkbox" checked><span class="track"></span><span class="thumb"></span></label>
+          </div>
+          <div class="between" style="margin-top:18px"><span></span><button class="btn btn-primary btn-sm">Save notifications</button></div>
+        </section>
+
+        <!-- FEATURES -->
+        <section id="features" class="card">
+          <div class="card-head"><div><h3 class="card-title">Features</h3><p class="card-sub">Optional capabilities, off by default. Turn on what you need.</p></div></div>
+          <div class="toggle-row">
+            <div class="meta"><h4>Deliverability analytics</h4><p>A dashboard of opens, bounces, complaints, and delivery events for your sends.</p></div>
+            <label class="switch"><input type="checkbox"><span class="track"></span><span class="thumb"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div class="meta"><h4>Canon · “Must Read”</h4><p>Maintain a curated must-read list and show a Must&nbsp;Read page + nav link on your public site.</p></div>
+            <label class="switch"><input type="checkbox"><span class="track"></span><span class="thumb"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div class="meta"><h4>Eval</h4><p>Offline ranking evaluation tools for tuning your prompts against graded fixtures.</p></div>
+            <label class="switch"><input type="checkbox"><span class="track"></span><span class="thumb"></span></label>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

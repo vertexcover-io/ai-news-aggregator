@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import type IORedis from "ioredis";
 import type { createLogger } from "@newsletter/shared";
@@ -66,6 +67,7 @@ interface BuildOpts {
 
 function buildApp(opts: BuildOpts): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   const router = createAdminArchivesRouter({
     getArchiveRepo: () => opts.archiveRepo,
     getRawItemsRepo: () => makeRawRepo(),

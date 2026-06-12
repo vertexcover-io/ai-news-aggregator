@@ -1,17 +1,17 @@
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Queue, Worker, type Job } from "bullmq";
-import { userSettings } from "@newsletter/shared/db";
+import { sources, userSettings } from "@newsletter/shared/db";
 import {
-  DAILY_RUN_SCHEDULER_KEY,
-  PIPELINE_RUN_SCHEDULER_KEY,
-  SOCIAL_HEALTH_SCHEDULER_KEY,
-  reconcileDailyRunSchedule,
+  reconcilePipelineSchedule,
+  schedulerKeyFor,
 } from "../../../../../api/src/services/scheduler.js";
 import { handleDailyRunJob, type DailyRunJobLike } from "@pipeline/workers/daily-run.js";
 import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
+import { createSourcesRepo } from "@pipeline/repositories/sources.js";
 import { getTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
 import { closeTestRedis, getTestRedis } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { AppDb } from "@newsletter/shared/db";
@@ -20,6 +20,12 @@ import type { RunProcessJobPayload, UserSettings } from "@newsletter/shared";
 config({ path: resolve(import.meta.dirname, "../../../../../../.env.test") });
 
 const POLL_INTERVAL_MS = 100;
+
+// Legacy pre-Phase-6 global key: still exercised below to prove in-flight
+// legacy "daily-run" jobs (no tenantId) keep working against tenant 0.
+const LEGACY_DAILY_RUN_KEY = "daily-run:default";
+const PIPELINE_RUN_KEY = schedulerKeyFor("pipeline-run", TENANT_ZERO_ID);
+const SOCIAL_HEALTH_KEY = schedulerKeyFor("social-health", TENANT_ZERO_ID);
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolveDelay) => {
@@ -90,8 +96,28 @@ function makeScheduleSettings(enabled: boolean): UserSettings {
   };
 }
 
+async function seedSources(db: AppDb): Promise<void> {
+  await db.insert(sources).values([
+    {
+      tenantId: TENANT_ZERO_ID,
+      type: "hn",
+      config: { sinceDays: 1, count: 1, feeds: ["newest"], commentsPerItem: 0 },
+      enabled: true,
+    },
+    // REQ-073: disabled rows must not reach the run payload.
+    {
+      tenantId: TENANT_ZERO_ID,
+      type: "reddit",
+      config: { subreddit: "MachineLearning", sinceDays: 1 },
+      enabled: false,
+    },
+  ]);
+}
+
 async function seedUserSettings(db: AppDb): Promise<void> {
+  await seedSources(db);
   await db.insert(userSettings).values({
+    tenantId: TENANT_ZERO_ID,
     topN: 1,
     halfLifeHours: null,
     hnEnabled: true,
@@ -155,26 +181,31 @@ describe("daily-run worker scheduler e2e", () => {
           {
             redis: connection,
             queue: runQueue,
-            userSettingsRepo: createUserSettingsRepo(db),
+            userSettingsRepo: createUserSettingsRepo(db, TENANT_ZERO_ID),
+            sourcesRepo: createSourcesRepo(db, TENANT_ZERO_ID),
+            tenantId: TENANT_ZERO_ID,
+            startJitterMs: 0,
           },
           { name: job.name, id: job.id, data: {} } satisfies DailyRunJobLike,
         ),
       { connection },
     );
     await db.delete(userSettings);
+    await db.delete(sources);
   });
 
   afterEach(async () => {
     await worker.close();
-    await dailyQueue.removeJobScheduler(DAILY_RUN_SCHEDULER_KEY);
-    await dailyQueue.removeJobScheduler(PIPELINE_RUN_SCHEDULER_KEY);
-    await dailyQueue.removeJobScheduler(SOCIAL_HEALTH_SCHEDULER_KEY);
+    await dailyQueue.removeJobScheduler(LEGACY_DAILY_RUN_KEY);
+    await dailyQueue.removeJobScheduler(PIPELINE_RUN_KEY);
+    await dailyQueue.removeJobScheduler(SOCIAL_HEALTH_KEY);
     await dailyQueue.obliterate({ force: true });
     await runQueue.obliterate({ force: true });
     await dailyQueue.close();
     await runQueue.close();
     await removeRunStateKeys(createdRunIds);
     await db.delete(userSettings);
+    await db.delete(sources);
   });
 
   afterAll(async () => {
@@ -184,7 +215,7 @@ describe("daily-run worker scheduler e2e", () => {
   it("REQ-WK-5 handles a scheduled daily-run job within 5 seconds and enqueues one run-process job", async () => {
     await seedUserSettings(db);
     await dailyQueue.upsertJobScheduler(
-      DAILY_RUN_SCHEDULER_KEY,
+      LEGACY_DAILY_RUN_KEY,
       { every: 1000 },
       { name: "daily-run", data: {} },
     );
@@ -206,9 +237,9 @@ describe("daily-run worker scheduler e2e", () => {
   it("handles a scheduled pipeline-run job and enqueues one run-process job", async () => {
     await seedUserSettings(db);
     await dailyQueue.upsertJobScheduler(
-      PIPELINE_RUN_SCHEDULER_KEY,
+      PIPELINE_RUN_KEY,
       { every: 1000 },
-      { name: "pipeline-run", data: {} },
+      { name: "pipeline-run", data: { tenantId: TENANT_ZERO_ID } },
     );
 
     const payload = await waitForRunProcessJob(runQueue, 5000);
@@ -217,16 +248,18 @@ describe("daily-run worker scheduler e2e", () => {
 
     expect(jobs.filter((job) => job.name === "run-process")).toHaveLength(1);
     expect(payload.sourceTypes).toEqual(["hn"]);
+    // REQ-060: every run-process payload carries the originating tenant.
+    expect(payload.tenantId).toBe(TENANT_ZERO_ID);
   });
 
-  it("REQ-WK-6 removes the daily-run scheduler when scheduling is disabled", async () => {
+  it("REQ-WK-6 removes the tenant's pipeline scheduler when scheduling is disabled", async () => {
     await dailyQueue.upsertJobScheduler(
-      DAILY_RUN_SCHEDULER_KEY,
+      PIPELINE_RUN_KEY,
       { every: 1000 },
-      { name: "daily-run", data: {} },
+      { name: "pipeline-run", data: { tenantId: TENANT_ZERO_ID } },
     );
 
-    await reconcileDailyRunSchedule(dailyQueue, makeScheduleSettings(false));
+    await reconcilePipelineSchedule(dailyQueue, TENANT_ZERO_ID, makeScheduleSettings(false));
 
     const schedulers = await dailyQueue.getJobSchedulers();
     expect(schedulers).toEqual([]);

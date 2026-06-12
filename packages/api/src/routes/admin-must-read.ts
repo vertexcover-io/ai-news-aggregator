@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 import { createLogger, getDb as defaultGetDb } from "@newsletter/shared";
 import {
   fetchPageStatic,
@@ -39,7 +40,7 @@ export type FetchPageStaticFn = (
 ) => Promise<StaticFetchOk | { error: StaticFetchError }>;
 
 export interface AdminMustReadRouterDeps {
-  getRepo: () => MustReadRepo;
+  getRepo: (tenantId: string) => MustReadRepo;
   fetchPage?: FetchPageStaticFn;
   previewTimeoutMs?: number;
   logger?: ReturnType<typeof createLogger>;
@@ -136,7 +137,7 @@ export function createAdminMustReadRouter(
         400,
       );
     }
-    const repo = deps.getRepo();
+    const repo = deps.getRepo(getTenantId(c));
     const existing = await repo.findByUrl(parsed.data.url);
     if (existing) {
       return c.json(
@@ -155,7 +156,7 @@ export function createAdminMustReadRouter(
   });
 
   app.get("/", async (c) => {
-    const rows = await deps.getRepo().listAdmin();
+    const rows = await deps.getRepo(getTenantId(c)).listAdmin();
     return c.json(rows);
   });
 
@@ -172,7 +173,7 @@ export function createAdminMustReadRouter(
         400,
       );
     }
-    const repo = deps.getRepo();
+    const repo = deps.getRepo(getTenantId(c));
     if (parsed.data.url !== undefined) {
       const conflict = await repo.findByUrl(parsed.data.url);
       if (conflict && conflict.id !== id) {
@@ -199,7 +200,7 @@ export function createAdminMustReadRouter(
     if (!UUID_RE.test(id)) {
       return c.json({ error: "not_found" }, 404);
     }
-    const removed = await deps.getRepo().delete(id);
+    const removed = await deps.getRepo(getTenantId(c)).delete(id);
     if (!removed) {
       return c.json({ error: "not_found" }, 404);
     }
@@ -211,6 +212,6 @@ export function createAdminMustReadRouter(
 
 export function createDefaultAdminMustReadRouter(): Hono {
   return createAdminMustReadRouter({
-    getRepo: () => createMustReadRepo(defaultGetDb()),
+    getRepo: (tenantId) => createMustReadRepo(defaultGetDb(), tenantId),
   });
 }

@@ -4,6 +4,7 @@
  * backfill correctness (override precedence), and idempotency of the SQL.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { sql } from "drizzle-orm";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -52,6 +53,8 @@ beforeAll(async () => {
   const inserted = await db
     .insert(rawItems)
     .values({
+      tenantId: TENANT_ZERO_ID,
+      tenantId: TENANT_ZERO_ID,
       sourceType: "hn",
       externalId: seedExternalId,
       title: "Quantum Cromulence in Café Society",
@@ -73,6 +76,7 @@ beforeAll(async () => {
   seedRawItemId = id;
 
   await db.insert(runArchives).values({
+    tenantId: TENANT_ZERO_ID,
     id: seedRunId,
     status: "completed",
     rankedItems: [

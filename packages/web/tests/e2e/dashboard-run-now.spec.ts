@@ -7,15 +7,9 @@
  *   - web dev server on :5173 (Playwright baseURL)
  */
 import { test, expect, type Page } from "@playwright/test";
-import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
+import { adminLogin, API_BASE, makeDbClient } from "./_infra";
 
 
-async function adminLogin(page: Page): Promise<void> {
-  const res = await page.request.post(`${API_BASE}/api/admin/login`, {
-    data: { password: ADMIN_PASSWORD },
-  });
-  expect(res.ok()).toBe(true);
-}
 
 async function seedSettings(page: Page): Promise<void> {
   const res = await page.request.put(`${API_BASE}/api/settings`, {

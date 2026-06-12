@@ -1,5 +1,5 @@
 import { SOURCE_TYPE_ORDER } from "@newsletter/shared/constants";
-import type { SourceType, UserSettings } from "@newsletter/shared";
+import type { SourceType } from "@newsletter/shared";
 import type {
   ConfiguredRow,
   ConfiguredSection,
@@ -18,6 +18,7 @@ import type {
   RunArchivesRepo,
 } from "@api/repositories/run-archives.js";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
+import type { SourceRecord, SourcesRepo } from "@api/repositories/sources.js";
 
 export interface SourcesSummaryDeps {
   rawItemsRepo: Pick<RawItemsRepo, "aggregateBySourceAndIdentifier">;
@@ -29,6 +30,7 @@ export interface SourcesSummaryDeps {
     | "countCompletedRunsInRange"
   >;
   userSettingsRepo: Pick<UserSettingsRepo, "get">;
+  sourcesRepo: Pick<SourcesRepo, "listEnabled">;
   from: Date;
   to: Date;
   now?: () => Date;
@@ -40,7 +42,7 @@ export async function buildSourcesSummary(
   const now = deps.now?.() ?? new Date();
   const range = { from: deps.from, to: deps.to };
 
-  const [agg, digestCounts, telemetry, failures, runsInRange, settings] =
+  const [agg, digestCounts, telemetry, failures, runsInRange, settings, sourceRows] =
     await Promise.all([
       deps.rawItemsRepo.aggregateBySourceAndIdentifier(range),
       deps.runArchivesRepo.getReviewedDigestCountsByDerivedSource(range),
@@ -48,9 +50,10 @@ export async function buildSourcesSummary(
       deps.runArchivesRepo.getSourceFailuresInRange(range),
       deps.runArchivesRepo.countCompletedRunsInRange(range),
       deps.userSettingsRepo.get(),
+      deps.sourcesRepo.listEnabled(),
     ]);
 
-  const configured = buildConfigured(settings);
+  const configured = buildConfigured(sourceRows);
   const configuredKeys = configuredKeySet(configured);
 
   const failuresByKey = new Map<string, RangeFailureEntry>();
@@ -143,11 +146,14 @@ function configuredKeySet(sections: ConfiguredSection[]): Set<string> {
   return keys;
 }
 
-function buildConfigured(settings: UserSettings | null): ConfiguredSection[] {
-  if (!settings) return [];
+// Configured sources derive from the per-tenant sources table (the runtime
+// source of truth for collection) — never from the legacy user_settings
+// columns, which would drift from /api/admin/sources edits.
+function buildConfigured(sourceRows: SourceRecord[]): ConfiguredSection[] {
+  if (sourceRows.length === 0) return [];
   const out: ConfiguredSection[] = [];
 
-  if (settings.hnEnabled) {
+  if (sourceRows.some((r) => r.type === "hn")) {
     out.push({
       sourceType: "hn",
       rows: [
@@ -160,35 +166,42 @@ function buildConfigured(settings: UserSettings | null): ConfiguredSection[] {
     });
   }
 
-  if (settings.redditEnabled && settings.redditConfig) {
-    const rows: ConfiguredRow[] = settings.redditConfig.subreddits
-      .map((s) => s.trim().replace(/^r\//i, "").toLowerCase())
-      .filter((s) => s.length > 0)
-      .map((name) => ({
+  {
+    const rows: ConfiguredRow[] = [];
+    for (const r of sourceRows) {
+      if (r.type !== "reddit") continue;
+      const name = r.config.subreddit.trim().replace(/^r\//i, "").toLowerCase();
+      if (name.length === 0) continue;
+      rows.push({
         identifier: `r/${name}`,
         displayName: `r/${name}`,
         url: `https://reddit.com/r/${name}`,
-      }));
+      });
+    }
     if (rows.length > 0) out.push({ sourceType: "reddit", rows });
   }
 
-  if (settings.twitterEnabled && settings.twitterConfig) {
-    const rows: ConfiguredRow[] = settings.twitterConfig.users
-      .map((u) => u.handle.trim().replace(/^@+/, ""))
-      .filter((h) => h.length > 0)
-      .map((handle) => ({
+  {
+    const rows: ConfiguredRow[] = [];
+    for (const r of sourceRows) {
+      if (r.type !== "twitter" || r.config.kind !== "user") continue;
+      const handle = r.config.handle.trim().replace(/^@+/, "");
+      if (handle.length === 0) continue;
+      rows.push({
         identifier: `@${handle}`,
         displayName: `@${handle}`,
         url: `https://x.com/${handle}`,
-      }));
+      });
+    }
     // Lists rendered with their ID as fallback name; resolver deferred.
     // Raw items collected from lists carry the @handle identifier of the
     // tweet author, not the list — so list rows have an empty identifier
     // and will never match aggregated raw_items. That's correct: list
     // membership is rendered for the reader, but the volume metrics
     // attribute to the per-handle row.
-    for (const id of settings.twitterConfig.listIds) {
-      const trimmed = id.trim();
+    for (const r of sourceRows) {
+      if (r.type !== "twitter" || r.config.kind !== "list") continue;
+      const trimmed = r.config.listId.trim();
       if (trimmed.length === 0) continue;
       rows.push({
         identifier: "",
@@ -199,23 +212,30 @@ function buildConfigured(settings: UserSettings | null): ConfiguredSection[] {
     if (rows.length > 0) out.push({ sourceType: "twitter", rows });
   }
 
-  if (settings.webEnabled && settings.webConfig) {
-    const rows: ConfiguredRow[] = settings.webConfig.sources
-      .filter((s) => s.name.trim().length > 0 && s.listingUrl.length > 0)
-      .map((s) => ({
-        identifier: hostnameOf(s.listingUrl),
-        displayName: s.name,
-        url: s.listingUrl,
-      }))
-      .filter((r) => r.identifier.length > 0);
+  {
+    const rows: ConfiguredRow[] = [];
+    for (const r of sourceRows) {
+      if (r.type !== "web") continue;
+      if (r.config.name.trim().length === 0 || r.config.listingUrl.length === 0) continue;
+      const identifier = hostnameOf(r.config.listingUrl);
+      if (identifier.length === 0) continue;
+      rows.push({
+        identifier,
+        displayName: r.config.name,
+        url: r.config.listingUrl,
+      });
+    }
     if (rows.length > 0) out.push({ sourceType: "blog", rows });
   }
 
-  if (settings.webSearchEnabled && settings.webSearchConfig) {
-    const rows: ConfiguredRow[] = settings.webSearchConfig.queries
-      .map((q) => q.query.trim())
-      .filter((q) => q.length > 0)
-      .map((q) => ({ identifier: "", displayName: `"${q}"`, url: null }));
+  {
+    const rows: ConfiguredRow[] = [];
+    for (const r of sourceRows) {
+      if (r.type !== "web_search") continue;
+      const query = r.config.query.trim();
+      if (query.length === 0) continue;
+      rows.push({ identifier: "", displayName: `"${query}"`, url: null });
+    }
     if (rows.length > 0) out.push({ sourceType: "web_search", rows });
   }
 

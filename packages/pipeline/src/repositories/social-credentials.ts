@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { socialCredentials } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type {
@@ -61,6 +61,7 @@ type DbSlice = Pick<AppDb, "select" | "insert" | "delete">;
 
 export function createSocialCredentialsRepo(
   db: DbSlice,
+  tenantId: string,
   cipher: CredentialCipher,
 ): SocialCredentialsRepo {
   return {
@@ -68,7 +69,12 @@ export function createSocialCredentialsRepo(
       const rows = await db
         .select()
         .from(socialCredentials)
-        .where(eq(socialCredentials.platform, "linkedin"))
+        .where(
+          and(
+            eq(socialCredentials.tenantId, tenantId),
+            eq(socialCredentials.platform, "linkedin"),
+          ),
+        )
         .limit(1);
       if (rows.length === 0) return null;
       const row = rows[0];
@@ -85,7 +91,12 @@ export function createSocialCredentialsRepo(
       const rows = await db
         .select()
         .from(socialCredentials)
-        .where(eq(socialCredentials.platform, "twitter"))
+        .where(
+          and(
+            eq(socialCredentials.tenantId, tenantId),
+            eq(socialCredentials.platform, "twitter"),
+          ),
+        )
         .limit(1);
       if (rows.length === 0) return null;
       const row = rows[0];
@@ -109,13 +120,14 @@ export function createSocialCredentialsRepo(
       await db
         .insert(socialCredentials)
         .values({
+          tenantId,
           platform: "linkedin",
           encryptedFields,
           metadata,
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: socialCredentials.platform,
+          target: [socialCredentials.tenantId, socialCredentials.platform],
           set: { encryptedFields, metadata, updatedAt: now },
         });
     },
@@ -131,13 +143,14 @@ export function createSocialCredentialsRepo(
       await db
         .insert(socialCredentials)
         .values({
+          tenantId,
           platform: "twitter",
           encryptedFields,
           metadata: null,
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: socialCredentials.platform,
+          target: [socialCredentials.tenantId, socialCredentials.platform],
           set: { encryptedFields, metadata: null, updatedAt: now },
         });
     },
@@ -146,7 +159,12 @@ export function createSocialCredentialsRepo(
       const rows = await db
         .select()
         .from(socialCredentials)
-        .where(eq(socialCredentials.platform, "twitter_collector"))
+        .where(
+          and(
+            eq(socialCredentials.tenantId, tenantId),
+            eq(socialCredentials.platform, "twitter_collector"),
+          ),
+        )
         .limit(1);
       if (rows.length === 0) return null;
       const row = rows[0];
@@ -165,13 +183,14 @@ export function createSocialCredentialsRepo(
       await db
         .insert(socialCredentials)
         .values({
+          tenantId,
           platform: "twitter_collector",
           encryptedFields,
           metadata: null,
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: socialCredentials.platform,
+          target: [socialCredentials.tenantId, socialCredentials.platform],
           set: { encryptedFields, metadata: null, updatedAt: now },
         });
     },
@@ -179,7 +198,12 @@ export function createSocialCredentialsRepo(
     async delete(platform: SocialCredentialPlatform): Promise<boolean> {
       const deleted = await db
         .delete(socialCredentials)
-        .where(eq(socialCredentials.platform, platform))
+        .where(
+          and(
+            eq(socialCredentials.tenantId, tenantId),
+            eq(socialCredentials.platform, platform),
+          ),
+        )
         .returning();
       return deleted.length > 0;
     },

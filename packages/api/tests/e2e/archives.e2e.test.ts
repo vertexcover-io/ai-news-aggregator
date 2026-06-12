@@ -4,6 +4,7 @@
  * Requires Postgres + Redis from `pnpm infra:up`.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
@@ -22,6 +23,7 @@ import {
 } from "@newsletter/shared/db";
 import type { RankedItemRef } from "@newsletter/shared";
 import type { DigestMeta } from "@newsletter/shared/constants";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import type { GenerateDigestMetaFn } from "@api/services/review.js";
 import { createRawItemsRepo } from "@api/repositories/raw-items.js";
 import {
@@ -41,8 +43,8 @@ config({ path: resolve(REPO_ROOT, ".env") });
 
 const db = getDb();
 const redis = createRedisConnection();
-const rawItemsRepo = createRawItemsRepo(db);
-const archiveRepo = createRunArchivesRepo(db);
+const rawItemsRepo = createRawItemsRepo(db, TENANT_ZERO_ID);
+const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
 
 const archiveListResponseSchema = z.object({
   archives: z.array(
@@ -100,6 +102,7 @@ const seedPrefix = `phase1-archives-${String(Date.now())}`;
 
 function buildPublicApp(repo: RunArchivesRepo = archiveRepo): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route(
     "/api/archives",
     createPublicArchivesRouter({
@@ -112,6 +115,7 @@ function buildPublicApp(repo: RunArchivesRepo = archiveRepo): Hono {
 
 function buildSearchApp(repo: RunArchivesRepo = archiveRepo): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route(
     "/api/archives/search",
     createArchivesSearchRouter({
@@ -124,6 +128,7 @@ function buildSearchApp(repo: RunArchivesRepo = archiveRepo): Hono {
 
 function buildAdminApp(): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route(
     "/api/admin/archives",
     createAdminArchivesRouter({
@@ -144,6 +149,8 @@ async function insertRawItem(opts: {
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: TENANT_ZERO_ID,
+      tenantId: TENANT_ZERO_ID,
       sourceType: "hn",
       externalId: `${seedPrefix}-${opts.externalId}`,
       title: opts.title,
@@ -186,6 +193,7 @@ async function insertArchive(opts: {
   }));
 
   await db.insert(runArchives).values({
+    tenantId: TENANT_ZERO_ID,
     id: runId,
     status: "completed",
     rankedItems,
@@ -622,12 +630,15 @@ describe("DELETE /api/admin/archives/:runId (e2e)", () => {
     const [subscriber] = await db
       .insert(subscribers)
       .values({
+        tenantId: TENANT_ZERO_ID,
+        tenantId: TENANT_ZERO_ID,
         email: `${archive.runId}@example.com`,
         status: "confirmed",
       })
       .returning({ id: subscribers.id });
     seededSubscriberIds.add(subscriber.id);
     await db.insert(emailSends).values({
+      tenantId: TENANT_ZERO_ID,
       subscriberId: subscriber.id,
       runArchiveId: archive.runId,
       messageId: `msg-${archive.runId}`,
@@ -669,7 +680,7 @@ describe("DELETE /api/admin/archives/:runId (e2e)", () => {
 
 // ── immediate-publish e2e (Phase 2) ──────────────────────────────────────────
 
-const settingsRepo = createUserSettingsRepo(db);
+const settingsRepo = createUserSettingsRepo(db, TENANT_ZERO_ID);
 
 /**
  * Seed a singleton user_settings row with all three publish channels enabled
@@ -712,8 +723,8 @@ async function seedSettings(): Promise<void> {
 }
 
 async function cleanupSettings(): Promise<void> {
-  // Reset singleton to a no-op state so other e2e tests aren't affected
-  await db.delete(userSettings);
+  // Reset only the tenant this suite seeds so other tenants' rows survive
+  await db.delete(userSettings).where(eq(userSettings.tenantId, TENANT_ZERO_ID));
 }
 
 describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
@@ -754,6 +765,7 @@ describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
       const spyQueue = { add: addSpy };
 
       const app = new Hono();
+  app.use("*", setTestTenant());
       app.route(
         "/api/admin/archives",
         createAdminArchivesRouter({
@@ -779,18 +791,18 @@ describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
       expect(addSpy).toHaveBeenCalledTimes(3);
       expect(addSpy).toHaveBeenCalledWith(
         "email-send",
-        { runId: archive.runId },
+        { runId: archive.runId, tenantId: TENANT_ZERO_ID },
         { jobId: `email-send-${archive.runId}`, delay: 0 },
       );
       expect(addSpy).toHaveBeenCalledWith(
         "linkedin-post",
-        { runId: archive.runId },
-        { jobId: `linkedin-post:${archive.runId}`, delay: 0 },
+        { runId: archive.runId, tenantId: TENANT_ZERO_ID },
+        { jobId: `linkedin-post-${archive.runId}`, delay: 0 },
       );
       expect(addSpy).toHaveBeenCalledWith(
         "twitter-post",
-        { runId: archive.runId },
-        { jobId: `twitter-post:${archive.runId}`, delay: 0 },
+        { runId: archive.runId, tenantId: TENANT_ZERO_ID },
+        { jobId: `twitter-post-${archive.runId}`, delay: 0 },
       );
     },
   );
@@ -828,6 +840,7 @@ describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
       const spyQueue = { add: addSpy };
 
       const app = new Hono();
+  app.use("*", setTestTenant());
       app.route(
         "/api/admin/archives",
         createAdminArchivesRouter({
@@ -857,13 +870,13 @@ describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
       );
       expect(addSpy).toHaveBeenCalledWith(
         "linkedin-post",
-        { runId: archive.runId },
-        { jobId: `linkedin-post:${archive.runId}`, delay: 0 },
+        { runId: archive.runId, tenantId: TENANT_ZERO_ID },
+        { jobId: `linkedin-post-${archive.runId}`, delay: 0 },
       );
       expect(addSpy).toHaveBeenCalledWith(
         "twitter-post",
-        { runId: archive.runId },
-        { jobId: `twitter-post:${archive.runId}`, delay: 0 },
+        { runId: archive.runId, tenantId: TENANT_ZERO_ID },
+        { jobId: `twitter-post-${archive.runId}`, delay: 0 },
       );
     },
   );
@@ -879,6 +892,7 @@ describe("POST /api/admin/archives/:runId/regenerate-digest-meta (e2e)", () => {
 
   function buildAdminAppWith(generateDigestMeta: GenerateDigestMetaFn): Hono {
     const app = new Hono();
+  app.use("*", setTestTenant());
     app.route(
       "/api/admin/archives",
       createAdminArchivesRouter({
@@ -1004,6 +1018,7 @@ describe("POST /api/admin/archives/:runId/regenerate-digest-meta (e2e)", () => {
 describe("PATCH /api/admin/archives/:runId — digest meta persistence (e2e)", () => {
   function buildPatchApp(): Hono {
     const app = new Hono();
+  app.use("*", setTestTenant());
     app.route(
       "/api/admin/archives",
       createAdminArchivesRouter({
@@ -1177,6 +1192,7 @@ describe("admin vs public archive detail — twitterSummary exposure (e2e)", () 
   it("REQ-013: admin GET detail returns twitterSummary", async () => {
     const archive = await seedReviewedWithTwitter();
     const app = new Hono();
+  app.use("*", setTestTenant());
     app.route(
       "/api/admin/archives",
       createAdminArchivesRouter({

@@ -13,6 +13,8 @@
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
@@ -37,9 +39,9 @@ config({ path: resolve(REPO_ROOT, ".env") });
 
 const db = getDb();
 const redis = createRedisConnection();
-const rawItemsRepo = createRawItemsRepo(db);
-const archiveRepo = createRunArchivesRepo(db);
-const reviewEditsRepo = createReviewEditsRepo(db);
+const rawItemsRepo = createRawItemsRepo(db, TENANT_ZERO_ID);
+const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
+const reviewEditsRepo = createReviewEditsRepo(db, TENANT_ZERO_ID);
 
 // Track seeded resources for cleanup
 const seededRunIds = new Set<string>();
@@ -48,6 +50,7 @@ const seedPrefix = `p3-re-${String(Date.now())}`;
 
 function buildAdminApp(): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route(
     "/api/admin/archives",
     createAdminArchivesRouter({
@@ -62,6 +65,7 @@ function buildAdminApp(): Hono {
 
 function buildPublicApp(): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   app.route(
     "/api/archives",
     createPublicArchivesRouter({
@@ -81,6 +85,8 @@ async function insertRawItem(externalId: string, recap?: {
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: TENANT_ZERO_ID,
+      tenantId: TENANT_ZERO_ID,
       sourceType: "hn",
       externalId: `${seedPrefix}-${externalId}`,
       title: `Title for ${externalId}`,
@@ -120,6 +126,7 @@ async function insertArchive(opts: {
   }));
 
   await db.insert(runArchives).values({
+    tenantId: TENANT_ZERO_ID,
     id: runId,
     status: "completed",
     rankedItems,

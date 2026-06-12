@@ -20,7 +20,7 @@ export async function apiFetchAdmin(
     const next = encodeURIComponent(
       window.location.pathname + window.location.search,
     );
-    window.location.assign(`/admin/login?next=${next}`);
+    window.location.assign(`/login?next=${next}`);
   }
   return res;
 }

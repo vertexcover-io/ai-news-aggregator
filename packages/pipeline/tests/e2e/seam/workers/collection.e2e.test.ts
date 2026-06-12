@@ -3,7 +3,7 @@ import { config } from "dotenv";
 import { resolve } from "node:path";
 import { Queue, QueueEvents, Worker } from "bullmq";
 import { rawItems } from "@newsletter/shared/db";
-import { handleCollectionJob } from "@pipeline/workers/collection.js";
+import { handleCollectionJob, type CollectionJobLike } from "@pipeline/workers/collection.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
 import { getTestRedis, closeTestRedis } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { AppDb } from "@newsletter/shared/db";
@@ -42,7 +42,9 @@ describe("Collection Worker E2E", () => {
     queueEvents = new QueueEvents("collection-e2e-test", { connection });
     worker = new Worker(
       "collection-e2e-test",
-      handleCollectionJob,
+      // BullMQ invokes processors with (job, token) — wrap so the token string
+      // does not override handleCollectionJob's default deps parameter.
+      (job) => handleCollectionJob(job as unknown as CollectionJobLike),
       { connection },
     );
 

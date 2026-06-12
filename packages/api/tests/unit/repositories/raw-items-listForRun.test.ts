@@ -132,6 +132,7 @@ describe("listRawItemsForRun", () => {
 
     const result = await listRawItemsForRun(RUN_ID, {
       db,
+      tenantId: "00000000-0000-0000-0000-000000000000",
       archiveRepo,
       redis: redis.client,
     });
@@ -176,7 +177,7 @@ describe("listRawItemsForRun", () => {
     };
     const redis = makeRedis({ [`run:${RUN_ID}`]: JSON.stringify(state) });
 
-    const result = await listRawItemsForRun(RUN_ID, { db, archiveRepo, redis: redis.client });
+    const result = await listRawItemsForRun(RUN_ID, { db, tenantId: "00000000-0000-0000-0000-000000000000", archiveRepo, redis: redis.client });
 
     expect(result).toEqual([]);
     expect(redis.get).toHaveBeenCalledWith(`run:${RUN_ID}`);
@@ -188,7 +189,7 @@ describe("listRawItemsForRun", () => {
     const redis = makeRedis();
 
     await expect(
-      listRawItemsForRun(RUN_ID, { db, archiveRepo, redis: redis.client }),
+      listRawItemsForRun(RUN_ID, { db, tenantId: "00000000-0000-0000-0000-000000000000", archiveRepo, redis: redis.client }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
@@ -197,7 +198,7 @@ describe("listRawItemsForRun", () => {
     const archiveRepo = makeArchiveRepo(makeArchive());
     const redis = makeRedis();
 
-    const result = await listRawItemsForRun(RUN_ID, { db, archiveRepo, redis: redis.client });
+    const result = await listRawItemsForRun(RUN_ID, { db, tenantId: "00000000-0000-0000-0000-000000000000", archiveRepo, redis: redis.client });
     expect(result).toEqual([]);
   });
 
@@ -209,7 +210,7 @@ describe("listRawItemsForRun", () => {
     const redis = makeRedis();
 
     await expect(
-      listRawItemsForRun(RUN_ID, { db, archiveRepo, redis: redis.client }),
+      listRawItemsForRun(RUN_ID, { db, tenantId: "00000000-0000-0000-0000-000000000000", archiveRepo, redis: redis.client }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

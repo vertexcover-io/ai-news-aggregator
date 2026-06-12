@@ -14,11 +14,11 @@
  *   - api dev server on :3000 (Vite proxies /api -> :3000)
  *   - web dev server on :5173 (Playwright baseURL)
  */
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { Client } from "pg";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
+import { adminLogin, makeDbClient } from "./_infra";
 
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
 
@@ -543,12 +543,6 @@ async function seedPerItemObservabilityRun(): Promise<string> {
   return runId;
 }
 
-async function adminLogin(page: Page): Promise<void> {
-  const res = await page.request.post(`${API_BASE}/api/admin/login`, {
-    data: { password: ADMIN_PASSWORD },
-  });
-  expect(res.ok()).toBe(true);
-}
 
 // ---------------------------------------------------------------------------
 

@@ -1,3 +1,4 @@
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
@@ -97,9 +98,9 @@ function buildWorker(
       handleRunProcessJob(
         {
           runState: runStateService,
-          rawItemsRepo: createRawItemsRepo(db),
-          candidatesRepo: createCandidatesRepo(db),
-          archiveRepo: createRunArchivesRepo(db),
+          rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID),
+          candidatesRepo: createCandidatesRepo(db, TENANT_ZERO_ID),
+          archiveRepo: createRunArchivesRepo(db, TENANT_ZERO_ID),
           loadFn: loadCandidatesSince,
           shortlistFn: (candidates) =>
             Promise.resolve({ shortlist: candidates, breakdowns: [] }),
@@ -184,6 +185,7 @@ describe("cost-tracking E2E", () => {
     const runId = randomUUID();
     await db.insert(rawItems).values([
       {
+        tenantId: TENANT_ZERO_ID,
         sourceType: "hn",
         externalId: `hn-${runId}-1`,
         title: "Item A",
@@ -288,6 +290,7 @@ describe("cost-tracking E2E", () => {
     };
 
     await db.insert(runArchives).values({
+      tenantId: TENANT_ZERO_ID,
       id: runId,
       status: "completed",
       rankedItems: [],
@@ -296,8 +299,8 @@ describe("cost-tracking E2E", () => {
       costBreakdown: existing,
     });
 
-    const archiveRepo = createRunArchivesRepo(db);
-    const rawItemsRepo = createRawItemsRepo(db);
+    const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
+    const rawItemsRepo = createRawItemsRepo(db, TENANT_ZERO_ID);
 
     await hydrateAddedPost(
       "https://example.com/add-merge",
@@ -354,6 +357,7 @@ describe("cost-tracking E2E", () => {
       const runId = randomUUID();
       await db.insert(rawItems).values([
         {
+          tenantId: TENANT_ZERO_ID,
           sourceType: "hn",
           externalId: `hn-${runId}-x`,
           title: "Unknown",
@@ -410,6 +414,7 @@ describe("cost-tracking E2E", () => {
       const runId = randomUUID();
       await db.insert(rawItems).values([
         {
+          tenantId: TENANT_ZERO_ID,
           sourceType: "hn",
           externalId: `hn-${runId}-f`,
           title: "Fail",
@@ -466,6 +471,7 @@ describe("cost-tracking E2E", () => {
       const runId = randomUUID();
       await db.insert(rawItems).values([
         {
+          tenantId: TENANT_ZERO_ID,
           sourceType: "hn",
           externalId: `hn-${runId}-rt`,
           title: "RankFailWithTokens",

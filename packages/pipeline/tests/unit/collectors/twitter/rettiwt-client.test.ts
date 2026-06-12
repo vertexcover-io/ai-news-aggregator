@@ -55,6 +55,43 @@ function makeCsrfMismatchError(): Error & {
 }
 
 describe("createRettiwtClient", () => {
+  // REQ-068: the shared collector throttle gates every rettiwt page fetch.
+  describe("global throttle", () => {
+    it("acquires the throttle before each list/timeline fetch", async () => {
+      const stub = makeRettiwtStub();
+      const order: string[] = [];
+      stub.list.tweets.mockImplementation(() => {
+        order.push("fetch:list");
+        return Promise.resolve(makeCursored([makeFakeTweet()], null));
+      });
+      stub.user.timeline.mockImplementation(() => {
+        order.push("fetch:timeline");
+        return Promise.resolve(makeCursored([makeFakeTweet()], null));
+      });
+      const throttle = {
+        acquire: vi.fn(() => {
+          order.push("acquire");
+          return Promise.resolve();
+        }),
+      };
+
+      const client = createRettiwtClient({ rettiwt: stub, throttle });
+      await client.fetchListTweets("list-1");
+      await client.fetchUserTimeline("user-1");
+
+      expect(throttle.acquire).toHaveBeenCalledTimes(2);
+      expect(order).toEqual(["acquire", "fetch:list", "acquire", "fetch:timeline"]);
+    });
+
+    it("fetches without throttling when no throttle is provided", async () => {
+      const stub = makeRettiwtStub();
+      stub.list.tweets.mockResolvedValueOnce(makeCursored([makeFakeTweet()], null));
+      const client = createRettiwtClient({ rettiwt: stub });
+      const result = await client.fetchListTweets("list-1");
+      expect(result.tweets).toHaveLength(1);
+    });
+  });
+
   describe("fetchListTweets", () => {
     it("denormalizes a list page and returns the next cursor (string form)", async () => {
       const stub = makeRettiwtStub();

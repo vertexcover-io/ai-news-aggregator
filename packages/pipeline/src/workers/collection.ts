@@ -20,6 +20,7 @@ import type {
   RedditCollectConfig,
   WebCollectConfig,
 } from "@pipeline/types.js";
+import { jobTenantId } from "@pipeline/lib/job-tenant.js";
 
 const STALLED_INTERVAL_MS = 30_000; // 30-second BullMQ stalled job check interval
 
@@ -27,6 +28,7 @@ export interface CollectionJobLike {
   name: string;
   data: {
     runId?: string;
+    tenantId?: string;
     config: HnCollectConfig | RedditCollectConfig | WebCollectConfig;
   };
 }
@@ -38,14 +40,16 @@ export interface CollectionWorkerDeps {
 
 const logger = createLogger("worker:collection");
 
-let defaultDepsInstance: CollectionWorkerDeps | null = null;
+// Run state shares one Redis connection for the worker lifetime; repos are
+// built per job because they are scoped to the job's tenant.
+let defaultRunState: RunStateService | null = null;
 
-function getDefaultDeps(): CollectionWorkerDeps {
-  defaultDepsInstance ??= {
-    rawItemsRepo: createRawItemsRepo(getDb()),
-    runState: createRunStateService(createRedisConnection()),
+function getDefaultDeps(tenantId: string): CollectionWorkerDeps {
+  defaultRunState ??= createRunStateService(createRedisConnection());
+  return {
+    rawItemsRepo: createRawItemsRepo(getDb(), tenantId),
+    runState: defaultRunState,
   };
-  return defaultDepsInstance;
 }
 
 function jobNameToSourceType(name: string): RunSourceType {
@@ -91,7 +95,7 @@ async function dispatchCollector(
 
 export async function handleCollectionJob(
   job: CollectionJobLike,
-  deps: CollectionWorkerDeps = getDefaultDeps(),
+  deps: CollectionWorkerDeps = getDefaultDeps(jobTenantId(job.data)),
 ): Promise<CollectorResult> {
   const runId = job.data.runId;
   const startedAt = Date.now();

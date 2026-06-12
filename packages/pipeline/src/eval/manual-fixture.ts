@@ -1,4 +1,4 @@
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemUpsert } from "@pipeline/repositories/raw-items.js";
 import type { EnrichedLinkContent } from "@newsletter/shared";
 import { createLogger, type Logger } from "@newsletter/shared/logger";
 import type {
@@ -26,16 +26,16 @@ export interface CreateManualFixtureOptions {
 
 export interface CreateManualFixtureDeps {
   enrichRawItems?: (
-    items: RawItemInsert[],
+    items: RawItemUpsert[],
     ctx: EnrichmentContext,
-  ) => Promise<RawItemInsert[]>;
+  ) => Promise<RawItemUpsert[]>;
   writeFixture?: (fixture: Fixture, dir?: string) => Promise<string>;
   now?: () => Date;
   dispatchFetch?: (
     url: string,
     sourceType: AddPostSourceType,
     deps?: DispatchFetchDeps,
-  ) => Promise<RawItemInsert>;
+  ) => Promise<RawItemUpsert>;
   signal?: AbortSignal;
   fetchFn?: typeof fetch;
 }
@@ -69,7 +69,7 @@ function dedupUrls(urls: string[]): string[] {
   return out;
 }
 
-function syntheticInsert(url: string): RawItemInsert {
+function syntheticInsert(url: string): RawItemUpsert {
   return {
     sourceType: "web_search",
     externalId: `manual:${url}`,
@@ -83,7 +83,7 @@ function syntheticInsert(url: string): RawItemInsert {
 }
 
 function toFixtureItem(
-  item: RawItemInsert,
+  item: RawItemUpsert,
   rawItemId: number,
 ): FixtureItem {
   const enriched: EnrichedLinkContent | null =
@@ -145,7 +145,7 @@ export async function createManualFixture(
   // rude. 5 in flight is plenty for the typical fixture size.
   const COLLECTOR_CONCURRENCY = 5;
   interface ResolvedItem {
-    insert: RawItemInsert;
+    insert: RawItemUpsert;
     needsEnrichment: boolean;
   }
   const resolved: ResolvedItem[] = Array.from(

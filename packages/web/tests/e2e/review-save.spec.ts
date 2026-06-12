@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
-import type { Page } from "@playwright/test";
+import { adminLogin, makeDbClient } from "./_infra";
 
 // ─── Legacy env-var-gated test ──────────────────────────────────────────────
 
@@ -104,12 +103,6 @@ async function seedUnreviewedRunWithItems(): Promise<SeededDraftRun> {
   }
 }
 
-async function adminLogin(page: Page): Promise<void> {
-  const res = await page.request.post(`${API_BASE}/api/admin/login`, {
-    data: { password: ADMIN_PASSWORD },
-  });
-  expect(res.ok()).toBe(true);
-}
 
 test.describe("VS-1: Draft-save flow (REQ-015)", () => {
   let seeded: SeededDraftRun;

@@ -1,4 +1,4 @@
-import { useEffect, type ReactElement } from "react";
+import { type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getHome } from "../api/home";
 import { setMeta } from "../lib/meta";
@@ -7,42 +7,77 @@ import { TodaysIssueBlock } from "../components/home/TodaysIssueBlock";
 import { FromTheCanonBlock } from "../components/home/FromTheCanonBlock";
 import { ElsewhereStrip } from "../components/home/ElsewhereStrip";
 import { InlineSubscribeCard } from "../components/shell/InlineSubscribeCard";
+import {
+  useTenantConfig,
+  useTenantPageTitle,
+} from "../components/shell/TenantConfigProvider";
 
-const TAGLINE = "The daily read for people who ship with agents.";
+/** Renders the configured headline with the closing word emphasised, matching
+ * the AGENTLOOP hero treatment and the public-home mock. */
+function Headline({ headline }: { headline: string }): ReactElement {
+  const trimmed = headline.trim();
+  const splitAt = trimmed.lastIndexOf(" ");
+  const lead = splitAt === -1 ? "" : trimmed.slice(0, splitAt + 1);
+  const emphasis = splitAt === -1 ? trimmed : trimmed.slice(splitAt + 1);
+  return (
+    <h1 className="font-serif font-medium text-[clamp(40px,6.4vw,68px)] leading-[1.02] tracking-[-0.018em] m-0 mx-auto max-w-[14ch] text-[#14110d]">
+      {lead}
+      <span className="text-[#8c3a1e] italic font-medium">{emphasis}</span>
+    </h1>
+  );
+}
 
-function Hero(): ReactElement {
+function TopicStrip({ strip }: { strip: string }): ReactElement {
+  const segments = strip
+    .split("·")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  return (
+    <div className="mt-9 mx-auto font-mono text-[11px] tracking-[0.22em] uppercase text-[#14110d] max-w-[820px] leading-[2]">
+      {segments.map((segment, idx) => (
+        <span key={`${segment}-${String(idx)}`}>
+          {idx > 0 ? <span className="text-[#8c3a1e] mx-2.5">·</span> : null}
+          {segment}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function Hero(): ReactElement | null {
+  const config = useTenantConfig();
+  if (!config) return null;
   return (
     <section className="pt-16 pb-14 text-center">
-      <h1 className="font-serif font-medium text-[clamp(40px,6.4vw,68px)] leading-[1.02] tracking-[-0.018em] m-0 mx-auto max-w-[14ch] text-[#14110d]">
-        The daily read for people who ship with{" "}
-        <span className="text-[#8c3a1e] italic font-medium">agents.</span>
-      </h1>
-      <div className="mt-9 mx-auto font-mono text-[11px] tracking-[0.22em] uppercase text-[#14110d] max-w-[820px] leading-[2]">
-        AGENTIC&nbsp;CODING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> HARNESS&nbsp;ENGINEERING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> CONTEXT&nbsp;ENGINEERING{" "}
-        <span className="text-[#8c3a1e] mx-2.5">·</span> THE&nbsp;SOFTWARE&nbsp;FACTORY
-      </div>
-      <div className="mt-5 mx-auto font-mono text-[10.5px] tracking-[0.16em] uppercase text-[#6b6557] max-w-[760px]">
-        No model releases. No benchmarks. No discourse. Just the craft.
-      </div>
+      {config.headline ? <Headline headline={config.headline} /> : null}
+      {config.topicStrip ? <TopicStrip strip={config.topicStrip} /> : null}
+      {config.subtagline ? (
+        <div className="mt-5 mx-auto font-mono text-[10.5px] tracking-[0.16em] uppercase text-[#6b6557] max-w-[760px]">
+          {config.subtagline}
+        </div>
+      ) : null}
     </section>
   );
 }
 
 export function HomePage(): ReactElement {
-  useEffect(() => {
-    document.title = "AgentLoop — The daily read for people who ship with agents.";
-    setMeta("description", TAGLINE);
-  }, []);
+  useTenantPageTitle((config) => {
+    const description = config.subtagline ?? config.headline;
+    if (description) setMeta("description", description);
+    return config.headline ? `${config.name} — ${config.headline}` : config.name;
+  });
 
+  const config = useTenantConfig();
   const { data } = useQuery({
     queryKey: ["home"],
     queryFn: getHome,
   });
 
   const todaysIssue = data?.todaysIssue ?? null;
-  const featuredCanon = data?.featuredCanon ?? null;
+  // EDGE-014: a tenant that disables Canon keeps its retained entries hidden
+  // everywhere — same `!== false` gate as MustReadPage/nav.
+  const canonEnabled = config?.flags.canon !== false;
+  const featuredCanon = canonEnabled ? (data?.featuredCanon ?? null) : null;
   const recentIssuesRaw = data?.recentIssues ?? [];
   const recentIssues =
     todaysIssue == null

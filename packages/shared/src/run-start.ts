@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type IORedis from "ioredis";
 import type { Queue } from "bullmq";
 import type {
+  RunCollectorsPayload,
   RunState,
   RunSubmitHnConfig,
   RunSubmitRedditConfig,
@@ -9,12 +10,14 @@ import type {
   RunSubmitWebConfig,
   RunSubmitWebSearchConfig,
 } from "./types/run.js";
-import type { UserSettings } from "./types/settings.js";
+import { TENANT_ZERO_ID } from "./constants/tenant.js";
 
 const TTL_SECONDS = 3600;
 
 export interface RunProcessJobPayload {
   runId: string;
+  /** Originating tenant. Optional for in-flight legacy jobs; absent ⇒ tenant 0. */
+  tenantId?: string;
   topN: number;
   sourceTypes: ("hn" | "reddit" | "blog" | "twitter" | "web_search")[];
   collectors: {
@@ -28,6 +31,11 @@ export interface RunProcessJobPayload {
   dryRun?: boolean;
 }
 
+export interface StartRunSettings {
+  topN: number;
+  halfLifeHours: number | null;
+}
+
 export interface StartRunDeps {
   redis: IORedis;
   queue: Queue<RunProcessJobPayload>;
@@ -36,35 +44,28 @@ export interface StartRunDeps {
 }
 
 export async function startRun(
-  settings: UserSettings,
+  settings: StartRunSettings,
+  collectors: RunCollectorsPayload,
   deps: StartRunDeps,
-  opts?: { dryRun?: boolean },
+  opts?: { dryRun?: boolean; tenantId?: string; startDelayMs?: number },
 ): Promise<{ runId: string }> {
   const runId = (deps.runId ?? randomUUID)();
   const nowIso = (deps.now ? deps.now() : new Date()).toISOString();
-  const hnConfig = settings.hnEnabled ? settings.hnConfig : null;
-  const redditConfig = settings.redditEnabled ? settings.redditConfig : null;
-  const webConfig = settings.webEnabled ? settings.webConfig : null;
-  const twitterConfig = settings.twitterEnabled ? settings.twitterConfig : null;
-  const webSearchConfig =
-    settings.webSearchEnabled && settings.webSearchConfig
-      ? settings.webSearchConfig
-      : null;
 
   const sources: RunState["sources"] = {};
-  if (hnConfig) {
+  if (collectors.hn) {
     sources.hn = { status: "pending", itemsFetched: 0, errors: [] };
   }
-  if (redditConfig) {
+  if (collectors.reddit) {
     sources.reddit = { status: "pending", itemsFetched: 0, errors: [] };
   }
-  if (webConfig) {
+  if (collectors.web) {
     sources.blog = { status: "pending", itemsFetched: 0, errors: [] };
   }
-  if (twitterConfig) {
+  if (collectors.twitter) {
     sources.twitter = { status: "pending", itemsFetched: 0, errors: [] };
   }
-  if (webSearchConfig) {
+  if (collectors.webSearch) {
     sources.web_search = { status: "pending", itemsFetched: 0, errors: [] };
   }
 
@@ -91,40 +92,45 @@ export async function startRun(
   );
 
   const sourceTypes: RunProcessJobPayload["sourceTypes"] = [];
-  const collectors: RunProcessJobPayload["collectors"] = {};
-  if (hnConfig) {
+  const jobCollectors: RunProcessJobPayload["collectors"] = {};
+  if (collectors.hn) {
     sourceTypes.push("hn");
-    collectors.hn = hnConfig;
+    jobCollectors.hn = collectors.hn;
   }
-  if (redditConfig) {
+  if (collectors.reddit) {
     sourceTypes.push("reddit");
-    collectors.reddit = redditConfig;
+    jobCollectors.reddit = collectors.reddit;
   }
-  if (webConfig) {
+  if (collectors.web) {
     sourceTypes.push("blog");
-    collectors.web = webConfig;
+    jobCollectors.web = collectors.web;
   }
-  if (twitterConfig) {
+  if (collectors.twitter) {
     sourceTypes.push("twitter");
-    collectors.twitter = twitterConfig;
+    jobCollectors.twitter = collectors.twitter;
   }
-  if (webSearchConfig) {
+  if (collectors.webSearch) {
     sourceTypes.push("web_search");
-    collectors.webSearch = webSearchConfig;
+    jobCollectors.webSearch = collectors.webSearch;
   }
 
   const jobPayload: RunProcessJobPayload = {
     runId,
+    tenantId: opts?.tenantId ?? TENANT_ZERO_ID,
     topN: settings.topN,
     sourceTypes,
-    collectors,
+    collectors: jobCollectors,
     ...(settings.halfLifeHours !== null
       ? { halfLifeHours: settings.halfLifeHours }
       : {}),
     ...(opts?.dryRun === true ? { dryRun: true } : {}),
   };
 
-  await deps.queue.add("run-process", jobPayload, { jobId: runId });
+  const startDelayMs = opts?.startDelayMs ?? 0;
+  await deps.queue.add("run-process", jobPayload, {
+    jobId: runId,
+    ...(startDelayMs > 0 ? { delay: startDelayMs } : {}),
+  });
 
   return { runId };
 }

@@ -1,5 +1,5 @@
 import { test, expect, type Route } from "@playwright/test";
-import { ADMIN_PASSWORD } from "./_infra";
+import { ensureE2eUser, E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./_infra";
 
 
 async function stubSubscribeOk(route: Route): Promise<void> {
@@ -202,16 +202,19 @@ test.describe("admin analytics page", () => {
   test("redirects to login when unauthenticated", async ({ page, context }) => {
     await context.clearCookies();
     await page.goto("/admin/analytics");
-    await expect(page).toHaveURL(/\/admin\/login/);
+    await expect(page).toHaveURL(/\/login/);
     await expect(
-      page.getByRole("heading", { name: /^Admin$/i }),
+      page.getByRole("heading", { name: /^Log in$/i }),
     ).toBeVisible();
   });
 
   test("renders metric cards and date controls when logged in", async ({ page, context }) => {
     await context.clearCookies();
+    await ensureE2eUser();
     await page.goto("/admin/login");
-    await page.getByLabel(/Password/i).fill(ADMIN_PASSWORD);
+    await expect(page).toHaveURL(/\/login/);
+    await page.getByLabel(/Email/i).fill(E2E_USER_EMAIL);
+    await page.getByLabel(/^Password$/i).fill(E2E_USER_PASSWORD);
     await page.getByRole("button", { name: /Sign in/i }).click();
 
     await expect(page).toHaveURL(/\/admin(?!\/login)/, { timeout: 10_000 });

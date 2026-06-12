@@ -161,4 +161,27 @@ export default tseslint.config(
     plugins: { newsletter },
     rules: { "newsletter/enforce-repository-access": "error" },
   },
+  // newsletter/enforce-tenant-scope: every repository query touching a
+  // tenant-owned table must reference tenantId in its enclosing repo method
+  // (eq(table.tenantId, tenantId) / tenantId spread into insert values).
+  // Documented global tenancy-resolution lookups (token/webhook flows where
+  // the row itself resolves tenancy) are allowlisted by factory name.
+  {
+    files: [
+      "packages/api/src/repositories/**/*.ts",
+      "packages/pipeline/src/repositories/**/*.ts",
+    ],
+    plugins: { newsletter },
+    rules: {
+      "newsletter/enforce-tenant-scope": [
+        "error",
+        {
+          allowInFunctions: [
+            "subscribers.ts#createSubscriberTenantLookup",
+            "email-sends.ts#createEmailSendTenantLookup",
+          ],
+        },
+      ],
+    },
+  },
 );

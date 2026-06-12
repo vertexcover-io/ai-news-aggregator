@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 import { getDb as defaultGetDb } from "@newsletter/shared";
 import {
   createUserSettingsRepo,
@@ -7,7 +8,7 @@ import {
 import { resolvePostHogConfig } from "@newsletter/shared/analytics";
 
 export interface AnalyticsConfigRouterDeps {
-  getSettingsRepo: () => UserSettingsRepo;
+  getSettingsRepo: (tenantId: string) => UserSettingsRepo;
 }
 
 export function createAnalyticsConfigRouter(
@@ -16,7 +17,7 @@ export function createAnalyticsConfigRouter(
   const app = new Hono();
 
   app.get("/", async (c) => {
-    const settings = await deps.getSettingsRepo().get();
+    const settings = await deps.getSettingsRepo(getTenantId(c)).get();
     return c.json(resolvePostHogConfig(settings));
   });
 
@@ -25,7 +26,7 @@ export function createAnalyticsConfigRouter(
 
 export function createDefaultAnalyticsConfigRouter(): Hono {
   return createAnalyticsConfigRouter({
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getSettingsRepo: (tenantId) => createUserSettingsRepo(defaultGetDb(), tenantId),
   });
 }
 

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getTenantId } from "@api/middleware/tenant-host.js";
 import { z } from "zod";
 import { Queue } from "bullmq";
 import {
@@ -15,8 +16,9 @@ import type { UserSettings } from "@newsletter/shared";
 
 export interface CollectorHealthRouterDeps {
   collectorHealthQueue: Pick<Queue, "add">;
-  store: CollectorHealthStore;
-  getSettings: () => Promise<UserSettings | null>;
+  /** Snapshot store scoped to the caller's tenant — results are tenant-keyed in Redis. */
+  getStore: (tenantId: string) => CollectorHealthStore;
+  getSettings: (tenantId: string) => Promise<UserSettings | null>;
 }
 
 const checkBodySchema = z.object({
@@ -57,19 +59,21 @@ export function createCollectorHealthRouter(deps: CollectorHealthRouterDeps): Ho
       targets = [parsed.data.collector];
     } else {
       // REQ-002: absent -> all enabled from settings
-      const settings = await deps.getSettings();
+      const settings = await deps.getSettings(getTenantId(c));
       targets = settings !== null ? enabledCollectors(settings) : [];
     }
 
     const now = new Date();
+    const store = deps.getStore(getTenantId(c));
     for (const collector of targets) {
-      await deps.store.setRunning(collector, "manual", now);
+      await store.setRunning(collector, "manual", now);
     }
 
     if (targets.length > 0) {
       await deps.collectorHealthQueue.add("collector-health", {
         collectors: targets,
         trigger: "manual",
+        tenantId: getTenantId(c),
       });
     }
 
@@ -77,7 +81,7 @@ export function createCollectorHealthRouter(deps: CollectorHealthRouterDeps): Ho
   });
 
   app.get("/", async (c) => {
-    const snapshot = await deps.store.getSnapshot();
+    const snapshot = await deps.getStore(getTenantId(c)).getSnapshot();
     return c.json(snapshot);
   });
 
@@ -96,13 +100,13 @@ export function createDefaultCollectorHealthRouter(): Hono {
   const redis = createRedisConnection();
   return createCollectorHealthRouter({
     collectorHealthQueue: getDefaultCollectorHealthQueue(),
-    store: createCollectorHealthStore(redis),
-    getSettings: async () => {
+    getStore: (tenantId) => createCollectorHealthStore(redis, tenantId),
+    getSettings: async (tenantId) => {
       // Settings are read lazily per-request — no startup caching
       // to honour the "takes effect without restart" freshness promise.
       const { createUserSettingsRepo } = await import("@api/repositories/user-settings.js");
       const { getDb } = await import("@newsletter/shared");
-      return createUserSettingsRepo(getDb()).get();
+      return createUserSettingsRepo(getDb(), tenantId).get();
     },
   });
 }

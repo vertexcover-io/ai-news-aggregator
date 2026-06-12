@@ -17,11 +17,14 @@ export interface RunLogRepo {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function createRunLogRepo(db: Pick<AppDb, "select">): RunLogRepo {
+export function createRunLogRepo(
+  db: Pick<AppDb, "select">,
+  tenantId: string,
+): RunLogRepo {
   return {
     async listForRun(runId: string): Promise<RunLogEntry[]> {
       if (!UUID_RE.test(runId)) return [];
-      const rows = await selectLogs(db, runId);
+      const rows = await selectLogs(db, tenantId, runId);
       return rows.map(toRunLogEntry);
     },
     async listForRunSource(
@@ -29,11 +32,11 @@ export function createRunLogRepo(db: Pick<AppDb, "select">): RunLogRepo {
       source: RunLogSourceLookup,
     ): Promise<RunLogEntry[]> {
       if (!UUID_RE.test(runId)) return [];
-      const exactRows = await selectLogs(db, runId, source.identifier);
+      const exactRows = await selectLogs(db, tenantId, runId, source.identifier);
       if (exactRows.length > 0) return exactRows.map(toRunLogEntry);
 
       if (source.identifier === source.sourceType) return [];
-      const fallbackRows = await selectLogs(db, runId, source.sourceType);
+      const fallbackRows = await selectLogs(db, tenantId, runId, source.sourceType);
       return fallbackRows.map(toRunLogEntry);
     },
   };
@@ -65,10 +68,14 @@ interface RunLogSelectedRow {
 
 function selectLogs(
   db: Pick<AppDb, "select">,
+  tenantId: string,
   runId: string,
   source?: string,
 ): Promise<RunLogSelectedRow[]> {
-  const runPredicate = eq(runLogs.runId, runId);
+  const runPredicate = and(
+    eq(runLogs.tenantId, tenantId),
+    eq(runLogs.runId, runId),
+  );
   const predicate =
     source === undefined
       ? runPredicate

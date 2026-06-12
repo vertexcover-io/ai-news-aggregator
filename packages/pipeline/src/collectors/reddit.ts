@@ -1,5 +1,5 @@
 import { JSDOM, VirtualConsole } from "jsdom";
-import type { RawItemInsert } from "@newsletter/shared/db";
+import type { RawItemUpsert } from "@pipeline/repositories/raw-items.js";
 import type { CollectorResult, RawItemEngagement, SourceUnitResult } from "@newsletter/shared/types";
 import type { RedditCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
@@ -139,7 +139,7 @@ function extractEntryUrl(contentDoc: Document, sourceUrl: string): string {
 }
 
 interface ParsedPostEntry {
-  readonly item: RawItemInsert;
+  readonly item: RawItemUpsert;
 }
 
 function parsePostEntry(entry: Element, subreddit: string, now: Date): ParsedPostEntry | null {
@@ -284,7 +284,7 @@ export function parseRedditPostUrl(url: string): ParsedRedditPostUrl | null {
 export async function fetchRedditPost(
   url: string,
   deps: FetchRedditPostDeps = {},
-): Promise<RawItemInsert> {
+): Promise<RawItemUpsert> {
   const parsed = parseRedditPostUrl(url);
   if (!parsed) {
     throw new UrlParseError(`not a recognized Reddit post URL: ${url}`);
@@ -341,7 +341,7 @@ export async function collectReddit(
   );
 
   const seenIds = new Set<string>();
-  const allItems: RawItemInsert[] = [];
+  const allItems: RawItemUpsert[] = [];
   const unitResults: SourceUnitResult[] = [];
 
   for (const subreddit of subreddits) {

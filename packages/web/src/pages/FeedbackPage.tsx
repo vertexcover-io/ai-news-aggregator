@@ -1,5 +1,6 @@
-import { useEffect, type ReactElement } from "react";
+import { type ReactElement } from "react";
 import { useSearchParams, Navigate, Link } from "react-router-dom";
+import { useTenantPageTitle } from "../components/shell/TenantConfigProvider";
 
 interface StatusContent {
   icon: ReactElement;
@@ -141,9 +142,7 @@ export function FeedbackPage(): ReactElement {
   const status = searchParams.get("status") ?? "";
   const rating = searchParams.get("v");
 
-  useEffect(() => {
-    document.title = "Feedback — AgentLoop";
-  }, [status]);
+  useTenantPageTitle((config) => `Feedback — ${config.name}`);
 
   const content = getContent(status, rating);
   if (!content) {

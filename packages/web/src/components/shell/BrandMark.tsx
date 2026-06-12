@@ -1,4 +1,6 @@
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
+import { tenantLogoUrl } from "../../api/tenantConfig";
+import { useTenantConfig } from "./TenantConfigProvider";
 
 interface BrandMarkProps {
   /** Rendered size in px (square). */
@@ -6,24 +8,20 @@ interface BrandMarkProps {
   className?: string;
 }
 
-/**
- * The AGENTLOOP loop mark: a hairline rust ring broken at the lower-right
- * (the day's loop closes when the issue ships) wrapped around a solid focal
- * dot (many sources converge to one curated digest). Stroke uses currentColor
- * so callers can recolor it via text color; defaults to the rust accent.
- */
-export function BrandMark({
-  size = 28,
+function DefaultMark({
+  size,
   className,
-}: BrandMarkProps): ReactElement {
+}: {
+  size: number;
+  className?: string;
+}): ReactElement {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 100 100"
       fill="none"
-      role="img"
-      aria-label="AGENTLOOP"
+      aria-hidden="true"
       className={className}
     >
       <circle
@@ -40,4 +38,37 @@ export function BrandMark({
       <circle cx="50" cy="50" r="12" fill="currentColor" />
     </svg>
   );
+}
+
+/**
+ * The tenant's brand mark: the uploaded logo (version-keyed URL for immutable
+ * caching) when one exists, otherwise the default loop mark — a hairline ring
+ * broken at the lower-right around a solid focal dot. Decorative: the adjacent
+ * wordmark carries the accessible name.
+ */
+export function BrandMark({
+  size = 28,
+  className,
+}: BrandMarkProps): ReactElement {
+  const config = useTenantConfig();
+  const [imgFailed, setImgFailed] = useState(false);
+  const logoVersion = config?.logoVersion ?? 0;
+
+  if (logoVersion > 0 && !imgFailed) {
+    return (
+      <img
+        src={tenantLogoUrl(logoVersion)}
+        width={size}
+        height={size}
+        alt=""
+        aria-hidden="true"
+        className={className ? `object-contain ${className}` : "object-contain"}
+        onError={() => {
+          setImgFailed(true);
+        }}
+      />
+    );
+  }
+
+  return <DefaultMark size={size} className={className} />;
 }

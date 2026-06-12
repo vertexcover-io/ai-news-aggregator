@@ -3,6 +3,8 @@
  * Covers REQ-001..006, EDGE-001/003/006/008/009/010/014/016.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { setTestTenant } from "../helpers/tenant.js";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { resolve, dirname } from "node:path";
@@ -24,8 +26,8 @@ const { createArchivesSearchRouter } = await import(
 );
 
 const db = getDb();
-const archiveRepo = createRunArchivesRepo(db);
-const rawItemsRepo = createRawItemsRepo(db);
+const archiveRepo = createRunArchivesRepo(db, TENANT_ZERO_ID);
+const rawItemsRepo = createRawItemsRepo(db, TENANT_ZERO_ID);
 
 interface SearchResp {
   archives: { runId: string; runDate: string; digestHeadline: string | null }[];
@@ -37,6 +39,7 @@ interface SearchResp {
 
 function makeApp(): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   const router = createArchivesSearchRouter({
     getArchiveRepo: () => archiveRepo,
     getRawItemsRepo: () => rawItemsRepo,
@@ -73,6 +76,8 @@ async function insertRaw(
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: TENANT_ZERO_ID,
+      tenantId: TENANT_ZERO_ID,
       sourceType: "hn",
       externalId,
       title,
@@ -145,6 +150,7 @@ async function insertArchive(opts: {
       })
     : null;
   await db.insert(runArchives).values({
+    tenantId: TENANT_ZERO_ID,
     id: opts.id,
     status: "completed",
     rankedItems: refs,

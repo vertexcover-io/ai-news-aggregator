@@ -3,9 +3,11 @@ import type IORedis from "ioredis";
 import { createRedisConnection } from "@newsletter/shared/redis";
 import { getDb } from "@newsletter/shared";
 import {
+  APP_CREDENTIALS_TENANT_ID,
   DEFAULT_RANKING_PROMPT,
   DEFAULT_SHORTLIST_PROMPT,
 } from "@newsletter/shared/constants";
+import { jobTenantId } from "@pipeline/lib/job-tenant.js";
 import type { SlackNotifier } from "@newsletter/shared";
 import type { AppDb, SourceType } from "@newsletter/shared/db";
 import { createLogger } from "@newsletter/shared/logger";
@@ -51,7 +53,10 @@ import {
   createRunArchivesRepo,
   type RunArchivesRepo,
 } from "@pipeline/repositories/run-archives.js";
-import type { UserSettingsRepo } from "@pipeline/repositories/user-settings.js";
+import {
+  createUserSettingsRepo,
+  type UserSettingsRepo,
+} from "@pipeline/repositories/user-settings.js";
 import type {
   HnCollectConfig,
   RedditCollectConfig,
@@ -91,10 +96,32 @@ import {
 import type { RunCostBreakdown, RunFunnel } from "@newsletter/shared";
 import { writeFailedArchive } from "@pipeline/services/run-archive-writer.js";
 import { finalizeRun } from "@pipeline/services/finalize-run.js";
+import { createTwitterCollectorThrottle } from "@pipeline/lib/twitter-throttle.js";
+import type { RunCrashedInput } from "@pipeline/services/tenant-notifier.js";
+
+/**
+ * The run-process notifier surface: the legacy SlackNotifier methods plus the
+ * tenant notifier's run-crash alert. `notifyRunCrashed` is optional so a plain
+ * SlackNotifier (env-webhook transitional wiring) still satisfies the type.
+ */
+export type RunProcessNotifier = SlackNotifier & {
+  notifyRunCrashed?(input: RunCrashedInput): Promise<void>;
+};
 
 const logger = createLogger("worker:run-process");
 
 const FALLBACK_WINDOW_MS = 10 * 60 * 1000; // 10-minute dedup lookback fallback
+
+export const DEFAULT_PIPELINE_RUN_CONCURRENCY = 1;
+
+/** PIPELINE_RUN_CONCURRENCY env (REQ-065 global cap): default 1; junk or < 1 falls back to the default. */
+export function parsePipelineRunConcurrency(value: string | undefined): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return DEFAULT_PIPELINE_RUN_CONCURRENCY;
+  }
+  return parsed;
+}
 
 function ensureDb(db: AppDb | undefined): AppDb {
   if (!db) throw new Error("internal: db required to build default repositories");
@@ -112,6 +139,8 @@ export interface RunCollectorsPayload {
 
 export interface RunProcessJobData {
   runId: string;
+  /** Originating tenant; absent on in-flight legacy jobs (⇒ tenant 0). */
+  tenantId?: string;
   topN: number;
   sourceTypes: SourceType[];
   collectors: RunCollectorsPayload;
@@ -214,7 +243,7 @@ export interface RunProcessDeps {
    * a worker restart. Do NOT cache the resolved client at construction time.
    */
   twitterClient: () => Promise<TwitterClient>;
-  slackNotifier?: SlackNotifier;
+  slackNotifier?: RunProcessNotifier;
   /** Tavily (or future) web-search provider. Resolved once at worker startup from TAVILY_API_KEY env var. */
   webSearchProvider?: WebSearchProvider;
 }
@@ -997,6 +1026,24 @@ export async function handleRunProcessJob(
       runFunnel: { ...funnel },
       logger,
     });
+    // REQ-091: alert the tenant's configured channels on a run crash. Never
+    // let a notification failure mask the original error.
+    try {
+      await deps.slackNotifier?.notifyRunCrashed?.({
+        runId,
+        stage: currentStage,
+        error: message,
+      });
+    } catch (notifyErr) {
+      logger.warn(
+        {
+          event: "run.crash_notify_failed",
+          runId,
+          error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+        },
+        "run.crash_notify_failed",
+      );
+    }
     throw err;
   } finally {
     await subscriber.close();
@@ -1017,8 +1064,9 @@ export interface CreateRunProcessWorkerOptions {
   userSettingsRepo?: UserSettingsRepo;
   cancelSubscriber?: CancelSubscriberFactory;
   twitterClient?: () => Promise<TwitterClient>;
-  slackNotifier?: SlackNotifier;
+  slackNotifier?: RunProcessNotifier;
   webSearchProvider?: WebSearchProvider;
+  concurrency?: number;
 }
 
 export function createRunProcessWorker(
@@ -1032,10 +1080,6 @@ export function createRunProcessWorker(
     !options.archiveRepo ||
     !options.runLogRepo;
   const db: AppDb | undefined = needsDb ? getDb() : undefined;
-  const rawItemsRepo =
-    options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db));
-  const candidatesRepo =
-    options.candidatesRepo ?? createCandidatesRepo(ensureDb(db));
   const loadFn = options.loadFn ?? loadCandidatesSince;
   const shortlistFn: ShortlistFn =
     options.shortlistFn ??
@@ -1053,11 +1097,18 @@ export function createRunProcessWorker(
   // Per-job factory: resolves cookies from `social_credentials.twitter_collector`
   // first (admin-managed), falling back to RETTIWT_API_KEY env var. Construction
   // happens at job time so admin saves take effect on the next run without a
-  // worker restart. Rettiwt accepts an undefined apiKey (guest mode).
+  // worker restart. Rettiwt accepts an undefined apiKey (guest mode). The shared
+  // collector cookie is an app-level credential (F62/F66) owned by tenant 0,
+  // regardless of which tenant's run is executing.
+  const twitterThrottle = createTwitterCollectorThrottle(connection);
   const twitterClient: () => Promise<TwitterClient> =
     options.twitterClient ??
     (async () => {
-      const repo = createSocialCredentialsRepo(ensureDb(db), getCredentialCipher());
+      const repo = createSocialCredentialsRepo(
+        ensureDb(db),
+        APP_CREDENTIALS_TENANT_ID,
+        getCredentialCipher(),
+      );
       const cookie = await resolveTwitterCollectorCookie({
         repo,
         env: process.env,
@@ -1065,6 +1116,7 @@ export function createRunProcessWorker(
       const rettiwt = new Rettiwt({ apiKey: cookie?.apiKey });
       return createRettiwtClient({
         rettiwt,
+        throttle: twitterThrottle,
         auth: cookie
           ? {
               refreshCsrfToken: () =>
@@ -1078,34 +1130,47 @@ export function createRunProcessWorker(
       });
     });
 
-  const archiveRepo =
-    options.archiveRepo ?? createRunArchivesRepo(ensureDb(db));
-  const runLogRepo = options.runLogRepo ?? createRunLogRepo(ensureDb(db));
-  const userSettingsRepo = options.userSettingsRepo;
-
   const cancelSubscriber =
     options.cancelSubscriber ?? createCancelSubscriber(connection);
 
-  const deps: RunProcessDeps = {
+  // Tenant-scoped repos are built per job — the tenant is only known from the
+  // job payload. Injected repos (tests) take precedence and stay job-agnostic.
+  const depsFor = (tenantId: string): RunProcessDeps => ({
     runState,
-    rawItemsRepo,
-    candidatesRepo,
+    rawItemsRepo:
+      options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db), tenantId),
+    candidatesRepo:
+      options.candidatesRepo ?? createCandidatesRepo(ensureDb(db), tenantId),
     loadFn,
     shortlistFn,
     rankFn,
     collectFns,
-    archiveRepo,
-    runLogRepo,
-    userSettingsRepo,
+    archiveRepo:
+      options.archiveRepo ?? createRunArchivesRepo(ensureDb(db), tenantId),
+    runLogRepo: options.runLogRepo ?? createRunLogRepo(ensureDb(db), tenantId),
+    // Per-tenant prompts/shortlistSize (REQ-061). Tests that inject every repo
+    // run without a DB, so the default is only built when one is available.
+    userSettingsRepo:
+      options.userSettingsRepo ??
+      (db === undefined ? undefined : createUserSettingsRepo(db, tenantId)),
     cancelSubscriber,
     twitterClient,
     slackNotifier: options.slackNotifier,
     webSearchProvider: options.webSearchProvider,
-  };
+  });
+
+  // REQ-065: global run cap — excess run-process jobs queue until a slot frees.
+  const concurrency =
+    options.concurrency ??
+    parsePipelineRunConcurrency(process.env.PIPELINE_RUN_CONCURRENCY);
 
   return new Worker<RunProcessJobData, RunProcessResult>(
     "processing",
-    (job) => handleRunProcessJob(deps, job as RunProcessJobLike),
-    { connection },
+    (job) =>
+      handleRunProcessJob(
+        depsFor(jobTenantId(job.data)),
+        job as RunProcessJobLike,
+      ),
+    { connection, concurrency },
   );
 }

@@ -1,4 +1,5 @@
-import type { EnrichedLinkContent, EnrichmentSkipReason, RawItemInsert } from "@newsletter/shared";
+import type { EnrichedLinkContent, EnrichmentSkipReason } from "@newsletter/shared";
+import type { RawItemUpsert } from "@pipeline/repositories/raw-items.js";
 import { canonicalizeFetchUrl } from "@newsletter/shared/services/url-safety";
 
 
@@ -93,7 +94,7 @@ export function getContentType(url: string): "html" | "pdf" | "image" | "video" 
 }
 
 export function shouldEnrich(
-  item: RawItemInsert,
+  item: RawItemUpsert,
   cache: Map<string, EnrichedLinkContent>,
 ): ShouldEnrichResult {
   if (!item.url || item.url === "" || item.url === item.sourceUrl) {

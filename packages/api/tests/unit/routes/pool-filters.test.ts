@@ -6,6 +6,7 @@
  * REQ-007, REQ-008, REQ-010, REQ-011, REQ-015, REQ-017, EDGE-002, EDGE-012
  */
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import type { PoolResponse, PoolItem } from "@newsletter/shared";
 import {
@@ -107,6 +108,7 @@ function makeRawItemsRepo(): RawItemsRepo {
 
 function makeAdminApp(archiveRepo: RunArchivesRepo): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   const router = createAdminArchivesRouter({
     getRawItemsRepo: () => makeRawItemsRepo(),
     getArchiveRepo: () => archiveRepo,
@@ -117,6 +119,7 @@ function makeAdminApp(archiveRepo: RunArchivesRepo): Hono {
 
 function makePublicApp(archiveRepo: RunArchivesRepo): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   const router = createPublicArchivesRouter({
     getRawItemsRepo: () => makeRawItemsRepo(),
     getArchiveRepo: () => archiveRepo,

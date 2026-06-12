@@ -177,7 +177,7 @@ const byId =
 describe("eval-runs repository", () => {
   it("INSERT then getById returns the row with status='running'", async () => {
     const fake = makeFakeDb();
-    const repo = createEvalRunsRepo(fake.db);
+    const repo = createEvalRunsRepo(fake.db, "00000000-0000-4000-8000-00000000aaaa");
     const { id } = await repo.insert(baseInput());
     expect(UUID_RE.test(id)).toBe(true);
 
@@ -194,7 +194,7 @@ describe("eval-runs repository", () => {
 
   it("updateFinish on existing id: rowsAffected=1, getById shows status='done' + breakdowns", async () => {
     const fake = makeFakeDb();
-    const repo = createEvalRunsRepo(fake.db);
+    const repo = createEvalRunsRepo(fake.db, "00000000-0000-4000-8000-00000000aaaa");
     const { id } = await repo.insert(baseInput());
 
     fake.pushPred(byId(id));
@@ -214,7 +214,7 @@ describe("eval-runs repository", () => {
 
   it("updateFailed on existing id: rowsAffected=1, status='failed', errorMessage truncated to 512", async () => {
     const fake = makeFakeDb();
-    const repo = createEvalRunsRepo(fake.db);
+    const repo = createEvalRunsRepo(fake.db, "00000000-0000-4000-8000-00000000aaaa");
     const { id } = await repo.insert(baseInput());
 
     const longMsg = "x".repeat(600);
@@ -231,7 +231,7 @@ describe("eval-runs repository", () => {
 
   it("updateFinish on a fake uuid: rowsAffected=0 (silent no-op detected)", async () => {
     const fake = makeFakeDb();
-    const repo = createEvalRunsRepo(fake.db);
+    const repo = createEvalRunsRepo(fake.db, "00000000-0000-4000-8000-00000000aaaa");
     const ghostId = "11111111-2222-4333-8444-555555555555";
 
     fake.pushPred(byId(ghostId));
@@ -244,11 +244,14 @@ describe("eval-runs repository", () => {
 
   it("list with no filters paginates correctly (3 rows, page=1 perPage=2 -> 2, total=3)", async () => {
     const fake = makeFakeDb();
-    const repo = createEvalRunsRepo(fake.db);
+    const repo = createEvalRunsRepo(fake.db, "00000000-0000-4000-8000-00000000aaaa");
     await repo.insert(baseInput({ fixtureId: "a" }));
     await repo.insert(baseInput({ fixtureId: "b" }));
     await repo.insert(baseInput({ fixtureId: "c" }));
 
+    // Every list query now carries the tenant predicate (REQ-126).
+    fake.pushPred(() => true);
+    fake.pushPred(() => true);
     const result = await repo.list({ page: 1, perPage: 2 });
     expect(result.runs.length).toBe(2);
     expect(result.total).toBe(3);

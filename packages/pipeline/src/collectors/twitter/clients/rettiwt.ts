@@ -67,6 +67,8 @@ export interface RettiwtFacade {
 interface CreateRettiwtClientDeps {
   rettiwt: RettiwtFacade;
   auth?: RettiwtAuthRefresher;
+  /** Global cross-tenant pacer for rettiwt fetches (REQ-068). Acquired before every page fetch. */
+  throttle?: { acquire(): Promise<void> };
 }
 
 interface RettiwtAuthRefresher {
@@ -217,34 +219,32 @@ function toResult(page: RettiwtCursoredPage): TwitterClientFetchResult {
 }
 
 export function createRettiwtClient(deps: CreateRettiwtClientDeps): TwitterClient {
-  const { auth, rettiwt } = deps;
+  const { auth, rettiwt, throttle } = deps;
   return {
     async fetchListTweets(
       listId: string,
       opts: TwitterClientFetchOptions = {},
     ): Promise<TwitterClientFetchResult> {
-      const page = await withCsrfRefreshRetry(
-        () =>
-          abortRace(
-            rettiwt.list.tweets(listId, opts.maxTweets, opts.cursor),
-            opts.signal,
-          ),
-        auth,
-      );
+      const page = await withCsrfRefreshRetry(async () => {
+        await throttle?.acquire();
+        return abortRace(
+          rettiwt.list.tweets(listId, opts.maxTweets, opts.cursor),
+          opts.signal,
+        );
+      }, auth);
       return toResult(page);
     },
     async fetchUserTimeline(
       userId: string,
       opts: TwitterClientFetchOptions = {},
     ): Promise<TwitterClientFetchResult> {
-      const page = await withCsrfRefreshRetry(
-        () =>
-          abortRace(
-            rettiwt.user.timeline(userId, opts.maxTweets, opts.cursor),
-            opts.signal,
-          ),
-        auth,
-      );
+      const page = await withCsrfRefreshRetry(async () => {
+        await throttle?.acquire();
+        return abortRace(
+          rettiwt.user.timeline(userId, opts.maxTweets, opts.cursor),
+          opts.signal,
+        );
+      }, auth);
       return toResult(page);
     },
   };

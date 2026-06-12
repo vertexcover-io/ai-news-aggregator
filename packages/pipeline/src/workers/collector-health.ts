@@ -9,8 +9,6 @@ import {
   COLLECTOR_HEALTH_QUEUE_NAME,
   HEALTH_CHECKABLE_COLLECTORS,
 } from "@newsletter/shared/constants";
-import { postToWebhook } from "@newsletter/shared";
-import { buildCollectorHealthMessage } from "@newsletter/shared";
 import { createCollectorHealthStore } from "@newsletter/shared/services";
 import type { CollectorHealthStore } from "@newsletter/shared/services";
 import type {
@@ -26,7 +24,17 @@ import {
   type CollectorHealthOutcome,
 } from "@pipeline/services/collector-health/index.js";
 import type { UserSettingsRepo } from "@pipeline/repositories/user-settings.js";
-import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
+import {
+  createNotificationSettingsRepo,
+  createUserSettingsRepo,
+} from "@pipeline/repositories/user-settings.js";
+import {
+  createDefaultNotificationEmailClient,
+  createTenantNotifier,
+  type TenantNotifier,
+} from "@pipeline/services/tenant-notifier.js";
+import { createRunArchivesRepo } from "@pipeline/repositories/run-archives.js";
+import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import {
   createSocialCredentialsRepo,
 } from "@pipeline/repositories/social-credentials.js";
@@ -36,10 +44,13 @@ import { runWebCrawl } from "@pipeline/services/web-crawler.js";
 import { createWebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
 import { Rettiwt } from "rettiwt-api";
 import type { UserSettings } from "@newsletter/shared";
+import { jobTenantId } from "@pipeline/lib/job-tenant.js";
+import { APP_CREDENTIALS_TENANT_ID } from "@newsletter/shared/constants";
 
 export interface CollectorHealthJobData {
   collectors?: HealthCheckCollector[];
   trigger: CollectorHealthTrigger;
+  tenantId?: string;
 }
 
 export interface CollectorHealthJobLike {
@@ -47,8 +58,6 @@ export interface CollectorHealthJobLike {
   id?: string;
   data: CollectorHealthJobData;
 }
-
-type PostToWebhookFn = typeof postToWebhook;
 
 export interface CollectorHealthJobDeps {
   userSettingsRepo: UserSettingsRepo;
@@ -60,8 +69,8 @@ export interface CollectorHealthJobDeps {
   ) => Promise<CollectorHealthOutcome>;
   /** Factory called per-job so credentials are always fresh (S-pipeline-03 / D-051) */
   buildHealthCheckDeps: () => Promise<HealthCheckDeps>;
-  slackWebhookUrl: string | undefined;
-  postToWebhook: PostToWebhookFn;
+  /** Per-tenant notifier: alerts the job tenant's configured channels (REQ-091). */
+  notifier: Pick<TenantNotifier, "notifyCollectorFailures">;
   /** Emits one `collector_preflight_failed` PostHog event per failed collector. Silent no-op when PostHog is unconfigured. */
   capturePipelineEvent: (event: string, properties?: Record<string, unknown>) => void;
   logger: {
@@ -355,38 +364,21 @@ export async function handleCollectorHealthJob(
     "collector health job completed",
   );
 
-  // Post Slack alert if there are failures and webhook is configured
-  if (failures.length === 0 || deps.slackWebhookUrl === undefined || deps.slackWebhookUrl === "") {
-    return;
-  }
-
-  const message = buildCollectorHealthMessage({ failures, trigger });
-
+  // Alert the tenant's configured channels if there are failures (REQ-091).
+  // The tenant notifier is a per-channel no-op when nothing is configured and
+  // swallows channel errors internally; the guard here keeps a misbehaving
+  // notifier from failing the job.
+  if (failures.length === 0) return;
   try {
-    const webhookResult = await deps.postToWebhook({
-      url: deps.slackWebhookUrl,
-      blocks: message.blocks,
-    });
-
-    if (!webhookResult.ok) {
-      log.warn(
-        {
-          event: "slack.collector_health.failed",
-          status: webhookResult.status,
-          jobId: job.id,
-        },
-        "collector health slack alert failed",
-      );
-    }
+    await deps.notifier.notifyCollectorFailures({ failures, trigger });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
     log.warn(
       {
         event: "slack.collector_health.failed",
-        error: msg,
+        error: err instanceof Error ? err.message : String(err),
         jobId: job.id,
       },
-      "collector health slack alert failed",
+      "collector health alert failed",
     );
   }
 }
@@ -395,7 +387,9 @@ export function createCollectorHealthWorker(
   options: CreateCollectorHealthWorkerOptions = {},
 ): Worker<CollectorHealthJobData, undefined> {
   const connection = options.connection ?? createRedisConnection();
-  const workerDeps = options.deps ?? buildDefaultCollectorHealthDeps();
+  // Deps are built per job: settings are scoped to the job's tenant.
+  const depsFor = (tenantId: string): CollectorHealthJobDeps =>
+    options.deps ?? buildDefaultCollectorHealthDeps(tenantId);
 
   return new Worker<CollectorHealthJobData, undefined>(
     COLLECTOR_HEALTH_QUEUE_NAME,
@@ -405,23 +399,55 @@ export function createCollectorHealthWorker(
         id: job.id,
         data: job.data,
       };
-      await handleCollectorHealthJob(workerDeps, jobLike);
+      await handleCollectorHealthJob(depsFor(jobTenantId(job.data)), jobLike);
       return undefined;
     },
     { connection },
   );
 }
 
-export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
+// One Redis connection for the health store across jobs; the store itself is
+// built per tenant so results land under that tenant's snapshot keys.
+let defaultHealthStoreRedis: ReturnType<typeof createRedisConnection> | null = null;
+
+export function buildDefaultCollectorHealthDeps(
+  tenantId: string,
+): CollectorHealthJobDeps {
   const db = getDb();
+  defaultHealthStoreRedis ??= createRedisConnection();
+
+  // Per-job, per-tenant notifier (REQ-091): channels resolve from the job
+  // tenant's user_settings row; tenant 0 falls back to SLACK_WEBHOOK_URL (NF3).
+  const archiveRepo = createRunArchivesRepo(db, tenantId);
+  const rawItemsRepo = createRawItemsRepo(db, tenantId);
+  const notifier = createTenantNotifier({
+    tenantId,
+    settingsRepo: createNotificationSettingsRepo(db, tenantId),
+    cipher: getCredentialCipher(),
+    archives: archiveRepo,
+    resolveTopRankedTitle: async (archive) => {
+      if (archive.rankedItems.length === 0) return null;
+      const items = await rawItemsRepo.findByIds([archive.rankedItems[0].rawItemId]);
+      return items[0]?.title ?? null;
+    },
+    logger: createLogger("notify"),
+    emailClient: createDefaultNotificationEmailClient(),
+    publicArchiveBaseUrl: process.env.PUBLIC_BASE_URL ?? process.env.NEWSLETTER_BASE_URL,
+  });
 
   return {
-    userSettingsRepo: createUserSettingsRepo(db),
-    store: createCollectorHealthStore(createRedisConnection()),
+    userSettingsRepo: createUserSettingsRepo(db, tenantId),
+    store: createCollectorHealthStore(defaultHealthStoreRedis, tenantId),
     runCollectorHealthCheck: defaultRunCollectorHealthCheck,
-    // Per-job factory so credentials are always fresh (S-pipeline-03 / D-051)
+    // Per-job factory so credentials are always fresh (S-pipeline-03 / D-051).
+    // The shared Twitter collector cookie is an app-level credential (F62/F66)
+    // owned by tenant 0 regardless of which tenant's health check runs.
     buildHealthCheckDeps: async (): Promise<HealthCheckDeps> => {
-      const credentialsRepo = createSocialCredentialsRepo(getDb(), getCredentialCipher());
+      const credentialsRepo = createSocialCredentialsRepo(
+        getDb(),
+        APP_CREDENTIALS_TENANT_ID,
+        getCredentialCipher(),
+      );
       const twitterCookie = await resolveTwitterCollectorCookie({
         repo: credentialsRepo,
         env: process.env,
@@ -442,8 +468,7 @@ export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
         logger: createLogger("worker:collector-health"),
       };
     },
-    slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
-    postToWebhook,
+    notifier,
     capturePipelineEvent,
     logger: createLogger("worker:collector-health"),
   };

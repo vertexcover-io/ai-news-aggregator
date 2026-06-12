@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import type { ArchiveListItem, ArchiveListResponse } from "@newsletter/shared";
 import { createArchivesRouter } from "@api/routes/archives.js";
@@ -39,6 +40,7 @@ function makeApp(
   settingsRepo?: Pick<UserSettingsRepo, "get">,
 ): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   const router = createArchivesRouter({
     getRawItemsRepo: () => makeRawItemsRepo(),
     getArchiveRepo: () => archiveRepo,

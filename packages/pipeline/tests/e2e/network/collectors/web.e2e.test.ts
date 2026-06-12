@@ -1,3 +1,4 @@
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { config } from "dotenv";
 import { resolve } from "node:path";
@@ -58,7 +59,7 @@ describe.skipIf(!process.env.ANTHROPIC_API_KEY)("Web Collector E2E", () => {
       };
 
       const result = await collectWeb(
-        { rawItemsRepo: createRawItemsRepo(db) },
+        { rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID) },
         cfg,
       );
 
@@ -104,7 +105,7 @@ describe.skipIf(!process.env.ANTHROPIC_API_KEY)("Web Collector E2E", () => {
       };
 
       const result = await collectWeb(
-        { rawItemsRepo: createRawItemsRepo(db) },
+        { rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID) },
         cfg,
       );
 
@@ -132,7 +133,7 @@ describe.skipIf(!process.env.ANTHROPIC_API_KEY)("Web Collector E2E", () => {
       };
 
       await expect(
-        collectWeb({ rawItemsRepo: createRawItemsRepo(db) }, cfg),
+        collectWeb({ rawItemsRepo: createRawItemsRepo(db, TENANT_ZERO_ID) }, cfg),
       ).rejects.toThrow(/all sources failed/);
     },
     60_000,

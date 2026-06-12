@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { setTestTenant } from "../../helpers/tenant.js";
 import { Hono } from "hono";
 import type {
   Fixture,
@@ -85,6 +86,7 @@ function makeEvalRunsRepo(overrides: Partial<EvalRunsRepo> = {}): EvalRunsRepo {
 
 function makeApp(deps: AdminEvalRouterDeps): Hono {
   const app = new Hono();
+  app.use("*", setTestTenant());
   const router = createAdminEvalRouter(deps);
   app.route("/api/admin/eval", router);
   return app;
@@ -339,7 +341,10 @@ describe("admin-eval /run persistence (Phase 3)", () => {
     });
     expect(insertArg.savedPromptSnapshot).toBe("the-saved-prompt");
     expect(insertArg.savedPromptHash).toHaveLength(16);
-    expect(getCalendarRunDetail).toHaveBeenCalledWith("run-calendar-1");
+    expect(getCalendarRunDetail).toHaveBeenCalledWith(
+      expect.any(String),
+      "run-calendar-1",
+    );
     expect(runEval).toHaveBeenCalledOnce();
 
     expect(evalRunsRepo.updateFinish).toHaveBeenCalledTimes(1);

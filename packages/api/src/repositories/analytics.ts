@@ -14,7 +14,10 @@ export interface AnalyticsRepo {
   }>;
 }
 
-export function createAnalyticsRepo(db: Pick<AppDb, "select">): AnalyticsRepo {
+export function createAnalyticsRepo(
+  db: Pick<AppDb, "select">,
+  tenantId: string,
+): AnalyticsRepo {
   return {
     async getMetrics({ from, to }) {
       const [
@@ -29,31 +32,31 @@ export function createAnalyticsRepo(db: Pick<AppDb, "select">): AnalyticsRepo {
         db
           .select({ value: count() })
           .from(subscribers)
-          .where(and(gte(subscribers.subscribedAt, from), lt(subscribers.subscribedAt, to))),
+          .where(and(eq(subscribers.tenantId, tenantId), gte(subscribers.subscribedAt, from), lt(subscribers.subscribedAt, to))),
         db
           .select({ value: count() })
           .from(subscribers)
-          .where(and(gte(subscribers.unsubscribedAt, from), lt(subscribers.unsubscribedAt, to))),
+          .where(and(eq(subscribers.tenantId, tenantId), gte(subscribers.unsubscribedAt, from), lt(subscribers.unsubscribedAt, to))),
         db
           .select({ value: count() })
           .from(emailSends)
-          .where(and(gte(emailSends.sentAt, from), lt(emailSends.sentAt, to))),
+          .where(and(eq(emailSends.tenantId, tenantId), gte(emailSends.sentAt, from), lt(emailSends.sentAt, to))),
         db
           .select({ value: count() })
           .from(sesEvents)
-          .where(and(eq(sesEvents.eventType, "bounce"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
+          .where(and(eq(sesEvents.tenantId, tenantId), eq(sesEvents.eventType, "bounce"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
         db
           .select({ value: count() })
           .from(sesEvents)
-          .where(and(eq(sesEvents.eventType, "complaint"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
+          .where(and(eq(sesEvents.tenantId, tenantId), eq(sesEvents.eventType, "complaint"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
         db
           .select({ value: count() })
           .from(sesEvents)
-          .where(and(eq(sesEvents.eventType, "open"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
+          .where(and(eq(sesEvents.tenantId, tenantId), eq(sesEvents.eventType, "open"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
         db
           .select({ value: count() })
           .from(sesEvents)
-          .where(and(eq(sesEvents.eventType, "click"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
+          .where(and(eq(sesEvents.tenantId, tenantId), eq(sesEvents.eventType, "click"), gte(sesEvents.occurredAt, from), lt(sesEvents.occurredAt, to))),
       ]);
 
       return {

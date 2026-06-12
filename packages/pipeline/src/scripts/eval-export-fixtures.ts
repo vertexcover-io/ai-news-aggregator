@@ -5,6 +5,7 @@ import { parseArgs } from "node:util";
 config({ path: resolve(import.meta.dirname, "../../../../.env") });
 
 import { getDb } from "@newsletter/shared/db";
+import { TENANT_ZERO_ID } from "@newsletter/shared/constants";
 import { createEvalExportsRepo } from "@pipeline/repositories/eval-exports.js";
 import { exportFixtures } from "@pipeline/eval/export-fixtures.js";
 
@@ -41,7 +42,8 @@ function parseCliArgs(argv: string[]): ParsedCliArgs {
 async function main(): Promise<number> {
   const args = parseCliArgs(process.argv.slice(2));
   const db = getDb();
-  const repo = createEvalExportsRepo(db);
+  // Offline operator CLI — runs against tenant 0's data (transitional, REQ-061).
+  const repo = createEvalExportsRepo(db, TENANT_ZERO_ID);
 
   const result = await exportFixtures({
     days: args.days,

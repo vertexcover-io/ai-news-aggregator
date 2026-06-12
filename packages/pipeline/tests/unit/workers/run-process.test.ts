@@ -40,8 +40,9 @@ const mockLoggerWarn = vi.fn();
 const mockLoggerError = vi.fn();
 
 vi.mock("bullmq", () => ({
-  Worker: vi.fn().mockImplementation((_name, handler) => ({
+  Worker: vi.fn().mockImplementation((_name, handler, opts) => ({
     handler,
+    options: opts,
     close: vi.fn(),
     on: vi.fn(),
   })),
@@ -76,6 +77,12 @@ vi.mock("@pipeline/repositories/candidates.js", () => ({
 
 vi.mock("@pipeline/repositories/run-archives.js", () => ({
   createRunArchivesRepo: vi.fn(() => ({ upsert: vi.fn() })),
+}));
+
+vi.mock("@pipeline/repositories/user-settings.js", () => ({
+  createUserSettingsRepo: vi.fn(() => ({
+    get: vi.fn(() => Promise.resolve(null)),
+  })),
 }));
 
 vi.mock("@newsletter/shared/logger", () => ({
@@ -443,6 +450,42 @@ describe("run-process worker", () => {
   });
 
   // REQ-015: collectFns injection seam exists on RunProcessDeps
+  // REQ-065: the global run cap is the run-process worker's BullMQ concurrency.
+  it("REQ-065: worker concurrency defaults to 1 and honors PIPELINE_RUN_CONCURRENCY", async () => {
+    const { parsePipelineRunConcurrency, DEFAULT_PIPELINE_RUN_CONCURRENCY } =
+      await import("@pipeline/workers/run-process.js");
+
+    expect(DEFAULT_PIPELINE_RUN_CONCURRENCY).toBe(1);
+    expect(parsePipelineRunConcurrency(undefined)).toBe(1);
+    expect(parsePipelineRunConcurrency("3")).toBe(3);
+    expect(parsePipelineRunConcurrency("0")).toBe(1);
+    expect(parsePipelineRunConcurrency("-2")).toBe(1);
+    expect(parsePipelineRunConcurrency("1.5")).toBe(1);
+    expect(parsePipelineRunConcurrency("junk")).toBe(1);
+
+    const runStateMock = makeMockRunState(makeRunState());
+    const worker = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+      concurrency: 2,
+    });
+    expect(
+      (worker as unknown as { options: { concurrency: number } }).options
+        .concurrency,
+    ).toBe(2);
+
+    const defaulted = createRunProcessWorker({
+      runState: runStateMock.service,
+      loadFn: vi.fn(() => Promise.resolve([])),
+      rankFn: vi.fn(),
+    });
+    expect(
+      (defaulted as unknown as { options: { concurrency: number } }).options
+        .concurrency,
+    ).toBe(1);
+  });
+
   it("REQ-015: createRunProcessWorker accepts collectFns option", () => {
     const runStateMock = makeMockRunState(makeRunState());
     const hn = vi.fn();

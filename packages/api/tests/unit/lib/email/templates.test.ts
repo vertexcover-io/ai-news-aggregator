@@ -219,6 +219,29 @@ describe("renderNewsletter", () => {
     expect(html).toContain("The biggest AI leap since GPT-4.");
   });
 
+  // Phase 7: branding {name, logoUrl?} with AGENTLOOP defaults (NF3).
+  it("keeps the default AI NEWSLETTER masthead without branding", async () => {
+    const html = await renderNewsletter(baseProps);
+    expect(html).toContain("AI NEWSLETTER");
+  });
+
+  it("renders the tenant brand name in the masthead when branding is given", async () => {
+    const html = await renderNewsletter({
+      ...baseProps,
+      branding: { name: "Acme AI Weekly" },
+    });
+    expect(html).toContain("ACME AI WEEKLY");
+    expect(html).not.toContain("AI NEWSLETTER");
+  });
+
+  it("renders the tenant logo when branding.logoUrl is given", async () => {
+    const html = await renderNewsletter({
+      ...baseProps,
+      branding: { name: "Acme AI Weekly", logoUrl: "https://acme.com/logo.png" },
+    });
+    expect(html).toContain('src="https://acme.com/logo.png"');
+  });
+
   it("limits stories to 5 max", async () => {
     const manyStories: NewsletterStory[] = Array.from({ length: 10 }, (_, i) => ({
       title: `Story ${i + 1}`,

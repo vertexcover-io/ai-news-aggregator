@@ -323,3 +323,40 @@ describe("renderNewsletter (mobile responsiveness)", () => {
     expect(html).toMatch(/Open archive[\s\S]{0,200}white-space:\s*nowrap|white-space:\s*nowrap[\s\S]{0,400}Open archive/i);
   });
 });
+
+// ─── Phase 7: tenant branding (REQ-053 companion / NF3) ─────────────────────
+
+describe("renderNewsletter — tenant branding", () => {
+  it("defaults to The Daily Read + Vertexcover credit when no branding given (NF3)", async () => {
+    const html = await renderNewsletter(baseProps);
+    expect(html).toContain("The Daily Read");
+    expect(html).toContain("Vertexcover Labs");
+  });
+
+  it("renders the tenant brand name and drops the Vertexcover credit", async () => {
+    const html = await renderNewsletter({
+      ...baseProps,
+      branding: { name: "Acme AI Weekly" },
+    });
+    expect(html).toContain("Acme AI Weekly");
+    expect(html).not.toContain("The Daily Read");
+    expect(html).not.toContain("Vertexcover Labs");
+  });
+
+  it("renders the tenant logo when logoUrl is provided", async () => {
+    const html = await renderNewsletter({
+      ...baseProps,
+      branding: { name: "Acme AI Weekly", logoUrl: "https://acme.com/logo.png" },
+    });
+    expect(html).toContain('src="https://acme.com/logo.png"');
+    expect(html).toContain('alt="Acme AI Weekly"');
+  });
+
+  it("renders no logo without logoUrl", async () => {
+    const html = await renderNewsletter({
+      ...baseProps,
+      branding: { name: "Acme AI Weekly" },
+    });
+    expect(html).not.toContain("logo.png");
+  });
+});
