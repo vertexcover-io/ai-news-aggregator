@@ -449,6 +449,7 @@ export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
     emailSendsRepo: createPipelineEmailSendsRepo(db),
     archiveRepo,
     rawItemsRepo,
+    userSettingsRepo: createUserSettingsRepo(db),
     renderNewsletter,
     // Validated at startup in index.ts — safe to assert here.
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
