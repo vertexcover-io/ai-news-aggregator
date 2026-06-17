@@ -153,6 +153,38 @@ describe("settingsFormSchema — VS-6 regression", () => {
     expect(result.success).toBe(true);
   });
 
+  // A Twitter list must be a numeric ID; a pasted URL/name fails with a clear,
+  // field-level message (not the generic "check your inputs").
+  it("rejects a non-numeric Twitter list value with a helpful message", () => {
+    const result = settingsFormSchema.safeParse({
+      ...baseValid,
+      twitterEnabled: true,
+      twitterConfig: {
+        listIds: [{ value: "https://x.com/i/lists/1585430245762441216" }],
+        users: [],
+        maxTweetsPerSource: 50,
+        sinceHours: 24,
+      },
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues[0]?.message).toMatch(/numeric id/i);
+  });
+
+  it("accepts a numeric Twitter list ID", () => {
+    const result = settingsFormSchema.safeParse({
+      ...baseValid,
+      twitterEnabled: true,
+      twitterConfig: {
+        listIds: [{ value: "1585430245762441216" }],
+        users: [],
+        maxTweetsPerSource: 50,
+        sinceHours: 24,
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("accepts overnight publish windows where publish times are earlier than pipelineTime", () => {
     const result = settingsFormSchema.safeParse({
       ...baseValid,

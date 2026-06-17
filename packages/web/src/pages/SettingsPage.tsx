@@ -14,6 +14,7 @@ import {
   type SettingsFormValues,
   type TwitterFormConfig,
 } from "./settingsSchema";
+import { firstFieldErrorMessage } from "./settingsErrors";
 import type { RunSubmitTwitterConfig } from "@newsletter/shared";
 
 function persistedToFormTwitter(
@@ -165,11 +166,11 @@ export function SettingsPage(): ReactElement {
       // rejected and react-hook-form's default behaviour swallowed the
       // failure, leaving the operator with a green "All changes saved"
       // banner and no clue why nothing persisted.)
-      const firstField = Object.keys(errors)[0];
-      const firstError = firstField
-        ? (errors as Record<string, { message?: string }>)[firstField]
-        : undefined;
-      const detail = firstError?.message ?? "Please check your inputs.";
+      //
+      // Walk the whole errors tree for the first field-level message — a
+      // top-level read misses nested failures like twitterConfig.listIds[0]
+      // .value and degrades to a useless "Please check your inputs."
+      const detail = firstFieldErrorMessage(errors) ?? "Please check your inputs.";
       toast.error(`Cannot save: ${detail}`);
     },
   );
