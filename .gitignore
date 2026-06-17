@@ -35,3 +35,7 @@ evals/ranking/cache/
 
 # AGENTLOOP tenant-0 migration: pre-migration row-count snapshot (operator artifact)
 agentloop-migration-counts.json
+
+# Loose demo/QA screenshots dropped in the repo root — scratch, never committed
+# (root-anchored so .harness/**/verification/screenshots/*.png stay tracked)
+/*.png

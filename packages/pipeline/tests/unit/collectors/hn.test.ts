@@ -149,6 +149,91 @@ describe("collectHn", () => {
     expect(mockFetch.mock.calls[1][0]).not.toContain("/search_by_date");
   });
 
+  // Bug fix: the Algolia relevance index (/search, used by the "best" feed)
+  // rejects numericFilters on `points` (400 invalid numeric attribute). Omit
+  // it there but keep the time-window filter; newest (/search_by_date) keeps
+  // the points filter, which that index supports.
+  it("omits the points numericFilter on the best feed but keeps it on newest", async () => {
+    const mockFetch = createMockFetch([
+      storiesResponse(emptyAlgoliaResponse),
+      storiesResponse(emptyAlgoliaResponse),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    await collectHn(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { feeds: ["newest", "best"], sinceDays: 2, commentsPerItem: 0 },
+    );
+
+    const newestUrl = decodeURIComponent(mockFetch.mock.calls[0][0]);
+    const bestUrl = decodeURIComponent(mockFetch.mock.calls[1][0]);
+    expect(newestUrl).toContain("points>20");
+    expect(bestUrl).not.toContain("points>");
+    expect(bestUrl).toContain("created_at_i>");
+  });
+
+  // Resilience: one feed failing must NOT fail the whole collector — the
+  // surviving feed's items are still returned and the failed feed is recorded.
+  it("degrades to the surviving feed when one feed fails", async () => {
+    const mockFetch = createMockFetch([
+      storiesResponse(),
+      { ok: false, status: 400, body: { message: "invalid numeric attribute(points)" }, text: "bad" },
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    const result = await collectHn(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { feeds: ["newest", "best"], commentsPerItem: 0 },
+    );
+
+    expect(result.itemsStored).toBe(3);
+    const newest = result.unitResults?.find((u) => u.identifier === "hn:newest");
+    const best = result.unitResults?.find((u) => u.identifier === "hn:best");
+    expect(newest?.status).toBe("completed");
+    expect(best?.status).toBe("failed");
+    expect(best?.errors[0]).toContain("400");
+  });
+
+  // Boundary: if EVERY feed fails the collector throws so the source is
+  // marked failed (the run still tolerates this via its other sources).
+  it("throws when all feeds fail", async () => {
+    const mockFetch = createMockFetch([
+      { ok: false, status: 400, body: {}, text: "" },
+      { ok: false, status: 400, body: {}, text: "" },
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    await expect(
+      collectHn(
+        { rawItemsRepo, fetchFn: mockFetch },
+        { feeds: ["newest", "best"], commentsPerItem: 0 },
+      ),
+    ).rejects.toThrow(/all HN feeds failed/i);
+  });
+
+  // The best feed has no API-side points filter, so the threshold is enforced
+  // in code to preserve the documented points floor.
+  it("post-filters best-feed stories below the points threshold", async () => {
+    const bestBody = {
+      hits: [
+        { ...hnAlgoliaStoriesFixture.hits[0], objectID: "50000001", points: 5 },
+        { ...hnAlgoliaStoriesFixture.hits[0], objectID: "50000002", points: 100 },
+      ],
+      nbHits: 2,
+    };
+    const mockFetch = createMockFetch([storiesResponse(bestBody)]);
+    const rawItemsRepo = createMockRepo();
+
+    const result = await collectHn(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { feeds: ["best"], pointsThreshold: 20, commentsPerItem: 0 },
+    );
+
+    expect(result.itemsStored).toBe(1);
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    expect(rows.map((r) => r.externalId)).toEqual(["50000002"]);
+  });
+
   // REQ-003, REQ-004: Story parsing with valid fixture
   it("parses Algolia hits extracting title, url, externalId, author, publishedAt, engagement", async () => {
     const mockFetch = createMockFetch([

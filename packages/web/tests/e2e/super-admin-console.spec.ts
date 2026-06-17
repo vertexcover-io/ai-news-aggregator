@@ -128,6 +128,25 @@ test("test_REQ_100_superadmin_lands_on_tenant_list", async ({ page, context }) =
   await expect(row).toBeVisible();
 });
 
+test("signing out of the console returns to login (no auth-check loop)", async ({
+  page,
+  context,
+}) => {
+  await context.clearCookies();
+  await login(page, SUPER_EMAIL, SUPER_PASSWORD);
+  await page.waitForURL("**/admin/tenants", { timeout: 10_000 });
+
+  await page.getByRole("button", { name: /Sign out/i }).click();
+
+  // Regression: the bug stranded the page on /admin/tenants in a redirect +
+  // /api/auth/me refetch loop because handleSignOut awaited invalidateQueries
+  // (which 401-rejected) before navigate. Sign-out must land on login.
+  await page.waitForURL("**/admin/login", { timeout: 10_000 });
+  await expect(
+    page.getByRole("heading", { name: /^Sign in$/i }),
+  ).toBeVisible();
+});
+
 test("tenant_admin cannot access the console (guard redirects)", async ({
   page,
   context,

@@ -36,6 +36,13 @@ export interface SourcesRepo {
   create(input: SourceCreateInput): Promise<SourceRow>;
   setEnabled(id: string, enabled: boolean): Promise<SourceRow | null>;
   delete(id: string): Promise<boolean>;
+  /**
+   * Atomically replace the tenant's entire source set with `inputs`
+   * (delete-all + insert) — the PUT /settings reconcile, which mirrors the
+   * card's collector configs back onto rows. Runs in a transaction so a
+   * concurrent run never observes an empty source set mid-save.
+   */
+  replaceAll(inputs: readonly SourceCreateInput[]): Promise<void>;
 }
 
 /**
@@ -46,7 +53,7 @@ export interface SourcesRepo {
  * tenant bridge).
  */
 export function createSourcesRepo(
-  db: Pick<AppDb, "select" | "insert" | "update" | "delete">,
+  db: Pick<AppDb, "select" | "insert" | "update" | "delete" | "transaction">,
   ctx?: TenantScope,
 ): SourcesRepo {
   return {
@@ -92,6 +99,26 @@ export function createSourcesRepo(
         .where(tenantScoped(sources.tenantId, ctx, eq(sources.id, id)))
         .returning({ id: sources.id });
       return rows.length === 1;
+    },
+
+    async replaceAll(inputs: readonly SourceCreateInput[]): Promise<void> {
+      const tenantId = scopedTenantId(ctx);
+      if (tenantId === undefined) {
+        throw new Error("sources.replaceAll requires a concrete tenant context");
+      }
+      await db.transaction(async (tx) => {
+        await tx.delete(sources).where(tenantScoped(sources.tenantId, ctx));
+        if (inputs.length > 0) {
+          await tx.insert(sources).values(
+            inputs.map((input) => ({
+              tenantId,
+              type: input.type,
+              config: input.config,
+              enabled: input.enabled ?? true,
+            })),
+          );
+        }
+      });
     },
   };
 }

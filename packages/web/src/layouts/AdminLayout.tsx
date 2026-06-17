@@ -11,7 +11,10 @@ export function AdminLayout(): ReactElement {
 
   async function handleSignOut(): Promise<void> {
     await logout();
-    await queryClient.invalidateQueries({ queryKey: ["admin", "me"] });
+    // The session query key is ["auth","me"] (see useSession) — the old
+    // ["admin","me"] matched nothing, so the cache was never cleared. Remove
+    // (not invalidate) so we don't refetch the now-401 endpoint.
+    queryClient.removeQueries({ queryKey: ["auth", "me"] });
     await navigate("/");
   }
 

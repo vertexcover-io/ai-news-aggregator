@@ -1,13 +1,30 @@
-# Caddy reverse proxy for the newsletter app.
+# Caddy reverse proxy for the (multi-tenant) newsletter app.
 # - `/api/*` proxies to the api container on the loopback interface.
 # - Everything else is served from the static React build at /var/www/newsletter/web.
-# - TLS is obtained automatically from Let's Encrypt on first startup.
+# - The SAME static SPA + API serve every host; the API resolves the tenant from
+#   the inbound Host header (`<slug>.<root>` → tenant by slug; `app.<root>` →
+#   admin/signup; a mapped custom domain → its tenant). Caddy's reverse_proxy
+#   preserves the inbound Host by default, so no header rewriting is needed.
+#
+# Site addresses come from env (rendered into /etc/newsletter/.env by the deploy
+# workflow; Caddy reads them as {$VAR}):
+#   ROOT_DOMAIN  e.g. agentloop.live  → serves `*.<root>` (tenant sites) + the apex
+#   APP_HOST     e.g. app.agentloop.live → admin/signup surface
+#
+# TLS:
+# - `app.<root>` and any single custom domain get certs via the normal HTTP-01
+#   challenge automatically.
+# - `*.<root>` (wildcard) REQUIRES the DNS-01 challenge, which needs a Caddy
+#   build that includes your DNS provider's module plus an API token. See
+#   deployment/README.md → "Multi-tenant subdomains". Until that is configured,
+#   the wildcard site block will fail to obtain a cert.
 
-agentloop.vertexcover.io {
+# Shared handlers for every tenant-facing host.
+(newsletter_site) {
 	encode zstd gzip
 
 	log {
-		output file /var/log/caddy/agentloop.log {
+		output file /var/log/caddy/newsletter.log {
 			roll_size 10mb
 			roll_keep 5
 		}
@@ -23,4 +40,24 @@ agentloop.vertexcover.io {
 		try_files {path} /index.html
 		file_server
 	}
+}
+
+# Tenant public sites (`<slug>.<root>`) + the bare apex.
+*.{$ROOT_DOMAIN}, {$ROOT_DOMAIN} {
+	# Wildcard cert via DNS-01 — uncomment and configure your provider module:
+	#   tls {
+	#     dns <provider> {$CADDY_DNS_API_TOKEN}
+	#   }
+	import newsletter_site
+}
+
+# Admin / signup surface.
+{$APP_HOST} {
+	import newsletter_site
+}
+
+# Legacy/custom domain kept reachable during cutover. The API maps it to a
+# tenant via CUSTOM_DOMAIN_MAP (e.g. agentloop.vertexcover.io=agentloop).
+agentloop.vertexcover.io {
+	import newsletter_site
 }

@@ -86,7 +86,11 @@ export function SuperAdminTenantsPage(): ReactElement {
 
   async function handleSignOut(): Promise<void> {
     await logout();
-    await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    // Drop the cached session WITHOUT refetching. invalidateQueries would
+    // refetch /api/auth/me — which now 401s — and awaiting that rejection
+    // skipped the navigate, stranding the page on this guarded route in a
+    // redirect + refetch loop. removeQueries clears it with no request.
+    queryClient.removeQueries({ queryKey: ["auth", "me"] });
     await navigate("/admin/login");
   }
 

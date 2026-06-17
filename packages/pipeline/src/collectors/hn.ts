@@ -216,7 +216,15 @@ function buildSearchUrl(feed: string, config: HnCollectConfig): string {
 
   const { query, optionalWords } = buildKeywordParams(keywords);
 
-  const numericFilters: string[] = [`points>${points}`];
+  // The relevance index (/search, used by the "best" feed) does not list
+  // `points` in its numericAttributesForFiltering and rejects a points filter
+  // with HTTP 400 — only /search_by_date (newest) supports it. Apply the
+  // points filter to the API only for newest; the best feed is post-filtered
+  // by points in code (see collectHn).
+  const numericFilters: string[] = [];
+  if (feed !== "best") {
+    numericFilters.push(`points>${points}`);
+  }
   if (config.sinceDays !== undefined && config.sinceDays > 0) {
     const cutoffSeconds = Math.floor((Date.now() - config.sinceDays * 86_400_000) / 1000);
     numericFilters.push(`created_at_i>${cutoffSeconds}`);
@@ -226,9 +234,11 @@ function buildSearchUrl(feed: string, config: HnCollectConfig): string {
     query,
     tags: "story",
     optionalWords,
-    numericFilters: numericFilters.join(","),
     hitsPerPage: String(count),
   });
+  if (numericFilters.length > 0) {
+    params.set("numericFilters", numericFilters.join(","));
+  }
 
   const endpoint = feed === "best" ? "search" : "search_by_date";
   return `${ALGOLIA_BASE}/${endpoint}?${params.toString()}`;
@@ -379,43 +389,85 @@ export async function collectHn(
   const seenIds = new Set<string>();
   const allItems: RawItemInsert[] = [];
   const unitResults: SourceUnitResult[] = [];
+  const pointsThreshold = config.pointsThreshold ?? DEFAULT_POINTS_THRESHOLD;
+  let successfulFeeds = 0;
 
   for (const feed of feeds) {
     const url = buildSearchUrl(feed, config);
     const feedStart = Date.now();
-    const response = await fetchWithRetry(fetchFn, url, parseAlgoliaStoryResponse);
-    const items = parseStories(response);
-    let added = 0;
-    for (const item of items) {
-      if (!seenIds.has(item.externalId)) {
-        seenIds.add(item.externalId);
-        allItems.push(item);
-        added += 1;
+    try {
+      const response = await fetchWithRetry(fetchFn, url, parseAlgoliaStoryResponse);
+      let items = parseStories(response);
+      // The best feed has no API-side points filter (the relevance index
+      // rejects it), so enforce the threshold here to preserve the floor.
+      if (feed === "best") {
+        items = items.filter((item) => (item.engagement?.points ?? 0) > pointsThreshold);
       }
-    }
-    logger.info(
-      {
-        event: "collector.hn.feed_completed",
-        feed,
-        url,
-        sinceDays: config.sinceDays,
-        fetched: items.length,
-        added,
+      let added = 0;
+      for (const item of items) {
+        if (!seenIds.has(item.externalId)) {
+          seenIds.add(item.externalId);
+          allItems.push(item);
+          added += 1;
+        }
+      }
+      logger.info(
+        {
+          event: "collector.hn.feed_completed",
+          feed,
+          url,
+          sinceDays: config.sinceDays,
+          fetched: items.length,
+          added,
+          durationMs: Date.now() - feedStart,
+        },
+        "hn feed fetched",
+      );
+      unitResults.push({
+        identifier: `hn:${feed}`,
+        displayName: `Hacker News ${feed}`,
+        itemsFetched: added,
+        status: "completed",
+        errors: [],
         durationMs: Date.now() - feedStart,
-      },
-      "hn feed fetched",
-    );
-    unitResults.push({
-      identifier: `hn:${feed}`,
-      displayName: `Hacker News ${feed}`,
-      itemsFetched: added,
-      status: "completed",
-      errors: [],
-      durationMs: Date.now() - feedStart,
-    });
+      });
+      successfulFeeds += 1;
+    } catch (err) {
+      // Cancellation must abort the whole collector, not degrade to a feed
+      // failure — propagate it so the run finalises as cancelled.
+      if (deps.signal?.aborted) throw err;
+      // A single feed failing (e.g. an Algolia 400 on one index) degrades to
+      // the surviving feeds rather than failing the entire HN source.
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(
+        {
+          event: "collector.hn.feed_failed",
+          feed,
+          url,
+          error: message,
+          durationMs: Date.now() - feedStart,
+        },
+        "hn feed failed",
+      );
+      unitResults.push({
+        identifier: `hn:${feed}`,
+        displayName: `Hacker News ${feed}`,
+        itemsFetched: 0,
+        status: "failed",
+        errors: [message],
+        durationMs: Date.now() - feedStart,
+      });
+    }
     if (feed !== feeds[feeds.length - 1]) {
       await delay(RATE_LIMIT_MS, deps.signal);
     }
+  }
+
+  // Only fail the HN source when EVERY feed failed; otherwise proceed with
+  // whatever the surviving feeds returned.
+  if (successfulFeeds === 0) {
+    const reasons = unitResults.map((u) => u.errors[0] ?? "unknown").join("; ");
+    throw new Error(`all HN feeds failed: ${reasons}`);
   }
 
   let totalComments = 0;

@@ -8,7 +8,13 @@ import {
 import type {
   RunSubmitTwitterConfig,
   RunSubmitTwitterUser,
+  UserSettings,
 } from "@newsletter/shared";
+import { DEFAULT_SHORTLIST_PROMPT } from "@newsletter/shared/constants";
+import {
+  settingsConfigsFromSourceRows,
+  sourceRowsFromSettings,
+} from "@newsletter/shared/types";
 import { Queue as BullQueue } from "bullmq";
 import { COLLECTOR_HEALTH_QUEUE_NAME } from "@newsletter/shared";
 import {
@@ -26,6 +32,10 @@ import {
   type UserSettingsUpsertInput,
 } from "@api/repositories/user-settings.js";
 import {
+  createSourcesRepo,
+  type SourcesRepo,
+} from "@api/repositories/sources.js";
+import {
   reconcilePipelineSchedule,
   reconcileCollectorHealthSchedule,
 } from "@api/services/scheduler.js";
@@ -41,6 +51,16 @@ type RettiwtFactory = TwitterHandleResolverDeps["rettiwtFactory"];
 
 export interface SettingsRouterDeps {
   getSettingsRepo: (scope?: TenantScope) => UserSettingsRepo;
+  /**
+   * Sources repo for the user_settings ⇄ rows bridge (REQ-073 follow-up).
+   * When a tenant has source rows they are the authoritative collection set,
+   * so GET overlays the card's collector configs from them and PUT mirrors
+   * card edits back onto them. Optional: when absent the card reads/writes
+   * the legacy user_settings JSONB only.
+   */
+  getSourcesRepo?: (
+    scope?: TenantScope,
+  ) => Pick<SourcesRepo, "list" | "replaceAll">;
   processingQueue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">;
   collectorHealthQueue: Pick<Queue, "upsertJobScheduler" | "removeJobScheduler">;
   resolveHandles?: (
@@ -49,6 +69,49 @@ export interface SettingsRouterDeps {
   ) => Promise<{ handle: string; userId: string }[]>;
   rettiwtFactory?: RettiwtFactory;
   logger?: ReturnType<typeof createLogger>;
+}
+
+/**
+ * Baseline settings for a tenant that has source rows but no persisted
+ * user_settings row yet — the overlay rides on top so the Sources card renders
+ * the real rows. Non-source fields mirror the activation defaults; the first
+ * Save persists a concrete row via the upsert. `id` is a nil placeholder (the
+ * client strips id/updatedAt before hydrating the form).
+ */
+function defaultUserSettings(): UserSettings {
+  return {
+    id: "00000000-0000-0000-0000-000000000000",
+    topN: 10,
+    halfLifeHours: null,
+    hnEnabled: false,
+    hnConfig: null,
+    redditEnabled: false,
+    redditConfig: null,
+    webEnabled: false,
+    webConfig: null,
+    twitterEnabled: false,
+    twitterConfig: null,
+    webSearchEnabled: false,
+    webSearchConfig: null,
+    posthogEnabled: false,
+    posthogProjectToken: null,
+    posthogHost: null,
+    scheduleTime: "07:00",
+    pipelineTime: "07:00",
+    emailTime: "07:30",
+    linkedinTime: "07:45",
+    twitterTime: "08:00",
+    scheduleTimezone: "UTC",
+    scheduleEnabled: false,
+    emailEnabled: true,
+    linkedinEnabled: true,
+    twitterPostEnabled: true,
+    autoReview: false,
+    rankingPrompt: "",
+    shortlistPrompt: DEFAULT_SHORTLIST_PROMPT,
+    shortlistSize: 30,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 async function resolveTwitterConfig(
@@ -99,7 +162,27 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
   const app = new Hono();
 
   app.get("/", async (c) => {
-    const settings = await deps.getSettingsRepo(tenantScopeFromContext(c)).get();
+    const scope = tenantScopeFromContext(c);
+    const settings = await deps.getSettingsRepo(scope).get();
+
+    // REQ-073: once a tenant has source ROWS they are the authoritative
+    // collection set, so render the card's collector configs from them
+    // (mirrors the daily-run/runs precedence). This holds even when the
+    // tenant has no user_settings row yet (onboarded tenants whose settings
+    // were never persisted) — overlay onto a baseline so the card shows the
+    // real sources instead of the client-side defaults.
+    const sourcesRepo = deps.getSourcesRepo?.(scope);
+    if (sourcesRepo) {
+      const rows = await sourcesRepo.list();
+      if (rows.length > 0) {
+        const base = settings ?? defaultUserSettings();
+        const overlay = settingsConfigsFromSourceRows(rows);
+        return c.json({ ...base, ...overlay });
+      }
+    }
+
+    // Legacy / empty tenants with no source rows: the user_settings JSONB
+    // (or null) is authoritative, returned unchanged.
     return c.json(settings);
   });
 
@@ -214,6 +297,19 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
 
     const sessionScope = tenantScopeFromContext(c);
     const saved = await deps.getSettingsRepo(sessionScope).upsert(upsertInput);
+
+    // REQ-073: mirror the saved collector configs back onto the tenant's
+    // source ROWS — but only for tenants ALREADY on the rows path (any rows
+    // exist). Legacy JSONB tenants are left untouched so a settings save
+    // never silently flips their collection source.
+    const sourcesRepo = deps.getSourcesRepo?.(sessionScope);
+    if (sourcesRepo) {
+      const existing = await sourcesRepo.list();
+      if (existing.length > 0) {
+        await sourcesRepo.replaceAll(sourceRowsFromSettings(saved));
+      }
+    }
+
     refreshPostHogConfig(saved);
     // P9 (REQ-060): scheduler entries carry the saving tenant so the jobs
     // they spawn are scoped to it.
@@ -268,6 +364,7 @@ function getDefaultCollectorHealthQueue(): Queue {
 export function createDefaultSettingsRouter(): Hono {
   return createSettingsRouter({
     getSettingsRepo: (scope) => createUserSettingsRepo(defaultGetDb(), scope),
+    getSourcesRepo: (scope) => createSourcesRepo(defaultGetDb(), scope),
     processingQueue: getDefaultProcessingQueue(),
     collectorHealthQueue: getDefaultCollectorHealthQueue(),
   });

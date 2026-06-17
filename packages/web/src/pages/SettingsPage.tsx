@@ -35,7 +35,6 @@ import { ShortlistPromptSection } from "../components/settings/ShortlistPromptSe
 import { DEFAULT_SHORTLIST_PROMPT } from "@newsletter/shared/constants";
 import { SaveBar } from "../components/settings/SaveBar";
 import { SocialCredentialsPanel } from "../components/SocialCredentialsPanel";
-import { TenantSourcesPanel } from "../components/settings/TenantSourcesPanel";
 import { SendingDomainPanel } from "../components/settings/SendingDomainPanel";
 import { NotificationsPanel } from "../components/settings/NotificationsPanel";
 import { FeaturesPanel } from "../components/settings/FeaturesPanel";
@@ -249,10 +248,6 @@ export function SettingsPage(): ReactElement {
             <RankingPromptSection />
           </form>
         </FormProvider>
-
-        {/* Normalized per-tenant source rows (P8, REQ-074): managed inside
-            Settings — never a standalone admin page. */}
-        <TenantSourcesPanel />
 
         <SocialCredentialsPanel />
 

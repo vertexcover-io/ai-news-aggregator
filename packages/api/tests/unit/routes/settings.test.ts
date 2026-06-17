@@ -1,8 +1,47 @@
 import { describe, it, expect, vi } from "vitest";
 import { Hono } from "hono";
 import type { UserSettings } from "@newsletter/shared";
+import type { SourceRow } from "@newsletter/shared/db";
+import type { SourceConfig } from "@newsletter/shared/types";
 import { createSettingsRouter } from "@api/routes/settings.js";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
+import type {
+  SourceCreateInput,
+  SourcesRepo,
+} from "@api/repositories/sources.js";
+
+/** In-memory sources repo exposing list + replaceAll for the settings bridge. */
+function makeSourcesRepo(initial: SourceConfig[] = []): {
+  repo: Pick<SourcesRepo, "list" | "replaceAll">;
+  rows: { current: SourceRow[] };
+  replaceAllCalls: SourceCreateInput[][];
+} {
+  const toRow = (config: SourceConfig, i: number): SourceRow =>
+    ({
+      id: `00000000-0000-0000-0000-00000000000${String(i)}`,
+      tenantId: "11111111-1111-1111-1111-111111111111",
+      type: config.kind === "web" ? "blog" : config.kind === "twitter_user" || config.kind === "twitter_list" ? "twitter" : config.kind,
+      config,
+      enabled: true,
+      lastHealth: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }) as SourceRow;
+  const rows = { current: initial.map(toRow) };
+  const replaceAllCalls: SourceCreateInput[][] = [];
+  return {
+    rows,
+    replaceAllCalls,
+    repo: {
+      list: () => Promise.resolve(rows.current),
+      replaceAll: (inputs) => {
+        replaceAllCalls.push([...inputs]);
+        rows.current = inputs.map((input, i) => toRow(input.config, i));
+        return Promise.resolve();
+      },
+    },
+  };
+}
 
 function makeRepo(initial: UserSettings | null = null): {
   repo: UserSettingsRepo;
@@ -27,6 +66,8 @@ function makeRepo(initial: UserSettings | null = null): {
         webConfig: input.webConfig,
         twitterEnabled: input.twitterEnabled,
         twitterConfig: input.twitterConfig,
+        webSearchEnabled: input.webSearchEnabled,
+        webSearchConfig: input.webSearchConfig,
         posthogEnabled: input.posthogEnabled,
         posthogProjectToken: input.posthogProjectToken,
         posthogHost: input.posthogHost,
@@ -68,6 +109,7 @@ function buildApp(
   resolveHandles?: (
     handles: string[],
   ) => Promise<{ handle: string; userId: string }[]>,
+  sourcesRepo?: Pick<SourcesRepo, "list" | "replaceAll">,
 ) {
   const app = new Hono();
   app.route(
@@ -80,6 +122,7 @@ function buildApp(
         ? (handles) => resolveHandles(handles)
         : undefined,
       rettiwtFactory: () => ({}) as never,
+      ...(sourcesRepo ? { getSourcesRepo: () => sourcesRepo } : {}),
     }),
   );
   return app;
@@ -582,5 +625,136 @@ describe("PUT /api/settings", () => {
       body: "not-json{",
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("user_settings ⇄ sources-rows bridge (REQ-073)", () => {
+  const storedSettings: UserSettings = {
+    id: "id-1",
+    topN: 12,
+    halfLifeHours: null,
+    // The stored JSONB has NO collector config — proves the overlay wins.
+    hnEnabled: false,
+    hnConfig: null,
+    redditEnabled: false,
+    redditConfig: null,
+    webEnabled: false,
+    webConfig: null,
+    twitterEnabled: false,
+    twitterConfig: null,
+    webSearchEnabled: false,
+    webSearchConfig: null,
+    posthogEnabled: false,
+    posthogProjectToken: null,
+    posthogHost: null,
+    scheduleTime: "08:00",
+    pipelineTime: "08:00",
+    emailTime: "08:30",
+    linkedinTime: "08:45",
+    twitterTime: "09:00",
+    scheduleTimezone: "UTC",
+    scheduleEnabled: false,
+    emailEnabled: true,
+    linkedinEnabled: true,
+    twitterPostEnabled: true,
+    autoReview: false,
+    rankingPrompt: "Default ranking prompt",
+    shortlistPrompt: "Default shortlist prompt",
+    shortlistSize: 30,
+    updatedAt: new Date().toISOString(),
+  };
+
+  it("GET overlays collector configs from source rows when the tenant has rows", async () => {
+    const { repo } = makeRepo(storedSettings);
+    const sources = makeSourcesRepo([
+      { kind: "reddit", subreddit: "videoproduction", sinceDays: 1 },
+      { kind: "reddit", subreddit: "streaming", sinceDays: 1 },
+      { kind: "hn", sinceDays: 1 },
+    ]);
+    const app = buildApp(repo, makeQueue(), undefined, sources.repo);
+    const res = await app.request("/api/settings");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as UserSettings;
+    expect(body.redditEnabled).toBe(true);
+    expect(body.redditConfig?.subreddits).toEqual(["videoproduction", "streaming"]);
+    expect(body.hnEnabled).toBe(true);
+    // Non-source fields stay from user_settings.
+    expect(body.topN).toBe(12);
+  });
+
+  it("GET overlays onto a baseline when the tenant has rows but NO settings row", async () => {
+    // Onboarded tenants whose user_settings was never persisted: GET must
+    // still surface the source rows (regression — previously returned null and
+    // the card fell back to client-side defaults).
+    const { repo } = makeRepo(null);
+    const sources = makeSourcesRepo([
+      { kind: "reddit", subreddit: "videoproduction", sinceDays: 1 },
+      { kind: "hn", sinceDays: 1 },
+    ]);
+    const app = buildApp(repo, makeQueue(), undefined, sources.repo);
+    const res = await app.request("/api/settings");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as UserSettings | null;
+    expect(body).not.toBeNull();
+    expect(body?.redditConfig?.subreddits).toEqual(["videoproduction"]);
+    expect(body?.redditEnabled).toBe(true);
+    expect(body?.hnEnabled).toBe(true);
+    // Baseline non-source defaults are present so the form hydrates fully.
+    expect(body?.shortlistSize).toBe(30);
+    expect(typeof body?.scheduleTimezone).toBe("string");
+  });
+
+  it("GET returns user_settings unchanged when the tenant has no rows", async () => {
+    const { repo } = makeRepo(storedSettings);
+    const sources = makeSourcesRepo([]);
+    const app = buildApp(repo, makeQueue(), undefined, sources.repo);
+    const res = await app.request("/api/settings");
+    const body = (await res.json()) as UserSettings;
+    expect(body.redditConfig).toBeNull();
+    expect(body.redditEnabled).toBe(false);
+  });
+
+  it("PUT reconciles source rows from submitted configs (tenant already on rows path)", async () => {
+    const { repo } = makeRepo(storedSettings);
+    const sources = makeSourcesRepo([
+      { kind: "reddit", subreddit: "old", sinceDays: 1 },
+    ]);
+    const app = buildApp(repo, makeQueue(), undefined, sources.repo);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        scheduleEnabled: false,
+        hnEnabled: false,
+        hnConfig: null,
+        redditEnabled: true,
+        redditConfig: { subreddits: ["mlops", "LocalLLaMA"], sinceDays: 1 },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(sources.replaceAllCalls).toHaveLength(1);
+    expect(sources.replaceAllCalls[0]).toEqual([
+      { type: "reddit", enabled: true, config: { kind: "reddit", subreddit: "mlops", sinceDays: 1 } },
+      { type: "reddit", enabled: true, config: { kind: "reddit", subreddit: "LocalLLaMA", sinceDays: 1 } },
+    ]);
+  });
+
+  it("PUT does NOT create rows for a legacy tenant with no rows (stays on JSONB)", async () => {
+    const { repo } = makeRepo(storedSettings);
+    const sources = makeSourcesRepo([]);
+    const app = buildApp(repo, makeQueue(), undefined, sources.repo);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        scheduleEnabled: false,
+        redditEnabled: true,
+        redditConfig: { subreddits: ["mlops"], sinceDays: 1 },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(sources.replaceAllCalls).toHaveLength(0);
   });
 });

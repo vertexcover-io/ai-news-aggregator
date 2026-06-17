@@ -1,0 +1,48 @@
+{
+  "spec": "auto-sources-page",
+  "ranAt": "2026-06-13T05:42:48.032Z",
+  "passed": 8,
+  "failed": 0,
+  "scenarios": [
+    {
+      "id": "VS-1",
+      "name": "section order configured-only",
+      "passed": true
+    },
+    {
+      "id": "VS-3",
+      "name": "counts accurate",
+      "passed": true
+    },
+    {
+      "id": "VS-4",
+      "name": "failureCount from telemetry",
+      "passed": true
+    },
+    {
+      "id": "VS-6",
+      "name": "rankingPrompt live value",
+      "passed": true
+    },
+    {
+      "id": "VS-8",
+      "name": "row sort order",
+      "passed": true
+    },
+    {
+      "id": "VS-9",
+      "name": "configured reflects settings",
+      "passed": true
+    },
+    {
+      "id": "VS-10",
+      "name": "public access",
+      "passed": true
+    },
+    {
+      "id": "VS-5",
+      "name": "JS vs SQL identifier alignment",
+      "passed": true
+    }
+  ]
+}
