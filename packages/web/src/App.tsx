@@ -33,13 +33,19 @@ import { AdminLayout } from "./layouts/AdminLayout";
 import { RequireAdmin } from "./layouts/RequireAdmin";
 import { RequireOnboarding } from "./layouts/RequireOnboarding";
 import { RequireSuperAdmin } from "./layouts/RequireSuperAdmin";
+import { RequireFeature } from "./layouts/RequireFeature";
+import { RequireCanonPublic } from "./layouts/RequireCanonPublic";
 
 export const routes: RouteObject[] = [
   {
     element: <PublicLayout />,
     children: [
       { path: "/", element: <HomePage /> },
-      { path: "/must-read", element: <MustReadPage /> },
+      {
+        // Canon page is gone for tenants with the flag off (Fix #4).
+        element: <RequireCanonPublic />,
+        children: [{ path: "/must-read", element: <MustReadPage /> }],
+      },
       { path: "/built", element: <BuiltPage /> },
       { path: "/archive/:runId", element: <ArchivePage /> },
       { path: "/sources", element: <SourcesPage /> },
@@ -80,13 +86,28 @@ export const routes: RouteObject[] = [
           { path: "sources/:runId", element: <SourcesPreviewPage /> },
           { path: "settings", element: <SettingsPage /> },
           { path: "analytics", element: <AnalyticsPage /> },
-          { path: "eval", element: <EvalIndexPage /> },
-          { path: "eval/runs", element: <EvalRunsPage /> },
-          { path: "eval/fixtures/new", element: <EvalManualFixturePage /> },
-          { path: "eval/grade/:fixtureId", element: <EvalGradePage /> },
-          { path: "must-read", element: <AdminMustReadListPage /> },
-          { path: "must-read/new", element: <AdminMustReadEditPage /> },
-          { path: "must-read/:id", element: <AdminMustReadEditPage /> },
+          // Eval routes — gated on the Eval feature flag (Fix #4). A disabled
+          // tenant sees the "enable in Settings" notice in place of the page.
+          {
+            element: <RequireFeature feature="featureEval" label="Eval" />,
+            children: [
+              { path: "eval", element: <EvalIndexPage /> },
+              { path: "eval/runs", element: <EvalRunsPage /> },
+              { path: "eval/fixtures/new", element: <EvalManualFixturePage /> },
+              { path: "eval/grade/:fixtureId", element: <EvalGradePage /> },
+            ],
+          },
+          // Canon admin routes — gated on the Canon feature flag (Fix #4).
+          {
+            element: (
+              <RequireFeature feature="featureCanon" label="Canon · Must Read" />
+            ),
+            children: [
+              { path: "must-read", element: <AdminMustReadListPage /> },
+              { path: "must-read/new", element: <AdminMustReadEditPage /> },
+              { path: "must-read/:id", element: <AdminMustReadEditPage /> },
+            ],
+          },
             ],
           },
         ],

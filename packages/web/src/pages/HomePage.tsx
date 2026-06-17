@@ -28,7 +28,11 @@ export function HomePage(): ReactElement {
   });
 
   const todaysIssue = data?.todaysIssue ?? null;
-  const featuredCanon = data?.featuredCanon ?? null;
+  // Fix #4: also gate on the canon flag so the block never shows for a tenant
+  // with canon off (the API nulls featuredCanon too — this is belt-and-braces).
+  const featuredCanon = branding.flags.canon
+    ? (data?.featuredCanon ?? null)
+    : null;
   const recentIssuesRaw = data?.recentIssues ?? [];
   const recentIssues =
     todaysIssue == null

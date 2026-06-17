@@ -141,6 +141,7 @@ function buildApp(opts: {
       const publicTenant: PublicTenantCtx = {
         tenantId: publicTenantId,
         slug: "tenant-under-test",
+        featureCanon: false,
       };
       c.set("publicTenant", publicTenant);
       await next();

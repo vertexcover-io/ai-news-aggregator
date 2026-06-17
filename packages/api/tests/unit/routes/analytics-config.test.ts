@@ -99,7 +99,7 @@ describe("tenant scoping", () => {
     const { Hono } = await import("hono");
     const outer = new Hono();
     outer.use("*", async (c, next) => {
-      c.set("publicTenant", { tenantId: TENANT_X, slug: "x" });
+      c.set("publicTenant", { tenantId: TENANT_X, slug: "x", featureCanon: false });
       await next();
     });
     outer.route(

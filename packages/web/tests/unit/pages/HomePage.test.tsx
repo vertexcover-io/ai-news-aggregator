@@ -204,6 +204,14 @@ describe("HomePage", () => {
     expect(document.querySelector('[data-section="from-the-canon"]')).toBeNull();
   });
 
+  it("Fix #4: hides From-the-canon when the tenant's canon flag is off, even if a featured entry is present", () => {
+    renderHome(
+      { todaysIssue: null, featuredCanon: makeCanon(), recentIssues: [] },
+      SECOND_TENANT_BRANDING,
+    );
+    expect(document.querySelector('[data-section="from-the-canon"]')).toBeNull();
+  });
+
   it("NF-005: all external <a> tags in Today's Issue section that point off-site use rel='noopener noreferrer' target='_blank'", async () => {
     const today = makeArchive("run-today", "2026-05-23");
     renderHome({ todaysIssue: today, featuredCanon: null, recentIssues: [] });

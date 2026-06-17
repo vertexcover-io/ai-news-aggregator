@@ -62,9 +62,13 @@ export function createPublicHomeRouter(deps: PublicHomeRouterDeps): Hono {
           : recentArchives
       ).slice(0, RECENT_LIMIT);
 
-      const featuredCanon: PublicMustReadEntry | null = featuredRow
-        ? toPublicWire(featuredRow)
-        : null;
+      // Canon disabled for this tenant (Fix #4): suppress the "From the Canon"
+      // home block. App-host/legacy requests (no publicTenant) are unaffected.
+      const publicTenant = c.get("publicTenant");
+      const canonEnabled =
+        publicTenant === undefined || publicTenant.featureCanon;
+      const featuredCanon: PublicMustReadEntry | null =
+        canonEnabled && featuredRow ? toPublicWire(featuredRow) : null;
 
       const body: HomePagePayload = {
         todaysIssue,

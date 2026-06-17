@@ -47,6 +47,7 @@ import { createDefaultOnboardingRouter } from "@api/routes/onboarding.js";
 import { createSuperAdminRouter } from "@api/routes/super-admin.js";
 import { createUsersRepo } from "@api/repositories/users.js";
 import { createTenantsRepo } from "@api/repositories/tenants.js";
+import { createRequireFeature } from "@api/middleware/require-feature.js";
 import { createAuditLogRepo } from "@api/repositories/audit-log.js";
 import { seedAdminUser } from "@api/services/admin-seed.js";
 import type { ResetTokenStore } from "@api/services/auth.js";
@@ -330,6 +331,8 @@ const app = buildApp({
   collectorHealthRouter: createDefaultCollectorHealthRouter(),
   // Public tenant branding payload + logo bytes (P7).
   brandingRouter: createDefaultBrandingRouter(),
+  // Feature-flag enforcement (Fix #4) — gates admin Eval/Deliverability routes.
+  requireFeature: createRequireFeature(() => createTenantsRepo(getDb())),
   authRouter,
   requireAuthFactory: requireAuth,
   subscribeRouter,

@@ -127,6 +127,15 @@ export interface BuildAppDeps {
    * index.ts always provides it.
    */
   onboardingRouter?: Hono;
+  /**
+   * Feature-flag guard factory (Fix #4): wraps admin feature routes so a
+   * tenant with the feature disabled gets `403 feature_disabled` instead of
+   * the page's data. Optional ONLY so existing unit tests composing buildApp
+   * keep working — index.ts always provides it.
+   */
+  requireFeature?: (
+    flag: "featureEval" | "featureDeliverability" | "featureCanon",
+  ) => MiddlewareHandler;
 }
 
 /**
@@ -212,6 +221,14 @@ export function buildApp(deps: BuildAppDeps): Hono {
 
   const adminApp = new Hono();
   adminApp.use("*", gate);
+  // Feature-flag enforcement (Fix #4) — gate the admin Eval and Deliverability
+  // (analytics) surfaces. The web app shows an in-app "enable in Settings"
+  // notice for these; this 403 is defense in depth against direct API calls.
+  // The Sources analytics tab reads /api/sources/summary, so it is untouched.
+  if (deps.requireFeature) {
+    adminApp.use("/eval/*", deps.requireFeature("featureEval"));
+    adminApp.use("/analytics/*", deps.requireFeature("featureDeliverability"));
+  }
   adminApp.route("/archives", deps.adminArchivesRouter);
   adminApp.route("/runs", deps.adminRunsRouter);
   adminApp.route("/eval", deps.adminEvalRouter);

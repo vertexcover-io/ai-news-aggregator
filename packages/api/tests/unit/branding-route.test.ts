@@ -41,14 +41,16 @@ function makeTenant(overrides: Partial<TenantRow> = {}): TenantRow {
 
 function buildApp(
   tenant: TenantRow | null,
-  publicTenant?: PublicTenantCtx,
+  publicTenant?: Pick<PublicTenantCtx, "tenantId" | "slug">,
 ): { app: Hono; findById: ReturnType<typeof vi.fn>; findBySlug: ReturnType<typeof vi.fn> } {
   const findById = vi.fn(() => Promise.resolve(tenant));
   const findBySlug = vi.fn(() => Promise.resolve(tenant));
   const app = new Hono();
   if (publicTenant) {
     app.use("*", async (c, next) => {
-      c.set("publicTenant", publicTenant);
+      // The branding router reads featureCanon off the tenant ROW, not the
+      // public context, so a placeholder flag here is fine.
+      c.set("publicTenant", { ...publicTenant, featureCanon: false });
       await next();
     });
   }

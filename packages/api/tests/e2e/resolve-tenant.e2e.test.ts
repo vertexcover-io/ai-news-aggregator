@@ -164,7 +164,7 @@ describe("resolve-tenant middleware (P5 e2e)", () => {
     const known = await probe(app, `${slugA}.${ROOT}`);
     expect(known.status).toBe(200);
     expect(await known.json()).toEqual({
-      publicTenant: { tenantId: tenantA.id, slug: slugA },
+      publicTenant: { tenantId: tenantA.id, slug: slugA, featureCanon: false },
     });
 
     // Unknown slug → generic not-found (no tenant existence leak).
@@ -179,13 +179,13 @@ describe("resolve-tenant middleware (P5 e2e)", () => {
     });
     expect(viaHeader.status).toBe(200);
     expect(await viaHeader.json()).toEqual({
-      publicTenant: { tenantId: tenantA.id, slug: slugA },
+      publicTenant: { tenantId: tenantA.id, slug: slugA, featureCanon: false },
     });
 
     const viaLvh = await probe(devApp, `${slugA}.lvh.me:5173`);
     expect(viaLvh.status).toBe(200);
     expect(await viaLvh.json()).toEqual({
-      publicTenant: { tenantId: tenantA.id, slug: slugA },
+      publicTenant: { tenantId: tenantA.id, slug: slugA, featureCanon: false },
     });
 
     // The header override is dev-only: production config ignores it.
@@ -201,7 +201,11 @@ describe("resolve-tenant middleware (P5 e2e)", () => {
     const res = await probe(app, CUSTOM_DOMAIN);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
-      publicTenant: { tenantId: tenantZero.id, slug: slugZero },
+      publicTenant: {
+        tenantId: tenantZero.id,
+        slug: slugZero,
+        featureCanon: false,
+      },
     });
   });
 
@@ -255,7 +259,7 @@ describe("resolve-tenant middleware (P5 e2e)", () => {
     const followed = await probe(app, `${slugCNew}.${ROOT}`);
     expect(followed.status).toBe(200);
     expect(await followed.json()).toEqual({
-      publicTenant: { tenantId: tenantC.id, slug: slugCNew },
+      publicTenant: { tenantId: tenantC.id, slug: slugCNew, featureCanon: false },
     });
   });
 

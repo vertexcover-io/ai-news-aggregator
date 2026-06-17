@@ -24,6 +24,8 @@ import type { TenantsRepo } from "../repositories/tenants.js";
 export interface PublicTenantCtx {
   tenantId: string;
   slug: string;
+  /** Canon ("Must Read") feature flag — gates the public canon page + home block (Fix #4). */
+  featureCanon: boolean;
 }
 
 declare module "hono" {
@@ -104,7 +106,11 @@ export function createResolveTenant(deps: ResolveTenantDeps): MiddlewareHandler 
       // pending_setup tenant's host serves the same generic 404 as an
       // unknown slug until the onboarding wizard activates it.
       if (tenant.status !== "active") return notFound(c);
-      c.set("publicTenant", { tenantId: tenant.id, slug: tenant.slug });
+      c.set("publicTenant", {
+        tenantId: tenant.id,
+        slug: tenant.slug,
+        featureCanon: tenant.featureCanon,
+      });
       await next();
       return;
     }
@@ -121,7 +127,11 @@ export function createResolveTenant(deps: ResolveTenantDeps): MiddlewareHandler 
       }
       // Custom domain whose configured slug went stale after a rename:
       // still serve the tenant — the domain itself did not change.
-      c.set("publicTenant", { tenantId: renamed.id, slug: renamed.slug });
+      c.set("publicTenant", {
+        tenantId: renamed.id,
+        slug: renamed.slug,
+        featureCanon: renamed.featureCanon,
+      });
       await next();
       return;
     }
