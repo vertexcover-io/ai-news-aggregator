@@ -1,5 +1,8 @@
 # Caddy reverse proxy for the newsletter app.
 # - `/api/*` proxies to the api container on the loopback interface.
+# - The root-served llm.txt files (`/llms.txt`, `/llms-full.txt`) are produced by
+#   the API, not the SPA, so they need explicit proxy rules — otherwise they fall
+#   through to the static React build and return the index.html SPA shell.
 # - Everything else is served from the static React build at /var/www/newsletter/web.
 # - TLS is obtained automatically from Let's Encrypt on first startup.
 
@@ -15,6 +18,15 @@ agentloop.vertexcover.io {
 	}
 
 	handle /api/* {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	# llm.txt site files are served by the API (the web app is a static SPA).
+	handle /llms.txt {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	handle /llms-full.txt {
 		reverse_proxy 127.0.0.1:3000
 	}
 
