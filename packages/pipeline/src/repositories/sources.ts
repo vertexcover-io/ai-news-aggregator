@@ -11,6 +11,10 @@ export interface PipelineSourceCreateInput {
 }
 
 export interface SourcesRepo {
+  /** All rows for the tenant (enabled or not). The health-check rows overlay
+   * mirrors GET /settings — it includes disabled rows so an explicit check of a
+   * temporarily-disabled collector still sees its config (FIX #6). */
+  list(): Promise<SourceRow[]>;
   /** The rows collection will run from (P9, REQ-073): tenant + enabled only. */
   listEnabled(): Promise<SourceRow[]>;
   /**
@@ -33,6 +37,14 @@ export function createSourcesRepo(
   ctx?: TenantScope,
 ): SourcesRepo {
   return {
+    async list(): Promise<SourceRow[]> {
+      return db
+        .select()
+        .from(sources)
+        .where(tenantScoped(sources.tenantId, ctx))
+        .orderBy(asc(sources.createdAt), asc(sources.id));
+    },
+
     async listEnabled(): Promise<SourceRow[]> {
       return db
         .select()

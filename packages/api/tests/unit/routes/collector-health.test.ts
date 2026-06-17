@@ -178,6 +178,64 @@ describe("POST /api/admin/collector-health/check", () => {
     expect(queue.add).not.toHaveBeenCalled();
   });
 
+  it("FIX6: 'Check all' derives enabled collectors from source ROWS when present (not user_settings flags)", async () => {
+    // Onboarded shape: user_settings collector flags all off / configs null;
+    // the real config lives in source rows (reddit + web).
+    const onboarded = baseSettings({
+      hnEnabled: false,
+      redditEnabled: false,
+      webEnabled: false,
+      twitterEnabled: false,
+      webSearchEnabled: false,
+      hnConfig: null,
+      redditConfig: null,
+      webConfig: null,
+    });
+    const rows = [
+      { config: { kind: "reddit", subreddit: "LocalLLaMA" }, enabled: true },
+      { config: { kind: "web", name: "Blog", listingUrl: "https://ex.com/blog" }, enabled: true },
+    ];
+    const app = buildApp({
+      collectorHealthQueue: queue as never,
+      store,
+      getSettings: () => Promise.resolve(onboarded),
+      getSourcesRepo: () => ({ list: () => Promise.resolve(rows as never) }),
+    });
+
+    const res = await app.request("/api/admin/collector-health/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json() as { enqueued: string[] };
+    expect([...body.enqueued].sort()).toEqual(["blog", "reddit"]);
+    expect(store.setRunning).toHaveBeenCalledWith("reddit", "manual", expect.any(Date));
+    expect(store.setRunning).toHaveBeenCalledWith("blog", "manual", expect.any(Date));
+  });
+
+  it("FIX6: 'Check all' with NO source rows falls back to user_settings enabled flags (regression)", async () => {
+    const app = buildApp({
+      collectorHealthQueue: queue as never,
+      store,
+      getSettings: () => Promise.resolve(settings), // hn + reddit enabled
+      getSourcesRepo: () => ({ list: () => Promise.resolve([] as never) }),
+    });
+
+    const res = await app.request("/api/admin/collector-health/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json() as { enqueued: string[] };
+    expect(body.enqueued).toContain("hn");
+    expect(body.enqueued).toContain("reddit");
+    expect(body.enqueued).not.toContain("blog");
+  });
+
   it("EDGE-013: explicit collector is allowed even if disabled in settings", async () => {
     const noTwitter = baseSettings({ twitterEnabled: false });
     const app = buildApp({

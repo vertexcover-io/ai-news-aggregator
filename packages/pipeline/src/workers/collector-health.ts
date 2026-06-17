@@ -17,7 +17,9 @@ import type {
   HealthCheckCollector,
   CollectorHealthTrigger,
   CollectorHealthResult,
+  SettingsCollectorConfigs,
 } from "@newsletter/shared/types";
+import { settingsConfigsFromSourceRows } from "@newsletter/shared/types";
 import {
   runCollectorHealthCheck as defaultRunCollectorHealthCheck,
   type CheckableCollector,
@@ -32,6 +34,8 @@ import {
 } from "@pipeline/repositories/default-tenant.js";
 import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
+import { createSourcesRepo } from "@pipeline/repositories/sources.js";
+import type { SourcesRepo } from "@pipeline/repositories/sources.js";
 import { createPipelineTenantsRepo } from "@pipeline/repositories/tenants.js";
 import {
   resolveTenantNotificationChannels,
@@ -47,7 +51,6 @@ import { resolveTwitterCollectorCookie } from "@pipeline/services/credential-res
 import { runWebCrawl } from "@pipeline/services/web-crawler.js";
 import { createWebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
 import { Rettiwt } from "rettiwt-api";
-import type { UserSettings } from "@newsletter/shared";
 
 export interface CollectorHealthJobData {
   collectors?: HealthCheckCollector[];
@@ -73,6 +76,14 @@ export interface CollectorHealthJobDeps {
    * single-tenant wiring).
    */
   getUserSettingsRepo?: (ctx?: TenantContext) => UserSettingsRepo;
+  /**
+   * FIX #6: per-job sources repo factory. When present and the job's tenant has
+   * any source ROWS, those rows are the authoritative collector config (mirrors
+   * daily-run + GET /settings) — the health check resolves enabled targets and
+   * the probe config from the rows, NOT the (often-null on onboarded tenants)
+   * user_settings JSONB. Absent → legacy user_settings-only behavior.
+   */
+  getSourcesRepo?: (ctx?: TenantContext) => Pick<SourcesRepo, "list">;
   store: CollectorHealthStore;
   runCollectorHealthCheck: (
     collector: CheckableCollector,
@@ -113,7 +124,7 @@ export interface CreateCollectorHealthWorkerOptions {
 //   We default to "day" which matches the run-process worker's behavior.
 // - web: RunSubmitWebConfig uses `RunSubmitWebSource`; HealthCheckSettings.web uses
 //   `RunSubmitWebConfig` (they share the same shape from @newsletter/shared/types).
-function buildHealthCheckSettings(settings: UserSettings): HealthCheckSettings {
+function buildHealthCheckSettings(settings: SettingsCollectorConfigs): HealthCheckSettings {
   const result: HealthCheckSettings = {};
 
   if (settings.hnConfig) {
@@ -162,7 +173,7 @@ function buildHealthCheckSettings(settings: UserSettings): HealthCheckSettings {
 }
 
 // Map "web_search" enabled flag; also handle "blog" as alias for "web"
-function resolveEnabledCollectors(settings: UserSettings): HealthCheckCollector[] {
+function resolveEnabledCollectors(settings: SettingsCollectorConfigs): HealthCheckCollector[] {
   const enabled: HealthCheckCollector[] = [];
   for (const collector of HEALTH_CHECKABLE_COLLECTORS) {
     switch (collector) {
@@ -221,21 +232,35 @@ export async function handleCollectorHealthJob(
 
   // P9 (REQ-061): scheduled entries carry the owning tenant — load THAT
   // tenant's settings. Legacy entries (no tenantId) keep the fixed repo.
+  const tenantCtx = jobTenantContext(job.data) ?? getDefaultTenantScope();
   const settingsRepo =
     deps.getUserSettingsRepo !== undefined
-      ? deps.getUserSettingsRepo(jobTenantContext(job.data) ?? getDefaultTenantScope())
+      ? deps.getUserSettingsRepo(tenantCtx)
       : deps.userSettingsRepo;
 
   let settings: Awaited<ReturnType<typeof deps.userSettingsRepo.get>>;
+  // FIX #6: the collector config the check actually uses. Source rows win when
+  // the tenant has any (onboarded tenants keep config in rows with null
+  // user_settings JSONB); otherwise fall back to user_settings.
+  let effectiveConfigs: SettingsCollectorConfigs | null;
   let targets: HealthCheckCollector[];
 
   try {
     settings = await settingsRepo.get();
+    effectiveConfigs = settings;
+
+    const sourcesRepo = deps.getSourcesRepo?.(tenantCtx);
+    if (sourcesRepo) {
+      const rows = await sourcesRepo.list();
+      if (rows.length > 0) {
+        effectiveConfigs = settingsConfigsFromSourceRows(rows);
+      }
+    }
 
     if (payloadCollectors.length > 0) {
       targets = payloadCollectors;
-    } else if (settings !== null) {
-      targets = resolveEnabledCollectors(settings);
+    } else if (effectiveConfigs !== null) {
+      targets = resolveEnabledCollectors(effectiveConfigs);
     } else {
       targets = [];
     }
@@ -290,7 +315,8 @@ export async function handleCollectorHealthJob(
     );
   }
 
-  const healthCheckSettings = settings !== null ? buildHealthCheckSettings(settings) : {};
+  const healthCheckSettings =
+    effectiveConfigs !== null ? buildHealthCheckSettings(effectiveConfigs) : {};
 
   // Guard: if buildHealthCheckDeps throws after setRunning, write "failed" for all
   // targeted collectors so they don't stay stuck in "running" (NF1 / REQ-019).
@@ -509,6 +535,8 @@ export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
     // P9 (REQ-061): the handler prefers this factory, scoping settings to the
     // job's tenant; the fixed repo above remains the legacy fallback.
     getUserSettingsRepo: (ctx?: TenantContext) => createUserSettingsRepo(db, ctx),
+    // FIX #6: rows are authoritative when present — same precedence as daily-run.
+    getSourcesRepo: (ctx?: TenantContext) => createSourcesRepo(db, ctx),
     store: createCollectorHealthStore(createRedisConnection()),
     runCollectorHealthCheck: defaultRunCollectorHealthCheck,
     // Per-job factory so credentials are always fresh (S-pipeline-03 / D-051)

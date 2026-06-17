@@ -10,9 +10,14 @@ import {
   createCollectorHealthStore,
   type CollectorHealthStore,
 } from "@newsletter/shared/services";
-import type { HealthCheckCollector } from "@newsletter/shared/types";
+import type {
+  HealthCheckCollector,
+  SettingsCollectorConfigs,
+} from "@newsletter/shared/types";
+import { settingsConfigsFromSourceRows } from "@newsletter/shared/types";
 import type { UserSettings } from "@newsletter/shared";
 import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import type { SourcesRepo } from "@api/repositories/sources.js";
 import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
 
 export interface CollectorHealthRouterDeps {
@@ -24,6 +29,14 @@ export interface CollectorHealthRouterDeps {
    * user_settings row carries `singleton = true` (0041).
    */
   getSettings: (scope?: TenantScope) => Promise<UserSettings | null>;
+  /**
+   * FIX #6: when present and the session tenant has any source ROWS, the "Check
+   * all" target list is derived from those rows (mirrors GET /settings +
+   * daily-run) instead of the user_settings enabled flags — onboarded tenants
+   * keep their config in rows with null user_settings JSONB. Absent → legacy
+   * user_settings behavior.
+   */
+  getSourcesRepo?: (scope?: TenantScope) => Pick<SourcesRepo, "list">;
 }
 
 const checkBodySchema = z.object({
@@ -32,7 +45,7 @@ const checkBodySchema = z.object({
     .optional(),
 });
 
-function enabledCollectors(settings: UserSettings): HealthCheckCollector[] {
+function enabledCollectors(settings: SettingsCollectorConfigs): HealthCheckCollector[] {
   const result: HealthCheckCollector[] = [];
   if (settings.hnEnabled) result.push("hn");
   if (settings.redditEnabled) result.push("reddit");
@@ -63,9 +76,18 @@ export function createCollectorHealthRouter(deps: CollectorHealthRouterDeps): Ho
       // EDGE-013: explicit collector allowed even if disabled
       targets = [parsed.data.collector];
     } else {
-      // REQ-002: absent -> all enabled from settings
-      const settings = await deps.getSettings(tenantScopeFromContext(c));
-      targets = settings !== null ? enabledCollectors(settings) : [];
+      // REQ-002: absent -> all enabled. FIX #6: source rows win when the tenant
+      // has any (mirrors GET /settings + daily-run); else user_settings flags.
+      const scope = tenantScopeFromContext(c);
+      let configs: SettingsCollectorConfigs | null = await deps.getSettings(scope);
+      const sourcesRepo = deps.getSourcesRepo?.(scope);
+      if (sourcesRepo) {
+        const rows = await sourcesRepo.list();
+        if (rows.length > 0) {
+          configs = settingsConfigsFromSourceRows(rows);
+        }
+      }
+      targets = configs !== null ? enabledCollectors(configs) : [];
     }
 
     const now = new Date();
@@ -111,5 +133,13 @@ export function createDefaultCollectorHealthRouter(): Hono {
       const { getDb } = await import("@newsletter/shared");
       return createUserSettingsRepo(getDb(), scope).get();
     },
+    // FIX #6: rows are authoritative when present — same precedence as GET /settings.
+    getSourcesRepo: (scope) => ({
+      list: async () => {
+        const { createSourcesRepo } = await import("@api/repositories/sources.js");
+        const { getDb } = await import("@newsletter/shared");
+        return createSourcesRepo(getDb(), scope).list();
+      },
+    }),
   });
 }

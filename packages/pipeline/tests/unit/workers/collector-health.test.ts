@@ -182,6 +182,8 @@ import type { CollectorHealthResult, HealthCheckCollector } from "@newsletter/sh
 import type { CheckableCollector, CollectorHealthOutcome, HealthCheckDeps } from "@pipeline/services/collector-health/index.js";
 import type { UserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 import type { UserSettings } from "@newsletter/shared";
+import type { SourceRow } from "@newsletter/shared/db";
+import type { SourceConfig } from "@newsletter/shared/types";
 import { COLLECTOR_HEALTH_QUEUE_NAME } from "@newsletter/shared/constants";
 
 // ─── Fakes ────────────────────────────────────────────────────────────────────
@@ -244,6 +246,25 @@ function makeUserSettingsRepo(settings: UserSettings | null = makeSettings()): U
   return {
     get: vi.fn().mockResolvedValue(settings),
   };
+}
+
+let sourceRowSeq = 0;
+function makeSourceRow(config: SourceConfig, enabled = true): SourceRow {
+  sourceRowSeq += 1;
+  return {
+    id: `src-${sourceRowSeq}`,
+    tenantId: "tenant-1",
+    type: config.kind === "web" ? "blog" : config.kind === "web_search" ? "web_search" : config.kind === "reddit" ? "reddit" : config.kind === "hn" ? "hn" : "twitter",
+    config,
+    enabled,
+    lastHealth: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  } as unknown as SourceRow;
+}
+
+function makeSourcesRepo(rows: SourceRow[]): { list: () => Promise<SourceRow[]> } {
+  return { list: vi.fn().mockResolvedValue(rows) };
 }
 
 function makeHealthOutcome(status: "healthy" | "failed" = "healthy"): CollectorHealthOutcome {
@@ -688,6 +709,88 @@ describe("handleCollectorHealthJob", () => {
     // store.set must have been called with "failed" for "hn"
     const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
     expect(setCalls.some((c) => c[0].collector === "hn" && c[0].status === "failed")).toBe(true);
+  });
+
+  // ─── FIX #6: source rows are authoritative over user_settings ──────────────
+
+  it("FIX6: rows override user_settings — reddit check uses rows config even when user_settings.redditConfig is null", async () => {
+    const runCheck = makeRunCollectorHealthCheck();
+    // Onboarded shape: user_settings collector configs null, real config in rows.
+    const onboarded = makeSettings({ redditConfig: null, redditEnabled: false });
+    const rows = [makeSourceRow({ kind: "reddit", subreddit: "LocalLLaMA" }, true)];
+    const deps = makeDeps({
+      runCollectorHealthCheck: runCheck,
+      userSettingsRepo: makeUserSettingsRepo(onboarded),
+      getSourcesRepo: () => makeSourcesRepo(rows),
+    });
+
+    await handleCollectorHealthJob(deps, {
+      name: "collector-health",
+      id: "fix6-1",
+      data: { collectors: ["reddit"], trigger: "manual" },
+    });
+
+    const call = runCheck.mock.calls.find((c) => c[0] === "reddit") as
+      | [CheckableCollector, { reddit?: { subreddits?: string[] } }, HealthCheckDeps]
+      | undefined;
+    expect(call).toBeDefined();
+    expect(call?.[1]?.reddit?.subreddits).toEqual(["LocalLLaMA"]);
+  });
+
+  it("FIX6: scheduled enabled targets derive from source rows, not user_settings flags", async () => {
+    const store = makeStore();
+    // user_settings says hn+twitter enabled with NO rows for them; rows are reddit+web.
+    const onboarded = makeSettings({
+      hnEnabled: true,
+      redditEnabled: false,
+      webEnabled: false,
+      twitterEnabled: true,
+      webSearchEnabled: false,
+      hnConfig: null,
+      redditConfig: null,
+      webConfig: null,
+      twitterConfig: null,
+      webSearchConfig: null,
+    });
+    const rows = [
+      makeSourceRow({ kind: "reddit", subreddit: "LocalLLaMA" }, true),
+      makeSourceRow({ kind: "web", name: "Blog", listingUrl: "https://ex.com/blog" }, true),
+    ];
+    const deps = makeDeps({
+      store,
+      userSettingsRepo: makeUserSettingsRepo(onboarded),
+      getSourcesRepo: () => makeSourcesRepo(rows),
+    });
+
+    await handleCollectorHealthJob(deps, {
+      name: "collector-health",
+      id: "fix6-2",
+      data: { trigger: "scheduled" },
+    });
+
+    const targets = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => (c as [HealthCheckCollector])[0])
+      .sort();
+    expect(targets).toEqual(["blog", "reddit"]);
+  });
+
+  it("FIX6: no source rows → falls back to user_settings enabled flags (regression)", async () => {
+    const store = makeStore();
+    const deps = makeDeps({
+      store,
+      getSourcesRepo: () => makeSourcesRepo([]),
+    });
+
+    await handleCollectorHealthJob(deps, {
+      name: "collector-health",
+      id: "fix6-3",
+      data: { trigger: "scheduled" },
+    });
+
+    const targets = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => (c as [HealthCheckCollector])[0])
+      .sort();
+    expect(targets).toEqual(["blog", "hn", "reddit", "twitter", "web_search"]);
   });
 });
 
