@@ -28,8 +28,10 @@ NOT_APPLICABLE — the feature introduces zero new external dependencies.
 - `@newsletter/shared/llm-txt` — pure generator (`renderIssueLlmTxt`, `renderIndexLlmsTxt`,
   `renderIndexLlmsFullTxt`, `renderCanonLlmTxt`, `absoluteUrl`).
 - API: `GET /llms.txt`, `GET /llms-full.txt`, `GET /api/archives/:runId/llm.txt` (public).
+- **Version-keyed Redis cache** — renders are cached until the underlying data changes; no manual
+  busting. Fail-open and optional (DI). Unit + e2e tested.
 - `RunArchivesRepo.listReviewedRows(limit)` — SQL-level reviewed/non-dry-run fetch.
-- `pnpm generate:llm-txt` — materialization script writing the `llms/` tree.
-- Committed `llms/` snapshot + `llms/README.md`.
+- `pnpm generate:llm-txt` — optional on-demand materialization script writing the `llms/` tree.
+- `llms/README.md` + `llms/.gitignore` (generated outputs are NOT committed — they're served live).
 
 PR: https://github.com/vertexcover-io/ai-news-aggregator/pull/286

@@ -12,6 +12,19 @@ import type {
 } from "@api/repositories/run-archives.js";
 import type { MustReadRepo } from "@api/repositories/must-read.js";
 import type { MustReadPublicEntry } from "@api/repositories/must-read.js";
+import type { LlmTxtCache } from "@api/services/llm-txt-cache.js";
+
+function makeMemoryCache(): LlmTxtCache & { store: Map<string, string> } {
+  const store = new Map<string, string>();
+  return {
+    store,
+    get: vi.fn((key: string) => Promise.resolve(store.get(key) ?? null)),
+    set: vi.fn((key: string, value: string) => {
+      store.set(key, value);
+      return Promise.resolve();
+    }),
+  };
+}
 
 const baseUrl = "https://news.example.com";
 
@@ -229,5 +242,105 @@ describe("GET /api/archives/:runId/llm.txt", () => {
     app.route("/api/archives", createLlmTxtArchiveRouter(deps({})));
     const res = await app.request("/api/archives/nope/llm.txt");
     expect(res.status).toBe(404);
+  });
+});
+
+describe("llm.txt caching (behavioral)", () => {
+  it("serves the second /llms-full.txt from cache without re-hydrating", async () => {
+    const rows = [
+      archiveRow({ id: "run-1", rankedItems: [{ rawItemId: 1, score: 0.9, rationale: "x" }] }),
+    ];
+    const raw = makeRawRepo([rawItem({ id: 1, title: "S", url: "https://e.com/1" })]);
+    const findByIds = raw.findByIds as ReturnType<typeof vi.fn>;
+    const cache = makeMemoryCache();
+    const app = new Hono();
+    app.route(
+      "/",
+      createLlmTxtRouter(
+        deps({
+          getArchiveRepo: () => makeArchiveRepo(rows),
+          getRawItemsRepo: () => raw,
+          cache,
+        }),
+      ),
+    );
+
+    const first = await (await app.request("/llms-full.txt")).text();
+    const hydrationCallsAfterFirst = findByIds.mock.calls.length;
+    expect(hydrationCallsAfterFirst).toBeGreaterThan(0);
+
+    const second = await (await app.request("/llms-full.txt")).text();
+    expect(second).toBe(first);
+    // Cache hit: no further hydration happened.
+    expect(findByIds.mock.calls.length).toBe(hydrationCallsAfterFirst);
+    expect(cache.set).toHaveBeenCalledTimes(1);
+  });
+
+  it("regenerates when a published issue changes (version key changes)", async () => {
+    const cache = makeMemoryCache();
+    const v1Rows = [archiveRow({ id: "run-1", digestHeadline: "Old headline" })];
+    const app1 = new Hono();
+    app1.route(
+      "/",
+      createLlmTxtRouter(deps({ getArchiveRepo: () => makeArchiveRepo(v1Rows), cache })),
+    );
+    const first = await (await app1.request("/llms.txt")).text();
+    expect(first).toContain("Old headline");
+
+    // A new run is published → different signature → must regenerate, not serve stale.
+    const v2Rows = [
+      archiveRow({
+        id: "run-2",
+        digestHeadline: "New headline",
+        completedAt: new Date("2026-06-18T10:00:00Z"),
+        publishedAt: new Date("2026-06-18T10:00:00Z"),
+      }),
+      ...v1Rows,
+    ];
+    const app2 = new Hono();
+    app2.route(
+      "/",
+      createLlmTxtRouter(deps({ getArchiveRepo: () => makeArchiveRepo(v2Rows), cache })),
+    );
+    const second = await (await app2.request("/llms.txt")).text();
+    expect(second).toContain("New headline");
+    expect(second).not.toBe(first);
+    expect(cache.store.size).toBe(2); // two distinct version keys cached
+  });
+
+  it("still serves a correct response when the cache backend throws", async () => {
+    const throwingCache: LlmTxtCache = {
+      get: vi.fn(() => Promise.reject(new Error("redis down"))),
+      set: vi.fn(() => Promise.reject(new Error("redis down"))),
+    };
+    const rows = [archiveRow({ id: "run-1" })];
+    const app = new Hono();
+    app.route(
+      "/",
+      createLlmTxtRouter(
+        deps({ getArchiveRepo: () => makeArchiveRepo(rows), cache: throwingCache }),
+      ),
+    );
+    const res = await app.request("/llms.txt");
+    expect(res.status).toBe(200);
+    expect((await res.text()).startsWith("# ")).toBe(true);
+  });
+
+  it("per-issue endpoint caches and reuses by runId", async () => {
+    const rows = [archiveRow({ id: "run-1", rankedItems: [{ rawItemId: 1, score: 1, rationale: "x" }] })];
+    const raw = makeRawRepo([rawItem({ id: 1 })]);
+    const findByIds = raw.findByIds as ReturnType<typeof vi.fn>;
+    const cache = makeMemoryCache();
+    const app = new Hono();
+    app.route(
+      "/api/archives",
+      createLlmTxtArchiveRouter(
+        deps({ getArchiveRepo: () => makeArchiveRepo(rows), getRawItemsRepo: () => raw, cache }),
+      ),
+    );
+    await app.request("/api/archives/run-1/llm.txt");
+    const after = findByIds.mock.calls.length;
+    await app.request("/api/archives/run-1/llm.txt");
+    expect(findByIds.mock.calls.length).toBe(after); // second served from cache
   });
 });

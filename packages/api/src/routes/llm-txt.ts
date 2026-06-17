@@ -16,6 +16,12 @@ import {
   buildLlmTxtSnapshot,
   type LlmTxtSnapshotData,
 } from "@api/services/llm-txt-snapshot.js";
+import {
+  createRedisLlmTxtCache,
+  llmTxtVersionKey,
+  type LlmTxtCache,
+} from "@api/services/llm-txt-cache.js";
+import type IORedis from "ioredis";
 import { hydrateRankedItems } from "@api/services/rank-hydration.js";
 import {
   createRawItemsRepo,
@@ -50,7 +56,43 @@ export interface LlmTxtRouterDeps {
   getMustReadRepo: () => MustReadRepo;
   getSettingsRepo?: () => Pick<UserSettingsRepo, "get">;
   baseUrl: string;
+  /** Optional content cache. When set, rendered text is cached and reused
+   * until the underlying data changes (version-keyed). */
+  cache?: LlmTxtCache;
   logger?: ReturnType<typeof createLogger>;
+}
+
+function rowSignature(row: RunArchiveRow): string {
+  const completed = row.completedAt.getTime();
+  const drafted = row.draftSavedAt?.getTime() ?? 0;
+  return `${row.id}:${completed}:${drafted}`;
+}
+
+function canonSignature(entry: { id: string; addedAt: string }): string {
+  return `${entry.id}:${entry.addedAt}`;
+}
+
+// Caches one rendered variant: returns the cached string on a version hit, else
+// runs the (possibly expensive) render, stores it, and returns the fresh value.
+async function withCache(
+  deps: Pick<LlmTxtRouterDeps, "cache" | "logger">,
+  key: string,
+  render: () => Promise<string>,
+): Promise<string> {
+  if (!deps.cache) return render();
+  try {
+    const hit = await deps.cache.get(key);
+    if (hit !== null) return hit;
+  } catch (err) {
+    deps.logger?.warn({ err }, "llm_txt.cache_read_failed");
+  }
+  const value = await render();
+  try {
+    await deps.cache.set(key, value);
+  } catch (err) {
+    deps.logger?.warn({ err }, "llm_txt.cache_write_failed");
+  }
+  return value;
 }
 
 function storyFromRankedItem(item: RankedItem): LlmTxtStory {
@@ -97,26 +139,47 @@ export function createLlmTxtRouter(deps: LlmTxtRouterDeps): Hono {
   const logger = deps.logger ?? createLogger("api:llm-txt");
   const app = new Hono();
 
-  // Loads reviewed issues. When `withStories` is false (the /llms.txt index
-  // path) story hydration is skipped — the index only needs headlines/links.
-  async function loadSnapshotData(withStories: boolean): Promise<LlmTxtSnapshotData> {
+  // Loads the cheap metadata (reviewed rows + canon) needed for both the
+  // version signature and the render. Story hydration is deferred to the render
+  // closure so a cache hit skips it entirely.
+  async function loadIndexMeta(): Promise<{
+    rows: RunArchiveRow[];
+    canon: ReturnType<typeof toPublicWire>[];
+    timezone: string;
+  }> {
     const timezone = await resolveTimezone(deps);
     const rows = await deps.getArchiveRepo().listReviewedRows(FULL_INDEX_ISSUE_LIMIT);
-    const issues: IssueFull[] = [];
-    for (const row of rows) {
-      issues.push({
-        meta: issueMetaFromRow(row, issueDateOf(row, timezone)),
-        stories: withStories ? await hydrateIssueStories(deps, row) : [],
-      });
-    }
     const canon = (await deps.getMustReadRepo().listPublic()).map(toPublicWire);
-    return { baseUrl: deps.baseUrl, issues, canon };
+    return { rows, canon, timezone };
+  }
+
+  function buildSnapshotData(
+    meta: { rows: RunArchiveRow[]; canon: ReturnType<typeof toPublicWire>[]; timezone: string },
+    stories: IssueFull["stories"][],
+  ): LlmTxtSnapshotData {
+    const issues: IssueFull[] = meta.rows.map((row, i) => ({
+      meta: issueMetaFromRow(row, issueDateOf(row, meta.timezone)),
+      stories: stories[i] ?? [],
+    }));
+    return { baseUrl: deps.baseUrl, issues, canon: meta.canon };
   }
 
   app.get("/llms.txt", async (c) => {
     try {
-      const snapshot = buildLlmTxtSnapshot(await loadSnapshotData(false));
-      return c.body(snapshot.index, 200, TEXT_HEADERS);
+      const meta = await loadIndexMeta();
+      const key = llmTxtVersionKey({
+        variant: "index",
+        baseUrl: deps.baseUrl,
+        issueSignatures: meta.rows.map(rowSignature),
+        canonSignatures: meta.canon.map(canonSignature),
+      });
+      const body = await withCache(deps, key, () =>
+        // index render needs no story hydration
+        Promise.resolve(
+          buildLlmTxtSnapshot(buildSnapshotData(meta, [])).index,
+        ),
+      );
+      return c.body(body, 200, TEXT_HEADERS);
     } catch (err) {
       logger.error({ err }, "llm_txt.index_failed");
       return c.body("error generating llms.txt\n", 500, TEXT_HEADERS);
@@ -125,8 +188,20 @@ export function createLlmTxtRouter(deps: LlmTxtRouterDeps): Hono {
 
   app.get("/llms-full.txt", async (c) => {
     try {
-      const snapshot = buildLlmTxtSnapshot(await loadSnapshotData(true));
-      return c.body(snapshot.indexFull, 200, TEXT_HEADERS);
+      const meta = await loadIndexMeta();
+      const key = llmTxtVersionKey({
+        variant: "full",
+        baseUrl: deps.baseUrl,
+        issueSignatures: meta.rows.map(rowSignature),
+        canonSignatures: meta.canon.map(canonSignature),
+      });
+      const body = await withCache(deps, key, async () => {
+        const stories = await Promise.all(
+          meta.rows.map((row) => hydrateIssueStories(deps, row)),
+        );
+        return buildLlmTxtSnapshot(buildSnapshotData(meta, stories)).indexFull;
+      });
+      return c.body(body, 200, TEXT_HEADERS);
     } catch (err) {
       logger.error({ err }, "llm_txt.full_index_failed");
       return c.body("error generating llms-full.txt\n", 500, TEXT_HEADERS);
@@ -150,8 +225,18 @@ export function createLlmTxtArchiveRouter(deps: LlmTxtRouterDeps): Hono {
       }
       const timezone = await resolveTimezone(deps);
       const meta = issueMetaFromRow(row, issueDateOf(row, timezone));
-      const stories = await hydrateIssueStories(deps, row);
-      return c.body(renderIssueLlmTxt(meta, stories, opts), 200, TEXT_HEADERS);
+      const key = llmTxtVersionKey({
+        variant: "issue",
+        baseUrl: deps.baseUrl,
+        scope: runId,
+        issueSignatures: [rowSignature(row)],
+        canonSignatures: [],
+      });
+      const body = await withCache(deps, key, async () => {
+        const stories = await hydrateIssueStories(deps, row);
+        return renderIssueLlmTxt(meta, stories, opts);
+      });
+      return c.body(body, 200, TEXT_HEADERS);
     } catch (err) {
       logger.error({ err, runId }, "llm_txt.issue_failed");
       return c.body("error generating llm.txt\n", 500, TEXT_HEADERS);
@@ -161,21 +246,27 @@ export function createLlmTxtArchiveRouter(deps: LlmTxtRouterDeps): Hono {
   return app;
 }
 
-export function createDefaultLlmTxtRouter(baseUrl?: string): Hono {
-  return createLlmTxtRouter(defaultLlmTxtDeps(baseUrl));
+export interface DefaultLlmTxtOptions {
+  baseUrl?: string;
+  redis?: Pick<IORedis, "get" | "set">;
 }
 
-export function createDefaultLlmTxtArchiveRouter(baseUrl?: string): Hono {
-  return createLlmTxtArchiveRouter(defaultLlmTxtDeps(baseUrl));
+export function createDefaultLlmTxtRouter(options?: DefaultLlmTxtOptions): Hono {
+  return createLlmTxtRouter(defaultLlmTxtDeps(options));
 }
 
-function defaultLlmTxtDeps(baseUrl?: string): LlmTxtRouterDeps {
-  const resolved = baseUrl ?? resolveBaseUrls(process.env).webBaseUrl;
+export function createDefaultLlmTxtArchiveRouter(options?: DefaultLlmTxtOptions): Hono {
+  return createLlmTxtArchiveRouter(defaultLlmTxtDeps(options));
+}
+
+function defaultLlmTxtDeps(options?: DefaultLlmTxtOptions): LlmTxtRouterDeps {
+  const resolved = options?.baseUrl ?? resolveBaseUrls(process.env).webBaseUrl;
   return {
     getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
     getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
     getMustReadRepo: () => createMustReadRepo(defaultGetDb()),
     getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
     baseUrl: resolved,
+    cache: options?.redis ? createRedisLlmTxtCache(options.redis) : undefined,
   };
 }

@@ -12,7 +12,8 @@
 | Lint (shared) | `pnpm --filter @newsletter/shared lint` | PASS (clean) |
 | Lint (api) | `pnpm --filter @newsletter/api lint` | PASS (clean) |
 | Unit tests (shared) | `pnpm --filter @newsletter/shared test:unit` | 44 files / 405 tests passed |
-| Unit tests (api) | `pnpm --filter @newsletter/api test:unit` | 58 files / 722 tests passed |
+| Unit tests (api) | `pnpm --filter @newsletter/api test:unit` | 59 files / 733 tests passed |
+| e2e tests (api, llm.txt cache) | `pnpm --filter @newsletter/api exec vitest run --project e2e tests/e2e/llm-txt-cache.e2e.test.ts` | 3/3 passed (real Redis + Postgres) |
 
 Baseline note: before this change the API suite reported 14 failing test *files* due to a
 worktree with incomplete `node_modules` (`@ai-sdk/deepseek`, `playwright-core` not installed →
@@ -32,6 +33,26 @@ baseline; the feature itself introduced zero failures.
 | VS-7 `GET /llms-full.txt` inlines story content | same | PASS |
 | VS-8 no-drift: route body === snapshot.index | `api/tests/unit/llm-txt-drift.test.ts` | PASS |
 | Index excludes unreviewed + dry-run archives | `llm-txt-route.test.ts` | PASS |
+| VS-9 cache behavioral (hit skips hydration / version change / error resilience / per-issue) | `llm-txt-route.test.ts` | PASS |
+| VS-10 version-key + Redis adapter | `llm-txt-cache.test.ts` | PASS |
+| VS-11 cache e2e (real Redis + Postgres) | `llm-txt-cache.e2e.test.ts` | PASS |
+
+## Exploratory QA (live server)
+
+Booted the API (`NEWSLETTER_BASE_URL=https://qa.example.com`) against local Postgres + Redis and
+verified by curl:
+
+- `GET /llms.txt` → `200`, `Content-Type: text/plain; charset=utf-8`, `Cache-Control: public,
+  max-age=3600`, valid llmstxt.org structure, absolute URLs, empty-state handled.
+- `GET /llms-full.txt` → `200 text/plain`.
+- `GET /api/archives/<unknown-uuid>/llm.txt` → `404`; public `GET /api/archives/<uuid>` still
+  `404` (no route collision live).
+- **Cache populated in Redis**: after the first request, keys
+  `llm-txt:index|https://qa.example.com||i:0:|c:0:` and `llm-txt:full|...` were present.
+- **Live version invalidation**: inserting a canon row caused the response to include the new entry
+  (not the stale cached empty body) under a NEW key
+  `...|c:1:<id>:<addedAt>` — proving the version key regenerates exactly when data changes.
+  QA seed + Redis keys cleaned up afterward.
 
 ## Adversarial checks performed
 

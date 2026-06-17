@@ -67,6 +67,14 @@ the shared generator with the same inputs / by comparing outputs).
 `@newsletter/shared/db`. The API endpoints and script SHALL obtain data via existing repository
 factories only.
 
+**REQ-14 (version-keyed cache).** Each text endpoint SHALL cache its rendered output in Redis under
+a content-signature key (variant + base URL + per-issue signatures
+[`runId:completedAt:draftSavedAt`] + per-canon signatures [`id:addedAt`], plus the runId scope for
+the per-issue endpoint). WHEN the underlying data is unchanged, the endpoint SHALL serve the cached
+string without re-querying/hydrating. WHEN a published issue changes, a new issue is published, or
+canon changes, the key SHALL change so the next request regenerates exactly once. The cache is
+optional (absent in tests without Redis) and a cache backend error SHALL NOT fail the response.
+
 ## Non-Functional
 
 - TypeScript strict; type hints on all functions.
@@ -88,3 +96,10 @@ factories only.
 - **VS-7:** API — `GET /llms-full.txt` → 200, inlines issue content (story titles appear).
 - **VS-8:** Script/no-drift — generator output used by the script equals the endpoint's body for the
   same inputs (compare strings).
+- **VS-9 (unit, behavioral):** second request served from cache without re-hydrating; version
+  change regenerates (not stale); cache-backend error still yields a 200; per-issue caches by runId.
+- **VS-10 (unit):** `llmTxtVersionKey` stability + changes on issue/canon/variant/scope diff; Redis
+  adapter namespaces keys and sets a TTL.
+- **VS-11 (e2e, real Redis + Postgres):** first request writes a `llm-txt:*` key; second serves the
+  same body; publishing a new issue changes the version key so content is not stale; per-issue
+  endpoint caches by runId.

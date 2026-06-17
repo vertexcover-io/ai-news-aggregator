@@ -77,6 +77,19 @@ two thin consumers:
   It only needs **types** (`RankedItem`, `PublicMustReadEntry`, issue meta) + a base URL — no DB
   client — so it's browser-safe and import-rule-clean.
 
+### Caching (version-keyed Redis)
+
+Each endpoint caches its rendered text in Redis under a **content signature** so identical content
+isn't regenerated on every request (the full index hydrates up to 30 issues — the expensive path).
+The key is `variant | baseUrl | scope | issue-signatures | canon-signatures`, where an issue
+signature is `runId:completedAt:draftSavedAt` and a canon signature is `id:addedAt`. When a new
+issue publishes, a published issue is edited (bumps `draftSavedAt`), or canon changes, the signature
+changes → the next request regenerates exactly once and caches under the new key. The cheap metadata
+(`listReviewedRows` + `listPublic`) is queried to build the signature; the expensive hydration +
+render only runs on a cache miss. The cache is **optional** (DI: absent in unit tests without Redis)
+and **fail-open** (a Redis error is logged and the response still renders). A 24h TTL is a backstop;
+the version key is the real invalidation mechanism. No manual cache-busting from publish code.
+
 ### Endpoints (all public, `text/plain; charset=utf-8`)
 
 | Route | Content |
@@ -102,21 +115,32 @@ Options considered:
   tracked directory, runnable (i) manually, (ii) from CI on a schedule, and (iii) optionally
   invoked at the end of a publish. **Chosen.**
 
-Chosen layout (tracked in git):
+Generation target (gitignored — see "Decision update" below):
 
 ```
 llms/
-  llms.txt                      # site index snapshot
-  llms-full.txt                 # full-content index snapshot
+  llms.txt                      # site index
+  llms-full.txt                 # full-content index
   issues/
     <issue-date>-<runId>.llm.txt   # one per published issue
   canon.llm.txt                 # the must-read list
 ```
 
 The script is the single writer. It's deterministic (same DB state → same bytes), so re-running is
-idempotent and diffs are meaningful. Committing the *output* of the script is the deliverable; the
-script itself guarantees they never drift from the live endpoints because both call the shared
-generator.
+idempotent. Because both the script and the live endpoints call the shared generator, materialized
+files are byte-identical to served responses.
+
+### Decision update (post-review)
+
+The generated `.txt` files are **not committed**. They're derived entirely from DB rows, so a
+checked-in copy goes stale the moment a new issue publishes, while the dynamic endpoints are always
+current — committing them duplicates the endpoints and adds a staleness burden for no benefit (the
+deployment serves them from the API, not from static files). We therefore:
+
+- keep the **dynamic endpoints** as the source of truth,
+- keep the **`generate:llm-txt` script** for on-demand materialization (e.g. CDN static hosting),
+- **gitignore** the generated outputs under `llms/`, tracking only `llms/README.md` +
+  `llms/.gitignore`.
 
 Wiring it into "every day's run": add an **npm script** `generate:llm-txt` and call it from the
 existing post-publish path *if* that path already runs in an environment with repo write access;
