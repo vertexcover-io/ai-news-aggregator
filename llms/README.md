@@ -1,38 +1,40 @@
-# `llms/` — generated llm.txt files
+# `llms/` — llm.txt generation target
 
-These files follow the [llmstxt.org](https://llmstxt.org/) convention so LLMs and AI
-agents can consume the AgentLoop newsletter site.
+The llm.txt files ([llmstxt.org](https://llmstxt.org/) convention) are **served dynamically by
+the API** and are **not committed** — they're derived entirely from the database, so a checked-in
+copy would go stale the moment a new issue publishes. This directory is only a *target* for the
+optional materialization script; its generated outputs are gitignored.
 
-| File | What it is |
-|------|------------|
-| `llms.txt` | Site index: links to recent published issues, the must-read canon, and the public pages. |
-| `llms-full.txt` | Same index with each issue's full content inlined. |
-| `canon.llm.txt` | The must-read canon as a standalone document. |
-| `issues/<date>-<runId>.llm.txt` | One file per published daily issue. |
+## Source of truth: the live API
 
-## How they're produced
+The API serves always-current versions (web is a Vite SPA, so these are API routes, not static
+frontend assets):
 
-A single generator lives in `@newsletter/shared/llm-txt`. Two consumers call it, so the
-served and committed versions never drift:
+- `GET /llms.txt` — site index (recent published issues, the must-read canon, public pages)
+- `GET /llms-full.txt` — same index with each issue's full content inlined
+- `GET /api/archives/:runId/llm.txt` — one published issue
 
-- **Live API** — the Hono API serves these dynamically:
-  - `GET /llms.txt`, `GET /llms-full.txt`
-  - `GET /api/archives/:runId/llm.txt` (per issue)
-- **This directory** — regenerated from the database with:
+In production, route the root paths (`/llms.txt`, `/llms-full.txt`) to the API service via your
+reverse proxy / rewrite.
 
-  ```bash
-  pnpm generate:llm-txt        # from the repo root
-  # or: pnpm --filter @newsletter/api generate:llm-txt
-  ```
+## Optional: materialize files on demand
 
-  The script reads published, reviewed issues + the canon, renders them with the shared
-  generator, and overwrites the files here. Output is deterministic for a given DB state.
+If you need the files on disk (e.g. to serve from a CDN without the API in the loop):
 
-> The committed snapshot in this repo was generated from representative example data so the
-> files are reviewable. Run `pnpm generate:llm-txt` against the live database to refresh them.
+```bash
+pnpm generate:llm-txt        # from the repo root
+# or: pnpm --filter @newsletter/api generate:llm-txt
+```
 
-## Production serving
+This reads published, reviewed issues + the canon from the DB and writes:
 
-The web app is a Vite SPA, so the root `/llms.txt` and `/llms-full.txt` paths are served by
-the **API**, not the static frontend. In production, route those root paths (and the
-per-issue `/api/archives/:runId/llm.txt`) to the API service via your reverse proxy / rewrite.
+```
+llms/llms.txt
+llms/llms-full.txt
+llms/canon.llm.txt
+llms/issues/<date>-<runId>.llm.txt
+```
+
+The script and the live endpoints share the same generator (`@newsletter/shared/llm-txt`), so
+materialized files are byte-identical to served responses. The outputs are gitignored — regenerate
+them whenever you need a fresh copy rather than committing them.

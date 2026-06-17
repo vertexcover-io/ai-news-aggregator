@@ -1,0 +1,5 @@
+# Generated llm.txt outputs are NOT committed — they're served live by the API
+# and can be materialized on demand with `pnpm generate:llm-txt`.
+# Only this .gitignore and README.md are tracked.
+*.txt
+issues/
