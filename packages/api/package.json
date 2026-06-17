@@ -13,7 +13,8 @@
     "test:e2e": "vitest run --project e2e",
     "test:watch": "vitest --project unit",
     "lint": "eslint .",
-    "bench:search": "tsx scripts/seed-search-perf.ts"
+    "bench:search": "tsx scripts/seed-search-perf.ts",
+    "generate:llm-txt": "tsx scripts/generate-llm-txt.ts"
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "3.1042.0",

@@ -1,0 +1,13 @@
+# Retrieval is back; everyone rediscovers the index
+
+> A quieter day, dominated by retrieval-augmentation write-ups and one big open-weights drop.
+
+Issue date: 2026-06-15
+
+## Stories
+
+### [Open-weights 70B model released under a permissive license](https://example.org/open-70b)
+A new 70B open-weights model lands with a commercially permissive license.
+- Competitive on reasoning benchmarks
+- Permissive license, weights on HF
+**Bottom line:** Strong default for self-hosted RAG stacks.

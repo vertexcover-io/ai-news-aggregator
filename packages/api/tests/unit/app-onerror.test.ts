@@ -43,6 +43,8 @@ function makeMinimalDeps(): BuildAppDeps {
     linkedInOAuthRouter: stub(),
     linkedInOAuthCallbackRouter: stub(),
     collectorHealthRouter: stub(),
+    llmTxtIndexRouter: stub(),
+    llmTxtArchiveRouter: stub(),
   };
 }
 

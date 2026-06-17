@@ -1,0 +1,6 @@
+# Canon — must-read reading list
+
+> A curated, canonical reading list of foundational AI writing.
+
+- [Attention Is All You Need](https://arxiv.org/abs/1706.03762) (Vaswani et al., 2017) — The transformer architecture that everything since is built on.
+- [The Bitter Lesson](http://www.incompleteideas.net/IncIdeas/BitterLesson.html) (Rich Sutton, 2019) — General methods that leverage computation win in the long run.

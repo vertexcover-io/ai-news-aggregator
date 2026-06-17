@@ -14,6 +14,7 @@
     "test:unit": "turbo test:unit",
     "test:e2e": "turbo test:e2e",
     "setup:ses": "tsx scripts/setup-ses.ts",
+    "generate:llm-txt": "pnpm --filter @newsletter/api generate:llm-txt",
     "prepare": "husky"
   },
   "devDependencies": {

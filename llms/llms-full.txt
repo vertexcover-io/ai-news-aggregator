@@ -1,0 +1,50 @@
+# AgentLoop — AI News, curated daily
+
+> A daily, human-reviewed digest of the most important AI news, ranked and recapped from 34+ sources by an agentic pipeline. This file indexes published issues, the must-read canon, and how the system is built, for consumption by LLMs and AI agents.
+
+## Issues
+
+### [Frontier models get cheaper; agents get production-ready](https://agentloop.vertexcover.io/archive/2026-06-16-run)
+
+Issue date: 2026-06-16
+
+> Today: a wave of price cuts, two new agent frameworks, and a sober look at eval gaming.
+
+### [Anthropic ships Claude Opus 4.8 with a 1M context window](https://www.anthropic.com/news/claude-opus-4-8)
+Anthropic released Opus 4.8 with a 1M-token context window and faster output in Fast mode.
+- 1M-token context, generally available
+- Fast mode keeps Opus quality at higher throughput
+- Priced below the prior Opus tier
+**Bottom line:** Long-context agentic workflows just got materially cheaper to run.
+
+### [An open benchmark for measuring agent eval gaming](https://example.org/agent-eval-gaming)
+Researchers propose a benchmark that detects when agents overfit to known eval harnesses.
+- Targets reward-hacking on public suites
+- Includes held-out adversarial tasks
+**Bottom line:** A useful guardrail as agent benchmarks proliferate.
+
+### [Retrieval is back; everyone rediscovers the index](https://agentloop.vertexcover.io/archive/2026-06-15-run)
+
+Issue date: 2026-06-15
+
+> A quieter day, dominated by retrieval-augmentation write-ups and one big open-weights drop.
+
+### [Open-weights 70B model released under a permissive license](https://example.org/open-70b)
+A new 70B open-weights model lands with a commercially permissive license.
+- Competitive on reasoning benchmarks
+- Permissive license, weights on HF
+**Bottom line:** Strong default for self-hosted RAG stacks.
+
+## Canon — must-read reading list
+A curated, canonical reading list of foundational AI writing. See [the full canon](https://agentloop.vertexcover.io/must-read).
+- [Attention Is All You Need](https://arxiv.org/abs/1706.03762) (Vaswani et al., 2017) — The transformer architecture that everything since is built on.
+- [The Bitter Lesson](http://www.incompleteideas.net/IncIdeas/BitterLesson.html) (Rich Sutton, 2019) — General methods that leverage computation win in the long run.
+
+## How we build it
+- [How we build it](https://agentloop.vertexcover.io/) — The harness-engineering manifesto and the end-to-end pipeline: sources → collect → enrich + dedup → shortlist → rank + recap → human review → ship.
+
+## Archive
+- [Archive](https://agentloop.vertexcover.io/archive) — Every published daily issue.
+
+## Sources
+- [Sources](https://agentloop.vertexcover.io/sources) — The sources we collect from and their health.

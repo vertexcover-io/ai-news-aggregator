@@ -23,6 +23,10 @@ import { createDefaultArchivesSearchRouter } from "@api/routes/archives-search.j
 import { createDefaultPublicHomeRouter } from "@api/routes/home.js";
 import { createDefaultPublicMustReadRouter } from "@api/routes/must-read.js";
 import { createDefaultPublicSourcesRouter } from "@api/routes/sources.js";
+import {
+  createDefaultLlmTxtRouter,
+  createDefaultLlmTxtArchiveRouter,
+} from "@api/routes/llm-txt.js";
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
 import { createDefaultCollectorHealthRouter } from "@api/routes/collector-health.js";
 import { createDefaultAdminSocialCredentialsRouter } from "@api/routes/admin-social-credentials.js";
@@ -180,6 +184,8 @@ const app = buildApp({
   runsRouter: createDefaultRunsRouter(),
   settingsRouter: createDefaultSettingsRouter(),
   collectorHealthRouter: createDefaultCollectorHealthRouter(),
+  llmTxtIndexRouter: createDefaultLlmTxtRouter(newsletterBaseUrl),
+  llmTxtArchiveRouter: createDefaultLlmTxtArchiveRouter(newsletterBaseUrl),
   adminRouter: createAdminRouter({
     adminPassword,
     sessionSecret,

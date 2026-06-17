@@ -42,6 +42,10 @@ export interface BuildAppDeps {
   linkedInOAuthCallbackRouter: Hono;
   /** Admin-gated collector health check trigger + snapshot routes. */
   collectorHealthRouter: Hono;
+  /** Public root-served llms.txt + llms-full.txt index files. */
+  llmTxtIndexRouter: Hono;
+  /** Public per-issue llm.txt under /api/archives/:runId/llm.txt. */
+  llmTxtArchiveRouter: Hono;
 }
 
 const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
@@ -68,6 +72,10 @@ export function buildApp(deps: BuildAppDeps): Hono {
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
+  // Public llms.txt / llms-full.txt site index, served at the site root for
+  // llmstxt.org consumers. Mounted before the admin gate (like /health).
+  app.route("/", deps.llmTxtIndexRouter);
+
   // Public subscribe/confirm/unsubscribe routes.
   app.route("/api", deps.subscribeRouter);
 
@@ -77,9 +85,11 @@ export function buildApp(deps: BuildAppDeps): Hono {
   // Public runtime analytics configuration for the browser SDK.
   app.route("/api/public/analytics-config", deps.analyticsConfigRouter);
 
-  // Public archives. /search MUST be mounted before the public router so
-  // it does not collide with the GET /:runId catch-all.
+  // Public archives. /search and the per-issue llm.txt route MUST be mounted
+  // before the public router so they do not collide with the GET /:runId
+  // catch-all.
   app.route("/api/archives/search", deps.archivesSearchRouter);
+  app.route("/api/archives", deps.llmTxtArchiveRouter);
   app.route("/api/archives", deps.publicArchivesRouter);
 
   // Public home composite + must-read listing.

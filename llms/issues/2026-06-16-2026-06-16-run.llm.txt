@@ -1,0 +1,20 @@
+# Frontier models get cheaper; agents get production-ready
+
+> Today: a wave of price cuts, two new agent frameworks, and a sober look at eval gaming.
+
+Issue date: 2026-06-16
+
+## Stories
+
+### [Anthropic ships Claude Opus 4.8 with a 1M context window](https://www.anthropic.com/news/claude-opus-4-8)
+Anthropic released Opus 4.8 with a 1M-token context window and faster output in Fast mode.
+- 1M-token context, generally available
+- Fast mode keeps Opus quality at higher throughput
+- Priced below the prior Opus tier
+**Bottom line:** Long-context agentic workflows just got materially cheaper to run.
+
+### [An open benchmark for measuring agent eval gaming](https://example.org/agent-eval-gaming)
+Researchers propose a benchmark that detects when agents overfit to known eval harnesses.
+- Targets reward-hacking on public suites
+- Includes held-out adversarial tasks
+**Bottom line:** A useful guardrail as agent benchmarks proliferate.
