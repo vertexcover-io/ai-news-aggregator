@@ -155,7 +155,13 @@ export function buildSourceConfig(
 ): SourceConfig {
   switch (type) {
     case "hn":
-      return { kind: "hn", sinceDays: 1 };
+      // FIX #5: HN searches by keyword, which the single-input manual-add path
+      // can't supply. HN is configured (with keywords) only via the Settings
+      // panel, so reject it here rather than create a keyword-less row that
+      // would silently collect nothing.
+      throw new Error(
+        "Hacker News is configured with keywords in Settings, not added manually",
+      );
     case "reddit": {
       const subreddit = requireValue(value, "subreddit")
         .replace(/^\/?(r\/)?/i, "")

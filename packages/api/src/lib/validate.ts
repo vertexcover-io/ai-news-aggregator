@@ -113,11 +113,18 @@ const webSearchConfigSchema = z.object({
   queries: z.array(webSearchQueryConfigSchema).max(25),
 });
 
+// FIX #5: HN searches Algolia by keyword and has no default keyword set, so an
+// HN config saved from Settings must carry at least one keyword (run-submit
+// keeps the looser hnConfigSchema). Mirrors redditConfigSchema.subreddits.min(1).
+const settingsHnConfigSchema = hnConfigSchema.extend({
+  keywords: z.array(z.string().min(1)).min(1),
+});
+
 const userSettingsCommonShape = {
   topN: z.number().int().min(1).max(50),
   halfLifeHours: z.number().positive().nullable(),
   hnEnabled: z.boolean(),
-  hnConfig: hnConfigSchema.nullable(),
+  hnConfig: settingsHnConfigSchema.nullable(),
   redditEnabled: z.boolean(),
   redditConfig: redditConfigSchema.nullable(),
   webEnabled: z.boolean(),

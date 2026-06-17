@@ -132,7 +132,7 @@ const validBody = {
   topN: 10,
   halfLifeHours: null,
   hnEnabled: true,
-  hnConfig: { sinceDays: 1 },
+  hnConfig: { sinceDays: 1, keywords: ["AI"] },
   redditEnabled: false,
   redditConfig: null,
   webEnabled: false,
@@ -222,6 +222,45 @@ describe("PUT /api/settings", () => {
     const body = (await res.json()) as UserSettings;
     expect(body.topN).toBe(10);
     expect(store.current).not.toBeNull();
+  });
+
+  // FIX #5: HN searches by keyword and has no defaults — an enabled HN config
+  // must carry at least one keyword (the user configures it in Settings).
+  it("FIX #5: rejects an enabled HN config with no keywords", async () => {
+    const { repo } = makeRepo(null);
+    const app = buildApp(repo, makeQueue());
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        hnEnabled: true,
+        hnConfig: { sinceDays: 1, keywords: [] },
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("FIX #5: accepts an HN config with keywords and writes one hn row carrying them", async () => {
+    const { repo } = makeRepo(null);
+    // Seed an existing row so the tenant is on the rows path (reconcile runs).
+    const sources = makeSourcesRepo([
+      { kind: "reddit", subreddit: "old", sinceDays: 1 },
+    ]);
+    const app = buildApp(repo, makeQueue(), undefined, sources.repo);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        hnEnabled: true,
+        hnConfig: { sinceDays: 1, keywords: ["rust", "zig"] },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const lastReplace = sources.replaceAllCalls.at(-1) ?? [];
+    const hnRow = lastReplace.find((r) => r.config.kind === "hn");
+    expect(hnRow?.config).toMatchObject({ kind: "hn", keywords: ["rust", "zig"] });
   });
 
   it("accepts and persists PostHog analytics config", async () => {

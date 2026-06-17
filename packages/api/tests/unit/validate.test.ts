@@ -12,7 +12,7 @@ const validSettings = {
   topN: 10,
   halfLifeHours: null,
   hnEnabled: true,
-  hnConfig: { sinceDays: 1 },
+  hnConfig: { sinceDays: 1, keywords: ["AI"] },
   redditEnabled: false,
   redditConfig: null,
   webEnabled: false,
@@ -41,11 +41,21 @@ describe("userSettingsUpsertSchema (REQ-012/REQ-013/EDGE-004)", () => {
     expectParse(userSettingsUpsertSchema, validSettings, true);
   });
 
+  // FIX #5: HN searches by keyword and has no defaults — an HN config must
+  // carry ≥1 keyword (run-submit keeps the looser schema; this is settings).
+  it("rejects an HN config with an empty keywords array", () => {
+    expectParse(
+      userSettingsUpsertSchema,
+      { ...validSettings, hnConfig: { sinceDays: 1, keywords: [] } },
+      false,
+    );
+  });
+
   it("derives enabled flags from config presence when older clients omit them", () => {
     const r = userSettingsUpsertSchema.safeParse({
       topN: 10,
       halfLifeHours: null,
-      hnConfig: { sinceDays: 1 },
+      hnConfig: { sinceDays: 1, keywords: ["AI"] },
       redditConfig: null,
       webConfig: null,
       twitterConfig: null,

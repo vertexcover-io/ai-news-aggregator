@@ -133,6 +133,26 @@ describe("settingsFormSchema — VS-6 regression", () => {
     });
   });
 
+  // FIX #5: HN has no default keywords — an enabled HN config must carry at
+  // least one keyword (mirrors the reddit "≥1 subreddit" rule and the API).
+  it("FIX #5: rejects an HN config with no keywords", () => {
+    const result = settingsFormSchema.safeParse({
+      ...baseValid,
+      hnEnabled: true,
+      hnConfig: { ...baseValid.hnConfig, keywords: [] },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("FIX #5: accepts an HN config with at least one keyword", () => {
+    const result = settingsFormSchema.safeParse({
+      ...baseValid,
+      hnEnabled: true,
+      hnConfig: { ...baseValid.hnConfig, keywords: ["rust"] },
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("accepts overnight publish windows where publish times are earlier than pipelineTime", () => {
     const result = settingsFormSchema.safeParse({
       ...baseValid,

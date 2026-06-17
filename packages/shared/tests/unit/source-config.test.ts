@@ -39,11 +39,6 @@ describe("test_REQ_072_build_source_config_from_manual_input", () => {
       { kind: "web", name: "github.com", listingUrl: "https://github.com/trending" },
     ],
     [
-      "hn",
-      "",
-      { kind: "hn", sinceDays: 1 },
-    ],
-    [
       "web_search",
       "speculative decoding",
       {
@@ -66,6 +61,14 @@ describe("test_REQ_072_build_source_config_from_manual_input", () => {
     expect(() => buildSourceConfig("reddit", "  ")).toThrow(/required/i);
     expect(() => buildSourceConfig("twitter", "")).toThrow(/required/i);
     expect(() => buildSourceConfig("web_search", "")).toThrow(/required/i);
+  });
+
+  // FIX #5: Hacker News needs keywords to search, which the single-input
+  // manual-add path can't supply. HN is configured (with keywords) only via
+  // the Settings panel reconcile path — so the manual builder must reject it.
+  it("rejects manual HN add — HN is configured in Settings with keywords", () => {
+    expect(() => buildSourceConfig("hn", "")).toThrow(/keyword|settings/i);
+    expect(() => buildSourceConfig("hn", "hn")).toThrow(/keyword|settings/i);
   });
 });
 

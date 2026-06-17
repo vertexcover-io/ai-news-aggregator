@@ -98,7 +98,7 @@ export const MISSING_STEP_LABELS: Record<OnboardingRequiredStep, string> = {
  * infers it from the shape of the input, per the mock's one-field UX).
  */
 export function inferManualSource(raw: string): {
-  type: "twitter" | "reddit" | "rss" | "hn";
+  type: "twitter" | "reddit" | "rss";
   value: string;
 } {
   const value = raw.trim();
@@ -107,9 +107,8 @@ export function inferManualSource(raw: string): {
   if (lower.startsWith("r/") || lower.startsWith("/r/")) {
     return { type: "reddit", value };
   }
-  if (lower === "hn" || lower === "hackernews" || lower === "hacker news") {
-    return { type: "hn", value: "hn" };
-  }
+  // FIX #5: HN is no longer addable from the one-field manual input — it needs
+  // keywords, configured via the Settings panel after onboarding.
   const hasScheme = lower.startsWith("http://") || lower.startsWith("https://");
   if (hasScheme || value.includes(".")) {
     return { type: "rss", value: hasScheme ? value : `https://${value}` };

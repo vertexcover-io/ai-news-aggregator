@@ -18,7 +18,9 @@ function isValidIanaTimezone(tz: string): boolean {
 }
 
 const hnConfigSchema = z.object({
-  keywords: z.array(z.string()).optional(),
+  // FIX #5: HN searches by keyword and has no defaults — require ≥1 keyword
+  // (mirrors redditConfigSchema.subreddits.min(1) and the API validator).
+  keywords: z.array(z.string().min(1)).min(1),
   pointsThreshold: z.number().int().min(0).optional(),
   sinceDays: z.number().int().min(1).max(30),
   feeds: z.array(z.enum(["newest", "best"])).min(1).optional(),
@@ -250,7 +252,7 @@ export function normalizeSettingsForSubmit(
     ? {
         ...values.hnConfig,
         keywords: values.hnConfig.keywords
-          ?.map((k) => k.trim())
+          .map((k) => k.trim())
           .filter(Boolean),
       }
     : values.hnConfig;

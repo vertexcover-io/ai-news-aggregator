@@ -134,10 +134,6 @@ export async function fetchHnPost(
 
 // ── Batch collection ──────────────────────────────────────────────────────────
 
-const DEFAULT_KEYWORDS = [
-  "AI", "LLM", "GPT", "machine learning", "deep learning",
-  "neural network", "transformer", "Claude", "Gemini",
-];
 const DEFAULT_POINTS_THRESHOLD = 20;
 const DEFAULT_COUNT = 100;
 const DEFAULT_COMMENTS_PER_ITEM = 20;
@@ -210,7 +206,7 @@ function buildKeywordParams(keywords: string[]): { query: string; optionalWords:
 }
 
 function buildSearchUrl(feed: string, config: HnCollectConfig): string {
-  const keywords = config.keywords ?? DEFAULT_KEYWORDS;
+  const keywords = config.keywords ?? [];
   const points = config.pointsThreshold ?? DEFAULT_POINTS_THRESHOLD;
   const count = config.count ?? DEFAULT_COUNT;
 
@@ -373,6 +369,25 @@ export async function collectHn(
   const startTime = Date.now();
   const baseFetch = deps.fetchFn ?? fetch;
   const fetchFn = deps.signal ? withAbortSignal(baseFetch, deps.signal) : baseFetch;
+
+  // FIX #5: HN searches Algolia by keyword and has no default keyword set. A
+  // config with no keywords collects nothing — rather than silently searching
+  // the old AI/LLM defaults — so the tenant's HN content reflects exactly what
+  // they configured in Settings.
+  if ((config.keywords ?? []).length === 0) {
+    logger.warn(
+      { event: "collector.hn.skipped", reason: "no keywords configured" },
+      "HN collection skipped: configure keywords at /admin/settings",
+    );
+    return {
+      itemsFetched: 0,
+      commentsFetched: 0,
+      itemsStored: 0,
+      durationMs: Date.now() - startTime,
+      unitResults: [],
+    };
+  }
+
   const feeds = config.feeds ?? DEFAULT_FEEDS;
   const commentsPerItem = config.commentsPerItem ?? DEFAULT_COMMENTS_PER_ITEM;
 
