@@ -1,11 +1,13 @@
 /**
- * Admin social credentials e2e — VS-11, reworked for P12 (REQ-080/082/086).
+ * Admin social credentials e2e — VS-11, reworked for P12 (REQ-080/082/086)
+ * and Fix #2 (Twitter is OAuth connect-only — the manual key form is gone).
  *
- * Tenants manage ONLY their own credentials:
- *   - Twitter/X OAuth1 posting keys (save/clear, encrypted at rest)
+ * Tenants connect ONLY their own accounts via OAuth:
  *   - LinkedIn connect/disconnect (the app client is super-admin-managed)
+ *   - Twitter/X connect/disconnect (the app client is super-admin-managed)
  * App-level secrets (LinkedIn client id/secret, Twitter collector cookie)
- * are no longer settable from the tenant settings page or API.
+ * are no longer settable from the tenant settings page or API. The legacy
+ * manual Twitter PUT route survives as a pipeline fallback (covered below).
  *
  * Prereqs:
  *   - `pnpm infra:up` (Postgres + Redis)
@@ -39,7 +41,7 @@ test.describe("Admin social credentials panel (VS-11 / P12)", () => {
     await resetCredentials();
   });
 
-  test("LinkedIn section is connect-only (no client form); Twitter posting keys save and clear", async ({
+  test("LinkedIn and Twitter are both OAuth connect-only; connect is disabled until the shared app client is configured", async ({
     page,
   }) => {
     await adminLogin(page);
@@ -51,55 +53,27 @@ test.describe("Admin social credentials panel (VS-11 / P12)", () => {
     // LinkedIn: the app client is super-admin-managed (REQ-082) — the tenant
     // page renders NO client id/secret form, only the connection controls.
     const linkedin = page.getByTestId("linkedin-section");
-    await expect(linkedin.getByTestId("status-pill")).toHaveAttribute(
-      "data-configured",
-      "false",
-    );
     await expect(linkedin.locator("#linkedin-clientId")).toHaveCount(0);
     await expect(linkedin.locator("#linkedin-clientSecret")).toHaveCount(0);
-    const connectBtn = linkedin.getByTestId("linkedin-connect-btn");
-    await expect(connectBtn).toBeVisible();
+    const liConnect = linkedin.getByTestId("linkedin-connect-btn");
+    await expect(liConnect).toBeVisible();
     // Shared client unset → connect disabled with a super-admin hint.
-    await expect(connectBtn).toBeDisabled();
+    await expect(liConnect).toBeDisabled();
+
+    // Twitter (Fix #2): the legacy manual 4-field key form is GONE — Twitter
+    // is now OAuth connect-only, exactly like LinkedIn.
+    const twitter = page.getByTestId("twitter-section");
+    await expect(twitter.locator("#twitter-apiKey")).toHaveCount(0);
+    await expect(twitter.locator("#twitter-accessTokenSecret")).toHaveCount(0);
+    const twConnect = twitter.getByTestId("twitter-connect-btn");
+    await expect(twConnect).toBeVisible();
+    await expect(twConnect).toBeDisabled();
+    await expect(twitter.getByTestId("twitter-connection")).toContainText(
+      "super admin",
+    );
 
     // The collector-cookie card is gone from the tenant page (REQ-086).
     await expect(page.getByTestId("twitter-collector-card")).toHaveCount(0);
-
-    // Twitter posting keys remain a tenant credential.
-    const twitter = page.getByTestId("twitter-section");
-    await expect(twitter.getByTestId("status-pill")).toHaveAttribute(
-      "data-configured",
-      "false",
-    );
-    await twitter.locator("#twitter-apiKey").fill("tw-api-key");
-    await twitter.locator("#twitter-apiSecret").fill("tw-api-secret");
-    await twitter.locator("#twitter-accessToken").fill("tw-access-token");
-    await twitter
-      .locator("#twitter-accessTokenSecret")
-      .fill("tw-access-token-secret");
-    await twitter.getByTestId("twitter-save").click();
-    await expect(twitter.getByTestId("status-pill")).toHaveAttribute(
-      "data-configured",
-      "true",
-    );
-
-    // Reload — status persists, fields are empty (secrets never echoed back).
-    await page.reload();
-    const twitterAfter = page.getByTestId("twitter-section");
-    await twitterAfter.waitFor({ state: "visible" });
-    await expect(twitterAfter.getByTestId("status-pill")).toHaveAttribute(
-      "data-configured",
-      "true",
-    );
-    await expect(twitterAfter.locator("#twitter-apiKey")).toHaveValue("");
-
-    // Clear Twitter.
-    await twitterAfter.getByTestId("twitter-clear").click();
-    await twitterAfter.getByTestId("twitter-clear-confirm").click();
-    await expect(twitterAfter.getByTestId("status-pill")).toHaveAttribute(
-      "data-configured",
-      "false",
-    );
   });
 });
 

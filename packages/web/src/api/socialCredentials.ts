@@ -166,10 +166,15 @@ export async function fetchLinkedInOAuthStatus(): Promise<LinkedInOAuthStatus> {
   return (await res.json()) as LinkedInOAuthStatus;
 }
 
-export async function startLinkedInOAuth(): Promise<{ authorizeUrl: string }> {
+export async function startLinkedInOAuth(
+  returnTo?: string,
+): Promise<{ authorizeUrl: string }> {
   const res = await apiFetchAdmin(
     "/api/admin/social-credentials/linkedin/oauth/start",
-    { method: "POST" },
+    {
+      method: "POST",
+      ...(returnTo ? { body: JSON.stringify({ returnTo }) } : {}),
+    },
   );
   if (!res.ok) {
     await readError(res, "Failed to start LinkedIn OAuth");
@@ -181,6 +186,54 @@ export function useLinkedInOAuthStatus(): UseQueryResult<LinkedInOAuthStatus> {
   return useQuery<LinkedInOAuthStatus>({
     queryKey: LINKEDIN_OAUTH_STATUS_KEY,
     queryFn: fetchLinkedInOAuthStatus,
+    refetchOnWindowFocus: false,
+  });
+}
+
+// ── Twitter OAuth status + start ──────────────────────────────────────────────
+// Mirror of the LinkedIn OAuth flow (Fix #2): the tenant connects its own
+// Twitter account through the SHARED app client; tokens are stored per-tenant.
+
+export interface TwitterOAuthStatus {
+  clientConfigured: boolean;
+  connected: boolean;
+  connectedAs: string | null;
+  expiresAt: string | null;
+  hasRefreshToken: boolean;
+}
+
+const TWITTER_OAUTH_STATUS_KEY = ["twitter-oauth-status"] as const;
+
+export async function fetchTwitterOAuthStatus(): Promise<TwitterOAuthStatus> {
+  const res = await apiFetchAdmin(
+    "/api/admin/social-credentials/twitter/oauth/status",
+  );
+  if (!res.ok) {
+    await readError(res, "Failed to fetch Twitter OAuth status");
+  }
+  return (await res.json()) as TwitterOAuthStatus;
+}
+
+export async function startTwitterOAuth(
+  returnTo?: string,
+): Promise<{ authorizeUrl: string }> {
+  const res = await apiFetchAdmin(
+    "/api/admin/social-credentials/twitter/oauth/start",
+    {
+      method: "POST",
+      ...(returnTo ? { body: JSON.stringify({ returnTo }) } : {}),
+    },
+  );
+  if (!res.ok) {
+    await readError(res, "Failed to start Twitter OAuth");
+  }
+  return (await res.json()) as { authorizeUrl: string };
+}
+
+export function useTwitterOAuthStatus(): UseQueryResult<TwitterOAuthStatus> {
+  return useQuery<TwitterOAuthStatus>({
+    queryKey: TWITTER_OAUTH_STATUS_KEY,
+    queryFn: fetchTwitterOAuthStatus,
     refetchOnWindowFocus: false,
   });
 }

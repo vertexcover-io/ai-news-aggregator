@@ -258,7 +258,19 @@ function Wizard({ saved }: { saved: OnboardingStateResponse }): ReactElement {
             ) : step.key === "prompts" ? (
               <PromptsStep data={draft} update={update} />
             ) : step.key === "social" ? (
-              <SocialStep data={draft} update={update} />
+              <SocialStep
+                data={draft}
+                update={update}
+                onBeforeConnect={async () => {
+                  // Persist the draft + step so the OAuth redirect round-trip
+                  // resumes here with the tenant's input intact (Fix #2).
+                  await patchOnboarding({
+                    currentStep: "social",
+                    completedSteps: completed,
+                    data: draft,
+                  });
+                }}
+              />
             ) : step.key === "sources" ? (
               <SourcesStep blurb={draft.blurb ?? ""} />
             ) : (

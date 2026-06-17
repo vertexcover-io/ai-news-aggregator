@@ -466,6 +466,92 @@ describe("GET /callback", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Fix #2: returnTo — onboarding connects must resume on the wizard, not /settings
+// ─────────────────────────────────────────────────────────────────────────────
+describe("returnTo round-trip", () => {
+  async function startWithReturnTo(
+    app: Hono,
+    body: Record<string, unknown> | undefined,
+  ): Promise<void> {
+    const res = await app.request(
+      "/api/admin/social-credentials/twitter/oauth/start",
+      {
+        method: "POST",
+        headers: {
+          cookie: authCookie(),
+          ...(body ? { "content-type": "application/json" } : {}),
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      },
+    );
+    expect(res.status).toBe(200);
+  }
+
+  it("callback redirects to a valid /admin returnTo carried from start", async () => {
+    const { store, redis } = makeRedis();
+    const fake = makeProvider();
+    const deps: TwitterOAuthRouterDeps = {
+      getAppCredsRepo: () => makeCredRepo(twitterClientRecord),
+      getTokenRepo: () => makeTokenRepo().repo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+      provider: fake.provider,
+    };
+    const app = buildTestApp(deps);
+    await startWithReturnTo(app, { returnTo: "/admin/onboarding" });
+    expect(store.has("twitter:oauth:returnto:st-123")).toBe(true);
+
+    const res = await app.request(
+      "/api/admin/social-credentials/twitter/oauth/callback?code=c&state=st-123",
+    );
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("/admin/onboarding");
+    expect(location).toContain("twitter=connected");
+    expect(location).not.toContain("/admin/settings");
+  });
+
+  it("defaults to /admin/settings when no returnTo provided", async () => {
+    const { redis } = makeRedis();
+    const fake = makeProvider();
+    const deps: TwitterOAuthRouterDeps = {
+      getAppCredsRepo: () => makeCredRepo(twitterClientRecord),
+      getTokenRepo: () => makeTokenRepo().repo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+      provider: fake.provider,
+    };
+    const app = buildTestApp(deps);
+    await startWithReturnTo(app, undefined);
+
+    const res = await app.request(
+      "/api/admin/social-credentials/twitter/oauth/callback?code=c&state=st-123",
+    );
+    expect(res.headers.get("location") ?? "").toContain("/admin/settings");
+  });
+
+  it("rejects an off-origin returnTo → /admin/settings", async () => {
+    const { redis } = makeRedis();
+    const fake = makeProvider();
+    const deps: TwitterOAuthRouterDeps = {
+      getAppCredsRepo: () => makeCredRepo(twitterClientRecord),
+      getTokenRepo: () => makeTokenRepo().repo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+      provider: fake.provider,
+    };
+    const app = buildTestApp(deps);
+    await startWithReturnTo(app, { returnTo: "https://evil.com/admin" });
+
+    const res = await app.request(
+      "/api/admin/social-credentials/twitter/oauth/callback?code=c&state=st-123",
+    );
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("/admin/settings");
+    expect(location).not.toContain("evil.com");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /status → connected + token expiry for the CALLING tenant.
 // ─────────────────────────────────────────────────────────────────────────────
 describe("GET /status", () => {

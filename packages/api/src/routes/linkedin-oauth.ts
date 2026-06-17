@@ -36,6 +36,7 @@ import {
 import type { AppCredentialsRepo } from "@api/repositories/app-credentials.js";
 import type { SocialTokensRepo } from "@api/repositories/social-tokens.js";
 import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
+import { sanitizeReturnTo } from "@api/lib/oauth-return.js";
 import { resolveLinkedInClient } from "@api/services/linkedin-credential-resolver.js";
 import {
   buildAuthorizeUrl,
@@ -73,11 +74,20 @@ export interface LinkedInOAuthRouterDeps {
 
 const STATE_TTL_SECONDS = 600; // 10 minutes
 const STATE_KEY_PREFIX = "linkedin:oauth:state:";
+// Fix #2: the surface the connect started from (/admin/settings or
+// /admin/onboarding) is stashed under a SEPARATE key so the session-less
+// callback can send the browser back there. Kept apart from the state value
+// so the tenant-id/"1" sentinel logic above is untouched.
+const RETURNTO_KEY_PREFIX = "linkedin:oauth:returnto:";
 
 const oauthLog = createLogger("linkedin-oauth");
 
 function stateKey(state: string): string {
   return `${STATE_KEY_PREFIX}${state}`;
+}
+
+function returnToKey(state: string): string {
+  return `${RETURNTO_KEY_PREFIX}${state}`;
 }
 
 function buildRedirectUri(env: Record<string, string | undefined>): string {
@@ -87,14 +97,16 @@ function buildRedirectUri(env: Record<string, string | undefined>): string {
 
 function settingsRedirectUrl(
   env: Record<string, string | undefined>,
+  dest: string,
   params: Record<string, string>,
 ): string {
   const base = env.PUBLIC_BASE_URL ?? "";
   const qs = new URLSearchParams(params).toString();
-  // Redirect to /admin/settings on the web frontend (same domain in production).
-  // In tests PUBLIC_BASE_URL points to the server; the redirect is a simple
-  // relative path resolution. The frontend handles the ?linkedin= query param.
-  return `${base}/admin/settings?${qs}`;
+  // Redirect to the originating admin surface on the web frontend (same domain
+  // in production) — `/admin/settings` by default, `/admin/onboarding` for the
+  // wizard (Fix #2). `dest` is already sanitised to a same-origin /admin path.
+  // The frontend handles the ?linkedin= query param.
+  return `${base}${dest}?${qs}`;
 }
 
 /**
@@ -128,6 +140,17 @@ export function createLinkedInOAuthRouter(
     const scope = tenantScopeFromContext(c);
     const stateValue = isTenantContext(scope) ? scope.tenantId : "1";
     await deps.redis.set(stateKey(state), stateValue, "EX", STATE_TTL_SECONDS);
+
+    // Optional `returnTo` (Fix #2): stash where to send the browser after the
+    // callback (e.g. the onboarding wizard). Sanitised on the callback side.
+    const body: unknown = await c.req.json().catch(() => null);
+    const returnTo =
+      typeof body === "object" && body !== null && "returnTo" in body
+        ? (body as { returnTo?: unknown }).returnTo
+        : undefined;
+    if (typeof returnTo === "string" && returnTo !== "") {
+      await deps.redis.set(returnToKey(state), returnTo, "EX", STATE_TTL_SECONDS);
+    }
 
     const authorizeUrl = buildAuthorizeUrl({
       clientId: creds.clientId,
@@ -196,12 +219,16 @@ export function createLinkedInOAuthCallbackRouter(
       "linkedin oauth callback hit",
     );
 
+    // Resolve where to send the browser back (Fix #2). The returnTo is keyed by
+    // state; without a valid state we have nothing to look up, so errors fall
+    // back to the sanitised default (/admin/settings).
+    let dest = sanitizeReturnTo(undefined);
     const errorRedirect = (reason: string): Response => {
       oauthLog.warn(
         { event: "linkedin.callback.error_redirect", reason },
         "linkedin oauth callback redirecting with error",
       );
-      return c.redirect(settingsRedirectUrl(env, { linkedin: "error", reason }));
+      return c.redirect(settingsRedirectUrl(env, dest, { linkedin: "error", reason }));
     };
 
     // LinkedIn rejected the authorize request (e.g. unregistered redirect_uri,
@@ -220,6 +247,11 @@ export function createLinkedInOAuthCallbackRouter(
     }
     // Consume the state immediately so it cannot be replayed.
     await deps.redis.del(stateKey(state));
+
+    // Consume the matching returnTo (if any) and sanitise it for the redirect.
+    const storedReturnTo = await deps.redis.get(returnToKey(state));
+    await deps.redis.del(returnToKey(state));
+    dest = sanitizeReturnTo(storedReturnTo ?? undefined);
 
     if (!code) {
       return errorRedirect("state");
@@ -309,7 +341,7 @@ export function createLinkedInOAuthCallbackRouter(
       "linkedin oauth connected; token saved",
     );
 
-    return c.redirect(settingsRedirectUrl(env, { linkedin: "connected" }));
+    return c.redirect(settingsRedirectUrl(env, dest, { linkedin: "connected" }));
   });
 
   return app;

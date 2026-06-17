@@ -296,6 +296,38 @@ describe("admin-social-credentials router — DELETE", () => {
     expect(state.token).toBeNull();
   });
 
+  it("DELETE /twitter also disconnects the OAuth token (Fix #2)", async () => {
+    const deleted: string[] = [];
+    const tokenRepo: SocialTokensRepo = {
+      saveToken() {
+        return Promise.resolve();
+      },
+      getLinkedIn() {
+        return Promise.resolve(null);
+      },
+      getTwitter(): Promise<SocialTokenRecord | null> {
+        return Promise.resolve({
+          accessToken: "at",
+          refreshToken: "rt",
+          expiresAt: new Date(),
+          metadata: null,
+        });
+      },
+      deleteToken(platform): Promise<boolean> {
+        deleted.push(platform);
+        return Promise.resolve(true);
+      },
+    };
+    const { app } = buildApp({ tokenRepo });
+    const res = await app.request("/twitter", {
+      method: "DELETE",
+      headers: { cookie: authCookie() },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { removed: boolean }).removed).toBe(true);
+    expect(deleted).toContain("twitter");
+  });
+
   it("DELETE /linkedin with no token reports removed:false", async () => {
     const { repo: tokenRepo } = makeTokenRepo(null);
     const { app } = buildApp({ tokenRepo });

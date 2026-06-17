@@ -99,9 +99,15 @@ export function createAdminSocialCredentialsRouter(
         : false;
       return c.json({ ok: true, removed });
     }
+    // Disconnect Twitter: the tenant connects via OAuth now (Fix #2), so the
+    // disconnect removes the OAuth token (mirror /linkedin). Also clear any
+    // legacy manual OAuth1 cred so an old row can't linger.
     if (slug === "twitter") {
-      const removed = await deps.getRepo(scope).delete("twitter");
-      return c.json({ ok: true, removed });
+      const tokenRemoved = deps.getTokenRepo
+        ? await deps.getTokenRepo(scope).deleteToken("twitter")
+        : false;
+      const legacyRemoved = await deps.getRepo(scope).delete("twitter");
+      return c.json({ ok: true, removed: tokenRemoved || legacyRemoved });
     }
     return c.json({ error: "invalid_platform" }, 400);
   });

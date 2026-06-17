@@ -56,6 +56,26 @@ vi.mock("../../../src/api/sources", () => ({
   setTenantSourceEnabled: vi.fn(),
 }));
 
+// Fix #2: the social step now renders live OAuth connect controls.
+const disconnectedStatus = {
+  data: {
+    clientConfigured: true,
+    connected: false,
+    connectedAs: null,
+    expiresAt: null,
+    hasRefreshToken: false,
+  },
+  isLoading: false,
+  refetch: vi.fn(),
+};
+vi.mock("../../../src/api/socialCredentials", () => ({
+  useLinkedInOAuthStatus: vi.fn(() => disconnectedStatus),
+  startLinkedInOAuth: vi.fn(),
+  useTwitterOAuthStatus: vi.fn(() => disconnectedStatus),
+  startTwitterOAuth: vi.fn(),
+  useDeleteSocialCredentials: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+}));
+
 import { fetchMe } from "../../../src/api/auth";
 import {
   activateOnboarding,
@@ -151,6 +171,25 @@ function renderPage(): void {
 function previewPane(): HTMLElement {
   return screen.getByRole("complementary", { name: /live preview/i });
 }
+
+describe("Fix #2: social step OAuth connect controls", () => {
+  it("renders Connect LinkedIn + Connect Twitter on the social step", async () => {
+    mockGetOnboarding.mockResolvedValue(
+      makeResponse({ state: { currentStep: "social", completedSteps: [] } }),
+    );
+    mockFetchSources.mockResolvedValue([]);
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("linkedin-connect-btn")).toBeTruthy();
+    });
+    expect(screen.getByTestId("linkedin-connect-btn").textContent).toContain(
+      "Connect LinkedIn",
+    );
+    expect(screen.getByTestId("twitter-connect-btn").textContent).toContain(
+      "Connect Twitter",
+    );
+  });
+});
 
 describe("test_REQ_030_wizard_progress_resumes (UI)", () => {
   it("restores the saved step and field values on mount", async () => {

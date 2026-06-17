@@ -248,6 +248,11 @@ test.describe.serial("onboarding wizard", () => {
     await expect(
       page.getByRole("heading", { name: /Connect channels/i, level: 2 }),
     ).toBeVisible({ timeout: 15_000 });
+    // Fix #2: the social step offers live OAuth connect controls for both
+    // platforms (disabled here — the shared app clients aren't configured in
+    // the hermetic env — but present).
+    await expect(page.getByTestId("linkedin-connect-btn")).toBeVisible();
+    await expect(page.getByTestId("twitter-connect-btn")).toBeVisible();
     // Saved fields survive: check the headline via the live preview slot.
     await expect(
       page

@@ -1,13 +1,33 @@
 import type { ReactElement } from "react";
 import type { StepProps } from "./wizardSteps";
 import { Field, INPUT_CLASS, StepHeading } from "./fields";
+import { SocialConnectControls } from "../SocialConnectControls";
+import {
+  useLinkedInOAuthStatus,
+  startLinkedInOAuth,
+  useTwitterOAuthStatus,
+  startTwitterOAuth,
+} from "../../api/socialCredentials";
+
+interface SocialStepProps extends StepProps {
+  /**
+   * Persist the wizard draft before an OAuth redirect leaves the page, so the
+   * round-trip resumes on this step with the tenant's input intact (Fix #2).
+   */
+  onBeforeConnect?: () => Promise<void>;
+}
 
 /**
- * Optional channels step. LinkedIn / X OAuth connects arrive with the
- * credentials rework (P12/P13) — until then the rows are informative only.
- * The sending email is stored in the wizard data for the P14 domain flow.
+ * Connect channels step. LinkedIn / X connect via OAuth through the shared app
+ * clients (P12/P13); the connect flow redirects out and resumes here
+ * (`returnTo=/admin/onboarding`). The sending email is stored in the wizard
+ * data for the P14 domain flow.
  */
-export function SocialStep({ data, update }: StepProps): ReactElement {
+export function SocialStep({
+  data,
+  update,
+  onBeforeConnect,
+}: SocialStepProps): ReactElement {
   return (
     <div>
       <StepHeading
@@ -15,45 +35,34 @@ export function SocialStep({ data, update }: StepProps): ReactElement {
         title="Connect channels"
         blurb="Optional — connect where you’ll publish. You can do all of this later from Settings."
       />
-      {[
-        {
-          name: "LinkedIn",
-          hint: "Post the digest to your page",
-          badge: "in",
-          badgeClass: "bg-[#0a66c2]",
-        },
-        {
-          name: "Twitter / X",
-          hint: "Authorize posting via OAuth",
-          badge: "𝕏",
-          badgeClass: "bg-[#111111]",
-        },
-      ].map((row) => (
-        <div
-          key={row.name}
-          className="mb-3 flex items-center justify-between rounded-xl border border-[#e7e2d6] px-4 py-3.5"
-        >
-          <span className="flex items-center gap-3">
-            <span
-              aria-hidden="true"
-              className={`grid h-[34px] w-[34px] place-items-center rounded-lg font-mono text-[13px] font-semibold text-white ${row.badgeClass}`}
-            >
-              {row.badge}
-            </span>
-            <span>
-              <span className="block text-[14px] font-semibold text-[#14110d]">
-                {row.name}
-              </span>
-              <span className="block text-[12.5px] text-[#6b6557]">
-                {row.hint}
-              </span>
-            </span>
+      <div className="space-y-4">
+        <div className="rounded-xl border border-[#e7e2d6] px-4 py-3.5">
+          <span className="mb-2 block text-[14px] font-semibold text-[#14110d]">
+            LinkedIn
           </span>
-          <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-[#a39d8d]">
-            Available after setup
-          </span>
+          <SocialConnectControls
+            platform="linkedin"
+            label="LinkedIn"
+            returnTo="/admin/onboarding"
+            useStatus={useLinkedInOAuthStatus}
+            start={startLinkedInOAuth}
+            onBeforeConnect={onBeforeConnect}
+          />
         </div>
-      ))}
+        <div className="rounded-xl border border-[#e7e2d6] px-4 py-3.5">
+          <span className="mb-2 block text-[14px] font-semibold text-[#14110d]">
+            Twitter / X
+          </span>
+          <SocialConnectControls
+            platform="twitter"
+            label="Twitter / X"
+            returnTo="/admin/onboarding"
+            useStatus={useTwitterOAuthStatus}
+            start={startTwitterOAuth}
+            onBeforeConnect={onBeforeConnect}
+          />
+        </div>
+      </div>
       <div className="mt-5">
         <Field
           label="Sending email (broadcast)"

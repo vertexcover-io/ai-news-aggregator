@@ -683,6 +683,108 @@ describe("GET /status", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Fix #2: returnTo — onboarding connects must resume on the wizard, not /settings
+// ─────────────────────────────────────────────────────────────────────────────
+describe("returnTo round-trip", () => {
+  function makeFetchSuccess(): typeof fetch {
+    let callCount = 0;
+    return vi.fn((): Promise<Response> => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ access_token: "at", refresh_token: "rt", expires_in: 3600 }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ sub: "p", name: "N" }), { status: 200 }),
+      );
+    }) as typeof fetch;
+  }
+
+  async function startWithReturnTo(
+    app: Hono,
+    body: Record<string, unknown> | undefined,
+  ): Promise<string> {
+    const res = await app.request(
+      "/api/admin/social-credentials/linkedin/oauth/start",
+      {
+        method: "POST",
+        headers: {
+          cookie: authCookie(),
+          ...(body ? { "content-type": "application/json" } : {}),
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      },
+    );
+    const json = (await res.json()) as { authorizeUrl: string };
+    return new URL(json.authorizeUrl).searchParams.get("state") ?? "";
+  }
+
+  it("callback redirects to a valid /admin returnTo carried from start", async () => {
+    const { store, redis } = makeRedis();
+    const deps: LinkedInOAuthRouterDeps = {
+      getAppCredsRepo: () => makeCredRepo(linkedInRecord),
+      getTokenRepo: () => makeTokenRepo().repo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+      fetchFn: makeFetchSuccess(),
+    };
+    const app = buildTestApp(deps);
+    const state = await startWithReturnTo(app, { returnTo: "/admin/onboarding" });
+    expect(store.has(`linkedin:oauth:returnto:${state}`)).toBe(true);
+
+    const res = await app.request(
+      `/api/admin/social-credentials/linkedin/oauth/callback?code=c&state=${state}`,
+    );
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("/admin/onboarding");
+    expect(location).toContain("linkedin=connected");
+    expect(location).not.toContain("/admin/settings");
+  });
+
+  it("callback defaults to /admin/settings when no returnTo was provided", async () => {
+    const { redis } = makeRedis();
+    const deps: LinkedInOAuthRouterDeps = {
+      getAppCredsRepo: () => makeCredRepo(linkedInRecord),
+      getTokenRepo: () => makeTokenRepo().repo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+      fetchFn: makeFetchSuccess(),
+    };
+    const app = buildTestApp(deps);
+    const state = await startWithReturnTo(app, undefined);
+
+    const res = await app.request(
+      `/api/admin/social-credentials/linkedin/oauth/callback?code=c&state=${state}`,
+    );
+    expect(res.headers.get("location") ?? "").toContain("/admin/settings");
+  });
+
+  it("rejects an off-origin returnTo → /admin/settings", async () => {
+    const { redis } = makeRedis();
+    const deps: LinkedInOAuthRouterDeps = {
+      getAppCredsRepo: () => makeCredRepo(linkedInRecord),
+      getTokenRepo: () => makeTokenRepo().repo,
+      redis,
+      env: { PUBLIC_BASE_URL },
+      fetchFn: makeFetchSuccess(),
+    };
+    const app = buildTestApp(deps);
+    const state = await startWithReturnTo(app, { returnTo: "//evil.com" });
+
+    const res = await app.request(
+      `/api/admin/social-credentials/linkedin/oauth/callback?code=c&state=${state}`,
+    );
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("/admin/settings");
+    expect(location).not.toContain("evil.com");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // REQ-003/name: callback persists name from userinfo into metadata
 // ─────────────────────────────────────────────────────────────────────────────
 describe("GET /callback — name persistence", () => {

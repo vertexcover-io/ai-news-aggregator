@@ -30,6 +30,7 @@ import {
 import type { AppCredentialsRepo } from "@api/repositories/app-credentials.js";
 import type { SocialTokensRepo } from "@api/repositories/social-tokens.js";
 import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
+import { sanitizeReturnTo } from "@api/lib/oauth-return.js";
 import { resolveTwitterClient } from "@api/services/twitter-client-resolver.js";
 import {
   createTwitterOAuthProvider,
@@ -59,6 +60,9 @@ export interface TwitterOAuthRouterDeps {
 
 const STATE_TTL_SECONDS = 600; // 10 minutes
 const STATE_KEY_PREFIX = "twitter:oauth:state:";
+// Fix #2: originating surface (/admin/settings | /admin/onboarding), kept apart
+// from the state payload so the existing PKCE/tenant logic is untouched.
+const RETURNTO_KEY_PREFIX = "twitter:oauth:returnto:";
 
 /** Persisted under the state key: PKCE verifier + the starting tenant. */
 interface TwitterOAuthStatePayload {
@@ -73,6 +77,10 @@ function stateKey(state: string): string {
   return `${STATE_KEY_PREFIX}${state}`;
 }
 
+function returnToKey(state: string): string {
+  return `${RETURNTO_KEY_PREFIX}${state}`;
+}
+
 function buildRedirectUri(env: Record<string, string | undefined>): string {
   const base = env.PUBLIC_BASE_URL ?? "";
   return `${base}/api/admin/social-credentials/twitter/oauth/callback`;
@@ -80,12 +88,14 @@ function buildRedirectUri(env: Record<string, string | undefined>): string {
 
 function settingsRedirectUrl(
   env: Record<string, string | undefined>,
+  dest: string,
   params: Record<string, string>,
 ): string {
   const base = env.PUBLIC_BASE_URL ?? "";
   const qs = new URLSearchParams(params).toString();
-  // The frontend settings page handles the ?twitter= query param.
-  return `${base}/admin/settings?${qs}`;
+  // The originating admin surface handles the ?twitter= query param. `dest` is
+  // sanitised to a same-origin /admin path (Fix #2).
+  return `${base}${dest}?${qs}`;
 }
 
 function parseStatePayload(raw: string): TwitterOAuthStatePayload | null {
@@ -149,6 +159,17 @@ export function createTwitterOAuthRouter(deps: TwitterOAuthRouterDeps): Hono {
       STATE_TTL_SECONDS,
     );
 
+    // Optional `returnTo` (Fix #2): where to send the browser after the
+    // callback (e.g. the onboarding wizard). Sanitised on the callback side.
+    const reqBody: unknown = await c.req.json().catch(() => null);
+    const returnTo =
+      typeof reqBody === "object" && reqBody !== null && "returnTo" in reqBody
+        ? (reqBody as { returnTo?: unknown }).returnTo
+        : undefined;
+    if (typeof returnTo === "string" && returnTo !== "") {
+      await deps.redis.set(returnToKey(state), returnTo, "EX", STATE_TTL_SECONDS);
+    }
+
     return c.json({ authorizeUrl: url });
   });
 
@@ -208,12 +229,14 @@ export function createTwitterOAuthCallbackRouter(
       "twitter oauth callback hit",
     );
 
+    // Where to send the browser back (Fix #2); resolved once state is valid.
+    let dest = sanitizeReturnTo(undefined);
     const errorRedirect = (reason: string): Response => {
       oauthLog.warn(
         { event: "twitter.callback.error_redirect", reason },
         "twitter oauth callback redirecting with error",
       );
-      return c.redirect(settingsRedirectUrl(env, { twitter: "error", reason }));
+      return c.redirect(settingsRedirectUrl(env, dest, { twitter: "error", reason }));
     };
 
     // Twitter rejected the authorize request (user denied, bad client config).
@@ -231,6 +254,11 @@ export function createTwitterOAuthCallbackRouter(
     }
     // Consume the state immediately so it cannot be replayed.
     await deps.redis.del(stateKey(state));
+
+    // Consume the matching returnTo (if any) and sanitise it for the redirect.
+    const storedReturnTo = await deps.redis.get(returnToKey(state));
+    await deps.redis.del(returnToKey(state));
+    dest = sanitizeReturnTo(storedReturnTo ?? undefined);
 
     const payload = parseStatePayload(storedValue);
     if (payload === null || !code) {
@@ -291,7 +319,7 @@ export function createTwitterOAuthCallbackRouter(
       "twitter oauth connected; token saved",
     );
 
-    return c.redirect(settingsRedirectUrl(env, { twitter: "connected" }));
+    return c.redirect(settingsRedirectUrl(env, dest, { twitter: "connected" }));
   });
 
   return app;
