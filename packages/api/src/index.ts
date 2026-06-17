@@ -23,6 +23,10 @@ import { createDefaultArchivesSearchRouter } from "@api/routes/archives-search.j
 import { createDefaultPublicHomeRouter } from "@api/routes/home.js";
 import { createDefaultPublicMustReadRouter } from "@api/routes/must-read.js";
 import { createDefaultPublicSourcesRouter } from "@api/routes/sources.js";
+import {
+  createDefaultLlmTxtRouter,
+  createDefaultLlmTxtArchiveRouter,
+} from "@api/routes/llm-txt.js";
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
 import { createDefaultCollectorHealthRouter } from "@api/routes/collector-health.js";
 import { createDefaultAdminSocialCredentialsRouter } from "@api/routes/admin-social-credentials.js";
@@ -95,6 +99,8 @@ const processingQueue = new BullQueue("processing", { connection: createRedisCon
 const collectorHealthQueue = new BullQueue(COLLECTOR_HEALTH_QUEUE_NAME, { connection: createRedisConnection() });
 // Shared Redis connection for OAuth state storage (SET/GET/DEL — not a BullMQ queue).
 const oauthRedis = createRedisConnection();
+// Redis connection backing the version-keyed llm.txt content cache.
+const llmTxtRedis = createRedisConnection();
 
 const settingsRepoForBootstrap = createUserSettingsRepo(getDb());
 await removeLegacySchedulers(processingQueue);
@@ -180,6 +186,14 @@ const app = buildApp({
   runsRouter: createDefaultRunsRouter(),
   settingsRouter: createDefaultSettingsRouter(),
   collectorHealthRouter: createDefaultCollectorHealthRouter(),
+  llmTxtIndexRouter: createDefaultLlmTxtRouter({
+    baseUrl: newsletterBaseUrl,
+    redis: llmTxtRedis,
+  }),
+  llmTxtArchiveRouter: createDefaultLlmTxtArchiveRouter({
+    baseUrl: newsletterBaseUrl,
+    redis: llmTxtRedis,
+  }),
   adminRouter: createAdminRouter({
     adminPassword,
     sessionSecret,
