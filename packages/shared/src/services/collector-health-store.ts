@@ -14,14 +14,17 @@ interface RedisLike {
   mget(...keys: string[]): Promise<(string | null)[]>;
 }
 
+// Every operation is tenant-scoped (the Redis key embeds the tenantId) so one
+// tenant's collector-health result never surfaces in another's snapshot.
 export interface CollectorHealthStore {
-  set(result: CollectorHealthResult): Promise<void>;
+  set(tenantId: string, result: CollectorHealthResult): Promise<void>;
   setRunning(
+    tenantId: string,
     collector: HealthCheckCollector,
     trigger: CollectorHealthTrigger,
     now: Date,
   ): Promise<void>;
-  getSnapshot(): Promise<CollectorHealthSnapshot>;
+  getSnapshot(tenantId: string): Promise<CollectorHealthSnapshot>;
 }
 
 const NEVER_ENTRY = (collector: HealthCheckCollector): CollectorHealthResult => ({
@@ -48,12 +51,16 @@ function parseOrNever(
 
 export function createCollectorHealthStore(redis: RedisLike): CollectorHealthStore {
   return {
-    async set(result: CollectorHealthResult): Promise<void> {
+    async set(tenantId: string, result: CollectorHealthResult): Promise<void> {
       // No "EX" — persists forever (REQ-007)
-      await redis.set(collectorHealthKey(result.collector), JSON.stringify(result));
+      await redis.set(
+        collectorHealthKey(tenantId, result.collector),
+        JSON.stringify(result),
+      );
     },
 
     async setRunning(
+      tenantId: string,
       collector: HealthCheckCollector,
       trigger: CollectorHealthTrigger,
       now: Date,
@@ -68,11 +75,16 @@ export function createCollectorHealthStore(redis: RedisLike): CollectorHealthSto
         detail: null,
       };
       // No "EX" — persists forever (REQ-007)
-      await redis.set(collectorHealthKey(collector), JSON.stringify(placeholder));
+      await redis.set(
+        collectorHealthKey(tenantId, collector),
+        JSON.stringify(placeholder),
+      );
     },
 
-    async getSnapshot(): Promise<CollectorHealthSnapshot> {
-      const keys = HEALTH_CHECKABLE_COLLECTORS.map(collectorHealthKey);
+    async getSnapshot(tenantId: string): Promise<CollectorHealthSnapshot> {
+      const keys = HEALTH_CHECKABLE_COLLECTORS.map((c) =>
+        collectorHealthKey(tenantId, c),
+      );
       const values = await redis.mget(...keys);
       const collectors = HEALTH_CHECKABLE_COLLECTORS.map((c, i) =>
         parseOrNever(values[i] ?? null, c),

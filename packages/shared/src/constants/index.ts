@@ -18,8 +18,10 @@ export const HEALTH_CHECKABLE_COLLECTORS = [
   "blog",
   "web_search",
 ] as const satisfies readonly HealthCheckCollector[];
-export const collectorHealthKey = (c: HealthCheckCollector): string =>
-  `collector-health:${c}`;
+export const collectorHealthKey = (
+  tenantId: string,
+  c: HealthCheckCollector,
+): string => `collector-health:${tenantId}:${c}`;
 export const COLLECTOR_HEALTH_QUEUE_NAME = "collector-health";
 export const COLLECTOR_HEALTH_SCHEDULER_KEY = "collector-health:default";
 export const COLLECTOR_HEALTH_LEAD_MINUTES = 30;

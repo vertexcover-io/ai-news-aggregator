@@ -17,6 +17,7 @@ import type {
 import { settingsConfigsFromSourceRows } from "@newsletter/shared/types";
 import type { UserSettings } from "@newsletter/shared";
 import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import { scopedTenantId } from "@newsletter/shared/types/tenant-context";
 import type { SourcesRepo } from "@api/repositories/sources.js";
 import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
 
@@ -71,6 +72,15 @@ export function createCollectorHealthRouter(deps: CollectorHealthRouterDeps): Ho
       return c.json({ error: parsed.error.message }, 400);
     }
 
+    // The check is tenant-scoped: the worker must resolve THIS tenant's config
+    // (not the AGENTLOOP bridge), and the result is stored under this tenant's
+    // key. Without a session tenant we can't scope it — reject.
+    const scope = tenantScopeFromContext(c);
+    const tenantId = scopedTenantId(scope);
+    if (tenantId === undefined) {
+      return c.json({ error: "no tenant in session" }, 400);
+    }
+
     let targets: HealthCheckCollector[];
     if (parsed.data.collector !== undefined) {
       // EDGE-013: explicit collector allowed even if disabled
@@ -78,7 +88,6 @@ export function createCollectorHealthRouter(deps: CollectorHealthRouterDeps): Ho
     } else {
       // REQ-002: absent -> all enabled. FIX #6: source rows win when the tenant
       // has any (mirrors GET /settings + daily-run); else user_settings flags.
-      const scope = tenantScopeFromContext(c);
       let configs: SettingsCollectorConfigs | null = await deps.getSettings(scope);
       const sourcesRepo = deps.getSourcesRepo?.(scope);
       if (sourcesRepo) {
@@ -92,13 +101,16 @@ export function createCollectorHealthRouter(deps: CollectorHealthRouterDeps): Ho
 
     const now = new Date();
     for (const collector of targets) {
-      await deps.store.setRunning(collector, "manual", now);
+      await deps.store.setRunning(tenantId, collector, "manual", now);
     }
 
     if (targets.length > 0) {
+      // Stamp the session tenant so the worker resolves the right config
+      // (jobTenantContext reads data.tenantId) — mirrors the runs route.
       await deps.collectorHealthQueue.add("collector-health", {
         collectors: targets,
         trigger: "manual",
+        tenantId,
       });
     }
 
@@ -106,7 +118,11 @@ export function createCollectorHealthRouter(deps: CollectorHealthRouterDeps): Ho
   });
 
   app.get("/", async (c) => {
-    const snapshot = await deps.store.getSnapshot();
+    const tenantId = scopedTenantId(tenantScopeFromContext(c));
+    if (tenantId === undefined) {
+      return c.json({ error: "no tenant in session" }, 400);
+    }
+    const snapshot = await deps.store.getSnapshot(tenantId);
     return c.json(snapshot);
   });
 

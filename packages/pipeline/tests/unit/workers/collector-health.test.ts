@@ -330,14 +330,14 @@ describe("handleCollectorHealthJob", () => {
     expect(vi.mocked(store.setRunning)).not.toHaveBeenCalled();
 
     // Both collectors must be persisted via store.set
-    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
-    const persistedCollectors = setCalls.map((c) => c[0].collector);
+    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [string, CollectorHealthResult][];
+    const persistedCollectors = setCalls.map((c) => c[1].collector);
     expect(persistedCollectors).toContain("hn");
     expect(persistedCollectors).toContain("reddit");
 
     // Both should be terminal (healthy or failed)
     for (const call of setCalls) {
-      expect(["healthy", "failed"]).toContain(call[0].status);
+      expect(["healthy", "failed"]).toContain(call[1].status);
     }
   });
 
@@ -353,8 +353,8 @@ describe("handleCollectorHealthJob", () => {
     });
 
     // setRunning must be called for each enabled collector before the check
-    const setRunningCalls = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls as [HealthCheckCollector, "scheduled" | "manual", Date][];
-    const runningCollectors = setRunningCalls.map((c) => c[0]);
+    const setRunningCalls = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls as [string, HealthCheckCollector, "scheduled" | "manual", Date][];
+    const runningCollectors = setRunningCalls.map((c) => c[1]);
 
     // With all enabled, should include hn, reddit, twitter, blog, web_search
     expect(runningCollectors).toContain("hn");
@@ -365,11 +365,11 @@ describe("handleCollectorHealthJob", () => {
 
     // trigger must be "scheduled"
     for (const call of setRunningCalls) {
-      expect(call[1]).toBe("scheduled");
+      expect(call[2]).toBe("scheduled");
     }
 
     // All should also reach terminal
-    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
+    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [string, CollectorHealthResult][];
     expect(setCalls.length).toBe(5); // 5 enabled collectors
   });
 
@@ -387,18 +387,18 @@ describe("handleCollectorHealthJob", () => {
     });
 
     // Both collectors should still get store.set called
-    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
-    const persistedCollectors = setCalls.map((c) => c[0].collector);
+    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [string, CollectorHealthResult][];
+    const persistedCollectors = setCalls.map((c) => c[1].collector);
     expect(persistedCollectors).toContain("hn");
     expect(persistedCollectors).toContain("reddit");
 
     // The thrown one must result in a "failed" status
-    const redditResult = setCalls.find((c) => c[0].collector === "reddit");
-    expect(redditResult?.[0]?.status).toBe("failed");
+    const redditResult = setCalls.find((c) => c[1].collector === "reddit");
+    expect(redditResult?.[1]?.status).toBe("failed");
 
     // The healthy one must be "healthy"
-    const hnResult = setCalls.find((c) => c[0].collector === "hn");
-    expect(hnResult?.[0]?.status).toBe("healthy");
+    const hnResult = setCalls.find((c) => c[1].collector === "hn");
+    expect(hnResult?.[1]?.status).toBe("healthy");
   });
 
   it("≥1 failure + webhook set → exactly one postToWebhook call with consolidated message (REQ-014)", async () => {
@@ -607,7 +607,7 @@ describe("handleCollectorHealthJob", () => {
   it("last-writer-wins: two sequential calls for same collector overwrite (EDGE-008)", async () => {
     const setResults: CollectorHealthResult[] = [];
     const store = makeStore({
-      set: vi.fn().mockImplementation((r: CollectorHealthResult) => {
+      set: vi.fn().mockImplementation((_tenantId: string, r: CollectorHealthResult) => {
         setResults.push(r);
         return Promise.resolve();
       }),
@@ -648,9 +648,9 @@ describe("handleCollectorHealthJob", () => {
       data: { collectors: ["hn"], trigger: "manual" },
     });
 
-    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
+    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [string, CollectorHealthResult][];
     expect(setCalls.length).toBe(1);
-    const result = setCalls[0][0];
+    const result = setCalls[0][1];
     expect(result.collector).toBe("hn");
     expect(result.trigger).toBe("manual");
     expect(result.checkedAt).toBeDefined();
@@ -675,17 +675,17 @@ describe("handleCollectorHealthJob", () => {
     ).rejects.toThrow("credential DB failure");
 
     // setRunning was called for scheduled trigger
-    const setRunningCalls = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls as [HealthCheckCollector, string, Date][];
-    expect(setRunningCalls.map((c) => c[0])).toContain("hn");
-    expect(setRunningCalls.map((c) => c[0])).toContain("reddit");
+    const setRunningCalls = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls as [string, HealthCheckCollector, string, Date][];
+    expect(setRunningCalls.map((c) => c[1])).toContain("hn");
+    expect(setRunningCalls.map((c) => c[1])).toContain("reddit");
 
     // store.set must have been called with "failed" for each targeted collector
-    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
-    const persistedCollectors = setCalls.map((c) => c[0].collector);
+    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [string, CollectorHealthResult][];
+    const persistedCollectors = setCalls.map((c) => c[1].collector);
     expect(persistedCollectors).toContain("hn");
     expect(persistedCollectors).toContain("reddit");
     for (const call of setCalls) {
-      expect(call[0].status).toBe("failed");
+      expect(call[1].status).toBe("failed");
     }
   });
 
@@ -707,8 +707,8 @@ describe("handleCollectorHealthJob", () => {
     ).rejects.toThrow("DB unavailable");
 
     // store.set must have been called with "failed" for "hn"
-    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
-    expect(setCalls.some((c) => c[0].collector === "hn" && c[0].status === "failed")).toBe(true);
+    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [string, CollectorHealthResult][];
+    expect(setCalls.some((c) => c[1].collector === "hn" && c[1].status === "failed")).toBe(true);
   });
 
   // ─── FIX #6: source rows are authoritative over user_settings ──────────────
@@ -769,7 +769,7 @@ describe("handleCollectorHealthJob", () => {
     });
 
     const targets = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls
-      .map((c) => (c as [HealthCheckCollector])[0])
+      .map((c) => (c as [string, HealthCheckCollector])[1])
       .sort();
     expect(targets).toEqual(["blog", "reddit"]);
   });
@@ -788,7 +788,7 @@ describe("handleCollectorHealthJob", () => {
     });
 
     const targets = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls
-      .map((c) => (c as [HealthCheckCollector])[0])
+      .map((c) => (c as [string, HealthCheckCollector])[1])
       .sort();
     expect(targets).toEqual(["blog", "hn", "reddit", "twitter", "web_search"]);
   });

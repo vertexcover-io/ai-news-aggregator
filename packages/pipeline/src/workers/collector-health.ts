@@ -233,6 +233,11 @@ export async function handleCollectorHealthJob(
   // P9 (REQ-061): scheduled entries carry the owning tenant — load THAT
   // tenant's settings. Legacy entries (no tenantId) keep the fixed repo.
   const tenantCtx = jobTenantContext(job.data) ?? getDefaultTenantScope();
+  // The store is tenant-scoped: results are written under the job's tenant so
+  // they surface in THAT tenant's snapshot. Manual checks always carry a
+  // tenantId (stamped by the API); the "default" fallback only ever applies to
+  // a legacy tenant-less job.
+  const storeTenantId = tenantCtx?.tenantId ?? "default";
   const settingsRepo =
     deps.getUserSettingsRepo !== undefined
       ? deps.getUserSettingsRepo(tenantCtx)
@@ -277,7 +282,7 @@ export async function handleCollectorHealthJob(
       const erroredAt = new Date().toISOString();
       await Promise.allSettled(
         payloadCollectors.map((c) =>
-          deps.store.set({
+          deps.store.set(storeTenantId, {
             collector: c,
             status: "failed",
             trigger,
@@ -311,7 +316,7 @@ export async function handleCollectorHealthJob(
   // For scheduled trigger only: write "running" state (manual already set by API)
   if (trigger === "scheduled") {
     await Promise.all(
-      targets.map((c) => deps.store.setRunning(c, "scheduled", now)),
+      targets.map((c) => deps.store.setRunning(storeTenantId, c, "scheduled", now)),
     );
   }
 
@@ -335,7 +340,7 @@ export async function handleCollectorHealthJob(
     const erroredAt = new Date().toISOString();
     await Promise.allSettled(
       targets.map((c) =>
-        deps.store.set({
+        deps.store.set(storeTenantId, {
           collector: c,
           status: "failed",
           trigger,
@@ -369,7 +374,7 @@ export async function handleCollectorHealthJob(
           reason: outcome.reason,
           detail: outcome.detail,
         };
-        await deps.store.set(result);
+        await deps.store.set(storeTenantId, result);
         return { collector, outcome };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -386,7 +391,7 @@ export async function handleCollectorHealthJob(
           reason: msg,
           detail: null,
         };
-        await deps.store.set(failedResult);
+        await deps.store.set(storeTenantId, failedResult);
         return { collector, outcome: { status: "failed" as const, durationMs: 0, reason: msg, detail: null } };
       }
     }),
