@@ -175,6 +175,22 @@ export interface TenantBranding {
   isTenantZero: boolean;
 }
 
+/**
+ * Admin branding settings (`GET/PUT /api/settings/branding`, FIX #1) — the
+ * onboarding-captured brand fields surfaced for view + edit in Admin Settings.
+ * Distinct from the public `TenantBranding`: no feature flags / tenant-zero
+ * marker, and the logo previews from the session-scoped admin endpoint.
+ */
+export interface BrandingSettings {
+  name: string;
+  headline: string | null;
+  topicStrip: string | null;
+  subtagline: string | null;
+  /** Versioned admin preview URL (`/api/settings/branding/logo?v=…`); null when no logo. */
+  logoUrl: string | null;
+  hasLogo: boolean;
+}
+
 /* ── Auth wire types (P3: signup / login / session) ─────────────────────── */
 
 /** The authenticated user as exposed to the web client (no passwordHash). */

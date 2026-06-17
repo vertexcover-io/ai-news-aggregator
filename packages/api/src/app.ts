@@ -113,6 +113,13 @@ export interface BuildAppDeps {
    */
   notificationSettingsRouter?: Hono;
   /**
+   * Admin branding settings (FIX #1): GET/PUT /api/settings/branding +
+   * GET/POST /api/settings/branding/logo, auth-gated. Optional ONLY so
+   * existing unit tests composing buildApp keep working — index.ts always
+   * provides it.
+   */
+  brandingSettingsRouter?: Hono;
+  /**
    * Onboarding wizard routes (P11, REQ-030–038): GET/PATCH /api/onboarding,
    * slug-available, generate-prompts, discover-sources, activate — mounted
    * gated at /api/onboarding (the wizard is a tenant_admin surface).
@@ -239,6 +246,11 @@ export function buildApp(deps: BuildAppDeps): Hono {
   // GET "/" / PUT "/" never match those.
   if (deps.notificationSettingsRouter) {
     app.route("/api/settings", gatedWrap(gate, deps.notificationSettingsRouter));
+  }
+  // Admin branding (FIX #1) matches /branding + /branding/logo only; the legacy
+  // settings router's GET "/" / PUT "/" never match those sub-paths.
+  if (deps.brandingSettingsRouter) {
+    app.route("/api/settings", gatedWrap(gate, deps.brandingSettingsRouter));
   }
   app.route("/api/settings", gatedWrap(gate, deps.settingsRouter));
 

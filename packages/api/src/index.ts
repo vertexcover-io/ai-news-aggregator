@@ -25,6 +25,7 @@ import { createDefaultTenantSourcesRouter } from "@api/routes/tenant-sources.js"
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
 import { createDefaultSendingDomainRouter } from "@api/routes/sending-domain.js";
 import { createDefaultNotificationSettingsRouter } from "@api/routes/notification-settings.js";
+import { createDefaultBrandingSettingsRouter } from "@api/routes/branding-settings.js";
 import { createDefaultCollectorHealthRouter } from "@api/routes/collector-health.js";
 import { createDefaultAdminSocialCredentialsRouter } from "@api/routes/admin-social-credentials.js";
 import {
@@ -324,6 +325,8 @@ const app = buildApp({
   sendingDomainRouter: createDefaultSendingDomainRouter(),
   // Per-tenant notifications + feature flags (P16, REQ-092/093).
   notificationSettingsRouter: createDefaultNotificationSettingsRouter(),
+  // Admin branding view/edit (FIX #1) — onboarding-captured brand in Settings.
+  brandingSettingsRouter: createDefaultBrandingSettingsRouter(),
   collectorHealthRouter: createDefaultCollectorHealthRouter(),
   // Public tenant branding payload + logo bytes (P7).
   brandingRouter: createDefaultBrandingRouter(),

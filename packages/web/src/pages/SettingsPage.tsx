@@ -36,6 +36,7 @@ import { DEFAULT_SHORTLIST_PROMPT } from "@newsletter/shared/constants";
 import { SaveBar } from "../components/settings/SaveBar";
 import { SocialCredentialsPanel } from "../components/SocialCredentialsPanel";
 import { SendingDomainPanel } from "../components/settings/SendingDomainPanel";
+import { BrandingPanel } from "../components/settings/BrandingPanel";
 import { NotificationsPanel } from "../components/settings/NotificationsPanel";
 import { FeaturesPanel } from "../components/settings/FeaturesPanel";
 
@@ -248,6 +249,9 @@ export function SettingsPage(): ReactElement {
             <RankingPromptSection />
           </form>
         </FormProvider>
+
+        {/* Brand identity captured at onboarding — view + edit (FIX #1). */}
+        <BrandingPanel />
 
         <SocialCredentialsPanel />
 

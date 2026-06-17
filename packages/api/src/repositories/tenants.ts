@@ -89,6 +89,22 @@ export interface TenantsRepo {
     id: string,
     flags: TenantFeatureFlagsPatch,
   ): Promise<TenantRow | null>;
+  /**
+   * Updates the onboarding-captured branding text fields post-activation
+   * (FIX #1, Admin Settings). Logo bytes are updated separately via
+   * `updateLogo`; this never touches them.
+   */
+  updateBranding(
+    id: string,
+    patch: BrandingSettingsPatch,
+  ): Promise<TenantRow | null>;
+}
+
+export interface BrandingSettingsPatch {
+  name: string;
+  headline: string | null;
+  topicStrip: string | null;
+  subtagline: string | null;
 }
 
 export interface NotificationSettingsPatch {
@@ -299,6 +315,18 @@ export function createTenantsRepo(
       const rows = await db
         .update(tenants)
         .set({ ...flags, updatedAt: new Date() })
+        .where(eq(tenants.id, id))
+        .returning();
+      return rows[0] ?? null;
+    },
+
+    async updateBranding(
+      id: string,
+      patch: BrandingSettingsPatch,
+    ): Promise<TenantRow | null> {
+      const rows = await db
+        .update(tenants)
+        .set({ ...patch, updatedAt: new Date() })
         .where(eq(tenants.id, id))
         .returning();
       return rows[0] ?? null;
