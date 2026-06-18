@@ -15,6 +15,7 @@ import {
 import { CostButton } from "./CostButton";
 import { CostDialog } from "./CostDialog";
 import { useTriggerSocialPost } from "@/hooks/useTriggerSocialPost";
+import { useTriggerEmailSend } from "@/hooks/useTriggerEmailSend";
 import { SocialOverflowMenu } from "./SocialOverflowMenu";
 import type { SocialChannel } from "./SocialOverflowMenu";
 import {
@@ -127,10 +128,22 @@ function RunCardFooter({
   onCostClick: () => void;
 }): ReactElement {
   const mutation = useTriggerSocialPost(run.runId);
+  const emailMutation = useTriggerEmailSend(run.runId);
   const runDate = formatStartedAt(run.startedAt).date;
 
   function handlePostConfirm(channel: SocialChannel): void {
     mutation.mutate(channel, {
+      onError: (err) => {
+        toast.error(err.message);
+      },
+    });
+  }
+
+  function handleSendEmailConfirm(): void {
+    emailMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast.success("Newsletter email queued for delivery");
+      },
       onError: (err) => {
         toast.error(err.message);
       },
@@ -148,6 +161,8 @@ function RunCardFooter({
         runDate={runDate}
         onPostConfirm={handlePostConfirm}
         isPending={mutation.isPending}
+        onSendEmailConfirm={handleSendEmailConfirm}
+        emailPending={emailMutation.isPending}
       />
       <Button
         asChild
