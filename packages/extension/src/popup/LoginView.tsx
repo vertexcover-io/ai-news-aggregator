@@ -21,32 +21,46 @@ export default function LoginView({ onLogin }: Props) {
       onLogin(token);
     } catch (err: unknown) {
       const status = (err as { status?: number }).status;
-      setError(status === 401 ? "Invalid password" : "Login failed");
+      setError(
+        status === 401 ? "Incorrect password." : "Something went wrong. Try again.",
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div style={{ padding: 16 }}>
-      <h2 style={{ marginTop: 0 }}>Newsletter Login</h2>
+    <div className="popup">
+      <header className="masthead">
+        <p className="eyebrow">The Daily Read</p>
+        <h1 className="title">Admin</h1>
+        <p className="subtitle">Sign in to add stories</p>
+      </header>
       <form onSubmit={(e) => void handleSubmit(e)}>
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => {
-            setPassword(e.target.value);
-          }}
-          style={{ display: "block", width: "100%", marginBottom: 8 }}
-        />
-        {error && (
-          <div style={{ color: "red", marginBottom: 8 }} role="alert">
+        <div className="field">
+          <label className="label" htmlFor="password">
+            Password
+          </label>
+          <input
+            id="password"
+            className="input"
+            type="password"
+            required
+            autoFocus
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (error) setError(null);
+            }}
+          />
+        </div>
+        {error !== null && (
+          <p className="error" role="alert" aria-live="polite">
             {error}
-          </div>
+          </p>
         )}
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Logging in…" : "Log in"}
+        <button className="btn" type="submit" disabled={submitting}>
+          {submitting ? "Signing in…" : "Sign in"}
         </button>
       </form>
     </div>

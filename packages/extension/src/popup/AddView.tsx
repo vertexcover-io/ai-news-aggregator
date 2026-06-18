@@ -51,68 +51,94 @@ export default function AddView({ token, onLogout }: Props) {
     }
   };
 
+  const handleLogout = () => {
+    void clearToken().then(onLogout);
+  };
+
   if (state === "success") {
     return (
-      <div style={{ padding: 16 }}>
-        <p>
-          {alreadyExisted
-            ? "Already in the queue — no duplicate added."
-            : "Added to the next newsletter run!"}
-        </p>
-        <button
-          onClick={() => {
-            setState("idle");
-          }}
-        >
-          Add another
-        </button>
+      <div className="popup">
+        <div className="success">
+          <div className="success-mark" aria-hidden="true">
+            ✓
+          </div>
+          <p className="success-title">
+            {alreadyExisted ? "Already in the queue" : "Added to the next issue"}
+          </p>
+          <p className="success-note">
+            {alreadyExisted
+              ? "This story is already queued — no duplicate added."
+              : "It’ll be considered for tomorrow’s newsletter."}
+          </p>
+          <button
+            className="btn"
+            onClick={() => {
+              setState("idle");
+            }}
+          >
+            Add another
+          </button>
+        </div>
+        <div className="footer">
+          <button className="btn btn-ghost" onClick={handleLogout}>
+            Log out
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <h2 style={{ marginTop: 0 }}>Add to Newsletter</h2>
+    <div className="popup">
+      <header className="masthead">
+        <p className="eyebrow">The Daily Read</p>
+        <h1 className="title">Add a Story</h1>
+        <p className="subtitle">Queue this page for tomorrow</p>
+      </header>
       <form onSubmit={(e) => void handleSubmit(e)}>
-        <label htmlFor="url-input" style={{ display: "block", marginBottom: 4 }}>URL</label>
-        <input
-          id="url-input"
-          type="url"
-          value={url}
-          onChange={(e) => {
-            setUrl(e.target.value);
-          }}
-          style={{ display: "block", width: "100%", marginBottom: 8 }}
-        />
-        <label htmlFor="title-input" style={{ display: "block", marginBottom: 4 }}>
-          Title (optional)
-        </label>
-        <input
-          id="title-input"
-          type="text"
-          value={title}
-          onChange={(e) => {
-            setTitle(e.target.value);
-          }}
-          style={{ display: "block", width: "100%", marginBottom: 8 }}
-        />
+        <div className="field">
+          <label className="label" htmlFor="url-input">
+            URL
+          </label>
+          <input
+            id="url-input"
+            className="input"
+            type="url"
+            required
+            value={url}
+            onChange={(e) => {
+              setUrl(e.target.value);
+            }}
+          />
+        </div>
+        <div className="field">
+          <label className="label" htmlFor="title-input">
+            Title (optional)
+          </label>
+          <textarea
+            id="title-input"
+            className="input"
+            rows={2}
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+            }}
+          />
+        </div>
         {errorMsg !== null && (
-          <div style={{ color: "red", marginBottom: 8 }} role="alert">
+          <p className="error" role="alert" aria-live="polite">
             {errorMsg}
-          </div>
+          </p>
         )}
-        <button type="submit" disabled={state === "submitting"}>
+        <button className="btn" type="submit" disabled={state === "submitting"}>
           {state === "submitting" ? "Adding…" : "Add this page"}
         </button>
       </form>
-      <button
-        onClick={() => {
-          void clearToken().then(onLogout);
-        }}
-        style={{ marginTop: 8, fontSize: "0.8em", cursor: "pointer" }}
-      >
-        Log out
-      </button>
+      <div className="footer">
+        <button className="btn btn-ghost" onClick={handleLogout}>
+          Log out
+        </button>
+      </div>
     </div>
   );
 }

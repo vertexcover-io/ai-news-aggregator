@@ -23,21 +23,21 @@ test.describe("VS-1: Login flow (REQ-011)", () => {
     await page.goto(`chrome-extension://${extensionId}/index.html`);
 
     // Login view must be visible.
-    await expect(page.getByText("Newsletter Login")).toBeVisible();
-    await expect(page.getByPlaceholder("Password")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
+    await expect(page.getByLabel("Password")).toBeVisible();
     // AddView must NOT be present.
-    await expect(page.getByText("Add to Newsletter")).not.toBeVisible();
+    await expect(page.getByRole("heading", { name: "Add a Story" })).not.toBeVisible();
 
     // Submit wrong password → inline error, still on login view.
-    await page.getByPlaceholder("Password").fill(WRONG_PASSWORD);
-    await page.getByRole("button", { name: "Log in" }).click();
-    await expect(page.getByRole("alert")).toContainText("Invalid password");
-    await expect(page.getByText("Newsletter Login")).toBeVisible();
+    await page.getByLabel("Password").fill(WRONG_PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("alert")).toContainText("Incorrect password");
+    await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
 
     // Submit correct password → AddView shown.
-    await page.getByPlaceholder("Password").fill(ADMIN_PASSWORD);
-    await page.getByRole("button", { name: "Log in" }).click();
-    await expect(page.getByText("Add to Newsletter")).toBeVisible({ timeout: 10_000 });
+    await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Add a Story" })).toBeVisible({ timeout: 10_000 });
 
     await page.close();
   });
@@ -52,10 +52,10 @@ test.describe("VS-2: Add-current-tab flow (REQ-012, REQ-013, EDGE-003)", () => {
     await page.goto(`chrome-extension://${extensionId}/index.html`);
 
     // Login first.
-    await expect(page.getByText("Newsletter Login")).toBeVisible();
-    await page.getByPlaceholder("Password").fill(ADMIN_PASSWORD);
-    await page.getByRole("button", { name: "Log in" }).click();
-    await expect(page.getByText("Add to Newsletter")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
+    await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Add a Story" })).toBeVisible({ timeout: 10_000 });
 
     // In headless, active tab may be about:blank — override the URL field directly.
     const urlInput = page.getByLabel("URL");
@@ -66,7 +66,7 @@ test.describe("VS-2: Add-current-tab flow (REQ-012, REQ-013, EDGE-003)", () => {
     await page.getByRole("button", { name: "Add this page" }).click();
 
     // Success state shown (REQ-013).
-    await expect(page.getByText(/Added to the next newsletter run/i)).toBeVisible({
+    await expect(page.getByText(/Added to the next issue/i)).toBeVisible({
       timeout: 15_000,
     });
 
@@ -87,12 +87,12 @@ test.describe("VS-2: Add-current-tab flow (REQ-012, REQ-013, EDGE-003)", () => {
     await page.goto(`chrome-extension://${extensionId}/index.html`);
 
     // Login (token from previous test may have been cleared by context; re-login).
-    const loginHeading = page.getByText("Newsletter Login");
+    const loginHeading = page.getByRole("heading", { name: "Admin" });
     const isLogin = await loginHeading.isVisible().catch(() => false);
     if (isLogin) {
-      await page.getByPlaceholder("Password").fill(ADMIN_PASSWORD);
-      await page.getByRole("button", { name: "Log in" }).click();
-      await expect(page.getByText("Add to Newsletter")).toBeVisible({ timeout: 10_000 });
+      await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+      await page.getByRole("button", { name: "Sign in" }).click();
+      await expect(page.getByRole("heading", { name: "Add a Story" })).toBeVisible({ timeout: 10_000 });
     }
 
     // Submit the same URL again.
@@ -128,7 +128,7 @@ test.describe("EDGE-006: Stale token handling", () => {
 
     // Reload so the App reads the injected token and shows AddView.
     await page.reload();
-    await expect(page.getByText("Add to Newsletter")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: "Add a Story" })).toBeVisible({ timeout: 10_000 });
 
     // Submit with the stale token — API will return 401.
     const urlInput = page.getByLabel("URL");
@@ -136,7 +136,7 @@ test.describe("EDGE-006: Stale token handling", () => {
     await page.getByRole("button", { name: "Add this page" }).click();
 
     // Extension should clear the token and return to login view.
-    await expect(page.getByText("Newsletter Login")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible({ timeout: 15_000 });
 
     await page.close();
   });

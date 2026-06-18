@@ -5,14 +5,26 @@ import { defineManifest } from "@crxjs/vite-plugin";
 // Phase 4 CORS allowlist and e2e assertions use this ID.
 export default defineManifest({
   manifest_version: 3,
-  name: "Newsletter URL Collector",
+  name: "The Daily Read — Add Story",
   version: "0.1.0",
   description: "Add the current tab to the next newsletter run",
+  icons: {
+    16: "icons/icon-16.png",
+    32: "icons/icon-32.png",
+    48: "icons/icon-48.png",
+    128: "icons/icon-128.png",
+  },
   // Fixed key so the extension ID is deterministic across builds.
   // Generated with: openssl genrsa 2048 | openssl rsa -pubout -outform DER | base64
   key: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuKwZaV4kLOi5wRm3ELYVNEMbyRP4qQybWTRClm80F9gDBGNB4phTibr7b+nwdD+n1ByR7Lm194Qoh9pHMWTTaMuwl5c79k3Pr2UCfDs9w5RqTOa6Kol2B6wKXMj2LUpTn+lpKgZmGs4y7G7ZNVOVH/5AOL+viIG6dXIdxqskdfx0j48yii03f7RbUu4xR8HUpTNM1DXHKOcKyfqShk+vdaKyeKcM8MGDS4EDLpcyhRrBBCbjAwVeK7y3QLRMcQX/VeN/hZIc8Vp3t2GxryKo3/DiRkTKxMjsQeB/K+ih6Vi/FD1UFl1lJdGHZulcYvs2bciqgqROBpeOoHF+/0xHewIDAQAB",
   action: {
     default_popup: "index.html",
+    default_icon: {
+      16: "icons/icon-16.png",
+      32: "icons/icon-32.png",
+      48: "icons/icon-48.png",
+      128: "icons/icon-128.png",
+    },
   },
   permissions: ["tabs", "storage", "activeTab"],
   // Scope host access to the API origin only — the popup just fetches the API.

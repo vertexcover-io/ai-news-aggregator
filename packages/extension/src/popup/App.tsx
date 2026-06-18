@@ -17,7 +17,7 @@ export default function App() {
       });
   }, []);
 
-  if (loading) return <div style={{ padding: 16 }}>Loading…</div>;
+  if (loading) return <div className="loading">Loading…</div>;
 
   if (!token) {
     return (
