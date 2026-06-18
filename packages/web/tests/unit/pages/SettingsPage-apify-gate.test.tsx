@@ -1,22 +1,21 @@
 /**
- * SettingsPage gate for ApifyCredentialPanel (REQ-019, Phase 5).
+ * SettingsPage no longer renders ApifyCredentialPanel for any role (REQ-019
+ * relocation, Phase 6). The panel lives at /admin/platform instead.
  *
- * - test_REQ_019_apify_panel_visible_for_super_admin: super_admin session
- *   renders the ApifyCredentialPanel.
- * - test_REQ_019_apify_panel_hidden_for_tenant_admin: tenant_admin session
- *   does NOT render the ApifyCredentialPanel.
+ * - test_REQ_019_apify_panel_absent_for_super_admin_on_settings: super_admin
+ *   visiting the tenant settings page does NOT see the Apify panel.
+ * - test_REQ_019_apify_panel_absent_for_tenant_admin_on_settings: tenant_admin
+ *   visiting the tenant settings page does NOT see the Apify panel.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 
-// Mock the session hook used by RequireSuperAdmin and SettingsPage.
 vi.mock("../../../src/hooks/useSession", () => ({
   useSession: vi.fn(),
 }));
 
-// Mock the settings hook/API — we don't care about the form data for this test.
 vi.mock("../../../src/hooks/useSettings", () => ({
   useSettings: vi.fn(() => ({
     data: null,
@@ -25,7 +24,6 @@ vi.mock("../../../src/hooks/useSettings", () => ({
   })),
 }));
 
-// Mock the API modules used by sub-panels so they don't make real requests.
 vi.mock("../../../src/api/settings", () => ({
   putSettings: vi.fn(),
   SettingsApiError: class extends Error {},
@@ -103,8 +101,8 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("SettingsPage ApifyCredentialPanel gate (REQ-019)", () => {
-  it("test_REQ_019_apify_panel_visible_for_super_admin: super_admin sees the Apify section", async () => {
+describe("SettingsPage ApifyCredentialPanel absent (REQ-019 relocation)", () => {
+  it("test_REQ_019_apify_panel_absent_for_super_admin_on_settings: super_admin does NOT see the Apify section on tenant settings", async () => {
     const sessionData: AuthMeResponse = {
       user: {
         id: "user-super-1",
@@ -119,12 +117,14 @@ describe("SettingsPage ApifyCredentialPanel gate (REQ-019)", () => {
 
     renderSettings();
 
+    await waitFor(() => screen.getByRole("heading", { name: /Settings/i }));
+
     await waitFor(() => {
-      expect(screen.getByTestId("apify-credential-panel")).toBeTruthy();
+      expect(screen.queryByTestId("apify-credential-panel")).toBeNull();
     });
   });
 
-  it("test_REQ_019_apify_panel_hidden_for_tenant_admin: tenant_admin does NOT see the Apify section", async () => {
+  it("test_REQ_019_apify_panel_absent_for_tenant_admin_on_settings: tenant_admin does NOT see the Apify section on tenant settings", async () => {
     const sessionData: AuthMeResponse = {
       user: {
         id: "user-tenant-1",
@@ -144,11 +144,8 @@ describe("SettingsPage ApifyCredentialPanel gate (REQ-019)", () => {
 
     renderSettings();
 
-    // Wait for page to settle (something must render).
     await waitFor(() => screen.getByRole("heading", { name: /Settings/i }));
 
-    // Apify section must NOT be present — wrapped in waitFor so any deferred
-    // render of the panel has a chance to appear before we assert absence.
     await waitFor(() => {
       expect(screen.queryByTestId("apify-credential-panel")).toBeNull();
     });
