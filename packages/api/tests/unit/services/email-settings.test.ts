@@ -6,9 +6,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TenantRow } from "@newsletter/shared/db";
 import type { CredentialCipher } from "@newsletter/shared/services";
+import type { EmailProvider } from "@newsletter/shared";
 import {
   EmailSettingsError,
   getEmailSettings,
+  resolveTransactionalSender,
   updateEmailSettings,
   type EmailSettingsServiceDeps,
 } from "../../../src/services/email-settings";
@@ -169,5 +171,101 @@ describe("email-settings service", () => {
     const patch = update.mock.calls[0]?.[1] as { emailMode: string; smtpConfigEnc: unknown };
     expect(patch.emailMode).toBe("managed");
     expect(patch.smtpConfigEnc).toBeNull();
+  });
+});
+
+// resolveTransactionalSender (subscriber-facing confirmation/welcome): mirrors
+// the broadcast cascade but NEVER blocks — an unverified custom domain falls
+// back to the managed default so the confirmation always delivers.
+describe("resolveTransactionalSender", () => {
+  const sharedProvider: EmailProvider = {
+    send: vi.fn(() => Promise.resolve({ messageId: "shared" })),
+  };
+  const smtpProvider: EmailProvider = {
+    send: vi.fn(() => Promise.resolve({ messageId: "smtp" })),
+  };
+  const createSmtpProvider = vi.fn(() => smtpProvider);
+  const senderDeps = {
+    sharedProvider,
+    fromMail: "newsletter@news.vertexcover.io",
+    managedEmailDomain: "news.vertexcover.io",
+    cipher,
+    createSmtpProvider,
+  };
+
+  it("no tenant context → shared provider + platform sender", () => {
+    const { provider, from } = resolveTransactionalSender(null, senderDeps);
+    expect(provider).toBe(sharedProvider);
+    expect(from).toBe("newsletter@news.vertexcover.io");
+  });
+
+  it("managed mode → shared provider + managed default <slug>@<managed domain>", () => {
+    const { provider, from } = resolveTransactionalSender(
+      tenant({ emailMode: "managed", slug: "inference" }),
+      senderDeps,
+    );
+    expect(provider).toBe(sharedProvider);
+    expect(from).toBe("inference@news.vertexcover.io");
+  });
+
+  it("grandfathered tenant 0 (managed, verified, no domain name) → platform sender", () => {
+    const { from } = resolveTransactionalSender(
+      tenant({ emailMode: "managed", sendingDomainStatus: "verified", sendingDomainName: null }),
+      senderDeps,
+    );
+    expect(from).toBe("newsletter@news.vertexcover.io");
+  });
+
+  it("managed_domain VERIFIED → newsletter@<tenant domain>", () => {
+    const { provider, from } = resolveTransactionalSender(
+      tenant({
+        emailMode: "managed_domain",
+        sendingDomainName: "news.acme.com",
+        sendingDomainStatus: "verified",
+      }),
+      senderDeps,
+    );
+    expect(provider).toBe(sharedProvider);
+    expect(from).toBe("newsletter@news.acme.com");
+  });
+
+  it.each(["pending", "failed", null] as const)(
+    "managed_domain UNVERIFIED (%s) → falls back to the managed default, never the bare custom domain",
+    (status) => {
+      const { provider, from } = resolveTransactionalSender(
+        tenant({
+          emailMode: "managed_domain",
+          slug: "inference",
+          sendingDomainName: "news.acme.com",
+          sendingDomainStatus: status,
+        }),
+        senderDeps,
+      );
+      expect(provider).toBe(sharedProvider);
+      expect(from).toBe("inference@news.vertexcover.io");
+    },
+  );
+
+  it("smtp mode → per-tenant SMTP provider + the tenant's own From address", () => {
+    const { provider, from } = resolveTransactionalSender(
+      tenant({
+        emailMode: "smtp",
+        smtpConfigEnc: {
+          host: "smtp.acme.com",
+          port: 587,
+          secure: false,
+          fromAddress: "news@acme.com",
+          fromName: undefined,
+          username: cipher.encrypt("user"),
+          password: cipher.encrypt("pass"),
+        },
+      }),
+      senderDeps,
+    );
+    expect(provider).toBe(smtpProvider);
+    expect(from).toBe("news@acme.com");
+    expect(createSmtpProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ host: "smtp.acme.com", username: "user", password: "pass" }),
+    );
   });
 });

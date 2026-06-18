@@ -64,6 +64,8 @@ import { createFeedbackEventsRepo } from "@api/repositories/feedback-events.js";
 import { createRunArchivesRepo } from "@api/repositories/run-archives.js";
 import { createUserSettingsRepo } from "@api/repositories/user-settings.js";
 import { createEmailProvider } from "@api/lib/email/provider.js";
+import { createSmtpProvider } from "@api/lib/email/smtp-provider.js";
+import { resolveTransactionalSender } from "@api/services/email-settings.js";
 import { renderConfirmation } from "@api/lib/email/templates/index.js";
 import { createWebhooksRouter } from "@api/routes/webhooks.js";
 import { createDefaultAnalyticsRouter } from "@api/routes/analytics.js";
@@ -98,6 +100,8 @@ const sessionSecret = process.env.SESSION_SECRET;
 
 const emailProvider = createEmailProvider();
 const fromMail = process.env.FROM_MAIL ?? "newsletter@news.vertexcover.io";
+const managedEmailDomain =
+  process.env.MANAGED_EMAIL_DOMAIN ?? "news.vertexcover.io";
 const replyToEmail = process.env.NEWSLETTER_REPLY_TO_EMAIL;
 const { baseUrl: apiBaseUrl, webBaseUrl: newsletterBaseUrl } = resolveBaseUrls(process.env);
 
@@ -190,11 +194,26 @@ const subscribeRouter = createSubscribeRouter({
   sessionSecret,
   baseUrl: apiBaseUrl,
   webBaseUrl: newsletterBaseUrl,
-  sendConfirmationEmail: async (email, confirmUrl) => {
+  sendConfirmationEmail: async (email, confirmUrl, tenantId) => {
+    // Subscriber-facing transactional mail goes FROM the tenant's sender (their
+    // verified custom domain, else the managed default `<slug>@<managed domain>`)
+    // so a subscriber to a tenant's newsletter never sees the bare platform
+    // address. Falls back to the platform sender only with no tenant context.
+    const tenant =
+      tenantId !== undefined
+        ? await createTenantsRepo(getDb()).findById(tenantId)
+        : null;
+    const { provider, from } = resolveTransactionalSender(tenant, {
+      sharedProvider: emailProvider,
+      fromMail,
+      managedEmailDomain,
+      cipher: getCredentialCipher(),
+      createSmtpProvider,
+    });
     const html = await renderConfirmation({ confirmUrl, baseUrl: newsletterBaseUrl });
-    await emailProvider.send({
+    await provider.send({
       to: [email],
-      from: fromMail,
+      from,
       replyTo: replyToEmail,
       subject: "Confirm your AI Newsletter subscription",
       html,

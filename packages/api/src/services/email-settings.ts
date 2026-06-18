@@ -9,6 +9,7 @@
  * the repo, and a connection check (`verifySmtp`) must pass before `smtp` mode
  * is activated. The browser only ever reads masked config (no password).
  */
+import type { EmailProvider } from "@newsletter/shared";
 import type { TenantRow } from "@newsletter/shared/db";
 import type { CredentialCipher } from "@newsletter/shared/services";
 import type {
@@ -86,6 +87,81 @@ function effectiveSender(
     return fromMail;
   }
   return `${tenant.slug}@${managedEmailDomain}`;
+}
+
+/** Provider + FROM address for a single transactional (per-subscriber) send. */
+export interface TransactionalSender {
+  provider: EmailProvider;
+  from: string;
+}
+
+export interface TransactionalSenderDeps {
+  /** Shared, pre-verified provider (Resend/SES) for managed + managed_domain. */
+  sharedProvider: EmailProvider;
+  /** Platform sender — used with no tenant context and for grandfathered tenant 0. */
+  fromMail: string;
+  /** Shared pre-verified sending domain backing the managed default sender. */
+  managedEmailDomain: string;
+  cipher: CredentialCipher;
+  /** Builds a per-tenant SMTP provider from decrypted creds (smtp mode). */
+  createSmtpProvider: (config: SmtpConfig) => EmailProvider;
+}
+
+/**
+ * Resolves the sender for a SUBSCRIBER-FACING transactional email (subscribe
+ * confirmation, welcome). Unlike the digest broadcast, transactional mail must
+ * ALWAYS deliver — bootstrapping a list depends on the confirmation arriving —
+ * so an unverified custom domain GRACEFULLY FALLS BACK to the managed default
+ * (`<slug>@<managed domain>`, on the always-verified shared domain) rather than
+ * failing closed. Mirrors the broadcast cascade in pipeline `email-send.ts`,
+ * minus the fail-closed block.
+ */
+export function resolveTransactionalSender(
+  tenant: TenantRow | null,
+  deps: TransactionalSenderDeps,
+): TransactionalSender {
+  // No tenant context (app host / legacy single-tenant) → platform sender.
+  if (tenant === null) {
+    return { provider: deps.sharedProvider, from: deps.fromMail };
+  }
+  // smtp: relay through the tenant's own provider/domain (verified at activation
+  // via verifySmtp; they own SPF/DKIM so DMARC passes only via their server).
+  if (tenant.emailMode === "smtp" && tenant.smtpConfigEnc !== null) {
+    const enc = tenant.smtpConfigEnc;
+    const config: SmtpConfig = {
+      host: enc.host,
+      port: enc.port,
+      secure: enc.secure,
+      fromAddress: enc.fromAddress,
+      fromName: enc.fromName,
+      username: deps.cipher.decrypt(enc.username),
+      password: deps.cipher.decrypt(enc.password),
+    };
+    return { provider: deps.createSmtpProvider(config), from: enc.fromAddress };
+  }
+  // managed_domain: only when the tenant's own domain is VERIFIED; otherwise
+  // fall through to the managed default (never route transactional mail through
+  // an unverified domain — it would bounce and block signup).
+  if (
+    tenant.emailMode === "managed_domain" &&
+    tenant.sendingDomainStatus === "verified" &&
+    tenant.sendingDomainName !== null
+  ) {
+    return {
+      provider: deps.sharedProvider,
+      from: `newsletter@${tenant.sendingDomainName}`,
+    };
+  }
+  // Grandfathered tenant 0 (managed, verified, no own domain) → platform sender.
+  if (tenant.sendingDomainStatus === "verified" && tenant.sendingDomainName === null) {
+    return { provider: deps.sharedProvider, from: deps.fromMail };
+  }
+  // Managed default (zero-config) — also the graceful fallback for an unverified
+  // managed_domain tenant. Rides the shared, pre-verified domain.
+  return {
+    provider: deps.sharedProvider,
+    from: `${tenant.slug}@${deps.managedEmailDomain}`,
+  };
 }
 
 export function emailSettingsFromTenant(

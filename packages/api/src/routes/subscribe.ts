@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createLogger } from "@newsletter/shared";
 import type { FeedbackRating, SlackNotifier } from "@newsletter/shared";
 import {
+  isTenantContext,
   systemScope,
   type TenantContext,
   type TenantScope,
@@ -39,7 +40,16 @@ export interface SubscribeRouterDeps {
   sessionSecret: string;
   baseUrl: string;
   webBaseUrl: string;
-  sendConfirmationEmail: (email: string, confirmUrl: string) => Promise<void>;
+  /**
+   * `tenantId` (REQ-060): the intake-resolved tenant, so the confirmation is
+   * sent FROM that tenant's sender (verified custom domain → managed default),
+   * never the bare platform address. `undefined` on the app host / no tenant.
+   */
+  sendConfirmationEmail: (
+    email: string,
+    confirmUrl: string,
+    tenantId?: string,
+  ) => Promise<void>;
   /** `tenantId` (REQ-060): stamped onto the welcome email-send job payload. */
   sendNewsletterToSubscriber: (
     runId: string,
@@ -80,7 +90,9 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
       : deps.defaultTenantScope;
 
   app.post("/subscribe", async (c) => {
-    const subscribersRepo = deps.getSubscribersRepo(intakeScope(c));
+    const scope = intakeScope(c);
+    const tenantId = isTenantContext(scope) ? scope.tenantId : undefined;
+    const subscribersRepo = deps.getSubscribersRepo(scope);
     let body: unknown;
     try {
       body = await c.req.json();
@@ -157,7 +169,7 @@ export function createSubscribeRouter(deps: SubscribeRouterDeps): Hono {
 
     const confirmUrl = `${deps.baseUrl}/api/confirm?token=${confirmToken}`;
     try {
-      await deps.sendConfirmationEmail(email, confirmUrl);
+      await deps.sendConfirmationEmail(email, confirmUrl, tenantId);
       logger.info(
         { event: "subscribe.confirmation_sent", subscriberId: subscriber.id, email: masked },
         "subscribe: confirmation email sent",

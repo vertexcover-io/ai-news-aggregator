@@ -219,62 +219,70 @@ export async function handleEmailSendJob(
   // prevents duplicate delivery in both modes.
   if (isBroadcast && archive.emailSentAt !== null) return;
 
-  // Broadcast provider + FROM resolution per tenant email mode (Fix #3).
-  // We NEVER send a broadcast from an unverified custom domain:
+  // Provider + FROM resolution per tenant email mode (Fix #3). Applies to BOTH
+  // the broadcast and the targeted (welcome back-issue) send, so every
+  // subscriber-facing email carries the tenant's identity:
   //   • smtp           → the tenant's own provider; FROM = their configured
   //                       address (they own SPF/DKIM, we just relay).
-  //   • managed_domain → our Resend account from `newsletter@<verified
-  //                       domain>`; BLOCKED (fail-closed) until verified.
+  //   • managed_domain → our Resend account from `newsletter@<verified domain>`.
   //   • managed        → our shared pre-verified Resend domain. Grandfathered
   //                       tenant 0 (verified, no domain name) keeps the shared
   //                       platform sender; everyone else sends from the managed
   //                       default `<slug>@<managed domain>` (zero-config).
-  // Targeted sends (the welcome back-issue) and all API-side transactional mail
-  // keep the shared provider + sender (EDGE-005). FAIL-CLOSED: `tenantsRepo` is
-  // required, so an untyped caller omitting it throws before any email goes out.
+  // The ONLY difference between the two paths is an unverified custom domain
+  // (managed_domain): the broadcast FAILS CLOSED (block + alert), but a targeted
+  // send must always deliver, so it GRACEFULLY FALLS BACK to the managed default
+  // (the shared pre-verified domain) instead of blocking. FAIL-CLOSED:
+  // `tenantsRepo` is required, so an untyped caller omitting it throws before
+  // any email goes out.
   let sendProvider = deps.emailProvider;
   let fromAddress = deps.fromMail;
-  if (isBroadcast) {
-    const email = await deps.tenantsRepo.getEmailSettings();
-    if (email !== null && email.mode === "smtp" && email.smtp !== null) {
-      sendProvider = deps.createSmtpProvider(email.smtp);
-      fromAddress = email.smtp.fromAddress;
-    } else if (email !== null && email.mode === "managed_domain") {
-      if (
-        email.sendingDomainStatus === "verified" &&
-        email.sendingDomainName !== null
-      ) {
-        fromAddress = `newsletter@${email.sendingDomainName}`;
-      } else {
-        logger.warn(
-          {
-            event: "newsletter-send.broadcast_blocked",
-            runId: archive.id,
-            jobId: job.id,
-            reason: "sending_domain_not_verified",
-            domainStatus: email.sendingDomainStatus ?? "none",
-          },
-          "newsletter-send: broadcast blocked — custom sending domain not verified",
-        );
-        await deps.slackNotifier?.notifyPublishFailed({
-          runId: archive.id,
-          channel: "email-send",
-          reason: "sending_domain_not_verified",
-        });
-        return;
-      }
-    } else if (
-      email !== null &&
+  const email = await deps.tenantsRepo.getEmailSettings();
+  const managedDefaultFrom = (): string => {
+    const slug = email?.slug ?? null;
+    return slug !== null ? `${slug}@${deps.managedEmailDomain}` : deps.fromMail;
+  };
+  if (email !== null && email.mode === "smtp" && email.smtp !== null) {
+    sendProvider = deps.createSmtpProvider(email.smtp);
+    fromAddress = email.smtp.fromAddress;
+  } else if (email !== null && email.mode === "managed_domain") {
+    if (
       email.sendingDomainStatus === "verified" &&
-      email.sendingDomainName === null
+      email.sendingDomainName !== null
     ) {
-      // Grandfathered tenant 0 (managed mode): keep the shared platform sender.
-      fromAddress = deps.fromMail;
+      fromAddress = `newsletter@${email.sendingDomainName}`;
+    } else if (isBroadcast) {
+      logger.warn(
+        {
+          event: "newsletter-send.broadcast_blocked",
+          runId: archive.id,
+          jobId: job.id,
+          reason: "sending_domain_not_verified",
+          domainStatus: email.sendingDomainStatus ?? "none",
+        },
+        "newsletter-send: broadcast blocked — custom sending domain not verified",
+      );
+      await deps.slackNotifier?.notifyPublishFailed({
+        runId: archive.id,
+        channel: "email-send",
+        reason: "sending_domain_not_verified",
+      });
+      return;
     } else {
-      const slug = email?.slug ?? null;
-      fromAddress =
-        slug !== null ? `${slug}@${deps.managedEmailDomain}` : deps.fromMail;
+      // Targeted send: never block on an unverified custom domain — fall back
+      // to the managed default so the welcome email still reaches the new
+      // subscriber, tenant-branded on the shared pre-verified domain.
+      fromAddress = managedDefaultFrom();
     }
+  } else if (
+    email !== null &&
+    email.sendingDomainStatus === "verified" &&
+    email.sendingDomainName === null
+  ) {
+    // Grandfathered tenant 0 (managed mode): keep the shared platform sender.
+    fromAddress = deps.fromMail;
+  } else {
+    fromAddress = managedDefaultFrom();
   }
 
   const runId = archive.id;

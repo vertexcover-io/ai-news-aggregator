@@ -120,7 +120,11 @@ function buildApp(opts: {
   repo: SubscribersRepo;
   feedbackRepo?: FeedbackEventsRepo;
   slackNotifier?: SlackNotifier;
-  sendConfirmationEmail?: (email: string, confirmUrl: string) => Promise<void>;
+  sendConfirmationEmail?: (
+    email: string,
+    confirmUrl: string,
+    tenantId?: string,
+  ) => Promise<void>;
   sendNewsletterToSubscriber?: (
     runId: string,
     subscriberId: string,
@@ -632,6 +636,30 @@ describe("tenant scoping (REQ-050/051)", () => {
     for (const scope of subscriberScopesSeen) {
       expect(scope).toEqual({ tenantId: TENANT_X, role: "tenant_admin" });
     }
+  });
+
+  it("subscribe on a tenant host passes that tenant's id to sendConfirmationEmail (tenant-branded From)", async () => {
+    const repo = makeRepo();
+    const sendConfirmationEmail = vi.fn(() => Promise.resolve());
+    const app = buildApp({
+      repo,
+      publicTenantId: TENANT_X,
+      defaultTenantScope: { tenantId: TENANT_ZERO, role: "tenant_admin" },
+      sendConfirmationEmail,
+    });
+
+    const res = await app.request("/api/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "reader@example.com" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sendConfirmationEmail).toHaveBeenCalledWith(
+      "reader@example.com",
+      expect.stringContaining("/api/confirm?token="),
+      TENANT_X,
+    );
   });
 
   it("test_REQ_050_subscribe_app_host_falls_back_to_default_tenant — no Host tenant resolves to the wiring's default scope", async () => {
