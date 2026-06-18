@@ -86,8 +86,12 @@ async function dispatchCollector(
       );
     }
     case "reddit-collect": {
+      const { buildRedditResolveToken } = await import(
+        "@pipeline/lib/reddit-deps.js"
+      );
+      const resolveToken = await buildRedditResolveToken();
       return collectReddit(
-        { rawItemsRepo: deps.rawItemsRepo },
+        { rawItemsRepo: deps.rawItemsRepo, resolveToken },
         job.data.config as RedditCollectConfig,
       );
     }

@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "2.0.74",
+    "apify-client": "^2.23",
     "@ai-sdk/deepseek": "1.0.41",
     "@aws-sdk/client-sesv2": "3.1042.0",
     "@mozilla/readability": "0.6.0",

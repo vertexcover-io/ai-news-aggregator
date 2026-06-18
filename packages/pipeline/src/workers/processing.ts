@@ -288,9 +288,15 @@ async function buildDefaultRunProcessDeps(
   const webSearchProvider = process.env.TAVILY_API_KEY
     ? createWebSearchProvider("tavily", { tavilyApiKey: process.env.TAVILY_API_KEY })
     : undefined;
+  // Apify token resolver for Reddit (app-level, super-admin managed, no tenant scope).
+  // Lazy import keeps collector db-free (enforce-repository-access).
+  const { buildRedditResolveToken } = await import("@pipeline/lib/reddit-deps.js");
+  const redditResolveToken = await buildRedditResolveToken();
+
   const collectFns: CollectFns = {
     hn: collectHn,
-    reddit: collectReddit,
+    reddit: (deps, config) =>
+      collectReddit({ ...deps, resolveToken: redditResolveToken }, config),
     web: collectWeb,
     twitter: collectTwitter,
     webSearch: collectWebSearch,
