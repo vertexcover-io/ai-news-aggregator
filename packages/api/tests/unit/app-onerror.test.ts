@@ -45,6 +45,7 @@ function makeMinimalDeps(): BuildAppDeps {
     collectorHealthRouter: stub(),
     llmTxtIndexRouter: stub(),
     llmTxtArchiveRouter: stub(),
+    extensionRouter: stub(),
   };
 }
 

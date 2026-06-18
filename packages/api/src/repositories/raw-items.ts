@@ -1,7 +1,7 @@
 import { and, between, eq, gte, inArray, sql } from "drizzle-orm";
 import type IORedis from "ioredis";
 import { rawItems } from "@newsletter/shared/db";
-import type { AppDb, SourceType } from "@newsletter/shared/db";
+import type { AppDb, RawItemInsert, SourceType } from "@newsletter/shared/db";
 import { runKey } from "@newsletter/shared";
 import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import type {
@@ -59,6 +59,15 @@ export interface AggregateBySourceAndIdentifierOpts {
   to: Date;
 }
 
+export interface SubmissionRawItemRow {
+  id: number;
+  sourceType: SourceType;
+  externalId: string;
+  title: string;
+  url: string;
+  author: string | null;
+}
+
 export interface RawItemsRepo {
   findByIds(ids: number[]): Promise<RawItemRow[]>;
   listForRun(runId: string, deps: ListForRunDeps): Promise<RawItemSummary[]>;
@@ -69,6 +78,11 @@ export interface RawItemsRepo {
   aggregateBySourceAndIdentifier(
     opts: AggregateBySourceAndIdentifierOpts,
   ): Promise<RawItemsAggregateRow[]>;
+  findBySourceAndExternalId(
+    sourceType: SourceType,
+    externalId: string,
+  ): Promise<SubmissionRawItemRow | null>;
+  upsertManualItem(item: RawItemInsert): Promise<SubmissionRawItemRow>;
 }
 
 // NOTE: The fallback chain (regex match → hostname → 'unknown') MUST mirror
@@ -124,7 +138,7 @@ export function deriveRawItemIdentifierSql(): typeof DERIVED_IDENTIFIER_SQL {
 }
 
 export function createRawItemsRepo(
-  db: Pick<AppDb, "select" | "execute">,
+  db: Pick<AppDb, "select" | "execute" | "insert">,
 ): RawItemsRepo {
   return {
     async findByIds(ids: number[]): Promise<RawItemRow[]> {
@@ -195,6 +209,57 @@ export function createRawItemsRepo(
               ? r.last_collected_at
               : new Date(r.last_collected_at),
       }));
+    },
+
+    async findBySourceAndExternalId(
+      sourceType: SourceType,
+      externalId: string,
+    ): Promise<SubmissionRawItemRow | null> {
+      const rows = await db
+        .select({
+          id: rawItems.id,
+          sourceType: rawItems.sourceType,
+          externalId: rawItems.externalId,
+          title: rawItems.title,
+          url: rawItems.url,
+          author: rawItems.author,
+        })
+        .from(rawItems)
+        .where(
+          and(
+            eq(rawItems.sourceType, sourceType),
+            eq(rawItems.externalId, externalId),
+          ),
+        )
+        .limit(1);
+      return rows[0] ?? null;
+    },
+
+    async upsertManualItem(item: RawItemInsert): Promise<SubmissionRawItemRow> {
+      const now = new Date();
+      const inserted = await db
+        .insert(rawItems)
+        .values(item)
+        .onConflictDoUpdate({
+          target: [rawItems.sourceType, rawItems.externalId],
+          set: {
+            title: sql.raw(`excluded.${rawItems.title.name}`),
+            author: sql.raw(`excluded.${rawItems.author.name}`),
+            content: sql.raw(`excluded.${rawItems.content.name}`),
+            metadata: sql.raw(`excluded.${rawItems.metadata.name}`),
+            collectedAt: now,
+            updatedAt: now,
+          },
+        })
+        .returning({
+          id: rawItems.id,
+          sourceType: rawItems.sourceType,
+          externalId: rawItems.externalId,
+          title: rawItems.title,
+          url: rawItems.url,
+          author: rawItems.author,
+        });
+      return inserted[0];
     },
   };
 }

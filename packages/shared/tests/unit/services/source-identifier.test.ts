@@ -37,6 +37,8 @@ const cases: readonly Case[] = [
   { name: "blog null URL falls back to sourceUrl", sourceType: "blog", url: null, sourceUrl: "https://example.com/x", expected: "example.com" },
   { name: "blog both null returns unknown", sourceType: "blog", url: null, sourceUrl: null, expected: "unknown" },
   { name: "rss invalid URL returns unknown", sourceType: "rss", url: "not-a-url", sourceUrl: null, expected: "unknown" },
+  { name: "manual falls back to hostname", sourceType: "manual", url: "https://example.com/article", expected: "example.com" },
+  { name: "manual null url returns unknown", sourceType: "manual", url: null, sourceUrl: null, expected: "unknown" },
 ];
 
 describe("deriveRawItemIdentifier", () => {
@@ -64,6 +66,7 @@ describe("SOURCE_TYPE_SECTION_LABELS", () => {
       blog: "Engineering Blogs",
       newsletter: "Newsletters",
       web_search: "Web Search",
+      manual: "Manually added",
     });
   });
 
@@ -71,5 +74,9 @@ describe("SOURCE_TYPE_SECTION_LABELS", () => {
     for (const t of SOURCE_TYPE_ORDER) {
       expect(SOURCE_TYPE_SECTION_LABELS[t]).toBeTruthy();
     }
+  });
+
+  it("test_REQ_009_manual_item_is_candidate: 'manual' source type has a human-readable label", () => {
+    expect(SOURCE_TYPE_SECTION_LABELS.manual).toBe("Manually added");
   });
 });

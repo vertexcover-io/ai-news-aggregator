@@ -16,7 +16,7 @@ const TTL_SECONDS = 3600;
 export interface RunProcessJobPayload {
   runId: string;
   topN: number;
-  sourceTypes: ("hn" | "reddit" | "blog" | "twitter" | "web_search")[];
+  sourceTypes: ("hn" | "reddit" | "blog" | "twitter" | "web_search" | "manual")[];
   collectors: {
     hn?: RunSubmitHnConfig;
     reddit?: RunSubmitRedditConfig;
@@ -90,7 +90,8 @@ export async function startRun(
     TTL_SECONDS,
   );
 
-  const sourceTypes: RunProcessJobPayload["sourceTypes"] = [];
+  // "manual" is always included so user-submitted URLs are eligible candidates
+  const sourceTypes: RunProcessJobPayload["sourceTypes"] = ["manual"];
   const collectors: RunProcessJobPayload["collectors"] = {};
   if (hnConfig) {
     sourceTypes.push("hn");

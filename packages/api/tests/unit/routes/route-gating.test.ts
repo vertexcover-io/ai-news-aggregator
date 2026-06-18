@@ -125,6 +125,7 @@ function makeApp(
     collectorHealthRouter: new Hono(),
     llmTxtIndexRouter: new Hono(),
     llmTxtArchiveRouter: new Hono(),
+    extensionRouter: new Hono(),
   });
 }
 

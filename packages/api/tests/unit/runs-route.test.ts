@@ -143,7 +143,7 @@ describe("POST /api/runs", () => {
       sourceTypes: string[];
       collectors: { web?: unknown };
     };
-    expect(data.sourceTypes).toEqual(["blog"]);
+    expect(data.sourceTypes.sort()).toEqual(["blog", "manual"]);
     expect(data.collectors.web).toMatchObject({ maxItems: 3, sinceDays: 7 });
   });
 
@@ -186,7 +186,7 @@ describe("POST /api/runs", () => {
       sourceTypes: string[];
       collectors: Record<string, unknown>;
     };
-    expect(data.sourceTypes.sort()).toEqual(["hn", "reddit"]);
+    expect(data.sourceTypes.sort()).toEqual(["hn", "manual", "reddit"]);
     expect(Object.keys(data.collectors).sort()).toEqual(["hn", "reddit"]);
   });
 
