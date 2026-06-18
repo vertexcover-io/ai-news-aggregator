@@ -23,3 +23,8 @@ export const twitterClientUpsertSchema = z.object({
   clientSecret: z.string().trim().min(1),
 });
 
+/** Apify API token — super-admin only, platform-level (REQ-015). */
+export const apifyUpsertSchema = z.object({
+  apiToken: z.string().min(1),
+});
+

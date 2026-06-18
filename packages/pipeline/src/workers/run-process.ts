@@ -1147,7 +1147,21 @@ export function buildRunProcessDepsForJob(
     options.rankFn ?? ((candidates, opts) => rankCandidates(candidates, opts));
   const collectFns: CollectFns = {
     hn: options.collectFns?.hn ?? collectHn,
-    reddit: options.collectFns?.reddit ?? collectReddit,
+    reddit:
+      options.collectFns?.reddit ??
+      // Per-job factory: resolves the Apify token from the app-level
+      // `app_credentials` store first (super-admin managed), falling back to
+      // APIFY_API_KEY env var. Wired lazily so the collector stays db-free
+      // (enforce-repository-access rule). DB read happens per-call (so admin
+      // saves take effect on the next run); cipher is a process-singleton
+      // (SESSION_SECRET is never rotated — D-104).
+      (async (deps, config) => {
+        const { buildRedditResolveToken } = await import(
+          "@pipeline/lib/reddit-deps.js"
+        );
+        const resolveToken = await buildRedditResolveToken();
+        return collectReddit({ ...deps, resolveToken }, config);
+      }),
     web: options.collectFns?.web ?? collectWeb,
     twitter: options.collectFns?.twitter ?? collectTwitter,
     webSearch: options.collectFns?.webSearch ?? collectWebSearch,

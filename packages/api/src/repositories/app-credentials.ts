@@ -12,6 +12,7 @@ import type {
   LinkedInEncryptedFields,
   TwitterClientEncryptedFields,
   TwitterCollectorEncryptedFields,
+  ApifyEncryptedFields,
 } from "@newsletter/shared/db";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
 
@@ -41,6 +42,15 @@ export interface TwitterClientUpsertInput {
   readonly clientSecret: string;
 }
 
+export interface ApifyRecord {
+  apiToken: string;
+  updatedAt: Date;
+}
+
+export interface ApifyUpsertInput {
+  readonly apiToken: string;
+}
+
 export interface LinkedInClientUpsertInput {
   readonly clientId: string;
   readonly clientSecret: string;
@@ -66,6 +76,10 @@ export interface AppCredentialsStatus {
     readonly configured: boolean;
     readonly updatedAt: string | null;
   };
+  readonly apify: {
+    readonly configured: boolean;
+    readonly updatedAt: string | null;
+  };
 }
 
 export interface AppCredentialsRepo {
@@ -73,9 +87,11 @@ export interface AppCredentialsRepo {
   getLinkedInClient(): Promise<LinkedInClientRecord | null>;
   getTwitterCollector(): Promise<TwitterCollectorRecord | null>;
   getTwitterClient(): Promise<TwitterClientRecord | null>;
+  getApifyApiToken(): Promise<ApifyRecord | null>;
   upsertLinkedInClient(input: LinkedInClientUpsertInput): Promise<{ updatedAt: string }>;
   upsertTwitterCollector(input: TwitterCollectorUpsertInput): Promise<{ updatedAt: string }>;
   upsertTwitterClient(input: TwitterClientUpsertInput): Promise<{ updatedAt: string }>;
+  upsertApifyApiToken(input: ApifyUpsertInput): Promise<{ updatedAt: string }>;
   delete(key: AppCredentialKey): Promise<boolean>;
 }
 
@@ -101,11 +117,20 @@ export function createAppCredentialsRepo(
         configured: false,
         updatedAt: null,
       };
+      let apify: AppCredentialsStatus["apify"] = {
+        configured: false,
+        updatedAt: null,
+      };
       for (const row of rows) {
         if (row.key === "linkedin_client") {
           linkedinClient = {
             configured: true,
             apiVersion: row.metadata?.apiVersion ?? null,
+            updatedAt: row.updatedAt.toISOString(),
+          };
+        } else if (row.key === "twitter_collector") {
+          twitterCollector = {
+            configured: true,
             updatedAt: row.updatedAt.toISOString(),
           };
         } else if (row.key === "twitter_client") {
@@ -114,13 +139,18 @@ export function createAppCredentialsRepo(
             updatedAt: row.updatedAt.toISOString(),
           };
         } else {
-          twitterCollector = {
+          // apify_api_token — only remaining key in AppCredentialKey today.
+          // When a new key is added to AppCredentialKey this branch must be
+          // split: add an explicit else-if for the new key and leave the final
+          // else as a no-op guard, otherwise status for the new key is silently
+          // attributed to apify.
+          apify = {
             configured: true,
             updatedAt: row.updatedAt.toISOString(),
           };
         }
       }
-      return { linkedinClient, twitterCollector, twitterClient };
+      return { linkedinClient, twitterCollector, twitterClient, apify };
     },
 
     async getLinkedInClient(): Promise<LinkedInClientRecord | null> {
@@ -233,6 +263,43 @@ export function createAppCredentialsRepo(
         .insert(appCredentials)
         .values({
           key: "twitter_client",
+          encryptedFields,
+          metadata: null,
+          updatedAt: now,
+          updatedBy: "super_admin",
+        })
+        .onConflictDoUpdate({
+          target: appCredentials.key,
+          set: { encryptedFields, metadata: null, updatedAt: now, updatedBy: "super_admin" },
+        })
+        .returning();
+      return { updatedAt: row.updatedAt.toISOString() };
+    },
+
+    async getApifyApiToken(): Promise<ApifyRecord | null> {
+      const rows = await db
+        .select()
+        .from(appCredentials)
+        .where(eq(appCredentials.key, "apify_api_token"))
+        .limit(1);
+      if (rows.length === 0) return null;
+      const row = rows[0];
+      const fields = row.encryptedFields as ApifyEncryptedFields;
+      return {
+        apiToken: cipher.decrypt(fields.apiToken),
+        updatedAt: row.updatedAt,
+      };
+    },
+
+    async upsertApifyApiToken(input: ApifyUpsertInput): Promise<{ updatedAt: string }> {
+      const encryptedFields: ApifyEncryptedFields = {
+        apiToken: cipher.encrypt(input.apiToken),
+      };
+      const now = new Date();
+      const [row] = await db
+        .insert(appCredentials)
+        .values({
+          key: "apify_api_token",
           encryptedFields,
           metadata: null,
           updatedAt: now,

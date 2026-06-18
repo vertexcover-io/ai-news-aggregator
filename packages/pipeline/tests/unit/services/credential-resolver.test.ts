@@ -13,6 +13,7 @@ import {
   resolveTwitterCollectorCookie,
   resolveTwitterOAuth1Credentials,
   resolveTwitterOAuth2Client,
+  resolveApifyApiToken,
 } from "@pipeline/services/credential-resolver.js";
 import type { SocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
 import type { AppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
@@ -38,6 +39,8 @@ function makeAppRepo(opts: {
   twitterCollectorThrows?: Error;
   twitterClient?: Awaited<ReturnType<AppCredentialsRepo["getTwitterClient"]>>;
   twitterClientThrows?: Error;
+  apifyApiToken?: Awaited<ReturnType<AppCredentialsRepo["getApifyApiToken"]>>;
+  apifyApiTokenThrows?: Error;
 }): AppCredentialsRepo {
   return {
     getLinkedInClient: vi.fn(() => {
@@ -55,6 +58,12 @@ function makeAppRepo(opts: {
         return Promise.reject(opts.twitterClientThrows);
       }
       return Promise.resolve(opts.twitterClient ?? null);
+    }),
+    getApifyApiToken: vi.fn(() => {
+      if (opts.apifyApiTokenThrows) {
+        return Promise.reject(opts.apifyApiTokenThrows);
+      }
+      return Promise.resolve(opts.apifyApiToken ?? null);
     }),
     upsertTwitterCollector: vi.fn(),
   };
@@ -294,6 +303,54 @@ describe("resolveTwitterCollectorCookie (app-level store)", () => {
     const appRepo = makeAppRepo({});
     const env: NodeJS.ProcessEnv = { RETTIWT_API_KEY: "" };
     expect(await resolveTwitterCollectorCookie({ appRepo, env })).toBeNull();
+  });
+});
+
+describe("resolveApifyApiToken (app-level, REQ-012 / REQ-013 / EDGE-008)", () => {
+  it("test_REQ_012_resolve_token_db_first_env_fallback — DB row present → returns {apiToken, source:'db'} even when env is set", async () => {
+    const appRepo = makeAppRepo({
+      apifyApiToken: { apiToken: "db-token-value", updatedAt: new Date() },
+    });
+    const env: NodeJS.ProcessEnv = { APIFY_API_KEY: "env-token-should-not-shadow" };
+    const result = await resolveApifyApiToken({ appRepo, env });
+    expect(result).toEqual({ apiToken: "db-token-value", source: "db" });
+  });
+
+  it("test_REQ_012_resolve_token_db_first_env_fallback — DB absent + APIFY_API_KEY set → returns {apiToken, source:'env'}", async () => {
+    const appRepo = makeAppRepo({});
+    const env: NodeJS.ProcessEnv = { APIFY_API_KEY: "env-token-value" };
+    const result = await resolveApifyApiToken({ appRepo, env });
+    expect(result).toEqual({ apiToken: "env-token-value", source: "env" });
+  });
+
+  it("test_REQ_012_resolve_token_db_first_env_fallback — both absent → null", async () => {
+    const appRepo = makeAppRepo({});
+    expect(await resolveApifyApiToken({ appRepo, env: {} })).toBeNull();
+  });
+
+  it("test_REQ_012_resolve_token_db_first_env_fallback — empty-string APIFY_API_KEY treated as absent → null", async () => {
+    const appRepo = makeAppRepo({});
+    expect(await resolveApifyApiToken({ appRepo, env: { APIFY_API_KEY: "" } })).toBeNull();
+  });
+
+  it("test_REQ_013_decrypt_failure_returns_null — getApifyApiToken() throws → resolver returns null", async () => {
+    const appRepo = makeAppRepo({
+      apifyApiTokenThrows: new Error("Unsupported state or unable to authenticate data"),
+    });
+    const result = await resolveApifyApiToken({ appRepo, env: {} });
+    expect(result).toBeNull();
+  });
+
+  it("test_EDGE_008_decrypt_fail_no_env_fallthrough — getApifyApiToken() throws → does NOT fall through to APIFY_API_KEY env", async () => {
+    const appRepo = makeAppRepo({
+      apifyApiTokenThrows: new Error("Unsupported state or unable to authenticate data"),
+    });
+    const env: NodeJS.ProcessEnv = { APIFY_API_KEY: "env-token-must-not-be-used" };
+    const result = await resolveApifyApiToken({ appRepo, env });
+    // Must return null — no env fallthrough on decrypt failure
+    expect(result).toBeNull();
+    // The repo was consulted exactly once; env was never the source
+    expect(appRepo.getApifyApiToken).toHaveBeenCalledTimes(1);
   });
 });
 

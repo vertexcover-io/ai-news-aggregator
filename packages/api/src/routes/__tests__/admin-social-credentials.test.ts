@@ -107,6 +107,7 @@ const appStatus: AppCredentialsStatus = {
   },
   twitterCollector: { configured: true, updatedAt: "2026-06-02T00:00:00.000Z" },
   twitterClient: { configured: false, updatedAt: null },
+  apify: { configured: false, updatedAt: null },
 };
 
 function buildApp(opts?: {

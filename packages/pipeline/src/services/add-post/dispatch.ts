@@ -59,8 +59,13 @@ export async function dispatchFetch(
       return fn(url, forwarded);
     }
     case "reddit": {
-      const fn = deps.fetchRedditPost ?? defaultFetchRedditPost;
-      return fn(url, forwarded);
+      if (deps.fetchRedditPost) {
+        return deps.fetchRedditPost(url, forwarded);
+      }
+      return defaultFetchRedditPost(
+        url,
+        await buildDefaultRedditDeps(forwarded),
+      );
     }
     case "twitter": {
       if (deps.fetchTwitterPost) {
@@ -161,5 +166,22 @@ async function buildDefaultTwitterDeps(forwarded: {
     resolveCookie: defaults.resolveCookie,
     rettiwtFactory: (apiKey: string) => new defaults.rettiwtCtor({ apiKey }),
     refreshCsrf: defaults.refreshCsrf,
+  };
+}
+
+// Default reddit/apify wiring — lazy dynamic imports so the collector stays
+// db-free. The token is resolved per-call (freshness: admin saves take effect
+// on the next fetchRedditPost without a worker restart).
+
+async function buildDefaultRedditDeps(forwarded: {
+  signal?: AbortSignal;
+}): Promise<FetchRedditPostDeps> {
+  const { buildRedditResolveToken } = await import(
+    "@pipeline/lib/reddit-deps.js"
+  );
+  const resolveToken = await buildRedditResolveToken();
+  return {
+    signal: forwarded.signal,
+    resolveToken,
   };
 }

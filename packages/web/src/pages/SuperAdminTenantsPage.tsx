@@ -6,7 +6,7 @@
  * Mock: .harness/features/multi-tenant/mocks/super-admin.html.
  */
 import { useMemo, useState, type ReactElement } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import type { TenantStatus } from "@newsletter/shared/types/tenant";
@@ -105,17 +105,25 @@ export function SuperAdminTenantsPage(): ReactElement {
             Super admin
           </span>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="min-h-[44px] min-w-[44px]"
-          onClick={() => {
-            void handleSignOut();
-          }}
-        >
-          Sign out
-        </Button>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/admin/platform"
+            className="font-mono text-xs text-neutral-500 hover:text-neutral-900 underline underline-offset-2"
+          >
+            Platform settings
+          </Link>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="min-h-[44px] min-w-[44px]"
+            onClick={() => {
+              void handleSignOut();
+            }}
+          >
+            Sign out
+          </Button>
+        </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 md:px-8">

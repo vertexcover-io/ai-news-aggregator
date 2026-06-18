@@ -5,6 +5,7 @@
  *   PUT    /linkedin-client    — set the shared LinkedIn OAuth client
  *   PUT    /twitter-collector  — set the shared Twitter collector cookie
  *   PUT    /twitter-client     — set the shared Twitter OAuth2 app client (P13)
+ *   PUT    /apify              — set the Apify API token (REQ-015)
  *   DELETE /:key               — clear an app credential
  *
  * Mounted at /api/super/app-credentials. ALL routes sit behind
@@ -18,6 +19,7 @@ import {
   linkedinUpsertSchema,
   twitterClientUpsertSchema,
   twitterCollectorUpsertSchema,
+  apifyUpsertSchema,
 } from "@api/lib/validate-social-credentials.js";
 import type {
   AppCredentialKey,
@@ -35,6 +37,7 @@ const KEY_SLUG_TO_KEY: Partial<Record<string, AppCredentialKey>> = {
   "linkedin-client": "linkedin_client",
   "twitter-collector": "twitter_collector",
   "twitter-client": "twitter_client",
+  apify: "apify_api_token",
 };
 
 export function createSuperAppCredentialsRouter(
@@ -75,6 +78,16 @@ export function createSuperAppCredentialsRouter(
       return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
     }
     const { updatedAt } = await deps.getRepo().upsertTwitterClient(parsed.data);
+    return c.json({ ok: true, configured: true, updatedAt });
+  });
+
+  app.put("/apify", async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = apifyUpsertSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+    }
+    const { updatedAt } = await deps.getRepo().upsertApifyApiToken(parsed.data);
     return c.json({ ok: true, configured: true, updatedAt });
   });
 

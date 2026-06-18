@@ -28,6 +28,7 @@ import { UnsubscribePage } from "./pages/UnsubscribePage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { TermsPage } from "./pages/TermsPage";
 import { SuperAdminTenantsPage } from "./pages/SuperAdminTenantsPage";
+import { SuperAdminSettingsPage } from "./pages/SuperAdminSettingsPage";
 import { PublicLayout } from "./layouts/PublicLayout";
 import { AdminLayout } from "./layouts/AdminLayout";
 import { RequireAdmin } from "./layouts/RequireAdmin";
@@ -69,7 +70,10 @@ export const routes: RouteObject[] = [
         // Super-admin console (P15, REQ-100): super_admin sessions land
         // here; RequireSuperAdmin bounces tenant admins to their dashboard.
         element: <RequireSuperAdmin />,
-        children: [{ path: "tenants", element: <SuperAdminTenantsPage /> }],
+        children: [
+          { path: "tenants", element: <SuperAdminTenantsPage /> },
+          { path: "platform", element: <SuperAdminSettingsPage /> },
+        ],
       },
       {
         // pending_setup → funnelled into the wizard; active → wizard exits

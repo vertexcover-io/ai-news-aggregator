@@ -94,7 +94,6 @@ export function SettingsPage(): ReactElement {
   const settingsQuery = useSettings();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
     defaultValues: getDefaults(),
