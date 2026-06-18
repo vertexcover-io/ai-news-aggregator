@@ -39,3 +39,4 @@ agentloop-migration-counts.json
 # Loose demo/QA screenshots dropped in the repo root — scratch, never committed
 # (root-anchored so .harness/**/verification/screenshots/*.png stay tracked)
 /*.png
+.harness/.linear-config.json
