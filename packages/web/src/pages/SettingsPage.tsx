@@ -42,6 +42,8 @@ import { SendingDomainPanel } from "../components/settings/SendingDomainPanel";
 import { BrandingPanel } from "../components/settings/BrandingPanel";
 import { NotificationsPanel } from "../components/settings/NotificationsPanel";
 import { FeaturesPanel } from "../components/settings/FeaturesPanel";
+import { ApifyCredentialPanel } from "../components/settings/ApifyCredentialPanel";
+import { useSession } from "../hooks/useSession";
 
 function getDefaults(): SettingsFormValues {
   return {
@@ -93,6 +95,7 @@ export function SettingsPage(): ReactElement {
   const settingsQuery = useSettings();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const session = useSession();
 
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
@@ -274,6 +277,11 @@ export function SettingsPage(): ReactElement {
 
         {/* Optional feature flags, all off by default (P16, REQ-093). */}
         <FeaturesPanel />
+
+        {/* Apify platform credential — super_admin only (REQ-019). */}
+        {session.data?.user.role === "super_admin" ? (
+          <ApifyCredentialPanel />
+        ) : null}
 
         <SaveBar
           formId="settings-form"
