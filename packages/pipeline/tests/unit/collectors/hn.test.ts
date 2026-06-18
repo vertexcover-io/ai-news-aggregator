@@ -223,9 +223,10 @@ describe("collectHn", () => {
   // Boundary: if EVERY feed fails the collector throws so the source is
   // marked failed (the run still tolerates this via its other sources).
   it("throws when all feeds fail", async () => {
+    // 403 is a permanent status → fails fast (no retry/backoff delays).
     const mockFetch = createMockFetch([
-      { ok: false, status: 400, body: {}, text: "" },
-      { ok: false, status: 400, body: {}, text: "" },
+      { ok: false, status: 403, body: {}, text: "" },
+      { ok: false, status: 403, body: {}, text: "" },
     ]);
     const rawItemsRepo = createMockRepo();
 
@@ -526,6 +527,44 @@ describe("collectHn", () => {
 
     expect(fetchFn).toHaveBeenCalledTimes(3);
   });
+
+  // Algolia returns sporadic 400s under load even for valid queries; a single
+  // transient 400 must NOT kill the source — it is retried like any 5xx.
+  it("retries a transient 400 and succeeds on a later attempt", async () => {
+    const mockFetch = createMockFetch([
+      errorResponse(400),
+      errorResponse(400),
+      storiesResponse(),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    const result = await collectHn(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { feeds: ["newest"], keywords: ["AI"], commentsPerItem: 0 },
+    );
+
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(result.itemsStored).toBeGreaterThan(0);
+  });
+
+  // Genuinely-permanent client errors still fail fast (no retry) so we don't
+  // waste backoff time on responses that will never change.
+  it.each([401, 403, 404, 410])(
+    "fails fast without retrying on permanent status %i",
+    async (status) => {
+      const mockFetch = createMockFetch([
+        errorResponse(status),
+        storiesResponse(),
+      ]);
+      const rawItemsRepo = createMockRepo();
+
+      await expect(
+        collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED),
+      ).rejects.toThrow();
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    },
+  );
 
   // REQ-006: Rate limiting between consecutive requests
   it("enforces 500ms+ delay between consecutive Algolia requests", async () => {

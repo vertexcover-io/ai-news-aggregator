@@ -139,6 +139,10 @@ const DEFAULT_COUNT = 100;
 const DEFAULT_COMMENTS_PER_ITEM = 20;
 const DEFAULT_FEEDS = ["newest", "best"];
 const MAX_RETRIES = 3;
+// HTTP status codes that are genuinely permanent for the Algolia API — retrying
+// them is pointless. Everything else (incl. transient 400s, 408, 429, 5xx) is
+// retried by fetchWithRetry.
+const PERMANENT_STATUSES = new Set([401, 403, 404, 410]);
 const RATE_LIMIT_MS = 500;
 
 const ALGOLIA_BASE = "https://hn.algolia.com/api/v1";
@@ -279,7 +283,12 @@ async function fetchWithRetry<T>(
       const response = await fetchFn(url);
       if (!response.ok) {
         const status = response.status;
-        if (status >= 400 && status < 500 && status !== 429) {
+        // Only genuinely-permanent client errors fail fast. Algolia returns
+        // sporadic 400s under load even for valid queries (verified: the exact
+        // prod query replays as 200), so 400 — along with 408/425/429/5xx — is
+        // treated as transient and retried via the backoff loop below. Without
+        // this, a one-off 400 nukes the whole HN source for the day.
+        if (status >= 400 && status < 500 && PERMANENT_STATUSES.has(status)) {
           throw new Error(`Non-retryable HTTP error: ${status}`);
         }
         throw new Error(`HTTP error: ${status}`);
