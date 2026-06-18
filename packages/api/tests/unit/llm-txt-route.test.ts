@@ -226,6 +226,86 @@ describe("GET /api/archives/:runId/llm.txt", () => {
     expect(body).toContain("> A summary.");
   });
 
+  it("inlines the issue's story content, not just the header", async () => {
+    const rows = [
+      archiveRow({
+        id: "run-1",
+        rankedItems: [{ rawItemId: 7, score: 0.9, rationale: "x" }],
+      }),
+    ];
+    const raw = makeRawRepo([
+      rawItem({
+        id: 7,
+        title: "Headline Story",
+        url: "https://example.com/story-7",
+        metadata: {
+          comments: [],
+          recap: {
+            title: "Headline Story",
+            summary: "The actual body summary.",
+            bullets: ["first bullet"],
+            bottomLine: "Why it matters.",
+          },
+        } as RawItemRow["metadata"],
+      }),
+    ]);
+    const app = new Hono();
+    app.route(
+      "/api/archives",
+      createLlmTxtArchiveRouter(
+        deps({ getArchiveRepo: () => makeArchiveRepo(rows), getRawItemsRepo: () => raw }),
+      ),
+    );
+    const body = await (await app.request("/api/archives/run-1/llm.txt")).text();
+    expect(body).toContain("## Stories");
+    expect(body).toContain("[Headline Story](https://example.com/story-7)");
+    expect(body).toContain("The actual body summary.");
+    expect(body).toContain("- first bullet");
+    expect(body).toContain("Why it matters.");
+    expect(body).not.toContain("No stories in this issue.");
+  });
+
+  it.each(["llms.txt", "llms-full.txt"])(
+    "serves story content at /:runId/%s (archive URL shape)",
+    async (suffix) => {
+      const rows = [
+        archiveRow({
+          id: "run-1",
+          rankedItems: [{ rawItemId: 7, score: 0.9, rationale: "x" }],
+        }),
+      ];
+      const raw = makeRawRepo([
+        rawItem({
+          id: 7,
+          title: "Headline Story",
+          url: "https://example.com/story-7",
+          metadata: {
+            comments: [],
+            recap: {
+              title: "Headline Story",
+              summary: "The actual body summary.",
+              bullets: ["first bullet"],
+              bottomLine: "Why it matters.",
+            },
+          } as RawItemRow["metadata"],
+        }),
+      ]);
+      const app = new Hono();
+      app.route(
+        "/archive",
+        createLlmTxtArchiveRouter(
+          deps({ getArchiveRepo: () => makeArchiveRepo(rows), getRawItemsRepo: () => raw }),
+        ),
+      );
+      const res = await app.request(`/archive/run-1/${suffix}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toContain("text/plain");
+      const body = await res.text();
+      expect(body).toContain("[Headline Story](https://example.com/story-7)");
+      expect(body).toContain("The actual body summary.");
+    },
+  );
+
   it("returns 404 for an unreviewed run", async () => {
     const rows = [archiveRow({ id: "run-1", reviewed: false })];
     const app = new Hono();

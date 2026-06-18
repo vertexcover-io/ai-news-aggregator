@@ -92,6 +92,12 @@ export function buildApp(deps: BuildAppDeps): Hono {
   app.route("/api/archives", deps.llmTxtArchiveRouter);
   app.route("/api/archives", deps.publicArchivesRouter);
 
+  // Per-issue llm.txt at the public archive URL shape (`/archive/:runId/llms.txt`,
+  // `/archive/:runId/llms-full.txt`). LLM/agent crawlers append the llm.txt name
+  // to the page URL they already have, so these must be served by the API — the
+  // SPA fallback would otherwise return index.html (the React shell) for them.
+  app.route("/archive", deps.llmTxtArchiveRouter);
+
   // Public home composite + must-read listing.
   app.route("/api/home", deps.publicHomeRouter);
   app.route("/api/must-read", deps.publicMustReadRouter);
