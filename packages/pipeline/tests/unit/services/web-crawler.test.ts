@@ -13,6 +13,7 @@ interface CapturedCrawlerOptions {
   sameDomainDelaySecs?: number;
   respectRobotsTxtFile?: boolean;
   renderingTypeDetectionRatio?: number;
+  proxyConfiguration?: { proxyUrls: string[] };
   requestHandler?: (ctx: unknown) => Promise<void>;
   failedRequestHandler?: (ctx: unknown, error: Error) => void;
   resultChecker?: (result: unknown) => boolean;
@@ -47,6 +48,9 @@ function getInstance(): MockCrawlerInstance {
 vi.mock("crawlee", () => {
   return {
     Configuration: vi.fn().mockImplementation(() => ({})),
+    ProxyConfiguration: vi.fn().mockImplementation(
+      (config: { proxyUrls: string[] }) => ({ proxyUrls: config.proxyUrls }),
+    ),
     AdaptivePlaywrightCrawler: vi.fn().mockImplementation(
       (options: CapturedCrawlerOptions) => {
         const instance: MockCrawlerInstance = {
@@ -110,7 +114,7 @@ function makeFailedContext(url: string): { request: { url: string } } {
 }
 
 // Import under test — must come AFTER vi.mock so mock is established
-const { runWebCrawl } = await import("@pipeline/services/web-crawler.js");
+const { runWebCrawl, crawlWithProxyFallback } = await import("@pipeline/services/web-crawler.js");
 
 describe("runWebCrawl", () => {
   beforeEach(() => {
@@ -598,5 +602,99 @@ describe("runWebCrawl", () => {
       );
       expect(infoCall).toBeUndefined();
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // Proxy option: proxyUrl → ProxyConfiguration on the crawler
+  // -------------------------------------------------------------------------
+  describe("proxy option", () => {
+    const jobs: CrawlJob[] = [{ kind: "listing", sourceName: "S", url: "https://ex.com/" }];
+
+    it("passes a ProxyConfiguration when proxyUrl is set", async () => {
+      await runWebCrawl(jobs, { proxyUrl: "http://u:p@host:80" });
+      expect(getInstance().options.proxyConfiguration).toEqual({
+        proxyUrls: ["http://u:p@host:80"],
+      });
+    });
+
+    it("has no proxyConfiguration when proxyUrl is absent", async () => {
+      await runWebCrawl(jobs);
+      expect(getInstance().options.proxyConfiguration).toBeUndefined();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// crawlWithProxyFallback — direct pass first, retry 403s through the proxy
+// ---------------------------------------------------------------------------
+
+function convertResult(): {
+  markdown: string;
+  title: string | null;
+  byline: string | null;
+  imageUrl: string | null;
+  textLength: number;
+  publishedAt: Date | null;
+  structuredData: string | null;
+} {
+  return { markdown: "ok", title: "t", byline: null, imageUrl: null, textLength: 2, publishedAt: null, structuredData: null };
+}
+const ok = (): CrawlResult => ({ ok: true, result: convertResult(), renderedWith: "browser" });
+const blocked = (): CrawlResult => ({ ok: false, error: "Request blocked - received 403 status code." });
+
+describe("crawlWithProxyFallback", () => {
+  const jobs: CrawlJob[] = [
+    { kind: "listing", sourceName: "A", url: "https://a.com/" },
+    { kind: "listing", sourceName: "B", url: "https://b.com/" },
+  ];
+
+  afterEach(() => {
+    delete process.env.WEB_PROXY_URL;
+  });
+
+  it("returns the direct result unchanged when WEB_PROXY_URL is unset", async () => {
+    delete process.env.WEB_PROXY_URL;
+    const direct = new Map<string, CrawlResult>([
+      ["https://a.com/", blocked()],
+      ["https://b.com/", ok()],
+    ]);
+    const crawlFn = vi.fn().mockResolvedValue(direct);
+
+    const out = await crawlWithProxyFallback(jobs, {}, crawlFn);
+
+    expect(crawlFn).toHaveBeenCalledTimes(1);
+    expect(out).toBe(direct);
+  });
+
+  it("retries only the 403-blocked URLs through the proxy and merges recoveries", async () => {
+    process.env.WEB_PROXY_URL = "http://u:p@host:80";
+    const direct = new Map<string, CrawlResult>([
+      ["https://a.com/", blocked()],
+      ["https://b.com/", ok()],
+    ]);
+    const proxied = new Map<string, CrawlResult>([["https://a.com/", ok()]]);
+    const crawlFn = vi.fn().mockResolvedValueOnce(direct).mockResolvedValueOnce(proxied);
+
+    const out = await crawlWithProxyFallback(jobs, {}, crawlFn);
+
+    expect(crawlFn).toHaveBeenCalledTimes(2);
+    const secondArgs = crawlFn.mock.calls[1] as [CrawlJob[], { proxyUrl?: string }];
+    expect(secondArgs[0].map((j) => j.url)).toEqual(["https://a.com/"]);
+    expect(secondArgs[1].proxyUrl).toBe("http://u:p@host:80");
+    expect(out.get("https://a.com/")?.ok).toBe(true);
+  });
+
+  it("does not retry when there are no 403 failures", async () => {
+    process.env.WEB_PROXY_URL = "http://u:p@host:80";
+    const direct = new Map<string, CrawlResult>([
+      ["https://a.com/", { ok: false, error: "HTTP 500 for https://a.com/" }],
+      ["https://b.com/", ok()],
+    ]);
+    const crawlFn = vi.fn().mockResolvedValue(direct);
+
+    const out = await crawlWithProxyFallback(jobs, {}, crawlFn);
+
+    expect(crawlFn).toHaveBeenCalledTimes(1);
+    expect(out).toBe(direct);
   });
 });

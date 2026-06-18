@@ -307,6 +307,35 @@ describe("LLM extraction helpers", () => {
       expect(text).toContain(listing.markdown);
     });
 
+    // Recency filter: when sinceDays is provided the prompt instructs the model
+    // to only return recent posts (keeps output small on long archive pages).
+    it("injects a recency cutoff instruction when sinceDays is set", async () => {
+      const model = makeDiscoveryMockModel({ posts: [] });
+
+      await discoverPostUrls(listing.listingUrl, listing.markdown, null, model, undefined, 1);
+
+      const call = getCallOrThrow(model.doGenerateCalls, 0);
+      const promptMessages = call.prompt as { role: string; content: { type: string; text?: string }[] }[];
+      const text = promptMessages.flatMap((m) => m.content).find((c) => c.type === "text")?.text ?? "";
+
+      expect(text).toContain("Only return posts published on or after");
+      expect(text).toMatch(/\d{4}-\d{2}-\d{2}/);
+      expect(text).toContain("derive published_at from the URL");
+    });
+
+    // Without sinceDays (or sinceDays <= 0) the recency instruction is absent.
+    it("omits the recency instruction when sinceDays is not provided", async () => {
+      const model = makeDiscoveryMockModel({ posts: [] });
+
+      await discoverPostUrls(listing.listingUrl, listing.markdown, null, model);
+
+      const call = getCallOrThrow(model.doGenerateCalls, 0);
+      const promptMessages = call.prompt as { role: string; content: { type: string; text?: string }[] }[];
+      const text = promptMessages.flatMap((m) => m.content).find((c) => c.type === "text")?.text ?? "";
+
+      expect(text).not.toContain("Only return posts published on or after");
+    });
+
     // REQ-006 + EDGE-002: oversized combined body is capped; markdown prefix is preserved
     it("truncates combined body to COMBINED_DISCOVERY_CAP and preserves markdown prefix (REQ-006, EDGE-002)", async () => {
       const model = makeDiscoveryMockModel({ posts: [] });
@@ -1684,7 +1713,7 @@ describe("collectWeb (P2 telemetry)", () => {
   });
 });
 
-// ── Phase 2: deepseek-chat model id recorded to tracker (REQ-001, REQ-002) ───────────
+// ── Phase 2: deepseek-v4-flash model id recorded to tracker (REQ-001, REQ-002) ───────────
 describe("collectWeb cost-tracker model id", () => {
   function makeRecordingTracker(): { records: RecordInput[]; tracker: CostTracker } {
     const records: RecordInput[] = [];
@@ -1703,7 +1732,7 @@ describe("collectWeb cost-tracker model id", () => {
     return { records, tracker };
   }
 
-  it("records modelId deepseek-chat for both web-discovery and web-extraction stages", async () => {
+  it("records modelId deepseek-v4-flash for both web-discovery and web-extraction stages", async () => {
     const repo = makeRepo();
     const model = makeDiscoveryThenExtractModel(
       [DISCOVERY_POSTS[0]],
@@ -1731,9 +1760,9 @@ describe("collectWeb cost-tracker model id", () => {
 
     const discovery = records.find((r) => r.stage === "web-discovery");
     const extraction = records.find((r) => r.stage === "web-extraction");
-    expect(discovery?.modelId).toBe("deepseek-chat");
-    expect(extraction?.modelId).toBe("deepseek-chat");
-    expect(WEB_COLLECTOR_MODEL_ID).toBe("deepseek-chat");
+    expect(discovery?.modelId).toBe("deepseek-v4-flash");
+    expect(extraction?.modelId).toBe("deepseek-v4-flash");
+    expect(WEB_COLLECTOR_MODEL_ID).toBe("deepseek-v4-flash");
   });
 });
 
@@ -1777,11 +1806,11 @@ describe("resolveDefaultModel provider", () => {
       { sources: [sourceA], maxItems: 5 },
     );
 
-    expect(MODEL_ID).toBe("deepseek-chat");
+    expect(MODEL_ID).toBe("deepseek-v4-flash");
     expect(createDeepSeek).toHaveBeenCalledTimes(1);
     expect(createDeepSeek).toHaveBeenCalledWith({ apiKey: "test-deepseek-key-123" });
     const provider = createDeepSeek.mock.results[0].value as ReturnType<typeof createDeepSeek>;
-    expect(provider).toHaveBeenCalledWith("deepseek-chat");
+    expect(provider).toHaveBeenCalledWith("deepseek-v4-flash");
   });
 });
 

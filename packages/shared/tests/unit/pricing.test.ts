@@ -9,6 +9,7 @@ describe("MODEL_PRICING (REQ-001)", () => {
         "claude-sonnet-4-5-20250929",
         "claude-sonnet-4-6",
         "deepseek-chat",
+        "deepseek-v4-flash",
         "gemini-3.1-flash-lite",
       ].sort(),
     );
@@ -19,6 +20,16 @@ describe("MODEL_PRICING (REQ-001)", () => {
       inputPerMTok: 0.14,
       outputPerMTok: 0.28,
       cacheReadPerMTok: 0.0028,
+      cacheWrite5mPerMTok: 0,
+      cacheWrite1hPerMTok: 0,
+    });
+  });
+
+  it("deepseek-v4-flash rates match official DeepSeek V4 Flash pricing", () => {
+    expect(MODEL_PRICING["deepseek-v4-flash"]).toEqual({
+      inputPerMTok: 0.14,
+      outputPerMTok: 0.28,
+      cacheReadPerMTok: 0.028,
       cacheWrite5mPerMTok: 0,
       cacheWrite1hPerMTok: 0,
     });
