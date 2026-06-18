@@ -1,0 +1,197 @@
+/* "The Daily Read" magazine palette — mirrors packages/web/src/index.css */
+@import url("https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap");
+
+:root {
+  --cream: #fbfaf7;
+  --cream-elev: #ffffff;
+  --ink: #14110d;
+  --ink-2: #2a261f;
+  --mute: #6b6557;
+  --mute-2: #8a8472;
+  --line: #e7e2d6;
+  --line-strong: #d4ceba;
+  --rust: #8c3a1e;
+  --rust-deep: #6e2d17;
+  --chip: #f1ede2;
+  --danger: #b3261e;
+
+  --font-serif: "Newsreader", ui-serif, Georgia, serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 360px;
+  background: var(--cream);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.popup {
+  padding: 22px 22px 20px;
+}
+
+/* Masthead */
+.masthead {
+  text-align: center;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--mute);
+  margin: 0 0 6px;
+}
+.title {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.1;
+  margin: 0;
+  color: var(--ink);
+}
+.subtitle {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--mute);
+  margin: 6px 0 0;
+}
+
+/* Form */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+.input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--cream-elev);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input::placeholder {
+  color: var(--mute-2);
+}
+.input:focus {
+  border-color: var(--rust);
+  box-shadow: 0 0 0 3px rgba(140, 58, 30, 0.14);
+}
+textarea.input {
+  height: auto;
+  min-height: 38px;
+  padding: 9px 12px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+/* Buttons */
+.btn {
+  width: 100%;
+  height: 42px;
+  border: none;
+  border-radius: 8px;
+  background: var(--rust);
+  color: #fdf6f1;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn:hover:not(:disabled) {
+  background: var(--rust-deep);
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.btn-ghost {
+  width: auto;
+  height: auto;
+  background: none;
+  color: var(--mute);
+  font-weight: 500;
+  font-size: 12px;
+  padding: 6px 2px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.btn-ghost:hover:not(:disabled) {
+  background: none;
+  color: var(--ink);
+}
+
+/* Feedback */
+.error {
+  color: var(--danger);
+  font-size: 13px;
+  margin: -4px 0 12px;
+}
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* Success state */
+.success {
+  text-align: center;
+  padding: 8px 0 4px;
+}
+.success-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--rust);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 14px;
+  font-size: 22px;
+}
+.success-title {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.success-note {
+  color: var(--mute);
+  font-size: 13px;
+  margin: 0 0 18px;
+}
+
+.loading {
+  padding: 28px;
+  text-align: center;
+  color: var(--mute);
+  font-family: var(--font-serif);
+  font-style: italic;
+}

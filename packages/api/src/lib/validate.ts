@@ -395,3 +395,12 @@ export const promoteSchema = z.object({
   rawItemId: z.number().int().positive(),
 });
 
+export const extensionLoginSchema = z.object({
+  password: z.string().min(1),
+});
+
+export const submitUrlSchema = z.object({
+  url: z.url(),
+  title: z.string().min(1).max(200).optional(),
+});
+

@@ -61,6 +61,7 @@ import {
   removeLegacySchedulers,
 } from "@api/services/scheduler.js";
 import { captureException, configurePostHog, shutdownAnalytics } from "@api/lib/posthog.js";
+import { createDefaultExtensionRouter } from "@api/routes/extension.js";
 
 const logger = createLogger("api");
 
@@ -213,6 +214,7 @@ const app = buildApp({
   analyticsConfigRouter: createDefaultAnalyticsConfigRouter(),
   linkedInOAuthRouter: createLinkedInOAuthRouter(linkedInOAuthDeps),
   linkedInOAuthCallbackRouter: createLinkedInOAuthCallbackRouter(linkedInOAuthDeps),
+  extensionRouter: createDefaultExtensionRouter(),
 });
 
 const port = Number(process.env.API_PORT ?? 3000);

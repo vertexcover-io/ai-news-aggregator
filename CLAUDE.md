@@ -18,7 +18,13 @@ packages/
   api/      @newsletter/api       — Hono REST API, auth, job enqueueing, email delivery
   pipeline/ @newsletter/pipeline  — BullMQ workers (collectors, processors), no HTTP
   web/      @newsletter/web       — React + Vite frontend (admin UI + public archive)
+  extension/ @newsletter/extension — MV3 Chrome extension (popup) to add URLs to the next run
 ```
+
+The extension submits URLs via a SEPARATE bearer-token API path (`/api/extension/*`,
+`ext|`-namespaced HMAC, CORS scoped to `chrome-extension://`) — isolated from the admin
+cookie gate. Submissions land in `raw_items` as `sourceType: "manual"` and are picked up by
+the next run's candidate query.
 
 - Frontend → API via HTTP; API enqueues BullMQ jobs to Redis; pipeline workers consume them
 - API and pipeline share PostgreSQL through the shared Drizzle schema

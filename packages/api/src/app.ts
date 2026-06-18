@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { MiddlewareHandler } from "hono";
 import { captureException } from "@api/lib/posthog.js";
+import { createExtensionCorsMiddleware } from "@api/routes/extension.js";
 
 export interface BuildAppDeps {
   sessionSecret: string;
@@ -46,6 +47,8 @@ export interface BuildAppDeps {
   llmTxtIndexRouter: Hono;
   /** Public per-issue llm.txt under /api/archives/:runId/llm.txt. */
   llmTxtArchiveRouter: Hono;
+  /** Bearer-auth extension routes (login + submissions). Mounted outside requireAdmin with chrome-extension:// CORS. */
+  extensionRouter: Hono;
 }
 
 const ADMIN_PUBLIC_SUFFIXES = new Set(["/login", "/logout"]);
@@ -113,6 +116,12 @@ export function buildApp(deps: BuildAppDeps): Hono {
     "/api/admin/social-credentials/linkedin/oauth/callback",
     deps.linkedInOAuthCallbackRouter,
   );
+
+  // Extension routes: bearer-auth, scoped CORS for chrome-extension:// origins only.
+  // Mounted BEFORE adminApp — outside the requireAdmin gate. CORS rule is owned by
+  // routes/extension.ts so the policy lives next to the routes it guards.
+  app.use("/api/extension/*", createExtensionCorsMiddleware());
+  app.route("/api/extension", deps.extensionRouter);
 
   // Path-aware admin gate: login/logout skip, everything else requires a
   // valid admin_session cookie.
