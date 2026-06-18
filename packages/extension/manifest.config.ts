@@ -1,11 +1,15 @@
 import { defineManifest } from "@crxjs/vite-plugin";
 
+// Single source of truth for the API origin — also drives VITE_API_BASE in vite.config.ts.
+// Set VITE_API_BASE at build time to target prod (e.g. https://agentloop.vertexcover.io).
+const apiBase = process.env.VITE_API_BASE ?? "http://localhost:3000";
+
 // Deterministic extension ID: alnmmlkpbceggejnpiajajenakencoeb
 // Derived from the RSA public key below (SHA256 of DER SPKI, first 16 bytes, a-p encoded)
 // Phase 4 CORS allowlist and e2e assertions use this ID.
 export default defineManifest({
   manifest_version: 3,
-  name: "The Daily Read — Add Story",
+  name: "AgentLoop Collector",
   version: "0.1.0",
   description: "Add the current tab to the next newsletter run",
   icons: {
@@ -28,10 +32,14 @@ export default defineManifest({
   },
   permissions: ["tabs", "storage", "activeTab"],
   // Scope host access to the API origin only — the popup just fetches the API.
-  // Add the production API host here (e.g. "https://api.yournewsletter.com/*")
-  // when deploying; avoid broad "https://*/*" which triggers an all-sites
-  // access warning on install.
-  host_permissions: ["http://localhost:3000/*", "http://127.0.0.1/*"],
+  // Driven by VITE_API_BASE so a prod build (e.g. https://agentloop.vertexcover.io)
+  // gets the right host grant; avoid broad "https://*/*" which triggers an
+  // all-sites access warning on install. Localhost kept for dev/e2e.
+  host_permissions: [
+    `${apiBase}/*`,
+    "http://localhost:3000/*",
+    "http://127.0.0.1/*",
+  ],
   background: {
     service_worker: "src/background.ts",
     type: "module",

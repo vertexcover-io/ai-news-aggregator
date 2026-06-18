@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "build:prod": "VITE_API_BASE=https://agentloop.vertexcover.io vite build",
     "dev": "vite build --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
