@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "tenants_custom_domain_verified_uq" ON "tenants" USING btree ("custom_domain") WHERE "tenants"."custom_domain_status" = 'verified';

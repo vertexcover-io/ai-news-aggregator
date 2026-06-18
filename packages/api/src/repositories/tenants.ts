@@ -31,6 +31,13 @@ export interface TenantsRepo {
    */
   findByCustomDomain(domain: string): Promise<TenantRow | null>;
   /**
+   * Tenant that has claimed `domain` in ANY status (Fix #3, Phase C). Used to
+   * reject one tenant registering a domain another tenant already holds
+   * (anti-hijack, design E9). Returns the earliest-verified holder if several
+   * somehow exist, so a duplicate is detectable rather than silently picked.
+   */
+  findAnyByCustomDomain(domain: string): Promise<TenantRow | null>;
+  /**
    * Every tenant, oldest first, plus the console list stats: owner email
    * (earliest tenant_admin), confirmed-subscriber count, and latest
    * completed run; bare tenants degrade to null/0/null. Super-admin console
@@ -209,6 +216,18 @@ export function createTenantsRepo(
             eq(tenants.customDomainStatus, "verified"),
           ),
         )
+        // Defensive: if a duplicate ever slips past the unique index, pick the
+        // earliest-verified deterministically rather than an arbitrary row.
+        .orderBy(asc(tenants.customDomainVerifiedAt))
+        .limit(1);
+      return rows[0] ?? null;
+    },
+
+    async findAnyByCustomDomain(domain: string): Promise<TenantRow | null> {
+      const rows = await db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.customDomain, domain))
         .limit(1);
       return rows[0] ?? null;
     },

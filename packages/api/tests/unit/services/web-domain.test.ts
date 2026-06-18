@@ -29,6 +29,8 @@ function tenant(overrides: Partial<TenantRow> = {}): TenantRow {
 function makeDeps(
   initial: TenantRow,
   dns: DnsLookupResult,
+  /** A different tenant already holding the domain (anti-hijack test). */
+  existingHolder: TenantRow | null = null,
 ): { deps: WebDomainServiceDeps; update: ReturnType<typeof vi.fn> } {
   let row = initial;
   const update = vi.fn((_id: string, patch: Record<string, unknown>) => {
@@ -39,6 +41,7 @@ function makeDeps(
     deps: {
       tenantsRepo: {
         findById: vi.fn(() => Promise.resolve(row)),
+        findAnyByCustomDomain: vi.fn(() => Promise.resolve(existingHolder)),
         updateCustomDomain: update as never,
       },
       resolveDns: vi.fn(() => Promise.resolve(dns)),
@@ -101,6 +104,22 @@ describe("registerWebDomain", () => {
     await expect(registerWebDomain(deps, "t1", "not a domain")).rejects.toBeInstanceOf(
       WebDomainError,
     );
+  });
+
+  it("rejects a domain already claimed by another tenant (anti-hijack, 409)", async () => {
+    const otherTenant = tenant({ id: "t2", customDomain: "news.acme.com" });
+    const { deps, update } = makeDeps(tenant(), { cnames: [], addresses: [] }, otherTenant);
+    await expect(registerWebDomain(deps, "t1", "news.acme.com")).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("allows re-registering a domain the SAME tenant already holds", async () => {
+    const self = tenant({ id: "t1", customDomain: "news.acme.com" });
+    const { deps, update } = makeDeps(self, { cnames: [], addresses: [] }, self);
+    await registerWebDomain(deps, "t1", "news.acme.com");
+    expect(update).toHaveBeenCalled();
   });
 });
 

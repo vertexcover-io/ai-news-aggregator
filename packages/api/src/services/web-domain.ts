@@ -16,6 +16,8 @@ import type {
 
 export interface WebDomainTenantsRepo {
   findById(id: string): Promise<TenantRow | null>;
+  /** Any tenant holding this domain in any status (anti-hijack check). */
+  findAnyByCustomDomain(domain: string): Promise<TenantRow | null>;
   updateCustomDomain(
     id: string,
     patch: {
@@ -114,6 +116,13 @@ export async function registerWebDomain(
     if (domain === s || domain.endsWith(`.${s}`)) {
       throw new WebDomainError("that domain is reserved", 400);
     }
+  }
+  // Anti-hijack (design E9): a domain already claimed by ANOTHER tenant cannot
+  // be registered here, in any status — otherwise tenant B could steal the
+  // host tenant A serves on (and trigger cert issuance for it).
+  const holder = await deps.tenantsRepo.findAnyByCustomDomain(domain);
+  if (holder !== null && holder.id !== tenantId) {
+    throw new WebDomainError("that domain is already in use", 409);
   }
   const updated = await deps.tenantsRepo.updateCustomDomain(tenantId, {
     customDomain: domain,

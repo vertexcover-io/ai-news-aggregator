@@ -365,6 +365,13 @@
       "when": 1781762100064,
       "tag": "0051_hot_george_stacy",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1781763162250,
+      "tag": "0052_cute_tusk",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { captureException } from "@api/lib/posthog.js";
 
 export interface BuildAppDeps {
@@ -186,6 +186,10 @@ export function buildApp(deps: BuildAppDeps): Hono {
   const tlsAllow = deps.tlsAllow;
   if (tlsAllow) {
     app.get("/internal/tls-allow", async (c) => {
+      // Loopback-only: Caddy calls this on 127.0.0.1. If the peer address is
+      // determinable and NOT loopback, refuse — defense-in-depth so the
+      // endpoint can't be probed from off-box even if the port were exposed.
+      if (!isLoopbackPeer(c)) return c.json({ ok: false }, 403);
       const domain = c.req.query("domain");
       if (domain === undefined || domain === "") {
         return c.json({ error: "domain required" }, 400);
@@ -353,4 +357,26 @@ function gatedWrap(mw: MiddlewareHandler, router: Hono): Hono {
   app.use("*", mw);
   app.route("/", router);
   return app;
+}
+
+/** Node socket peer address, if the adapter exposes it (undefined otherwise). */
+function peerRemoteAddress(env: unknown): string | undefined {
+  if (typeof env !== "object" || env === null) return undefined;
+  const incoming = (env as { incoming?: unknown }).incoming;
+  if (typeof incoming !== "object" || incoming === null) return undefined;
+  const socket = (incoming as { socket?: unknown }).socket;
+  if (typeof socket !== "object" || socket === null) return undefined;
+  const addr = (socket as { remoteAddress?: unknown }).remoteAddress;
+  return typeof addr === "string" ? addr : undefined;
+}
+
+/**
+ * True when the request's peer is loopback — or when the peer can't be
+ * determined (unit tests / non-node adapters), so it never blocks those.
+ * Production (node-server behind Caddy) always sees 127.0.0.1.
+ */
+function isLoopbackPeer(c: Context): boolean {
+  const addr = peerRemoteAddress(c.env);
+  if (addr === undefined) return true;
+  return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
 }

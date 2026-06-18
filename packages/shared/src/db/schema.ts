@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import { bigserial, boolean, customType, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type {
   NotificationState,
@@ -120,6 +120,12 @@ export const tenants = pgTable(
   (t) => [
     uniqueIndex("tenants_slug_uq").on(t.slug),
     index("tenants_previous_slug_idx").on(t.previousSlug),
+    // At most one tenant may hold a given custom web domain as VERIFIED (Fix
+    // #3, Phase C anti-hijack, design E9) — DB-enforced backstop to the
+    // app-level uniqueness check in registerWebDomain.
+    uniqueIndex("tenants_custom_domain_verified_uq")
+      .on(t.customDomain)
+      .where(sql`${t.customDomainStatus} = 'verified'`),
   ],
 );
 
