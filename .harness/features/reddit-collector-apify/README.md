@@ -1,7 +1,7 @@
 # Apify-Based Reddit Collector
 
 **Verification verdict:** ✅ PASSED — see [verification/proof-report.md](verification/proof-report.md)
-**PR:** _(filled in after creation)_
+**PR:** https://github.com/vertexcover-io/ai-news-aggregator/pull/291 → `feature/multi-tenant`
 
 ## Summary
 
