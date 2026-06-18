@@ -350,14 +350,21 @@ export type SocialCredentialSelect = typeof socialCredentials.$inferSelect;
  * tenant-facing responses. Encrypted at rest with the same D-012 cipher
  * (D-104: the SESSION_SECRET-derived KEK is never rotated).
  */
-export type AppCredentialKey = "linkedin_client" | "twitter_collector" | "twitter_client";
+export interface ApifyEncryptedFields {
+  apiToken: EncryptedBlob;
+}
+
+export type AppCredentialKey = "linkedin_client" | "twitter_collector" | "twitter_client" | "apify_api_token";
 
 export const appCredentials = pgTable("app_credentials", {
   key: text("key").primaryKey().$type<AppCredentialKey>(),
   encryptedFields: jsonb("encrypted_fields")
     .notNull()
     .$type<
-      LinkedInEncryptedFields | TwitterCollectorEncryptedFields | TwitterClientEncryptedFields
+      | LinkedInEncryptedFields
+      | TwitterCollectorEncryptedFields
+      | TwitterClientEncryptedFields
+      | ApifyEncryptedFields
     >(),
   metadata: jsonb("metadata").$type<{ apiVersion?: string } | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
