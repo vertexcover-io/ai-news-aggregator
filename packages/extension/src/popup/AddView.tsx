@@ -91,7 +91,7 @@ export default function AddView({ token, onLogout }: Props) {
   return (
     <div className="popup">
       <header className="masthead">
-        <p className="eyebrow">The Daily Read</p>
+        <p className="eyebrow">AgentLoop</p>
         <h1 className="title">Add a Story</h1>
         <p className="subtitle">Queue this page for tomorrow</p>
       </header>

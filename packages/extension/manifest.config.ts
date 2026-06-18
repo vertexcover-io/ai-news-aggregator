@@ -9,7 +9,7 @@ const apiBase = process.env.VITE_API_BASE ?? "http://localhost:3000";
 // Phase 4 CORS allowlist and e2e assertions use this ID.
 export default defineManifest({
   manifest_version: 3,
-  name: "The Daily Read — Add Story",
+  name: "AgentLoop Collector",
   version: "0.1.0",
   description: "Add the current tab to the next newsletter run",
   icons: {
