@@ -92,7 +92,7 @@ export interface EmailSendDeps {
    */
   tenantsRepo: Pick<
     PipelineTenantsRepo,
-    "getSendingDomainStatus" | "getSendingDomainName"
+    "getSendingDomainStatus" | "getSendingDomainName" | "getSlug"
   >;
   emailSendsRepo: PipelineEmailSendsRepo;
   archiveRepo: RunArchivesRepo;
@@ -100,6 +100,12 @@ export interface EmailSendDeps {
   renderNewsletter: (props: NewsletterRenderProps) => Promise<string>;
   sessionSecret: string;
   fromMail: string;
+  /**
+   * Fix #3: shared, pre-verified Resend domain for the managed-default sender.
+   * A tenant with no own verified sending domain broadcasts from
+   * `<slug>@<managedEmailDomain>` (zero-config) instead of being blocked.
+   */
+  managedEmailDomain: string;
   replyToEmail?: string;
   baseUrl: string;
   slackNotifier?: SlackNotifier;
@@ -210,41 +216,35 @@ export async function handleEmailSendJob(
   // prevents duplicate delivery in both modes.
   if (isBroadcast && archive.emailSentAt !== null) return;
 
-  // P14 broadcast gate (REQ-053/EDGE-006): the subscriber broadcast goes out
-  // from the tenant's own sending domain, so it is BLOCKED until that domain
-  // is verified with Resend. Targeted sends (the welcome back-issue) and all
-  // API-side transactional mail use the shared platform sender and are never
-  // gated (EDGE-005). FAIL-CLOSED: `tenantsRepo` is required, so the gate runs
-  // on every broadcast — an untyped caller omitting it gets a thrown TypeError
-  // here, before any email goes out (never a silent bypass).
-  // Broadcasts from a tenant with a registered+verified domain go out from
-  // `newsletter@<domain>` (REQ-084 follow-through; design VS-2.3). Targeted
-  // sends and tenants without a domain NAME (the grandfathered tenant 0)
-  // keep the shared platform sender.
+  // Broadcast sender resolution (Fix #3, evolving REQ-053/REQ-084). The
+  // subscriber broadcast FROM address is resolved per tenant — but we NEVER
+  // send from an unverified custom domain:
+  //   • own verified sending domain  → `newsletter@<domain>` (REQ-084)
+  //   • verified, no domain name      → the shared platform sender, unchanged
+  //                                      (grandfathered tenant 0 / AGENTLOOP)
+  //   • otherwise (new tenants, or an own domain still pending/failed)
+  //                                    → the MANAGED DEFAULT `<slug>@<managed
+  //                                      domain>` on our shared, pre-verified
+  //                                      Resend domain — zero-config, so the
+  //                                      tenant can broadcast immediately
+  //                                      without registering a domain.
+  // Targeted sends (the welcome back-issue) and all API-side transactional
+  // mail keep the shared platform sender (EDGE-005). FAIL-CLOSED: `tenantsRepo`
+  // is required, so an untyped caller omitting it throws here before any email
+  // goes out (never a silent bypass).
   let fromAddress = deps.fromMail;
   if (isBroadcast) {
     const domainStatus = await deps.tenantsRepo.getSendingDomainStatus();
-    if (domainStatus !== "verified") {
-      logger.warn(
-        {
-          event: "newsletter-send.broadcast_blocked",
-          runId: archive.id,
-          jobId: job.id,
-          reason: "sending_domain_not_verified",
-          domainStatus: domainStatus ?? "none",
-        },
-        "newsletter-send: broadcast blocked — tenant sending domain not verified",
-      );
-      await deps.slackNotifier?.notifyPublishFailed({
-        runId: archive.id,
-        channel: "email-send",
-        reason: "sending_domain_not_verified",
-      });
-      return;
-    }
     const domainName = await deps.tenantsRepo.getSendingDomainName();
-    if (domainName !== null) {
+    if (domainStatus === "verified" && domainName !== null) {
       fromAddress = `newsletter@${domainName}`;
+    } else if (domainStatus === "verified" && domainName === null) {
+      // Grandfathered tenant 0: keep the shared platform sender as before.
+      fromAddress = deps.fromMail;
+    } else {
+      const slug = await deps.tenantsRepo.getSlug();
+      fromAddress =
+        slug !== null ? `${slug}@${deps.managedEmailDomain}` : deps.fromMail;
     }
   }
 

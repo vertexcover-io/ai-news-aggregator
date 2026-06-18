@@ -36,6 +36,7 @@ import { ShortlistPromptSection } from "../components/settings/ShortlistPromptSe
 import { DEFAULT_SHORTLIST_PROMPT } from "@newsletter/shared/constants";
 import { SaveBar } from "../components/settings/SaveBar";
 import { SocialCredentialsPanel } from "../components/SocialCredentialsPanel";
+import { SitePanel } from "../components/settings/SitePanel";
 import { SendingDomainPanel } from "../components/settings/SendingDomainPanel";
 import { BrandingPanel } from "../components/settings/BrandingPanel";
 import { NotificationsPanel } from "../components/settings/NotificationsPanel";
@@ -250,6 +251,9 @@ export function SettingsPage(): ReactElement {
             <RankingPromptSection />
           </form>
         </FormProvider>
+
+        {/* Site URL + default sending address, both zero-config (Fix #3). */}
+        <SitePanel />
 
         {/* Brand identity captured at onboarding — view + edit (FIX #1). */}
         <BrandingPanel />

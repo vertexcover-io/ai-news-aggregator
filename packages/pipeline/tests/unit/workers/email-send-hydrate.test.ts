@@ -120,6 +120,7 @@ async function captureStories(archive: PipelineRunArchiveRow, row: RawItemRow) {
     tenantsRepo: {
       getSendingDomainStatus: vi.fn(() => Promise.resolve("verified" as const)),
       getSendingDomainName: vi.fn(() => Promise.resolve(null)),
+      getSlug: vi.fn(() => Promise.resolve("inference")),
     },
     renderNewsletter: vi.fn((props) => {
       capturedStories = props.stories;
@@ -127,6 +128,7 @@ async function captureStories(archive: PipelineRunArchiveRow, row: RawItemRow) {
     }),
     sessionSecret: "test-secret-32-bytes-long-at-least",
     fromMail: "newsletter@example.com",
+    managedEmailDomain: "news.example.com",
     baseUrl: "https://newsletter.example.com",
     sendPacer: makeSendPacer(),
   };

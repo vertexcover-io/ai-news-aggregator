@@ -120,3 +120,17 @@ export function inferManualSource(raw: string): {
 export const PUBLIC_ROOT_DOMAIN: string =
   (import.meta.env.VITE_PUBLIC_ROOT_DOMAIN as string | undefined) ??
   "ourdomain.com";
+
+/**
+ * Shared, pre-verified sending domain for the managed-default sender (Fix #3).
+ * A new tenant sends from `<slug>@<MANAGED_EMAIL_DOMAIN>` with zero config; they
+ * can bring their own sending domain or SMTP provider later in Settings.
+ */
+export const MANAGED_EMAIL_DOMAIN: string =
+  (import.meta.env.VITE_MANAGED_EMAIL_DOMAIN as string | undefined) ??
+  "news.vertexcover.io";
+
+/** The managed-default broadcast sender for a given slug. */
+export function managedSenderFor(slug: string): string {
+  return `${slug}@${MANAGED_EMAIL_DOMAIN}`;
+}

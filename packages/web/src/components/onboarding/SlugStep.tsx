@@ -113,6 +113,15 @@ export function SlugStep({ data, update }: StepProps): ReactElement {
           STATUS_COPY[status](host)
         ) : null}
       </p>
+      {status === "available" ? (
+        <p
+          data-testid="slug-live-url"
+          className="mt-1 text-[12.5px] text-[#6b6557]"
+        >
+          Your site will be live at{" "}
+          <span className="font-mono text-[#14110d]">https://{host}</span>
+        </p>
+      ) : null}
     </div>
   );
 }

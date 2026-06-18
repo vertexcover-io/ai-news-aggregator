@@ -179,6 +179,7 @@ describe("publish workers dry-run guard", () => {
           tenantsRepo: {
             getSendingDomainStatus: vi.fn(() => Promise.resolve("verified" as const)),
             getSendingDomainName: vi.fn(() => Promise.resolve(null)),
+            getSlug: vi.fn(() => Promise.resolve("inference")),
           },
           emailSendsRepo: emailSendsRepo as never,
           archiveRepo: archiveRepo as never,
@@ -186,6 +187,7 @@ describe("publish workers dry-run guard", () => {
           renderNewsletter: vi.fn(() => Promise.resolve("<html></html>")),
           sessionSecret: "secret",
           fromMail: "from@example.com",
+          managedEmailDomain: "news.example.com",
           baseUrl: "https://example.com",
           slackNotifier: slackNotifier as never,
         },

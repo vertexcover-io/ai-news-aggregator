@@ -99,15 +99,17 @@ function makeDeps(
       updateRecapData: vi.fn(),
       listForRun: vi.fn(() => Promise.resolve([])),
     },
-    // Default: a verified tenant — the broadcast gate is consulted and passes.
-    // Gate-behavior tests override this with pending/failed/null statuses.
+    // Default: grandfathered tenant 0 (verified, no own domain name) → keeps
+    // the shared platform sender. Gate-behavior tests override this.
     tenantsRepo: {
       getSendingDomainStatus: vi.fn(() => Promise.resolve("verified" as const)),
       getSendingDomainName: vi.fn(() => Promise.resolve(null)),
+      getSlug: vi.fn(() => Promise.resolve("agentloop")),
     },
     renderNewsletter: vi.fn(() => Promise.resolve("<html>newsletter</html>")),
     sessionSecret: "secret",
     fromMail: "newsletter@example.com",
+    managedEmailDomain: "news.example.com",
     baseUrl: "https://newsletter.example.com",
     slackNotifier: {
       notifyNewsletterSent: vi.fn(() => Promise.resolve()),
@@ -151,13 +153,16 @@ describe("sending-domain broadcast gate (P14)", () => {
   function makeTenantsRepo(
     status: "pending" | "verified" | "failed" | null,
     name: string | null = null,
+    slug: string | null = "inference",
   ): {
     getSendingDomainStatus: ReturnType<typeof vi.fn>;
     getSendingDomainName: ReturnType<typeof vi.fn>;
+    getSlug: ReturnType<typeof vi.fn>;
   } {
     return {
       getSendingDomainStatus: vi.fn(() => Promise.resolve(status)),
       getSendingDomainName: vi.fn(() => Promise.resolve(name)),
+      getSlug: vi.fn(() => Promise.resolve(slug)),
     };
   }
 
@@ -166,49 +171,36 @@ describe("sending-domain broadcast gate (P14)", () => {
     ["failed", "failed" as const],
     ["absent (never registered)", null],
   ])(
-    "test_REQ_053_broadcast_blocked_without_domain_transactional_ok — %s domain blocks the broadcast but the targeted (welcome/transactional) send still goes out",
+    "test_REQ_310_managed_default_without_own_domain — with no verified own domain (%s) the broadcast goes out from the managed default <slug>@<managed domain>, never blocked",
     async (_label, status) => {
       const archive = makeArchive();
-      const tenantsRepo = makeTenantsRepo(status);
+      const tenantsRepo = makeTenantsRepo(status, null, "inference");
       const slackNotifier = makeSlackNotifier();
       const deps = makeDeps(archive, { tenantsRepo, slackNotifier });
 
-      // Broadcast: BLOCKED with a clear status, no archive marker stamped.
+      // Broadcast: PROCEEDS from the managed default — never sent from an
+      // unverified custom domain, and never blocked.
       await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
-      expect(deps.emailProvider.send).not.toHaveBeenCalled();
-      expect(deps.archiveRepo.markEmailSent).not.toHaveBeenCalled();
-      expect(slackNotifier.notifyPublishFailed).toHaveBeenCalledWith({
-        runId: archive.id,
-        channel: "email-send",
-        reason: "sending_domain_not_verified",
-      });
-
-      // Targeted send (EDGE-005 counterpart): goes out via the shared
-      // platform sender (deps.fromMail) regardless of domain status.
-      await handleEmailSendJob(deps, {
-        name: "email-send",
-        id: "job-2",
-        data: { runId: archive.id, subscriberIds: ["sub-1"] },
-      });
-      expect(deps.emailProvider.send).toHaveBeenCalledOnce();
+      expect(deps.emailProvider.send).toHaveBeenCalled();
       expect(deps.emailProvider.send).toHaveBeenCalledWith(
-        expect.objectContaining({ from: deps.fromMail }),
+        expect.objectContaining({ from: "inference@news.example.com" }),
       );
-      expect(deps.archiveRepo.markEmailSent).not.toHaveBeenCalled();
+      expect(deps.archiveRepo.markEmailSent).toHaveBeenCalledOnce();
+      expect(slackNotifier.notifyPublishFailed).not.toHaveBeenCalled();
     },
   );
 
-  it("allows the broadcast when the tenant sending domain is verified — and proves the gate path actually ran", async () => {
+  it("allows the broadcast when the tenant sending domain is verified — from newsletter@<domain>", async () => {
     const archive = makeArchive();
-    const tenantsRepo = makeTenantsRepo("verified");
+    const tenantsRepo = makeTenantsRepo("verified", "news.acme.com");
     const deps = makeDeps(archive, { tenantsRepo });
 
     await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
 
-    // The gate is consulted on EVERY broadcast (fail-closed design): a
-    // verified status is the only thing that lets the send proceed.
     expect(tenantsRepo.getSendingDomainStatus).toHaveBeenCalledOnce();
-    expect(deps.emailProvider.send).toHaveBeenCalledOnce();
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "newsletter@news.acme.com" }),
+    );
     expect(deps.archiveRepo.markEmailSent).toHaveBeenCalledOnce();
   });
 
@@ -234,14 +226,18 @@ describe("sending-domain broadcast gate (P14)", () => {
     expect(base.archiveRepo.markEmailSent).not.toHaveBeenCalled();
   });
 
-  it("test_EDGE_006_publish_without_domain_blocks_broadcast_allows_social — social publish proceeds while the email broadcast is blocked", async () => {
+  it("test_EDGE_006_publish_without_own_domain_uses_managed_default_and_social_proceeds — a tenant with no own domain still broadcasts (managed default) and social posts independently", async () => {
     const archive = makeArchive();
-    const deps = makeDeps(archive, { tenantsRepo: makeTenantsRepo("pending") });
+    const deps = makeDeps(archive, {
+      tenantsRepo: makeTenantsRepo("pending", null, "inference"),
+    });
 
     await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
-    expect(deps.emailProvider.send).not.toHaveBeenCalled();
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "inference@news.example.com" }),
+    );
 
-    // LinkedIn publish of the SAME archive is untouched by the domain gate.
+    // LinkedIn publish of the SAME archive is independent of the email path.
     const linkedinNotifier = {
       notifyArchiveReady: vi.fn(() => Promise.resolve({ status: "posted" as const })),
     };

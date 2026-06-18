@@ -24,6 +24,13 @@ export interface PipelineTenantsRepo {
    */
   getSendingDomainName(): Promise<string | null>;
   /**
+   * Slug of the scoped tenant (Fix #3): the managed-default broadcast sender
+   * is `<slug>@<MANAGED_EMAIL_DOMAIN>` on our shared, pre-verified Resend
+   * domain — so a tenant with no own verified sending domain still sends
+   * (zero-config). `null` when the scope carries no concrete tenant.
+   */
+  getSlug(): Promise<string | null>;
+  /**
    * Notification config of the scoped tenant (P16, REQ-090–092).
    * `slackWebhook` is the D-012 CIPHERTEXT — decryption happens in
    * services/tenant-notify.ts, never here. `null` when the scope carries no
@@ -63,6 +70,16 @@ export function createPipelineTenantsRepo(
         .where(eq(tenants.id, ctx.tenantId))
         .limit(1);
       return rows[0]?.name ?? null;
+    },
+
+    async getSlug(): Promise<string | null> {
+      if (!isTenantContext(ctx)) return null;
+      const rows = await db
+        .select({ slug: tenants.slug })
+        .from(tenants)
+        .where(eq(tenants.id, ctx.tenantId))
+        .limit(1);
+      return rows[0]?.slug ?? null;
     },
 
     async getNotificationSettings(): Promise<TenantNotificationSettingsRow | null> {

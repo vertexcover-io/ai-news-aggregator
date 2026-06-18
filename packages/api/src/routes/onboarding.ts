@@ -88,7 +88,6 @@ const dataSchema = z
     blurb: z.string().max(2000).optional(),
     rankingPrompt: z.string().max(20_000).optional(),
     shortlistPrompt: z.string().max(20_000).optional(),
-    fromEmail: z.string().max(320).optional(),
     pipelineTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
     emailTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
     timezone: z.string().max(100).optional(),

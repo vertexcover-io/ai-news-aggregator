@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
-import type { StepProps } from "./wizardSteps";
-import { Field, INPUT_CLASS, StepHeading } from "./fields";
+import { managedSenderFor, type StepProps } from "./wizardSteps";
+import { StepHeading } from "./fields";
 import { SocialConnectControls } from "../SocialConnectControls";
 import {
   useLinkedInOAuthStatus,
@@ -20,14 +20,16 @@ interface SocialStepProps extends StepProps {
 /**
  * Connect channels step. LinkedIn / X connect via OAuth through the shared app
  * clients (P12/P13); the connect flow redirects out and resumes here
- * (`returnTo=/admin/onboarding`). The sending email is stored in the wizard
- * data for the P14 domain flow.
+ * (`returnTo=/admin/onboarding`). Email sends from a managed default
+ * (`<slug>@<managed domain>`) with zero config — shown read-only here; a tenant
+ * can bring their own sending domain or SMTP provider later in Settings (Fix #3).
  */
 export function SocialStep({
   data,
-  update,
   onBeforeConnect,
 }: SocialStepProps): ReactElement {
+  const slug = (data.slug ?? "").trim().toLowerCase();
+  const sender = slug.length > 0 ? managedSenderFor(slug) : null;
   return (
     <div>
       <StepHeading
@@ -63,23 +65,21 @@ export function SocialStep({
           />
         </div>
       </div>
-      <div className="mt-5">
-        <Field
-          label="Sending email (broadcast)"
-          htmlFor="wizard-from-email"
-          help="You’ll verify this domain after setup. Until then the broadcast stays paused."
+      <div className="mt-5 rounded-xl border border-[#e7e2d6] bg-[#faf8f2] px-4 py-3.5">
+        <span className="mb-1 block text-[14px] font-semibold text-[#14110d]">
+          Sending email
+        </span>
+        <p
+          data-testid="onboarding-sender"
+          className="font-mono text-[13px] text-[#14110d]"
         >
-          <input
-            id="wizard-from-email"
-            type="email"
-            className={INPUT_CLASS}
-            value={data.fromEmail ?? ""}
-            placeholder="hello@theinference.com"
-            onChange={(e) => {
-              update({ fromEmail: e.target.value });
-            }}
-          />
-        </Field>
+          {sender ?? "Pick a subdomain first to see your sending address"}
+        </p>
+        <p className="mt-1 text-[12.5px] text-[#6b6557]">
+          Your newsletter sends from this address by default — no setup needed.
+          You can bring your own sending domain or email provider later in
+          Settings.
+        </p>
       </div>
     </div>
   );

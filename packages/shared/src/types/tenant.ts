@@ -31,8 +31,6 @@ export interface OnboardingData {
   blurb?: string;
   rankingPrompt?: string;
   shortlistPrompt?: string;
-  /** Optional broadcast sender address (verified post-setup, P14). */
-  fromEmail?: string;
   /** HH:mm — daily pipeline start. */
   pipelineTime?: string;
   /** HH:mm — daily digest send. */
