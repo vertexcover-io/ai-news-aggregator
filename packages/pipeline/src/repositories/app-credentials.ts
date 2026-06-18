@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import { appCredentials } from "@newsletter/shared/db";
 import type { AppDb } from "@newsletter/shared/db";
 import type {
+  ApifyEncryptedFields,
   LinkedInEncryptedFields,
   TwitterClientEncryptedFields,
   TwitterCollectorEncryptedFields,
@@ -34,10 +35,17 @@ export interface TwitterClientRecord {
   updatedAt: Date;
 }
 
+/** Apify platform token (REQ-014) — app-level super-admin managed, no tenant scoping. */
+export interface ApifyRecord {
+  apiToken: string;
+  updatedAt: Date;
+}
+
 export interface AppCredentialsRepo {
   getLinkedInClient(): Promise<LinkedInClientRecord | null>;
   getTwitterCollector(): Promise<TwitterCollectorRecord | null>;
   getTwitterClient(): Promise<TwitterClientRecord | null>;
+  getApifyApiToken(): Promise<ApifyRecord | null>;
   /** CSRF-refresh write-back: persists the rotated collector cookie. */
   upsertTwitterCollector(input: { apiKey: string }): Promise<void>;
 }
@@ -93,6 +101,21 @@ export function createAppCredentialsRepo(
       return {
         clientId: cipher.decrypt(fields.clientId),
         clientSecret: cipher.decrypt(fields.clientSecret),
+        updatedAt: row.updatedAt,
+      };
+    },
+
+    async getApifyApiToken(): Promise<ApifyRecord | null> {
+      const rows = await db
+        .select()
+        .from(appCredentials)
+        .where(eq(appCredentials.key, "apify_api_token"))
+        .limit(1);
+      if (rows.length === 0) return null;
+      const row = rows[0];
+      const fields = row.encryptedFields as ApifyEncryptedFields;
+      return {
+        apiToken: cipher.decrypt(fields.apiToken),
         updatedAt: row.updatedAt,
       };
     },

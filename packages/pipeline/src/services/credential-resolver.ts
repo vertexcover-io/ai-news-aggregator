@@ -45,7 +45,7 @@ export interface CredentialResolverDeps {
 export interface AppCredentialResolverDeps {
   appRepo: Pick<
     AppCredentialsRepo,
-    "getLinkedInClient" | "getTwitterCollector" | "getTwitterClient"
+    "getLinkedInClient" | "getTwitterCollector" | "getTwitterClient" | "getApifyApiToken"
   >;
   env?: NodeJS.ProcessEnv;
 }
@@ -71,7 +71,7 @@ type DbRead<T> = { ok: T | null } | { ok: "decrypt_failed" };
 
 async function safeGetDbRow<T>(
   fetch: () => Promise<T | null>,
-  platform: "linkedin" | "twitter" | "twitter_collector" | "twitter_client",
+  platform: "linkedin" | "twitter" | "twitter_collector" | "twitter_client" | "apify_api_token",
 ): Promise<DbRead<T>> {
   try {
     return { ok: await fetch() };
@@ -171,6 +171,29 @@ export async function resolveTwitterOAuth2Client(
   const clientSecret = env.TWITTER_OAUTH2_CLIENT_SECRET;
   if (!present(clientId) || !present(clientSecret)) return null;
   return { clientId, clientSecret };
+}
+
+export interface ApifyTokenCreds {
+  apiToken: string;
+  source: "db" | "env";
+}
+
+export async function resolveApifyApiToken(
+  deps: AppCredentialResolverDeps,
+): Promise<ApifyTokenCreds | null> {
+  const dbRead = await safeGetDbRow(
+    () => deps.appRepo.getApifyApiToken(),
+    "apify_api_token",
+  );
+  if (dbRead.ok === "decrypt_failed") return null;
+  const dbRow = dbRead.ok;
+  if (dbRow) {
+    return { apiToken: dbRow.apiToken, source: "db" };
+  }
+  const env = deps.env ?? {};
+  const apiToken = env.APIFY_API_KEY;
+  if (!present(apiToken)) return null;
+  return { apiToken, source: "env" };
 }
 
 export async function resolveTwitterCollectorCookie(
