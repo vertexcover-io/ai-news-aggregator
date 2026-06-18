@@ -1,7 +1,8 @@
-import { asc, count, desc, eq, max, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, max, sql } from "drizzle-orm";
 import { runArchives, subscribers, tenants, users } from "@newsletter/shared/db";
 import type { AppDb, TenantRow } from "@newsletter/shared/db";
 import type {
+  CustomDomainStatus,
   EmailMode,
   OnboardingState,
   SendingDomainRecord,
@@ -23,6 +24,12 @@ export interface CreateTenantInput {
 export interface TenantsRepo {
   findById(id: string): Promise<TenantRow | null>;
   findBySlug(slug: string): Promise<TenantRow | null>;
+  /**
+   * Tenant owning a VERIFIED custom web domain (Fix #3, Phase C). Backs the
+   * DB-driven host→tenant resolution and the Caddy on-demand TLS `ask`
+   * endpoint — both must only ever resolve a domain whose status is `verified`.
+   */
+  findByCustomDomain(domain: string): Promise<TenantRow | null>;
   /**
    * Every tenant, oldest first, plus the console list stats: owner email
    * (earliest tenant_admin), confirmed-subscriber count, and latest
@@ -79,6 +86,14 @@ export interface TenantsRepo {
   updateEmailSettings(
     id: string,
     patch: EmailSettingsPatch,
+  ): Promise<TenantRow | null>;
+  /**
+   * Persists the tenant's custom web domain + verification state (Fix #3,
+   * Phase C). Setting `customDomain` to null clears it entirely.
+   */
+  updateCustomDomain(
+    id: string,
+    patch: CustomDomainPatch,
   ): Promise<TenantRow | null>;
   /**
    * Persists the tenant's notification config (P16, REQ-092). `slackWebhook`
@@ -156,6 +171,12 @@ export interface EmailSettingsPatch {
   smtpConfigEnc: SmtpConfigStored | null;
 }
 
+export interface CustomDomainPatch {
+  customDomain: string | null;
+  customDomainStatus: CustomDomainStatus | null;
+  customDomainVerifiedAt: Date | null;
+}
+
 export interface OnboardingCompletionProfile {
   name: string;
   headline: string;
@@ -175,6 +196,20 @@ export function createTenantsRepo(
 
     async findBySlug(slug: string): Promise<TenantRow | null> {
       const rows = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
+      return rows[0] ?? null;
+    },
+
+    async findByCustomDomain(domain: string): Promise<TenantRow | null> {
+      const rows = await db
+        .select()
+        .from(tenants)
+        .where(
+          and(
+            eq(tenants.customDomain, domain),
+            eq(tenants.customDomainStatus, "verified"),
+          ),
+        )
+        .limit(1);
       return rows[0] ?? null;
     },
 
@@ -317,6 +352,23 @@ export function createTenantsRepo(
         .set({
           emailMode: patch.emailMode,
           smtpConfigEnc: patch.smtpConfigEnc,
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.id, id))
+        .returning();
+      return rows[0] ?? null;
+    },
+
+    async updateCustomDomain(
+      id: string,
+      patch: CustomDomainPatch,
+    ): Promise<TenantRow | null> {
+      const rows = await db
+        .update(tenants)
+        .set({
+          customDomain: patch.customDomain,
+          customDomainStatus: patch.customDomainStatus,
+          customDomainVerifiedAt: patch.customDomainVerifiedAt,
           updatedAt: new Date(),
         })
         .where(eq(tenants.id, id))

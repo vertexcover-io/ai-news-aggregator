@@ -53,6 +53,8 @@ function makeTenantRow(overrides: Partial<TenantRow> = {}): TenantRow {
     sendingDomainId: null,
     sendingDomainStatus: null,
     sendingDomainRecords: null,
+    customDomainStatus: null,
+    customDomainVerifiedAt: null,
     emailMode: "managed",
     smtpConfigEnc: null,
     createdAt: new Date("2026-06-01T00:00:00.000Z"),

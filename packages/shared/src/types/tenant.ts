@@ -271,6 +271,30 @@ export interface SendingDomainRecord {
   status: string;
 }
 
+/* ── Custom web domain (Fix #3, Phase C) ────────────────────────────────── */
+
+/** Verification state of a tenant's own (vanity) web domain. */
+export type CustomDomainStatus = "pending" | "verified" | "failed";
+
+/** Which DNS record a tenant must add to point their custom domain at us. */
+export interface CustomDomainDnsRecord {
+  /** "CNAME" for a subdomain, "A" for an apex/root domain. */
+  type: "CNAME" | "A";
+  /** The host to set the record on (the tenant's domain). */
+  name: string;
+  /** The value to point at — our ingress host (CNAME) or VPS IP (A). */
+  value: string;
+}
+
+/** Custom-domain panel payload (GET/POST /api/admin/web-domain[/verify]). */
+export interface CustomDomainWire {
+  domain: string | null;
+  status: CustomDomainStatus | null;
+  /** The DNS record to add; null when no domain is registered. */
+  record: CustomDomainDnsRecord | null;
+  verifiedAt: string | null;
+}
+
 /* ── Per-tenant email provider (Fix #3, Phase B) ────────────────────────── */
 
 /**

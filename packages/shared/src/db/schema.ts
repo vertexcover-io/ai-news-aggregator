@@ -23,6 +23,7 @@ import type { EncryptedBlob } from "@shared/services/credential-cipher.js";
 import type { EditType, PreReviewSnapshot } from "@shared/review-edits/types.js";
 import type {
   AuditAction,
+  CustomDomainStatus,
   EmailMode,
   OnboardingState,
   SendingDomainRecord,
@@ -62,6 +63,13 @@ export const tenants = pgTable(
     name: text("name").notNull(),
     status: text("status").$type<TenantStatus>().notNull().default("pending_setup"),
     customDomain: text("custom_domain"),
+    /**
+     * Verification state of the tenant's own (vanity) web domain (Fix #3,
+     * Phase C). null until they register one; `verified` is the only state the
+     * host→tenant resolver + Caddy on-demand TLS `ask` endpoint accept.
+     */
+    customDomainStatus: text("custom_domain_status").$type<CustomDomainStatus>(),
+    customDomainVerifiedAt: timestamp("custom_domain_verified_at", { withTimezone: true }),
     headline: text("headline"),
     topicStrip: text("topic_strip"),
     subtagline: text("subtagline"),

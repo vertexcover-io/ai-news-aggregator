@@ -18,6 +18,19 @@
 #   build that includes your DNS provider's module plus an API token. See
 #   deployment/README.md → "Multi-tenant subdomains". Until that is configured,
 #   the wildcard site block will fail to obtain a cert.
+# - Tenant CUSTOM web domains (Fix #3, Phase C) use On-Demand TLS: Caddy mints a
+#   cert at first request for ANY host the `ask` endpoint approves. The API
+#   only approves a host that is a VERIFIED tenant custom domain
+#   (GET /internal/tls-allow?domain=…), which is the abuse / Let's-Encrypt
+#   rate-limit guard. Tenants point a CNAME (subdomain) or A record (apex) at
+#   our ingress; the API's web-domain verify flow flips the domain to verified.
+
+# On-Demand TLS: ask the API before issuing a cert for an unknown host.
+{
+	on_demand_tls {
+		ask http://127.0.0.1:3000/internal/tls-allow
+	}
+}
 
 # Shared handlers for every tenant-facing host.
 (newsletter_site) {
@@ -59,5 +72,15 @@
 # Legacy/custom domain kept reachable during cutover. The API maps it to a
 # tenant via CUSTOM_DOMAIN_MAP (e.g. agentloop.vertexcover.io=agentloop).
 agentloop.vertexcover.io {
+	import newsletter_site
+}
+
+# Tenant-registered custom web domains (Fix #3, Phase C). This catch-all
+# matches any host NOT matched above; On-Demand TLS gates cert issuance on the
+# `ask` endpoint, so only verified tenant domains get a cert + are served.
+https:// {
+	tls {
+		on_demand
+	}
 	import newsletter_site
 }

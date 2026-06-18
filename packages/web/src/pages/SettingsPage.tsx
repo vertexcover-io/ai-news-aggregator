@@ -38,6 +38,7 @@ import { SaveBar } from "../components/settings/SaveBar";
 import { SocialCredentialsPanel } from "../components/SocialCredentialsPanel";
 import { SitePanel } from "../components/settings/SitePanel";
 import { EmailPanel } from "../components/settings/EmailPanel";
+import { WebDomainPanel } from "../components/settings/WebDomainPanel";
 import { SendingDomainPanel } from "../components/settings/SendingDomainPanel";
 import { BrandingPanel } from "../components/settings/BrandingPanel";
 import { NotificationsPanel } from "../components/settings/NotificationsPanel";
@@ -255,6 +256,9 @@ export function SettingsPage(): ReactElement {
 
         {/* Site URL + default sending address, both zero-config (Fix #3). */}
         <SitePanel />
+
+        {/* Bring-your-own custom web domain with automatic TLS (Fix #3, C). */}
+        <WebDomainPanel />
 
         {/* Brand identity captured at onboarding — view + edit (FIX #1). */}
         <BrandingPanel />

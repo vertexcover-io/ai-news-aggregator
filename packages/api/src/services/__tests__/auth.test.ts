@@ -29,6 +29,8 @@ function makeTenantRow(over: Partial<TenantRow> = {}): TenantRow {
     name: "Ada",
     status: "pending_setup",
     customDomain: null,
+    customDomainStatus: null,
+    customDomainVerifiedAt: null,
     headline: null,
     topicStrip: null,
     subtagline: null,

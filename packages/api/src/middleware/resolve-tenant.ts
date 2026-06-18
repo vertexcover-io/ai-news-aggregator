@@ -79,16 +79,56 @@ export function classifyHost(
 
 export interface ResolveTenantDeps {
   config: DomainConfig;
-  getTenantsRepo: () => Pick<TenantsRepo, "findBySlug" | "findByPreviousSlug">;
+  getTenantsRepo: () => Pick<
+    TenantsRepo,
+    "findBySlug" | "findByPreviousSlug" | "findByCustomDomain"
+  >;
+  /** Now-ms source (injectable for tests); defaults to Date.now. */
+  now?: () => number;
 }
+
+/** TTL for the custom-domain → tenant cache (verified domains change rarely). */
+const CUSTOM_DOMAIN_CACHE_TTL_MS = 30_000;
 
 /** Identical body for every unknown class — leaks nothing (EDGE-013). */
 const notFound = (c: Context): Response => c.json({ error: "not_found" }, 404);
 
 export function createResolveTenant(deps: ResolveTenantDeps): MiddlewareHandler {
+  const now = deps.now ?? Date.now;
+  // Per-instance cache: a verified custom host → its public tenant (or null
+  // for a miss), so the DB isn't hit on every request to a custom domain.
+  const customDomainCache = new Map<
+    string,
+    { value: PublicTenantCtx | null; expires: number }
+  >();
+
+  async function resolveCustomDomain(
+    host: string,
+  ): Promise<PublicTenantCtx | null> {
+    if (!host) return null;
+    const cached = customDomainCache.get(host);
+    if (cached && cached.expires > now()) return cached.value;
+
+    const tenant = await deps.getTenantsRepo().findByCustomDomain(host);
+    const value: PublicTenantCtx | null =
+      tenant !== null && tenant.status === "active"
+        ? {
+            tenantId: tenant.id,
+            slug: tenant.slug,
+            featureCanon: tenant.featureCanon,
+          }
+        : null;
+    customDomainCache.set(host, {
+      value,
+      expires: now() + CUSTOM_DOMAIN_CACHE_TTL_MS,
+    });
+    return value;
+  }
+
   return createMiddleware(async (c, next) => {
+    const hostHeader = c.req.header("host") ?? new URL(c.req.url).host;
     const classification = classifyHost(
-      c.req.header("host") ?? new URL(c.req.url).host,
+      hostHeader,
       c.req.header("x-tenant-slug"),
       deps.config,
     );
@@ -97,7 +137,19 @@ export function createResolveTenant(deps: ResolveTenantDeps): MiddlewareHandler 
       await next(); // tenant comes from the session, never Host (REQ-020)
       return;
     }
-    if (classification.kind === "unknown") return notFound(c);
+    if (classification.kind === "unknown") {
+      // Not the app host, not the env custom map, not `<slug>.<root>`: it may
+      // be a tenant's VERIFIED own web domain (Fix #3, Phase C). DB-resolve it
+      // (cached); only verified domains resolve (findByCustomDomain filters).
+      const host = normalizeHost(hostHeader);
+      const resolved = await resolveCustomDomain(host);
+      if (resolved !== null) {
+        c.set("publicTenant", resolved);
+        await next();
+        return;
+      }
+      return notFound(c);
+    }
 
     const repo = deps.getTenantsRepo();
     const tenant = await repo.findBySlug(classification.slug);

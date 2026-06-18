@@ -126,6 +126,20 @@ export interface BuildAppDeps {
    */
   emailSettingsRouter?: Hono;
   /**
+   * Custom web-domain routes (Fix #3, Phase C): GET/POST /api/admin/web-domain
+   * + POST /verify, auth-gated. Optional ONLY so existing unit tests composing
+   * buildApp keep working — index.ts always provides it.
+   */
+  webDomainRouter?: Hono;
+  /**
+   * Caddy on-demand TLS authorization (Fix #3, Phase C): GET
+   * /internal/tls-allow?domain=… → 200 iff the host is a VERIFIED tenant
+   * custom domain, else 403. Ungated + loopback-only in production (Caddy
+   * calls it on 127.0.0.1); the DB allowlist is the abuse / LE-rate-limit
+   * guard. Optional so existing buildApp unit tests keep working.
+   */
+  tlsAllow?: (domain: string) => Promise<boolean>;
+  /**
    * Onboarding wizard routes (P11, REQ-030–038): GET/PATCH /api/onboarding,
    * slug-available, generate-prompts, discover-sources, activate — mounted
    * gated at /api/onboarding (the wizard is a tenant_admin surface).
@@ -164,6 +178,22 @@ export function buildApp(deps: BuildAppDeps): Hono {
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ status: "ok" }));
+
+  // Caddy on-demand TLS authorization (Fix #3, Phase C): mounted BEFORE the
+  // /api/* tenant middleware and ungated (Caddy calls it on loopback). Returns
+  // 200 only for a verified tenant custom domain — the abuse / Let's-Encrypt
+  // rate-limit guard.
+  const tlsAllow = deps.tlsAllow;
+  if (tlsAllow) {
+    app.get("/internal/tls-allow", async (c) => {
+      const domain = c.req.query("domain");
+      if (domain === undefined || domain === "") {
+        return c.json({ error: "domain required" }, 400);
+      }
+      const allowed = await tlsAllow(domain.trim().toLowerCase());
+      return allowed ? c.json({ ok: true }) : c.json({ ok: false }, 403);
+    });
+  }
 
   // Host→tenant resolution runs before every /api route (P5): public routes
   // use the Host-derived tenant, admin routes keep the session tenant set by
@@ -254,6 +284,9 @@ export function buildApp(deps: BuildAppDeps): Hono {
   adminApp.route("/must-read", deps.adminMustReadRouter);
   adminApp.route("/analytics", deps.analyticsRouter);
   adminApp.route("/collector-health", deps.collectorHealthRouter);
+  if (deps.webDomainRouter) {
+    adminApp.route("/web-domain", deps.webDomainRouter);
+  }
   app.route("/api/admin", adminApp);
 
   app.route("/api/runs", gatedWrap(gate, deps.runsRouter));

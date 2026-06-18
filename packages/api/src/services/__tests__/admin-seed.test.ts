@@ -9,6 +9,8 @@ const TENANT: TenantRow = {
   name: "AGENTLOOP",
   status: "active",
   customDomain: null,
+  customDomainStatus: null,
+  customDomainVerifiedAt: null,
   headline: null,
   topicStrip: null,
   subtagline: null,

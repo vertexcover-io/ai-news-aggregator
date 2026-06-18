@@ -27,6 +27,7 @@ import { createDefaultSendingDomainRouter } from "@api/routes/sending-domain.js"
 import { createDefaultNotificationSettingsRouter } from "@api/routes/notification-settings.js";
 import { createDefaultBrandingSettingsRouter } from "@api/routes/branding-settings.js";
 import { createDefaultEmailSettingsRouter } from "@api/routes/email-settings.js";
+import { createDefaultWebDomainRouter } from "@api/routes/web-domain.js";
 import { createDefaultCollectorHealthRouter } from "@api/routes/collector-health.js";
 import { createDefaultAdminSocialCredentialsRouter } from "@api/routes/admin-social-credentials.js";
 import {
@@ -331,6 +332,10 @@ const app = buildApp({
   brandingSettingsRouter: createDefaultBrandingSettingsRouter(),
   // Per-tenant email provider (Fix #3, Phase B) — managed default + BYO SMTP.
   emailSettingsRouter: createDefaultEmailSettingsRouter(),
+  // Custom web domain + Caddy on-demand TLS authorization (Fix #3, Phase C).
+  webDomainRouter: createDefaultWebDomainRouter(),
+  tlsAllow: async (domain: string): Promise<boolean> =>
+    (await createTenantsRepo(getDb()).findByCustomDomain(domain)) !== null,
   collectorHealthRouter: createDefaultCollectorHealthRouter(),
   // Public tenant branding payload + logo bytes (P7).
   brandingRouter: createDefaultBrandingRouter(),
