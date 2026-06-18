@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import {
   createLogger,
   getDb as defaultGetDb,
@@ -216,32 +217,43 @@ export function createLlmTxtArchiveRouter(deps: LlmTxtRouterDeps): Hono {
   const opts = { baseUrl: deps.baseUrl };
   const app = new Hono();
 
-  app.get("/:runId/llm.txt", async (c) => {
-    const runId = c.req.param("runId");
+  async function renderIssue(runId: string): Promise<string | null> {
+    const row = await deps.getArchiveRepo().findById(runId);
+    if (!row || !row.reviewed || row.isDryRun) return null;
+    const timezone = await resolveTimezone(deps);
+    const meta = issueMetaFromRow(row, issueDateOf(row, timezone));
+    const key = llmTxtVersionKey({
+      variant: "issue",
+      baseUrl: deps.baseUrl,
+      scope: runId,
+      issueSignatures: [rowSignature(row)],
+      canonSignatures: [],
+    });
+    return withCache(deps, key, async () => {
+      const stories = await hydrateIssueStories(deps, row);
+      return renderIssueLlmTxt(meta, stories, opts);
+    });
+  }
+
+  // A single issue's llm.txt already inlines every story with its full recap,
+  // so the per-issue file IS the full content. The plural `/llms.txt` and
+  // `/llms-full.txt` names mirror the site-index naming and the public archive
+  // URL shape (`/archive/:runId`); `/llm.txt` is kept for back-compat.
+  const handler = (label: string) => async (c: Context) => {
+    const runId = c.req.param("runId") ?? "";
     try {
-      const row = await deps.getArchiveRepo().findById(runId);
-      if (!row || !row.reviewed || row.isDryRun) {
-        return c.body("not found\n", 404, TEXT_HEADERS);
-      }
-      const timezone = await resolveTimezone(deps);
-      const meta = issueMetaFromRow(row, issueDateOf(row, timezone));
-      const key = llmTxtVersionKey({
-        variant: "issue",
-        baseUrl: deps.baseUrl,
-        scope: runId,
-        issueSignatures: [rowSignature(row)],
-        canonSignatures: [],
-      });
-      const body = await withCache(deps, key, async () => {
-        const stories = await hydrateIssueStories(deps, row);
-        return renderIssueLlmTxt(meta, stories, opts);
-      });
+      const body = await renderIssue(runId);
+      if (body === null) return c.body("not found\n", 404, TEXT_HEADERS);
       return c.body(body, 200, TEXT_HEADERS);
     } catch (err) {
       logger.error({ err, runId }, "llm_txt.issue_failed");
-      return c.body("error generating llm.txt\n", 500, TEXT_HEADERS);
+      return c.body(`error generating ${label}\n`, 500, TEXT_HEADERS);
     }
-  });
+  };
+
+  app.get("/:runId/llm.txt", handler("llm.txt"));
+  app.get("/:runId/llms.txt", handler("llms.txt"));
+  app.get("/:runId/llms-full.txt", handler("llms-full.txt"));
 
   return app;
 }

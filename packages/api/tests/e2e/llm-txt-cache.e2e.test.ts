@@ -128,6 +128,23 @@ function issueApp(): Hono {
   return app;
 }
 
+// Mirrors the production mount: the archive router is also served at `/archive`
+// so the public URL shape `/archive/:runId/llms.txt` (which crawlers hit) resolves.
+function archiveApp(): Hono {
+  const app = new Hono();
+  app.route(
+    "/archive",
+    createLlmTxtArchiveRouter({
+      getArchiveRepo: () => createRunArchivesRepo(db),
+      getRawItemsRepo: () => createRawItemsRepo(db),
+      getMustReadRepo: () => createMustReadRepo(db),
+      baseUrl,
+      cache: createRedisLlmTxtCache(redis),
+    }),
+  );
+  return app;
+}
+
 async function wipeRedis(): Promise<void> {
   const keys = await redis.keys("llm-txt:*");
   if (keys.length > 0) await redis.del(...keys);
@@ -231,5 +248,48 @@ describe("llm.txt cache (e2e, real Redis + Postgres)", () => {
     const second = await app.request(`/api/archives/${runId}/llm.txt`);
     expect(second.status).toBe(200);
     expect(await second.text()).toContain("Per issue headline");
+  });
+
+  it.each(["llms.txt", "llms-full.txt"])(
+    "serves the public /archive/:runId/%s shape with full story content",
+    async (suffix) => {
+      const raw = await insertRawItem(
+        `archive-shape-${suffix}`,
+        "Distinct story body for the archive shape.",
+      );
+      const runId = await insertArchive({
+        reviewed: true,
+        completedAt: new Date("2026-06-17T10:00:00Z"),
+        digestHeadline: "Archive shape headline",
+        rawItemIds: [raw],
+      });
+
+      const app = archiveApp();
+      const res = await app.request(`/archive/${runId}/${suffix}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("text/plain");
+
+      const body = await res.text();
+      // Must contain the actual story body, not just the header — this is the
+      // regression the bug shipped: the route returned only the header (or the
+      // SPA shell) with no inlined stories.
+      expect(body).toContain("Archive shape headline");
+      expect(body).toContain("Distinct story body for the archive shape.");
+      expect(body).toContain("bullet one");
+      expect(body).not.toContain("No stories in this issue");
+    },
+  );
+
+  it("returns 404 for an unreviewed issue at the public /archive shape", async () => {
+    const raw = await insertRawItem("archive-unreviewed", "Should not appear.");
+    const runId = await insertArchive({
+      reviewed: false,
+      completedAt: new Date("2026-06-17T10:00:00Z"),
+      digestHeadline: "Unreviewed archive issue",
+      rawItemIds: [raw],
+    });
+
+    const res = await archiveApp().request(`/archive/${runId}/llms.txt`);
+    expect(res.status).toBe(404);
   });
 });

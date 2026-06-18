@@ -30,6 +30,18 @@ agentloop.vertexcover.io {
 		reverse_proxy 127.0.0.1:3000
 	}
 
+	# Per-issue llm.txt at the archive URL shape (`/archive/:runId/llms.txt`,
+	# `/archive/:runId/llms-full.txt`) is API-generated too. Only the llm.txt
+	# suffixes match here — the archive HTML pages (`/archive`, `/archive/:runId`)
+	# still fall through to the SPA below.
+	handle /archive/*/llms.txt {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	handle /archive/*/llms-full.txt {
+		reverse_proxy 127.0.0.1:3000
+	}
+
 	handle {
 		root * /var/www/newsletter/web
 		try_files {path} /index.html
