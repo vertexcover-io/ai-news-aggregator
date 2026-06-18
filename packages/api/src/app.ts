@@ -120,6 +120,12 @@ export interface BuildAppDeps {
    */
   brandingSettingsRouter?: Hono;
   /**
+   * Email-settings routes (Fix #3, Phase B): GET/PUT /api/settings/email,
+   * auth-gated. Optional ONLY so existing unit tests composing buildApp keep
+   * working — index.ts always provides it.
+   */
+  emailSettingsRouter?: Hono;
+  /**
    * Onboarding wizard routes (P11, REQ-030–038): GET/PATCH /api/onboarding,
    * slug-available, generate-prompts, discover-sources, activate — mounted
    * gated at /api/onboarding (the wizard is a tenant_admin surface).
@@ -268,6 +274,9 @@ export function buildApp(deps: BuildAppDeps): Hono {
   // settings router's GET "/" / PUT "/" never match those sub-paths.
   if (deps.brandingSettingsRouter) {
     app.route("/api/settings", gatedWrap(gate, deps.brandingSettingsRouter));
+  }
+  if (deps.emailSettingsRouter) {
+    app.route("/api/settings", gatedWrap(gate, deps.emailSettingsRouter));
   }
   app.route("/api/settings", gatedWrap(gate, deps.settingsRouter));
 

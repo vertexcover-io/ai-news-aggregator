@@ -26,6 +26,7 @@ import { createDefaultSettingsRouter } from "@api/routes/settings.js";
 import { createDefaultSendingDomainRouter } from "@api/routes/sending-domain.js";
 import { createDefaultNotificationSettingsRouter } from "@api/routes/notification-settings.js";
 import { createDefaultBrandingSettingsRouter } from "@api/routes/branding-settings.js";
+import { createDefaultEmailSettingsRouter } from "@api/routes/email-settings.js";
 import { createDefaultCollectorHealthRouter } from "@api/routes/collector-health.js";
 import { createDefaultAdminSocialCredentialsRouter } from "@api/routes/admin-social-credentials.js";
 import {
@@ -328,6 +329,8 @@ const app = buildApp({
   notificationSettingsRouter: createDefaultNotificationSettingsRouter(),
   // Admin branding view/edit (FIX #1) — onboarding-captured brand in Settings.
   brandingSettingsRouter: createDefaultBrandingSettingsRouter(),
+  // Per-tenant email provider (Fix #3, Phase B) — managed default + BYO SMTP.
+  emailSettingsRouter: createDefaultEmailSettingsRouter(),
   collectorHealthRouter: createDefaultCollectorHealthRouter(),
   // Public tenant branding payload + logo bytes (P7).
   brandingRouter: createDefaultBrandingRouter(),

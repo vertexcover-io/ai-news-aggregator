@@ -2,9 +2,11 @@ import { asc, count, desc, eq, max, sql } from "drizzle-orm";
 import { runArchives, subscribers, tenants, users } from "@newsletter/shared/db";
 import type { AppDb, TenantRow } from "@newsletter/shared/db";
 import type {
+  EmailMode,
   OnboardingState,
   SendingDomainRecord,
   SendingDomainStatus,
+  SmtpConfigStored,
   TenantStatus,
 } from "@newsletter/shared/types/tenant";
 
@@ -68,6 +70,15 @@ export interface TenantsRepo {
   updateSendingDomain(
     id: string,
     patch: SendingDomainPatch,
+  ): Promise<TenantRow | null>;
+  /**
+   * Persists the tenant's email provider mode + SMTP config (Fix #3, Phase B).
+   * `smtpConfigEnc` carries D-012 ciphertext for the secret fields; the route
+   * encrypts before calling — this repo never sees plaintext credentials.
+   */
+  updateEmailSettings(
+    id: string,
+    patch: EmailSettingsPatch,
   ): Promise<TenantRow | null>;
   /**
    * Persists the tenant's notification config (P16, REQ-092). `slackWebhook`
@@ -137,6 +148,12 @@ export interface SendingDomainPatch {
   sendingDomainId: string;
   sendingDomainStatus: SendingDomainStatus;
   sendingDomainRecords: SendingDomainRecord[];
+}
+
+export interface EmailSettingsPatch {
+  emailMode: EmailMode;
+  /** Ciphertext-bearing SMTP config, or null to clear (non-smtp modes). */
+  smtpConfigEnc: SmtpConfigStored | null;
 }
 
 export interface OnboardingCompletionProfile {
@@ -286,6 +303,22 @@ export function createTenantsRepo(
       const rows = await db
         .update(tenants)
         .set({ ...patch, updatedAt: new Date() })
+        .where(eq(tenants.id, id))
+        .returning();
+      return rows[0] ?? null;
+    },
+
+    async updateEmailSettings(
+      id: string,
+      patch: EmailSettingsPatch,
+    ): Promise<TenantRow | null> {
+      const rows = await db
+        .update(tenants)
+        .set({
+          emailMode: patch.emailMode,
+          smtpConfigEnc: patch.smtpConfigEnc,
+          updatedAt: new Date(),
+        })
         .where(eq(tenants.id, id))
         .returning();
       return rows[0] ?? null;

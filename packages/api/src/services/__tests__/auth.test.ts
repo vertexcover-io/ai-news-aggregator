@@ -46,6 +46,8 @@ function makeTenantRow(over: Partial<TenantRow> = {}): TenantRow {
     sendingDomainId: null,
     sendingDomainStatus: null,
     sendingDomainRecords: null,
+    emailMode: "managed",
+    smtpConfigEnc: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...over,

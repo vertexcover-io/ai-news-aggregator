@@ -99,13 +99,23 @@ function makeDeps(
       updateRecapData: vi.fn(),
       listForRun: vi.fn(() => Promise.resolve([])),
     },
-    // Default: grandfathered tenant 0 (verified, no own domain name) → keeps
-    // the shared platform sender. Gate-behavior tests override this.
+    // Default: grandfathered tenant 0 (managed mode, verified domain status,
+    // no own domain name) → keeps the shared platform sender. Gate tests
+    // override this with other email modes/states.
     tenantsRepo: {
-      getSendingDomainStatus: vi.fn(() => Promise.resolve("verified" as const)),
-      getSendingDomainName: vi.fn(() => Promise.resolve(null)),
-      getSlug: vi.fn(() => Promise.resolve("agentloop")),
+      getEmailSettings: vi.fn(() =>
+        Promise.resolve({
+          mode: "managed" as const,
+          smtp: null,
+          sendingDomainName: null,
+          sendingDomainStatus: "verified" as const,
+          slug: "agentloop",
+        }),
+      ),
     },
+    createSmtpProvider: vi.fn(() => ({
+      send: vi.fn(() => Promise.resolve({ messageId: "smtp-msg" })),
+    })),
     renderNewsletter: vi.fn(() => Promise.resolve("<html>newsletter</html>")),
     sessionSecret: "secret",
     fromMail: "newsletter@example.com",
@@ -149,21 +159,34 @@ beforeEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 // P14: sending-domain broadcast gate (REQ-053 / EDGE-005 / EDGE-006, REQ-052)
 // ─────────────────────────────────────────────────────────────────────────────
-describe("sending-domain broadcast gate (P14)", () => {
-  function makeTenantsRepo(
-    status: "pending" | "verified" | "failed" | null,
-    name: string | null = null,
-    slug: string | null = "inference",
-  ): {
-    getSendingDomainStatus: ReturnType<typeof vi.fn>;
-    getSendingDomainName: ReturnType<typeof vi.fn>;
-    getSlug: ReturnType<typeof vi.fn>;
-  } {
-    return {
-      getSendingDomainStatus: vi.fn(() => Promise.resolve(status)),
-      getSendingDomainName: vi.fn(() => Promise.resolve(name)),
-      getSlug: vi.fn(() => Promise.resolve(slug)),
+describe("per-tenant email mode broadcast resolution (Fix #3, REQ-310/320/321/REQ-084/052)", () => {
+  interface EmailSettings {
+    mode: "managed" | "managed_domain" | "smtp";
+    smtp: {
+      host: string;
+      port: number;
+      secure: boolean;
+      username: string;
+      password: string;
+      fromAddress: string;
+      fromName?: string;
+    } | null;
+    sendingDomainName: string | null;
+    sendingDomainStatus: "pending" | "verified" | "failed" | null;
+    slug: string | null;
+  }
+  function makeEmailRepo(
+    settings: Partial<EmailSettings>,
+  ): { getEmailSettings: ReturnType<typeof vi.fn> } {
+    const full: EmailSettings = {
+      mode: "managed",
+      smtp: null,
+      sendingDomainName: null,
+      sendingDomainStatus: null,
+      slug: "inference",
+      ...settings,
     };
+    return { getEmailSettings: vi.fn(() => Promise.resolve(full)) };
   }
 
   it.each([
@@ -171,17 +194,20 @@ describe("sending-domain broadcast gate (P14)", () => {
     ["failed", "failed" as const],
     ["absent (never registered)", null],
   ])(
-    "test_REQ_310_managed_default_without_own_domain — with no verified own domain (%s) the broadcast goes out from the managed default <slug>@<managed domain>, never blocked",
+    "test_REQ_310_managed_default — a managed-mode tenant (%s domain) broadcasts from <slug>@<managed domain>, never blocked",
     async (_label, status) => {
       const archive = makeArchive();
-      const tenantsRepo = makeTenantsRepo(status, null, "inference");
       const slackNotifier = makeSlackNotifier();
-      const deps = makeDeps(archive, { tenantsRepo, slackNotifier });
+      const deps = makeDeps(archive, {
+        tenantsRepo: makeEmailRepo({
+          mode: "managed",
+          sendingDomainStatus: status,
+          slug: "inference",
+        }),
+        slackNotifier,
+      });
 
-      // Broadcast: PROCEEDS from the managed default — never sent from an
-      // unverified custom domain, and never blocked.
       await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
-      expect(deps.emailProvider.send).toHaveBeenCalled();
       expect(deps.emailProvider.send).toHaveBeenCalledWith(
         expect.objectContaining({ from: "inference@news.example.com" }),
       );
@@ -190,25 +216,83 @@ describe("sending-domain broadcast gate (P14)", () => {
     },
   );
 
-  it("allows the broadcast when the tenant sending domain is verified — from newsletter@<domain>", async () => {
+  it("test_REQ_084_managed_domain_verified — managed_domain mode sends from newsletter@<verified domain>", async () => {
     const archive = makeArchive();
-    const tenantsRepo = makeTenantsRepo("verified", "news.acme.com");
-    const deps = makeDeps(archive, { tenantsRepo });
+    const deps = makeDeps(archive, {
+      tenantsRepo: makeEmailRepo({
+        mode: "managed_domain",
+        sendingDomainName: "news.acme.com",
+        sendingDomainStatus: "verified",
+      }),
+    });
 
     await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
-
-    expect(tenantsRepo.getSendingDomainStatus).toHaveBeenCalledOnce();
     expect(deps.emailProvider.send).toHaveBeenCalledWith(
       expect.objectContaining({ from: "newsletter@news.acme.com" }),
     );
     expect(deps.archiveRepo.markEmailSent).toHaveBeenCalledOnce();
   });
 
-  // SECURITY (fail-closed): `tenantsRepo` is REQUIRED on EmailSendDeps, so a
-  // typed caller cannot omit it (compile-time guarantee). This test simulates
-  // the only remaining bypass vector — an untyped/JS caller omitting the repo
-  // at runtime — and proves the broadcast still cannot go out unchecked: the
-  // job fails before any email is sent and the archive marker stays unset.
+  it.each([["pending" as const], ["failed" as const], [null]])(
+    "managed_domain mode with an unverified domain (%s) BLOCKS the broadcast (fail-closed)",
+    async (status) => {
+      const archive = makeArchive();
+      const slackNotifier = makeSlackNotifier();
+      const deps = makeDeps(archive, {
+        tenantsRepo: makeEmailRepo({
+          mode: "managed_domain",
+          sendingDomainName: "news.acme.com",
+          sendingDomainStatus: status,
+        }),
+        slackNotifier,
+      });
+
+      await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+      expect(deps.emailProvider.send).not.toHaveBeenCalled();
+      expect(deps.archiveRepo.markEmailSent).not.toHaveBeenCalled();
+      expect(slackNotifier.notifyPublishFailed).toHaveBeenCalledWith({
+        runId: archive.id,
+        channel: "email-send",
+        reason: "sending_domain_not_verified",
+      });
+    },
+  );
+
+  it("test_REQ_321_smtp_mode — routes the broadcast through the per-tenant SMTP provider, from the configured address", async () => {
+    const archive = makeArchive();
+    const smtpSend = vi.fn(() => Promise.resolve({ messageId: "smtp-1" }));
+    const createSmtpProvider = vi.fn(() => ({ send: smtpSend }));
+    const deps = makeDeps(archive, {
+      createSmtpProvider,
+      tenantsRepo: makeEmailRepo({
+        mode: "smtp",
+        smtp: {
+          host: "smtp.acme.com",
+          port: 587,
+          secure: false,
+          username: "user",
+          password: "pass",
+          fromAddress: "news@acme.com",
+        },
+      }),
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(createSmtpProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ host: "smtp.acme.com", fromAddress: "news@acme.com" }),
+    );
+    expect(smtpSend).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "news@acme.com" }),
+    );
+    // The shared (Resend/SES) provider is NOT used for an smtp-mode broadcast.
+    expect(deps.emailProvider.send).not.toHaveBeenCalled();
+    expect(deps.archiveRepo.markEmailSent).toHaveBeenCalledOnce();
+  });
+
+  // SECURITY (fail-closed): `tenantsRepo` is REQUIRED on EmailSendDeps. This
+  // simulates an untyped/JS caller omitting it and proves the broadcast still
+  // cannot go out unchecked — the job throws before any email is sent.
   it("test_REQ_053_fail_closed_gate_omission — omitting tenantsRepo can no longer bypass the gate: the broadcast never sends", async () => {
     const archive = makeArchive();
     const base = makeDeps(archive);
@@ -226,10 +310,10 @@ describe("sending-domain broadcast gate (P14)", () => {
     expect(base.archiveRepo.markEmailSent).not.toHaveBeenCalled();
   });
 
-  it("test_EDGE_006_publish_without_own_domain_uses_managed_default_and_social_proceeds — a tenant with no own domain still broadcasts (managed default) and social posts independently", async () => {
+  it("test_EDGE_006_managed_default_and_social_proceed — a tenant with no own domain still broadcasts (managed default) and social posts independently", async () => {
     const archive = makeArchive();
     const deps = makeDeps(archive, {
-      tenantsRepo: makeTenantsRepo("pending", null, "inference"),
+      tenantsRepo: makeEmailRepo({ mode: "managed", slug: "inference" }),
     });
 
     await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
@@ -254,19 +338,16 @@ describe("sending-domain broadcast gate (P14)", () => {
     });
   });
 
-  it("test_REQ_084_broadcast_sends_from_verified_tenant_domain — a verified broadcast goes out from newsletter@<tenant domain>, while targeted sends keep the shared platform sender", async () => {
+  it("targeted sends keep the shared platform sender even when the tenant uses managed_domain (EDGE-005)", async () => {
     const archive = makeArchive();
-    const tenantsRepo = makeTenantsRepo("verified", "news.acme.com");
-    const deps = makeDeps(archive, { tenantsRepo });
+    const deps = makeDeps(archive, {
+      tenantsRepo: makeEmailRepo({
+        mode: "managed_domain",
+        sendingDomainName: "news.acme.com",
+        sendingDomainStatus: "verified",
+      }),
+    });
 
-    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
-    expect(deps.emailProvider.send).toHaveBeenCalledWith(
-      expect.objectContaining({ from: "newsletter@news.acme.com" }),
-    );
-
-    // Targeted (welcome/transactional) send: shared platform sender even
-    // though the tenant's own domain is verified (EDGE-005).
-    vi.clearAllMocks();
     await handleEmailSendJob(deps, {
       name: "email-send",
       id: "job-2",
@@ -279,7 +360,13 @@ describe("sending-domain broadcast gate (P14)", () => {
 
   it("grandfathered verified tenant with NO domain name (tenant 0) keeps the shared FROM", async () => {
     const archive = makeArchive();
-    const deps = makeDeps(archive, { tenantsRepo: makeTenantsRepo("verified", null) });
+    const deps = makeDeps(archive, {
+      tenantsRepo: makeEmailRepo({
+        mode: "managed",
+        sendingDomainStatus: "verified",
+        sendingDomainName: null,
+      }),
+    });
 
     await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
 
@@ -288,14 +375,14 @@ describe("sending-domain broadcast gate (P14)", () => {
     );
   });
 
-  it("test_REQ_052_broadcast_only_confirmed_of_tenant — a verified broadcast resolves recipients via the tenant-scoped listConfirmed, never findByIds", async () => {
+  it("test_REQ_052_broadcast_only_confirmed_of_tenant — a broadcast resolves recipients via the tenant-scoped listConfirmed, never findByIds", async () => {
     const archive = makeArchive();
     const confirmed = [
       makeSubscriber({ id: "sub-1", email: "a@example.com" }),
       makeSubscriber({ id: "sub-2", email: "b@example.com" }),
     ];
     const deps = makeDeps(archive, {
-      tenantsRepo: makeTenantsRepo("verified"),
+      tenantsRepo: makeEmailRepo({ mode: "managed", slug: "inference" }),
       subscribersRepo: {
         listConfirmed: vi.fn(() => Promise.resolve(confirmed)),
         findByIds: vi.fn(() => Promise.resolve([])),

@@ -112,7 +112,7 @@ import { Rettiwt } from "rettiwt-api";
 import { rankCandidates } from "@pipeline/processors/rank.js";
 import { shortlistCandidates } from "@pipeline/processors/shortlist.js";
 import { renderNewsletter } from "@pipeline/lib/email-render.js";
-import { createEmailProvider } from "@pipeline/lib/email-provider.js";
+import { createEmailProvider, createSmtpProvider } from "@pipeline/lib/email-provider.js";
 import {
   createRunConcurrencyLimiter,
   PROCESSING_WORKER_CONCURRENCY,
@@ -586,6 +586,7 @@ export async function buildDefaultPublishDeps(
 
   return {
     emailProvider: createEmailProvider(),
+    createSmtpProvider,
     subscribersRepo: createPipelineSubscribersRepo(db, scope),
     // P14 (REQ-053): always provided in production — the broadcast gate is
     // active, blocking the subscriber broadcast until the job tenant's

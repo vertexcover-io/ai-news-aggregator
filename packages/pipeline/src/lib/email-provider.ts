@@ -1,6 +1,8 @@
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { Resend } from "resend";
+import { createTransport } from "nodemailer";
 import type { EmailProvider, SendEmailParams, SendEmailResult } from "@newsletter/shared";
+import type { SmtpConfig } from "@newsletter/shared/types/tenant";
 import {
   EmailSendError,
   RETRYABLE_RESEND_CODES,
@@ -75,6 +77,38 @@ function createResendProvider(): EmailProvider {
         });
       }
       return { messageId: result.data.id };
+    },
+  };
+}
+
+/**
+ * Per-tenant SMTP provider (Fix #3, Phase B): bring-your-own email via the
+ * universal SMTP path (SES/SendGrid/Postmark/Mailgun/etc.). The tenant owns
+ * their domain auth (SPF/DKIM) with their provider — we only relay.
+ */
+export function createSmtpProvider(config: SmtpConfig): EmailProvider {
+  const transport = createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: { user: config.username, pass: config.password },
+  });
+  const from =
+    config.fromName !== undefined && config.fromName.length > 0
+      ? `${config.fromName} <${config.fromAddress}>`
+      : config.fromAddress;
+  return {
+    async send(params: SendEmailParams): Promise<SendEmailResult> {
+      const info = await transport.sendMail({
+        from,
+        to: params.to,
+        replyTo: params.replyTo,
+        subject: params.subject,
+        html: params.html,
+        text: params.text,
+        headers: params.headers,
+      });
+      return { messageId: info.messageId };
     },
   };
 }

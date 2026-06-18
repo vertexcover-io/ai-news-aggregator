@@ -23,9 +23,11 @@ import type { EncryptedBlob } from "@shared/services/credential-cipher.js";
 import type { EditType, PreReviewSnapshot } from "@shared/review-edits/types.js";
 import type {
   AuditAction,
+  EmailMode,
   OnboardingState,
   SendingDomainRecord,
   SendingDomainStatus,
+  SmtpConfigStored,
   TenantStatus,
   UserRole,
 } from "@shared/types/tenant.js";
@@ -95,6 +97,15 @@ export const tenants = pgTable(
     sendingDomainId: text("sending_domain_id"),
     sendingDomainStatus: text("sending_domain_status").$type<SendingDomainStatus>(),
     sendingDomainRecords: jsonb("sending_domain_records").$type<SendingDomainRecord[] | null>(),
+    /**
+     * Per-tenant email provider (Fix #3, Phase B). `managed` (default) sends
+     * from the shared verified Resend domain; `managed_domain` from the
+     * tenant's own verified sending domain; `smtp` via the tenant's own
+     * provider, whose secrets live encrypted in `smtpConfigEnc`.
+     */
+    emailMode: text("email_mode").$type<EmailMode>().notNull().default("managed"),
+    /** Encrypted-at-rest SMTP config (D-012 blobs for secrets); null unless `smtp`. */
+    smtpConfigEnc: jsonb("smtp_config_enc").$type<SmtpConfigStored | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -177,10 +177,19 @@ describe("publish workers dry-run guard", () => {
           subscribersRepo: subscribersRepo as never,
           // Required (fail-closed gate); irrelevant here — dry-run returns early.
           tenantsRepo: {
-            getSendingDomainStatus: vi.fn(() => Promise.resolve("verified" as const)),
-            getSendingDomainName: vi.fn(() => Promise.resolve(null)),
-            getSlug: vi.fn(() => Promise.resolve("inference")),
+            getEmailSettings: vi.fn(() =>
+              Promise.resolve({
+                mode: "managed" as const,
+                smtp: null,
+                sendingDomainName: null,
+                sendingDomainStatus: "verified" as const,
+                slug: "inference",
+              }),
+            ),
           },
+          createSmtpProvider: vi.fn(() => ({
+            send: vi.fn(() => Promise.resolve({ messageId: "smtp" })),
+          })),
           emailSendsRepo: emailSendsRepo as never,
           archiveRepo: archiveRepo as never,
           rawItemsRepo: rawItemsRepo as never,

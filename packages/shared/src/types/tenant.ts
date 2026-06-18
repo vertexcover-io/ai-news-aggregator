@@ -6,6 +6,10 @@
  * and never cross the HTTP boundary.
  */
 
+// `import type` is erased at build, so this never pulls node:crypto into the
+// web bundle — it only borrows the encrypted-blob shape for at-rest SMTP creds.
+import type { EncryptedBlob } from "../services/credential-cipher";
+
 /** Lifecycle of a tenant: created via signup → `pending_setup`; onboarding wizard activation → `active`. */
 export type TenantStatus = "pending_setup" | "active";
 
@@ -265,6 +269,92 @@ export interface SendingDomainRecord {
   priority?: number;
   /** Per-record verification state (pending | verified | failed | …). */
   status: string;
+}
+
+/* ── Per-tenant email provider (Fix #3, Phase B) ────────────────────────── */
+
+/**
+ * How a tenant's email is sent:
+ *  - `managed`        — our shared, pre-verified Resend domain; sender is
+ *                       `<slug>@<MANAGED_EMAIL_DOMAIN>` (zero-config default).
+ *  - `managed_domain` — our Resend account, but from the tenant's OWN verified
+ *                       sending domain (the SendingDomainPanel flow).
+ *  - `smtp`           — the tenant's own provider via SMTP (bring-your-own).
+ */
+export type EmailMode = "managed" | "managed_domain" | "smtp";
+
+/** Decrypted SMTP config — used by the provider and as the PUT input shape. */
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  /** true → implicit TLS (465); false → STARTTLS (587). */
+  secure: boolean;
+  username: string;
+  password: string;
+  fromAddress: string;
+  fromName?: string;
+}
+
+/**
+ * SMTP config as stored at rest (jsonb on `tenants.smtp_config_enc`):
+ * non-secret fields in the clear, secrets as D-012 cipher blobs.
+ */
+export interface SmtpConfigStored {
+  host: string;
+  port: number;
+  secure: boolean;
+  fromAddress: string;
+  fromName?: string;
+  username: EncryptedBlob;
+  password: EncryptedBlob;
+}
+
+/**
+ * SMTP fields a tenant submits (PUT /api/settings/email). `password` is
+ * optional on update — omitting it keeps the stored value.
+ */
+export interface SmtpInput {
+  host: string;
+  port: number;
+  secure: boolean;
+  username: string;
+  password?: string;
+  fromAddress: string;
+  fromName?: string;
+}
+
+/** SMTP config as surfaced to the browser — secrets masked, never sent back. */
+export interface SmtpConfigWire {
+  host: string;
+  port: number;
+  secure: boolean;
+  username: string;
+  fromAddress: string;
+  fromName?: string;
+  /** Whether a password is stored (the value itself never crosses the wire). */
+  passwordSet: boolean;
+}
+
+/**
+ * Resolved per-tenant email config for the send path (pipeline). `smtp` is the
+ * DECRYPTED config, present only in `smtp` mode; the sending-domain fields and
+ * slug let the worker pick the broadcast FROM address per mode.
+ */
+export interface TenantEmailSettings {
+  mode: EmailMode;
+  smtp: SmtpConfig | null;
+  sendingDomainName: string | null;
+  sendingDomainStatus: SendingDomainStatus | null;
+  slug: string | null;
+}
+
+/** Email-settings panel payload (GET /api/settings/email). */
+export interface EmailSettingsWire {
+  mode: EmailMode;
+  /** The address broadcasts currently go out from, given the mode + state. */
+  effectiveSender: string;
+  /** Present only in `smtp` mode. */
+  smtp: SmtpConfigWire | null;
 }
 
 /** Sending-domain panel payload (GET/POST /api/settings/domain[/verify]). */

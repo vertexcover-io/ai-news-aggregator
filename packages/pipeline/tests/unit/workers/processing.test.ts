@@ -157,6 +157,7 @@ vi.mock("@pipeline/lib/email-render.js", () => ({
 }));
 vi.mock("@pipeline/lib/email-provider.js", () => ({
   createEmailProvider: vi.fn(() => ({ send: vi.fn() })),
+  createSmtpProvider: vi.fn(() => ({ send: vi.fn() })),
 }));
 vi.mock("@newsletter/shared", async () => {
   const actual = await vi.importActual("@newsletter/shared");

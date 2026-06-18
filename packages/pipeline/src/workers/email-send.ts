@@ -1,5 +1,6 @@
 import { createLogger } from "@newsletter/shared/logger";
 import type { EmailProvider, RankedItemRef, RecapContent, SlackNotifier, SubscriberSelect } from "@newsletter/shared";
+import type { SmtpConfig } from "@newsletter/shared/types/tenant";
 import { EmailSendError } from "@newsletter/shared";
 import { withUtmSource } from "@newsletter/shared/utils";
 import type { PipelineSubscribersRepo } from "@pipeline/repositories/subscribers.js";
@@ -90,10 +91,12 @@ export interface EmailSendDeps {
    * `verified`. Targeted sends (welcome/back-issue) and API-side transactional
    * mail use the shared platform sender and are never gated (EDGE-005).
    */
-  tenantsRepo: Pick<
-    PipelineTenantsRepo,
-    "getSendingDomainStatus" | "getSendingDomainName" | "getSlug"
-  >;
+  tenantsRepo: Pick<PipelineTenantsRepo, "getEmailSettings">;
+  /**
+   * Builds a per-tenant SMTP provider from decrypted creds (Fix #3, Phase B).
+   * Injected so tests pass a fake transport (no real SMTP connection).
+   */
+  createSmtpProvider: (config: SmtpConfig) => EmailProvider;
   emailSendsRepo: PipelineEmailSendsRepo;
   archiveRepo: RunArchivesRepo;
   rawItemsRepo: RawItemsRepo;
@@ -216,33 +219,59 @@ export async function handleEmailSendJob(
   // prevents duplicate delivery in both modes.
   if (isBroadcast && archive.emailSentAt !== null) return;
 
-  // Broadcast sender resolution (Fix #3, evolving REQ-053/REQ-084). The
-  // subscriber broadcast FROM address is resolved per tenant — but we NEVER
-  // send from an unverified custom domain:
-  //   • own verified sending domain  → `newsletter@<domain>` (REQ-084)
-  //   • verified, no domain name      → the shared platform sender, unchanged
-  //                                      (grandfathered tenant 0 / AGENTLOOP)
-  //   • otherwise (new tenants, or an own domain still pending/failed)
-  //                                    → the MANAGED DEFAULT `<slug>@<managed
-  //                                      domain>` on our shared, pre-verified
-  //                                      Resend domain — zero-config, so the
-  //                                      tenant can broadcast immediately
-  //                                      without registering a domain.
-  // Targeted sends (the welcome back-issue) and all API-side transactional
-  // mail keep the shared platform sender (EDGE-005). FAIL-CLOSED: `tenantsRepo`
-  // is required, so an untyped caller omitting it throws here before any email
-  // goes out (never a silent bypass).
+  // Broadcast provider + FROM resolution per tenant email mode (Fix #3).
+  // We NEVER send a broadcast from an unverified custom domain:
+  //   • smtp           → the tenant's own provider; FROM = their configured
+  //                       address (they own SPF/DKIM, we just relay).
+  //   • managed_domain → our Resend account from `newsletter@<verified
+  //                       domain>`; BLOCKED (fail-closed) until verified.
+  //   • managed        → our shared pre-verified Resend domain. Grandfathered
+  //                       tenant 0 (verified, no domain name) keeps the shared
+  //                       platform sender; everyone else sends from the managed
+  //                       default `<slug>@<managed domain>` (zero-config).
+  // Targeted sends (the welcome back-issue) and all API-side transactional mail
+  // keep the shared provider + sender (EDGE-005). FAIL-CLOSED: `tenantsRepo` is
+  // required, so an untyped caller omitting it throws before any email goes out.
+  let sendProvider = deps.emailProvider;
   let fromAddress = deps.fromMail;
   if (isBroadcast) {
-    const domainStatus = await deps.tenantsRepo.getSendingDomainStatus();
-    const domainName = await deps.tenantsRepo.getSendingDomainName();
-    if (domainStatus === "verified" && domainName !== null) {
-      fromAddress = `newsletter@${domainName}`;
-    } else if (domainStatus === "verified" && domainName === null) {
-      // Grandfathered tenant 0: keep the shared platform sender as before.
+    const email = await deps.tenantsRepo.getEmailSettings();
+    if (email !== null && email.mode === "smtp" && email.smtp !== null) {
+      sendProvider = deps.createSmtpProvider(email.smtp);
+      fromAddress = email.smtp.fromAddress;
+    } else if (email !== null && email.mode === "managed_domain") {
+      if (
+        email.sendingDomainStatus === "verified" &&
+        email.sendingDomainName !== null
+      ) {
+        fromAddress = `newsletter@${email.sendingDomainName}`;
+      } else {
+        logger.warn(
+          {
+            event: "newsletter-send.broadcast_blocked",
+            runId: archive.id,
+            jobId: job.id,
+            reason: "sending_domain_not_verified",
+            domainStatus: email.sendingDomainStatus ?? "none",
+          },
+          "newsletter-send: broadcast blocked — custom sending domain not verified",
+        );
+        await deps.slackNotifier?.notifyPublishFailed({
+          runId: archive.id,
+          channel: "email-send",
+          reason: "sending_domain_not_verified",
+        });
+        return;
+      }
+    } else if (
+      email !== null &&
+      email.sendingDomainStatus === "verified" &&
+      email.sendingDomainName === null
+    ) {
+      // Grandfathered tenant 0 (managed mode): keep the shared platform sender.
       fromAddress = deps.fromMail;
     } else {
-      const slug = await deps.tenantsRepo.getSlug();
+      const slug = email?.slug ?? null;
       fromAddress =
         slug !== null ? `${slug}@${deps.managedEmailDomain}` : deps.fromMail;
     }
@@ -321,7 +350,7 @@ export async function handleEmailSendJob(
           for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             await pacer.acquire();
             try {
-              const result = await deps.emailProvider.send({
+              const result = await sendProvider.send({
                 to: [subscriber.email],
                 from: fromAddress,
                 replyTo: deps.replyToEmail,

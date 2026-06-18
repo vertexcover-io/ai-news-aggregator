@@ -37,6 +37,7 @@ import { DEFAULT_SHORTLIST_PROMPT } from "@newsletter/shared/constants";
 import { SaveBar } from "../components/settings/SaveBar";
 import { SocialCredentialsPanel } from "../components/SocialCredentialsPanel";
 import { SitePanel } from "../components/settings/SitePanel";
+import { EmailPanel } from "../components/settings/EmailPanel";
 import { SendingDomainPanel } from "../components/settings/SendingDomainPanel";
 import { BrandingPanel } from "../components/settings/BrandingPanel";
 import { NotificationsPanel } from "../components/settings/NotificationsPanel";
@@ -259,6 +260,9 @@ export function SettingsPage(): ReactElement {
         <BrandingPanel />
 
         <SocialCredentialsPanel />
+
+        {/* Email sending mode: managed default / own domain / own SMTP (Fix #3). */}
+        <EmailPanel />
 
         {/* Sending-domain verification (P14, REQ-084/085): the broadcast is
             gated on a verified domain; transactional mail stays on the

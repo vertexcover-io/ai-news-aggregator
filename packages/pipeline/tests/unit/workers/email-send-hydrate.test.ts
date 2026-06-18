@@ -118,10 +118,19 @@ async function captureStories(archive: PipelineRunArchiveRow, row: RawItemRow) {
     // Verified tenant: the (fail-closed, always-on) broadcast gate passes so
     // hydration is exercised end-to-end.
     tenantsRepo: {
-      getSendingDomainStatus: vi.fn(() => Promise.resolve("verified" as const)),
-      getSendingDomainName: vi.fn(() => Promise.resolve(null)),
-      getSlug: vi.fn(() => Promise.resolve("inference")),
+      getEmailSettings: vi.fn(() =>
+        Promise.resolve({
+          mode: "managed" as const,
+          smtp: null,
+          sendingDomainName: null,
+          sendingDomainStatus: "verified" as const,
+          slug: "inference",
+        }),
+      ),
     },
+    createSmtpProvider: vi.fn(() => ({
+      send: vi.fn(() => Promise.resolve({ messageId: "smtp" })),
+    })),
     renderNewsletter: vi.fn((props) => {
       capturedStories = props.stories;
       return Promise.resolve("<html>newsletter</html>");
