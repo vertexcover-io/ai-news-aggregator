@@ -11,6 +11,7 @@ export const SOURCE_LABELS: Record<SourceType, string> = {
   github: "GitHub",
   newsletter: "Newsletter",
   web_search: "Web Search",
+  manual: "Manual",
 };
 
 export const SOURCE_BADGE_CLASSES: Record<SourceType, string> = {
@@ -22,5 +23,6 @@ export const SOURCE_BADGE_CLASSES: Record<SourceType, string> = {
   github: "bg-gray-100 text-gray-700",
   newsletter: "bg-amber-100 text-amber-700",
   web_search: "bg-teal-100 text-teal-700",
+  manual: "bg-purple-100 text-purple-700",
 };
 

@@ -46,6 +46,7 @@ import type { TenantScope } from "@newsletter/shared/types/tenant-context";
 import { createDefaultAdminMustReadRouter } from "@api/routes/admin-must-read.js";
 import { createAuthRouter } from "@api/routes/auth.js";
 import { createDefaultOnboardingRouter } from "@api/routes/onboarding.js";
+import { createDefaultExtensionRouter } from "@api/routes/extension.js";
 import { createSuperAdminRouter } from "@api/routes/super-admin.js";
 import { createUsersRepo } from "@api/repositories/users.js";
 import { createTenantsRepo } from "@api/repositories/tenants.js";
@@ -361,6 +362,7 @@ const app = buildApp({
   // Feature-flag enforcement (Fix #4) — gates admin Eval/Deliverability routes.
   requireFeature: createRequireFeature(() => createTenantsRepo(getDb())),
   authRouter,
+  extensionRouter: createDefaultExtensionRouter(),
   requireAuthFactory: requireAuth,
   subscribeRouter,
   webhooksRouter,

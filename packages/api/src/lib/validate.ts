@@ -394,6 +394,18 @@ export const addPostSchema = z.object({
   url: z.url(),
 });
 
+/** Chrome extension login — per-user email + password (multi-tenant). */
+export const extensionLoginSchema = z.object({
+  email: z.email().trim().max(320),
+  password: z.string().min(1).max(200),
+});
+
+/** Chrome extension URL submission. Title is the page title (optional). */
+export const submitUrlSchema = z.object({
+  url: z.url(),
+  title: z.string().min(1).max(200).optional(),
+});
+
 export const socialChannelSchema = z.enum(["linkedin", "twitter"]);
 
 

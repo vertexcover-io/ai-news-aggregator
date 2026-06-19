@@ -64,6 +64,7 @@ describe("SOURCE_TYPE_SECTION_LABELS", () => {
       blog: "Engineering Blogs",
       newsletter: "Newsletters",
       web_search: "Web Search",
+      manual: "Manually added",
     });
   });
 

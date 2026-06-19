@@ -23,6 +23,13 @@ export interface BuildAppDeps {
    * create/destroy the session. Rate-limited internally (REQ-121).
    */
   authRouter: Hono;
+  /**
+   * Chrome extension API (P-ext): POST /login + POST /submissions. Mounted at
+   * /api/extension OUTSIDE the cookie gate — it carries its own `ext|` bearer
+   * auth and CORS scoped to `chrome-extension://`. Optional ONLY so existing
+   * unit tests composing buildApp keep working — index.ts always provides it.
+   */
+  extensionRouter?: Hono;
   requireAuthFactory: (secret: string) => MiddlewareHandler;
   subscribeRouter: Hono;
   webhooksRouter: Hono;
@@ -255,6 +262,12 @@ export function buildApp(deps: BuildAppDeps): Hono {
   // Per-user auth routes (signup/login/logout/forgot/reset/me) — ungated;
   // they establish the session the gate below verifies.
   app.route("/api/auth", deps.authRouter);
+
+  // Chrome extension API — ungated like /api/auth; the router applies its own
+  // `ext|` bearer auth (requireExtensionAuth) and `chrome-extension://` CORS.
+  if (deps.extensionRouter) {
+    app.route("/api/extension", deps.extensionRouter);
+  }
 
   // Everything under /api/admin requires a valid session cookie.
   const gate = deps.requireAuthFactory(deps.sessionSecret);

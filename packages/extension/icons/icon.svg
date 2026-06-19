@@ -1,0 +1,6 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The Daily Read">
+  <rect width="128" height="128" rx="26" fill="#FAFAF7"/>
+  <circle cx="64" cy="64" r="40" stroke="#8C3A1E" stroke-width="8"
+          stroke-linecap="round" pathLength="360" stroke-dasharray="344 360" stroke-dashoffset="-55"/>
+  <circle cx="64" cy="64" r="11" fill="#8C3A1E"/>
+</svg>

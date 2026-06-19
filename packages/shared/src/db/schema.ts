@@ -34,7 +34,7 @@ import type {
 } from "@shared/types/tenant.js";
 import type { SourceConfig, SourceHealth } from "@shared/types/source.js";
 
-export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter" | "web_search";
+export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter" | "web_search" | "manual";
 
 /** Case-insensitive text (citext extension — created in migration 0040). */
 const citext = customType<{ data: string }>({
