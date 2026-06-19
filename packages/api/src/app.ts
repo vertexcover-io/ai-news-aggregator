@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { Context, MiddlewareHandler } from "hono";
 import { captureException } from "@api/lib/posthog.js";
+import { blockPublicContentOnAppHost } from "@api/middleware/resolve-tenant.js";
 
 export interface BuildAppDeps {
   sessionSecret: string;
@@ -211,6 +212,25 @@ export function buildApp(deps: BuildAppDeps): Hono {
   // requireAuth below (REQ-020/021/022).
   if (deps.resolveTenant) {
     app.use("/api/*", deps.resolveTenant);
+    // The app host (platform admin/signup surface) has no public newsletter.
+    // Without this guard its public CONTENT routes would resolve to an
+    // undefined tenant scope — the legacy single-tenant path — and return
+    // reviewed issues / sources merged across EVERY tenant. Gate them to a
+    // generic 404 on the app host. Mounted together with the resolver so
+    // genuine legacy single-tenant deploys (no resolver) stay unaffected.
+    // Scoped to the public content paths only; the auth-gated tenant sources
+    // management routes under /api/sources/:id keep working on the app host.
+    for (const path of [
+      "/api/home",
+      "/api/home/*",
+      "/api/archives",
+      "/api/archives/*",
+      "/api/must-read",
+      "/api/must-read/*",
+      "/api/sources/summary",
+    ]) {
+      app.use(path, blockPublicContentOnAppHost);
+    }
   }
 
   // Public subscribe/confirm/unsubscribe routes.

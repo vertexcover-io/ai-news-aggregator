@@ -3,7 +3,11 @@
  *
  * Classifies the request Host into four classes:
  *   - app host      → admin/signup surface; tenant comes from the SESSION
- *                     (requireAuth sets `tenantCtx`), never from Host (REQ-020)
+ *                     (requireAuth sets `tenantCtx`), never from Host (REQ-020).
+ *                     Marked with the `appHost` context flag so the public
+ *                     CONTENT routes (home/archives/sources/must-read) can 404
+ *                     there instead of falling through to the unscoped legacy
+ *                     path that would merge every tenant's newsletter.
  *   - slug host     → `<slug>.<root>` public site; tenant looked up by slug;
  *                     unknown slug → generic 404, leaking nothing (REQ-021,
  *                     EDGE-013); a renamed tenant's old slug 301-redirects to
@@ -32,6 +36,13 @@ declare module "hono" {
   interface ContextVariableMap {
     /** Set by `createResolveTenant` for slug-host / custom-domain requests. */
     publicTenant?: PublicTenantCtx;
+    /**
+     * Set by `createResolveTenant` for app-host requests (the platform
+     * admin/signup surface). The app host has no public newsletter, so the
+     * public content routes 404 when this is set (`blockPublicContentOnAppHost`)
+     * rather than serving the unscoped, cross-tenant legacy result.
+     */
+    appHost?: boolean;
   }
 }
 
@@ -134,7 +145,11 @@ export function createResolveTenant(deps: ResolveTenantDeps): MiddlewareHandler 
     );
 
     if (classification.kind === "app") {
-      await next(); // tenant comes from the session, never Host (REQ-020)
+      // Tenant comes from the session, never Host (REQ-020). Flag the request
+      // so public CONTENT routes return a generic 404 here instead of the
+      // unscoped legacy result that would leak every tenant's newsletter.
+      c.set("appHost", true);
+      await next();
       return;
     }
     if (classification.kind === "unknown") {
@@ -191,6 +206,21 @@ export function createResolveTenant(deps: ResolveTenantDeps): MiddlewareHandler 
     return notFound(c);
   });
 }
+
+/**
+ * Guard for PUBLIC CONTENT routes (home / public archives + search / sources
+ * summary / must-read). On the app host there is no public newsletter, so the
+ * `appHost` flag set by {@link createResolveTenant} makes this return a generic
+ * 404 — never the unscoped, all-tenants legacy result. Tenant hosts (publicTenant
+ * set) and genuine legacy single-tenant deployments (resolver not mounted, so no
+ * flag) pass straight through, unchanged.
+ */
+export const blockPublicContentOnAppHost: MiddlewareHandler = createMiddleware(
+  async (c, next) => {
+    if (c.get("appHost") === true) return notFound(c);
+    await next();
+  },
+);
 
 /**
  * Rebuilds the request URL on `<newSlug>.<root>`, preserving path, query and

@@ -166,7 +166,7 @@ function Wizard({ saved }: { saved: OnboardingStateResponse }): ReactElement {
         <span className="flex items-center gap-2.5">
           <BrandMark size={22} className="text-[#8c3a1e]" />
           <span className="font-mono text-[15px] font-semibold uppercase tracking-[0.12em]">
-            AGENTLOOP
+            Dispatch
           </span>
         </span>
         <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#6b6557]">

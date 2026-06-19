@@ -3,7 +3,7 @@ import { BrandMark } from "@/components/shell/BrandMark";
 
 /**
  * The dark "ink" brand panel for the two-column auth pages (signup, login),
- * matching `mocks/signup.html`. AGENTLOOP is the platform brand on the
+ * matching `mocks/signup.html`. Dispatch is the platform brand on the
  * app host — these pages are pre-login and not tenant-scoped, so the wordmark
  * is fixed (no `useTenantBranding`). On the ink background the accent uses the
  * lighter coral (`#e98f6e`) the mock specifies, not the darker page rust.
@@ -33,7 +33,7 @@ export function AuthBrandAside({
       <div className="flex items-center gap-2.5">
         <BrandMark size={26} className="text-[#e98f6e]" />
         <span className="font-mono text-base font-semibold uppercase tracking-[0.12em] text-white">
-          AGENTLOOP
+          Dispatch
         </span>
       </div>
 

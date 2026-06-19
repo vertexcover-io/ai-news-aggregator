@@ -25,6 +25,28 @@
   --color-chip: #f1ede2;
   --color-danger: #9e2b1a;
   --color-ok: #2f6f3e;
+
+  /* Landing-page marquee (Magic UI) */
+  --animate-marquee: marquee var(--duration, 40s) linear infinite;
+  --animate-marquee-vertical: marquee-vertical var(--duration, 40s) linear infinite;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-100% - var(--gap, 1rem)));
+  }
+}
+
+@keyframes marquee-vertical {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(-100% - var(--gap, 1rem)));
+  }
 }
 
 @custom-variant dark (&:is(.dark *));
@@ -153,6 +175,13 @@
 }
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+.faq-toggle {
+  transition: transform 0.2s ease;
+}
+details[open] > summary .faq-toggle {
+  transform: rotate(45deg);
 }
 
 mark.archive-search-mark {

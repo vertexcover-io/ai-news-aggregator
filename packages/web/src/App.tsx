@@ -1,4 +1,5 @@
 import type { RouteObject } from "react-router-dom";
+import { currentHostSurface } from "./lib/hostSurface";
 import { DashboardPage } from "./pages/DashboardPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ArchivePage } from "./pages/ArchivePage";
@@ -12,6 +13,7 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 import { SourcesPage } from "./pages/SourcesPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { SignupPage } from "./pages/SignupPage";
+import { LandingPage } from "./pages/LandingPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
@@ -37,11 +39,20 @@ import { RequireSuperAdmin } from "./layouts/RequireSuperAdmin";
 import { RequireFeature } from "./layouts/RequireFeature";
 import { RequireCanonPublic } from "./layouts/RequireCanonPublic";
 
+// The same bundle is served on every host. The product landing belongs to the
+// app surface (apex / `app.<root>`) and is served ONLY at `/` there — there is
+// no `/landing` route. A tenant's own `<slug>.<root>` or custom domain keeps
+// serving its public newsletter `HomePage` at `/`, exactly as before.
+const isAppSurface = currentHostSurface() === "app";
+
 export const routes: RouteObject[] = [
+  ...(isAppSurface ? [{ path: "/", element: <LandingPage /> }] : []),
   {
     element: <PublicLayout />,
     children: [
-      { path: "/", element: <HomePage /> },
+      // Tenant hosts keep the public newsletter at `/`; on the app host `/` is
+      // the landing (above), so HomePage is not mounted there.
+      ...(isAppSurface ? [] : [{ path: "/", element: <HomePage /> }]),
       {
         // Canon page is gone for tenants with the flag off (Fix #4).
         element: <RequireCanonPublic />,

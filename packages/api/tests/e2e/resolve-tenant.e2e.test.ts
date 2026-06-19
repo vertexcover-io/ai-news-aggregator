@@ -70,12 +70,16 @@ function buildProbeApp(cfg: DomainConfig): Hono {
     createResolveTenant({ config: cfg, getTenantsRepo: () => tenantsRepo }),
   );
   app.get("/api/probe", (c) =>
-    c.json({ publicTenant: c.get("publicTenant") ?? null }),
+    c.json({
+      publicTenant: c.get("publicTenant") ?? null,
+      appHost: c.get("appHost") ?? null,
+    }),
   );
   app.get("/api/admin/probe", requireAuth(SESSION_SECRET), (c) =>
     c.json({
       tenantCtx: c.get("tenantCtx"),
       publicTenant: c.get("publicTenant") ?? null,
+      appHost: c.get("appHost") ?? null,
     }),
   );
   return app;
@@ -141,10 +145,16 @@ describe("resolve-tenant middleware (P5 e2e)", () => {
     expect(adminBody.tenantCtx.tenantId).toBe(tenantA.id);
     expect(adminBody.publicTenant).toBeNull();
 
-    // App host never resolves a tenant from Host, even on public routes.
+    // App host never resolves a tenant from Host, even on public routes, and is
+    // flagged `appHost` so public content routes 404 there (no cross-tenant leak).
     const publicRes = await probe(app, APP_HOST);
     expect(publicRes.status).toBe(200);
-    expect(((await publicRes.json()) as { publicTenant: unknown }).publicTenant).toBeNull();
+    const publicBody = (await publicRes.json()) as {
+      publicTenant: unknown;
+      appHost: unknown;
+    };
+    expect(publicBody.publicTenant).toBeNull();
+    expect(publicBody.appHost).toBe(true);
 
     // Even on a slug host, the admin scope stays the session tenant.
     const crossRes = await probe(app, `${slugZero}.${ROOT}`, "/api/admin/probe", {
@@ -165,6 +175,7 @@ describe("resolve-tenant middleware (P5 e2e)", () => {
     expect(known.status).toBe(200);
     expect(await known.json()).toEqual({
       publicTenant: { tenantId: tenantA.id, slug: slugA, featureCanon: false },
+      appHost: null,
     });
 
     // Unknown slug → generic not-found (no tenant existence leak).
@@ -180,12 +191,14 @@ describe("resolve-tenant middleware (P5 e2e)", () => {
     expect(viaHeader.status).toBe(200);
     expect(await viaHeader.json()).toEqual({
       publicTenant: { tenantId: tenantA.id, slug: slugA, featureCanon: false },
+      appHost: null,
     });
 
     const viaLvh = await probe(devApp, `${slugA}.lvh.me:5173`);
     expect(viaLvh.status).toBe(200);
     expect(await viaLvh.json()).toEqual({
       publicTenant: { tenantId: tenantA.id, slug: slugA, featureCanon: false },
+      appHost: null,
     });
 
     // The header override is dev-only: production config ignores it.
@@ -206,6 +219,7 @@ describe("resolve-tenant middleware (P5 e2e)", () => {
         slug: slugZero,
         featureCanon: false,
       },
+      appHost: null,
     });
   });
 
@@ -260,6 +274,7 @@ describe("resolve-tenant middleware (P5 e2e)", () => {
     expect(followed.status).toBe(200);
     expect(await followed.json()).toEqual({
       publicTenant: { tenantId: tenantC.id, slug: slugCNew, featureCanon: false },
+      appHost: null,
     });
   });
 

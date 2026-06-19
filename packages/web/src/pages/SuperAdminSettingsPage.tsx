@@ -15,8 +15,8 @@ export function SuperAdminSettingsPage(): ReactElement {
     <div className="min-h-screen bg-[#FAFAF7]">
       <header className="flex items-center justify-between border-b bg-white px-4 py-2 sm:px-6 md:px-8">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-sm font-semibold tracking-widest text-neutral-900">
-            AGENTLOOP
+          <span className="font-mono text-sm font-semibold uppercase tracking-widest text-neutral-900">
+            Dispatch
           </span>
           <span className="rounded-md bg-neutral-900 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-white">
             Super admin
