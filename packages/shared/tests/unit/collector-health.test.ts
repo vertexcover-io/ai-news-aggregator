@@ -12,9 +12,13 @@ import {
 
 describe("collectorHealthKey", () => {
   it("produces distinct keys for every checkable collector", () => {
-    const keys = HEALTH_CHECKABLE_COLLECTORS.map((c) => collectorHealthKey(c));
+    const keys = HEALTH_CHECKABLE_COLLECTORS.map((c) => collectorHealthKey("t1", c));
     const unique = new Set(keys);
     expect(unique.size).toBe(HEALTH_CHECKABLE_COLLECTORS.length);
+  });
+
+  it("scopes the key by tenant — same collector, different tenants → different keys", () => {
+    expect(collectorHealthKey("t1", "hn")).not.toBe(collectorHealthKey("t2", "hn"));
   });
 });
 

@@ -54,14 +54,27 @@ async function findSubscriberByEmail(email: string): Promise<SubscriberRow | nul
   });
 }
 
+async function agentloopTenantId(c: Client): Promise<string> {
+  const t = await c.query<{ id: string }>(
+    "SELECT id FROM tenants WHERE slug = 'agentloop' LIMIT 1",
+  );
+  const id = t.rows[0]?.id;
+  if (!id) throw new Error("agentloop tenant not seeded");
+  return id;
+}
+
 async function insertConfirmedSubscriber(email: string): Promise<string> {
   return withClient(async (c) => {
+    // subscribers is keyed (tenant_id, email) since migration 0049, and
+    // tenant_id is NOT NULL since 0041 — stamp AGENTLOOP (tenant 0) and
+    // conflict on the composite key.
+    const tenantId = await agentloopTenantId(c);
     const r = await c.query<{ id: string }>(
-      `INSERT INTO subscribers (id, email, status, subscribed_at)
-       VALUES ($1, $2, 'confirmed', NOW())
-       ON CONFLICT (email) DO UPDATE SET status = 'confirmed', subscribed_at = NOW()
+      `INSERT INTO subscribers (id, tenant_id, email, status, subscribed_at)
+       VALUES ($1, $2, $3, 'confirmed', NOW())
+       ON CONFLICT (tenant_id, email) DO UPDATE SET status = 'confirmed', subscribed_at = NOW()
        RETURNING id`,
-      [randomUUID(), email],
+      [randomUUID(), tenantId, email],
     );
     return r.rows[0].id;
   });
@@ -102,10 +115,11 @@ test.describe("subscribe tokens — round trip", () => {
     // Insert a pending subscriber directly so we can issue a token with the
     // matching subscriber id and a past expiry.
     const subId = await withClient(async (c) => {
+      const tenantId = await agentloopTenantId(c);
       const r = await c.query<{ id: string }>(
-        `INSERT INTO subscribers (id, email, status) VALUES ($1, $2, 'pending')
-         ON CONFLICT (email) DO UPDATE SET status='pending' RETURNING id`,
-        [randomUUID(), email],
+        `INSERT INTO subscribers (id, tenant_id, email, status) VALUES ($1, $2, $3, 'pending')
+         ON CONFLICT (tenant_id, email) DO UPDATE SET status='pending' RETURNING id`,
+        [randomUUID(), tenantId, email],
       );
       return r.rows[0].id;
     });

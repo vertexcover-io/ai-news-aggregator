@@ -19,11 +19,13 @@ import {
   createUserSettingsRepo,
   type UserSettingsRepo,
 } from "@api/repositories/user-settings.js";
+import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import { tenantScopeFromPublicHost } from "@api/auth/tenant-scope.js";
 
 export interface ArchivesSearchRouterDeps {
-  getArchiveRepo: () => RunArchivesRepo;
-  getRawItemsRepo: () => RawItemsRepo;
-  getSettingsRepo?: () => Pick<UserSettingsRepo, "get">;
+  getArchiveRepo: (scope?: TenantScope) => RunArchivesRepo;
+  getRawItemsRepo: (scope?: TenantScope) => RawItemsRepo;
+  getSettingsRepo?: (scope?: TenantScope) => Pick<UserSettingsRepo, "get">;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -38,9 +40,10 @@ const querySchema = z.object({
 
 async function getConfiguredTimezone(
   deps: Pick<ArchivesSearchRouterDeps, "getSettingsRepo">,
+  scope?: TenantScope,
 ): Promise<string> {
   if (deps.getSettingsRepo === undefined) return "UTC";
-  const settings = await deps.getSettingsRepo().get();
+  const settings = await deps.getSettingsRepo(scope).get();
   return safeTimezone(settings?.scheduleTimezone);
 }
 
@@ -67,7 +70,9 @@ export function createArchivesSearchRouter(
     }
     const { q, from, to, limit } = parsed.data;
 
-    const timezone = await getConfiguredTimezone(deps);
+    // Public FTS is fenced by the Host-resolved tenant (P7, REQ-044).
+    const scope = tenantScopeFromPublicHost(c);
+    const timezone = await getConfiguredTimezone(deps, scope);
     const fromDate = from ? startOfDateInTimezone(from, timezone) : undefined;
     const toDate = to ? endOfDateInTimezone(to, timezone) : undefined;
     if (fromDate === null || toDate === null) {
@@ -78,12 +83,12 @@ export function createArchivesSearchRouter(
     }
 
     const start = Date.now();
-    const result = await deps.getArchiveRepo().searchReviewed({
+    const result = await deps.getArchiveRepo(scope).searchReviewed({
       q,
       from: fromDate,
       to: toDate,
       limit,
-      rawItemsRepo: deps.getRawItemsRepo(),
+      rawItemsRepo: deps.getRawItemsRepo(scope),
       timezone,
     });
     const durationMs = Date.now() - start;
@@ -118,8 +123,8 @@ export function createArchivesSearchRouter(
 
 export function createDefaultArchivesSearchRouter(): Hono {
   return createArchivesSearchRouter({
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getSettingsRepo: () => createUserSettingsRepo(defaultGetDb()),
+    getArchiveRepo: (scope) => createRunArchivesRepo(defaultGetDb(), scope),
+    getRawItemsRepo: (scope) => createRawItemsRepo(defaultGetDb(), scope),
+    getSettingsRepo: (scope) => createUserSettingsRepo(defaultGetDb(), scope),
   });
 }

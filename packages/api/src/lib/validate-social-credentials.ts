@@ -17,3 +17,14 @@ export const twitterCollectorUpsertSchema = z.object({
   apiKey: z.string().trim().min(1),
 });
 
+/** Shared Twitter OAuth2 app client (P13, REQ-081) — super-admin only. */
+export const twitterClientUpsertSchema = z.object({
+  clientId: z.string().trim().min(1),
+  clientSecret: z.string().trim().min(1),
+});
+
+/** Apify API token — super-admin only, platform-level (REQ-015). */
+export const apifyUpsertSchema = z.object({
+  apiToken: z.string().min(1),
+});
+

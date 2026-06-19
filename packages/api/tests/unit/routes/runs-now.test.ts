@@ -3,10 +3,12 @@ import { Hono } from "hono";
 import type IORedis from "ioredis";
 import type { Queue, JobsOptions } from "bullmq";
 import type { UserSettings } from "@newsletter/shared";
+import type { SourceRow } from "@newsletter/shared/db";
 import { createRunsRouter } from "@api/routes/runs.js";
 import type { RawItemsRepo } from "@api/repositories/raw-items.js";
 import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
 import type { RunArchivesRepo } from "@api/repositories/run-archives.js";
+import type { SourcesRepo } from "@api/repositories/sources.js";
 
 function makeRedis() {
   const store = new Map<string, string>();
@@ -52,10 +54,31 @@ function makeRepo(): RawItemsRepo {
 
 function buildApp(opts: {
   settings: UserSettings | null;
+  sessionTenantId?: string;
+  sourceRows?: SourceRow[];
 }) {
   const redis = makeRedis();
   const q = makeQueue();
   const app = new Hono();
+  if (opts.sessionTenantId !== undefined) {
+    const tenantId = opts.sessionTenantId;
+    app.use("*", async (c, next) => {
+      c.set("tenantCtx", {
+        userId: "u-1",
+        tenantId,
+        role: "tenant_admin",
+      });
+      await next();
+    });
+  }
+  const sourcesRepo: SourcesRepo | undefined = opts.sourceRows
+    ? ({
+        list: () => Promise.resolve(opts.sourceRows ?? []),
+        create: () => Promise.reject(new Error("not used")),
+        setEnabled: () => Promise.reject(new Error("not used")),
+        delete: () => Promise.reject(new Error("not used")),
+      } as SourcesRepo)
+    : undefined;
   app.route(
     "/api/runs",
     createRunsRouter({
@@ -64,6 +87,7 @@ function buildApp(opts: {
       getRawItemsRepo: () => makeRepo(),
       getSettingsRepo: () => makeSettingsRepo(opts.settings),
       getArchiveRepo: () => makeArchiveRepo(),
+      ...(sourcesRepo ? { getSourcesRepo: () => sourcesRepo } : {}),
     }),
   );
   return { app, redis, q };
@@ -206,6 +230,77 @@ describe("POST /api/runs/now", () => {
       body: JSON.stringify({ foo: 1 }),
     });
     expect(res.status).toBe(400);
+    expect(q.calls).toHaveLength(0);
+  });
+
+  // P9 (REQ-060): the enqueued run-process payload carries the session tenant
+  it("REQ-060: enqueued payload carries the session tenant id", async () => {
+    const tenantId = "11111111-2222-3333-4444-555555555555";
+    const { app, q } = buildApp({ settings: baseSettings, sessionTenantId: tenantId });
+    const res = await app.request("/api/runs/now", { method: "POST" });
+    expect(res.status).toBe(202);
+    expect(q.calls).toHaveLength(1);
+    expect(q.calls[0].data.tenantId).toBe(tenantId);
+  });
+
+  // P9 (REQ-073): when the tenant has sources ROWS, the run's collectors are
+  // derived from the ENABLED rows — the legacy settings JSONB is ignored.
+  it("REQ-073: collectors come from enabled sources rows, not settings JSONB", async () => {
+    const tenantId = "11111111-2222-3333-4444-555555555555";
+    const rows = [
+      {
+        id: "src-1",
+        tenantId,
+        type: "reddit",
+        config: { kind: "reddit", subreddit: "LocalLLaMA", sinceDays: 1 },
+        enabled: true,
+      },
+      {
+        id: "src-2",
+        tenantId,
+        type: "reddit",
+        config: { kind: "reddit", subreddit: "Disabled", sinceDays: 1 },
+        enabled: false,
+      },
+    ] as unknown as SourceRow[];
+    const { app, q } = buildApp({
+      settings: baseSettings, // hnEnabled JSONB — must NOT leak into the run
+      sessionTenantId: tenantId,
+      sourceRows: rows,
+    });
+    const res = await app.request("/api/runs/now", { method: "POST" });
+    expect(res.status).toBe(202);
+    expect(q.calls).toHaveLength(1);
+    const data = q.calls[0].data as {
+      sourceTypes: string[];
+      collectors: { hn?: unknown; reddit?: { subreddits: string[] } };
+    };
+    // "manual" is always present (REQ-009) so user-submitted URLs stay eligible.
+    expect(data.sourceTypes).toEqual(["manual", "reddit"]);
+    expect(data.collectors.hn).toBeUndefined();
+    expect(data.collectors.reddit?.subreddits).toEqual(["LocalLLaMA"]);
+  });
+
+  // P9 (REQ-073): rows exist but ALL disabled → nothing to collect → 409,
+  // even though the legacy JSONB still has an enabled source.
+  it("REQ-073: all rows disabled → 409 (JSONB does not resurrect collection)", async () => {
+    const tenantId = "11111111-2222-3333-4444-555555555555";
+    const rows = [
+      {
+        id: "src-1",
+        tenantId,
+        type: "reddit",
+        config: { kind: "reddit", subreddit: "Disabled", sinceDays: 1 },
+        enabled: false,
+      },
+    ] as unknown as SourceRow[];
+    const { app, q } = buildApp({
+      settings: baseSettings,
+      sessionTenantId: tenantId,
+      sourceRows: rows,
+    });
+    const res = await app.request("/api/runs/now", { method: "POST" });
+    expect(res.status).toBe(409);
     expect(q.calls).toHaveLength(0);
   });
 

@@ -7,7 +7,7 @@
  *   - web dev server on :5174 (Playwright baseURL override)
  */
 import { test, expect, type Page } from "@playwright/test";
-import { ADMIN_PASSWORD, makeDbClient } from "./_infra";
+import { ADMIN_EMAIL, ADMIN_PASSWORD, makeDbClient } from "./_infra";
 
 // The settings form requires non-empty ranking/shortlist prompts to save. Seed
 // a valid singleton row so Save fires a PUT regardless of prior DB state.
@@ -33,8 +33,8 @@ async function resetSettings(): Promise<void> {
 const WEB_BASE = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5173";
 
 async function adminLogin(page: Page): Promise<void> {
-  const res = await page.request.post(`${WEB_BASE}/api/admin/login`, {
-    data: { password: ADMIN_PASSWORD },
+  const res = await page.request.post(`${WEB_BASE}/api/auth/login`, {
+    data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
   });
   expect(res.ok()).toBe(true);
 }

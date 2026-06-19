@@ -15,6 +15,14 @@ vi.mock("../../../../src/hooks/useTriggerSocialPost", () => ({
   useTriggerSocialPost: vi.fn(),
 }));
 
+// Email-send hook needs a QueryClient; these tests focus on social items.
+vi.mock("../../../../src/hooks/useTriggerEmailSend", () => ({
+  useTriggerEmailSend: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 import { useTriggerSocialPost } from "../../../../src/hooks/useTriggerSocialPost";
 const mockUseTriggerSocialPost = useTriggerSocialPost as ReturnType<typeof vi.fn>;
 

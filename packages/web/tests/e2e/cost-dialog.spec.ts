@@ -9,7 +9,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Client } from "pg";
 import { randomUUID } from "node:crypto";
-import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
+import { ADMIN_EMAIL, ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
 
 
 interface SeededRun {
@@ -105,7 +105,7 @@ async function ensureUserSettings(client: Client): Promise<void> {
   await client.query(
     `INSERT INTO user_settings (top_n, shortlist_size, ranking_prompt, shortlist_prompt, pipeline_time, schedule_timezone, email_time, linkedin_time, twitter_time)
      VALUES (5, 50, 'seed ranking prompt', 'seed shortlist prompt', '08:00', 'UTC', '08:00', '08:00', '08:00')
-     ON CONFLICT (singleton) DO NOTHING`,
+     ON CONFLICT (tenant_id) DO NOTHING`,
   );
 }
 
@@ -146,8 +146,8 @@ async function seedAll(): Promise<SeedResult> {
 }
 
 async function adminLogin(page: Page): Promise<void> {
-  const res = await page.request.post(`${API_BASE}/api/admin/login`, {
-    data: { password: ADMIN_PASSWORD },
+  const res = await page.request.post(`${API_BASE}/api/auth/login`, {
+    data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
   });
   expect(res.ok()).toBe(true);
 }

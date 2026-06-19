@@ -8,11 +8,13 @@ import { createWebhooksRouter } from "@api/routes/webhooks.js";
 import type { SesEventInsert, SesEventSelect, EmailSendSelect, SubscriberSelect, SubscriberStatus, SlackNotifier } from "@newsletter/shared";
 
 const SUBSCRIBER_ID = "00000000-0000-0000-0000-000000000001";
+const TENANT_ID = "00000000-0000-0000-0000-0000000000aa";
 const MESSAGE_ID = "ses-msg-abc123";
 
 function makeEmailSend(overrides: Partial<EmailSendSelect> = {}): EmailSendSelect {
   return {
     id: "00000000-0000-0000-0000-000000000099",
+    tenantId: TENANT_ID,
     subscriberId: SUBSCRIBER_ID,
     runArchiveId: "00000000-0000-0000-0000-000000000010",
     messageId: MESSAGE_ID,
@@ -330,7 +332,9 @@ describe("POST /webhooks/ses", () => {
   });
 
   describe("unknown messageId", () => {
-    it("creates ses_events with subscriberId=null and no subscriber update", async () => {
+    it("returns 200 and records nothing — no tenant to attribute the event to", async () => {
+      // tenant_id is NOT NULL: an event with no matching email send has no
+      // tenant (and no subscriber to act on), so it is logged and skipped.
       const deps = makeDeps({ emailSend: null });
       const inner = makeInnerNotification({ notificationType: "Delivery" });
       deps.verifySns.mockResolvedValue(makeSnsNotification(inner));
@@ -339,7 +343,7 @@ describe("POST /webhooks/ses", () => {
       const res = await postSes(app, JSON.stringify(makeSnsNotification(inner)));
 
       expect(res.status).toBe(200);
-      expect(deps.sesEventsRepo.upserted[0].subscriberId).toBeNull();
+      expect(deps.sesEventsRepo.upserted).toHaveLength(0);
       expect(deps.subscribersRepo.statusUpdates).toHaveLength(0);
     });
   });

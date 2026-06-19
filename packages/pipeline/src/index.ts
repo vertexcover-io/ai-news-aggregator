@@ -46,6 +46,21 @@ export function getRunIdFromJobData(data: unknown): string | undefined {
   return undefined;
 }
 
+// Single-tenant bridge (pre-P9): resolve the AGENTLOOP/default tenant scope
+// BEFORE worker default deps are built, so every tenant-owned write
+// (raw_items, run_archives, run_logs, email_sends, …) stamps a concrete
+// tenant_id — the column is NOT NULL with no DB DEFAULT.
+const { primeDefaultTenantScope } = await import(
+  "@pipeline/repositories/default-tenant.js"
+);
+const { getDb } = await import("@newsletter/shared");
+const primedTenantScope = await primeDefaultTenantScope(getDb());
+if (!primedTenantScope) {
+  logger.warn(
+    "no default tenant found — tenant-owned writes will fail until a tenant exists",
+  );
+}
+
 const processingConnection = createRedisConnection();
 const runState = createRunStateService(processingConnection);
 const processingWorker = createProcessingWorker({ connection: processingConnection });

@@ -5,9 +5,11 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { getDb, userSettings } from "@newsletter/shared/db";
+import { getDb, sources, userSettings } from "@newsletter/shared/db";
 import { createSettingsRouter } from "@api/routes/settings.js";
 import { createUserSettingsRepo } from "@api/repositories/user-settings.js";
+import { createSourcesRepo } from "@api/repositories/sources.js";
+import { ensureE2eTenant } from "./helpers/tenant.js";
 
 function makeQueue() {
   return {
@@ -17,6 +19,7 @@ function makeQueue() {
 }
 
 const db = getDb();
+const tenantCtx = await ensureE2eTenant();
 
 beforeAll(async () => {
   await db.delete(userSettings).where(eq(userSettings.singleton, true));
@@ -39,7 +42,7 @@ function buildApp(queue: ReturnType<typeof makeQueue>) {
   app.route(
     "/api/settings",
     createSettingsRouter({
-      getSettingsRepo: () => createUserSettingsRepo(db),
+      getSettingsRepo: () => createUserSettingsRepo(db, tenantCtx),
       processingQueue: queue as never,
       collectorHealthQueue: collectorHealthQueue as never,
     }),
@@ -151,5 +154,78 @@ describe("Settings routes (e2e)", () => {
         }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("Settings ⇄ sources-rows bridge (e2e, REQ-073)", () => {
+  function buildBridgeApp(queue: ReturnType<typeof makeQueue>) {
+    const app = new Hono();
+    const collectorHealthQueue = makeQueue();
+    app.route(
+      "/api/settings",
+      createSettingsRouter({
+        getSettingsRepo: () => createUserSettingsRepo(db, tenantCtx),
+        getSourcesRepo: () => createSourcesRepo(db, tenantCtx),
+        processingQueue: queue as never,
+        collectorHealthQueue: collectorHealthQueue as never,
+      }),
+    );
+    return app;
+  }
+
+  beforeEach(async () => {
+    await db.delete(sources).where(eq(sources.tenantId, tenantCtx.tenantId));
+  });
+
+  afterAll(async () => {
+    await db.delete(sources).where(eq(sources.tenantId, tenantCtx.tenantId));
+  });
+
+  it("GET overlays the card's collector configs from the tenant's source rows", async () => {
+    const app = buildBridgeApp(makeQueue());
+    // Settings row exists but its reddit JSONB is empty…
+    await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validBody),
+    });
+    // …while the real collection set lives in `sources` rows (as onboarding writes).
+    const repo = createSourcesRepo(db, tenantCtx);
+    await repo.create({ type: "reddit", config: { kind: "reddit", subreddit: "videoproduction", sinceDays: 1 } });
+    await repo.create({ type: "reddit", config: { kind: "reddit", subreddit: "streaming", sinceDays: 1 } });
+
+    const res = await app.request("/api/settings");
+    const body = (await res.json()) as { redditEnabled: boolean; redditConfig: { subreddits: string[] } | null };
+    expect(body.redditEnabled).toBe(true);
+    expect(body.redditConfig?.subreddits.sort()).toEqual(["streaming", "videoproduction"]);
+  });
+
+  it("PUT reconciles the sources table (replace-all) for a tenant already on rows", async () => {
+    const app = buildBridgeApp(makeQueue());
+    const repo = createSourcesRepo(db, tenantCtx);
+    await repo.create({ type: "reddit", config: { kind: "reddit", subreddit: "old", sinceDays: 1 } });
+
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        scheduleEnabled: false,
+        hnEnabled: false,
+        hnConfig: null,
+        redditEnabled: true,
+        redditConfig: { subreddits: ["mlops", "LocalLLaMA"], sinceDays: 1 },
+      }),
+    });
+    expect(res.status).toBe(200);
+
+    const rows = await repo.list();
+    const subreddits = rows
+      .map((r) => (r.config.kind === "reddit" ? r.config.subreddit : null))
+      .filter((s): s is string => s !== null)
+      .sort();
+    expect(subreddits).toEqual(["LocalLLaMA", "mlops"]);
+    // The stale "old" row was replaced, not appended.
+    expect(rows).toHaveLength(2);
   });
 });

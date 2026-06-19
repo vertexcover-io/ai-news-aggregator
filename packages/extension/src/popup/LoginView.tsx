@@ -7,6 +7,7 @@ interface Props {
 }
 
 export default function LoginView({ onLogin }: Props) {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -16,27 +17,58 @@ export default function LoginView({ onLogin }: Props) {
     setError(null);
     setSubmitting(true);
     try {
-      const { token } = await login(password);
+      const { token } = await login(email, password);
       await setToken(token);
       onLogin(token);
     } catch (err: unknown) {
       const status = (err as { status?: number }).status;
-      setError(
-        status === 401 ? "Incorrect password." : "Something went wrong. Try again.",
-      );
+      if (status === 401) {
+        setError("Incorrect email or password.");
+      } else if (status === 403) {
+        // Super-admins have no implicit tenant (v1): they pick one in the web app.
+        const message = err instanceof Error ? err.message : "";
+        setError(
+          message.length > 0
+            ? message
+            : "Choose a tenant in the web app before using the extension.",
+        );
+      } else {
+        setError("Something went wrong. Try again.");
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
+  const clearError = () => {
+    if (error) setError(null);
+  };
+
   return (
     <div className="popup">
       <header className="masthead">
-        <p className="eyebrow">AgentLoop</p>
-        <h1 className="title">Admin</h1>
-        <p className="subtitle">Sign in to add stories</p>
+        <p className="eyebrow">AgentLoop Collector</p>
+        <h1 className="title">Sign in</h1>
+        <p className="subtitle">Add stories to your newsletter</p>
       </header>
       <form onSubmit={(e) => void handleSubmit(e)}>
+        <div className="field">
+          <label className="label" htmlFor="email">
+            Email
+          </label>
+          <input
+            id="email"
+            className="input"
+            type="email"
+            required
+            autoFocus
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              clearError();
+            }}
+          />
+        </div>
         <div className="field">
           <label className="label" htmlFor="password">
             Password
@@ -46,11 +78,10 @@ export default function LoginView({ onLogin }: Props) {
             className="input"
             type="password"
             required
-            autoFocus
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);
-              if (error) setError(null);
+              clearError();
             }}
           />
         </div>

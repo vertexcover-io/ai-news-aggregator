@@ -6,20 +6,25 @@ const API_BASE =
 export interface LoginResponse {
   token: string;
   expiresAt: number;
+  user: { role: string; tenantId: string };
 }
 
 export interface SubmitResponse {
-  id: string;
+  id: number;
   url: string;
+  title: string;
   sourceType: string;
   alreadyExisted: boolean;
 }
 
-export async function login(password: string): Promise<LoginResponse> {
+export async function login(
+  email: string,
+  password: string,
+): Promise<LoginResponse> {
   const res = await fetch(`${API_BASE}/api/extension/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ email, password }),
   });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({ error: "unknown" }))) as {

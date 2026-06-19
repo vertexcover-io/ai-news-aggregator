@@ -175,12 +175,28 @@ describe("publish workers dry-run guard", () => {
         {
           emailProvider: emailProvider as never,
           subscribersRepo: subscribersRepo as never,
+          // Required (fail-closed gate); irrelevant here — dry-run returns early.
+          tenantsRepo: {
+            getEmailSettings: vi.fn(() =>
+              Promise.resolve({
+                mode: "managed" as const,
+                smtp: null,
+                sendingDomainName: null,
+                sendingDomainStatus: "verified" as const,
+                slug: "inference",
+              }),
+            ),
+          },
+          createSmtpProvider: vi.fn(() => ({
+            send: vi.fn(() => Promise.resolve({ messageId: "smtp" })),
+          })),
           emailSendsRepo: emailSendsRepo as never,
           archiveRepo: archiveRepo as never,
           rawItemsRepo: rawItemsRepo as never,
           renderNewsletter: vi.fn(() => Promise.resolve("<html></html>")),
           sessionSecret: "secret",
           fromMail: "from@example.com",
+          managedEmailDomain: "news.example.com",
           baseUrl: "https://example.com",
           slackNotifier: slackNotifier as never,
         },

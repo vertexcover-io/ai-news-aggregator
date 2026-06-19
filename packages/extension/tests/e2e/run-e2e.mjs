@@ -78,6 +78,9 @@ async function main() {
       process.env.SESSION_SECRET ??
       "test-session-secret-32-bytes-minimum-abcdef1234567890",
     SLACK_WEBHOOK_URL: "",
+    // The API constructs an email provider at boot; a dummy key satisfies the
+    // Resend constructor (no mail is sent in this suite).
+    RESEND_API_KEY: process.env.RESEND_API_KEY ?? "re_e2e_dummy_key",
   };
   env.E2E_ADMIN_PASSWORD = env.ADMIN_PASSWORD;
 

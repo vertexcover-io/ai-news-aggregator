@@ -1,18 +1,30 @@
-import { JSDOM, VirtualConsole } from "jsdom";
+/**
+ * Reddit collector — Apify-based (REQ-001, REQ-023).
+ *
+ * All atom/xml parsing code has been removed. Posts are fetched via the Apify
+ * `trudax/reddit-scraper-lite` actor through injected runner dependencies.
+ *
+ * The collector is db-free: token resolution is an injected dep, wired with
+ * real defaults in the worker/dispatch call sites.
+ */
 import type { RawItemInsert } from "@newsletter/shared/db";
-import type { CollectorResult, RawItemEngagement, SourceUnitResult } from "@newsletter/shared/types";
+import type { CollectorResult, SourceUnitResult } from "@newsletter/shared/types";
 import type { RedditCollectConfig } from "@pipeline/types.js";
 import { createLogger } from "@newsletter/shared/logger";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
-import { delay } from "@pipeline/lib/delay.js";
 import { UrlParseError } from "@pipeline/collectors/hn.js";
-import { withAbortSignal } from "@pipeline/lib/abortable-fetch.js";
 import { enrichRawItems } from "@pipeline/services/link-enrichment/index.js";
 import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
+import {
+  buildListingInput,
+  mapApifyPostToRawItem,
+  runRedditListing as defaultRunListing,
+  runRedditPost as defaultRunPost,
+  type ApifyRedditPost,
+  type ApifyActorInput,
+} from "@pipeline/lib/apify-reddit.js";
 
 const logger = createLogger("collector:reddit");
-
-const ERROR_MESSAGE_MAX_LEN = 120;
 
 const DEFAULT_SUBREDDITS = [
   "MachineLearning", "LocalLLaMA", "artificial", "OpenAI",
@@ -21,230 +33,40 @@ const DEFAULT_SUBREDDITS = [
 const DEFAULT_SORT = "top";
 const DEFAULT_TIMEFRAME = "day";
 const DEFAULT_LIMIT = 25;
-const MAX_RETRIES = 3;
-const RATE_LIMIT_MS = 500;
-const USER_AGENT = "Mozilla/5.0 (compatible; NewsletterBot/1.0; +https://vertexcover.io)";
-const ZERO_ENGAGEMENT: RawItemEngagement = { points: 0, commentCount: 0 };
 
-function formatCause(cause: unknown): string | undefined {
-  if (cause === undefined) return undefined;
-  if (cause instanceof Error) return `${cause.name}: ${cause.message}`;
-  if (typeof cause === "string") return cause;
-  if (typeof cause === "number" || typeof cause === "boolean") return String(cause);
-  try {
-    return JSON.stringify(cause);
-  } catch {
-    return "[unserializable cause]";
-  }
+// ── Type aliases for injected runners ─────────────────────────────────────────
+
+type RunListingFn = (
+  token: string,
+  input: ApifyActorInput,
+  opts?: { signal?: AbortSignal },
+) => Promise<ApifyRedditPost[]>;
+
+type RunPostFn = (
+  token: string,
+  permalink: string,
+  opts?: { signal?: AbortSignal },
+) => Promise<ApifyRedditPost[]>;
+
+// ── Single-post deps ──────────────────────────────────────────────────────────
+
+export interface FetchRedditPostDeps {
+  resolveToken?: () => Promise<{ apiToken: string; source: "db" | "env" } | null>;
+  runPost?: RunPostFn;
+  signal?: AbortSignal;
 }
+
+// ── Batch-collection deps ─────────────────────────────────────────────────────
 
 export interface RedditCollectorDeps {
   rawItemsRepo: RawItemsRepo;
-  fetchFn?: typeof fetch;
+  resolveToken?: () => Promise<{ apiToken: string; source: "db" | "env" } | null>;
+  runListing?: RunListingFn;
   signal?: AbortSignal;
   enrichment?: EnrichmentContext;
 }
 
-const silentConsole = new VirtualConsole();
-silentConsole.on("jsdomError", () => undefined);
-
-function decodeAmp(url: string): string {
-  return url.replaceAll("&amp;", "&");
-}
-
-function normalizeText(value: string | null | undefined): string {
-  return (value ?? "").replace(/\s+/g, " ").trim();
-}
-
-function parseDateOrNow(value: string): Date {
-  const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) ? new Date() : new Date(timestamp);
-}
-
-function parseXmlDocument(xml: string): Document {
-  const dom = new JSDOM(xml, { contentType: "application/xml", virtualConsole: silentConsole });
-  const doc = dom.window.document;
-  const parseError = doc.querySelector("parsererror");
-  if (parseError) {
-    throw new Error(`Reddit RSS returned invalid XML: ${normalizeText(parseError.textContent).slice(0, ERROR_MESSAGE_MAX_LEN)}`);
-  }
-  return doc;
-}
-
-function parseHtmlDocument(html: string): Document {
-  return new JSDOM(html, { virtualConsole: silentConsole }).window.document;
-}
-
-function firstElement(parent: Document | Element, tagName: string): Element | null {
-  return parent.getElementsByTagName(tagName).item(0);
-}
-
-function firstText(parent: Document | Element, tagName: string): string {
-  return normalizeText(firstElement(parent, tagName)?.textContent);
-}
-
-function firstAttribute(parent: Document | Element, tagName: string, attribute: string): string {
-  return firstElement(parent, tagName)?.getAttribute(attribute) ?? "";
-}
-
-function stripThingPrefix(id: string): string {
-  return id.replace(/^t[13]_/, "");
-}
-
-function stripTrailingSlash(url: string): string {
-  return url.endsWith("/") ? url.slice(0, -1) : url;
-}
-
-function isSameUrl(a: string, b: string): boolean {
-  return stripTrailingSlash(a) === stripTrailingSlash(b);
-}
-
-function getAnchorHrefByLabel(doc: Document, label: string): string | null {
-  const anchors = Array.from(doc.querySelectorAll("a[href]"));
-  const anchor = anchors.find((a) => normalizeText(a.textContent) === label);
-  return anchor?.getAttribute("href") ?? null;
-}
-
-function getEntryContentDocument(entry: Element): Document {
-  return parseHtmlDocument(firstText(entry, "content"));
-}
-
-function getEntryAuthor(entry: Element): string | null {
-  const author = firstText(entry, "name").replace(/^\/u\//, "");
-  return author === "" ? null : author;
-}
-
-function extractEntryImageUrl(entry: Element, contentDoc: Document): string | null {
-  const mediaThumbnail = firstAttribute(entry, "media:thumbnail", "url");
-  if (mediaThumbnail.startsWith("http")) return decodeAmp(mediaThumbnail);
-
-  const image = contentDoc.querySelector("img[src]");
-  const src = image?.getAttribute("src") ?? "";
-  return src.startsWith("http") ? decodeAmp(src) : null;
-}
-
-function extractEntryBody(contentDoc: Document): string {
-  const markdownBody = contentDoc.querySelector(".md");
-  if (!markdownBody) return "";
-  const blockTexts = Array.from(markdownBody.querySelectorAll("p, li, pre, blockquote"))
-    .map((el) => normalizeText(el.textContent))
-    .filter((text) => text !== "");
-  return blockTexts.length > 0 ? blockTexts.join(" ") : normalizeText(markdownBody.textContent);
-}
-
-function extractEntryUrl(contentDoc: Document, sourceUrl: string): string {
-  const linkHref = getAnchorHrefByLabel(contentDoc, "[link]");
-  if (!linkHref) return sourceUrl;
-  return isSameUrl(linkHref, sourceUrl) ? sourceUrl : decodeAmp(linkHref);
-}
-
-interface ParsedPostEntry {
-  readonly item: RawItemInsert;
-}
-
-function parsePostEntry(entry: Element, subreddit: string, now: Date): ParsedPostEntry | null {
-  const rawId = firstText(entry, "id");
-  if (!rawId.startsWith("t3_")) return null;
-
-  const title = firstText(entry, "title");
-  if (title === "") return null;
-
-  const sourceUrl = firstAttribute(entry, "link", "href");
-  if (sourceUrl === "") return null;
-
-  const contentDoc = getEntryContentDocument(entry);
-  const publishedAt = parseDateOrNow(firstText(entry, "published"));
-
-  return {
-    item: {
-      sourceType: "reddit",
-      externalId: stripThingPrefix(rawId),
-      title,
-      url: extractEntryUrl(contentDoc, sourceUrl),
-      sourceUrl,
-      author: getEntryAuthor(entry),
-      content: extractEntryBody(contentDoc),
-      publishedAt,
-      collectedAt: now,
-      engagement: { ...ZERO_ENGAGEMENT },
-      metadata: {
-        comments: [],
-        sourceUnit: { identifier: `r/${subreddit}`, displayName: `r/${subreddit}` },
-      },
-      imageUrl: extractEntryImageUrl(entry, contentDoc),
-      updatedAt: now,
-    },
-  };
-}
-
-function parseListingItems(xml: string, subreddit: string): ParsedPostEntry[] {
-  const doc = parseXmlDocument(xml);
-  const now = new Date();
-  return Array.from(doc.getElementsByTagName("entry"))
-    .map((entry) => parsePostEntry(entry, subreddit, now))
-    .filter((entry): entry is ParsedPostEntry => entry !== null);
-}
-
-function buildListingUrl(
-  subreddit: string,
-  sort: string,
-  timeframe: string,
-  limit: number,
-): string {
-  const params = new URLSearchParams();
-  if (sort === "top") params.set("t", timeframe);
-  params.set("limit", String(limit));
-  return `https://www.reddit.com/r/${subreddit}/${sort}.rss?${params.toString()}`;
-}
-
-async function fetchTextWithRetry(
-  fetchFn: typeof fetch,
-  url: string,
-  retries: number = MAX_RETRIES,
-): Promise<string> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const response = await fetchFn(url, {
-        headers: { "User-Agent": USER_AGENT, Accept: "application/atom+xml, application/xml, text/xml" },
-      });
-      if (!response.ok) {
-        const status = response.status;
-        if (status >= 400 && status < 500 && status !== 429) {
-          throw new Error(`Non-retryable HTTP error: ${status}`);
-        }
-        throw new Error(`HTTP error: ${status}`);
-      }
-      return await response.text();
-    } catch (err) {
-      if (err instanceof Error) {
-        const cause = formatCause(err.cause);
-        lastError = cause
-          ? new Error(`${err.message} (cause: ${cause})`, { cause: err.cause })
-          : err;
-      } else {
-        lastError = new Error(String(err));
-      }
-      if (lastError.message.startsWith("Non-retryable")) {
-        throw lastError;
-      }
-      if (attempt < retries - 1) {
-        const backoffMs = Math.pow(2, attempt) * 1000;
-        await delay(backoffMs);
-      }
-    }
-  }
-
-  throw lastError ?? new Error("Fetch failed after retries");
-}
-
-// ── Single-post fetch (add-post flow) ────────────────────────────────────────
-
-export interface FetchRedditPostDeps {
-  fetchFn?: typeof fetch;
-  signal?: AbortSignal;
-}
+// ── Pure URL parser (retained — source-detector, no network) ─────────────────
 
 export interface ParsedRedditPostUrl {
   subreddit: string;
@@ -281,6 +103,8 @@ export function parseRedditPostUrl(url: string): ParsedRedditPostUrl | null {
   return { subreddit, postId };
 }
 
+// ── Single-post fetch (add-post flow) ─────────────────────────────────────────
+
 export async function fetchRedditPost(
   url: string,
   deps: FetchRedditPostDeps = {},
@@ -290,26 +114,26 @@ export async function fetchRedditPost(
     throw new UrlParseError(`not a recognized Reddit post URL: ${url}`);
   }
 
-  const baseFetch = deps.fetchFn ?? globalThis.fetch;
-  const fetchFn = deps.signal ? withAbortSignal(baseFetch, deps.signal) : baseFetch;
-  const cleanUrl = url.endsWith("/") ? url.slice(0, -1) : url;
-  const rssUrl = `${cleanUrl}.rss`;
-
-  logger.info(
-    { event: "reddit.single.fetch", ...parsed, url },
-    "reddit.single.fetch",
-  );
-
-  const xml = await fetchTextWithRetry(fetchFn, rssUrl);
-  const posts = parseListingItems(xml, parsed.subreddit).filter(
-    ({ item }) => item.externalId === parsed.postId,
-  );
-  const firstPost = posts.at(0);
-  if (!firstPost) {
-    throw new Error(`Reddit post ${parsed.postId} not found in RSS response`);
+  // REQ-021 / EDGE-010: no token → throw typed error
+  const tok = deps.resolveToken ? await deps.resolveToken() : null;
+  if (!tok) {
+    throw new Error("Apify integration not configured");
   }
 
-  return { ...firstPost.item, metadata: { comments: [] } };
+  const runPost = deps.runPost ?? defaultRunPost;
+  const posts = await runPost(tok.apiToken, url, { signal: deps.signal });
+
+  const now = new Date();
+  const mapped = posts
+    .map((p) => mapApifyPostToRawItem(p, now))
+    .filter((p): p is RawItemInsert => p !== null);
+
+  if (mapped.length === 0) {
+    throw new Error("post not found");
+  }
+
+  // Find the post whose externalId matches the parsed postId
+  return mapped.find((m) => m.externalId === parsed.postId) ?? mapped[0];
 }
 
 // ── Batch collection ──────────────────────────────────────────────────────────
@@ -319,8 +143,6 @@ export async function collectReddit(
   config: RedditCollectConfig,
 ): Promise<CollectorResult> {
   const startTime = Date.now();
-  const baseFetch = deps.fetchFn ?? globalThis.fetch;
-  const fetchFn = deps.signal ? withAbortSignal(baseFetch, deps.signal) : baseFetch;
   const subreddits = config.subreddits ?? DEFAULT_SUBREDDITS;
   const sort = config.sort ?? DEFAULT_SORT;
   const timeframe = config.timeframe ?? DEFAULT_TIMEFRAME;
@@ -340,81 +162,95 @@ export async function collectReddit(
     "collection started",
   );
 
+  // REQ-020 / EDGE-001: no token → warn + return empty result
+  const tok = deps.resolveToken ? await deps.resolveToken() : null;
+  if (!tok) {
+    logger.warn(
+      { event: "collector.reddit.disabled" },
+      "collector.reddit.disabled: no Apify token configured; skipping Reddit collection",
+    );
+    return {
+      itemsFetched: 0,
+      commentsFetched: 0,
+      itemsStored: 0,
+      durationMs: Date.now() - startTime,
+      unitResults: [],
+    };
+  }
+
+  const runListing = deps.runListing ?? defaultRunListing;
+  const input = buildListingInput(subreddits, sort, timeframe, limit);
+
+  // REQ-022 / EDGE-002: propagate actor errors to caller
+  const rawPosts = await runListing(tok.apiToken, input, { signal: deps.signal });
+
+  const now = new Date();
+
+  // Map + skip malformed (EDGE-004)
+  const allMapped: RawItemInsert[] = rawPosts
+    .map((p) => mapApifyPostToRawItem(p, now))
+    .filter((p): p is RawItemInsert => p !== null);
+
+  // De-duplicate by externalId (REQ-007, EDGE-006)
   const seenIds = new Set<string>();
-  const allItems: RawItemInsert[] = [];
-  const unitResults: SourceUnitResult[] = [];
-
-  for (const subreddit of subreddits) {
-    // Reddit subreddit names are case-insensitive; canonicalise to lowercase so
-    // telemetry / facet / per-item identifiers all agree regardless of how the
-    // user typed the name in settings.
-    const canonical = subreddit.toLowerCase();
-    const url = buildListingUrl(subreddit, sort, timeframe, limit);
-    const subStart = Date.now();
-
-    try {
-      const xml = await fetchTextWithRetry(fetchFn, url);
-      const entries = parseListingItems(xml, canonical);
-
-      let added = 0;
-      for (const { item } of entries) {
-        if (!seenIds.has(item.externalId)) {
-          seenIds.add(item.externalId);
-          allItems.push(item);
-          added++;
-        }
-      }
-      logger.info(
-        {
-          event: "collector.reddit.subreddit_completed",
-          subreddit: canonical,
-          url,
-          sinceDays: config.sinceDays,
-          fetched: entries.length,
-          added,
-          durationMs: Date.now() - subStart,
-        },
-        "subreddit fetched",
-      );
-      unitResults.push({
-        identifier: `r/${canonical}`,
-        displayName: `r/${canonical}`,
-        itemsFetched: added,
-        status: "completed",
-        errors: [],
-        durationMs: Date.now() - subStart,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const cause = err instanceof Error ? formatCause(err.cause) : undefined;
-      logger.error(
-        {
-          event: "collector.reddit.subreddit_failed",
-          subreddit: canonical,
-          url,
-          sinceDays: config.sinceDays,
-          error: message,
-          cause,
-          durationMs: Date.now() - subStart,
-        },
-        "failed to fetch subreddit",
-      );
-      unitResults.push({
-        identifier: `r/${canonical}`,
-        displayName: `r/${canonical}`,
-        itemsFetched: 0,
-        status: "failed",
-        errors: [cause ? `${message} (cause: ${cause})` : message],
-        durationMs: Date.now() - subStart,
-      });
-    }
-
-    if (subreddit !== subreddits[subreddits.length - 1]) {
-      await delay(RATE_LIMIT_MS, deps.signal);
+  const deduped: RawItemInsert[] = [];
+  for (const item of allMapped) {
+    if (!seenIds.has(item.externalId)) {
+      seenIds.add(item.externalId);
+      deduped.push(item);
     }
   }
 
-  let filteredItems = allItems;
+  // Group by parsedCommunityName / sourceUnit identifier for unitResults
+  // (REQ-006; empty subs still get a unit, EDGE-003)
+  const bySubreddit = new Map<string, RawItemInsert[]>();
+  for (const sub of subreddits) {
+    bySubreddit.set(sub, []);
+  }
+  for (const item of deduped) {
+    const subName = item.metadata?.sourceUnit?.identifier.replace(/^r\//, "") ?? "";
+    // Find the canonical subreddit key (case-insensitive match to config)
+    const canonKey = subreddits.find(
+      (s) => s.toLowerCase() === subName.toLowerCase(),
+    ) ?? subName;
+    const existing = bySubreddit.get(canonKey);
+    if (existing !== undefined) {
+      existing.push(item);
+    } else {
+      bySubreddit.set(canonKey, [item]);
+    }
+  }
+
+  // Cap per subreddit to limit (REQ-025, EDGE-009)
+  const cappedItems: RawItemInsert[] = [];
+  const unitResults: SourceUnitResult[] = [];
+  const subStart = Date.now();
+
+  for (const sub of subreddits) {
+    const items = bySubreddit.get(sub) ?? [];
+    const capped = items.slice(0, limit);
+    for (const item of capped) {
+      cappedItems.push(item);
+    }
+    unitResults.push({
+      identifier: `r/${sub}`,
+      displayName: `r/${sub}`,
+      itemsFetched: capped.length,
+      status: "completed",
+      errors: [],
+      durationMs: Date.now() - subStart,
+    });
+  }
+
+  // Add any items from subreddits not in the config list
+  for (const [sub, items] of bySubreddit.entries()) {
+    if (!subreddits.includes(sub)) {
+      cappedItems.push(...items.slice(0, limit));
+    }
+  }
+
+  // sinceDays filter (REQ-008, EDGE-005)
+  let filteredItems = cappedItems;
   if (config.sinceDays !== undefined && config.sinceDays > 0) {
     const cutoff = Date.now() - config.sinceDays * 86_400_000;
     const before = filteredItems.length;

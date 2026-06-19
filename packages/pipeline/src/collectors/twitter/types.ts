@@ -56,5 +56,12 @@ export interface TwitterCollectorDeps {
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
   enrichment?: EnrichmentContext;
+  /**
+   * Global page-fetch throttle (P10, REQ-068): awaited before EVERY page
+   * fetch so all tenants' runs share one upstream budget. A throttle failure
+   * is tolerated — collection proceeds unthrottled (EDGE-011), it never
+   * fails a source.
+   */
+  throttle?: () => Promise<void>;
 }
 

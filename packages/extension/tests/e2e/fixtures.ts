@@ -25,12 +25,17 @@ export function makeDbClient(): Client {
 
 export async function queryRawItems(
   url: string,
-): Promise<{ id: string; source_type: string; url: string | null }[]> {
+): Promise<{ id: string; source_type: string; url: string | null; tenant_id: string | null }[]> {
   const client = makeDbClient();
   await client.connect();
   try {
-    const res = await client.query<{ id: string; source_type: string; url: string | null }>(
-      "SELECT id, source_type, url FROM raw_items WHERE source_type = 'manual' AND url = $1",
+    const res = await client.query<{
+      id: string;
+      source_type: string;
+      url: string | null;
+      tenant_id: string | null;
+    }>(
+      "SELECT id, source_type, url, tenant_id FROM raw_items WHERE source_type = 'manual' AND url = $1",
       [url],
     );
     return res.rows;
@@ -48,6 +53,40 @@ export async function countRawItemsByUrl(url: string): Promise<number> {
       [url],
     );
     return parseInt(res.rows[0]?.count ?? "0", 10);
+  } finally {
+    await client.end();
+  }
+}
+
+/**
+ * Create a tenant_admin (+ its tenant) via the public signup API. Idempotent:
+ * a 409 (email already in use) is treated as success so re-runs are safe.
+ */
+export async function signupTenant(
+  email: string,
+  password: string,
+  name: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, email, password, confirmPassword: password }),
+  });
+  if (!res.ok && res.status !== 409) {
+    throw new Error(`signup failed (${res.status}): ${await res.text()}`);
+  }
+}
+
+/** The tenant_id of a seeded user, for per-tenant DB assertions. */
+export async function getTenantIdForEmail(email: string): Promise<string | null> {
+  const client = makeDbClient();
+  await client.connect();
+  try {
+    const res = await client.query<{ tenant_id: string | null }>(
+      "SELECT tenant_id FROM users WHERE email = $1",
+      [email],
+    );
+    return res.rows[0]?.tenant_id ?? null;
   } finally {
     await client.end();
   }

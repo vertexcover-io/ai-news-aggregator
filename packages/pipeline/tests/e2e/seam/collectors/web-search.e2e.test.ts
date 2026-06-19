@@ -7,6 +7,8 @@ import { collectWebSearch } from "@pipeline/collectors/web-search/index.js";
 import { createWebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { getTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import type { AppDb } from "@newsletter/shared/db";
 import type { RunSubmitWebSearchConfig } from "@newsletter/shared/types";
 
@@ -18,8 +20,11 @@ describe("Web-search collector seam E2E", () => {
   let db: AppDb;
   let createdExternalIds: readonly string[] = [];
 
-  beforeAll(() => {
+  let tenant: TenantContext;
+
+  beforeAll(async () => {
     db = getTestDb();
+    tenant = await ensurePipelineTenant();
   });
 
   afterEach(async () => {
@@ -50,7 +55,7 @@ describe("Web-search collector seam E2E", () => {
 
       const result = await collectWebSearch(
         {
-          rawItemsRepo: createRawItemsRepo(db),
+          rawItemsRepo: createRawItemsRepo(db, tenant),
           provider: createWebSearchProvider("tavily", { tavilyApiKey }),
         },
         collectorConfig,

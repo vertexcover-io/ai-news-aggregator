@@ -6,6 +6,10 @@ import type {
 } from "@newsletter/shared/types";
 import { fetchSourcesSummary } from "../api/sources";
 import { setMeta } from "../lib/meta";
+import {
+  brandDisplayName,
+  useTenantBranding,
+} from "../hooks/useTenantBranding";
 import { InlineSubscribeCard } from "../components/shell/InlineSubscribeCard";
 import {
   SourceCatalog,
@@ -114,13 +118,15 @@ function Shell({ children }: { children: ReactElement }): ReactElement {
 }
 
 export function SourcesPage(): ReactElement {
+  const branding = useTenantBranding();
   useEffect(() => {
-    document.title = "Sources · AgentLoop";
+    const name = brandDisplayName(branding);
+    document.title = `Sources · ${name}`;
     setMeta(
       "description",
-      "The reading list behind the AgentLoop newsletter.",
+      `The reading list behind the ${name} newsletter.`,
     );
-  }, []);
+  }, [branding]);
 
   const { data, isLoading, isError } = useQuery<SourcesSummaryResponse>({
     queryKey: ["sources-summary"],

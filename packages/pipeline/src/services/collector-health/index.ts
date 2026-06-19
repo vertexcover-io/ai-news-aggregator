@@ -67,7 +67,18 @@ const COLLECTOR_TIMEOUT_MS: Record<CheckableCollector, number> = {
   reddit: 10_000,
 };
 
-const NOT_CONFIGURED_REASON = "not configured — add sources at /admin/settings";
+// Per-collector "not configured" reasons. Each keeps the "not configured" stem
+// (callers/UI key off it) and names the missing config so the admin knows what to
+// add at /admin/settings (FIX #6).
+const NOT_CONFIGURED_REASON: Record<CheckableCollector, string> = {
+  hn: "not configured — add a Hacker News source at /admin/settings",
+  reddit: "not configured — no subreddits; add a Reddit source at /admin/settings",
+  twitter:
+    "not configured — no Twitter lists or users; add a source at /admin/settings",
+  blog: "not configured — no blog/RSS sources; add one at /admin/settings",
+  web_search:
+    "not configured — no web-search queries; add one at /admin/settings",
+};
 const ALGOLIA_SEARCH_BASE = "https://hn.algolia.com/api/v1/search_by_date";
 const REDDIT_USER_AGENT = "Mozilla/5.0 (compatible; NewsletterBot/1.0; +https://vertexcover.io)";
 
@@ -94,11 +105,18 @@ async function runHnStrategy(
   settings: HealthCheckSettings,
   deps: HealthCheckDeps,
 ): Promise<CollectorHealthOutcome> {
+  // FIX #6: HN gates on configuration like every other collector — no silent
+  // default-keyword probe when the tenant has no HN source. Once an HN config is
+  // present (even feeds-only), "AI" is just the keyword fallback for the probe.
+  if (!settings.hn) {
+    return { status: "failed", durationMs: 0, reason: NOT_CONFIGURED_REASON.hn, detail: null };
+  }
+
   const fetchFn = deps.fetchFn ?? fetch;
   const now = deps.now ?? Date.now;
   const start = now();
 
-  const keyword = settings.hn?.keywords?.[0] ?? "AI";
+  const keyword = settings.hn.keywords?.[0] ?? "AI";
   const params = new URLSearchParams({ query: keyword, tags: "story", hitsPerPage: "1" });
   const url = `${ALGOLIA_SEARCH_BASE}?${params.toString()}`;
 
@@ -137,7 +155,7 @@ async function runRedditStrategy(
 ): Promise<CollectorHealthOutcome> {
   const subreddits = settings.reddit?.subreddits ?? [];
   if (subreddits.length === 0) {
-    return { status: "failed", durationMs: 0, reason: NOT_CONFIGURED_REASON, detail: null };
+    return { status: "failed", durationMs: 0, reason: NOT_CONFIGURED_REASON.reddit, detail: null };
   }
 
   const fetchFn = deps.fetchFn ?? fetch;
@@ -187,7 +205,7 @@ async function runTwitterStrategy(
   const listIds = settings.twitter?.listIds ?? [];
   const users = settings.twitter?.users ?? [];
   if (listIds.length === 0 && users.length === 0) {
-    return { status: "failed", durationMs: 0, reason: NOT_CONFIGURED_REASON, detail: null };
+    return { status: "failed", durationMs: 0, reason: NOT_CONFIGURED_REASON.twitter, detail: null };
   }
 
   const now = deps.now ?? Date.now;
@@ -239,7 +257,7 @@ async function runBlogStrategy(
 ): Promise<CollectorHealthOutcome> {
   const sources = settings.web?.sources ?? [];
   if (sources.length === 0) {
-    return { status: "failed", durationMs: 0, reason: NOT_CONFIGURED_REASON, detail: null };
+    return { status: "failed", durationMs: 0, reason: NOT_CONFIGURED_REASON.blog, detail: null };
   }
 
   if (!deps.runWebCrawl) {
@@ -293,7 +311,7 @@ async function runWebSearchStrategy(
 ): Promise<CollectorHealthOutcome> {
   const queries = settings.webSearch?.queries ?? [];
   if (queries.length === 0) {
-    return { status: "failed", durationMs: 0, reason: NOT_CONFIGURED_REASON, detail: null };
+    return { status: "failed", durationMs: 0, reason: NOT_CONFIGURED_REASON.web_search, detail: null };
   }
 
   const tavilyApiKey = deps.credentialResolver.tavilyApiKey;

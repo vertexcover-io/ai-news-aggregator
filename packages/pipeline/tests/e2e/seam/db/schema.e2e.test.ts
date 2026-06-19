@@ -4,15 +4,20 @@ import { resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import { rawItems } from "@newsletter/shared/db";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import type { AppDb } from "@newsletter/shared/db";
 
 config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
 
 describe("Database Schema E2E", () => {
   let db: AppDb;
+  // tenant_id is NOT NULL on raw_items — every seed stamps the e2e tenant
+  let tenant: TenantContext;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     db = getTestDb();
+    tenant = await ensurePipelineTenant();
   });
 
   beforeEach(async () => {
@@ -24,6 +29,7 @@ describe("Database Schema E2E", () => {
       .insert(rawItems)
       .values({
         sourceType: "hn",
+        tenantId: tenant.tenantId,
         externalId: "12345",
         title: "Test Article",
         url: "https://example.com/article",
@@ -40,9 +46,10 @@ describe("Database Schema E2E", () => {
     expect(item.engagement).toEqual({ points: 100, commentCount: 50 });
   });
 
-  it("enforces unique constraint on (source_type, external_id)", async () => {
+  it("enforces unique constraint on (tenant_id, source_type, external_id)", async () => {
     await db.insert(rawItems).values({
       sourceType: "hn",
+      tenantId: tenant.tenantId,
       externalId: "99999",
       title: "First Insert",
       url: "https://example.com/first",
@@ -52,12 +59,13 @@ describe("Database Schema E2E", () => {
       .insert(rawItems)
       .values({
         sourceType: "hn",
+        tenantId: tenant.tenantId,
         externalId: "99999",
         title: "Updated Title",
         url: "https://example.com/updated",
       })
       .onConflictDoUpdate({
-        target: [rawItems.sourceType, rawItems.externalId],
+        target: [rawItems.tenantId, rawItems.sourceType, rawItems.externalId],
         set: {
           title: "Updated Title",
           url: "https://example.com/updated",
@@ -89,6 +97,7 @@ describe("Database Schema E2E", () => {
       .insert(rawItems)
       .values({
         sourceType: "hn",
+        tenantId: tenant.tenantId,
         externalId: "77777",
         title: "JSONB Test",
         url: "https://example.com/jsonb",

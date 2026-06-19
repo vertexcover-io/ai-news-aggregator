@@ -24,10 +24,11 @@ describe("api.login", () => {
     const fetchStub = makeFetchStub(200, {
       token: "tok123",
       expiresAt: 9999,
+      user: { role: "tenant_admin", tenantId: "t1" },
     });
     vi.stubGlobal("fetch", fetchStub);
 
-    const result = await login("secret");
+    const result = await login("admin@acme.test", "secret");
 
     expect(fetchStub).toHaveBeenCalledOnce();
     const [url, init] = fetchStub.mock.calls[0] as [string, RequestInit];
@@ -36,15 +37,34 @@ describe("api.login", () => {
     expect((init.headers as Record<string, string>)["Content-Type"]).toBe(
       "application/json",
     );
-    expect(JSON.parse(init.body as string)).toEqual({ password: "secret" });
+    expect(JSON.parse(init.body as string)).toEqual({
+      email: "admin@acme.test",
+      password: "secret",
+    });
     expect(result.token).toBe("tok123");
   });
 
   it("test_REQ_014_api_login_throws_with_status_on_401", async () => {
-    vi.stubGlobal("fetch", makeFetchStub(401, { error: "invalid_password" }));
+    vi.stubGlobal("fetch", makeFetchStub(401, { error: "invalid_credentials" }));
 
-    const err = await login("wrong").catch((e: unknown) => e);
+    const err = await login("admin@acme.test", "wrong").catch((e: unknown) => e);
     expect((err as { status: number }).status).toBe(401);
+  });
+
+  it("test_super_admin_login_throws_403_select_tenant", async () => {
+    vi.stubGlobal(
+      "fetch",
+      makeFetchStub(403, {
+        error: "select_tenant",
+        message: "Super-admins must choose a tenant in the web app.",
+      }),
+    );
+
+    const err = await login("root@platform.test", "pw").catch(
+      (e: unknown) => e,
+    );
+    expect((err as { status: number }).status).toBe(403);
+    expect((err as Error).message).toBe("select_tenant");
   });
 });
 

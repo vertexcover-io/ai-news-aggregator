@@ -35,6 +35,13 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     cacheWrite5mPerMTok: 0,
     cacheWrite1hPerMTok: 0,
   },
+  "deepseek-v4-flash": {
+    inputPerMTok: 0.14,
+    outputPerMTok: 0.28,
+    cacheReadPerMTok: 0.028,
+    cacheWrite5mPerMTok: 0,
+    cacheWrite1hPerMTok: 0,
+  },
   "gemini-3.1-flash-lite": {
     inputPerMTok: 0.25,
     outputPerMTok: 1.5,

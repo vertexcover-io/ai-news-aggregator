@@ -1,10 +1,16 @@
+/**
+ * collectReddit + link enrichment integration tests.
+ *
+ * Tests that when deps.enrichment is provided, enrichRawItems is called and
+ * updates the stored items. Uses injected fake actor-runner (no network).
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Logger } from "@newsletter/shared/logger";
 import type { RawItemInsert } from "@newsletter/shared/db";
 import type { CollectorResult } from "@newsletter/shared/types";
 import type { RedditCollectConfig } from "@pipeline/types.js";
 import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
-import type { ConvertResult } from "@pipeline/services/web-fetch/types.js";
+import type { ApifyRedditPost } from "@pipeline/lib/apify-reddit.js";
 import {
   createEnrichmentCache,
   newCounters,
@@ -56,6 +62,7 @@ function makeEnrichmentCtx(): EnrichmentContext {
 }
 
 type MockUpsert = ReturnType<typeof vi.fn<[items: RawItemInsert[]], Promise<void>>>;
+type TokenResult = { apiToken: string; source: "db" | "env" } | null;
 
 function createMockRepo(): RawItemsRepo & { upsertItems: MockUpsert } {
   return {
@@ -65,70 +72,22 @@ function createMockRepo(): RawItemsRepo & { upsertItems: MockUpsert } {
   };
 }
 
-function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
-function atomFeed(entries: string): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
-  ${entries}
-</feed>`;
-}
-
-function postEntry(options: {
-  readonly id: string;
-  readonly title: string;
-  readonly author: string;
-  readonly sourceUrl: string;
-  readonly linkUrl: string;
-  readonly body?: string;
-}): string {
-  const bodyHtml = options.body ? `<div class="md"><p>${options.body}</p></div>` : "";
-  const content = `<table><tr><td>${bodyHtml} submitted by <a href="https://www.reddit.com/user/${options.author}">/u/${options.author}</a><br/><span><a href="${options.linkUrl}">[link]</a></span> <span><a href="${options.sourceUrl}">[comments]</a></span></td></tr></table>`;
-  return `<entry>
-    <author><name>/u/${options.author}</name></author>
-    <content type="html">${escapeXml(content)}</content>
-    <id>t3_${options.id}</id>
-    <link href="${options.sourceUrl}" />
-    <published>2026-05-14T12:00:00+00:00</published>
-    <title>${escapeXml(options.title)}</title>
-  </entry>`;
-}
-
-function redditListingFeed(): string {
-  const selfUrl = "https://www.reddit.com/r/MachineLearning/comments/post002/discussion_whats_the_best/";
-  return atomFeed(
-    `${postEntry({
-      id: "post001",
-      title: "New open-source LLM beats GPT-4 on benchmarks",
-      author: "ml_researcher",
-      sourceUrl: "https://www.reddit.com/r/MachineLearning/comments/post001/new_opensource_llm/",
-      linkUrl: "https://example.com/new-llm",
-    })}
-    ${postEntry({
-      id: "post002",
-      title: "Discussion: What's the best local LLM setup in 2026?",
-      author: "ai_enthusiast",
-      sourceUrl: selfUrl,
-      linkUrl: selfUrl,
-      body: "I've been experimenting with different local LLM setups.",
-    })}`,
-  );
-}
-
-function makeFetchFn(): typeof fetch {
-  return vi.fn().mockImplementation(() =>
-    Promise.resolve({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve(redditListingFeed()),
-    }),
-  ) as unknown as typeof fetch;
+function makeFakePost(overrides: Partial<ApifyRedditPost> = {}): ApifyRedditPost {
+  return {
+    parsedId: "post001",
+    title: "New open-source LLM beats GPT-4 on benchmarks",
+    url: "https://www.reddit.com/r/MachineLearning/comments/post001/new_opensource_llm/",
+    link: "https://example.com/new-llm", // external link
+    username: "ml_researcher",
+    body: "",
+    createdAt: "2026-05-14T12:00:00Z",
+    upVotes: 5,
+    numberOfComments: 2,
+    parsedCommunityName: "MachineLearning",
+    imageUrls: [],
+    dataType: "post",
+    ...overrides,
+  };
 }
 
 describe("collectReddit + link enrichment (VS-1)", () => {
@@ -137,14 +96,36 @@ describe("collectReddit + link enrichment (VS-1)", () => {
   });
 
   it("enriches external link posts and skips self-posts", async () => {
-    const okResult: ConvertResult = {
+    const { ConvertResultOk } = await import("@pipeline/services/web-fetch/types.js").catch(
+      () => ({ ConvertResultOk: undefined }),
+    );
+    void ConvertResultOk;
+
+    fetchAdaptiveMock.mockResolvedValue({
       markdown: "# Article body",
       title: "External Article",
       byline: "Reporter",
       imageUrl: "https://example.com/img.png",
       textLength: 14,
-    };
-    fetchAdaptiveMock.mockResolvedValue(okResult);
+    });
+
+    const externalPost = makeFakePost({
+      parsedId: "post001",
+      link: "https://example.com/new-llm",
+    });
+    // Self-post: url === link (same permalink)
+    const selfUrl = "https://www.reddit.com/r/MachineLearning/comments/post002/discussion/";
+    const selfPost = makeFakePost({
+      parsedId: "post002",
+      title: "Discussion",
+      url: selfUrl,
+      link: undefined, // no external link → url falls back to permalink
+    });
+
+    const runListing = vi.fn<[string, unknown, ({ signal?: AbortSignal } | undefined)?], Promise<ApifyRedditPost[]>>()
+      .mockResolvedValue([externalPost, selfPost]);
+    const resolveToken = vi.fn<[], Promise<TokenResult>>()
+      .mockResolvedValue({ apiToken: "tok", source: "env" });
 
     const repo = createMockRepo();
     const config: RedditCollectConfig = {
@@ -154,7 +135,7 @@ describe("collectReddit + link enrichment (VS-1)", () => {
     const enrichment = makeEnrichmentCtx();
 
     const result: CollectorResult = await collectReddit(
-      { rawItemsRepo: repo, fetchFn: makeFetchFn(), enrichment },
+      { rawItemsRepo: repo, runListing, resolveToken, enrichment },
       config,
     );
 
@@ -163,13 +144,13 @@ describe("collectReddit + link enrichment (VS-1)", () => {
     const stored = repo.upsertItems.mock.calls[0][0];
 
     const linkPost = stored.find((i) => i.externalId === "post001");
-    const selfPost = stored.find((i) => i.externalId === "post002");
+    const storedSelfPost = stored.find((i) => i.externalId === "post002");
 
     expect(linkPost?.metadata?.enrichedLink?.status).toBe("ok");
     expect(linkPost?.metadata?.enrichedLink?.title).toBe("External Article");
 
-    expect(selfPost?.metadata?.enrichedLink?.status).toBe("skipped");
-    expect(selfPost?.metadata?.enrichedLink?.skipReason).toBe("no-url");
+    expect(storedSelfPost?.metadata?.enrichedLink?.status).toBe("skipped");
+    expect(storedSelfPost?.metadata?.enrichedLink?.skipReason).toBe("no-url");
 
     expect(enrichment.counters.ok).toBe(1);
     expect(enrichment.counters.skipped).toBe(1);
@@ -178,6 +159,12 @@ describe("collectReddit + link enrichment (VS-1)", () => {
   });
 
   it("does not enrich when deps.enrichment is absent", async () => {
+    const externalPost = makeFakePost({ parsedId: "post001" });
+    const runListing = vi.fn<[string, unknown, ({ signal?: AbortSignal } | undefined)?], Promise<ApifyRedditPost[]>>()
+      .mockResolvedValue([externalPost]);
+    const resolveToken = vi.fn<[], Promise<TokenResult>>()
+      .mockResolvedValue({ apiToken: "tok", source: "env" });
+
     const repo = createMockRepo();
     const config: RedditCollectConfig = {
       subreddits: ["MachineLearning"],
@@ -185,7 +172,7 @@ describe("collectReddit + link enrichment (VS-1)", () => {
     };
 
     await collectReddit(
-      { rawItemsRepo: repo, fetchFn: makeFetchFn() },
+      { rawItemsRepo: repo, runListing, resolveToken },
       config,
     );
 

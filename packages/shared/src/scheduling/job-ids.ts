@@ -22,3 +22,23 @@ export const TWITTER_POST_SCHEDULER_KEY = "twitter-post:default";
 export function jobIdFor(channel: ScheduledChannel, runId: string): string {
   return `${channel}-${runId}`;
 }
+
+export type TenantSchedulerBase =
+  | "pipeline-run"
+  | "social-health"
+  | "collector-health"
+  | PublishChannel;
+
+/**
+ * Per-tenant scheduler key (P10, REQ-062). Scheduler keys keep the `:`
+ * delimiter (D-112 — only CUSTOM job ids need `-`; BullMQ generates scheduler
+ * job ids internally). Legacy single-tenant entries used the literal
+ * `<base>:default` form; tenant-scoped reconciles replace them with
+ * `<base>:<tenantId>` so each tenant owns an isolated schedule.
+ */
+export function tenantSchedulerKey(
+  base: TenantSchedulerBase,
+  tenantId?: string,
+): string {
+  return `${base}:${tenantId ?? "default"}`;
+}

@@ -90,6 +90,29 @@ describe("runCollectorHealthCheck — hn", () => {
     expect(result.status).toBe("failed");
     expect(result.reason).toBe("rate limited by the source");
   });
+
+  it("FIX6: no hn config = not configured, NO fetch called (consistent with other collectors)", async () => {
+    const fetchFn = vi.fn();
+    const settings = makeSettings({ hn: undefined });
+    const result = await runCollectorHealthCheck("hn", settings, makeDeps({ fetchFn }));
+    expect(result.status).toBe("failed");
+    expect(result.reason).toContain("not configured");
+    expect(result.reason).toMatch(/hacker news/i);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("FIX6: hn config present but no keywords still probes with default keyword (healthy)", async () => {
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ hits: [{ objectID: "1" }] }),
+    });
+    const settings = makeSettings({
+      hn: { keywords: [], feeds: ["newest"], pointsThreshold: 10, count: 20 },
+    });
+    const result = await runCollectorHealthCheck("hn", settings, makeDeps({ fetchFn }));
+    expect(result.status).toBe("healthy");
+    expect(fetchFn).toHaveBeenCalledOnce();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -139,6 +162,7 @@ describe("runCollectorHealthCheck — reddit", () => {
     const result = await runCollectorHealthCheck("reddit", settings, makeDeps({ fetchFn }));
     expect(result.status).toBe("failed");
     expect(result.reason).toContain("not configured");
+    expect(result.reason).toMatch(/subreddit/i);
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -208,6 +232,7 @@ describe("runCollectorHealthCheck — twitter", () => {
     );
     expect(result.status).toBe("failed");
     expect(result.reason).toContain("not configured");
+    expect(result.reason).toMatch(/list|user/i);
     expect(rettiwtClientFactory).not.toHaveBeenCalled();
   });
 
@@ -267,6 +292,7 @@ describe("runCollectorHealthCheck — blog", () => {
     const result = await runCollectorHealthCheck("blog", settings, makeDeps({ runWebCrawl }));
     expect(result.status).toBe("failed");
     expect(result.reason).toContain("not configured");
+    expect(result.reason).toMatch(/blog|rss/i);
     expect(runWebCrawl).not.toHaveBeenCalled();
   });
 
@@ -345,6 +371,7 @@ describe("runCollectorHealthCheck — web_search", () => {
     );
     expect(result.status).toBe("failed");
     expect(result.reason).toContain("not configured");
+    expect(result.reason).toMatch(/quer/i);
     expect(tavilyFactory).not.toHaveBeenCalled();
   });
 

@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { createLogger, getDb as defaultGetDb } from "@newsletter/shared";
 import type { HomePagePayload, PublicMustReadEntry } from "@newsletter/shared";
+import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import { tenantScopeFromPublicHost } from "@api/auth/tenant-scope.js";
 import {
   createRawItemsRepo,
   type RawItemsRepo,
@@ -22,9 +24,9 @@ const RECENT_LIMIT = 10;
 const RECENT_FETCH_LIMIT = RECENT_LIMIT + 1;
 
 export interface PublicHomeRouterDeps {
-  getArchiveRepo: () => RunArchivesRepo;
-  getRawItemsRepo: () => RawItemsRepo;
-  getMustReadRepo: () => MustReadRepo;
+  getArchiveRepo: (scope?: TenantScope) => RunArchivesRepo;
+  getRawItemsRepo: (scope?: TenantScope) => RawItemsRepo;
+  getMustReadRepo: (scope?: TenantScope) => MustReadRepo;
   logger?: ReturnType<typeof createLogger>;
 }
 
@@ -35,9 +37,11 @@ export function createPublicHomeRouter(deps: PublicHomeRouterDeps): Hono {
   app.get("/", async (c) => {
     try {
       const since = new Date(Date.now() - FORTY_EIGHT_HOURS_MS);
-      const archiveRepo = deps.getArchiveRepo();
-      const rawItemsRepo = deps.getRawItemsRepo();
-      const mustReadRepo = deps.getMustReadRepo();
+      // Composite reads fenced by the Host-resolved tenant (P7, REQ-044).
+      const scope = tenantScopeFromPublicHost(c);
+      const archiveRepo = deps.getArchiveRepo(scope);
+      const rawItemsRepo = deps.getRawItemsRepo(scope);
+      const mustReadRepo = deps.getMustReadRepo(scope);
 
       const [todaysIssueRow, featuredRow, recentArchives] = await Promise.all([
         archiveRepo.findLatestReviewedSince(since),
@@ -58,9 +62,13 @@ export function createPublicHomeRouter(deps: PublicHomeRouterDeps): Hono {
           : recentArchives
       ).slice(0, RECENT_LIMIT);
 
-      const featuredCanon: PublicMustReadEntry | null = featuredRow
-        ? toPublicWire(featuredRow)
-        : null;
+      // Canon disabled for this tenant (Fix #4): suppress the "From the Canon"
+      // home block. App-host/legacy requests (no publicTenant) are unaffected.
+      const publicTenant = c.get("publicTenant");
+      const canonEnabled =
+        publicTenant === undefined || publicTenant.featureCanon;
+      const featuredCanon: PublicMustReadEntry | null =
+        canonEnabled && featuredRow ? toPublicWire(featuredRow) : null;
 
       const body: HomePagePayload = {
         todaysIssue,
@@ -79,8 +87,8 @@ export function createPublicHomeRouter(deps: PublicHomeRouterDeps): Hono {
 
 export function createDefaultPublicHomeRouter(): Hono {
   return createPublicHomeRouter({
-    getArchiveRepo: () => createRunArchivesRepo(defaultGetDb()),
-    getRawItemsRepo: () => createRawItemsRepo(defaultGetDb()),
-    getMustReadRepo: () => createMustReadRepo(defaultGetDb()),
+    getArchiveRepo: (scope) => createRunArchivesRepo(defaultGetDb(), scope),
+    getRawItemsRepo: (scope) => createRawItemsRepo(defaultGetDb(), scope),
+    getMustReadRepo: (scope) => createMustReadRepo(defaultGetDb(), scope),
   });
 }

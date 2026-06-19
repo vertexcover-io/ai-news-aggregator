@@ -93,10 +93,24 @@ export function createWebhooksRouter(deps: WebhooksRouterDeps): Hono {
 
     const eventType = eventTypeMap[inner.notificationType];
 
+    // The webhook runs under systemScope() (cross-tenant), so the repo cannot
+    // stamp tenant_id from scope — stamp it from the matched email send. An
+    // unmatched message has no tenant to attribute the event to (and no
+    // subscriber to act on), so it is logged and skipped.
+    const tenantId = emailSend?.tenantId ?? null;
+    if (tenantId === null) {
+      deps.logger.warn(
+        { messageId, eventType },
+        "SES event without matching email send — skipping (no tenant to attribute)",
+      );
+      return c.json({ ok: true });
+    }
+
     await deps.sesEventsRepo.upsert({
       messageId,
       eventType,
       subscriberId,
+      tenantId,
       rawPayload: { ...inner } as Record<string, unknown>,
       occurredAt: new Date(inner.mail.timestamp),
     });

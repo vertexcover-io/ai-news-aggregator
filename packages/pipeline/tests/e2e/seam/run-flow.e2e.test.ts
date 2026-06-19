@@ -44,6 +44,8 @@ import { createCandidatesRepo } from "@pipeline/repositories/candidates.js";
 import { createRunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import { createRunLogRepo } from "@pipeline/repositories/run-logs.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import {
   getTestRedis,
   closeTestRedis,
@@ -81,6 +83,7 @@ interface ScenarioState {
 
 describe("run flow end-to-end (single-job)", () => {
   let db: AppDb;
+  let tenant: TenantContext;
   let processWorker: Worker<RunProcessJobData, RunProcessResult>;
   let processQueueEvents: QueueEvents;
   let processQueue: Queue<RunProcessJobData, RunProcessResult>;
@@ -110,11 +113,13 @@ describe("run flow end-to-end (single-job)", () => {
       rankedCount: Math.min(candidates.length, options.topN),
     });
 
-  beforeAll(() => {
+  beforeAll(async () => {
     db = getTestDb();
+    // tenant_id is NOT NULL — all repo writes stamp the e2e tenant
+    tenant = await ensurePipelineTenant();
     const connection = getTestRedis();
     const runStateService = createRunStateService(connection);
-    const repo = createRawItemsRepo(db);
+    const repo = createRawItemsRepo(db, tenant);
 
     rankFnImpl = defaultRankFn;
     scenario = { hnMode: "seed", redditMode: "seed" };
@@ -148,6 +153,7 @@ describe("run flow end-to-end (single-job)", () => {
           collectedAt: now,
           engagement: { points: 250, commentCount: 30 },
           metadata: { comments: [] },
+          tenantId: tenant.tenantId,
           updatedAt: now,
         },
         {
@@ -163,6 +169,7 @@ describe("run flow end-to-end (single-job)", () => {
           collectedAt: now,
           engagement: { points: 80, commentCount: 5 },
           metadata: { comments: [] },
+          tenantId: tenant.tenantId,
           updatedAt: now,
         },
         {
@@ -177,6 +184,7 @@ describe("run flow end-to-end (single-job)", () => {
           collectedAt: now,
           engagement: { points: 180, commentCount: 22 },
           metadata: { comments: [] },
+          tenantId: tenant.tenantId,
           updatedAt: now,
         },
       ];
@@ -208,6 +216,7 @@ describe("run flow end-to-end (single-job)", () => {
             collectedAt: now,
             engagement: { points: 400, commentCount: 50 },
             metadata: { comments: [] },
+            tenantId: tenant.tenantId,
             updatedAt: now,
           },
         ];
@@ -238,10 +247,10 @@ describe("run flow end-to-end (single-job)", () => {
         handleRunProcessJob(
           {
             runState: runStateService,
-            rawItemsRepo: createRawItemsRepo(db),
-            candidatesRepo: createCandidatesRepo(db),
-            archiveRepo: createRunArchivesRepo(db),
-            runLogRepo: createRunLogRepo(db),
+            rawItemsRepo: createRawItemsRepo(db, tenant),
+            candidatesRepo: createCandidatesRepo(db, tenant),
+            archiveRepo: createRunArchivesRepo(db, tenant),
+            runLogRepo: createRunLogRepo(db, tenant),
             loadFn: loadCandidatesSince,
             shortlistFn: (candidates) =>
               Promise.resolve({ shortlist: candidates, breakdowns: [] }),

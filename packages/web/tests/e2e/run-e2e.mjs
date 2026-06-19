@@ -4,6 +4,8 @@
 // runs BEFORE Playwright's webServer, which globalSetup cannot guarantee.
 import { execFileSync, spawn } from "node:child_process";
 import { createServer, connect } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -53,7 +55,8 @@ function pgReady(port) {
 }
 
 async function main() {
-  const [pgPort, redisPort, apiPort, webPort] = await Promise.all([
+  const [pgPort, redisPort, apiPort, webPort, fakeResendPort] = await Promise.all([
+    freePort(),
     freePort(),
     freePort(),
     freePort(),
@@ -71,6 +74,7 @@ async function main() {
     E2E_API_BASE: `http://127.0.0.1:${apiPort}`,
     PLAYWRIGHT_BASE_URL: `http://127.0.0.1:${webPort}`,
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ?? "vertexcover@123",
+    ADMIN_EMAIL: process.env.ADMIN_EMAIL ?? "admin@agentloop.dev",
     // Shared HMAC secret for subscriber tokens — the API server (token issue +
     // verify) and the specs (which forge expired/edge-case tokens) must agree.
     SESSION_SECRET:
@@ -79,6 +83,11 @@ async function main() {
     // Point confirm/unsubscribe/feedback redirects at the hermetic web server
     // instead of whatever the API's .env declares (e.g. localhost:5173).
     NEWSLETTER_BASE_URL: `http://127.0.0.1:${webPort}`,
+    // P14 sending-domain e2e: the Resend SDK honors RESEND_BASE_URL, so the
+    // API's domains calls hit the in-spec fake server on this port — a real
+    // Resend request is impossible (S-web-04). The spec that needs it starts
+    // the listener; for all other specs nothing listens and nothing calls.
+    E2E_FAKE_RESEND_PORT: String(fakeResendPort),
   };
   env.E2E_ADMIN_PASSWORD = env.ADMIN_PASSWORD;
 
@@ -111,6 +120,27 @@ async function main() {
       stdio: "inherit",
       env,
     });
+
+    // Migration 0041 enforces NOT NULL tenant_id; the tenant-0 column DEFAULT
+    // bridge (pre-tenancy writers keep working) is set by the P2 backfill
+    // script in production. Mirror that ordering on the fresh hermetic DB —
+    // this also creates the AGENTLOOP tenant + the admin user the specs log
+    // in with (ADMIN_EMAIL/ADMIN_PASSWORD).
+    execFileSync(
+      "pnpm",
+      [
+        "--filter", "@newsletter/scripts", "migrate:agentloop",
+        "--counts-file", join(tmpdir(), `agentloop-e2e-counts-${apiPort}.json`),
+      ],
+      {
+        stdio: "inherit",
+        env: {
+          ...env,
+          AGENTLOOP_ADMIN_EMAIL: env.ADMIN_EMAIL,
+          AGENTLOOP_ADMIN_PASSWORD: env.ADMIN_PASSWORD,
+        },
+      },
+    );
 
     const code = await new Promise((resolve) => {
       const child = spawn(

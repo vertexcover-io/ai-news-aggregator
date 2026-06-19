@@ -132,6 +132,17 @@ export async function triggerSocialPost(
   }
 }
 
+/** Force-send the digest broadcast to all confirmed subscribers (on-demand). */
+export async function triggerEmailSend(runId: string): Promise<void> {
+  const res = await apiFetchAdmin(`/api/admin/archives/${runId}/send`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(body.error ?? "Failed to send newsletter email");
+  }
+}
+
 export type CancelRunResult =
   | { status: "ok"; run: RunState }
   | { status: "already-terminal" };

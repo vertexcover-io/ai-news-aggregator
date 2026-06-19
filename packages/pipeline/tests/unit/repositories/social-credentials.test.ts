@@ -1,3 +1,9 @@
+/**
+ * Tenant-level social-credentials repo (P12): rows keyed (tenant_id,
+ * platform), holding ONLY the tenant's Twitter OAuth1 posting keys —
+ * encrypted at rest (REQ-083). App-level secrets live in app-credentials.ts
+ * (see app-credentials.test.ts).
+ */
 import { describe, it, expect, vi } from "vitest";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import {
@@ -5,48 +11,49 @@ import {
   type SocialCredentialsRepo,
 } from "@pipeline/repositories/social-credentials.js";
 import type { AppDb } from "@newsletter/shared/db";
-import type {
-  LinkedInEncryptedFields,
-  TwitterEncryptedFields,
-} from "@newsletter/shared/db";
+import type { TwitterEncryptedFields } from "@newsletter/shared/db";
 
-type Platform = "linkedin" | "twitter";
+const TENANT_A = "11111111-1111-4111-8111-111111111111";
 
 interface FakeRow {
-  platform: Platform;
-  encryptedFields: LinkedInEncryptedFields | TwitterEncryptedFields;
+  platform: "twitter";
+  tenantId?: string;
+  encryptedFields: TwitterEncryptedFields;
   metadata: { apiVersion?: string } | null;
   updatedAt: Date;
   updatedBy: string | null;
 }
 
 interface FakeDb {
-  rows: Map<Platform, FakeRow>;
+  rows: Map<string, FakeRow>;
   db: Pick<AppDb, "select" | "insert" | "delete">;
-  lastInsertValues: { value: unknown };
+  lastInsertValues: { value: FakeRow | null };
 }
 
-function extractPlatformFromPredicate(predicate: unknown): Platform | null {
-  // Drizzle's eq(column, value) returns an SQL object with `queryChunks` array.
-  // The literal value sits inside a `Param { value }` entry.
-  const p = predicate as { queryChunks?: unknown[] } | null;
-  if (!p || !Array.isArray(p.queryChunks)) return null;
-  for (const chunk of p.queryChunks) {
-    if (chunk === "linkedin" || chunk === "twitter") return chunk;
-    if (chunk && typeof chunk === "object" && "value" in chunk) {
-      const v = (chunk as { value: unknown }).value;
-      if (v === "linkedin" || v === "twitter") return v;
+/** Recursively digs the platform literal out of a drizzle predicate (and()/eq() nest SQL chunks). */
+function extractPlatformFromPredicate(predicate: unknown): "twitter" | null {
+  if (predicate === "twitter") return "twitter";
+  if (predicate === null || typeof predicate !== "object") return null;
+  if ("value" in predicate) {
+    const v = (predicate as { value: unknown }).value;
+    if (v === "twitter") return "twitter";
+  }
+  if ("queryChunks" in predicate) {
+    const chunks = (predicate as { queryChunks: unknown[] }).queryChunks;
+    for (const chunk of chunks) {
+      const found = extractPlatformFromPredicate(chunk);
+      if (found !== null) return found;
     }
   }
   return null;
 }
 
 function makeFakeDb(initial: FakeRow[] = []): FakeDb {
-  const rows = new Map<Platform, FakeRow>();
+  const rows = new Map<string, FakeRow>();
   for (const r of initial) rows.set(r.platform, r);
-  const lastInsertValues: { value: unknown } = { value: null };
+  const lastInsertValues: { value: FakeRow | null } = { value: null };
 
-  let pendingFilter: Platform | null = null;
+  let pendingFilter: "twitter" | null = null;
   const selectChain = {
     from: vi.fn().mockReturnThis(),
     where: vi.fn(function whereImpl(this: unknown, predicate: unknown) {
@@ -61,10 +68,8 @@ function makeFakeDb(initial: FakeRow[] = []): FakeDb {
       return Promise.resolve(row ? [row] : []);
     }),
   };
-
   const selectFn = vi.fn(() => selectChain);
 
-  // insert(table).values(v).onConflictDoUpdate({...})
   const insertChain = {
     values: vi.fn(function valuesImpl(this: unknown, v: FakeRow) {
       lastInsertValues.value = v;
@@ -83,7 +88,6 @@ function makeFakeDb(initial: FakeRow[] = []): FakeDb {
   };
   const insertFn = vi.fn(() => insertChain);
 
-  // delete(table).where(eq(platform, p)).returning()
   const deleteChain = {
     where: vi.fn(function dWhere(this: unknown, predicate: unknown) {
       const platform = extractPlatformFromPredicate(predicate);
@@ -117,50 +121,15 @@ function makeRepoWithCipher(): {
   };
   const cipher = getCredentialCipher(env);
   const fake = makeFakeDb();
-  const repo = createSocialCredentialsRepo(fake.db, cipher);
+  const repo = createSocialCredentialsRepo(fake.db, cipher, {
+    tenantId: TENANT_A,
+    role: "tenant_admin",
+  });
   return { repo, fake };
 }
 
-describe("SocialCredentialsRepo — LinkedIn round trip (VS-2)", () => {
-  it("encrypts on write and decrypts on read, with ciphertext never equal to plaintext at rest", async () => {
-    const { repo, fake } = makeRepoWithCipher();
-
-    await repo.upsertLinkedIn({
-      clientId: "abc",
-      clientSecret: "xyz",
-      apiVersion: "202511",
-    });
-
-    // ciphertext at rest assertion
-    const row = fake.rows.get("linkedin");
-    if (!row) throw new Error("expected linkedin row to be present");
-    const fields = row.encryptedFields as LinkedInEncryptedFields;
-    expect(fields.clientId).toBeDefined();
-    expect(fields.clientId.ct).not.toBe("abc");
-    expect(fields.clientSecret.ct).not.toBe("xyz");
-    expect(row.metadata).toEqual({ apiVersion: "202511" });
-
-    const got = await repo.getLinkedIn();
-    if (got === null) throw new Error("expected non-null result from getLinkedIn");
-    expect(got.clientId).toBe("abc");
-    expect(got.clientSecret).toBe("xyz");
-    expect(got.apiVersion).toBe("202511");
-  });
-
-  it("apiVersion is null when not provided on upsert", async () => {
-    const { repo, fake } = makeRepoWithCipher();
-    await repo.upsertLinkedIn({ clientId: "id", clientSecret: "sec" });
-    const got = await repo.getLinkedIn();
-    if (got === null) throw new Error("expected non-null result from getLinkedIn");
-    expect(got.apiVersion).toBeNull();
-    const row = fake.rows.get("linkedin");
-    if (!row) throw new Error("expected linkedin row to be present");
-    expect(row.metadata).toBeNull();
-  });
-});
-
-describe("SocialCredentialsRepo — Twitter round trip", () => {
-  it("encrypts all 4 fields on write and decrypts on read", async () => {
+describe("SocialCredentialsRepo — Twitter round trip (tenant-scoped)", () => {
+  it("encrypts all 4 fields on write, stamps the tenant_id, and decrypts on read", async () => {
     const { repo, fake } = makeRepoWithCipher();
 
     await repo.upsertTwitter({
@@ -172,11 +141,14 @@ describe("SocialCredentialsRepo — Twitter round trip", () => {
 
     const row = fake.rows.get("twitter");
     if (!row) throw new Error("expected twitter row to be present");
-    const fields = row.encryptedFields as TwitterEncryptedFields;
+    const fields = row.encryptedFields;
     expect(fields.apiKey.ct).not.toBe("k1");
     expect(fields.apiSecret.ct).not.toBe("s1");
     expect(fields.accessToken.ct).not.toBe("t1");
     expect(fields.accessTokenSecret.ct).not.toBe("ts1");
+    // Write-side tenant stamping: the insert carries the scope's tenant_id
+    // (composite PK — REQ-083).
+    expect(fake.lastInsertValues.value?.tenantId).toBe(TENANT_A);
 
     const got = await repo.getTwitter();
     expect(got).toEqual({
@@ -187,14 +159,26 @@ describe("SocialCredentialsRepo — Twitter round trip", () => {
       updatedAt: expect.any(Date),
     });
   });
+
+  it("upsertTwitter throws when no concrete tenant scope is provided (PK requires tenant_id)", async () => {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      SESSION_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef",
+    };
+    const fake = makeFakeDb();
+    const unscoped = createSocialCredentialsRepo(fake.db, getCredentialCipher(env));
+    await expect(
+      unscoped.upsertTwitter({
+        apiKey: "k",
+        apiSecret: "s",
+        accessToken: "t",
+        accessTokenSecret: "ts",
+      }),
+    ).rejects.toThrow(/concrete tenant scope/);
+  });
 });
 
 describe("SocialCredentialsRepo — get returns null for missing rows", () => {
-  it("getLinkedIn returns null when no row exists", async () => {
-    const { repo } = makeRepoWithCipher();
-    expect(await repo.getLinkedIn()).toBeNull();
-  });
-
   it("getTwitter returns null when no row exists", async () => {
     const { repo } = makeRepoWithCipher();
     expect(await repo.getTwitter()).toBeNull();
@@ -204,9 +188,13 @@ describe("SocialCredentialsRepo — get returns null for missing rows", () => {
 describe("SocialCredentialsRepo — delete", () => {
   it("returns true when row existed, false otherwise", async () => {
     const { repo } = makeRepoWithCipher();
-    await repo.upsertLinkedIn({ clientId: "a", clientSecret: "b" });
-    expect(await repo.delete("linkedin")).toBe(true);
-    expect(await repo.delete("linkedin")).toBe(false);
+    await repo.upsertTwitter({
+      apiKey: "k",
+      apiSecret: "s",
+      accessToken: "t",
+      accessTokenSecret: "ts",
+    });
+    expect(await repo.delete("twitter")).toBe(true);
+    expect(await repo.delete("twitter")).toBe(false);
   });
 });
-

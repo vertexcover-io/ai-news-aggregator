@@ -792,4 +792,58 @@ describe("collectTwitter", () => {
 
     expect(result.unitResults).toEqual([]);
   });
+
+  // ── P10 (REQ-068): global throttle of the SHARED twitter collector ──
+  describe("global throttle (P10, REQ-068)", () => {
+    it("test_REQ_068_twitter_collector_globally_throttled", async () => {
+      const client = createClientStub();
+      const events: string[] = [];
+      // two pages per list source: first page returns a cursor
+      client.fetchListTweets.mockImplementation((listId: string, opts) => {
+        events.push(`fetch:${listId}:${opts?.cursor ?? "first"}`);
+        return Promise.resolve({
+          tweets: [makeTweet({ id: `t-${listId}-${opts?.cursor ?? "first"}` })],
+          nextCursor: opts?.cursor === undefined ? "page-2" : null,
+        });
+      });
+      const repo = createMockRepo();
+      const throttle = vi.fn(() => {
+        events.push("throttle");
+        return Promise.resolve();
+      });
+
+      await collectTwitter(
+        makeDeps(client, repo, { throttle }),
+        { listIds: ["L1", "L2"], users: [] },
+      );
+
+      // one throttle grant per page fetch — 2 sources × 2 pages
+      expect(client.fetchListTweets).toHaveBeenCalledTimes(4);
+      expect(throttle).toHaveBeenCalledTimes(4);
+      // and every fetch was preceded by its own throttle grant
+      for (let i = 0; i < events.length; i += 2) {
+        expect(events[i]).toBe("throttle");
+        expect(events[i + 1]).toMatch(/^fetch:/);
+      }
+    });
+
+    it("EDGE-011: a failing throttle degrades to unthrottled collection, never a failed source", async () => {
+      const client = createClientStub();
+      client.fetchListTweets.mockResolvedValue({
+        tweets: [makeTweet({ id: "t-ok" })],
+        nextCursor: null,
+      });
+      const repo = createMockRepo();
+      const throttle = vi.fn(() => Promise.reject(new Error("redis down")));
+
+      const result = await collectTwitter(
+        makeDeps(client, repo, { throttle }),
+        { listIds: ["L1"], users: [] },
+      );
+
+      expect(result.itemsStored).toBe(1);
+      expect(result.unitResults[0]?.status).toBe("completed");
+      expect(findEvent("collector.twitter.throttle_unavailable")).toBeDefined();
+    });
+  });
 });

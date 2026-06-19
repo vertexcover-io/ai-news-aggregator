@@ -13,6 +13,10 @@ export const API_BASE: string =
 export const ADMIN_PASSWORD: string =
   process.env.E2E_ADMIN_PASSWORD ?? process.env.ADMIN_PASSWORD ?? "vertexcover@123";
 
+/** Matches the API's bootstrap admin seed (services/admin-seed.ts). */
+export const ADMIN_EMAIL: string =
+  process.env.E2E_ADMIN_EMAIL ?? process.env.ADMIN_EMAIL ?? "admin@agentloop.dev";
+
 export function makeDbClient(): Client {
   return new Client({
     connectionString: E2E_DB_URL,

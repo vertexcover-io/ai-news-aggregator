@@ -23,6 +23,7 @@ Services own state management (Redis run-state, cost tracking), candidate loadin
 - `resolveLinkedInCredentials(deps)` → `LinkedInCreds | null` — DB-first/env-fallback credential resolver
 - `resolveTwitterOAuth1Credentials(deps)` → `TwitterOAuth1Creds | null` — DB-first/env-fallback for X/Twitter OAuth 1.0a
 - `resolveTwitterCollectorCookie(deps)` → `TwitterCollectorCookie | null` — DB-first/env-fallback for Rettiwt cookies
+- `resolveApifyApiToken(deps)` → `ApifyTokenCreds | null` — DB-first (app_credentials `apify_api_token`) / env-fallback `APIFY_API_KEY`; decrypt failure returns null, does NOT fall through to env
 - `buildSourceTelemetry(outcomes)` → `RunSourceTelemetry` — aggregate collector outcomes into per-source unit entries
 - `runWebCrawl(jobs, opts)` → `Map<string, CrawlResult>` — Crawlee AdaptivePlaywrightCrawler wrapper (listing + detail)
 - `hydrateAddedPost(url, sourceType, deps)` → `RankedItem` — single-item add-post: fetch → upsert → recap → merge cost
@@ -30,7 +31,7 @@ Services own state management (Redis run-state, cost tracking), candidate loadin
 - `recencyDecay(ageHours, halfLifeHours)` → `number` — exponential decay factor for scoring
 - `ageHoursFromPublishedAt(publishedAt, now?)` → `number` — hours since publish (null → 24h default)
 - `engagementScore(points, commentCount)` → `number` — log-compressed engagement
-- `collector-health/index.ts::runCollectorHealthCheck(collector, settings, deps)` → `CollectorHealthOutcome` — dispatches to the per-collector probe strategy (hn → Algolia search; reddit → subreddit RSS w/ bot UA; twitter → rettiwt authenticated read; blog → `runWebCrawl` crawl-only, **no LLM** EDGE-009; web_search → minimal Tavily query). Each runs under a per-collector timeout (blog 35s, twitter/web_search 15s, hn/reddit 10s), returns `{status:"healthy"|"failed", durationMs, reason, detail}`, and "not configured" short-circuits without a network call.
+- `collector-health/index.ts::runCollectorHealthCheck(collector, settings, deps)` → `CollectorHealthOutcome` — dispatches to the per-collector probe strategy (hn → Algolia search; reddit → lightweight RSS ping on the first configured subreddit (separate from full collection which uses Apify actor); twitter → rettiwt authenticated read; blog → `runWebCrawl` crawl-only, **no LLM** EDGE-009; web_search → minimal Tavily query). Each runs under a per-collector timeout (blog 35s, twitter/web_search 15s, hn/reddit 10s), returns `{status:"healthy"|"failed", durationMs, reason, detail}`, and "not configured" short-circuits without a network call.
 - `collector-health/classify.ts::classifyCollectorHealthError(collector, err)` → short human reason — maps thrown errors to auth / missing-secret / rate-limit / network-timeout / blocked / schema / unknown with priority ordering (reuses Twitter `classifyError` codes); raw error stays in the structured log only.
 - `collector-health/classify.ts::classifyCollectorHealthToken(...)` → token-level classifier helper used by the strategies.
 

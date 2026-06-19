@@ -15,6 +15,8 @@ import { randomUUID } from "node:crypto";
 import { runArchives } from "@newsletter/shared/db";
 import { createRunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import type { AppDb } from "@newsletter/shared/db";
 import type { PreReviewSnapshot } from "@newsletter/shared/review-edits";
 
@@ -40,9 +42,12 @@ function makeSnapshot(suffix: string): PreReviewSnapshot {
 
 describe("run-archives repo e2e — pre_review_snapshot (REQ-001, REQ-008, EDGE-006)", () => {
   let db: AppDb;
+  let tenant: TenantContext;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     db = getTestDb() as AppDb;
+    // tenant_id is NOT NULL — every repo write must stamp the e2e tenant
+    tenant = await ensurePipelineTenant();
   });
 
   beforeEach(async () => {
@@ -52,7 +57,7 @@ describe("run-archives repo e2e — pre_review_snapshot (REQ-001, REQ-008, EDGE-
   // REQ-001: snapshot is written on a successful upsert and round-trips correctly
   it("populates pre_review_snapshot after a completed upsert (REQ-001)", async () => {
     const runId = randomUUID();
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, tenant);
     const snapshot = makeSnapshot("initial");
 
     await repo.upsert({
@@ -80,7 +85,7 @@ describe("run-archives repo e2e — pre_review_snapshot (REQ-001, REQ-008, EDGE-
   // REQ-008: a second upsert that OMITS preReviewSnapshot must not overwrite the existing value
   it("does NOT overwrite pre_review_snapshot on a subsequent upsert that omits the field (REQ-008)", async () => {
     const runId = randomUUID();
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, tenant);
     const snapshot = makeSnapshot("first");
 
     // First upsert — writes snapshot
@@ -117,7 +122,7 @@ describe("run-archives repo e2e — pre_review_snapshot (REQ-001, REQ-008, EDGE-
   // EDGE-006: failed-status upsert does not write a snapshot
   it("does not write pre_review_snapshot when status is 'failed' (EDGE-006)", async () => {
     const runId = randomUUID();
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, tenant);
 
     await repo.upsert({
       id: runId,
@@ -139,7 +144,7 @@ describe("run-archives repo e2e — pre_review_snapshot (REQ-001, REQ-008, EDGE-
   // Verify COALESCE semantics: if the existing snapshot is null, the new value wins
   it("writes snapshot on first upsert even when previous value was null (COALESCE semantics)", async () => {
     const runId = randomUUID();
-    const repo = createRunArchivesRepo(db);
+    const repo = createRunArchivesRepo(db, tenant);
 
     // First upsert without snapshot
     await repo.upsert({

@@ -1,11 +1,35 @@
+/**
+ * User-submitted URL ingestion (Chrome extension). A submitted URL becomes a
+ * single `manual` raw_items row, stamped with the submitter's tenant and
+ * deduped PER TENANT — so it competes as a candidate in that tenant's next run
+ * exactly like any collected item. No pipeline change is needed: tenant
+ * correctness comes entirely from the tenant-scoped repo handed in here.
+ *
+ * Enrichment is intentionally light: the extension sends the page's own title,
+ * and richer content (link enrichment / recap) is left to the pipeline's normal
+ * rank stage during the next run. `enrichUrl` stays injectable so a future
+ * version can plug in server-side enrichment; the default is a no-op.
+ */
 import { createHash } from "node:crypto";
-import type { RawItemsRepo } from "@api/repositories/raw-items.js";
-import type { RankedItem, RawItemMetadata } from "@newsletter/shared";
+import type { RawItemInsert, SourceType } from "@newsletter/shared/db";
 
-export type EnrichUrlFn = (url: string) => Promise<{ title?: string; author?: string; content?: string }>;
+export type EnrichUrlFn = (
+  url: string,
+) => Promise<{ title?: string; author?: string; content?: string }>;
+
+/** The slice of the (tenant-scoped) raw-items repo this service needs. */
+export interface SubmissionRawItemsRepo {
+  findBySourceAndExternalId(
+    sourceType: SourceType,
+    externalId: string,
+  ): Promise<{ id: number; url: string; title: string } | null>;
+  upsertItems(items: RawItemInsert[]): Promise<void>;
+}
 
 export interface CreateSubmissionDeps {
-  rawItemsRepo: RawItemsRepo;
+  rawItemsRepo: SubmissionRawItemsRepo;
+  /** Tracking-param-stripping canonicalizer (pipeline `canonicalizeUrl`). */
+  canonicalizeUrl: (url: string) => string;
   enrichUrl: EnrichUrlFn;
 }
 
@@ -25,22 +49,26 @@ export async function createUserSubmission(
   input: { url: string; title?: string },
   deps: CreateSubmissionDeps,
 ): Promise<SubmissionResult> {
-  const { canonicalizeUrl } = await import("@newsletter/pipeline/add-post");
-  const canonical = canonicalizeUrl(input.url);
+  const canonical = deps.canonicalizeUrl(input.url);
   const externalId = hashUrl(canonical);
 
-  const existing = await deps.rawItemsRepo.findBySourceAndExternalId("manual", externalId);
+  // Per-tenant dedupe: the repo is tenant-fenced, so this only sees THIS
+  // tenant's rows. A different tenant submitting the same URL is independent.
+  const existing = await deps.rawItemsRepo.findBySourceAndExternalId(
+    "manual",
+    externalId,
+  );
 
   let enriched: { title?: string; author?: string; content?: string } = {};
   try {
     enriched = await deps.enrichUrl(input.url);
   } catch {
-    // EDGE-004: fall back to URL as title on enrichment failure
+    // EDGE-004: enrichment is best-effort — fall back to the page/URL title.
   }
 
   const title = input.title ?? enriched.title ?? input.url;
 
-  const row = await deps.rawItemsRepo.upsertManualItem({
+  const insert: RawItemInsert = {
     sourceType: "manual",
     externalId,
     url: input.url,
@@ -48,27 +76,23 @@ export async function createUserSubmission(
     author: enriched.author ?? null,
     content: enriched.content ?? null,
     collectedAt: new Date(),
-    engagement: { points: 0, commentCount: 0 },
-    metadata: { comments: [] } satisfies RawItemMetadata,
-  });
+    metadata: { comments: [], addedInReview: true },
+  };
+  await deps.rawItemsRepo.upsertItems([insert]);
+
+  const saved = await deps.rawItemsRepo.findBySourceAndExternalId(
+    "manual",
+    externalId,
+  );
+  if (saved === null) {
+    throw new Error(`manual submission not found after upsert: ${externalId}`);
+  }
 
   return {
-    id: row.id,
-    url: row.url,
-    title: row.title,
+    id: saved.id,
+    url: saved.url,
+    title: saved.title,
     sourceType: "manual",
     alreadyExisted: existing !== null,
-  };
-}
-
-export function createEnrichUrlFromHydrate(
-  hydrateAddedPostFn: (url: string, sourceType: "web", options?: { signal?: AbortSignal }) => Promise<RankedItem>,
-): EnrichUrlFn {
-  return async (url: string) => {
-    const result = await hydrateAddedPostFn(url, "web");
-    const title = result.recap?.title ?? result.title;
-    const author = result.author ?? undefined;
-    const content = result.content ?? undefined;
-    return { title, author, content };
   };
 }

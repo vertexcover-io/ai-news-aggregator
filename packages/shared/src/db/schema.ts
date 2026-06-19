@@ -1,5 +1,5 @@
-import { desc } from "drizzle-orm";
-import { bigserial, boolean, index, integer, jsonb, pgTable, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { desc, sql } from "drizzle-orm";
+import { bigserial, boolean, customType, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type {
   NotificationState,
   RawItemEngagement,
@@ -21,8 +21,167 @@ import type {
 import type { RunCostBreakdown } from "@shared/types/cost-breakdown.js";
 import type { EncryptedBlob } from "@shared/services/credential-cipher.js";
 import type { EditType, PreReviewSnapshot } from "@shared/review-edits/types.js";
+import type {
+  AuditAction,
+  CustomDomainStatus,
+  EmailMode,
+  OnboardingState,
+  SendingDomainRecord,
+  SendingDomainStatus,
+  SmtpConfigStored,
+  TenantStatus,
+  UserRole,
+} from "@shared/types/tenant.js";
+import type { SourceConfig, SourceHealth } from "@shared/types/source.js";
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter" | "web_search" | "manual";
+
+/** Case-insensitive text (citext extension — created in migration 0040). */
+const citext = customType<{ data: string }>({
+  dataType() {
+    return "citext";
+  },
+});
+
+const bytea = customType<{ data: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
+
+export const tenants = pgTable(
+  "tenants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: text("slug").notNull(),
+    /**
+     * The slug this tenant had before its most recent rename (P5, REQ-023).
+     * The host→tenant resolver 301-redirects `<previousSlug>.<root>` to the
+     * current slug so in-flight links/emails keep resolving (EDGE-002).
+     */
+    previousSlug: text("previous_slug"),
+    name: text("name").notNull(),
+    status: text("status").$type<TenantStatus>().notNull().default("pending_setup"),
+    customDomain: text("custom_domain"),
+    /**
+     * Verification state of the tenant's own (vanity) web domain (Fix #3,
+     * Phase C). null until they register one; `verified` is the only state the
+     * host→tenant resolver + Caddy on-demand TLS `ask` endpoint accept.
+     */
+    customDomainStatus: text("custom_domain_status").$type<CustomDomainStatus>(),
+    customDomainVerifiedAt: timestamp("custom_domain_verified_at", { withTimezone: true }),
+    headline: text("headline"),
+    topicStrip: text("topic_strip"),
+    subtagline: text("subtagline"),
+    logoBytes: bytea("logo_bytes"),
+    logoContentType: text("logo_content_type"),
+    featureCanon: boolean("feature_canon").notNull().default(false),
+    featureDeliverability: boolean("feature_deliverability").notNull().default(false),
+    featureEval: boolean("feature_eval").notNull().default(false),
+    /**
+     * Per-tenant notification config (P16, REQ-090–092). `notifyEmail` is the
+     * address review-ready/error alerts go to; null = email channel off.
+     */
+    notifyEmail: text("notify_email"),
+    /**
+     * Slack incoming-webhook URL, stored as the JSON-serialized
+     * `EncryptedBlob` ciphertext from the D-012 credential cipher — NEVER
+     * plaintext, never returned raw to clients (REQ-092). null = Slack
+     * channel off (pipeline falls back to the global SLACK_WEBHOOK_URL).
+     */
+    slackWebhook: text("slack_webhook"),
+    /** Review-ready alert toggle (REQ-090); on by default once a channel is configured. */
+    notifyReviewReady: boolean("notify_review_ready").notNull().default(true),
+    /** Collector-failure / run-crash alert toggle (REQ-091). */
+    notifyErrors: boolean("notify_errors").notNull().default(true),
+    onboardingState: jsonb("onboarding_state").$type<OnboardingState | null>(),
+    /**
+     * Per-tenant Resend sending domain (P14, REQ-084/085). All nullable —
+     * a tenant without a registered domain has every field null, and the
+     * broadcast gate (REQ-053) treats that as "not verified".
+     */
+    sendingDomainName: text("sending_domain_name"),
+    /** Resend domain id returned by `domains.create` (drives `domains.get`). */
+    sendingDomainId: text("sending_domain_id"),
+    sendingDomainStatus: text("sending_domain_status").$type<SendingDomainStatus>(),
+    sendingDomainRecords: jsonb("sending_domain_records").$type<SendingDomainRecord[] | null>(),
+    /**
+     * Per-tenant email provider (Fix #3, Phase B). `managed` (default) sends
+     * from the shared verified Resend domain; `managed_domain` from the
+     * tenant's own verified sending domain; `smtp` via the tenant's own
+     * provider, whose secrets live encrypted in `smtpConfigEnc`.
+     */
+    emailMode: text("email_mode").$type<EmailMode>().notNull().default("managed"),
+    /** Encrypted-at-rest SMTP config (D-012 blobs for secrets); null unless `smtp`. */
+    smtpConfigEnc: jsonb("smtp_config_enc").$type<SmtpConfigStored | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("tenants_slug_uq").on(t.slug),
+    index("tenants_previous_slug_idx").on(t.previousSlug),
+    // At most one tenant may hold a given custom web domain as VERIFIED (Fix
+    // #3, Phase C anti-hijack, design E9) — DB-enforced backstop to the
+    // app-level uniqueness check in registerWebDomain.
+    uniqueIndex("tenants_custom_domain_verified_uq")
+      .on(t.customDomain)
+      .where(sql`${t.customDomainStatus} = 'verified'`),
+  ],
+);
+
+export type TenantRow = typeof tenants.$inferSelect;
+export type TenantInsert = typeof tenants.$inferInsert;
+
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Nullable: super_admin accounts belong to the platform, not a tenant.
+    tenantId: uuid("tenant_id").references(() => tenants.id),
+    email: citext("email").notNull(),
+    name: text("name").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    role: text("role").$type<UserRole>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("users_email_uq").on(t.email),
+    index("users_tenant_id_idx").on(t.tenantId),
+  ],
+);
+
+export type UserRow = typeof users.$inferSelect;
+export type UserInsert = typeof users.$inferInsert;
+
+/**
+ * Platform audit trail (P6, REQ-103) — records super-admin impersonation
+ * start/stop with the acting super admin and the target tenant.
+ *
+ * NOT tenant-owned in the isolation sense: rows are written and read only by
+ * super-admin/platform flows, never serialized to tenant responses. Both ids
+ * are deliberately plain uuids (no FK) so audit history survives user or
+ * tenant deletion.
+ */
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    action: text("action").$type<AuditAction>().notNull(),
+    /** The super admin performing the action (audit identity). */
+    actorUserId: uuid("actor_user_id").notNull(),
+    /** The tenant the action targeted. */
+    tenantId: uuid("tenant_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("audit_log_tenant_id_idx").on(t.tenantId),
+    index("audit_log_actor_user_id_idx").on(t.actorUserId),
+  ],
+);
+
+export type AuditLogRow = typeof auditLog.$inferSelect;
+export type AuditLogInsert = typeof auditLog.$inferInsert;
 
 export const rawItems = pgTable("raw_items", {
   id: serial("id").primaryKey(),
@@ -41,9 +200,19 @@ export const rawItems = pgTable("raw_items", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   runId: uuid("run_id"),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
-  unique("raw_items_source_type_external_id_unique").on(t.sourceType, t.externalId),
+  // Per-tenant dedup key (P4 isolation): two tenants collecting the same
+  // story must produce two rows. A GLOBAL (source_type, external_id) unique
+  // would make the second tenant's upsert silently rewrite the first
+  // tenant's row (runId/engagement) while never storing its own item.
+  unique("raw_items_tenant_source_type_external_id_unique").on(
+    t.tenantId,
+    t.sourceType,
+    t.externalId,
+  ),
   index("raw_items_run_id_idx").on(t.runId),
+  index("raw_items_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type RawItemInsert = typeof rawItems.$inferInsert;
@@ -79,7 +248,10 @@ export const runArchives = pgTable("run_archives", {
   runFunnel: jsonb("run_funnel").$type<RunFunnel | null>(),
   shortlistedItemIds: jsonb("shortlisted_item_ids").$type<number[] | null>(),
   preReviewSnapshot: jsonb("pre_review_snapshot").$type<PreReviewSnapshot | null>(),
-});
+  tenantId: uuid("tenant_id"),
+}, (t) => [
+  index("run_archives_tenant_id_idx").on(t.tenantId),
+]);
 
 export const runLogs = pgTable(
   "run_logs",
@@ -93,8 +265,12 @@ export const runLogs = pgTable(
     event: text("event").$type<RunLogEvent>().notNull(),
     message: text("message").notNull(),
     context: jsonb("context").$type<RunLogContext | null>(),
+    tenantId: uuid("tenant_id"),
   },
-  (t) => [index("run_logs_run_id_id_idx").on(t.runId, t.id)],
+  (t) => [
+    index("run_logs_run_id_id_idx").on(t.runId, t.id),
+    index("run_logs_tenant_id_idx").on(t.tenantId),
+  ],
 );
 
 export type RunLogRow = typeof runLogs.$inferSelect;
@@ -105,15 +281,24 @@ export interface SocialTokenEncryptedFields {
   refreshToken: EncryptedBlob;
 }
 
+/**
+ * Tenant-level OAuth tokens, keyed `(tenant_id, platform)` (P12, REQ-083):
+ * each tenant connects its own LinkedIn/Twitter account; the composite PK
+ * isolates token rows per tenant while the shared OAuth app client lives in
+ * `app_credentials` (REQ-080/082).
+ */
 export const socialTokens = pgTable("social_tokens", {
-  platform: text("platform").primaryKey().$type<"linkedin" | "twitter">(),
+  tenantId: uuid("tenant_id").notNull(),
+  platform: text("platform").notNull().$type<"linkedin" | "twitter">(),
   encryptedFields: jsonb("encrypted_fields")
     .notNull()
     .$type<SocialTokenEncryptedFields>(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   metadata: jsonb("metadata").$type<SocialTokenMetadata | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  primaryKey({ columns: [t.tenantId, t.platform] }),
+]);
 
 export type SocialTokenInsert = typeof socialTokens.$inferInsert;
 export type SocialTokenSelect = typeof socialTokens.$inferSelect;
@@ -134,10 +319,28 @@ export interface TwitterCollectorEncryptedFields {
   apiKey: EncryptedBlob;
 }
 
+/**
+ * Shared Twitter OAuth2 app client (P13, REQ-081): every tenant runs the
+ * 3-legged posting connect through this client; the per-tenant tokens it
+ * yields live in `social_tokens` keyed `(tenant_id, 'twitter')`.
+ */
+export interface TwitterClientEncryptedFields {
+  clientId: EncryptedBlob;
+  clientSecret: EncryptedBlob;
+}
+
 export type SocialCredentialPlatform = "linkedin" | "twitter" | "twitter_collector";
 
+/**
+ * Tenant-level social credentials, keyed `(tenant_id, platform)` (P12,
+ * REQ-083). Holds ONLY per-tenant secrets (Twitter OAuth1 posting keys).
+ * App-level secrets (LinkedIn client, Twitter collector cookie) moved to
+ * `app_credentials` in migration 0045 — the column type keeps the legacy
+ * platform union so pre-move rows remain representable mid-migration.
+ */
 export const socialCredentials = pgTable("social_credentials", {
-  platform: text("platform").primaryKey().$type<SocialCredentialPlatform>(),
+  tenantId: uuid("tenant_id").notNull(),
+  platform: text("platform").notNull().$type<SocialCredentialPlatform>(),
   encryptedFields: jsonb("encrypted_fields")
     .notNull()
     .$type<
@@ -146,10 +349,44 @@ export const socialCredentials = pgTable("social_credentials", {
   metadata: jsonb("metadata").$type<{ apiVersion?: string } | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: text("updated_by"),
-});
+}, (t) => [
+  primaryKey({ columns: [t.tenantId, t.platform] }),
+]);
 
 export type SocialCredentialInsert = typeof socialCredentials.$inferInsert;
 export type SocialCredentialSelect = typeof socialCredentials.$inferSelect;
+
+/**
+ * App-level shared secrets (P12, REQ-082/086, NF6): the LinkedIn OAuth app
+ * client (id/secret) every tenant connects through, and the shared Twitter
+ * collector cookie (Rettiwt key) used for collection across tenants. Written
+ * ONLY via super-admin (`/api/super/app-credentials`); NEVER serialized into
+ * tenant-facing responses. Encrypted at rest with the same D-012 cipher
+ * (D-104: the SESSION_SECRET-derived KEK is never rotated).
+ */
+export interface ApifyEncryptedFields {
+  apiToken: EncryptedBlob;
+}
+
+export type AppCredentialKey = "linkedin_client" | "twitter_collector" | "twitter_client" | "apify_api_token";
+
+export const appCredentials = pgTable("app_credentials", {
+  key: text("key").primaryKey().$type<AppCredentialKey>(),
+  encryptedFields: jsonb("encrypted_fields")
+    .notNull()
+    .$type<
+      | LinkedInEncryptedFields
+      | TwitterCollectorEncryptedFields
+      | TwitterClientEncryptedFields
+      | ApifyEncryptedFields
+    >(),
+  metadata: jsonb("metadata").$type<{ apiVersion?: string } | null>(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text("updated_by"),
+});
+
+export type AppCredentialInsert = typeof appCredentials.$inferInsert;
+export type AppCredentialSelect = typeof appCredentials.$inferSelect;
 
 export type RunArchiveInsert = typeof runArchives.$inferInsert;
 
@@ -187,8 +424,18 @@ export const userSettings = pgTable(
     twitterPostEnabled: boolean("twitter_post_enabled").notNull().default(true),
     autoReview: boolean("auto_review").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // One settings row per tenant. The DB column is NOT NULL since migration
+    // 0041 (enforced only after the P2 backfill ran — EDGE-012); the Drizzle
+    // type stays optional until P4+/P8 thread tenant_id through every writer
+    // (a column DEFAULT set by the backfill bridges legacy inserts to
+    // tenant 0 in the meantime).
+    tenantId: uuid("tenant_id"),
   },
-  (t) => [uniqueIndex("user_settings_singleton_uq").on(t.singleton)],
+  (t) => [
+    // 0041 swapped the legacy `singleton` unique index for unique(tenant_id):
+    // the table is one-row-per-tenant now, not a global singleton.
+    uniqueIndex("user_settings_tenant_id_uq").on(t.tenantId),
+  ],
 );
 
 export type UserSettingsInsert = typeof userSettings.$inferInsert;
@@ -205,8 +452,12 @@ export const mustReadEntries = pgTable(
     annotation: text("annotation").notNull(),
     addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    tenantId: uuid("tenant_id"),
   },
-  (t) => [index("must_read_entries_added_at_idx").on(desc(t.addedAt))],
+  (t) => [
+    index("must_read_entries_added_at_idx").on(desc(t.addedAt)),
+    index("must_read_entries_tenant_id_idx").on(t.tenantId),
+  ],
 );
 
 export type MustReadEntry = typeof mustReadEntries.$inferSelect;
@@ -224,8 +475,13 @@ export const subscribers = pgTable("subscribers", {
   unsubscribedAt: timestamp("unsubscribed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
-  uniqueIndex("subscribers_email_uq").on(t.email),
+  // One subscription per email PER TENANT (REQ-050/051): a reader can
+  // subscribe to several tenants' newsletters; a global unique(email) would
+  // silently swallow the second tenant's subscribe as a "duplicate".
+  uniqueIndex("subscribers_tenant_email_uq").on(t.tenantId, t.email),
+  index("subscribers_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type SubscriberInsert = typeof subscribers.$inferInsert;
@@ -237,8 +493,10 @@ export const emailSends = pgTable("email_sends", {
   runArchiveId: uuid("run_archive_id").notNull().references(() => runArchives.id),
   messageId: text("message_id"),
   sentAt: timestamp("sent_at").notNull().defaultNow(),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
   unique("email_sends_subscriber_archive_uq").on(t.subscriberId, t.runArchiveId),
+  index("email_sends_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type EmailSendInsert = typeof emailSends.$inferInsert;
@@ -259,8 +517,10 @@ export const feedbackEvents = pgTable("feedback_events", {
   userAgent: text("user_agent"),
   ip: text("ip"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
   index("feedback_events_subscriber_campaign_idx").on(t.subscriberId, t.campaign),
+  index("feedback_events_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type FeedbackEventInsert = typeof feedbackEvents.$inferInsert;
@@ -276,8 +536,10 @@ export const sesEvents = pgTable("ses_events", {
   rawPayload: jsonb("raw_payload").notNull(),
   occurredAt: timestamp("occurred_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
   unique("ses_events_message_type_uq").on(t.messageId, t.eventType),
+  index("ses_events_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type SesEventInsert = typeof sesEvents.$inferInsert;
@@ -299,9 +561,11 @@ export const evalRuns = pgTable("eval_runs", {
   scoreBreakdown: jsonb("score_breakdown"),
   costBreakdown: jsonb("cost_breakdown"),
   errorMessage: text("error_message"),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
   index("eval_runs_started_at_idx").on(t.startedAt.desc()),
   index("eval_runs_prompt_hash_idx").on(t.draftPromptHash),
+  index("eval_runs_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type EvalRunInsert = typeof evalRuns.$inferInsert;
@@ -318,10 +582,42 @@ export const reviewEdits = pgTable("review_edits", {
   positionBefore: integer("position_before"),
   positionAfter: integer("position_after"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  tenantId: uuid("tenant_id"),
 }, (t) => [
   index("review_edits_run_id_idx").on(t.runId),
   index("review_edits_edit_type_idx").on(t.editType),
+  index("review_edits_tenant_id_idx").on(t.tenantId),
 ]);
 
 export type ReviewEditInsert = typeof reviewEdits.$inferInsert;
 export type ReviewEditSelect = typeof reviewEdits.$inferSelect;
+
+/**
+ * Normalized per-tenant sources (P8, REQ-070). One row per collectable
+ * identity (subreddit, blog listing URL, Twitter handle/list, HN, web-search
+ * query). Lifted from the legacy `user_settings.*Config` JSONB by
+ * packages/scripts/src/lift-sources.ts; the pipeline keeps reading
+ * user_settings until P9 flips collection onto enabled rows (REQ-073).
+ *
+ * tenant_id is NOT NULL with no DEFAULT: the table is born post-P4, so every
+ * writer already stamps a concrete tenant via the repository ctx.
+ */
+export const sources = pgTable(
+  "sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull(),
+    type: text("type").$type<SourceType>().notNull(),
+    config: jsonb("config").$type<SourceConfig>().notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    lastHealth: jsonb("last_health").$type<SourceHealth | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("sources_tenant_id_enabled_idx").on(t.tenantId, t.enabled),
+  ],
+);
+
+export type SourceRow = typeof sources.$inferSelect;
+export type SourceInsert = typeof sources.$inferInsert;

@@ -24,6 +24,11 @@ vi.mock("@pipeline/collectors/web.js", () => ({
   collectWeb: vi.fn(),
 }));
 
+const fakeResolveToken = vi.fn(() => Promise.resolve({ apiToken: "fake-tok", source: "env" as const }));
+vi.mock("@pipeline/lib/reddit-deps.js", () => ({
+  buildRedditResolveToken: vi.fn(() => Promise.resolve(fakeResolveToken)),
+}));
+
 vi.mock("@newsletter/shared", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@newsletter/shared")>();
@@ -151,8 +156,9 @@ describe("collection worker dispatch", () => {
     const result = await handleCollectionJob(fakeJob, deps);
 
     expect(mockCollectReddit).toHaveBeenCalledOnce();
+    // Deps now include resolveToken from the Apify wiring
     expect(mockCollectReddit).toHaveBeenCalledWith(
-      { rawItemsRepo },
+      expect.objectContaining({ rawItemsRepo, resolveToken: fakeResolveToken }),
       { subreddits: ["MachineLearning"], sort: "top" },
     );
     expect(result).toEqual(fakeResult);

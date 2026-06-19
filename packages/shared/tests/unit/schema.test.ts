@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RawItemInsert } from "@shared/db/schema.js";
+import type { RawItemInsert, TenantInsert, UserInsert } from "@shared/db/schema.js";
 import type {
   RunSubmitTwitterConfig,
   RunSubmitTwitterUser,
@@ -30,6 +30,35 @@ describe("schema: rawItems — run_id column (REQ-001)", () => {
     };
     // runId is absent — must compile and be undefined at runtime
     expect(insert.runId).toBeUndefined();
+  });
+});
+
+// REQ-010 foundation — tenancy schema is purely additive in P1
+describe("schema: tenancy (REQ-010)", () => {
+  it("RawItemInsert accepts omitting tenantId (legacy rows stay NULL until P2 backfill)", () => {
+    const insert: RawItemInsert = {
+      sourceType: "hn",
+      externalId: "ext-tenancy",
+      title: "Test",
+      url: "https://example.com",
+      collectedAt: new Date(),
+    };
+    expect(insert.tenantId).toBeUndefined();
+  });
+
+  it("TenantInsert needs only slug + name (status defaults to pending_setup)", () => {
+    const insert: TenantInsert = { slug: "acme", name: "Acme" };
+    expect(insert.status).toBeUndefined();
+  });
+
+  it("UserInsert accepts a super_admin without tenantId", () => {
+    const insert: UserInsert = {
+      email: "root@example.com",
+      name: "Root",
+      passwordHash: "hash",
+      role: "super_admin",
+    };
+    expect(insert.tenantId).toBeUndefined();
   });
 });
 

@@ -26,7 +26,14 @@ function makeFakeDb(initial: StoredArchive): {
   const db = {
     select: () => ({
       from: () => ({
-        where: () => Promise.resolve([store.row]),
+        // list() chains .where().orderBy().limit(); findById awaits .where()
+        // directly — so the where() result is both thenable and chainable.
+        where: () =>
+          Object.assign(Promise.resolve([store.row]), {
+            orderBy: () => ({
+              limit: () => Promise.resolve([store.row]),
+            }),
+          }),
         orderBy: () => ({
           limit: () => Promise.resolve([store.row]),
         }),

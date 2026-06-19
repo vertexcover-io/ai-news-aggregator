@@ -355,6 +355,85 @@ describe("startRun", () => {
     expect(payload.sourceTypes).not.toContain("web_search");
   });
 
+  // REQ-060: every pipeline job payload carries the originating tenant id
+  it("test_REQ_060_job_payload_includes_tenant_id", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "req060aa-0000-0000-0000-000000000001";
+    const tenantId = "11111111-aaaa-bbbb-cccc-222222222222";
+
+    await startRun(
+      baseSettings,
+      {
+        redis: redis as unknown as IORedis,
+        queue: q.queue,
+        runId: () => fixedId,
+      },
+      { tenantId },
+    );
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as RunProcessJobPayload;
+    expect(payload.tenantId).toBe(tenantId);
+
+    // Legacy in-flight compatibility: omitted when no tenant ctx exists.
+    await startRun(baseSettings, {
+      redis: redis as unknown as IORedis,
+      queue: q.queue,
+      runId: () => "req060aa-0000-0000-0000-000000000002",
+    });
+    const [, legacyData] = q.add.mock.calls[1] ?? [];
+    expect(
+      Object.prototype.hasOwnProperty.call(legacyData, "tenantId"),
+    ).toBe(false);
+  });
+
+  // REQ-073: row-derived collectors override the legacy settings JSONB
+  it("uses opts.collectors (sources-row derived) over settings JSONB when provided", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "req073aa-0000-0000-0000-000000000001";
+
+    await startRun(
+      baseSettings, // hn + reddit enabled in JSONB
+      {
+        redis: redis as unknown as IORedis,
+        queue: q.queue,
+        runId: () => fixedId,
+      },
+      {
+        collectors: {
+          web: {
+            sources: [{ name: "Rows Blog", listingUrl: "https://rows.example/blog" }],
+            maxItems: 10,
+          },
+        },
+      },
+    );
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as RunProcessJobPayload;
+    // "manual" is always present (REQ-009) so extension/user-submitted URLs stay
+    // eligible; the row-derived override only replaces the COLLECTOR configs, so
+    // "blog" is the only collector-sourced type alongside the always-on "manual".
+    expect(payload.sourceTypes).toEqual(["manual", "blog"]);
+    expect(payload.collectors.web?.sources[0]?.listingUrl).toBe(
+      "https://rows.example/blog",
+    );
+    expect(payload.collectors.hn).toBeUndefined();
+    expect(payload.collectors.reddit).toBeUndefined();
+
+    const entry = redis.store.get(`run:${fixedId}`);
+    if (!entry) throw new Error("expected redis entry");
+    const state = JSON.parse(entry.value) as RunState;
+    expect(state.sources.blog).toEqual({
+      status: "pending",
+      itemsFetched: 0,
+      errors: [],
+    });
+    expect(state.sources.hn).toBeUndefined();
+  });
+
   it("test_REQ_009_manual_item_is_candidate: always includes 'manual' in sourceTypes so user-submitted URLs are eligible candidates", async () => {
     const redis = makeRedis();
     const q = makeQueue();
@@ -419,5 +498,46 @@ describe("REQ-030 grep assertion: single queue.add(\"run-process\") call site", 
 
     expect(hits).toHaveLength(1);
     expect(hits[0]).toMatch(/packages\/shared\/src\/run-start\.ts$/);
+  });
+});
+
+describe("startRun tenant stamping (REQ-013 fence input)", () => {
+  it("stamps opts.tenantId onto the Redis run state so run reads/cancels can be tenant-fenced", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "11111111-2222-3333-4444-666666666666";
+    const tenantId = "99999999-9999-9999-9999-999999999999";
+
+    await startRun(
+      baseSettings,
+      {
+        redis: redis as unknown as IORedis,
+        queue: q.queue,
+        runId: () => fixedId,
+      },
+      { tenantId },
+    );
+
+    const entry = redis.store.get(`run:${fixedId}`);
+    if (!entry) throw new Error("expected redis entry");
+    const state = JSON.parse(entry.value) as RunState;
+    expect(state.tenantId).toBe(tenantId);
+  });
+
+  it("omits tenantId from the state for legacy starts (no opts.tenantId)", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+    const fixedId = "11111111-2222-3333-4444-777777777777";
+
+    await startRun(baseSettings, {
+      redis: redis as unknown as IORedis,
+      queue: q.queue,
+      runId: () => fixedId,
+    });
+
+    const entry = redis.store.get(`run:${fixedId}`);
+    if (!entry) throw new Error("expected redis entry");
+    const state = JSON.parse(entry.value) as RunState;
+    expect(state.tenantId).toBeUndefined();
   });
 });

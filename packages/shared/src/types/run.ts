@@ -108,6 +108,12 @@ export interface RunState {
   shortlistedItemIds: number[] | null;
   warnings: string[];
   error: string | null;
+  /**
+   * Owning tenant (REQ-013): stamped by `startRun` when the start path knows
+   * its tenant; API run-state reads/cancels 404 across the fence. Optional
+   * for states written before the stamp existed (grandfathered readable).
+   */
+  tenantId?: string;
 }
 
 /**

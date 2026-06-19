@@ -18,6 +18,8 @@ import { randomUUID } from "node:crypto";
 import { rawItems, runArchives } from "@newsletter/shared/db";
 import { createEvalExportsRepo } from "@pipeline/repositories/eval-exports.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import type { AppDb } from "@newsletter/shared/db";
 import type { RankedItemRef } from "@newsletter/shared/types";
 
@@ -26,6 +28,9 @@ config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// tenant_id is NOT NULL on raw_items/run_archives — all seeds stamp this tenant
+let tenant: TenantContext;
 
 /** Seed a run_archives row. startedAt/completedAt must bracket the raw_items. */
 async function seedArchive(
@@ -45,6 +50,7 @@ async function seedArchive(
   }));
   await db.insert(runArchives).values({
     id: opts.id,
+    tenantId: tenant.tenantId,
     status: "completed",
     rankedItems,
     topN: opts.topN ?? opts.rankedItemIds.length,
@@ -60,8 +66,9 @@ async function seedArchive(
 describe("eval-exports repo e2e — VS-5", () => {
   let db: AppDb;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     db = getTestDb();
+    tenant = await ensurePipelineTenant();
   });
 
   beforeEach(async () => {
@@ -95,6 +102,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             url: "https://example.com/article-a",
             engagement: { points: 200, commentCount: 20 },
             metadata: { comments: [] },
+            tenantId: tenant.tenantId,
             runId,
           },
           {
@@ -105,6 +113,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             url: "https://example.com/article-a?utm_source=reddit",
             engagement: { points: 10, commentCount: 1 },
             metadata: { comments: [] },
+            tenantId: tenant.tenantId,
             runId,
           },
           {
@@ -114,6 +123,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             url: "https://example.com/article-b",
             engagement: { points: 150, commentCount: 15 },
             metadata: { comments: [] },
+            tenantId: tenant.tenantId,
             runId,
           },
           {
@@ -123,6 +133,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             url: "https://example.com/article-c",
             engagement: { points: 80, commentCount: 8 },
             metadata: { comments: [] },
+            tenantId: tenant.tenantId,
             runId,
           },
           {
@@ -132,6 +143,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             url: "https://example.com/article-d",
             engagement: { points: 60, commentCount: 6 },
             metadata: { comments: [] },
+            tenantId: tenant.tenantId,
             runId,
           },
         ])
@@ -207,6 +219,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             url: "https://example.com/r-item-x",
             engagement: { points: 100, commentCount: 10 },
             metadata: { comments: [] },
+            tenantId: tenant.tenantId,
             runId: runR,
           },
           {
@@ -216,6 +229,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             url: "https://example.com/r-item-y",
             engagement: { points: 90, commentCount: 9 },
             metadata: { comments: [] },
+            tenantId: tenant.tenantId,
             runId: runR,
           },
         ])
@@ -230,6 +244,7 @@ describe("eval-exports repo e2e — VS-5", () => {
           url: "https://example.com/r2-item-z",
           engagement: { points: 200, commentCount: 20 },
           metadata: { comments: [] },
+          tenantId: tenant.tenantId,
           runId: runR2,
         },
       ]);
@@ -291,6 +306,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             url: "https://legacy.example.com/p",
             engagement: { points: 300, commentCount: 30 },
             metadata: { comments: [] },
+            tenantId: tenant.tenantId,
             collectedAt: new Date(startedAt.getTime() + 1000),
             // runId is omitted → NULL
           },
@@ -302,6 +318,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             url: "https://legacy.example.com/p?utm_source=rss",
             engagement: { points: 10, commentCount: 1 },
             metadata: { comments: [] },
+            tenantId: tenant.tenantId,
             collectedAt: new Date(startedAt.getTime() + 2000),
           },
           {
@@ -311,6 +328,7 @@ describe("eval-exports repo e2e — VS-5", () => {
             url: "https://legacy.example.com/q",
             engagement: { points: 150, commentCount: 15 },
             metadata: { comments: [] },
+            tenantId: tenant.tenantId,
             collectedAt: new Date(startedAt.getTime() + 3000),
           },
         ])

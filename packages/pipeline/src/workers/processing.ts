@@ -44,20 +44,25 @@ import {
   type TwitterOAuth1Credentials,
 } from "@pipeline/social/twitter/api-client.js";
 import { createLinkedInNotifier } from "@pipeline/social/linkedin/notifier.js";
-import { createTwitterNotifier } from "@pipeline/social/twitter/notifier.js";
 import {
-  createSocialTokensRepo,
-  type SocialTokensRepo,
-} from "@pipeline/repositories/social-tokens.js";
-import {
-  createSocialCredentialsRepo,
-  type SocialCredentialsRepo,
-} from "@pipeline/repositories/social-credentials.js";
+  createTwitterNotifier,
+  type TwitterNotifier,
+} from "@pipeline/social/twitter/notifier.js";
+import { createSocialTokensRepo } from "@pipeline/repositories/social-tokens.js";
+import { createSocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
+import { createAppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
+import {
+  jobTenantContext,
+  primeDefaultTenantScope,
+} from "@pipeline/repositories/default-tenant.js";
+import type { TenantContext, TenantScope } from "@newsletter/shared/types/tenant-context";
+import { createSourcesRepo } from "@pipeline/repositories/sources.js";
 import {
   resolveLinkedInCredentials,
   resolveTwitterCollectorCookie,
   resolveTwitterOAuth1Credentials,
+  resolveTwitterOAuth2Client,
 } from "@pipeline/services/credential-resolver.js";
 import {
   createRunStateService,
@@ -79,6 +84,10 @@ import { createRunLogRepo } from "@pipeline/repositories/run-logs.js";
 import {
   createPipelineSubscribersRepo,
 } from "@pipeline/repositories/subscribers.js";
+import { createPipelineTenantsRepo } from "@pipeline/repositories/tenants.js";
+import { resolveTenantNotificationChannels } from "@pipeline/services/tenant-notify.js";
+import { createNotificationEmailSender } from "@pipeline/services/notification-email.js";
+import { createErrorAlerter } from "@pipeline/services/error-alerts.js";
 import {
   createPipelineEmailSendsRepo,
 } from "@pipeline/repositories/email-sends.js";
@@ -103,7 +112,16 @@ import { Rettiwt } from "rettiwt-api";
 import { rankCandidates } from "@pipeline/processors/rank.js";
 import { shortlistCandidates } from "@pipeline/processors/shortlist.js";
 import { renderNewsletter } from "@pipeline/lib/email-render.js";
-import { createEmailProvider } from "@pipeline/lib/email-provider.js";
+import { createEmailProvider, createSmtpProvider } from "@pipeline/lib/email-provider.js";
+import {
+  createRunConcurrencyLimiter,
+  PROCESSING_WORKER_CONCURRENCY,
+  type RunConcurrencyLimiter,
+} from "@pipeline/services/concurrency.js";
+import {
+  createSourceRateLimiter,
+  type SourceRateLimiter,
+} from "@pipeline/services/source-rate-limit.js";
 
 const logger = createLogger("worker:processing");
 
@@ -113,6 +131,10 @@ export interface CreateProcessingWorkerOptions {
   dailyRunDeps?: DailyRunDeps;
   publishDeps?: PublishDeps;
   socialHealthDeps?: SocialHealthDeps;
+  /** Global run cap (P10, REQ-065). Injected by tests; Redis-backed default. */
+  runConcurrencyLimiter?: RunConcurrencyLimiter;
+  /** Global per-external-source limiter (P10, REQ-067/068). */
+  sourceRateLimiter?: SourceRateLimiter;
 }
 
 type PublishDeps = EmailSendDeps & LinkedInPostDeps & TwitterPostDeps;
@@ -125,20 +147,31 @@ export function createProcessingWorker(
 ): Worker<ProcessingJobData, unknown> {
   const connection = options.connection ?? createRedisConnection();
 
-  const runProcessDeps =
-    options.runProcessDeps ?? buildDefaultRunProcessDeps(connection);
   const dailyRunDeps =
     options.dailyRunDeps ?? buildDefaultDailyRunDeps(connection);
   const socialHealthDeps =
     options.socialHealthDeps ?? buildDefaultSocialHealthDeps();
-  // NOTE: publishDeps are intentionally rebuilt per job when not injected by
-  // a test/caller. Notifiers embed credential values at construction time, and
-  // the design (docs/plans/2026-05-19-admin-social-config-design.md §3, §4.4)
-  // promises that operators saving credentials via /admin/settings take effect
-  // on the next pipeline job WITHOUT a worker restart. Caching the resolved
-  // deps for the lifetime of the worker would break that contract.
-  const buildPublishDeps = async (): Promise<PublishDeps> =>
-    options.publishDeps ?? (await buildDefaultPublishDeps());
+  // NOTE: run-process and publish deps are intentionally rebuilt PER JOB when
+  // not injected by a test/caller:
+  // - Notifiers embed credential values at construction time, and the design
+  //   (docs/plans/2026-05-19-admin-social-config-design.md §3, §4.4) promises
+  //   that operators saving credentials via /admin/settings take effect on
+  //   the next pipeline job WITHOUT a worker restart (S-pipeline-03).
+  // - P9 (REQ-061/064): repos must be scoped to the JOB's tenant
+  //   (job.data.tenantId), so a run's raw_items/run_archives/run_logs and a
+  //   publish's email_sends all carry the originating tenant_id.
+  const buildPublishDeps = async (
+    jobData: Record<string, unknown>,
+  ): Promise<PublishDeps> =>
+    options.publishDeps ?? (await buildDefaultPublishDeps(jobTenantContext(jobData)));
+
+  // P10 (REQ-065/067): Redis-backed limiters shared across worker processes —
+  // the run semaphore caps simultaneous full runs; the source limiter paces
+  // collector starts/pages per external source across concurrent tenant runs.
+  const runConcurrencyLimiter =
+    options.runConcurrencyLimiter ?? createRunConcurrencyLimiter(connection);
+  const sourceRateLimiter =
+    options.sourceRateLimiter ?? createSourceRateLimiter(connection);
 
   return new Worker<ProcessingJobData, unknown>(
     "processing",
@@ -150,7 +183,23 @@ export function createProcessingWorker(
             id: job.id,
             data: job.data as unknown as RunProcessJobData,
           };
-          return handleRunProcessJob(runProcessDeps, typed);
+          // REQ-065/EDGE-009: wait (queue) for a global slot — excess runs
+          // are delayed, never dropped; the slot frees on success OR failure.
+          const releaseRunSlot = await runConcurrencyLimiter.acquire(
+            typed.data.runId,
+          );
+          try {
+            const runProcessDeps =
+              options.runProcessDeps ??
+              (await buildDefaultRunProcessDeps(
+                connection,
+                typed.data,
+                sourceRateLimiter,
+              ));
+            return await handleRunProcessJob(runProcessDeps, typed);
+          } finally {
+            await releaseRunSlot();
+          }
         }
         case "daily-run":
         case "pipeline-run": {
@@ -163,31 +212,31 @@ export function createProcessingWorker(
           return undefined;
         }
         case "email-send": {
-          const publishDeps = await buildPublishDeps();
+          const publishDeps = await buildPublishDeps(job.data);
           const typed: EmailSendJobLike = {
             name: job.name,
             id: job.id,
-            data: job.data as { runId?: string },
+            data: job.data as { runId?: string; tenantId?: string },
           };
           await handleEmailSendJob(publishDeps, typed);
           return undefined;
         }
         case "linkedin-post": {
-          const publishDeps = await buildPublishDeps();
+          const publishDeps = await buildPublishDeps(job.data);
           const typed: LinkedInPostJobLike = {
             name: job.name,
             id: job.id,
-            data: job.data as { runId?: string },
+            data: job.data as { runId?: string; tenantId?: string },
           };
           await handleLinkedInPostJob(publishDeps, typed);
           return undefined;
         }
         case "twitter-post": {
-          const publishDeps = await buildPublishDeps();
+          const publishDeps = await buildPublishDeps(job.data);
           const typed: TwitterPostJobLike = {
             name: job.name,
             id: job.id,
-            data: job.data as { runId?: string },
+            data: job.data as { runId?: string; tenantId?: string },
           };
           await handleTwitterPostJob(publishDeps, typed);
           return undefined;
@@ -210,41 +259,60 @@ export function createProcessingWorker(
         }
       }
     },
-    { connection },
+    // Concurrency stays ABOVE the run cap (and never 1) so capped runs can
+    // parallelize while publish/health jobs keep flowing (P10, REQ-065).
+    { connection, concurrency: PROCESSING_WORKER_CONCURRENCY },
   );
 }
 
-function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
+async function buildDefaultRunProcessDeps(
+  connection: IORedis,
+  jobData: RunProcessJobData,
+  sourceRateLimiter?: SourceRateLimiter,
+): Promise<RunProcessDeps> {
   const db = getDb();
+  // Per-job tenant scope (P9, REQ-061/064): the job payload carries the
+  // originating tenant; legacy in-flight jobs (no tenantId) fall back to the
+  // AGENTLOOP bridge so no write can ever be unscoped.
+  const scope: TenantScope | undefined =
+    jobTenantContext(jobData) ?? (await primeDefaultTenantScope(db));
   const runState: RunStateService = createRunStateService(connection);
-  const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db);
-  const candidatesRepo: CandidatesRepo = createCandidatesRepo(db);
-  const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db);
-  const runLogRepo = createRunLogRepo(db);
-  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db);
+  const rawItemsRepo: RawItemsRepo = createRawItemsRepo(db, scope);
+  const candidatesRepo: CandidatesRepo = createCandidatesRepo(db, scope);
+  const archiveRepo: RunArchivesRepo = createRunArchivesRepo(db, scope);
+  const runLogRepo = createRunLogRepo(db, scope);
+  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db, scope);
   const loadFn: LoadCandidatesFn = loadCandidatesSince;
   // TAVILY_API_KEY resolved at worker startup. Env-driven only (no DB equivalent),
   // so process-startup resolution is correct — no per-job refresh needed.
   const webSearchProvider = process.env.TAVILY_API_KEY
     ? createWebSearchProvider("tavily", { tavilyApiKey: process.env.TAVILY_API_KEY })
     : undefined;
+  // Apify token resolver for Reddit (app-level, super-admin managed, no tenant scope).
+  // Lazy import keeps collector db-free (enforce-repository-access).
+  const { buildRedditResolveToken } = await import("@pipeline/lib/reddit-deps.js");
+  const redditResolveToken = await buildRedditResolveToken();
+
   const collectFns: CollectFns = {
     hn: collectHn,
-    reddit: collectReddit,
+    reddit: (deps, config) =>
+      collectReddit({ ...deps, resolveToken: redditResolveToken }, config),
     web: collectWeb,
     twitter: collectTwitter,
     webSearch: collectWebSearch,
   };
-  // Per-job factory: resolves cookies from `social_credentials.twitter_collector`
-  // first (admin-managed), falling back to RETTIWT_API_KEY env var. This is the
-  // freshness contract: admin saves at /admin/settings take effect on the next
-  // job without a worker restart. Rettiwt accepts an undefined apiKey (guest
-  // mode); the collector itself classifies the first auth failure as `auth`,
-  // which the Slack notice surfaces.
-  const credentialsRepo = getSharedSocialCredentialsRepo();
+  // Per-job factory: resolves the SHARED collector cookie from the app-level
+  // `app_credentials` store first (super-admin managed, P12 REQ-086), falling
+  // back to RETTIWT_API_KEY env var. This is the freshness contract: super
+  // admin saves take effect on the next job without a worker restart. Rettiwt
+  // accepts an undefined apiKey (guest mode); the collector itself classifies
+  // the first auth failure as `auth`, which the Slack notice surfaces. The
+  // cookie is app-level by design — never tenant-scoped, never exposed to
+  // tenant admins (D-051/S-pipeline-03).
+  const appCredentialsRepo = createAppCredentialsRepo(db, getCredentialCipher());
   const twitterClient = async (): Promise<TwitterClient> => {
     const cookie = await resolveTwitterCollectorCookie({
-      repo: credentialsRepo,
+      appRepo: appCredentialsRepo,
       env: process.env,
     });
     const rettiwt = new Rettiwt({ apiKey: cookie?.apiKey });
@@ -255,15 +323,26 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
             refreshCsrfToken: () =>
               refreshRettiwtCsrfToken({
                 rettiwt,
-                repo: credentialsRepo,
+                repo: appCredentialsRepo,
                 credentialSource: cookie.source,
               }),
           }
         : undefined,
     });
   };
+  // P16 (REQ-090/091): resolve the JOB tenant's notification channels —
+  // decrypting the stored webhook ciphertext per job, at send time (D-012);
+  // tenants without a webhook (and legacy jobs) fall back to the global
+  // SLACK_WEBHOOK_URL exactly as before this phase.
+  const notificationChannels = await resolveTenantNotificationChannels({
+    tenantsRepo: createPipelineTenantsRepo(db, scope),
+    cipher: getCredentialCipher(),
+    env: process.env,
+    logger: createLogger("tenant-notify"),
+  });
+  const notificationEmailSender = createNotificationEmailSender();
   const slackNotifier = createSlackNotifier({
-    webhookUrl: process.env.SLACK_WEBHOOK_URL,
+    webhookUrl: notificationChannels.slackWebhookUrl,
     archives: archiveRepo,
     resolveTopRankedTitle: async (archive) => {
       if (archive.rankedItems.length === 0) return null;
@@ -289,18 +368,29 @@ function buildDefaultRunProcessDeps(connection: IORedis): RunProcessDeps {
     cancelSubscriber: createCancelSubscriber(connection),
     twitterClient,
     slackNotifier,
+    notificationChannels,
+    notificationEmailSender,
+    errorAlerter: createErrorAlerter({
+      channels: notificationChannels,
+      emailSender: notificationEmailSender,
+      logger: createLogger("error-alerts"),
+    }),
     webSearchProvider,
+    sourceRateLimiter,
   };
 }
 
 function buildDefaultDailyRunDeps(connection: IORedis): DailyRunDeps {
   const db = getDb();
-  const userSettingsRepo: UserSettingsRepo = createUserSettingsRepo(db);
   const queue = new Queue<RunProcessJobPayload>("processing", { connection });
+  // Per-job repo factories (P9, REQ-061/073): the daily-run handler resolves
+  // the job's tenant context and asks for repos scoped to it.
   return {
     redis: connection,
     queue,
-    userSettingsRepo,
+    getUserSettingsRepo: (ctx?: TenantContext): UserSettingsRepo =>
+      createUserSettingsRepo(db, ctx),
+    getSourcesRepo: (ctx?: TenantContext) => createSourcesRepo(db, ctx),
   };
 }
 
@@ -363,14 +453,42 @@ function warnInvalidTwitterConfig(
   );
 }
 
-export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
+export async function buildDefaultPublishDeps(
+  jobScope?: TenantContext,
+): Promise<PublishDeps> {
   const db = getDb();
-  const archiveRepo = createRunArchivesRepo(db);
-  const rawItemsRepo = createRawItemsRepo(db);
-  const socialTokensRepo = getSharedSocialTokensRepo();
-  const socialCredentialsRepo = getSharedSocialCredentialsRepo();
+  // Rebuilt per job (see createProcessingWorker note). P9 (REQ-064, D-051):
+  // the job's tenant scope drives every repo — archive lookups, email_sends
+  // writes, and social credential/token resolution are all fenced to the
+  // originating tenant. Legacy jobs without a tenantId fall back to the
+  // single-tenant AGENTLOOP bridge so writes always stamp a concrete
+  // tenant_id even if the entrypoint prime was skipped.
+  const scope = jobScope ?? (await primeDefaultTenantScope(db));
+  const archiveRepo = createRunArchivesRepo(db, scope);
+  const rawItemsRepo = createRawItemsRepo(db, scope);
+  const socialTokensRepo = createSocialTokensRepo(
+    db,
+    getCredentialCipher(),
+    scope,
+  );
+  const socialCredentialsRepo = createSocialCredentialsRepo(
+    db,
+    getCredentialCipher(),
+    scope,
+  );
+  // App-level store (P12): the shared LinkedIn OAuth client is resolved from
+  // app_credentials, never from the tenant's rows (REQ-080/082).
+  const appCredentialsRepo = createAppCredentialsRepo(db, getCredentialCipher());
+  // P16 (REQ-090/091): publish-path Slack alerts (failures, posted/delivery
+  // notices) also route to the JOB tenant's webhook (global env fallback).
+  const publishNotificationChannels = await resolveTenantNotificationChannels({
+    tenantsRepo: createPipelineTenantsRepo(db, scope),
+    cipher: getCredentialCipher(),
+    env: process.env,
+    logger: createLogger("tenant-notify"),
+  });
   const slackNotifier = createSlackNotifier({
-    webhookUrl: process.env.SLACK_WEBHOOK_URL,
+    webhookUrl: publishNotificationChannels.slackWebhookUrl,
     archives: archiveRepo,
     resolveTopRankedTitle: async (archive) => {
       if (archive.rankedItems.length === 0) return null;
@@ -387,7 +505,7 @@ export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
     process.env.PUBLIC_BASE_URL ?? process.env.NEWSLETTER_BASE_URL ?? "";
 
   const linkedinCreds = await resolveLinkedInCredentials({
-    repo: socialCredentialsRepo,
+    appRepo: appCredentialsRepo,
     env: process.env,
   });
   const linkedinNotifier =
@@ -408,45 +526,81 @@ export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
       : null;
 
   const twitterLogger = createLogger("social.twitter");
-  const twitterCreds = await resolveTwitterOAuth1Credentials({
-    repo: socialCredentialsRepo,
+  const twitterConfig = {
+    publicArchiveBaseUrl,
+    twitterIsPremium: process.env.TWITTER_IS_PREMIUM === "true",
+  };
+  // P13 (REQ-081): per-tenant OAuth2 posting takes precedence. When the JOB's
+  // tenant has an OAuth2 token row (keyed (tenant_id,'twitter')) and the
+  // shared app client resolves, post with the tenant's tokens — refreshed
+  // under a FOR UPDATE lock inside the notifier. Tenants without an OAuth2
+  // connection fall back to the legacy OAuth1 manual posting keys.
+  let twitterNotifier: TwitterNotifier | null;
+  const twitterOAuth2Client = await resolveTwitterOAuth2Client({
+    appRepo: appCredentialsRepo,
     env: process.env,
   });
-  // Preserve the "partial env config" warning behavior when DB is empty:
-  // the resolver returns null on partial env, but operators expect a hint
-  // about which keys are missing. Only emit the warning when there's no DB row.
-  if (twitterCreds === null) {
-    const dbRow = await socialCredentialsRepo.getTwitter();
-    if (dbRow === null) {
-      const envConfig = readTwitterOAuth1Config();
-      if (envConfig.status === "partial") {
-        warnInvalidTwitterConfig(twitterLogger, envConfig.missing);
+  const tenantTwitterToken =
+    twitterOAuth2Client !== null
+      ? await socialTokensRepo.getToken("twitter")
+      : null;
+  if (twitterOAuth2Client !== null && tenantTwitterToken !== null) {
+    twitterNotifier = createTwitterNotifier({
+      oauth2: {
+        tokens: socialTokensRepo,
+        clientId: twitterOAuth2Client.clientId,
+        clientSecret: twitterOAuth2Client.clientSecret,
+      },
+      archives: archiveRepo,
+      rawItems: rawItemsRepo,
+      config: twitterConfig,
+      logger: twitterLogger,
+    });
+  } else {
+    const twitterCreds = await resolveTwitterOAuth1Credentials({
+      repo: socialCredentialsRepo,
+      env: process.env,
+    });
+    // Preserve the "partial env config" warning behavior when DB is empty:
+    // the resolver returns null on partial env, but operators expect a hint
+    // about which keys are missing. Only emit the warning when there's no DB row.
+    if (twitterCreds === null) {
+      const dbRow = await socialCredentialsRepo.getTwitter();
+      if (dbRow === null) {
+        const envConfig = readTwitterOAuth1Config();
+        if (envConfig.status === "partial") {
+          warnInvalidTwitterConfig(twitterLogger, envConfig.missing);
+        }
       }
     }
+    twitterNotifier =
+      twitterCreds !== null
+        ? createTwitterNotifier({
+            apiClient: createTwitterApiClient({
+              appKey: twitterCreds.appKey,
+              appSecret: twitterCreds.appSecret,
+              accessToken: twitterCreds.accessToken,
+              accessSecret: twitterCreds.accessSecret,
+            }),
+            archives: archiveRepo,
+            rawItems: rawItemsRepo,
+            config: twitterConfig,
+            logger: twitterLogger,
+          })
+        : null;
   }
-  const twitterNotifier =
-    twitterCreds !== null
-      ? createTwitterNotifier({
-          apiClient: createTwitterApiClient({
-            appKey: twitterCreds.appKey,
-            appSecret: twitterCreds.appSecret,
-            accessToken: twitterCreds.accessToken,
-            accessSecret: twitterCreds.accessSecret,
-          }),
-          archives: archiveRepo,
-          rawItems: rawItemsRepo,
-          config: {
-            publicArchiveBaseUrl,
-            twitterIsPremium: process.env.TWITTER_IS_PREMIUM === "true",
-          },
-          logger: twitterLogger,
-        })
-      : null;
 
   return {
     emailProvider: createEmailProvider(),
-    subscribersRepo: createPipelineSubscribersRepo(db),
-    emailSendsRepo: createPipelineEmailSendsRepo(db),
+    createSmtpProvider,
+    subscribersRepo: createPipelineSubscribersRepo(db, scope),
+    // P14 (REQ-053): always provided in production — the broadcast gate is
+    // active, blocking the subscriber broadcast until the job tenant's
+    // sending domain is verified (EDGE-006). NOTE (ops): existing tenants
+    // (incl. tenant-0/AGENTLOOP) must register+verify their domain via
+    // /admin/settings before their next scheduled broadcast.
+    tenantsRepo: createPipelineTenantsRepo(db, scope),
+    emailSendsRepo: createPipelineEmailSendsRepo(db, scope),
     archiveRepo,
     rawItemsRepo,
     userSettingsRepo: createUserSettingsRepo(db),
@@ -455,6 +609,7 @@ export async function buildDefaultPublishDeps(): Promise<PublishDeps> {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     sessionSecret: process.env.SESSION_SECRET!,
     fromMail: process.env.FROM_MAIL ?? "newsletter@news.vertexcover.io",
+    managedEmailDomain: process.env.MANAGED_EMAIL_DOMAIN ?? "news.vertexcover.io",
     replyToEmail: process.env.NEWSLETTER_REPLY_TO_EMAIL,
     baseUrl: process.env.NEWSLETTER_BASE_URL ?? "https://newsletter.vertexcover.io",
     slackNotifier,
@@ -480,18 +635,4 @@ function buildDefaultSocialHealthDeps(): SocialHealthDeps {
   };
 }
 
-let cachedSocialTokensRepo: SocialTokensRepo | undefined;
-function getSharedSocialTokensRepo(): SocialTokensRepo {
-  cachedSocialTokensRepo ??= createSocialTokensRepo(getDb(), getCredentialCipher());
-  return cachedSocialTokensRepo;
-}
-
-let cachedSocialCredentialsRepo: SocialCredentialsRepo | undefined;
-function getSharedSocialCredentialsRepo(): SocialCredentialsRepo {
-  cachedSocialCredentialsRepo ??= createSocialCredentialsRepo(
-    getDb(),
-    getCredentialCipher(),
-  );
-  return cachedSocialCredentialsRepo;
-}
 

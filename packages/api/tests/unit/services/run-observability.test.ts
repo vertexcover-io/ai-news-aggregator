@@ -137,6 +137,41 @@ function makeArchiveRow(overrides: Partial<RunArchiveRow> = {}): RunArchiveRow {
 }
 
 describe("buildRunObservability", () => {
+  const TENANT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const TENANT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  it("test_REQ_013_observability_tenant_fence: another tenant's live state reads as not-found", async () => {
+    await expect(
+      buildRunObservability(RUN_ID, {
+        redis: makeRedis({ ...liveRunState, tenantId: TENANT_B }),
+        archiveRepo: makeArchiveRepo(null),
+        runLogRepo: makeLogRepo([]),
+        requesterScope: { tenantId: TENANT_A, role: "tenant_admin" },
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("test_REQ_013_observability_tenant_fence: the owning tenant still sees its live state", async () => {
+    const result = await buildRunObservability(RUN_ID, {
+      redis: makeRedis({ ...liveRunState, tenantId: TENANT_A }),
+      archiveRepo: makeArchiveRepo(null),
+      runLogRepo: makeLogRepo([]),
+      requesterScope: { tenantId: TENANT_A, role: "tenant_admin" },
+    });
+    expect(result.live).toBe(true);
+    expect(result.run.status).toBe("running");
+  });
+
+  it("test_REQ_013_observability_tenant_fence: legacy states without tenantId stay readable (grandfathered)", async () => {
+    const result = await buildRunObservability(RUN_ID, {
+      redis: makeRedis(liveRunState),
+      archiveRepo: makeArchiveRepo(null),
+      runLogRepo: makeLogRepo([]),
+      requesterScope: { tenantId: TENANT_A, role: "tenant_admin" },
+    });
+    expect(result.live).toBe(true);
+  });
+
   it("REQ-024: throws NotFoundError when both run-state and archive are null", async () => {
     await expect(
       buildRunObservability(RUN_ID, {

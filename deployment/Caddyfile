@@ -1,16 +1,46 @@
-# Caddy reverse proxy for the newsletter app.
+# Caddy reverse proxy for the (multi-tenant) newsletter app.
 # - `/api/*` proxies to the api container on the loopback interface.
 # - The root-served llm.txt files (`/llms.txt`, `/llms-full.txt`) are produced by
 #   the API, not the SPA, so they need explicit proxy rules — otherwise they fall
 #   through to the static React build and return the index.html SPA shell.
 # - Everything else is served from the static React build at /var/www/newsletter/web.
-# - TLS is obtained automatically from Let's Encrypt on first startup.
+# - The SAME static SPA + API serve every host; the API resolves the tenant from
+#   the inbound Host header (`<slug>.<root>` → tenant by slug; `app.<root>` →
+#   admin/signup; a mapped custom domain → its tenant). Caddy's reverse_proxy
+#   preserves the inbound Host by default, so no header rewriting is needed.
+#
+# Site addresses come from env (rendered into /etc/newsletter/.env by the deploy
+# workflow; Caddy reads them as {$VAR}):
+#   ROOT_DOMAIN  e.g. agentloop.live  → serves `*.<root>` (tenant sites) + the apex
+#   APP_HOST     e.g. app.agentloop.live → admin/signup surface
+#
+# TLS:
+# - `app.<root>` and any single custom domain get certs via the normal HTTP-01
+#   challenge automatically.
+# - `*.<root>` (wildcard) REQUIRES the DNS-01 challenge, which needs a Caddy
+#   build that includes your DNS provider's module plus an API token. See
+#   deployment/README.md → "Multi-tenant subdomains". Until that is configured,
+#   the wildcard site block will fail to obtain a cert.
+# - Tenant CUSTOM web domains (Fix #3, Phase C) use On-Demand TLS: Caddy mints a
+#   cert at first request for ANY host the `ask` endpoint approves. The API
+#   only approves a host that is a VERIFIED tenant custom domain
+#   (GET /internal/tls-allow?domain=…), which is the abuse / Let's-Encrypt
+#   rate-limit guard. Tenants point a CNAME (subdomain) or A record (apex) at
+#   our ingress; the API's web-domain verify flow flips the domain to verified.
 
-agentloop.vertexcover.io {
+# On-Demand TLS: ask the API before issuing a cert for an unknown host.
+{
+	on_demand_tls {
+		ask http://127.0.0.1:3000/internal/tls-allow
+	}
+}
+
+# Shared handlers for every tenant-facing host.
+(newsletter_site) {
 	encode zstd gzip
 
 	log {
-		output file /var/log/caddy/agentloop.log {
+		output file /var/log/caddy/newsletter.log {
 			roll_size 10mb
 			roll_keep 5
 		}
@@ -47,4 +77,34 @@ agentloop.vertexcover.io {
 		try_files {path} /index.html
 		file_server
 	}
+}
+
+# Tenant public sites (`<slug>.<root>`) + the bare apex.
+*.{$ROOT_DOMAIN}, {$ROOT_DOMAIN} {
+	# Wildcard cert via DNS-01 — uncomment and configure your provider module:
+	#   tls {
+	#     dns <provider> {$CADDY_DNS_API_TOKEN}
+	#   }
+	import newsletter_site
+}
+
+# Admin / signup surface.
+{$APP_HOST} {
+	import newsletter_site
+}
+
+# Legacy/custom domain kept reachable during cutover. The API maps it to a
+# tenant via CUSTOM_DOMAIN_MAP (e.g. agentloop.vertexcover.io=agentloop).
+agentloop.vertexcover.io {
+	import newsletter_site
+}
+
+# Tenant-registered custom web domains (Fix #3, Phase C). This catch-all
+# matches any host NOT matched above; On-Demand TLS gates cert issuance on the
+# `ask` endpoint, so only verified tenant domains get a cert + are served.
+https:// {
+	tls {
+		on_demand
+	}
+	import newsletter_site
 }

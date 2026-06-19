@@ -1,5 +1,5 @@
 import { createLogger } from "@newsletter/shared/logger";
-import type { SocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
+import type { AppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
 import { AuthService } from "rettiwt-api/dist/services/internal/AuthService.js";
 import { RettiwtConfig } from "rettiwt-api/dist/models/RettiwtConfig.js";
 
@@ -9,7 +9,8 @@ export interface RettiwtApiKeyHolder {
 
 export interface RettiwtCsrfRefreshDeps {
   rettiwt: RettiwtApiKeyHolder;
-  repo: Pick<SocialCredentialsRepo, "upsertTwitterCollector">;
+  /** Shared collector cookie lives in the app-level store (P12, REQ-086). */
+  repo: Pick<AppCredentialsRepo, "upsertTwitterCollector">;
   credentialSource: "db" | "env";
 }
 

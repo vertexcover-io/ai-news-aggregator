@@ -14,9 +14,11 @@ config({ path: resolve(REPO_ROOT, ".env") });
 
 const { getDb } = await import("@newsletter/shared/db");
 const { createMustReadRepo } = await import("@api/repositories/must-read.js");
+const { ensureE2eTenant } = await import("./helpers/tenant.js");
 
 const db = getDb();
-const repo = createMustReadRepo(db);
+const tenantCtx = await ensureE2eTenant();
+const repo = createMustReadRepo(db, tenantCtx);
 
 const URL_PREFIX = `https://must-read-repo.example.com/`;
 

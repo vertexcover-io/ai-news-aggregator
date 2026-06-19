@@ -1,151 +1,191 @@
 /**
- * E2E suite: Chrome extension popup flows — Phase 4
+ * E2E suite: Chrome extension popup flows — multi-tenant.
  *
- * Loads the unpacked extension in a persistent Chrome for Testing context.
- * Drives the login view and add-current-tab flows against a hermetic API
- * (ephemeral Postgres + Redis provisioned by run-e2e.mjs).
+ * Loads the unpacked extension in a persistent Chrome for Testing context and
+ * drives login + add-current-tab against a hermetic API (ephemeral Postgres +
+ * Redis from run-e2e.mjs). Two tenant_admins are seeded via the signup API so
+ * the suite can prove per-tenant stamping AND cross-tenant isolation.
  *
- * Covers: REQ-011, REQ-012, REQ-013, REQ-015, EDGE-003, EDGE-006 (VS-1, VS-2)
+ * Covers: login (email+password), tenant-stamped submission, per-tenant dedupe,
+ * cross-tenant isolation, stale-token 401, deterministic id.
  */
-import { test, expect, EXPECTED_EXTENSION_ID, ADMIN_PASSWORD, queryRawItems, countRawItemsByUrl } from "./fixtures";
+import type { Page } from "@playwright/test";
+import {
+  test,
+  expect,
+  EXPECTED_EXTENSION_ID,
+  queryRawItems,
+  countRawItemsByUrl,
+  signupTenant,
+  getTenantIdForEmail,
+} from "./fixtures";
 
+const PASSWORD = "Password123!";
 const WRONG_PASSWORD = "wrong-password-for-test";
+
+const TENANT_A = { email: "a-admin@e2e.test", name: "Tenant A" };
+const TENANT_B = { email: "b-admin@e2e.test", name: "Tenant B" };
+
 const TEST_URL = "https://example.com/test-article-e2e";
 
-test.describe("VS-1: Login flow (REQ-011)", () => {
-  test("test_REQ_011_login_view_when_no_token — no token → login view shown; wrong password → inline error; correct password → AddView", async ({
+test.beforeAll(async () => {
+  await signupTenant(TENANT_A.email, PASSWORD, TENANT_A.name);
+  await signupTenant(TENANT_B.email, PASSWORD, TENANT_B.name);
+});
+
+/** Ensure the popup is logged in as `email`: logs out first if already in AddView. */
+async function loginAs(page: Page, extensionId: string, email: string): Promise<void> {
+  await page.goto(`chrome-extension://${extensionId}/index.html`);
+  const inAddView = await page
+    .getByRole("heading", { name: "Add a Story" })
+    .isVisible()
+    .catch(() => false);
+  if (inAddView) {
+    await page.getByRole("button", { name: "Log out" }).first().click();
+  }
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Add a Story" })).toBeVisible({
+    timeout: 10_000,
+  });
+}
+
+test.describe("Login flow", () => {
+  test("no token → login view; wrong password → inline error; correct → AddView", async ({
     context,
     extensionId,
   }) => {
     const page = await context.newPage();
-
-    // Navigate to popup — no token stored yet.
     await page.goto(`chrome-extension://${extensionId}/index.html`);
 
-    // Login view must be visible.
-    await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(page.getByLabel("Email")).toBeVisible();
     await expect(page.getByLabel("Password")).toBeVisible();
-    // AddView must NOT be present.
-    await expect(page.getByRole("heading", { name: "Add a Story" })).not.toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Add a Story" }),
+    ).not.toBeVisible();
 
-    // Submit wrong password → inline error, still on login view.
+    await page.getByLabel("Email").fill(TENANT_A.email);
     await page.getByLabel("Password").fill(WRONG_PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByRole("alert")).toContainText("Incorrect password");
-    await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText("Incorrect email or password");
 
-    // Submit correct password → AddView shown.
-    await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+    await page.getByLabel("Password").fill(PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByRole("heading", { name: "Add a Story" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: "Add a Story" })).toBeVisible({
+      timeout: 10_000,
+    });
 
     await page.close();
   });
 });
 
-test.describe("VS-2: Add-current-tab flow (REQ-012, REQ-013, EDGE-003)", () => {
-  test("test_REQ_012_addview_prefills_active_tab + test_REQ_013_add_page_submits_and_succeeds — logged in popup shows AddView, URL field editable, submit succeeds, DB row created", async ({
+test.describe("Tenant-stamped submission + per-tenant dedupe", () => {
+  test("add page → exactly one manual row stamped with the submitter's tenant", async ({
     context,
     extensionId,
   }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/index.html`);
+    await loginAs(page, extensionId, TENANT_A.email);
 
-    // Login first.
-    await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
-    await page.getByLabel("Password").fill(ADMIN_PASSWORD);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByRole("heading", { name: "Add a Story" })).toBeVisible({ timeout: 10_000 });
-
-    // In headless, active tab may be about:blank — override the URL field directly.
     const urlInput = page.getByLabel("URL");
     await urlInput.fill(TEST_URL);
-    await expect(urlInput).toHaveValue(TEST_URL);
-
-    // Submit.
     await page.getByRole("button", { name: "Add this page" }).click();
-
-    // Success state shown (REQ-013).
     await expect(page.getByText(/Added to the next issue/i)).toBeVisible({
       timeout: 15_000,
     });
 
-    // DB assertion: exactly one raw_items row with source_type='manual' and that URL.
+    const tenantA = await getTenantIdForEmail(TENANT_A.email);
+    expect(tenantA).not.toBeNull();
+
     const rows = await queryRawItems(TEST_URL);
     expect(rows).toHaveLength(1);
     expect(rows[0].source_type).toBe("manual");
     expect(rows[0].url).toBe(TEST_URL);
+    expect(rows[0].tenant_id).toBe(tenantA);
 
     await page.close();
   });
 
-  test("test_REQ_006_dedupe — same URL submitted again → alreadyExisted, DB count stays 1 (EDGE-003)", async ({
+  test("same URL, same tenant again → alreadyExisted, count stays 1", async ({
     context,
     extensionId,
   }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/index.html`);
+    await loginAs(page, extensionId, TENANT_A.email);
 
-    // Login (token from previous test may have been cleared by context; re-login).
-    const loginHeading = page.getByRole("heading", { name: "Admin" });
-    const isLogin = await loginHeading.isVisible().catch(() => false);
-    if (isLogin) {
-      await page.getByLabel("Password").fill(ADMIN_PASSWORD);
-      await page.getByRole("button", { name: "Sign in" }).click();
-      await expect(page.getByRole("heading", { name: "Add a Story" })).toBeVisible({ timeout: 10_000 });
-    }
-
-    // Submit the same URL again.
-    const urlInput = page.getByLabel("URL");
-    await urlInput.fill(TEST_URL);
+    await page.getByLabel("URL").fill(TEST_URL);
     await page.getByRole("button", { name: "Add this page" }).click();
-
-    // Should show alreadyExisted message.
-    await expect(page.getByText(/Already in the queue/i)).toBeVisible({ timeout: 15_000 });
-
-    // DB count for that URL must still be exactly 1.
-    const count = await countRawItemsByUrl(TEST_URL);
-    expect(count).toBe(1);
-
-    await page.close();
-  });
-});
-
-test.describe("EDGE-006: Stale token handling", () => {
-  test("test_EDGE_006_stale_token_returns_to_login — invalid stored token → submit → returns to login view", async ({
-    context,
-    extensionId,
-  }) => {
-    const page = await context.newPage();
-
-    // Navigate to an extension page to manipulate chrome.storage via evaluate.
-    await page.goto(`chrome-extension://${extensionId}/index.html`);
-
-    // Inject a bogus token directly into chrome.storage.local.
-    await page.evaluate(() => {
-      return chrome.storage.local.set({ ext_token: "invalid.bogus.token.that.will.be.rejected" });
+    await expect(page.getByText(/Already in the queue/i)).toBeVisible({
+      timeout: 15_000,
     });
 
-    // Reload so the App reads the injected token and shows AddView.
-    await page.reload();
-    await expect(page.getByRole("heading", { name: "Add a Story" })).toBeVisible({ timeout: 10_000 });
+    expect(await countRawItemsByUrl(TEST_URL)).toBe(1);
+    await page.close();
+  });
+});
 
-    // Submit with the stale token — API will return 401.
-    const urlInput = page.getByLabel("URL");
-    await urlInput.fill("https://example.com/stale-token-test");
+test.describe("Cross-tenant isolation", () => {
+  test("a second tenant submitting the same URL creates its OWN row (not a dedupe)", async ({
+    context,
+    extensionId,
+  }) => {
+    const page = await context.newPage();
+    await loginAs(page, extensionId, TENANT_B.email);
+
+    await page.getByLabel("URL").fill(TEST_URL);
     await page.getByRole("button", { name: "Add this page" }).click();
+    // Per-tenant dedupe: tenant B has never seen this URL → a fresh add.
+    await expect(page.getByText(/Added to the next issue/i)).toBeVisible({
+      timeout: 15_000,
+    });
 
-    // Extension should clear the token and return to login view.
-    await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible({ timeout: 15_000 });
+    const tenantA = await getTenantIdForEmail(TENANT_A.email);
+    const tenantB = await getTenantIdForEmail(TENANT_B.email);
+    expect(tenantA).not.toBe(tenantB);
+
+    const rows = await queryRawItems(TEST_URL);
+    // Now exactly two rows for the same URL — one per tenant, isolated.
+    expect(rows).toHaveLength(2);
+    const tenantIds = rows.map((r) => r.tenant_id).sort();
+    expect(tenantIds).toEqual([tenantA, tenantB].sort());
 
     await page.close();
   });
 });
 
-test.describe("REQ-015: Deterministic extension ID", () => {
-  test("test_REQ_015_deterministic_extension_id — derived extension ID matches manifest key", ({
+test.describe("Stale token handling", () => {
+  test("invalid stored token → submit → 401 → returns to login view", async ({
+    context,
     extensionId,
   }) => {
+    const page = await context.newPage();
+    await page.goto(`chrome-extension://${extensionId}/index.html`);
+
+    await page.evaluate(() =>
+      chrome.storage.local.set({
+        ext_token: "invalid.bogus-token-that-will-be-rejected",
+      }),
+    );
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Add a Story" })).toBeVisible({
+      timeout: 10_000,
+    });
+
+    await page.getByLabel("URL").fill("https://example.com/stale-token-test");
+    await page.getByRole("button", { name: "Add this page" }).click();
+
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.close();
+  });
+});
+
+test.describe("Deterministic extension ID", () => {
+  test("derived extension ID matches the manifest key", ({ extensionId }) => {
     expect(extensionId).toBe(EXPECTED_EXTENSION_ID);
   });
 });

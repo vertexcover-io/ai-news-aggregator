@@ -1,7 +1,13 @@
 # `newsletter/enforce-repository-access`
 
-Value imports of `@newsletter/shared/db` and `drizzle-orm` are only allowed
-inside repository modules. Type-only imports are allowed everywhere.
+Two checks share this rule:
+
+1. **Import boundary** — value imports of `@newsletter/shared/db` and
+   `drizzle-orm` are only allowed inside repository modules. Type-only
+   imports are allowed everywhere.
+2. **Tenant-scope guard (REQ-014)** — inside repository modules, every
+   query-builder call against a tenant-owned table must carry a tenant
+   predicate (or use the explicit `withAllTenants()` escape hatch).
 
 ## Rationale
 
@@ -145,6 +151,79 @@ The rule explicitly allows:
 4. Any import whose source is not `@newsletter/shared/db`,
    `@newsletter/shared/db/*`, `drizzle-orm`, or `drizzle-orm/*` — this rule
    only targets the two restricted sources.
+
+## Tenant-scope guard (`tenantScopeRequired`)
+
+Multi-tenancy isolates the 14 tenant-owned tables (`raw_items`,
+`run_archives`, `run_logs`, `review_edits`, `email_sends`, `subscribers`,
+`feedback_events`, `ses_events`, `eval_runs`, `must_read_entries`,
+`user_settings`, `social_credentials`, `social_tokens`, `sources`) by a `tenant_id`
+column. Repositories must route every read/write predicate through the
+`tenantScoped(...)` helper (and stamp inserts via `scopedTenantId(...)`),
+both exported from `@newsletter/shared/db`.
+
+### How it checks
+
+The rule looks at `*.from(table)`, `*.insert(table)`, `*.update(table)`,
+and `*.delete(table)` calls in `repositories/**` files where `table` is one
+of the tenant-owned schema identifiers above. The **enclosing function**
+must lexically contain one of the recognized markers:
+
+- `tenantScoped(` — the canonical predicate seam
+- `scopedTenantId(` — insert stamping
+- `withAllTenants(` — the audited super-admin cross-tenant escape hatch
+  (throws for any non-`super_admin` role; only `requireSuperAdmin` paths
+  may construct it)
+- `systemScope(` — the audited server-side cross-tenant escape hatch for
+  trusted flows with no user session (e.g. the SNS webhook, which only
+  reaches repository code after AWS SNS signature verification); only
+  server bootstrap wiring may construct it
+- a bare `tenantId` reference — covers hand-rolled
+  `eq(table.tenantId, ...)` predicates
+
+Heuristic, by design: function-level granularity tolerates predicates
+assembled across several statements while staying auditable. Raw
+``db.execute(sql`...`)`` queries are **not** covered — those must embed the
+tenant predicate manually (grep for `tenantSql` in
+`packages/api/src/repositories/run-archives.ts` for the pattern).
+
+### Allowlist
+
+`users` and `tenants` are platform-level tables (login-by-email lookup,
+tenant CRUD) and are deliberately absent from the tenant-owned list — no
+tenant predicate is required for them.
+
+### Valid
+
+```ts
+// packages/api/src/repositories/must-read.ts
+import { eq } from "drizzle-orm";
+import { mustReadEntries, tenantScoped } from "@newsletter/shared/db";
+
+export function findById(db: Db, ctx: TenantScope | undefined, id: string) {
+  return db
+    .select()
+    .from(mustReadEntries)
+    .where(tenantScoped(mustReadEntries.tenantId, ctx, eq(mustReadEntries.id, id)))
+    .limit(1);
+}
+```
+
+### Invalid
+
+```ts
+// packages/api/src/repositories/must-read.ts
+import { eq } from "drizzle-orm";
+import { mustReadEntries } from "@newsletter/shared/db";
+
+export function findById(db: Db, id: string) {
+  return db
+    .select()
+    .from(mustReadEntries)
+    .where(eq(mustReadEntries.id, id)) // => tenantScopeRequired
+    .limit(1);
+}
+```
 
 ## When to disable
 

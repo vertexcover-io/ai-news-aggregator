@@ -10,15 +10,20 @@
  * confusing.
  */
 import { createLogger } from "@newsletter/shared/logger";
-import type { SocialCredentialsRepo } from "@api/repositories/social-credentials.js";
+import type { AppCredentialsRepo } from "@api/repositories/app-credentials.js";
 
 export interface LinkedInClientCreds {
   clientId: string;
   clientSecret: string;
 }
 
+/**
+ * P12 (REQ-080/082): the LinkedIn OAuth client is an APP-LEVEL shared secret
+ * — resolved from the super-admin `app_credentials` store, never from any
+ * tenant's rows.
+ */
 export interface ResolveLinkedInClientDeps {
-  repo: SocialCredentialsRepo;
+  repo: Pick<AppCredentialsRepo, "getLinkedInClient">;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -33,7 +38,7 @@ export async function resolveLinkedInClient(
 ): Promise<LinkedInClientCreds | null> {
   // DB-first.
   try {
-    const record = await deps.repo.getLinkedIn();
+    const record = await deps.repo.getLinkedInClient();
     if (record !== null) {
       return { clientId: record.clientId, clientSecret: record.clientSecret };
     }

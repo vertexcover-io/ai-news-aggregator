@@ -19,10 +19,12 @@ const { createRunArchivesRepo } = await import(
   "@api/repositories/run-archives.js"
 );
 const { createRawItemsRepo } = await import("@api/repositories/raw-items.js");
+const { ensureE2eTenant } = await import("./helpers/tenant.js");
 
 const db = getDb();
-const repo = createRunArchivesRepo(db);
-const rawRepo = createRawItemsRepo(db);
+const tenantCtx = await ensureE2eTenant();
+const repo = createRunArchivesRepo(db, tenantCtx);
+const rawRepo = createRawItemsRepo(db, tenantCtx);
 
 const seedRunId = "22222222-2222-2222-2222-222222222222";
 const seedExternalIdA = `phase3-search-A-${Date.now()}`;
@@ -39,6 +41,7 @@ beforeAll(async () => {
   const [{ id: idA }] = await db
     .insert(rawItems)
     .values({
+      tenantId: tenantCtx.tenantId,
       sourceType: "hn",
       externalId: seedExternalIdA,
       title: "Quantum Cromulence in Café Society",
@@ -61,6 +64,7 @@ beforeAll(async () => {
   const [{ id: idB }] = await db
     .insert(rawItems)
     .values({
+      tenantId: tenantCtx.tenantId,
       sourceType: "reddit",
       externalId: seedExternalIdB,
       title: "REMOVED_ITEM_TITLE_TOKEN",
@@ -82,6 +86,7 @@ beforeAll(async () => {
 
   await db.insert(runArchives).values({
     id: seedRunId,
+    tenantId: tenantCtx.tenantId,
     status: "completed",
     rankedItems: [],
     topN: 2,

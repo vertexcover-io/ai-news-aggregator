@@ -54,6 +54,9 @@ jobs:
 
   build-web:
     runs-on: ubuntu-latest
+    # Needs the production environment to read ROOT_DOMAIN / APP_HOST, which the
+    # web bundle bakes in (VITE_*) for host-surface routing + the slug preview.
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +74,12 @@ jobs:
       - run: pnpm --filter @newsletter/shared build
 
       - run: pnpm --filter @newsletter/web build
+        env:
+          # Baked into the bundle: host-surface routing (apex / app.<root> →
+          # product landing; <slug>.<root> / custom domains → tenant newsletter)
+          # and the onboarding slug preview (`<slug>.<root>`).
+          VITE_PUBLIC_ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
+          VITE_APP_HOST: ${{ secrets.APP_HOST }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -119,9 +128,13 @@ jobs:
           JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
           RANKING_MODEL: ${{ secrets.RANKING_MODEL }}
           WEB_CRAWLER_CONCURRENCY: ${{ secrets.WEB_CRAWLER_CONCURRENCY }}
+          WEB_PROXY_URL: ${{ secrets.WEB_PROXY_URL }}
           RETTIWT_API_KEY: ${{ secrets.RETTIWT_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           API_PORT: ${{ secrets.API_PORT }}
+          ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
+          APP_HOST: ${{ secrets.APP_HOST }}
+          CUSTOM_DOMAIN_MAP: ${{ secrets.CUSTOM_DOMAIN_MAP }}
           PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL }}
           NEWSLETTER_BASE_URL: ${{ secrets.NEWSLETTER_BASE_URL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
@@ -161,6 +174,8 @@ jobs:
               "RETTIWT_API_KEY",
               "TAVILY_API_KEY",
               "API_PORT",
+              "ROOT_DOMAIN",
+              "APP_HOST",
               "PUBLIC_BASE_URL",
               "NEWSLETTER_BASE_URL",
               "ADMIN_PASSWORD",
@@ -172,7 +187,9 @@ jobs:
               "GHCR_TOKEN",
           ]
           optional = [
+              "CUSTOM_DOMAIN_MAP",
               "WEB_CRAWLER_CONCURRENCY",
+              "WEB_PROXY_URL",
               "NEWSLETTER_REPLY_TO_EMAIL",
               "SLACK_WEBHOOK_URL",
               "LINKEDIN_CLIENT_ID",

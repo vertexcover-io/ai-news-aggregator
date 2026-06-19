@@ -26,7 +26,9 @@ vi.mock("@newsletter/shared/logger", () => ({
   }),
 }));
 
-const SINGLE_FEED: HnCollectConfig = { feeds: ["newest"] };
+// FIX #5: HN has no default keywords — every config that should collect must
+// carry explicit keywords (configured via the Settings panel).
+const SINGLE_FEED: HnCollectConfig = { feeds: ["newest"], keywords: ["AI"] };
 
 type MockUpsertFn = ReturnType<typeof vi.fn<[items: RawItemInsert[]], Promise<void>>>;
 
@@ -91,14 +93,38 @@ describe("collectHn", () => {
     collectHn = mod.collectHn as CollectHnFn;
   });
 
-  // REQ-002, REQ-010: URL construction with default config
-  it("builds the Algolia search_by_date URL with default keywords and threshold", async () => {
+  // FIX #5: HN has no default keywords. A config with no keywords collects
+  // nothing (rather than silently searching the old AI/LLM/GPT defaults) — HN
+  // must be configured with keywords in the Settings panel.
+  it("skips collection and stores nothing when no keywords are configured", async () => {
     const mockFetch = createMockFetch([
       storiesResponse(emptyAlgoliaResponse),
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
+    const result = await collectHn(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { feeds: ["newest"] },
+    );
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.itemsFetched).toBe(0);
+    expect(result.itemsStored).toBe(0);
+    expect(rawItemsRepo.upsertItems).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  // REQ-002, REQ-010: URL construction from the configured keywords + threshold
+  it("builds the Algolia search_by_date URL from the configured keywords and threshold", async () => {
+    const mockFetch = createMockFetch([
+      storiesResponse(emptyAlgoliaResponse),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    await collectHn(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { feeds: ["newest"], keywords: ["AI", "LLM", "GPT", "machine learning"] },
+    );
 
     const url = mockFetch.mock.calls[0][0];
     expect(url).toContain("https://hn.algolia.com/api/v1/search_by_date");
@@ -142,11 +168,97 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, { feeds: ["newest", "best"] });
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, { feeds: ["newest", "best"], keywords: ["AI"] });
 
     expect(mockFetch.mock.calls[0][0]).toContain("/api/v1/search_by_date");
     expect(mockFetch.mock.calls[1][0]).toContain("/api/v1/search?");
     expect(mockFetch.mock.calls[1][0]).not.toContain("/search_by_date");
+  });
+
+  // Bug fix: the Algolia relevance index (/search, used by the "best" feed)
+  // rejects numericFilters on `points` (400 invalid numeric attribute). Omit
+  // it there but keep the time-window filter; newest (/search_by_date) keeps
+  // the points filter, which that index supports.
+  it("omits the points numericFilter on the best feed but keeps it on newest", async () => {
+    const mockFetch = createMockFetch([
+      storiesResponse(emptyAlgoliaResponse),
+      storiesResponse(emptyAlgoliaResponse),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    await collectHn(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { feeds: ["newest", "best"], keywords: ["AI"], sinceDays: 2, commentsPerItem: 0 },
+    );
+
+    const newestUrl = decodeURIComponent(mockFetch.mock.calls[0][0]);
+    const bestUrl = decodeURIComponent(mockFetch.mock.calls[1][0]);
+    expect(newestUrl).toContain("points>20");
+    expect(bestUrl).not.toContain("points>");
+    expect(bestUrl).toContain("created_at_i>");
+  });
+
+  // Resilience: one feed failing must NOT fail the whole collector — the
+  // surviving feed's items are still returned and the failed feed is recorded.
+  it("degrades to the surviving feed when one feed fails", async () => {
+    const mockFetch = createMockFetch([
+      storiesResponse(),
+      { ok: false, status: 400, body: { message: "invalid numeric attribute(points)" }, text: "bad" },
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    const result = await collectHn(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { feeds: ["newest", "best"], keywords: ["AI"], commentsPerItem: 0 },
+    );
+
+    expect(result.itemsStored).toBe(3);
+    const newest = result.unitResults?.find((u) => u.identifier === "hn:newest");
+    const best = result.unitResults?.find((u) => u.identifier === "hn:best");
+    expect(newest?.status).toBe("completed");
+    expect(best?.status).toBe("failed");
+    expect(best?.errors[0]).toContain("400");
+  });
+
+  // Boundary: if EVERY feed fails the collector throws so the source is
+  // marked failed (the run still tolerates this via its other sources).
+  it("throws when all feeds fail", async () => {
+    // 403 is a permanent status → fails fast (no retry/backoff delays).
+    const mockFetch = createMockFetch([
+      { ok: false, status: 403, body: {}, text: "" },
+      { ok: false, status: 403, body: {}, text: "" },
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    await expect(
+      collectHn(
+        { rawItemsRepo, fetchFn: mockFetch },
+        { feeds: ["newest", "best"], keywords: ["AI"], commentsPerItem: 0 },
+      ),
+    ).rejects.toThrow(/all HN feeds failed/i);
+  });
+
+  // The best feed has no API-side points filter, so the threshold is enforced
+  // in code to preserve the documented points floor.
+  it("post-filters best-feed stories below the points threshold", async () => {
+    const bestBody = {
+      hits: [
+        { ...hnAlgoliaStoriesFixture.hits[0], objectID: "50000001", points: 5 },
+        { ...hnAlgoliaStoriesFixture.hits[0], objectID: "50000002", points: 100 },
+      ],
+      nbHits: 2,
+    };
+    const mockFetch = createMockFetch([storiesResponse(bestBody)]);
+    const rawItemsRepo = createMockRepo();
+
+    const result = await collectHn(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { feeds: ["best"], keywords: ["AI"], pointsThreshold: 20, commentsPerItem: 0 },
+    );
+
+    expect(result.itemsStored).toBe(1);
+    const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
+    expect(rows.map((r) => r.externalId)).toEqual(["50000002"]);
   });
 
   // REQ-003, REQ-004: Story parsing with valid fixture
@@ -257,7 +369,7 @@ describe("collectHn", () => {
   });
 
   // Ask HN / Show HN self-posts have story_text and null url
-  it("uses story_text as content and empty string url for self-posts", async () => {
+  it("uses story_text as content and the HN permalink as url for self-posts", async () => {
     const askHn = {
       ...hnAlgoliaStoriesFixture,
       hits: [
@@ -279,7 +391,7 @@ describe("collectHn", () => {
     await collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED);
 
     const rows = rawItemsRepo.upsertItems.mock.calls[0][0];
-    expect(rows[0].url).toBe("");
+    expect(rows[0].url).toBe("https://news.ycombinator.com/item?id=55555555");
     expect(rows[0].content).toBe("I'm building an agent and wondering about defenses...");
   });
 
@@ -416,6 +528,44 @@ describe("collectHn", () => {
     expect(fetchFn).toHaveBeenCalledTimes(3);
   });
 
+  // Algolia returns sporadic 400s under load even for valid queries; a single
+  // transient 400 must NOT kill the source — it is retried like any 5xx.
+  it("retries a transient 400 and succeeds on a later attempt", async () => {
+    const mockFetch = createMockFetch([
+      errorResponse(400),
+      errorResponse(400),
+      storiesResponse(),
+    ]);
+    const rawItemsRepo = createMockRepo();
+
+    const result = await collectHn(
+      { rawItemsRepo, fetchFn: mockFetch },
+      { feeds: ["newest"], keywords: ["AI"], commentsPerItem: 0 },
+    );
+
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(result.itemsStored).toBeGreaterThan(0);
+  });
+
+  // Genuinely-permanent client errors still fail fast (no retry) so we don't
+  // waste backoff time on responses that will never change.
+  it.each([401, 403, 404, 410])(
+    "fails fast without retrying on permanent status %i",
+    async (status) => {
+      const mockFetch = createMockFetch([
+        errorResponse(status),
+        storiesResponse(),
+      ]);
+      const rawItemsRepo = createMockRepo();
+
+      await expect(
+        collectHn({ rawItemsRepo, fetchFn: mockFetch }, SINGLE_FEED),
+      ).rejects.toThrow();
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    },
+  );
+
   // REQ-006: Rate limiting between consecutive requests
   it("enforces 500ms+ delay between consecutive Algolia requests", async () => {
     const twoHit = {
@@ -512,7 +662,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, { feeds: ["newest", "best"] });
+    const result = await collectHn({ rawItemsRepo, fetchFn: mockFetch }, { feeds: ["newest", "best"], keywords: ["AI"] });
 
     expect(result.itemsFetched).toBe(3);
 
@@ -532,7 +682,7 @@ describe("collectHn", () => {
     ]);
     const rawItemsRepo = createMockRepo();
 
-    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, { feeds: ["newest"], commentsPerItem: 50 });
+    await collectHn({ rawItemsRepo, fetchFn: mockFetch }, { feeds: ["newest"], keywords: ["AI"], commentsPerItem: 50 });
 
     const commentUrl = mockFetch.mock.calls[1][0];
     expect(commentUrl).toContain("hn.algolia.com");
@@ -550,7 +700,7 @@ describe("collectHn", () => {
     const before = Math.floor((Date.now() - 7 * 86_400_000) / 1000);
     await collectHn(
       { rawItemsRepo, fetchFn: mockFetch },
-      { feeds: ["newest"], sinceDays: 7, commentsPerItem: 0 },
+      { feeds: ["newest"], keywords: ["AI"], sinceDays: 7, commentsPerItem: 0 },
     );
     const after = Math.floor((Date.now() - 7 * 86_400_000) / 1000);
 

@@ -115,12 +115,29 @@ async function captureStories(archive: PipelineRunArchiveRow, row: RawItemRow) {
       updateRecapData: vi.fn(),
       listForRun: vi.fn(() => Promise.resolve([])),
     },
+    // Verified tenant: the (fail-closed, always-on) broadcast gate passes so
+    // hydration is exercised end-to-end.
+    tenantsRepo: {
+      getEmailSettings: vi.fn(() =>
+        Promise.resolve({
+          mode: "managed" as const,
+          smtp: null,
+          sendingDomainName: null,
+          sendingDomainStatus: "verified" as const,
+          slug: "inference",
+        }),
+      ),
+    },
+    createSmtpProvider: vi.fn(() => ({
+      send: vi.fn(() => Promise.resolve({ messageId: "smtp" })),
+    })),
     renderNewsletter: vi.fn((props) => {
       capturedStories = props.stories;
       return Promise.resolve("<html>newsletter</html>");
     }),
     sessionSecret: "test-secret-32-bytes-long-at-least",
     fromMail: "newsletter@example.com",
+    managedEmailDomain: "news.example.com",
     baseUrl: "https://newsletter.example.com",
     sendPacer: makeSendPacer(),
   };
