@@ -37,4 +37,5 @@ Design / spec / plan / verification in this directory. Implementation across
 
 ## PR
 
-Targets **`feature/multi-tenant`** (not `main`). _PR link added on open._
+[PR #292](https://github.com/vertexcover-io/ai-news-aggregator/pull/292) →
+base **`feature/multi-tenant`** (not `main`).
