@@ -1,0 +1,6 @@
+dist
+test-results
+playwright-report
+.turbo
+node_modules
+.DS_Store
