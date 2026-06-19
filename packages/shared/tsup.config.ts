@@ -11,6 +11,7 @@ export default defineConfig((options) => ({
     "src/send-newsletter.ts",
     "src/constants/index.ts",
     "src/scheduling/index.ts",
+    "src/llm-txt/index.ts",
     "src/utils/index.ts",
     "src/utils/prompt-hash.ts",
     "src/utils/timezone-date.ts",

@@ -1,4 +1,4 @@
-import { desc, eq, gte, ilike, inArray, lte, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lte, notInArray, or, sql } from "drizzle-orm";
 import { emailSends, isTenantContext, rawItems, runArchives, tenantScoped } from "@newsletter/shared/db";
 import type { AppDb, SourceType, TenantScope } from "@newsletter/shared/db";
 import {
@@ -126,6 +126,12 @@ export interface SearchReviewedResult {
 export interface RunArchivesRepo {
   findById(id: string): Promise<RunArchiveRow | null>;
   list(limit: number): Promise<RunArchiveRow[]>;
+  /**
+   * Full rows for the most recent reviewed, non-dry-run archives, filtered in
+   * SQL then limited and ordered by coalesce(publishedAt, completedAt) desc —
+   * so the cap counts published issues, matching the public archive list.
+   */
+  listReviewedRows(limit: number): Promise<RunArchiveRow[]>;
   listReviewed(deps: ListReviewedDeps): Promise<ArchiveListItem[]>;
   searchReviewed(input: SearchReviewedInput): Promise<SearchReviewedResult>;
   /**
@@ -210,6 +216,37 @@ export interface RangeFailureEntry {
   lastErrorMessage: string;
   lastFailedAt: Date;
 }
+
+const runArchiveRowColumns = {
+  id: runArchives.id,
+  status: runArchives.status,
+  rankedItems: runArchives.rankedItems,
+  topN: runArchives.topN,
+  reviewed: runArchives.reviewed,
+  completedAt: runArchives.completedAt,
+  publishedAt: runArchives.publishedAt,
+  draftSavedAt: runArchives.draftSavedAt,
+  createdAt: runArchives.createdAt,
+  startedAt: runArchives.startedAt,
+  sourceTypes: runArchives.sourceTypes,
+  digestHeadline: runArchives.digestHeadline,
+  digestSummary: runArchives.digestSummary,
+  hook: runArchives.hook,
+  twitterSummary: runArchives.twitterSummary,
+  linkedinPostBody: runArchives.linkedinPostBody,
+  sourceTelemetry: runArchives.sourceTelemetry,
+  slackNotifiedAt: runArchives.slackNotifiedAt,
+  emailSentAt: runArchives.emailSentAt,
+  linkedinPostedAt: runArchives.linkedinPostedAt,
+  twitterPostedAt: runArchives.twitterPostedAt,
+  notificationState: runArchives.notificationState,
+  isDryRun: runArchives.isDryRun,
+  costBreakdown: runArchives.costBreakdown,
+  runFunnel: runArchives.runFunnel,
+  socialMetadata: runArchives.socialMetadata,
+  shortlistedItemIds: runArchives.shortlistedItemIds,
+  preReviewSnapshot: runArchives.preReviewSnapshot,
+} as const;
 
 export function createRunArchivesRepo(
   db: Pick<AppDb, "select" | "update" | "execute" | "delete" | "transaction">,
@@ -553,39 +590,20 @@ export function createRunArchivesRepo(
     },
     async list(limit: number): Promise<RunArchiveRow[]> {
       return db
-        .select({
-          id: runArchives.id,
-          status: runArchives.status,
-          rankedItems: runArchives.rankedItems,
-          topN: runArchives.topN,
-          reviewed: runArchives.reviewed,
-          completedAt: runArchives.completedAt,
-          publishedAt: runArchives.publishedAt,
-          draftSavedAt: runArchives.draftSavedAt,
-          createdAt: runArchives.createdAt,
-          startedAt: runArchives.startedAt,
-          sourceTypes: runArchives.sourceTypes,
-          digestHeadline: runArchives.digestHeadline,
-          digestSummary: runArchives.digestSummary,
-          hook: runArchives.hook,
-          twitterSummary: runArchives.twitterSummary,
-          linkedinPostBody: runArchives.linkedinPostBody,
-          sourceTelemetry: runArchives.sourceTelemetry,
-          slackNotifiedAt: runArchives.slackNotifiedAt,
-          emailSentAt: runArchives.emailSentAt,
-          linkedinPostedAt: runArchives.linkedinPostedAt,
-          twitterPostedAt: runArchives.twitterPostedAt,
-          notificationState: runArchives.notificationState,
-          isDryRun: runArchives.isDryRun,
-          costBreakdown: runArchives.costBreakdown,
-          runFunnel: runArchives.runFunnel,
-          socialMetadata: runArchives.socialMetadata,
-          shortlistedItemIds: runArchives.shortlistedItemIds,
-          preReviewSnapshot: runArchives.preReviewSnapshot,
-        })
+        .select(runArchiveRowColumns)
         .from(runArchives)
         .where(tenantScoped(runArchives.tenantId, tenantCtx))
         .orderBy(desc(runArchives.completedAt))
+        .limit(limit);
+    },
+    async listReviewedRows(limit: number): Promise<RunArchiveRow[]> {
+      return db
+        .select(runArchiveRowColumns)
+        .from(runArchives)
+        .where(and(eq(runArchives.reviewed, true), eq(runArchives.isDryRun, false)))
+        .orderBy(
+          sql`coalesce(${runArchives.publishedAt}, ${runArchives.completedAt}) desc`,
+        )
         .limit(limit);
     },
     async updateRankedItems(

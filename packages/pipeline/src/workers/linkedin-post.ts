@@ -1,6 +1,7 @@
 import { createLogger } from "@newsletter/shared/logger";
 import type { SlackNotifier } from "@newsletter/shared";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
+import type { UserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 import type { LinkedInNotifier } from "@pipeline/social/linkedin/index.js";
 import { resolvePublishTarget } from "./publish-target.js";
 
@@ -10,6 +11,10 @@ export interface LinkedInPostDeps {
   readonly archiveRepo: RunArchivesRepo;
   readonly linkedinNotifier: LinkedInNotifier | null;
   readonly slackNotifier?: SlackNotifier;
+  // Read per job so the live toggle is honored at execution time — this is the
+  // final gate that stops a post even when an upstream path (manual trigger,
+  // a job enqueued before the toggle was switched off) failed to gate it.
+  readonly userSettingsRepo?: UserSettingsRepo;
 }
 
 export interface LinkedInPostJobLike {
@@ -24,6 +29,16 @@ export async function handleLinkedInPostJob(
   job: LinkedInPostJobLike,
 ): Promise<void> {
   if (job.name !== "linkedin-post") return;
+  if (deps.userSettingsRepo) {
+    const settings = await deps.userSettingsRepo.get();
+    if (settings && !settings.linkedinEnabled) {
+      logger.info(
+        { event: "publish.skipped_disabled", channel: "linkedin-post", runId: job.data.runId },
+        "skipped: linkedin posting disabled",
+      );
+      return;
+    }
+  }
   const archive = await resolvePublishTarget(deps, {
     channel: "linkedin-post",
     runId: job.data.runId,

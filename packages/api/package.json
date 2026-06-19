@@ -13,7 +13,8 @@
     "test:e2e": "vitest run --project e2e",
     "test:watch": "vitest --project unit",
     "lint": "eslint .",
-    "bench:search": "tsx scripts/seed-search-perf.ts"
+    "bench:search": "tsx scripts/seed-search-perf.ts",
+    "generate:llm-txt": "tsx scripts/generate-llm-txt.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "2.0.74",

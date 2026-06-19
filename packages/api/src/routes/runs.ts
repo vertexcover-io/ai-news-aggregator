@@ -314,6 +314,19 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
       return c.json({ error: "archive is already posted on this channel", reason: "already_posted" }, 409);
     }
 
+    const settingsRepo = deps.getSettingsRepo?.();
+    if (settingsRepo) {
+      const settings = await settingsRepo.get();
+      const channelEnabled =
+        channel === "linkedin" ? settings?.linkedinEnabled : settings?.twitterPostEnabled;
+      if (settings && channelEnabled === false) {
+        return c.json(
+          { error: "channel is not enabled", reason: "channel_disabled" },
+          409,
+        );
+      }
+    }
+
     const jobName = channel === "linkedin" ? "linkedin-post" : "twitter-post";
     // Social post jobs carry { runId, tenantId? } but share the processing
     // queue. Queue<RunProcessJobPayload> is structurally compatible via

@@ -1,5 +1,8 @@
 # Caddy reverse proxy for the (multi-tenant) newsletter app.
 # - `/api/*` proxies to the api container on the loopback interface.
+# - The root-served llm.txt files (`/llms.txt`, `/llms-full.txt`) are produced by
+#   the API, not the SPA, so they need explicit proxy rules — otherwise they fall
+#   through to the static React build and return the index.html SPA shell.
 # - Everything else is served from the static React build at /var/www/newsletter/web.
 # - The SAME static SPA + API serve every host; the API resolves the tenant from
 #   the inbound Host header (`<slug>.<root>` → tenant by slug; `app.<root>` →
@@ -45,6 +48,27 @@
 	}
 
 	handle /api/* {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	# llm.txt site files are served by the API (the web app is a static SPA).
+	handle /llms.txt {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	handle /llms-full.txt {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	# Per-issue llm.txt at the archive URL shape (`/archive/:runId/llms.txt`,
+	# `/archive/:runId/llms-full.txt`) is API-generated too. Only the llm.txt
+	# suffixes match here — the archive HTML pages (`/archive`, `/archive/:runId`)
+	# still fall through to the SPA below.
+	handle /archive/*/llms.txt {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	handle /archive/*/llms-full.txt {
 		reverse_proxy 127.0.0.1:3000
 	}
 

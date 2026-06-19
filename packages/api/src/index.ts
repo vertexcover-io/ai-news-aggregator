@@ -22,6 +22,10 @@ import { createDefaultPublicMustReadRouter } from "@api/routes/must-read.js";
 import { createDefaultBrandingRouter } from "@api/routes/branding.js";
 import { createDefaultPublicSourcesRouter } from "@api/routes/sources.js";
 import { createDefaultTenantSourcesRouter } from "@api/routes/tenant-sources.js";
+import {
+  createDefaultLlmTxtRouter,
+  createDefaultLlmTxtArchiveRouter,
+} from "@api/routes/llm-txt.js";
 import { createDefaultSettingsRouter } from "@api/routes/settings.js";
 import { createDefaultSendingDomainRouter } from "@api/routes/sending-domain.js";
 import { createDefaultNotificationSettingsRouter } from "@api/routes/notification-settings.js";
@@ -113,6 +117,8 @@ const processingQueue = new BullQueue("processing", { connection: createRedisCon
 const collectorHealthQueue = new BullQueue(COLLECTOR_HEALTH_QUEUE_NAME, { connection: createRedisConnection() });
 // Shared Redis connection for OAuth state storage (SET/GET/DEL — not a BullMQ queue).
 const oauthRedis = createRedisConnection();
+// Redis connection backing the version-keyed llm.txt content cache.
+const llmTxtRedis = createRedisConnection();
 
 // Default-tenant bridge: sessionless write paths (public subscribe, LinkedIn
 // OAuth callback) must still stamp a concrete tenant_id — resolve the
@@ -364,6 +370,15 @@ const app = buildApp({
   authRouter,
   extensionRouter: createDefaultExtensionRouter(),
   requireAuthFactory: requireAuth,
+  // Public llms.txt index + per-issue llm.txt (#286/#288).
+  llmTxtIndexRouter: createDefaultLlmTxtRouter({
+    baseUrl: newsletterBaseUrl,
+    redis: llmTxtRedis,
+  }),
+  llmTxtArchiveRouter: createDefaultLlmTxtArchiveRouter({
+    baseUrl: newsletterBaseUrl,
+    redis: llmTxtRedis,
+  }),
   subscribeRouter,
   webhooksRouter,
   analyticsRouter: createDefaultAnalyticsRouter(),

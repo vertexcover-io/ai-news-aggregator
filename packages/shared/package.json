@@ -10,6 +10,7 @@
     "./types": "./dist/types/index.js",
     "./constants": "./dist/constants/index.js",
     "./scheduling": "./dist/scheduling/index.js",
+    "./llm-txt": "./dist/llm-txt/index.js",
     "./utils": "./dist/utils/index.js",
     "./utils/prompt-hash": "./dist/utils/prompt-hash.js",
     "./utils/timezone-date": "./dist/utils/timezone-date.js",

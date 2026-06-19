@@ -118,7 +118,7 @@ describe("startRun", () => {
     const payload = data as RunProcessJobPayload;
     expect(payload.runId).toBe(fixedId);
     expect(payload.topN).toBe(10);
-    expect(payload.sourceTypes.sort()).toEqual(["hn", "reddit"]);
+    expect(payload.sourceTypes.sort()).toEqual(["hn", "manual", "reddit"]);
     expect(payload.collectors.hn).toEqual({ sinceDays: 1 });
     expect(payload.collectors.reddit).toEqual({
       subreddits: ["LocalLLaMA"],
@@ -169,7 +169,7 @@ describe("startRun", () => {
 
     const [, data] = q.add.mock.calls[0] ?? [];
     const payload = data as RunProcessJobPayload;
-    expect(payload.sourceTypes).toEqual(["blog"]);
+    expect(payload.sourceTypes.sort()).toEqual(["blog", "manual"]);
     expect(payload.collectors.web).toEqual(webSettings.webConfig);
     expect(payload.collectors.hn).toBeUndefined();
     expect(payload.collectors.reddit).toBeUndefined();
@@ -202,7 +202,7 @@ describe("startRun", () => {
 
     const [, data] = q.add.mock.calls[0] ?? [];
     const payload = data as RunProcessJobPayload;
-    expect(payload.sourceTypes).toEqual([]);
+    expect(payload.sourceTypes).toEqual(["manual"]);
     expect(payload.collectors.hn).toBeUndefined();
     expect(payload.collectors.reddit).toBeUndefined();
   });
@@ -413,7 +413,10 @@ describe("startRun", () => {
 
     const [, data] = q.add.mock.calls[0] ?? [];
     const payload = data as RunProcessJobPayload;
-    expect(payload.sourceTypes).toEqual(["blog"]);
+    // "manual" is always present (REQ-009) so extension/user-submitted URLs stay
+    // eligible; the row-derived override only replaces the COLLECTOR configs, so
+    // "blog" is the only collector-sourced type alongside the always-on "manual".
+    expect(payload.sourceTypes).toEqual(["manual", "blog"]);
     expect(payload.collectors.web?.sources[0]?.listingUrl).toBe(
       "https://rows.example/blog",
     );
@@ -429,6 +432,30 @@ describe("startRun", () => {
       errors: [],
     });
     expect(state.sources.hn).toBeUndefined();
+  });
+
+  it("test_REQ_009_manual_item_is_candidate: always includes 'manual' in sourceTypes so user-submitted URLs are eligible candidates", async () => {
+    const redis = makeRedis();
+    const q = makeQueue();
+
+    // Even with no collectors enabled, "manual" must be in sourceTypes
+    const noSourceSettings: UserSettings = {
+      ...baseSettings,
+      hnEnabled: false,
+      hnConfig: null,
+      redditEnabled: false,
+      redditConfig: null,
+    };
+
+    await startRun(noSourceSettings, {
+      redis: redis as unknown as IORedis,
+      queue: q.queue,
+      runId: () => "test-manual-eligible",
+    });
+
+    const [, data] = q.add.mock.calls[0] ?? [];
+    const payload = data as RunProcessJobPayload;
+    expect(payload.sourceTypes).toContain("manual");
   });
 
   it("generates a uuid for runId when no generator is injected", async () => {

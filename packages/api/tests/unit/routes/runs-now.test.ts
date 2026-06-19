@@ -275,7 +275,8 @@ describe("POST /api/runs/now", () => {
       sourceTypes: string[];
       collectors: { hn?: unknown; reddit?: { subreddits: string[] } };
     };
-    expect(data.sourceTypes).toEqual(["reddit"]);
+    // "manual" is always present (REQ-009) so user-submitted URLs stay eligible.
+    expect(data.sourceTypes).toEqual(["manual", "reddit"]);
     expect(data.collectors.hn).toBeUndefined();
     expect(data.collectors.reddit?.subreddits).toEqual(["LocalLLaMA"]);
   });

@@ -2,13 +2,14 @@ import { describe, it, expect, vi } from "vitest";
 import { Hono } from "hono";
 import type IORedis from "ioredis";
 import type { Queue, JobsOptions } from "bullmq";
-import type { RunState } from "@newsletter/shared";
+import type { RunState, UserSettings } from "@newsletter/shared";
 import { createRunsRouter } from "@api/routes/runs.js";
 import type {
   RawItemRow,
   RawItemsRepo,
 } from "@api/repositories/raw-items.js";
 import type { RunArchivesRepo, RunArchiveRow } from "@api/repositories/run-archives.js";
+import type { UserSettingsRepo } from "@api/repositories/user-settings.js";
 
 interface MockRedis {
   store: Map<string, { value: string; ttl: number }>;
@@ -142,7 +143,7 @@ describe("POST /api/runs", () => {
       sourceTypes: string[];
       collectors: { web?: unknown };
     };
-    expect(data.sourceTypes).toEqual(["blog"]);
+    expect(data.sourceTypes.sort()).toEqual(["blog", "manual"]);
     expect(data.collectors.web).toMatchObject({ maxItems: 3, sinceDays: 7 });
   });
 
@@ -185,7 +186,7 @@ describe("POST /api/runs", () => {
       sourceTypes: string[];
       collectors: Record<string, unknown>;
     };
-    expect(data.sourceTypes.sort()).toEqual(["hn", "reddit"]);
+    expect(data.sourceTypes.sort()).toEqual(["hn", "manual", "reddit"]);
     expect(Object.keys(data.collectors).sort()).toEqual(["hn", "reddit"]);
   });
 
@@ -425,9 +426,16 @@ function makeArchiveRepo(archive: RunArchiveRow | null = null): RunArchivesRepo 
   } as unknown as RunArchivesRepo;
 }
 
+function makeSettingsRepo(settings: Partial<UserSettings> | null): UserSettingsRepo {
+  return {
+    get: () => Promise.resolve(settings as UserSettings | null),
+  } as unknown as UserSettingsRepo;
+}
+
 function makePostApp(opts: {
   q: ReturnType<typeof makeQueue>;
   archive: RunArchiveRow | null;
+  settings?: Partial<UserSettings> | null;
 }): Hono {
   const app = new Hono();
   const router = createRunsRouter({
@@ -435,6 +443,9 @@ function makePostApp(opts: {
     processingQueue: opts.q.queue as unknown as Queue,
     getRawItemsRepo: () => makeRepo(),
     getArchiveRepo: () => makeArchiveRepo(opts.archive),
+    ...(opts.settings !== undefined
+      ? { getSettingsRepo: () => makeSettingsRepo(opts.settings ?? null) }
+      : {}),
   });
   app.route("/api/runs", router);
   return app;
@@ -563,5 +574,52 @@ describe("POST /api/runs/:runId/post/:channel", () => {
     const body = (await res.json()) as { error: string; reason: string };
     expect(body.reason).toBe("already_posted");
     expect(q.calls).toHaveLength(0);
+  });
+
+  it("linkedin disabled → 409 with reason 'channel_disabled', no add", async () => {
+    const q = makeQueue();
+    const app = makePostApp({
+      q,
+      archive: makeEligibleArchive(),
+      settings: { linkedinEnabled: false, twitterPostEnabled: true },
+    });
+    const res = await app.request(`/api/runs/${VALID_RUN_ID}/post/linkedin`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; reason: string };
+    expect(body.reason).toBe("channel_disabled");
+    expect(q.calls).toHaveLength(0);
+  });
+
+  it("twitter disabled → 409 with reason 'channel_disabled', no add", async () => {
+    const q = makeQueue();
+    const app = makePostApp({
+      q,
+      archive: makeEligibleArchive(),
+      settings: { linkedinEnabled: true, twitterPostEnabled: false },
+    });
+    const res = await app.request(`/api/runs/${VALID_RUN_ID}/post/twitter`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; reason: string };
+    expect(body.reason).toBe("channel_disabled");
+    expect(q.calls).toHaveLength(0);
+  });
+
+  it("enabled channel still enqueues when the other channel is disabled", async () => {
+    const q = makeQueue();
+    const app = makePostApp({
+      q,
+      archive: makeEligibleArchive(),
+      settings: { linkedinEnabled: true, twitterPostEnabled: false },
+    });
+    const res = await app.request(`/api/runs/${VALID_RUN_ID}/post/linkedin`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(202);
+    expect(q.calls).toHaveLength(1);
+    expect(q.calls[0].name).toBe("linkedin-post");
   });
 });

@@ -9,7 +9,8 @@ Route/service/repository surface and decisions: `.harness/knowledge/context/pack
 - Validate all API request input at the boundary with zod (`src/lib/validate.ts`)
 - DB access goes through `src/repositories/` — routes and services import repository factories, never `@newsletter/shared/db` or `drizzle-orm` directly (enforced by `newsletter/enforce-repository-access`)
 - Reuse `createRedisConnection()` from shared rather than instantiating ioredis directly
-- Public vs admin split: archives list/detail/search, sources summary, home, must-read, and login/logout are public; everything else goes behind `requireAdmin`. Exception: the LinkedIn OAuth callback is state-gated (Redis CSRF), not cookie-gated
+- Public vs admin split: archives list/detail/search, sources summary, home, must-read, the llm.txt files (`/llms.txt`, `/llms-full.txt`, `/api/archives/:runId/llm.txt`), and login/logout are public; everything else goes behind `requireAdmin`. Exception: the LinkedIn OAuth callback is state-gated (Redis CSRF), not cookie-gated
+- The llm.txt endpoints cache rendered text in Redis under a version key (issue + canon content signatures); it auto-invalidates on data change, is fail-open, and needs no manual busting
 - Admin-only fields (`costBreakdown`, raw `publishedAt`, `reviewed`, `draftSavedAt`, send/post timestamps) must never be serialized on public routes — public surfaces only get derived dates (`runDate`/`issueDate`)
 
 ## Commands

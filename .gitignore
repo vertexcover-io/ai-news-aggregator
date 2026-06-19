@@ -40,3 +40,4 @@ agentloop-migration-counts.json
 # (root-anchored so .harness/**/verification/screenshots/*.png stay tracked)
 /*.png
 .harness/.linear-config.json
+.DS_Store

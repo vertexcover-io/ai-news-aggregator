@@ -190,10 +190,10 @@ identity:
 export DATABASE_URL='postgres://newsletter:<PROD_PG_PASSWORD>@127.0.0.1:5432/newsletter'
 export REDIS_URL='redis://127.0.0.1:6379'
 
-export AGENTLOOP_ADMIN_EMAIL='ritesh@vertexcover.io'
+export AGENTLOOP_ADMIN_EMAIL='<TENANT0_ADMIN_EMAIL>'         # the AGENTLOOP tenant_admin login
 export AGENTLOOP_SLUG='agentloop'
-export AGENTLOOP_CUSTOM_DOMAIN='news.vertexcover.io'   # optional
-export SUPER_ADMIN_EMAILS='ritesh@vertexcover.io,aman@vertexcover.io'
+export AGENTLOOP_CUSTOM_DOMAIN='<AGENTLOOP_CUSTOM_DOMAIN>'   # optional, e.g. AGENTLOOP's existing public domain
+export SUPER_ADMIN_EMAILS='<SUPER_ADMIN_EMAILS>'            # comma-separated platform admins
 
 pnpm install --frozen-lockfile
 pnpm --filter @newsletter/shared build      # scripts import the built @newsletter/shared barrel

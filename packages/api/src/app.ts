@@ -164,6 +164,19 @@ export interface BuildAppDeps {
   requireFeature?: (
     flag: "featureEval" | "featureDeliverability" | "featureCanon",
   ) => MiddlewareHandler;
+  /**
+   * Public root-served llms.txt + llms-full.txt index files (#286). Mounted at
+   * the site root, ungated. Optional ONLY so existing unit tests composing
+   * buildApp keep working — index.ts always provides it.
+   */
+  llmTxtIndexRouter?: Hono;
+  /**
+   * Public per-issue llm.txt at /api/archives/:runId/llm.txt and the public
+   * archive URL shape /archive/:runId/llms.txt (#288). Ungated. Optional ONLY
+   * so existing unit tests composing buildApp keep working — index.ts always
+   * provides it.
+   */
+  llmTxtArchiveRouter?: Hono;
 }
 
 /**
@@ -233,6 +246,12 @@ export function buildApp(deps: BuildAppDeps): Hono {
     }
   }
 
+  // Public llms.txt / llms-full.txt site index (#286), served at the site root
+  // for llmstxt.org consumers. Mounted before the admin gate (like /health).
+  if (deps.llmTxtIndexRouter) {
+    app.route("/", deps.llmTxtIndexRouter);
+  }
+
   // Public subscribe/confirm/unsubscribe routes.
   app.route("/api", deps.subscribeRouter);
 
@@ -242,10 +261,22 @@ export function buildApp(deps: BuildAppDeps): Hono {
   // Public runtime analytics configuration for the browser SDK.
   app.route("/api/public/analytics-config", deps.analyticsConfigRouter);
 
-  // Public archives. /search MUST be mounted before the public router so
-  // it does not collide with the GET /:runId catch-all.
+  // Public archives. /search and the per-issue llm.txt route MUST be mounted
+  // before the public router so they do not collide with the GET /:runId
+  // catch-all.
   app.route("/api/archives/search", deps.archivesSearchRouter);
+  if (deps.llmTxtArchiveRouter) {
+    app.route("/api/archives", deps.llmTxtArchiveRouter);
+  }
   app.route("/api/archives", deps.publicArchivesRouter);
+
+  // Per-issue llm.txt at the public archive URL shape (`/archive/:runId/llms.txt`,
+  // `/archive/:runId/llms-full.txt`). LLM/agent crawlers append the llm.txt name
+  // to the page URL they already have, so these must be served by the API — the
+  // SPA fallback would otherwise return index.html (the React shell) for them.
+  if (deps.llmTxtArchiveRouter) {
+    app.route("/archive", deps.llmTxtArchiveRouter);
+  }
 
   // Public home composite + must-read listing.
   app.route("/api/home", deps.publicHomeRouter);

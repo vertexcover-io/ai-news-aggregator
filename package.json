@@ -11,9 +11,12 @@
     "infra:reset": "podman-compose down -v && podman-compose up -d",
     "migrate:generate": "pnpm --filter @newsletter/shared db:generate",
     "migrate:up": "pnpm --filter @newsletter/shared db:migrate",
+    "setup:local": "pnpm infra:up; pnpm migrate:up",
+    "dev:extension": "pnpm setup:local && turbo dev --filter=@newsletter/api --filter=@newsletter/extension",
     "test:unit": "turbo test:unit",
     "test:e2e": "turbo test:e2e",
     "setup:ses": "tsx scripts/setup-ses.ts",
+    "generate:llm-txt": "pnpm --filter @newsletter/api generate:llm-txt",
     "prepare": "husky"
   },
   "devDependencies": {

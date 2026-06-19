@@ -118,6 +118,9 @@ function makeApp(
     linkedInOAuthRouter: new Hono(),
     linkedInOAuthCallbackRouter: new Hono(),
     collectorHealthRouter: new Hono(),
+    llmTxtIndexRouter: new Hono(),
+    llmTxtArchiveRouter: new Hono(),
+    extensionRouter: new Hono(),
   });
 }
 
