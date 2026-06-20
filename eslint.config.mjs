@@ -17,6 +17,9 @@ export default tseslint.config(
       "packages/pipeline/src/scripts/",
       "**/tests/e2e/*.mjs",
       ".worktrees/",
+      // Standalone operator tooling bundled with Claude skills — run via tsx,
+      // outside the workspace TS project graph (same rationale as scripts/).
+      ".claude/skills/",
     ],
   },
   {
