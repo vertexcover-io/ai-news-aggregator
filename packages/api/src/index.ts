@@ -60,7 +60,10 @@ import { seedAdminUser } from "@api/services/admin-seed.js";
 import type { ResetTokenStore } from "@api/services/auth.js";
 import { requireAuth } from "@api/auth/middleware.js";
 import { loadDomainConfig } from "@api/config/domains.js";
-import { createResolveTenant } from "@api/middleware/resolve-tenant.js";
+import {
+  classifyHost,
+  createResolveTenant,
+} from "@api/middleware/resolve-tenant.js";
 import { createRateLimiter } from "@api/auth/rate-limit.js";
 import { buildApp } from "@api/app.js";
 import { createSubscribeRouter } from "@api/routes/subscribe.js";
@@ -333,6 +336,10 @@ const authRouter = createAuthRouter({
   },
 });
 
+// Host-classification config, shared by the host→tenant resolver and the
+// Caddy on-demand TLS authorizer below so both agree on what a tenant host is.
+const domainConfig = loadDomainConfig(process.env);
+
 const app = buildApp({
   sessionSecret,
   publicArchivesRouter: createDefaultPublicArchivesRouter(),
@@ -360,8 +367,25 @@ const app = buildApp({
   emailSettingsRouter: createDefaultEmailSettingsRouter(),
   // Custom web domain + Caddy on-demand TLS authorization (Fix #3, Phase C).
   webDomainRouter: createDefaultWebDomainRouter(),
-  tlsAllow: async (domain: string): Promise<boolean> =>
-    (await createTenantsRepo(getDb()).findByCustomDomain(domain)) !== null,
+  // Caddy on-demand TLS authorizer. Approves a host iff it belongs to an
+  // active tenant, so Caddy mints a cert only for real tenant hosts (the
+  // abuse / Let's-Encrypt rate-limit guard). Two shapes resolve:
+  //   - `<slug>.<root>` (incl. a renamed tenant's previous slug) → on-demand
+  //     TLS for tenant subdomains, since there is no wildcard cert.
+  //   - a verified tenant custom web domain (Fix #3, Phase C).
+  // The app host (dispatch.<root>) is an explicit Caddy site with its own
+  // HTTP-01 cert, so it never reaches this endpoint.
+  tlsAllow: async (domain: string): Promise<boolean> => {
+    const repo = createTenantsRepo(getDb());
+    const classification = classifyHost(domain, undefined, domainConfig);
+    if (classification.kind === "slug") {
+      const tenant =
+        (await repo.findBySlug(classification.slug)) ??
+        (await repo.findByPreviousSlug(classification.slug));
+      return tenant?.status === "active";
+    }
+    return (await repo.findByCustomDomain(domain)) !== null;
+  },
   collectorHealthRouter: createDefaultCollectorHealthRouter(),
   // Public tenant branding payload + logo bytes (P7).
   brandingRouter: createDefaultBrandingRouter(),
@@ -390,7 +414,7 @@ const app = buildApp({
   // Host→tenant resolution (P5): ROOT_DOMAIN / APP_HOST / CUSTOM_DOMAIN_MAP
   // env-driven; X-Tenant-Slug + *.lvh.me dev overrides outside production.
   resolveTenant: createResolveTenant({
-    config: loadDomainConfig(process.env),
+    config: domainConfig,
     getTenantsRepo: () => createTenantsRepo(getDb()),
   }),
   // Onboarding wizard (P11) — resumable state, slug check, prompt-gen,

@@ -15,18 +15,17 @@
 #   APP_HOST     e.g. app.agentloop.live → admin/signup surface
 #
 # TLS:
-# - `app.<root>` and any single custom domain get certs via the normal HTTP-01
-#   challenge automatically.
-# - `*.<root>` (wildcard) REQUIRES the DNS-01 challenge, which needs a Caddy
-#   build that includes your DNS provider's module plus an API token. See
-#   deployment/README.md → "Multi-tenant subdomains". Until that is configured,
-#   the wildcard site block will fail to obtain a cert.
-# - Tenant CUSTOM web domains (Fix #3, Phase C) use On-Demand TLS: Caddy mints a
-#   cert at first request for ANY host the `ask` endpoint approves. The API
-#   only approves a host that is a VERIFIED tenant custom domain
-#   (GET /internal/tls-allow?domain=…), which is the abuse / Let's-Encrypt
-#   rate-limit guard. Tenants point a CNAME (subdomain) or A record (apex) at
-#   our ingress; the API's web-domain verify flow flips the domain to verified.
+# - The app host (`dispatch.<root>`, from $APP_HOST) is an explicit site and
+#   gets its cert via the normal HTTP-01 challenge automatically.
+# - Tenant subdomains (`<slug>.<root>`) and tenant CUSTOM web domains have no
+#   wildcard cert; they use On-Demand TLS. Caddy mints a cert at first request
+#   for ANY host the `ask` endpoint approves (GET /internal/tls-allow?domain=…).
+#   The API approves only active-tenant slugs + VERIFIED tenant custom domains —
+#   the abuse / Let's-Encrypt rate-limit guard. A wildcard `*.<root>` site is
+#   deliberately NOT defined: a wildcard block plus the explicit hosts below is
+#   an "ambiguous site definition" to Caddy and breaks the config. (If tenant
+#   onboarding ever outpaces LE's ~50 certs/week/domain, switch to a DNS-01
+#   wildcard build instead.)
 
 # On-Demand TLS: ask the API before issuing a cert for an unknown host.
 {
@@ -79,16 +78,9 @@
 	}
 }
 
-# Tenant public sites (`<slug>.<root>`) + the bare apex.
-*.{$ROOT_DOMAIN}, {$ROOT_DOMAIN} {
-	# Wildcard cert via DNS-01 — uncomment and configure your provider module:
-	#   tls {
-	#     dns <provider> {$CADDY_DNS_API_TOKEN}
-	#   }
-	import newsletter_site
-}
-
-# Admin / signup surface.
+# Admin / signup / product-landing surface (dispatch.<root>, from $APP_HOST).
+# Explicit site → automatic HTTP-01 cert. The API resolves the tenant from the
+# session cookie here, never the Host, and 404s public-content routes.
 {$APP_HOST} {
 	import newsletter_site
 }
@@ -99,9 +91,12 @@ agentloop.vertexcover.io {
 	import newsletter_site
 }
 
-# Tenant-registered custom web domains (Fix #3, Phase C). This catch-all
-# matches any host NOT matched above; On-Demand TLS gates cert issuance on the
-# `ask` endpoint, so only verified tenant domains get a cert + are served.
+# Everything else: tenant subdomains (`<slug>.<root>`) + tenant-registered
+# custom web domains (Fix #3, Phase C). This catch-all matches any host NOT
+# matched above; On-Demand TLS gates cert issuance on the `ask` endpoint, so
+# only active-tenant slugs + verified custom domains get a cert + are served.
+# (The bare apex `<root>` falls here too; the API 404s it and the ask endpoint
+# declines it, so it simply isn't served — intentional.)
 https:// {
 	tls {
 		on_demand
