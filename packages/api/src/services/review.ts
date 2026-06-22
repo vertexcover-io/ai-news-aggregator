@@ -143,6 +143,20 @@ export async function patchArchive(
   const effectiveSummary =
     "digestSummary" in input ? input.digestSummary ?? null : archive.digestSummary;
 
+  // A published issue must carry a non-empty headline and summary — they drive
+  // the public hero, archive cards, and the email. Reject a publish that would
+  // leave either blank, whether it was submitted empty or never set. Drafts
+  // (publish === false) may still be saved while the copy is in progress.
+  // `?? ""` collapses null/undefined to the blank check so this never throws.
+  if (publish) {
+    if ((effectiveHeadline ?? "").trim() === "") {
+      throw new ValidationError("digest headline is required to publish");
+    }
+    if ((effectiveSummary ?? "").trim() === "") {
+      throw new ValidationError("digest summary is required to publish");
+    }
+  }
+
   const updateCtx: NonNullable<UpdateRankedItemsContext> = {
     rawItemsById,
     digestHeadline: effectiveHeadline,

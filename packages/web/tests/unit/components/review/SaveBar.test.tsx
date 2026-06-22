@@ -233,6 +233,38 @@ describe("SaveBar", () => {
     expect(draftBtn.hasAttribute("disabled")).toBe(true);
   });
 
+  it("blocks publish (disabled + tooltip, onSave never fires) when publishDisabledReason is set, but leaves Save draft enabled", () => {
+    const onSave = vi.fn();
+    const onSaveDraft = vi.fn();
+    render(
+      <SaveBar
+        unsavedCount={1}
+        saving={false}
+        canSave
+        onSave={onSave}
+        onDiscard={vi.fn()}
+        onSaveDraft={onSaveDraft}
+        publishDisabledReason="Add a headline and summary before publishing."
+      />,
+    );
+    const publishBtn = screen.getByRole("button", { name: /save & publish/i });
+    expect(publishBtn.hasAttribute("disabled")).toBe(true);
+    expect(publishBtn.getAttribute("title")).toBe(
+      "Add a headline and summary before publishing.",
+    );
+    expect(
+      screen.getByTestId("save-disabled-tooltip").textContent,
+    ).toContain("Add a headline and summary");
+    // Clicking the disabled publish button must not invoke onSave.
+    fireEvent.click(publishBtn);
+    expect(onSave).not.toHaveBeenCalled();
+    // Save draft stays usable so in-progress copy can still be saved.
+    const draftBtn = screen.getByRole("button", { name: /save draft/i });
+    expect(draftBtn.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(draftBtn);
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+  });
+
   it("opens a confirm dialog with 'Discard all changes?' and only calls onDiscard after confirm (REQ-153)", () => {
     const onDiscard = vi.fn();
     render(

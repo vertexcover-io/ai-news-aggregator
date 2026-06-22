@@ -33,6 +33,13 @@ interface SaveBarProps {
   onSaveDraft?: () => void;
   /** True while the draft save is in flight — disables the Save draft button. */
   draftSaving?: boolean;
+  /**
+   * When non-null, disables ONLY the primary "Save & publish" button and shows
+   * this as its tooltip — used to block publishing an issue whose headline or
+   * summary is empty. Drafts ("Save draft") stay enabled so in-progress copy
+   * can still be saved.
+   */
+  publishDisabledReason?: string | null;
 }
 
 export function SaveBar({
@@ -46,7 +53,14 @@ export function SaveBar({
   saveConfirmation = null,
   onSaveDraft,
   draftSaving = false,
+  publishDisabledReason = null,
 }: SaveBarProps): ReactElement {
+  const primaryDisabled = !canSave || saving || publishDisabledReason !== null;
+  // Tooltip for the primary button: the publish-blocking reason takes priority,
+  // then the generic disabled reason; never while a save is in flight.
+  const primaryTooltip = saving
+    ? null
+    : publishDisabledReason ?? (!canSave ? disabledReason : null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
   // Which action opened the "Save without regenerating?" dialog, so confirming
@@ -61,6 +75,7 @@ export function SaveBar({
   }
 
   function handleSaveClick(): void {
+    if (publishDisabledReason !== null) return;
     if (saveConfirmation !== null) {
       setPendingAction("publish");
       setConfirmSaveOpen(true);
@@ -180,21 +195,21 @@ export function SaveBar({
           <Button
             type="button"
             onClick={handleSaveClick}
-            disabled={!canSave || saving}
-            aria-disabled={!canSave || saving}
-            title={disabledReason ?? undefined}
+            disabled={primaryDisabled}
+            aria-disabled={primaryDisabled}
+            title={primaryTooltip ?? undefined}
             className="bg-black text-white hover:bg-black/90 min-h-[44px] px-4"
           >
             {saving ? "Saving..." : onSaveDraft !== undefined ? "Save & publish" : "Save & view archive"}
             <ArrowRight />
           </Button>
-          {disabledReason !== null && !canSave && !saving ? (
+          {primaryTooltip !== null ? (
             <span
               role="tooltip"
               data-testid="save-disabled-tooltip"
               className="pointer-events-none absolute bottom-full right-0 mb-2 hidden whitespace-nowrap rounded-md bg-gray-900 px-3 py-1.5 text-xs text-white shadow-md group-hover:block group-focus-within:block"
             >
-              {disabledReason}
+              {primaryTooltip}
             </span>
           ) : null}
         </span>
