@@ -59,6 +59,10 @@ function makeArchiveRow(refs: RankedItemRef[], opts: { startedAt?: Date | null; 
     createdAt: date,
     startedAt: "startedAt" in opts ? (opts.startedAt ?? null) : null,
     sourceTypes: "sourceTypes" in opts ? (opts.sourceTypes as RunArchiveRow["sourceTypes"] ?? null) : null,
+    // Real archives always carry a generated headline/summary by review time;
+    // a publish requires them non-empty (see the publish guard in patchArchive).
+    digestHeadline: "Generated headline",
+    digestSummary: "Generated summary",
   };
 }
 
@@ -328,7 +332,7 @@ describe("patchArchive — digest meta threading (REQ-010, REQ-011, EDGE-004, ED
     expect(ctx.digestMeta).toEqual({ hook: "" });
   });
 
-  it("EDGE-009: a null digestHeadline is sent as a digestMeta key and clears the effective headline", async () => {
+  it("EDGE-009: a null digestHeadline is sent as a digestMeta key and clears the effective headline (DRAFT only)", async () => {
     const archiveRow: RunArchiveRow = {
       ...makeArchiveRow([]),
       digestHeadline: "existing headline",
@@ -339,9 +343,11 @@ describe("patchArchive — digest meta threading (REQ-010, REQ-011, EDGE-004, ED
       archiveRepo,
       rawItemsRepo: makeRawRepo([makeRawRow(1)]),
     };
+    // Clearing the headline is only valid while drafting — a publish with an
+    // empty/null headline is rejected by the guard below.
     await patchArchive(
       "run-1",
-      { rankedItems: [{ id: 1, sourceType: "hn" }], digestHeadline: null },
+      { rankedItems: [{ id: 1, sourceType: "hn" }], digestHeadline: null, publish: false },
       deps,
     );
     const ctx = ctxArg(archiveRepo);
@@ -350,6 +356,34 @@ describe("patchArchive — digest meta threading (REQ-010, REQ-011, EDGE-004, ED
     expect(ctx.digestHeadline).toBeNull();
     // summary untouched (omitted) → preserve existing for searchText
     expect(ctx.digestSummary).toBe("existing summary");
+  });
+
+  it("rejects a publish whose effective headline is empty/null", async () => {
+    const archiveRow: RunArchiveRow = {
+      ...makeArchiveRow([]),
+      digestHeadline: "existing headline",
+      digestSummary: "existing summary",
+    };
+    const deps: ReviewDeps = {
+      archiveRepo: makeArchiveRepo(archiveRow),
+      rawItemsRepo: makeRawRepo([makeRawRow(1)]),
+    };
+    // Publishing with the headline cleared to "" must be refused.
+    await expect(
+      patchArchive(
+        "run-1",
+        { rankedItems: [{ id: 1, sourceType: "hn" }], digestHeadline: "  " },
+        deps,
+      ),
+    ).rejects.toThrow(/digest headline is required to publish/);
+    // ...and with the summary cleared to null.
+    await expect(
+      patchArchive(
+        "run-1",
+        { rankedItems: [{ id: 1, sourceType: "hn" }], digestSummary: null },
+        deps,
+      ),
+    ).rejects.toThrow(/digest summary is required to publish/);
   });
 });
 
