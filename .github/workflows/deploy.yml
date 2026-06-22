@@ -264,3 +264,46 @@ jobs:
         run: |
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "bash /opt/newsletter/deployment/deploy.sh ${{ github.sha }}"
+
+  notify:
+    # Runs after the full pipeline regardless of outcome so the channel hears
+    # about broken deploys too. `result` of the deploy job drives success vs
+    # failure; if an earlier job (build-images/build-web) failed, deploy is
+    # skipped and we report failure.
+    needs: [build-images, build-web, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      # The `secrets` context isn't allowed in `if:` conditions, so surface the
+      # webhook as an env var and gate the step on that instead.
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    steps:
+      - name: Post deploy status to Slack (#newsletter-updates)
+        if: ${{ env.SLACK_WEBHOOK_URL != '' }}
+        env:
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ "$DEPLOY_RESULT" = "success" ]; then
+            EMOJI="🟢"; STATUS="Deploy succeeded"
+          else
+            EMOJI="🔴"; STATUS="Deploy ${DEPLOY_RESULT:-failed}"
+          fi
+          SHORT_SHA="${SHA:0:7}"
+          # Build the Block Kit payload with jq so commit messages / branch names
+          # are JSON-escaped rather than string-interpolated into the body.
+          PAYLOAD="$(jq -nc \
+            --arg header "${EMOJI} ${STATUS}" \
+            --arg detail "*Branch:* \`${REF_NAME}\`  •  *Commit:* <${COMMIT_URL}|${SHORT_SHA}>  •  *By:* ${ACTOR}" \
+            --arg run "<${RUN_URL}|View workflow run>" \
+            '{blocks: [
+              {type:"header", text:{type:"plain_text", text:$header, emoji:true}},
+              {type:"section", text:{type:"mrkdwn", text:$detail}},
+              {type:"context", elements:[{type:"mrkdwn", text:$run}]}
+            ]}')"
+          curl -sSf -X POST -H 'Content-Type: application/json' \
+            --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"
