@@ -439,8 +439,36 @@ function peerRemoteAddress(env: unknown): string | undefined {
  * determined (unit tests / non-node adapters), so it never blocks those.
  * Production (node-server behind Caddy) always sees 127.0.0.1.
  */
+// True for an on-box caller of the /internal/tls-allow ask endpoint. Caddy
+// reaches the API over the host-loopback publish (127.0.0.1:3000), but in the
+// containerized deploy that hop traverses Docker's bridge, so the API socket
+// sees the bridge GATEWAY (an RFC-1918 address such as 172.18.0.1), never
+// 127.0.0.1. The actual boundary is the publish binding (loopback-only) plus
+// Caddy never proxying /internal/* to the API — a public client cannot reach
+// this route at all. So treat loopback AND private-range (RFC-1918) peers as
+// on-box; only a genuinely public source is refused.
 function isLoopbackPeer(c: Context): boolean {
   const addr = peerRemoteAddress(c.env);
   if (addr === undefined) return true;
-  return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
+  return isOnBoxAddress(addr);
+}
+
+/**
+ * True if `raw` is a loopback or RFC-1918 private address (IPv4, incl.
+ * IPv4-mapped IPv6 like `::ffff:172.18.0.1`, or IPv6 loopback `::1`). Used to
+ * decide whether a tls-allow caller is on-box behind the Docker bridge.
+ */
+export function isOnBoxAddress(raw: string): boolean {
+  const addr = raw.startsWith("::ffff:") ? raw.slice("::ffff:".length) : raw;
+  if (addr === "::1") return true;
+  const octets = addr.split(".");
+  if (octets.length !== 4) return false;
+  const a = Number(octets[0]);
+  const b = Number(octets[1]);
+  if (!Number.isInteger(a) || !Number.isInteger(b)) return false;
+  if (a === 127) return true; // loopback 127.0.0.0/8
+  if (a === 10) return true; // RFC-1918 10.0.0.0/8
+  if (a === 172 && b >= 16 && b <= 31) return true; // RFC-1918 172.16.0.0/12 (Docker default)
+  if (a === 192 && b === 168) return true; // RFC-1918 192.168.0.0/16
+  return false;
 }
