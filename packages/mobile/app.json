@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "AgentLoop Dispatch",
+    "slug": "agentloop-dispatch",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "agentloopdispatch",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "io.vertexcover.agentloop.dispatch"
+    },
+    "android": {
+      "package": "io.vertexcover.agentloop.dispatch",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      }
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true
+          },
+          "androidIntentFilters": ["text/*"]
+        }
+      ]
+    ]
+  }
+}
