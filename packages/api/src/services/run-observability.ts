@@ -1,5 +1,6 @@
 import type IORedis from "ioredis";
 import { runKey } from "@newsletter/shared";
+import { classifyLogStep } from "@newsletter/shared/services";
 import type {
   EnrichmentTelemetry,
   RunCostBreakdown,
@@ -43,11 +44,20 @@ export async function buildRunObservability(
   runId: string,
   deps: BuildRunObservabilityDeps,
 ): Promise<RunObservability> {
-  const [stateRaw, archive, logs] = await Promise.all([
+  const [stateRaw, archive, rawLogs] = await Promise.all([
     deps.redis.get(runKey(runId)),
     deps.archiveRepo.findById(runId),
     deps.runLogRepo.listForRun(runId),
   ]);
+
+  // Stamp the resolved extraction step on each log so the Failures panel and
+  // any per-step UI can read context.step directly (single source of truth:
+  // classifyLogStep). Funnel/stage derivation reads other fields, unaffected.
+  const logs: RunLogEntry[] = rawLogs.map((entry) => {
+    const step = classifyLogStep(entry.event, entry.context);
+    if (step === null) return entry;
+    return { ...entry, context: { ...(entry.context ?? {}), step } };
+  });
 
   const runState: RunState | null = stateRaw === null ? null : (JSON.parse(stateRaw) as RunState);
 

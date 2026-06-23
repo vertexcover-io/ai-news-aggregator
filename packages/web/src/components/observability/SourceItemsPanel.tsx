@@ -1,11 +1,13 @@
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import type {
   RunObservabilitySource,
   RunSourceItemsSummary,
+  SourceStepKey,
 } from "@newsletter/shared/types";
 import { useRunSourceItems } from "../../hooks/useRunSourceItems";
 import { SourceItemRow } from "./SourceItemRow";
 import { SourceLogStrip } from "./SourceLogStrip";
+import { StepTimeline } from "./StepTimeline";
 
 interface SourceItemsPanelProps {
   runId: string;
@@ -65,6 +67,7 @@ export function SourceItemsPanel({
   sourceKey,
 }: SourceItemsPanelProps): ReactElement {
   const query = useRunSourceItems(runId, sourceKey, true);
+  const [selectedStep, setSelectedStep] = useState<SourceStepKey | null>(null);
 
   if (query.isLoading || query.data === undefined) {
     return (
@@ -96,8 +99,17 @@ export function SourceItemsPanel({
       data-testid="source-items-panel"
       className="border-b border-line bg-[#faf7f0] py-1 pr-3 pb-4 pl-8"
     >
+      {data.steps.length > 0 ? (
+        <div className="pt-3.5">
+          <StepTimeline
+            steps={data.steps}
+            selected={selectedStep}
+            onSelect={setSelectedStep}
+          />
+        </div>
+      ) : null}
       {showLogOnly ? (
-        <div className="py-3.5 pb-0 font-mono text-[10px] leading-[1.45] text-[#9d2f22]">
+        <div className="pt-3.5 pb-0 font-mono text-[10px] leading-[1.45] text-[#9d2f22]">
           Source failed — no items collected, so there is no per-item list to show.
           Collector log below.
         </div>
@@ -120,7 +132,11 @@ export function SourceItemsPanel({
           )}
         </>
       )}
-      <SourceLogStrip sourceName={source.displayName} logs={data.logs} />
+      <SourceLogStrip
+        sourceName={source.displayName}
+        logs={data.logs}
+        selectedStep={selectedStep}
+      />
     </div>
   );
 }

@@ -29,6 +29,7 @@ function makeResponse(): RunSourceItemsResponse {
       dedupDropped: 0,
       enrichFailed: 0,
     },
+    steps: [],
     items: [],
     logs: [],
   };

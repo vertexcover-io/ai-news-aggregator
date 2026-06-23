@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import type { ReactElement } from "react";
@@ -50,8 +50,12 @@ describe("RunObservabilityPage", () => {
     expect(screen.getByTestId("source-telemetry-table")).toBeTruthy();
     expect(screen.getByTestId("enrichment-strip")).toBeTruthy();
     expect(screen.getByTestId("failures-list")).toBeTruthy();
-    expect(screen.getByTestId("debug-timeline")).toBeTruthy();
     expect(screen.getByTestId("live-status-pill")).toBeTruthy();
+    // The raw event stream is demoted to an opt-in toggle — collapsed by default.
+    expect(screen.getByTestId("raw-stream-toggle")).toBeTruthy();
+    expect(screen.queryByTestId("debug-timeline")).toBeNull();
+    fireEvent.click(screen.getByTestId("raw-stream-toggle"));
+    expect(screen.getByTestId("debug-timeline")).toBeTruthy();
   });
 
   it("REQ-034: shows a live pill while the run is non-terminal", async () => {
@@ -72,8 +76,10 @@ describe("RunObservabilityPage", () => {
       expect(screen.getByTestId("source-telemetry-table")).toBeTruthy();
     });
     expect(screen.getByTestId("cost-strip")).toBeTruthy();
-    expect(screen.getByTestId("timeline-empty")).toBeTruthy();
     expect(screen.getByTestId("failures-empty")).toBeTruthy();
+    // Timeline empty-state lives inside the opt-in raw event stream.
+    fireEvent.click(screen.getByTestId("raw-stream-toggle"));
+    expect(screen.getByTestId("timeline-empty")).toBeTruthy();
   });
 
   it("REQ-024: renders a not-found state when the run is null", async () => {

@@ -35,8 +35,8 @@ describe("FailuresList (REQ-038, EDGE-007)", () => {
     expect(screen.getByText("non-fatal")).toBeTruthy();
   });
 
-  it("EDGE-007: a long message is truncated and expands on click", () => {
-    const long = `FetchTimeout: ${"x".repeat(400)}`;
+  it("EDGE-007: a very long message is truncated and expands on click", () => {
+    const long = `FetchTimeout: ${"x".repeat(800)}`;
     render(
       <FailuresList
         failures={[makeLog({ id: 9, level: "error", message: long })]}
@@ -47,7 +47,7 @@ describe("FailuresList (REQ-038, EDGE-007)", () => {
     expect(card.textContent?.length ?? 0).toBeLessThan(long.length + 100);
     fireEvent.click(screen.getByTestId("failure-expand"));
     expect(screen.getByTestId("failure-card").textContent).toContain(
-      "x".repeat(400),
+      "x".repeat(800),
     );
   });
 });

@@ -100,6 +100,7 @@ function makeResponse(overrides: Partial<RunSourceItemsResponse>): RunSourceItem
       dedupDropped: 1,
       enrichFailed: 1,
     },
+    steps: [],
     items: [
       makeItem({}),
       makeItem({

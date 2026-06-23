@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { RunStatus } from "@newsletter/shared/types";
 import { useRunObservability } from "../hooks/useRunObservability";
@@ -41,6 +41,7 @@ export function RunObservabilityPage(): ReactElement {
   const params = useParams<{ runId: string }>();
   const runId = params.runId ?? null;
   const query = useRunObservability(runId);
+  const [showRaw, setShowRaw] = useState(false);
 
   if (query.isLoading || (!query.isFetched && query.data === undefined)) {
     return (
@@ -161,8 +162,12 @@ export function RunObservabilityPage(): ReactElement {
         <section className="mt-9">
           <SectionHead
             title="Source Telemetry"
-            note={`per-source · ${String(sources.length)} units`}
+            note={`primary debug view · ${String(sources.length)} units`}
           />
+          <div className="mb-3 rounded-[3px] border border-line bg-[#f6f3ec] px-3 py-2 font-mono text-[11px] text-mute">
+            ★ Expand any source to trace the exact steps it took to extract data —
+            click a step to scope the source log to it.
+          </div>
           <SourceTelemetryTable runId={run.runId} sources={sources} />
         </section>
 
@@ -174,14 +179,34 @@ export function RunObservabilityPage(): ReactElement {
         <section className="mt-9">
           <SectionHead
             title="Failures"
-            note={`level = error · ${String(failures.length)}`}
+            note={`${String(failures.length)} · grouped by source`}
           />
           <FailuresList failures={failures} />
         </section>
 
         <section className="mt-9">
-          <SectionHead title="Debug Timeline" note={`${String(logs.length)} events`} />
-          <DebugTimeline logs={logs} />
+          <SectionHead
+            title="Raw Event Stream"
+            note={`advanced · ${String(logs.length)} events`}
+          />
+          <button
+            type="button"
+            data-testid="raw-stream-toggle"
+            aria-expanded={showRaw}
+            onClick={() => {
+              setShowRaw((v) => !v);
+            }}
+            className="flex w-full items-center gap-2 rounded-[3px] border border-dashed border-line-strong bg-cream-elev px-3.5 py-2.5 text-left font-mono text-[12px] text-mute"
+          >
+            <span>{showRaw ? "▾" : "▸"}</span>
+            Show raw chronological event stream (all sources, all stages) — for deep
+            debugging only
+          </button>
+          {showRaw ? (
+            <div className="mt-2.5">
+              <DebugTimeline logs={logs} />
+            </div>
+          ) : null}
         </section>
 
         <div className="mt-14 flex justify-between border-t border-line pt-4 font-mono text-[10.5px] tracking-wide text-mute-2">

@@ -383,10 +383,18 @@ export async function collectHn(
     const feedStart = Date.now();
     const response = await fetchWithRetry(fetchFn, url, parseAlgoliaStoryResponse);
     const items = parseStories(response);
+    // Stamp the collection-unit identity so the observability items panel and
+    // per-source log strip resolve by feed (matches the unitResults identifier
+    // below — HN's URL-derived identity is always "news.ycombinator.com").
+    const sourceUnit = {
+      identifier: `hn:${feed}`,
+      displayName: `Hacker News ${feed}`,
+    };
     let added = 0;
     for (const item of items) {
       if (!seenIds.has(item.externalId)) {
         seenIds.add(item.externalId);
+        item.metadata = { ...item.metadata, comments: item.metadata?.comments ?? [], sourceUnit };
         allItems.push(item);
         added += 1;
       }

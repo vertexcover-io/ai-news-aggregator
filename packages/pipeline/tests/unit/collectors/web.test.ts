@@ -1895,7 +1895,8 @@ describe("level mapping for web collector events (VS-5)", () => {
     const hit = findCall(fakeLogger.info, "collector.web.listing_completed");
     expect(hit).not.toBeNull();
     expect(hit?.fields.stage).toBe("collect");
-    expect(hit?.fields.source).toBe("blog");
+    expect(hit?.fields.source).toBe("alpha.example.com");
+    expect(hit?.fields.step).toBe("discover");
     // It must NOT be at warn or error
     expect(findCall(fakeLogger.warn, "collector.web.listing_completed")).toBeNull();
     expect(findCall(fakeLogger.error, "collector.web.listing_completed")).toBeNull();
@@ -1926,8 +1927,8 @@ describe("level mapping for web collector events (VS-5)", () => {
     const hit = findCall(fakeLogger.warn, "collector.web.discovery_failed");
     expect(hit).not.toBeNull();
     expect(hit?.fields.stage).toBe("collect");
-    expect(hit?.fields.source).toBe("blog");
-    expect(hit?.fields.step).toBe("discovery");
+    expect(hit?.fields.source).toBe("alpha.example.com");
+    expect(hit?.fields.step).toBe("discover");
     expect(hit?.fields.url).toBe(sourceA.listingUrl);
     expect(hit?.fields.error).toBeDefined();
     // Not at info or error
@@ -1935,7 +1936,7 @@ describe("level mapping for web collector events (VS-5)", () => {
     expect(findCall(fakeLogger.error, "collector.web.discovery_failed")).toBeNull();
   });
 
-  it("routes collector.web.detail_failed -> runLogger.error with step=extract", async () => {
+  it("routes collector.web.detail_failed (fetch failure) -> runLogger.error with step=fetch", async () => {
     const fakeLogger = makeFakeRunLogger();
     const repo = makeRepo();
     const model = makeDiscoveryThenExtractModel(
@@ -1963,8 +1964,8 @@ describe("level mapping for web collector events (VS-5)", () => {
     const hit = findCall(fakeLogger.error, "collector.web.detail_failed");
     expect(hit).not.toBeNull();
     expect(hit?.fields.stage).toBe("collect");
-    expect(hit?.fields.source).toBe("blog");
-    expect(hit?.fields.step).toBe("extract");
+    expect(hit?.fields.source).toBe("alpha.example.com");
+    expect(hit?.fields.step).toBe("fetch");
     expect(hit?.fields.url).toBe(DISCOVERY_POSTS[1].url);
     expect(hit?.fields.error).toBe("timeout");
     // Not at info or warn

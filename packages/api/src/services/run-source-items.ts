@@ -1,11 +1,18 @@
 import type IORedis from "ioredis";
 import { runKey } from "@newsletter/shared";
 import {
+  buildSourceSteps,
   classifyItemLifecycle,
+  classifyLogStep,
   orderSourceItems,
   summarizeSourceItems,
 } from "@newsletter/shared/services";
-import type { RunSourceItemsResponse, RunState, RunStatus } from "@newsletter/shared/types";
+import type {
+  RunLogEntry,
+  RunSourceItemsResponse,
+  RunState,
+  RunStatus,
+} from "@newsletter/shared/types";
 import type { SourceType } from "@newsletter/shared/db";
 import { computeDedupGroups } from "@newsletter/pipeline/eval";
 import type { RawItemWithEnrichment, RawItemsRepo } from "@api/repositories/raw-items.js";
@@ -84,7 +91,12 @@ export async function buildRunSourceItems(
     .filter(
       (item) =>
         item.sourceType === parsedSource.sourceType &&
-        item.sourceIdentifier === parsedSource.identifier,
+        // Prefer the stamped collection-unit identity (matches the Source
+        // Telemetry row exactly — fixes hn/twitter where the URL-derived
+        // identity differs); fall back to the derived identity for legacy
+        // items that predate metadata.sourceUnit.
+        (item.sourceUnitIdentifier === parsedSource.identifier ||
+          item.sourceIdentifier === parsedSource.identifier),
     )
     .map((item) =>
       classifyItemLifecycle({
@@ -103,14 +115,24 @@ export async function buildRunSourceItems(
       }),
     );
   const items = orderSourceItems(sourceItems);
+  const summary = summarizeSourceItems(items);
+  // Stamp the resolved extraction step on each log so the frontend can filter
+  // the log strip by step without re-implementing the classifier (single
+  // source of truth lives in classifyLogStep).
+  const stampedLogs: RunLogEntry[] = logs.map((entry) => {
+    const step = classifyLogStep(entry.event, entry.context);
+    if (step === null) return entry;
+    return { ...entry, context: { ...(entry.context ?? {}), step } };
+  });
 
   return {
     runId,
     sourceKey: parsedSource.value,
     live,
-    summary: summarizeSourceItems(items),
+    summary,
+    steps: buildSourceSteps({ logs: stampedLogs, summary, itemCount: items.length }),
     items,
-    logs,
+    logs: stampedLogs,
   };
 }
 

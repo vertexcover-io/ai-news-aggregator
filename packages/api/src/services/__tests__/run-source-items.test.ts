@@ -78,6 +78,7 @@ function makeRawItem(
     engagement: { points: 1, commentCount: 0 },
     enrichedLink: { url: overrides.url, fetchedAt: "2026-05-25T00:02:00.000Z", status: "ok" },
     sourceIdentifier: "r/ai_agents",
+    sourceUnitIdentifier: null,
   };
   return { ...defaults, ...overrides };
 }

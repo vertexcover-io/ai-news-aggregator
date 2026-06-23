@@ -29,12 +29,12 @@ export function createRunLogRepo(db: Pick<AppDb, "select">): RunLogRepo {
       source: RunLogSourceLookup,
     ): Promise<RunLogEntry[]> {
       if (!UUID_RE.test(runId)) return [];
-      const exactRows = await selectLogs(db, runId, source.identifier);
-      if (exactRows.length > 0) return exactRows.map(toRunLogEntry);
-
-      if (source.identifier === source.sourceType) return [];
-      const fallbackRows = await selectLogs(db, runId, source.sourceType);
-      return fallbackRows.map(toRunLogEntry);
+      // Exact match on the per-source unit identifier only. The previous
+      // fallback to `source.sourceType` leaked every same-collector source's
+      // logs into one source's strip (REQ: per-source tracing); collectors now
+      // stamp run_logs.source with the unit identifier so the exact match hits.
+      const rows = await selectLogs(db, runId, source.identifier);
+      return rows.map(toRunLogEntry);
     },
   };
 }

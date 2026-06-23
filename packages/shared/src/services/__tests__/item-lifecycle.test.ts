@@ -274,6 +274,7 @@ describe("RunSourceItemsResponse type (REQ-014)", () => {
       sourceKey: "blog:example.com",
       live: false,
       summary: summarizeSourceItems([item]),
+      steps: [],
       items: [item],
       logs: [],
     };

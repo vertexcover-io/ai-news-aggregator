@@ -57,6 +57,7 @@ function makeItem(overrides: Partial<RawItemInsert> = {}): RawItemInsert {
     title: "Some post",
     url: "https://example.com/article",
     sourceUrl: "https://reddit.com/r/x/comments/abc123",
+    metadata: { comments: [], sourceUnit: { identifier: "r/x", displayName: "r/x" } },
     ...overrides,
   } as RawItemInsert;
 }
@@ -93,7 +94,7 @@ describe("enrichRawItems failure logging", () => {
     const [fields, msg] = calls.error[0];
     expect(fields.event).toBe("link_enrichment.failed");
     expect(fields.stage).toBe("enrich");
-    expect(fields.source).toBe(item.sourceType);
+    expect(fields.source).toBe("r/x");
     expect(fields.url).toBe(item.url);
     expect(fields.step).toBe("enrich");
     const failureReason = fields.failureReason;
