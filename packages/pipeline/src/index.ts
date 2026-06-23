@@ -12,6 +12,7 @@ import { createRedisConnection } from "@newsletter/shared/redis";
 import { createRunStateService } from "@pipeline/services/run-state.js";
 import { captureException, shutdownPostHog } from "@pipeline/lib/posthog.js";
 import { handleWorkerFailure } from "@pipeline/lib/worker-failure.js";
+import { recordIncident } from "@pipeline/lib/incident.js";
 import { createFatalHandler } from "@pipeline/lib/crash-handlers.js";
 
 // REQ-09: disable on-disk Crawlee storage; never write ./storage/
@@ -99,7 +100,11 @@ collectionWorker.on("completed", (job: Job<CollectionJobData>) => {
 
 collectionWorker.on("failed", (job: Job<CollectionJobData> | undefined, err: Error) => {
   logger.error({ jobId: job?.id, jobName: job?.name, error: err.message }, "job failed");
-  handleWorkerFailure("collection", job, err, captureException);
+  handleWorkerFailure("collection", job, err, {
+    captureException,
+    recordIncident,
+    getRunId: getRunIdFromJobData,
+  });
 });
 
 processingWorker.on("ready", () => {
@@ -128,7 +133,11 @@ processingWorker.on("failed", (job: Job | undefined, err: Error) => {
       });
     }
   }
-  handleWorkerFailure("processing", job, err, captureException);
+  handleWorkerFailure("processing", job, err, {
+    captureException,
+    recordIncident,
+    getRunId: getRunIdFromJobData,
+  });
 });
 
 processingWorker.on("stalled", (jobId: string) => {
@@ -152,5 +161,9 @@ collectorHealthWorker.on("failed", (job: Job | undefined, err: Error) => {
     { jobId: job?.id, jobName: job?.name, error: err.message },
     "job failed",
   );
-  handleWorkerFailure("collector-health", job, err, captureException);
+  handleWorkerFailure("collector-health", job, err, {
+    captureException,
+    recordIncident,
+    getRunId: getRunIdFromJobData,
+  });
 });
