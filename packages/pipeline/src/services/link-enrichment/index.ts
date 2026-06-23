@@ -5,6 +5,7 @@ import type {
   RawItemInsert,
   RawItemMetadata,
 } from "@newsletter/shared";
+import { deriveRawItemIdentifier } from "@newsletter/shared/services";
 import { enrichOne } from "@pipeline/services/link-enrichment/fetcher.js";
 import type { EnrichmentContext, EnrichmentCounters } from "@pipeline/services/link-enrichment/types.js";
 import { shouldEnrich } from "@pipeline/services/link-enrichment/url-classifier.js";
@@ -35,10 +36,20 @@ function logEnrichmentFailure(
 ): void {
   if (!ctx.runLogger) return;
   const hostname = hostnameOf(item.url);
+  // Scope the failure to the item's collection unit so it surfaces in that
+  // source's per-source log strip and enrich step (not the bare collector type).
+  const sourceUnit =
+    item.metadata?.sourceUnit?.identifier ??
+    deriveRawItemIdentifier({
+      sourceType: item.sourceType,
+      url: item.url,
+      sourceUrl: item.sourceUrl ?? null,
+      metadata: item.metadata ?? null,
+    });
   void ctx.runLogger.error(
     {
       stage: "enrich",
-      source: item.sourceType,
+      source: sourceUnit,
       event: "link_enrichment.failed",
       url: item.url,
       externalId: item.externalId,

@@ -37,6 +37,13 @@ export interface RunLogContext {
   fatal?: boolean;
   retries?: number;
   enrichment?: EnrichmentTelemetry;
+  /**
+   * Optional explicit per-source extraction step a log line belongs to. When
+   * absent, the read-time step classifier falls back to event-name heuristics
+   * (see `@newsletter/shared/services` classifyLogStep). Lets the per-source
+   * step timeline group log lines precisely.
+   */
+  step?: SourceStepKey;
   [key: string]: unknown;
 }
 
@@ -143,11 +150,45 @@ export interface RunSourceItemsSummary {
   enrichFailed: number;
 }
 
+/**
+ * Ordered extraction steps a source goes through. Collect-time steps
+ * (discover → fetch → extract → enrich) are derived from the source-scoped
+ * run-log events; process-time steps (dedup → shortlist → rank) are derived
+ * from the per-source item lifecycle summary.
+ */
+export type SourceStepKey =
+  | "discover"
+  | "fetch"
+  | "extract"
+  | "enrich"
+  | "dedup"
+  | "shortlist"
+  | "rank";
+
+export type SourceStepStatus =
+  | "done"
+  | "failed"
+  | "skipped"
+  | "running"
+  | "empty";
+
+export interface RunSourceStep {
+  key: SourceStepKey;
+  label: string;
+  status: SourceStepStatus;
+  /** Primary count for the step (e.g. items extracted), or null when N/A. */
+  count: number | null;
+  /** Short sub-detail line (e.g. "LLM · 2 skipped"), or null. */
+  detail: string | null;
+  durationMs: number | null;
+}
+
 export interface RunSourceItemsResponse {
   runId: string;
   sourceKey: string;
   live: boolean;
   summary: RunSourceItemsSummary;
+  steps: RunSourceStep[];
   items: RunSourceItem[];
   logs: RunLogEntry[];
 }

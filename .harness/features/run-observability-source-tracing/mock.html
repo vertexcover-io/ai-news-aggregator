@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Run Observability — redesign mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --cream:#fbfaf7; --cream-elev:#ffffff; --ink:#14110d; --ink-2:#2a261f;
+    --mute:#6b6557; --mute-2:#8a8472; --line:#e7e2d6; --line-strong:#d4ceba;
+    --rust:#8c3a1e; --rust-deep:#6e2d17; --chip:#f1ede2;
+    --ok:#3f6f3a; --okbg:#eef3ec; --warn:#9a6a16; --warnbg:#f7f0e1;
+    --err:#9d2f22; --errbg:#f7ebe8; --errline:#e3c8c2; --skip:#8a8472;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--cream);color:var(--ink);font-family:"Newsreader",Georgia,serif;-webkit-font-smoothing:antialiased}
+  .mono{font-family:"Geist Mono",ui-monospace,monospace}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px 96px}
+  a{color:var(--rust);text-decoration:none}
+  /* header */
+  .crumbs{margin-top:24px;display:flex;gap:8px;font-family:"Geist Mono",monospace;font-size:11px;color:var(--mute-2)}
+  .head{display:grid;grid-template-columns:1fr auto;align-items:end;gap:24px;border-bottom:1.5px solid var(--ink);padding:16px 0}
+  .eyebrow{font-family:"Geist Mono",monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--mute-2)}
+  h1{font-size:40px;font-weight:500;line-height:1.04;letter-spacing:-.02em;margin:10px 0 6px}
+  .sub{font-family:"Geist Mono",monospace;font-size:12px;color:var(--mute)}
+  .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 12px;font-family:"Geist Mono",monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+  .pill-live{background:var(--ink);color:var(--cream)}
+  .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+  .pulse{animation:p 1.4s infinite}
+  @keyframes p{0%,100%{opacity:1}50%{opacity:.3}}
+  .meta{display:flex;gap:16px;justify-content:flex-end;font-family:"Geist Mono",monospace;font-size:11.5px;color:var(--mute);margin-top:8px}
+  .meta b{color:var(--ink-2);font-weight:500}
+  /* section heads */
+  .sec{margin-top:36px}
+  .sechead{display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:16px}
+  .sechead .t{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .sechead .n{font-family:"Geist Mono",monospace;font-size:11px;color:var(--mute-2);text-transform:uppercase;letter-spacing:.1em}
+  /* source table */
+  .srctbl{border:1px solid var(--line);border-radius:3px;overflow:hidden;background:var(--cream-elev)}
+  .srow{display:grid;grid-template-columns:18px 150px 1fr 90px 70px 80px 22px;gap:14px;align-items:center;padding:13px 16px;border-top:1px solid var(--line);cursor:pointer;font-family:"Geist Mono",monospace;font-size:12.5px}
+  .srow:first-child{border-top:0}
+  .srow:hover{background:#faf8f2}
+  .srow.open{background:#f6f3ec}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:2px;border:1px solid}
+  .b-ok{color:var(--ok);background:var(--okbg);border-color:#cfe0cb}
+  .b-part{color:var(--warn);background:var(--warnbg);border-color:#e7d8b3}
+  .b-fail{color:var(--err);background:var(--errbg);border-color:var(--errline)}
+  .stype{color:var(--mute-2);text-transform:uppercase;font-size:10px;letter-spacing:.08em}
+  .sname{color:var(--ink);font-weight:500}
+  .chev{transition:transform .15s;color:var(--mute-2)}
+  .srow.open .chev{transform:rotate(90deg)}
+  .num{color:var(--ink-2)}
+  .mut{color:var(--mute)}
+  /* expanded panel */
+  .panel{border-top:1px solid var(--line-strong);background:#fcfbf8;padding:0}
+  .panel-inner{padding:20px 18px 22px}
+  .panel.hidden{display:none}
+  /* step timeline */
+  .steplbl{font-family:"Geist Mono",monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute-2);margin-bottom:12px}
+  .steps{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding-bottom:4px}
+  .step{position:relative;flex:1 1 0;min-width:118px;border:1px solid var(--line);border-radius:3px;background:var(--cream-elev);padding:10px 12px;margin-right:26px;cursor:pointer}
+  .step:last-child{margin-right:0}
+  .step::after{content:"";position:absolute;top:50%;right:-26px;width:26px;height:2px;background:var(--line-strong)}
+  .step:last-child::after{display:none}
+  .step.sel{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+  .step .sk{display:flex;align-items:center;gap:6px;font-family:"Geist Mono",monospace;font-size:11px;color:var(--ink);font-weight:500}
+  .step .sv{font-family:"Geist Mono",monospace;font-size:10.5px;color:var(--mute);margin-top:5px}
+  .step .sd{font-family:"Geist Mono",monospace;font-size:9.5px;color:var(--mute-2);margin-top:2px}
+  .step.fail{background:var(--errbg);border-color:var(--errline)}
+  .step.fail .sk{color:var(--err)}
+  .step.skip{opacity:.55}
+  .step .icn{width:14px;height:14px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:#fff;flex:none}
+  .i-ok{background:var(--ok)} .i-fail{background:var(--err)} .i-skip{background:var(--skip)} .i-run{background:var(--warn)}
+  /* outcome pills */
+  .pills{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 14px}
+  .opill{font-family:"Geist Mono",monospace;font-size:11px;padding:3px 10px;border-radius:2px;border:1px solid var(--line-strong);background:var(--cream-elev);color:var(--ink-2)}
+  .opill b{color:var(--ink)}
+  /* two col */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:880px){.cols{grid-template-columns:1fr}}
+  .box{border:1px solid var(--line);border-radius:3px;background:var(--cream-elev);overflow:hidden}
+  .boxhd{border-bottom:1px solid var(--line);background:#f6f3ec;padding:8px 12px;font-family:"Geist Mono",monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute-2);display:flex;justify-content:space-between}
+  .scroll{max-height:300px;overflow-y:auto}
+  /* item rows */
+  .item{border-top:1px solid var(--line);padding:9px 12px;font-family:"Geist Mono",monospace;font-size:11.5px}
+  .item:first-child{border-top:0}
+  .item .it{color:var(--ink);font-weight:500;font-size:12px;line-height:1.35}
+  .item .im{color:var(--mute-2);font-size:10px;margin-top:3px}
+  .trail{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .tg{font-size:9px;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:2px;border:1px solid var(--line-strong);color:var(--mute)}
+  .tg.on{color:var(--ok);border-color:#cfe0cb;background:var(--okbg)}
+  .tg.rank{color:var(--rust);border-color:#e3c8c2;background:#f7ece6}
+  .tg.drop{color:var(--mute-2);text-decoration:line-through}
+  /* log strip */
+  .log{display:grid;grid-template-columns:64px 52px 1fr;gap:9px;border-top:1px solid var(--line);padding:7px 12px;font-family:"Geist Mono",monospace;font-size:11px;line-height:1.45}
+  .log:first-child{border-top:0}
+  .log.error{background:#fdf4f1;border-left:2px solid var(--err);padding-left:10px}
+  .log.warn{border-left:2px solid var(--warn);padding-left:10px}
+  .log .lt{color:var(--mute-2)}
+  .log .ll{font-size:8.5px;text-transform:uppercase;letter-spacing:.05em;padding-top:1px}
+  .ll.info{color:var(--mute)} .ll.debug{color:var(--mute-2)} .ll.warn{color:var(--warn)} .ll.error{color:var(--err)}
+  .log .le b{color:var(--ink);font-weight:500} .log .le .msg{color:var(--mute)}
+  .ctx{display:flex;flex-wrap:wrap;gap:4px 5px;margin-top:4px}
+  .kv{font-size:9.5px;background:var(--chip);border:1px solid var(--line);border-radius:2px;padding:0 5px;color:var(--ink-2);white-space:nowrap}
+  .kv i{color:var(--mute-2);font-style:normal}
+  .kv.err{background:var(--errbg);border-color:var(--errline);color:var(--err)}
+  .log.dim{opacity:.32}
+  .log.hl{background:#fbf3d9}
+  .note{font-family:"Geist Mono",monospace;font-size:10px;color:var(--mute-2);margin-top:8px}
+  /* failures panel */
+  .failpanel{border:1px solid var(--errline);border-radius:3px;background:var(--cream-elev);overflow:hidden}
+  .failhd{display:flex;justify-content:space-between;align-items:center;background:var(--errbg);border-bottom:1px solid var(--errline);padding:9px 14px;font-family:"Geist Mono",monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--err)}
+  .failscroll{max-height:340px;overflow-y:auto}
+  .fcard{border-left:3px solid var(--err);border-bottom:1px solid var(--line);padding:13px 16px}
+  .fcard:last-child{border-bottom:0}
+  .fcard .ftop{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .fcard .ftitle{font-size:15px;font-weight:600;color:var(--err)}
+  .fcard .fmeta{font-family:"Geist Mono",monospace;font-size:10.5px;color:var(--mute);white-space:nowrap}
+  .fcard .fmsg{font-family:"Geist Mono",monospace;font-size:12px;line-height:1.55;color:var(--ink-2);margin-top:8px;white-space:pre-wrap;word-break:break-word}
+  .fctx{margin-top:9px;border-top:1px dashed var(--errline);padding-top:9px}
+  .fctx .row{display:flex;gap:8px;font-family:"Geist Mono",monospace;font-size:10.5px;line-height:1.6}
+  .fctx .k{color:var(--mute-2);min-width:78px}
+  .fctx .v{color:var(--ink-2);word-break:break-all}
+  .ftags{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .ftag{font-family:"Geist Mono",monospace;font-size:10px;padding:1px 8px;border-radius:2px;border:1px solid var(--errline);background:#fff;color:var(--rust-deep)}
+  /* debug raw */
+  .raw-toggle{display:flex;align-items:center;gap:8px;font-family:"Geist Mono",monospace;font-size:12px;color:var(--mute);cursor:pointer;border:1px dashed var(--line-strong);background:var(--cream-elev);border-radius:3px;padding:10px 14px}
+  .raw-body{margin-top:10px;border:1px solid var(--line);border-radius:3px;overflow:hidden;background:var(--cream-elev)}
+  .raw-body.hidden{display:none}
+  .callout{font-family:"Geist Mono",monospace;font-size:11px;color:var(--mute);background:#f6f3ec;border:1px solid var(--line);border-radius:3px;padding:10px 12px;margin-bottom:10px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-family:"Geist Mono",monospace;font-size:10px;color:var(--mute-2);margin-top:10px}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="crumbs"><a href="#">Dashboard</a><span>/</span><span>Runs</span><span>/</span><span>3f9c…a21e</span></div>
+  <div class="head">
+    <div>
+      <div class="eyebrow">Run Ledger · Observability</div>
+      <h1>Run telemetry</h1>
+      <div class="sub">run <b>3f9c2a14-…-a21e</b></div>
+    </div>
+    <div style="text-align:right">
+      <span class="pill pill-live"><span class="dot pulse" style="background:#7fd18a"></span> Running · collect</span>
+      <div class="meta"><span>started <b>09:14:02</b></span><span>elapsed <b>2m 41s</b></span><span>stage <b>2 / 6</b></span></div>
+    </div>
+  </div>
+
+  <!-- ============ SOURCE TELEMETRY ============ -->
+  <div class="sec">
+    <div class="sechead"><div class="t">Source Telemetry</div><div class="n">per-source · 6 units</div></div>
+    <div class="callout">★ Primary debug view. Each row expands into the exact step path a source took to extract data — click any step to scope the source log below it.</div>
+    <div class="srctbl">
+
+      <!-- collapsed: hn -->
+      <div class="srow" onclick="t(this)">
+        <span class="chev">▸</span>
+        <span><span class="stype">hn</span><br><span class="sname">topstories</span></span>
+        <span class="badge b-ok" style="justify-self:start">● completed</span>
+        <span class="num">28 items</span>
+        <span class="mut">0 retries</span>
+        <span class="mut">1.2s</span>
+        <span></span>
+      </div>
+      <div class="panel hidden"><div class="panel-inner"><div class="mut mono" style="font-size:11px">(expand to view steps — collapsed here for brevity)</div></div></div>
+
+      <!-- EXPANDED: blog cursor.com -->
+      <div class="srow open" onclick="t(this)">
+        <span class="chev">▸</span>
+        <span><span class="stype">blog</span><br><span class="sname">cursor.com</span></span>
+        <span class="badge b-ok" style="justify-self:start">● completed</span>
+        <span class="num">12 items</span>
+        <span class="mut">1 retry</span>
+        <span class="mut">8.4s</span>
+        <span></span>
+      </div>
+      <div class="panel">
+        <div class="panel-inner">
+          <div class="steplbl">Extraction steps — blog · cursor.com</div>
+          <div class="steps">
+            <div class="step sel" onclick="selStep(this,'all')"><div class="sk"><span class="icn i-ok">✓</span>Discover</div><div class="sv">14 posts found</div><div class="sd">listing · 0.9s</div></div>
+            <div class="step" onclick="selStep(this,'fetch')"><div class="sk"><span class="icn i-ok">✓</span>Fetch</div><div class="sv">14 / 14 fetched</div><div class="sd">1 retry · 3.1s</div></div>
+            <div class="step" onclick="selStep(this,'extract')"><div class="sk"><span class="icn i-ok">✓</span>Extract</div><div class="sv">12 extracted</div><div class="sd">LLM · 2 skipped · 3.4s</div></div>
+            <div class="step" onclick="selStep(this,'enrich')"><div class="sk"><span class="icn i-ok">✓</span>Enrich</div><div class="sv">12 links</div><div class="sd">1 fail · 1.0s</div></div>
+            <div class="step" onclick="selStep(this,'dedup')"><div class="sk"><span class="icn i-ok">✓</span>Dedup</div><div class="sv">11 survived</div><div class="sd">1 dropped</div></div>
+            <div class="step" onclick="selStep(this,'shortlist')"><div class="sk"><span class="icn i-ok">✓</span>Shortlist</div><div class="sv">6 kept</div><div class="sd">LLM</div></div>
+            <div class="step" onclick="selStep(this,'rank')"><div class="sk"><span class="icn i-ok">✓</span>Rank</div><div class="sv">3 ranked</div><div class="sd">#2 best</div></div>
+          </div>
+
+          <div class="pills">
+            <span class="opill"><b>3</b> ranked</span>
+            <span class="opill"><b>6</b> shortlisted</span>
+            <span class="opill"><b>11</b> dedup survivors</span>
+            <span class="opill"><b>1</b> dedup dropped</span>
+            <span class="opill"><b>1</b> enrich failed</span>
+          </div>
+
+          <div class="cols">
+            <!-- items -->
+            <div class="box">
+              <div class="boxhd"><span>Items extracted · cursor.com</span><span>12</span></div>
+              <div class="scroll">
+                <div class="item"><div class="it">Composer: agentic edits across your codebase</div><div class="im">@cursor · 0 eng · 4h ago</div><div class="trail"><span class="tg on">fetched</span><span class="tg on">enriched</span><span class="tg on">survived</span><span class="tg on">shortlisted</span><span class="tg rank">ranked #2</span></div></div>
+                <div class="item"><div class="it">Tab model: lower latency completions</div><div class="im">@cursor · 0 eng · 6h ago</div><div class="trail"><span class="tg on">fetched</span><span class="tg on">enriched</span><span class="tg on">survived</span><span class="tg on">shortlisted</span><span class="tg rank">ranked #5</span></div></div>
+                <div class="item"><div class="it">Bugbot: automated PR review notes</div><div class="im">@cursor · 0 eng · 9h ago</div><div class="trail"><span class="tg on">fetched</span><span class="tg on">enriched</span><span class="tg on">survived</span><span class="tg on">shortlisted</span></div></div>
+                <div class="item"><div class="it">Changelog 0.43 — background agents</div><div class="im">@cursor · 0 eng · 1d ago</div><div class="trail"><span class="tg on">fetched</span><span class="tg on">enriched</span><span class="tg drop">dedup dropped</span><span class="im" style="margin:0">↳ winner: "Cursor 0.43 ships agents"</span></div></div>
+                <div class="item"><div class="it">Enterprise SSO + audit logs</div><div class="im">@cursor · 0 eng · 1d ago</div><div class="trail"><span class="tg on">fetched</span><span class="tg" style="color:var(--err);border-color:var(--errline)">enrich failed</span><span class="tg on">survived</span></div></div>
+              </div>
+            </div>
+
+            <!-- source log: scoped to THIS source only -->
+            <div class="box">
+              <div class="boxhd"><span>Source log · cursor.com <span style="color:var(--ok)">(this source only)</span></span><span id="logcount">9 lines</span></div>
+              <div class="scroll" id="logstrip">
+                <div class="log" data-step="fetch discover all"><span class="lt">09:14:05</span><span class="ll info">info</span><span class="le"><b>discover.listing</b> <span class="msg">listing crawled, posts in window</span><div class="ctx"><span class="kv"><i>url=</i>cursor.com/blog</span><span class="kv"><i>discovered=</i>14</span><span class="kv"><i>sinceDays=</i>2</span><span class="kv"><i>durationMs=</i>912</span></div></span></div>
+                <div class="log" data-step="fetch all"><span class="lt">09:14:06</span><span class="ll debug">debug</span><span class="le"><b>fetch.post</b> <span class="msg">post fetched</span><div class="ctx"><span class="kv"><i>url=</i>/blog/composer</span><span class="kv"><i>status=</i>200</span><span class="kv"><i>bytes=</i>48210</span><span class="kv"><i>durationMs=</i>412</span></div></span></div>
+                <div class="log warn" data-step="fetch all"><span class="lt">09:14:07</span><span class="ll warn">warn</span><span class="le"><b>fetch.retry</b> <span class="msg">transient upstream error, retrying</span><div class="ctx"><span class="kv"><i>url=</i>/blog/tab</span><span class="kv err"><i>status=</i>503</span><span class="kv"><i>attempt=</i>1/2</span><span class="kv"><i>backoffMs=</i>800</span></div></span></div>
+                <div class="log" data-step="fetch all"><span class="lt">09:14:08</span><span class="ll info">info</span><span class="le"><b>fetch.done</b> <span class="msg">all posts fetched</span><div class="ctx"><span class="kv"><i>ok=</i>14/14</span><span class="kv"><i>retries=</i>1</span><span class="kv"><i>durationMs=</i>3104</span></div></span></div>
+                <div class="log" data-step="extract all"><span class="lt">09:14:09</span><span class="ll info">info</span><span class="le"><b>extract.start</b> <span class="msg">extracting post fields via LLM</span><div class="ctx"><span class="kv"><i>posts=</i>14</span><span class="kv"><i>model=</i>deepseek-chat</span><span class="kv"><i>concurrency=</i>4</span></div></span></div>
+                <div class="log warn" data-step="extract all"><span class="lt">09:14:11</span><span class="ll warn">warn</span><span class="le"><b>extract.skipped</b> <span class="msg">no main content detected</span><div class="ctx"><span class="kv"><i>urls=</i>/blog/pricing, /blog/careers</span><span class="kv"><i>count=</i>2</span><span class="kv"><i>reason=</i>empty_article_body</span></div></span></div>
+                <div class="log" data-step="extract all"><span class="lt">09:14:12</span><span class="ll info">info</span><span class="le"><b>extract.done</b> <span class="msg">post field extraction complete</span><div class="ctx"><span class="kv"><i>extracted=</i>12</span><span class="kv"><i>total=</i>14</span><span class="kv"><i>tokens=</i>18.4k</span><span class="kv"><i>durationMs=</i>3402</span></div></span></div>
+                <div class="log error" data-step="enrich all"><span class="lt">09:14:13</span><span class="ll error">error</span><span class="le"><b>enrich.failed</b> <span class="msg">link fetch exceeded timeout</span><div class="ctx"><span class="kv err"><i>class=</i>TimeoutError</span><span class="kv"><i>url=</i>/blog/enterprise-sso</span><span class="kv"><i>timeoutMs=</i>10000</span><span class="kv"><i>fatal=</i>false</span></div></span></div>
+                <div class="log" data-step="enrich all"><span class="lt">09:14:13</span><span class="ll info">info</span><span class="le"><b>enrich.done</b> <span class="msg">link enrichment complete</span><div class="ctx"><span class="kv"><i>enriched=</i>11</span><span class="kv"><i>failed=</i>1</span><span class="kv"><i>durationMs=</i>1010</span></div></span></div>
+              </div>
+              <div class="note">Logs are keyed to <b>cursor.com</b> via the unified source identifier — no other blog's lines leak in. Click a step above to filter.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- collapsed: web_search partial -->
+      <div class="srow" onclick="t(this)">
+        <span class="chev">▸</span>
+        <span><span class="stype">web_search</span><br><span class="sname">"agentic coding agents"</span></span>
+        <span class="badge b-part" style="justify-self:start">◐ partial</span>
+        <span class="num">7 items</span>
+        <span class="mut">2 retries</span>
+        <span class="mut">11.7s</span>
+        <span></span>
+      </div>
+      <div class="panel hidden"><div class="panel-inner"><div class="mut mono" style="font-size:11px">(expand to view steps)</div></div></div>
+
+      <!-- EXPANDED: twitter failed -->
+      <div class="srow open" onclick="t(this)">
+        <span class="chev">▸</span>
+        <span><span class="stype">twitter</span><br><span class="sname">@karpathy</span></span>
+        <span class="badge b-fail" style="justify-self:start">● failed</span>
+        <span class="num">0 items</span>
+        <span class="mut">3 retries</span>
+        <span class="mut">14.0s</span>
+        <span></span>
+      </div>
+      <div class="panel">
+        <div class="panel-inner">
+          <div class="steplbl">Extraction steps — twitter · @karpathy</div>
+          <div class="steps">
+            <div class="step fail"><div class="sk"><span class="icn i-fail">✕</span>Fetch</div><div class="sv">auth failed</div><div class="sd">3 retries · 14.0s</div></div>
+            <div class="step skip"><div class="sk"><span class="icn i-skip">–</span>Extract</div><div class="sv">skipped</div><div class="sd">no input</div></div>
+            <div class="step skip"><div class="sk"><span class="icn i-skip">–</span>Enrich</div><div class="sv">skipped</div><div class="sd">—</div></div>
+            <div class="step skip"><div class="sk"><span class="icn i-skip">–</span>Dedup</div><div class="sv">skipped</div><div class="sd">—</div></div>
+            <div class="step skip"><div class="sk"><span class="icn i-skip">–</span>Shortlist</div><div class="sv">skipped</div><div class="sd">—</div></div>
+            <div class="step skip"><div class="sk"><span class="icn i-skip">–</span>Rank</div><div class="sv">skipped</div><div class="sd">—</div></div>
+          </div>
+          <div class="box" style="border-color:var(--errline);margin-top:4px">
+            <div class="boxhd" style="background:var(--errbg);color:var(--err)"><span>Source log · @karpathy (this source only)</span><span>4 lines</span></div>
+            <div class="scroll">
+              <div class="log"><span class="lt">09:14:03</span><span class="ll info">info</span><span class="le"><b>fetch.start</b> <span class="msg">user timeline requested</span><div class="ctx"><span class="kv"><i>client=</i>rettiwt</span><span class="kv"><i>handle=</i>@karpathy</span><span class="kv"><i>limit=</i>40</span></div></span></div>
+              <div class="log warn"><span class="lt">09:14:06</span><span class="ll warn">warn</span><span class="le"><b>fetch.retry</b> <span class="msg">unauthorized, refreshing csrf token</span><div class="ctx"><span class="kv err"><i>status=</i>401</span><span class="kv"><i>attempt=</i>1/3</span><span class="kv"><i>action=</i>csrf_refresh</span></div></span></div>
+              <div class="log warn"><span class="lt">09:14:11</span><span class="ll warn">warn</span><span class="le"><b>fetch.retry</b> <span class="msg">still unauthorized after refresh</span><div class="ctx"><span class="kv err"><i>status=</i>401</span><span class="kv"><i>attempt=</i>3/3</span></div></span></div>
+              <div class="log error"><span class="lt">09:14:17</span><span class="ll error">error</span><span class="le"><b>fetch.failed</b> <span class="msg">credential rejected, aborting source</span><div class="ctx"><span class="kv err"><i>class=</i>AuthError</span><span class="kv"><i>detail=</i>RETTIWT_API_KEY expired/invalid</span><span class="kv err"><i>fatal=</i>true</span></div></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============ FAILURES (independent scrollable) ============ -->
+  <div class="sec">
+    <div class="sechead"><div class="t">Failures</div><div class="n">3 errors · grouped by source</div></div>
+    <div class="failpanel">
+      <div class="failhd"><span>● 3 failures across 2 sources</span><span>scroll ↓</span></div>
+      <div class="failscroll">
+
+        <div class="fcard">
+          <div class="ftop">
+            <div class="ftitle">Twitter fetch failed — auth</div>
+            <div class="fmeta">09:14:17 · twitter · @karpathy · step: fetch</div>
+          </div>
+          <div class="fmsg">AuthError: RETTIWT_API_KEY expired or invalid. The credential resolved DB-first for this run but was rejected by x.com after 3 CSRF refresh attempts.</div>
+          <div class="fctx">
+            <div class="row"><span class="k">error class</span><span class="v">AuthError</span></div>
+            <div class="row"><span class="k">endpoint</span><span class="v">GET https://x.com/i/api/graphql/UserTweets</span></div>
+            <div class="row"><span class="k">http status</span><span class="v">401 Unauthorized</span></div>
+            <div class="row"><span class="k">attempts</span><span class="v">3 / 3 (csrf refreshed twice)</span></div>
+          </div>
+          <div class="ftags"><span class="ftag">source: twitter · @karpathy</span><span class="ftag">class: AuthError</span><span class="ftag">retries: 3</span><span class="ftag">fatal</span></div>
+        </div>
+
+        <div class="fcard" style="border-left-color:var(--warn)">
+          <div class="ftop">
+            <div class="ftitle">Link enrichment timeout</div>
+            <div class="fmeta">09:14:13 · blog · cursor.com · step: enrich</div>
+          </div>
+          <div class="fmsg">TimeoutError: link fetch exceeded 10000ms for /blog/enterprise-sso. Item kept with un-enriched metadata (non-fatal — degrades gracefully).</div>
+          <div class="fctx">
+            <div class="row"><span class="k">error class</span><span class="v">TimeoutError</span></div>
+            <div class="row"><span class="k">url</span><span class="v">https://cursor.com/blog/enterprise-sso</span></div>
+            <div class="row"><span class="k">timeout</span><span class="v">10000ms</span></div>
+          </div>
+          <div class="ftags"><span class="ftag">source: blog · cursor.com</span><span class="ftag">class: TimeoutError</span><span class="ftag">retries: 0</span><span class="ftag">non-fatal</span></div>
+        </div>
+
+        <div class="fcard" style="border-left-color:var(--warn)">
+          <div class="ftop">
+            <div class="ftitle">Web-search query partial</div>
+            <div class="fmeta">09:14:10 · web_search · "agentic coding agents" · step: fetch</div>
+          </div>
+          <div class="fmsg">RateLimitError: provider returned 429 on page 2 of 3. Returned 7 of an expected ~12 results (non-fatal — partial collection).</div>
+          <div class="fctx">
+            <div class="row"><span class="k">error class</span><span class="v">RateLimitError</span></div>
+            <div class="row"><span class="k">provider</span><span class="v">tavily</span></div>
+            <div class="row"><span class="k">got / expected</span><span class="v">7 / ~12</span></div>
+          </div>
+          <div class="ftags"><span class="ftag">source: web_search · "agentic coding agents"</span><span class="ftag">class: RateLimitError</span><span class="ftag">retries: 2</span><span class="ftag">non-fatal</span></div>
+        </div>
+
+      </div>
+    </div>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--err)"></span> fatal — aborted this source</span>
+      <span><span class="dot" style="background:var(--warn)"></span> non-fatal — degraded / partial</span>
+      <span>Each failure links source → step → full error context.</span>
+    </div>
+  </div>
+
+  <!-- ============ DEBUG TIMELINE (demoted to raw) ============ -->
+  <div class="sec">
+    <div class="sechead"><div class="t">Raw Event Stream</div><div class="n">advanced · 142 events</div></div>
+    <div class="raw-toggle" onclick="var b=document.getElementById('raw');b.classList.toggle('hidden');this.querySelector('span').textContent=b.classList.contains('hidden')?'▸':'▾'">
+      <span>▸</span> Show raw chronological event stream (all sources, all stages) — for deep debugging only
+    </div>
+    <div class="raw-body hidden" id="raw">
+      <div class="log"><span class="lt">09:14:00</span><span class="ll info">info</span><span class="le"><b>stage.start</b> <span>collect</span></span></div>
+      <div class="log"><span class="lt">09:14:03</span><span class="ll info">info</span><span class="le"><b>fetch.start</b> <span>twitter · @karpathy</span></span></div>
+      <div class="log"><span class="lt">09:14:05</span><span class="ll info">info</span><span class="le"><b>discover.listing</b> <span>blog · cursor.com · 14 posts</span></span></div>
+      <div class="log"><span class="lt">09:14:13</span><span class="ll error">error</span><span class="le"><b>enrich.failed</b> <span>blog · cursor.com · /blog/enterprise-sso timeout</span></span></div>
+      <div class="log"><span class="lt">09:14:17</span><span class="ll error">error</span><span class="le"><b>fetch.failed</b> <span>twitter · @karpathy · auth</span></span></div>
+      <div class="note" style="padding:8px 12px">The flat firehose still exists for power users, but day-to-day debugging happens in the per-source steps above.</div>
+    </div>
+  </div>
+
+</div>
+<script>
+  function t(row){
+    var p=row.nextElementSibling;
+    if(!p||!p.classList.contains('panel'))return;
+    p.classList.toggle('hidden');
+    row.classList.toggle('open');
+  }
+  function selStep(el,step){
+    var steps=el.parentElement.querySelectorAll('.step');
+    steps.forEach(function(s){s.classList.remove('sel')});
+    el.classList.add('sel');
+    var strip=document.getElementById('logstrip');
+    var rows=strip.querySelectorAll('.log');
+    var shown=0;
+    rows.forEach(function(r){
+      var d=r.getAttribute('data-step')||'';
+      var match=step==='all'||d.indexOf(step)>-1;
+      r.classList.toggle('dim',!match);
+      r.classList.toggle('hl',match&&step!=='all');
+      if(match)shown++;
+    });
+    document.getElementById('logcount').textContent=shown+' lines';
+  }
+</script>
+</body>
+</html>

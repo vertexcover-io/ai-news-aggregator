@@ -26,6 +26,20 @@ import { resolvePublishedDate } from "@pipeline/collectors/web-date.js";
 
 const logger = createLogger("collector:web");
 
+/**
+ * Per-source collection-unit identifier for run_logs.source — the listing
+ * hostname, identical to the unitResults identifier so the observability
+ * per-source log strip resolves to this exact blog source.
+ */
+function blogUnitId(listingUrl: string): string {
+  return deriveRawItemIdentifier({
+    sourceType: "blog",
+    url: listingUrl,
+    sourceUrl: listingUrl,
+    metadata: null,
+  });
+}
+
 const MAX_ERROR_LENGTH = 200;
 
 export const WEB_COLLECTOR_MODEL_ID = "deepseek-v4-flash";
@@ -245,7 +259,7 @@ async function processDiscoveryPhase(
       "web listing failed",
     );
     void runLogger?.warn(
-      { stage: "collect", source: "blog", event: "collector.web.listing_failed", step: "listing", url: source.listingUrl, sourceName: source.name, listingUrl: source.listingUrl, sinceDays: config.sinceDays, error },
+      { stage: "collect", source: blogUnitId(source.listingUrl), event: "collector.web.listing_failed", step: "discover", url: source.listingUrl, sourceName: source.name, listingUrl: source.listingUrl, sinceDays: config.sinceDays, error },
       "web listing failed",
     );
     return { source, capped: [], failure: error, sourceFailed: true };
@@ -278,8 +292,9 @@ async function processDiscoveryPhase(
     void runLogger?.info(
       {
         stage: "collect",
-        source: "blog",
+        source: blogUnitId(source.listingUrl),
         event: "collector.web.listing_completed" as const,
+        step: "discover",
         url: source.listingUrl,
         sourceName: source.name,
         listingUrl: source.listingUrl,
@@ -300,7 +315,7 @@ async function processDiscoveryPhase(
       "web listing discovery failed",
     );
     void runLogger?.warn(
-      { stage: "collect", source: "blog", event: "collector.web.discovery_failed", step: "discovery", url: source.listingUrl, sourceName: source.name, listingUrl: source.listingUrl, sinceDays: config.sinceDays, error },
+      { stage: "collect", source: blogUnitId(source.listingUrl), event: "collector.web.discovery_failed", step: "discover", url: source.listingUrl, sourceName: source.name, listingUrl: source.listingUrl, sinceDays: config.sinceDays, error },
       "web listing discovery failed",
     );
     return { source, capped: [], failure: error, sourceFailed: true };
@@ -326,6 +341,7 @@ interface ExtractPostResult {
 
 async function extractDetailPost(
   sourceName: string,
+  sourceUnit: string,
   post: DiscoveredPost,
   dr: CrawlSuccess,
   extractedSoFar: number,
@@ -350,7 +366,7 @@ async function extractDetailPost(
   } catch (err) {
     const error = truncateError(err);
     logger.warn({ event: "collector.web.detail_failed" as const, source: sourceName, postUrl: post.url, error }, "web detail extraction failed");
-    void runLogger?.error({ stage: "collect", source: "blog", event: "collector.web.detail_failed", step: "extract", url: post.url, sourceName, postUrl: post.url, error }, "web detail extraction failed");
+    void runLogger?.error({ stage: "collect", source: sourceUnit, event: "collector.web.detail_failed", step: "extract", url: post.url, sourceName, postUrl: post.url, error }, "web detail extraction failed");
     return { item: null, failure: { source: sourceName, postUrl: post.url, error } };
   }
 }
@@ -379,7 +395,7 @@ async function reconcileDetailPhase(
   );
   const extractStart = Date.now();
   logger.info({ event: "web.extract.start" as const, posts: totalToExtract }, "extracting post fields via LLM");
-  void runLogger?.info({ stage: "collect", source: "blog", event: "web.extract.start" as const, posts: totalToExtract }, "extracting post fields via LLM");
+  void runLogger?.info({ stage: "collect", event: "web.extract.start" as const, step: "extract", posts: totalToExtract }, "extracting post fields via LLM");
 
   let extracted = 0;
   for (const ps of perSource) {
@@ -390,12 +406,12 @@ async function reconcileDetailPhase(
       if (!dr?.ok) {
         const error = dr?.error ?? "no result";
         logger.warn({ event: "collector.web.detail_failed" as const, source: ps.source.name, postUrl: post.url, error }, "web detail fetch failed");
-        void runLogger?.error({ stage: "collect", source: "blog", event: "collector.web.detail_failed", step: "extract", url: post.url, sourceName: ps.source.name, postUrl: post.url, error }, "web detail fetch failed");
+        void runLogger?.error({ stage: "collect", source: blogUnitId(ps.source.listingUrl), event: "collector.web.detail_failed", step: "fetch", url: post.url, sourceName: ps.source.name, postUrl: post.url, error }, "web detail fetch failed");
         allFailures.push({ source: ps.source.name, postUrl: post.url, error });
         continue;
       }
       const { item, failure } = await extractDetailPost(
-        ps.source.name, post, dr, extracted, totalToExtract, llmModel, reportExtraction, runLogger,
+        ps.source.name, blogUnitId(ps.source.listingUrl), post, dr, extracted, totalToExtract, llmModel, reportExtraction, runLogger,
       );
       if (failure !== null) { allFailures.push(failure); continue; }
       if (item !== null) {
@@ -407,7 +423,7 @@ async function reconcileDetailPhase(
   }
 
   logger.info({ event: "web.extract.done" as const, extracted, total: totalToExtract, durationMs: Date.now() - extractStart }, "post field extraction complete");
-  void runLogger?.info({ stage: "collect", source: "blog", event: "web.extract.done" as const, extracted, total: totalToExtract, durationMs: Date.now() - extractStart }, "post field extraction complete");
+  void runLogger?.info({ stage: "collect", event: "web.extract.done" as const, step: "extract", extracted, total: totalToExtract, durationMs: Date.now() - extractStart }, "post field extraction complete");
 
   for (const ps of perSource) {
     if (ps.sourceFailed) continue;

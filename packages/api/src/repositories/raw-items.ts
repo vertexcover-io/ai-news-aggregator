@@ -51,7 +51,14 @@ export interface RawItemWithEnrichment {
   collectedAt: string;
   engagement: { points: number; commentCount: number };
   enrichedLink: EnrichedLinkContent | undefined;
+  /** URL-derived per-item identity (cards, /sources page). */
   sourceIdentifier: string;
+  /**
+   * Collection-unit identity stamped at collect time (`metadata.sourceUnit`),
+   * matching the Source Telemetry row identifier exactly. Null on legacy items
+   * collected before the field existed — callers fall back to `sourceIdentifier`.
+   */
+  sourceUnitIdentifier: string | null;
 }
 
 export interface AggregateBySourceAndIdentifierOpts {
@@ -380,5 +387,6 @@ function toRawItemWithEnrichment(row: RawItemWithEnrichmentRow): RawItemWithEnri
       sourceUrl: row.sourceUrl,
       metadata: row.metadata,
     }),
+    sourceUnitIdentifier: row.metadata.sourceUnit?.identifier ?? null,
   };
 }
