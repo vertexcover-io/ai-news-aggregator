@@ -29,6 +29,13 @@ function statusError(message: string, status: number): Error {
   return Object.assign(new Error(message), { status });
 }
 
+/** Build a ZodError-shaped error whose stack points into our packages (→ schema/agent). */
+function schemaError(message: string): Error {
+  const e = Object.assign(new Error(message), { name: "ZodError" });
+  e.stack = `ZodError: ${message}\n    at parse (/app/packages/pipeline/src/collectors/hn.ts:42:7)`;
+  return e;
+}
+
 describe("classifyError", () => {
   it("maps the priority chain to categories", () => {
     expect(classifyCategory(statusError("nope", 401))).toBe("auth");
@@ -146,14 +153,20 @@ function fakeRepo(): IncidentRepo & { rows: Map<string, StoredRow> } {
   };
 }
 
-function fakeGithub(): GithubClient & { issues: { title: string; labels?: string[] }[]; dispatches: number } {
+interface DispatchCall {
+  eventType: string;
+  clientPayload: Record<string, unknown>;
+}
+
+function fakeGithub(): GithubClient & {
+  issues: { title: string; labels?: string[] }[];
+  dispatchCalls: DispatchCall[];
+} {
   const issues: { title: string; labels?: string[] }[] = [];
-  let dispatches = 0;
+  const dispatchCalls: DispatchCall[] = [];
   return {
     issues,
-    get dispatches() {
-      return dispatches;
-    },
+    dispatchCalls,
     createIssue(input) {
       issues.push({ title: input.title, labels: input.labels });
       return Promise.resolve({
@@ -161,8 +174,8 @@ function fakeGithub(): GithubClient & { issues: { title: string; labels?: string
         number: issues.length,
       });
     },
-    dispatch() {
-      dispatches += 1;
+    dispatch(input) {
+      dispatchCalls.push({ eventType: input.eventType, clientPayload: input.clientPayload });
       return Promise.resolve(true);
     },
   };
@@ -243,6 +256,77 @@ describe("IncidentService.record", () => {
     expect(slack.calls).toHaveLength(0);
     expect(github.issues).toHaveLength(0);
     expect(repo.rows.size).toBe(0);
+  });
+
+  it("agent + schema + autofix enabled → dispatches once with a redacted payload + the issue number", async () => {
+    const repo = fakeRepo();
+    const slack = fakeSlack();
+    const github = fakeGithub();
+    const svc = createIncidentService({
+      ...baseDeps(repo, slack, github),
+      autofixEnabled: true,
+    });
+
+    await svc.record({
+      err: schemaError("invalid_type expected string, got Bearer abc123def456"),
+      sourcePackage: "pipeline",
+      source: "collection:hn",
+    });
+
+    expect(github.issues).toHaveLength(1);
+    expect(github.issues[0]?.labels).toContain("agent-fixable");
+    expect(slack.calls).toHaveLength(1);
+    expect(github.dispatchCalls).toHaveLength(1);
+    const call = github.dispatchCalls[0];
+    expect(call?.eventType).toBe("error-autofix");
+    expect(call?.clientPayload.category).toBe("schema");
+    expect(call?.clientPayload.issueNumber).toBe(1);
+    // redacted before leaving the process
+    expect(JSON.stringify(call?.clientPayload)).not.toContain("abc123def456");
+  });
+
+  it("repeat schema fingerprint dispatches only once", async () => {
+    const repo = fakeRepo();
+    const slack = fakeSlack();
+    const github = fakeGithub();
+    const svc = createIncidentService({
+      ...baseDeps(repo, slack, github),
+      autofixEnabled: true,
+    });
+
+    await svc.record({ err: schemaError("bad shape"), sourcePackage: "pipeline", source: "collection:hn" });
+    await svc.record({ err: schemaError("bad shape"), sourcePackage: "pipeline", source: "collection:hn" });
+
+    expect(github.dispatchCalls).toHaveLength(1);
+    expect(github.issues).toHaveLength(1);
+  });
+
+  it("agent + code-bug (not in autofix categories) opens an issue but does not dispatch", async () => {
+    const repo = fakeRepo();
+    const slack = fakeSlack();
+    const github = fakeGithub();
+    const svc = createIncidentService({
+      ...baseDeps(repo, slack, github),
+      autofixEnabled: true,
+    });
+
+    await svc.record({ err: appError("cannot read x of undefined"), sourcePackage: "pipeline", source: "x" });
+
+    expect(github.issues).toHaveLength(1);
+    expect(github.issues[0]?.labels).toContain("agent-fixable");
+    expect(github.dispatchCalls).toHaveLength(0);
+  });
+
+  it("agent + schema but autofix disabled opens an issue without dispatching", async () => {
+    const repo = fakeRepo();
+    const slack = fakeSlack();
+    const github = fakeGithub();
+    const svc = createIncidentService(baseDeps(repo, slack, github)); // autofixEnabled defaults false
+
+    await svc.record({ err: schemaError("bad shape"), sourcePackage: "pipeline", source: "collection:hn" });
+
+    expect(github.issues).toHaveLength(1);
+    expect(github.dispatchCalls).toHaveLength(0);
   });
 
   it("redacts secrets before they reach Slack or the incident row", async () => {

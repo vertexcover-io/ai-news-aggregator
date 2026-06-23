@@ -39,6 +39,11 @@ function escalationThreshold(): number {
   return Number.isFinite(n) && n > 0 ? n : 3;
 }
 
+function isAutofixEnabled(): boolean {
+  const v = process.env.ERROR_AUTOFIX_ENABLED;
+  return v === "1" || v === "true";
+}
+
 function getService(): IncidentService | null {
   if (initialized) return service;
   initialized = true;
@@ -59,6 +64,7 @@ function getService(): IncidentService | null {
     github,
     logger: incidentLogger,
     escalationThreshold: escalationThreshold(),
+    autofixEnabled: isAutofixEnabled(),
   });
   return service;
 }

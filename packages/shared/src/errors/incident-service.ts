@@ -20,6 +20,7 @@ import { redactSecrets } from "./redact.js";
 import { analyzeError } from "./tags.js";
 import type { GithubClient } from "../github/client.js";
 import type {
+  ErrorCategory,
   ErrorIncidentRecord,
   Fixability,
   IncidentContext,
@@ -28,6 +29,17 @@ import type {
 } from "./types.js";
 
 const STACK_LIMIT = 4000;
+
+/**
+ * Categories eligible for the Phase 2 auto-fix dispatch. Schema-only in v1:
+ * upstream-shape changes / collector parser-drift land here, are in-repo,
+ * localizable from the stack, and verifiable by tests — the cleanest auto-fix
+ * target. Widen (e.g. add "code-bug") once merge rate is proven on real traffic.
+ */
+export const DEFAULT_AUTOFIX_CATEGORIES: readonly ErrorCategory[] = ["schema"];
+
+/** repository_dispatch event_type the error-autofix workflow keys on. */
+export const AUTOFIX_EVENT_TYPE = "error-autofix";
 
 export interface UpsertIncidentInput {
   fingerprint: string;
@@ -71,6 +83,14 @@ export interface IncidentServiceDeps {
   escalationThreshold?: number;
   /** Base PostHog project URL for issue back-links, if available. */
   posthogIssueBaseUrl?: string;
+  /**
+   * When true, an agent-fixable incident whose category is in `autofixCategories`
+   * fires a `repository_dispatch` to the auto-fix workflow (in addition to the
+   * tracked issue). Default false. Requires `github` to be set.
+   */
+  autofixEnabled?: boolean;
+  /** Categories eligible for auto-fix dispatch. Default {@link DEFAULT_AUTOFIX_CATEGORIES}. */
+  autofixCategories?: readonly ErrorCategory[];
 }
 
 export interface RecordIncidentInput {
@@ -158,6 +178,8 @@ function buildIssueBody(args: {
 
 export function createIncidentService(deps: IncidentServiceDeps): IncidentService {
   const threshold = deps.escalationThreshold ?? 3;
+  const autofixEnabled = deps.autofixEnabled ?? false;
+  const autofixCategories = deps.autofixCategories ?? DEFAULT_AUTOFIX_CATEGORIES;
   const warn = (obj: unknown, msg: string): void => {
     if (deps.logger) deps.logger.warn(obj, msg);
     else console.warn(`[incident] ${msg}`);
@@ -217,7 +239,7 @@ export function createIncidentService(deps: IncidentServiceDeps): IncidentServic
         }
 
         // Lane action: human/agent open a tracked issue; notify does nothing extra.
-        // (Phase 1 treats agent like human — a tracked issue. Phase 2 swaps in dispatch().)
+        // The `githubRef === null` guard means this fires once per fingerprint.
         if (
           (effectiveFixability === "human" || effectiveFixability === "agent") &&
           deps.github !== undefined &&
@@ -238,6 +260,35 @@ export function createIncidentService(deps: IncidentServiceDeps): IncidentServic
           });
           if (issue !== null) {
             await deps.repo.markStatus(incident.fingerprint, "open", issue.url);
+
+            // Phase 2 — agent lane additionally fires a repository_dispatch to the
+            // auto-fix workflow, which opens a draft PR. Gated by autofixEnabled +
+            // category allowlist (schema-only in v1). The tracked issue above gives
+            // the draft PR something to `Closes #N`. Fires once (githubRef guard).
+            if (
+              effectiveFixability === "agent" &&
+              autofixEnabled &&
+              autofixCategories.includes(incident.category)
+            ) {
+              const dispatched = await deps.github.dispatch({
+                eventType: AUTOFIX_EVENT_TYPE,
+                clientPayload: {
+                  fingerprint: incident.fingerprint,
+                  category: incident.category,
+                  sourcePackage: input.sourcePackage,
+                  source: input.source,
+                  message: context.message,
+                  stack: context.stack ?? "",
+                  runId: context.runId ?? "",
+                  jobId: context.jobId ?? "",
+                  issueNumber: issue.number,
+                  issueUrl: issue.url,
+                },
+              });
+              if (!dispatched) {
+                warn({ fingerprint: incident.fingerprint }, "autofix dispatch failed");
+              }
+            }
           }
         }
       } catch (err) {
