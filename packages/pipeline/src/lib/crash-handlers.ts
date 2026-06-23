@@ -1,5 +1,7 @@
 import { captureException, shutdownPostHog } from "@pipeline/lib/posthog.js";
+import { recordIncident } from "@pipeline/lib/incident.js";
 import { createLogger } from "@newsletter/shared/logger";
+import { buildExceptionTags } from "@newsletter/shared/errors";
 
 const logger = createLogger("pipeline:crash");
 
@@ -15,7 +17,12 @@ export function createFatalHandler(label: string): (err: unknown) => Promise<voi
       { event: label, error: err instanceof Error ? err.message : String(err) },
       label,
     );
-    captureException(err, { fatal: true, source: label });
+    captureException(err, {
+      fatal: true,
+      source: label,
+      ...buildExceptionTags(err, { sourcePackage: "pipeline", source: label }),
+    });
+    recordIncident({ err, sourcePackage: "pipeline", source: label });
     // REQ-009: bounded flush — mirrors api onFatal; prevents a hung PostHog network call
     // from wedging the crash exit indefinitely.
     await Promise.race([

@@ -2,6 +2,9 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { Context, MiddlewareHandler } from "hono";
 import { captureException } from "@api/lib/posthog.js";
+import { recordIncident } from "@api/lib/incident.js";
+import { buildExceptionTags } from "@newsletter/shared/errors";
+import { routePath } from "hono/route";
 import { blockPublicContentOnAppHost } from "@api/middleware/resolve-tenant.js";
 
 export interface BuildAppDeps {
@@ -407,7 +410,14 @@ export function buildApp(deps: BuildAppDeps): Hono {
   app.onError((err, c) => {
     const status = err instanceof HTTPException ? err.status : 500;
     if (status >= 500) {
-      void captureException(err, { method: c.req.method, path: c.req.path }); // fire-and-forget
+      const matched = routePath(c);
+      const source = matched !== "" ? matched : c.req.path;
+      void captureException(err, {
+        method: c.req.method,
+        path: c.req.path,
+        ...buildExceptionTags(err, { sourcePackage: "api", source }),
+      }); // fire-and-forget
+      recordIncident({ err, sourcePackage: "api", source });
     }
     if (err instanceof HTTPException) return err.getResponse();
     return c.json({ error: "Internal Server Error" }, 500);

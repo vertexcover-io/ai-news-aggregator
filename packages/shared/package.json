@@ -29,7 +29,9 @@
     "./services/page-metadata": "./dist/services/page-metadata.js",
     "./services/summary-source": "./dist/services/summary-source.js",
     "./review-edits": "./dist/review-edits/index.js",
-    "./analytics": "./dist/analytics/index.js"
+    "./analytics": "./dist/analytics/index.js",
+    "./errors": "./dist/errors/index.js",
+    "./github": "./dist/github/index.js"
   },
   "scripts": {
     "build": "tsup",

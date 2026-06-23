@@ -88,6 +88,8 @@ import {
   removeLegacySchedulers,
 } from "@api/services/scheduler.js";
 import { captureException, configurePostHog, shutdownAnalytics } from "@api/lib/posthog.js";
+import { recordIncident } from "@api/lib/incident.js";
+import { buildExceptionTags } from "@newsletter/shared/errors";
 
 const logger = createLogger("api");
 
@@ -451,7 +453,12 @@ process.on("SIGTERM", shutdown);
 
 const onFatal = (label: string) => (err: unknown) => {
   void (async () => {
-    await captureException(err, { fatal: true, source: label });
+    await captureException(err, {
+      fatal: true,
+      source: label,
+      ...buildExceptionTags(err, { sourcePackage: "api", source: label }),
+    });
+    recordIncident({ err, sourcePackage: "api", source: label });
     await Promise.race([
       shutdownAnalytics(),
       new Promise<void>((resolve) => setTimeout(resolve, 2000)),

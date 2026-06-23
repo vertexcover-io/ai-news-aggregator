@@ -34,6 +34,8 @@ export default defineConfig((options) => ({
     "src/services/summary-source.ts",
     "src/review-edits/index.ts",
     "src/analytics/index.ts",
+    "src/errors/index.ts",
+    "src/github/index.ts",
   ],
   format: ["esm"],
   dts: true,
