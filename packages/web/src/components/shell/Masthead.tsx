@@ -142,9 +142,9 @@ export function Masthead(): ReactElement {
         ) : null}
         <Link
           to={{ hash: "#subscribe" }}
-          className="font-mono text-[11px] sm:text-[12px] uppercase tracking-[0.14em] sm:tracking-[0.18em] font-medium text-[#14110d] transition-colors hover:text-[#8c3a1e]"
+          className="ml-1 sm:ml-2 font-mono text-[11px] sm:text-[12px] uppercase tracking-[0.14em] sm:tracking-[0.18em] font-medium bg-[#8c3a1e] text-[#fafaf7] px-3 py-[7px] sm:px-4 sm:py-2 transition-colors hover:bg-[#14110d]"
         >
-          Subscribe&nbsp;→
+          Subscribe
         </Link>
       </nav>
     </header>

@@ -148,7 +148,7 @@ test.describe("per-tenant branding (P7)", () => {
     expect(body).toContain(
       "NO MODEL RELEASES. NO BENCHMARKS. NO DISCOURSE. JUST THE CRAFT.",
     );
-    expect(body).toContain("READ AGENTLOOP EVERY MORNING.");
+    expect(body).toContain("SUBSCRIBE TO AGENTLOOP'S DAILY DIGEST.");
     expect(body).toContain("P7 BRANDING E2E HEADLINE");
 
     // Masthead wordmark + full tenant-0 nav.
@@ -202,7 +202,7 @@ test.describe("per-tenant branding (P7)", () => {
     expect(body).toMatch(/SERVING/);
     expect(body).toMatch(/QUANTIZATION/);
     expect(body).toContain(SUBTAGLINE.toUpperCase());
-    expect(body).toContain(`Read ${NAME} every morning.`.toUpperCase());
+    expect(body).toContain(`Subscribe to ${NAME}'s daily digest.`.toUpperCase());
 
     // REQ-040: no hardcoded brand anywhere in the rendered page.
     expect(body).not.toContain("AGENTLOOP");

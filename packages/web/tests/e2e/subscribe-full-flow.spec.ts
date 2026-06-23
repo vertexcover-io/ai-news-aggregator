@@ -45,7 +45,7 @@ test.describe("subscribe full flow — UI -> API -> token -> confirm (REQ-003 + 
     await page.goto("/");
     const card = page.locator('[data-section="inline-subscribe"]');
     await expect(
-      card.getByRole("heading", { name: /Read AgentLoop every morning/i }),
+      card.getByRole("heading", { name: /Subscribe to AgentLoop's daily digest/i }),
     ).toBeVisible();
 
     await card.getByPlaceholder("you@company.com").fill(email);
