@@ -56,7 +56,7 @@ test.describe("subscribe flow", () => {
 
     const card = page.locator('[data-section="inline-subscribe"]');
     await expect(
-      card.getByRole("heading", { name: /Read AgentLoop every morning/i }),
+      card.getByRole("heading", { name: /Get AgentLoop's daily digest/i }),
     ).toBeVisible();
 
     const email = `e2e-home-${String(Date.now())}@example.com`;
@@ -116,7 +116,7 @@ test.describe("subscribe nav link", () => {
     await page.goto("/");
 
     const widget = page.getByRole("heading", {
-      name: /Read AgentLoop every morning/i,
+      name: /Subscribe to AgentLoop's daily digest/i,
     });
     await expect(widget).toBeVisible();
 
@@ -130,7 +130,7 @@ test.describe("subscribe nav link", () => {
   }) => {
     await page.goto("/#subscribe");
     await expect(
-      page.getByRole("heading", { name: /Read AgentLoop every morning/i }),
+      page.getByRole("heading", { name: /Get AgentLoop's daily digest/i }),
     ).toBeInViewport({ timeout: 10000 });
   });
 });

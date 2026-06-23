@@ -36,15 +36,16 @@ function renderCard(
 }
 
 describe("InlineSubscribeCard", () => {
-  it("renders the serif headline 'Read AgentLoop every morning.' for tenant 0", () => {
+  it("renders the 'Subscribe — free' kicker and serif headline for tenant 0", () => {
     renderCard();
-    expect(screen.getByText(/Read AgentLoop every morning/i)).toBeTruthy();
+    expect(screen.getByText(/subscribe\s*[—-]\s*free/i)).toBeTruthy();
+    expect(screen.getByText(/Subscribe to AgentLoop's daily digest/i)).toBeTruthy();
   });
 
-  it("renders the mono sub-line 'What we read so you don't have to. 7am daily, free.' for tenant 0", () => {
+  it("renders the tenant-0 mono sub-line 'The AI news that matters, ranked. 7am every morning.'", () => {
     renderCard();
     expect(
-      screen.getByText(/what we read so you don't have to.*7am daily.*free/i),
+      screen.getByText(/the ai news that matters, ranked.*7am every morning/i),
     ).toBeTruthy();
   });
 
@@ -56,9 +57,9 @@ describe("InlineSubscribeCard", () => {
 
   it("non-zero tenant: headline uses the tenant name and the sub-line drops the 7am copy (REQ-040)", () => {
     renderCard(SECOND_TENANT_BRANDING);
-    expect(screen.getByText(/Read The Inference every morning/i)).toBeTruthy();
+    expect(screen.getByText(/Subscribe to The Inference's daily digest/i)).toBeTruthy();
     expect(
-      screen.getByText(/what we read so you don't have to.*daily.*free/i),
+      screen.getByText(/the stories that matter, ranked.*daily/i),
     ).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/agentloop|7am/i);
   });

@@ -58,13 +58,17 @@ export function InlineSubscribeCard(): ReactElement | null {
       id="subscribe"
       className="py-16 text-center"
     >
-      <h3 className="font-serif font-medium text-[clamp(28px,3.4vw,40px)] leading-[1.1] tracking-[-0.014em] m-0 mb-[14px] text-[#14110d]">
-        Read {displayName} every morning.
+      <div className="font-mono text-[11px] uppercase tracking-[0.24em] font-semibold text-[#8c3a1e] mb-3">
+        Subscribe &mdash; free
+      </div>
+      <h3 className="font-serif font-medium text-[clamp(28px,3.4vw,40px)] leading-[1.1] tracking-[-0.014em] m-0 mb-[10px] text-[#14110d]">
+        Subscribe to {displayName}&apos;s daily digest.
       </h3>
-      <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-[#6b6557] mb-8">
-        {/* Tenant 0 keeps its exact legacy copy; other tenants have their own schedules. */}
-        What we read so you don&apos;t have to.{" "}
-        {branding.isTenantZero ? "7am daily, free." : "Daily, free."}
+      <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#6b6557] mb-8">
+        {/* Tenant 0 keeps AgentLoop's AI-news framing; other tenants stay topic-neutral. */}
+        {branding.isTenantZero
+          ? "The AI news that matters, ranked. 7am every morning."
+          : "The stories that matter, ranked. Daily."}
       </div>
 
       {state === "success" ? (
@@ -92,11 +96,15 @@ export function InlineSubscribeCard(): ReactElement | null {
             <button
               type="submit"
               disabled={state === "loading" || !email}
-              className="bg-[#8c3a1e] text-[#fafaf7] border-0 px-[22px] font-mono uppercase tracking-[0.22em] text-[11px] font-medium cursor-pointer transition-colors hover:bg-[#14110d] disabled:opacity-60 disabled:cursor-not-allowed"
+              className="bg-[#8c3a1e] text-[#fafaf7] border-0 px-[26px] font-mono uppercase tracking-[0.16em] text-[13px] font-semibold cursor-pointer transition-colors hover:bg-[#14110d] disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {state === "loading" ? "Subscribing…" : "Subscribe →"}
+              {state === "loading" ? "Subscribing…" : "Subscribe"}
             </button>
           </form>
+          <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.16em] text-[#6b6557]">
+            No spam &middot; {branding.isTenantZero ? "one email a day · " : ""}
+            unsubscribe anytime
+          </p>
           {state === "error" ? (
             <p className="mt-3 font-mono text-[11px] text-[#8c3a1e]">
               Something went wrong. Please try again.
