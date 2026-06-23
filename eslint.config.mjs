@@ -16,6 +16,11 @@ export default tseslint.config(
       "packages/web/scripts/",
       "packages/pipeline/src/scripts/",
       "**/tests/e2e/*.mjs",
+      // The Expo mobile app ships its own React Native toolchain (eslint-config-expo
+      // + expo/tsconfig.base). The root flat config is strict-type-checked and
+      // Node-oriented — it can't type-check RN/JSX. Lint it via `pnpm --filter
+      // @newsletter/mobile lint`.
+      "packages/mobile/",
       ".worktrees/",
       // Standalone operator tooling bundled with Claude skills — run via tsx,
       // outside the workspace TS project graph (same rationale as scripts/).
