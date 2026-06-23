@@ -10,7 +10,7 @@ overrides:
 
 patchedDependencies:
   rettiwt-api@7.0.3:
-    hash: cf58694866c74347a978be3eadc200dc71a265f766231b297fe6643b8f37da2a
+    hash: 1b6dae39a0870a56fadc27a7af477cda895257cfcd1d9637d5c579f4e3b0f83e
     path: patches/rettiwt-api@7.0.3.patch
 
 importers:
@@ -127,7 +127,7 @@ importers:
         version: 6.12.2(@react-email/render@2.0.8(react-dom@19.2.4(react@19.2.4))(react@19.2.4))
       rettiwt-api:
         specifier: 7.0.3
-        version: 7.0.3(patch_hash=cf58694866c74347a978be3eadc200dc71a265f766231b297fe6643b8f37da2a)
+        version: 7.0.3(patch_hash=1b6dae39a0870a56fadc27a7af477cda895257cfcd1d9637d5c579f4e3b0f83e)
       twitter-api-v2:
         specifier: 1.29.0
         version: 1.29.0
@@ -303,7 +303,7 @@ importers:
         version: 6.12.2(@react-email/render@2.0.8(react-dom@19.2.4(react@19.2.4))(react@19.2.4))
       rettiwt-api:
         specifier: 7.0.3
-        version: 7.0.3(patch_hash=cf58694866c74347a978be3eadc200dc71a265f766231b297fe6643b8f37da2a)
+        version: 7.0.3(patch_hash=1b6dae39a0870a56fadc27a7af477cda895257cfcd1d9637d5c579f4e3b0f83e)
       turndown:
         specifier: 7.2.0
         version: 7.2.0
@@ -11615,7 +11615,7 @@ snapshots:
 
   retry@0.13.1: {}
 
-  rettiwt-api@7.0.3(patch_hash=cf58694866c74347a978be3eadc200dc71a265f766231b297fe6643b8f37da2a):
+  rettiwt-api@7.0.3(patch_hash=1b6dae39a0870a56fadc27a7af477cda895257cfcd1d9637d5c579f4e3b0f83e):
     dependencies:
       axios: 1.16.0
       chalk: 5.6.2

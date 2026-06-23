@@ -16,6 +16,72 @@ index a684ab2d5e028d7758beab0de99a7171306b7d47..33090041d4b2b43ef8658f0eaaa8dcb1
              return new Tweet(tweet.quoted_status_result.result);
          }
          // Else, skip
+diff --git a/dist/services/public/FetcherService.js b/dist/services/public/FetcherService.js
+index 52c7f6f4c1da601fca3814686eb6aca9a1589fb0..d9a31b6978329d71a5d4a12c0d9994dffcadeb07 100644
+--- a/dist/services/public/FetcherService.js
++++ b/dist/services/public/FetcherService.js
+@@ -49,6 +49,10 @@ const TwitterError_1 = require("../../models/errors/TwitterError");
+ const AuthService_1 = require("../internal/AuthService");
+ const ErrorService_1 = require("../internal/ErrorService");
+ const LogService_1 = require("../internal/LogService");
++// PATCH (newsletter): once x-client-transaction-id generation fails (see
++// _getTransactionHeader), stop attempting it process-wide so we don't fetch the X
++// homepage on every subsequent request.
++let transactionHeaderDisabled = false;
+ /**
+  * The base service that handles all HTTP requests.
+  *
+@@ -119,19 +123,37 @@ class FetcherService {
+      * @returns The header containing the transaction ID.
+      */
+     async _getTransactionHeader(method, url) {
+-        // Get the X homepage HTML document (using utility function)
+-        const document = await this._handleXMigration();
+-        // Create and initialize ClientTransaction instance
+-        const transaction = await x_client_transaction_id_1.ClientTransaction.create(document);
+-        // Getting the URL path excluding all params
+-        const path = new URL(url).pathname.split('?')[0].trim();
+-        // Generating the transaction ID
+-        const tid = await transaction.generateTransactionId(method.toUpperCase(), path);
+-        return {
+-            /* eslint-disable @typescript-eslint/naming-convention */
+-            'x-client-transaction-id': tid,
+-            /* eslint-enable @typescript-eslint/naming-convention */
+-        };
++        // PATCH (newsletter): fail-soft transaction-id generation.
++        // X migrated their web build (June 2026) and moved x-client-transaction-id
++        // generation into an obfuscated, per-deploy-rotated signer; the bundled
++        // x-client-transaction-id library can no longer resolve the ondemand chunk
++        // and throws OnDemandFileUrlResolutionError. Unpatched, that bubbles up as
++        // "Unknown error" / HTTP 502 on Add-a-post and as silent collector failures.
++        // X does not require this header for authenticated reads, so degrade
++        // gracefully: send the request WITHOUT the header instead of throwing.
++        if (transactionHeaderDisabled) {
++            return {};
++        }
++        try {
++            // Get the X homepage HTML document (using utility function)
++            const document = await this._handleXMigration();
++            // Create and initialize ClientTransaction instance
++            const transaction = await x_client_transaction_id_1.ClientTransaction.create(document);
++            // Getting the URL path excluding all params
++            const path = new URL(url).pathname.split('?')[0].trim();
++            // Generating the transaction ID
++            const tid = await transaction.generateTransactionId(method.toUpperCase(), path);
++            return {
++                /* eslint-disable @typescript-eslint/naming-convention */
++                'x-client-transaction-id': tid,
++                /* eslint-enable @typescript-eslint/naming-convention */
++            };
++        }
++        catch {
++            // Stop attempting after the first failure (avoids an X homepage fetch per request).
++            transactionHeaderDisabled = true;
++            return {};
++        }
+     }
+     async _handleXMigration() {
+         // Fetch X.com homepage
 diff --git a/src/models/data/Tweet.ts b/src/models/data/Tweet.ts
 index 92c86dd6e4ff5cde1dc6036e25c97ef415a95a03..83d95292705ab0f965f2b5355e7c20e842d5d348 100644
 --- a/src/models/data/Tweet.ts
@@ -36,3 +102,74 @@ index 92c86dd6e4ff5cde1dc6036e25c97ef415a95a03..83d95292705ab0f965f2b5355e7c20e8
  			return new Tweet(tweet.quoted_status_result.result as IRawTweet);
  		}
  		// Else, skip
+diff --git a/src/services/public/FetcherService.ts b/src/services/public/FetcherService.ts
+index 9b83bc62c80fcca9cd22051ee2290a65579b0358..a84be4056d1040df1ea13a84cb6baf5d94b49035 100644
+--- a/src/services/public/FetcherService.ts
++++ b/src/services/public/FetcherService.ts
+@@ -23,6 +23,11 @@ import { AuthService } from '../internal/AuthService';
+ import { ErrorService } from '../internal/ErrorService';
+ import { LogService } from '../internal/LogService';
+ 
++// PATCH (newsletter): once x-client-transaction-id generation fails (see
++// _getTransactionHeader), stop attempting it process-wide so we don't fetch the X
++// homepage on every subsequent request.
++let transactionHeaderDisabled = false;
++
+ /**
+  * The base service that handles all HTTP requests.
+  *
+@@ -105,23 +110,41 @@ export class FetcherService {
+ 	 * @returns The header containing the transaction ID.
+ 	 */
+ 	private async _getTransactionHeader(method: string, url: string): Promise<ITransactionHeader> {
+-		// Get the X homepage HTML document (using utility function)
+-		const document = await this._handleXMigration();
++		// PATCH (newsletter): fail-soft transaction-id generation.
++		// X migrated their web build (June 2026) and moved x-client-transaction-id
++		// generation into an obfuscated, per-deploy-rotated signer; the bundled
++		// x-client-transaction-id library can no longer resolve the ondemand chunk
++		// and throws OnDemandFileUrlResolutionError. Unpatched, that bubbles up as
++		// "Unknown error" / HTTP 502 on Add-a-post and as silent collector failures.
++		// X does not require this header for authenticated reads, so degrade
++		// gracefully: send the request WITHOUT the header instead of throwing.
++		if (transactionHeaderDisabled) {
++			return {};
++		}
+ 
+-		// Create and initialize ClientTransaction instance
+-		const transaction = await ClientTransaction.create(document);
++		try {
++			// Get the X homepage HTML document (using utility function)
++			const document = await this._handleXMigration();
+ 
+-		// Getting the URL path excluding all params
+-		const path = new URL(url).pathname.split('?')[0].trim();
++			// Create and initialize ClientTransaction instance
++			const transaction = await ClientTransaction.create(document);
+ 
+-		// Generating the transaction ID
+-		const tid = await transaction.generateTransactionId(method.toUpperCase(), path);
++			// Getting the URL path excluding all params
++			const path = new URL(url).pathname.split('?')[0].trim();
+ 
+-		return {
+-			/* eslint-disable @typescript-eslint/naming-convention */
+-			'x-client-transaction-id': tid,
+-			/* eslint-enable @typescript-eslint/naming-convention */
+-		};
++			// Generating the transaction ID
++			const tid = await transaction.generateTransactionId(method.toUpperCase(), path);
++
++			return {
++				/* eslint-disable @typescript-eslint/naming-convention */
++				'x-client-transaction-id': tid,
++				/* eslint-enable @typescript-eslint/naming-convention */
++			};
++		} catch {
++			// Stop attempting after the first failure (avoids an X homepage fetch per request).
++			transactionHeaderDisabled = true;
++			return {};
++		}
+ 	}
+ 
+ 	private async _handleXMigration(): Promise<Document> {
