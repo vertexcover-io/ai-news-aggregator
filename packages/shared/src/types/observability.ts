@@ -21,6 +21,7 @@ export type RunLogEvent =
   | "web.extract.start"
   | "web.extract.done"
   | "crawler.stats"
+  | "crawler.proxy_fallback_done"
   | "run.completed"
   | "run.failed"
   | "run.cancelled";

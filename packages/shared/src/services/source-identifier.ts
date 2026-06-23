@@ -68,6 +68,9 @@ export function deriveRawItemIdentifier(args: DeriveArgs): string {
       return "web search";
     }
 
+    case "manual":
+      return hostnameFallback(args);
+
     default: {
       const _exhaustive: never = args.sourceType;
       return _exhaustive;

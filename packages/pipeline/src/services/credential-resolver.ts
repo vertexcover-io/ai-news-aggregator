@@ -1,5 +1,6 @@
 import { createLogger } from "@newsletter/shared/logger";
 import type { SocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
+import type { AppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
 
 export interface LinkedInCreds {
   clientId: string;
@@ -19,8 +20,33 @@ export interface TwitterCollectorCookie {
   source: "db" | "env";
 }
 
+/** Shared Twitter OAuth2 app client (P13, REQ-081) — used to refresh per-tenant tokens. */
+export interface TwitterOAuth2ClientCreds {
+  clientId: string;
+  clientSecret: string;
+}
+
+/**
+ * Tenant-level resolution (P12): the repo is scoped to the job's tenant, so
+ * lookups hit `(tenant_id, platform)` rows owned by that tenant only.
+ */
 export interface CredentialResolverDeps {
-  repo: SocialCredentialsRepo;
+  repo: Pick<SocialCredentialsRepo, "getTwitter">;
+  env?: NodeJS.ProcessEnv;
+}
+
+/**
+ * App-level resolution (P12, REQ-082/086): the LinkedIn OAuth client and the
+ * shared Twitter collector cookie come from the super-admin `app_credentials`
+ * store (DB-first per job, D-051/S-pipeline-03), env fallback. Never
+ * tenant-scoped — these secrets are shared by every tenant and are never
+ * exposed to tenant admins.
+ */
+export interface AppCredentialResolverDeps {
+  appRepo: Pick<
+    AppCredentialsRepo,
+    "getLinkedInClient" | "getTwitterCollector" | "getTwitterClient" | "getApifyApiToken"
+  >;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -45,7 +71,7 @@ type DbRead<T> = { ok: T | null } | { ok: "decrypt_failed" };
 
 async function safeGetDbRow<T>(
   fetch: () => Promise<T | null>,
-  platform: "linkedin" | "twitter" | "twitter_collector",
+  platform: "linkedin" | "twitter" | "twitter_collector" | "twitter_client" | "apify_api_token",
 ): Promise<DbRead<T>> {
   try {
     return { ok: await fetch() };
@@ -63,9 +89,9 @@ async function safeGetDbRow<T>(
 }
 
 export async function resolveLinkedInCredentials(
-  deps: CredentialResolverDeps,
+  deps: AppCredentialResolverDeps,
 ): Promise<LinkedInCreds | null> {
-  const dbRead = await safeGetDbRow(() => deps.repo.getLinkedIn(), "linkedin");
+  const dbRead = await safeGetDbRow(() => deps.appRepo.getLinkedInClient(), "linkedin");
   if (dbRead.ok === "decrypt_failed") return null;
   const dbRow = dbRead.ok;
   if (dbRow) {
@@ -123,11 +149,58 @@ export async function resolveTwitterOAuth1Credentials(
   };
 }
 
+/**
+ * App-level Twitter OAuth2 client (P13, REQ-081): resolves the SHARED app
+ * client used to refresh per-tenant posting tokens. DB-first from the
+ * super-admin `app_credentials` store, env fallback — never tenant-scoped.
+ */
+export async function resolveTwitterOAuth2Client(
+  deps: AppCredentialResolverDeps,
+): Promise<TwitterOAuth2ClientCreds | null> {
+  const dbRead = await safeGetDbRow(
+    () => deps.appRepo.getTwitterClient(),
+    "twitter_client",
+  );
+  if (dbRead.ok === "decrypt_failed") return null;
+  const dbRow = dbRead.ok;
+  if (dbRow) {
+    return { clientId: dbRow.clientId, clientSecret: dbRow.clientSecret };
+  }
+  const env = deps.env ?? {};
+  const clientId = env.TWITTER_OAUTH2_CLIENT_ID;
+  const clientSecret = env.TWITTER_OAUTH2_CLIENT_SECRET;
+  if (!present(clientId) || !present(clientSecret)) return null;
+  return { clientId, clientSecret };
+}
+
+export interface ApifyTokenCreds {
+  apiToken: string;
+  source: "db" | "env";
+}
+
+export async function resolveApifyApiToken(
+  deps: AppCredentialResolverDeps,
+): Promise<ApifyTokenCreds | null> {
+  const dbRead = await safeGetDbRow(
+    () => deps.appRepo.getApifyApiToken(),
+    "apify_api_token",
+  );
+  if (dbRead.ok === "decrypt_failed") return null;
+  const dbRow = dbRead.ok;
+  if (dbRow) {
+    return { apiToken: dbRow.apiToken, source: "db" };
+  }
+  const env = deps.env ?? {};
+  const apiToken = env.APIFY_API_KEY;
+  if (!present(apiToken)) return null;
+  return { apiToken, source: "env" };
+}
+
 export async function resolveTwitterCollectorCookie(
-  deps: CredentialResolverDeps,
+  deps: AppCredentialResolverDeps,
 ): Promise<TwitterCollectorCookie | null> {
   const dbRead = await safeGetDbRow(
-    () => deps.repo.getTwitterCollector(),
+    () => deps.appRepo.getTwitterCollector(),
     "twitter_collector",
   );
   if (dbRead.ok === "decrypt_failed") return null;

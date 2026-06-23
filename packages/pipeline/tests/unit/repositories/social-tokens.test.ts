@@ -42,21 +42,29 @@ function makeFakeDb(initial: StoredRow[] = []): FakeDbHandle {
   for (const r of initial) rows.set(r.platform, r);
   const selectForCalls = { value: 0 };
 
+  // P12: predicates are now and(eq(tenant_id, …), eq(platform, …)) — walk the
+  // SQL chunk tree recursively and pick out the platform literal only.
+  function findPlatform(node: unknown): string | null {
+    if (node === "linkedin" || node === "twitter") return node;
+    if (node === null || typeof node !== "object") return null;
+    if ("value" in node) {
+      const v = (node as { value: unknown }).value;
+      if (v === "linkedin" || v === "twitter") return v;
+    }
+    if ("queryChunks" in node) {
+      for (const chunk of (node as { queryChunks: unknown[] }).queryChunks) {
+        const found = findPlatform(chunk);
+        if (found !== null) return found;
+      }
+    }
+    return null;
+  }
+
   function makeSelectChain(pendingPlatform: { value: string | null }) {
     const chain = {
       from: vi.fn().mockReturnThis(),
       where: vi.fn(function (_pred: unknown) {
-        const p = _pred as { queryChunks?: unknown[] } | null;
-        if (p && Array.isArray(p.queryChunks)) {
-          for (const chunk of p.queryChunks) {
-            if (typeof chunk === "string") {
-              pendingPlatform.value = chunk;
-            } else if (chunk && typeof chunk === "object" && "value" in chunk) {
-              const v = (chunk as { value: unknown }).value;
-              if (typeof v === "string") pendingPlatform.value = v;
-            }
-          }
-        }
+        pendingPlatform.value = findPlatform(_pred);
         return chain;
       }),
       limit: vi.fn(function () {
@@ -128,6 +136,12 @@ function makeFakeDb(initial: StoredRow[] = []): FakeDbHandle {
 const TEST_SECRET_A = "0123456789abcdef0123456789abcdef0123456789abcdef";
 const TEST_SECRET_B = "fedcba9876543210fedcba9876543210fedcba9876543210";
 
+// P12: writes require a concrete tenant scope (tenant_id is part of the PK).
+const TEST_TENANT_CTX = {
+  tenantId: "11111111-1111-4111-8111-111111111111",
+  role: "tenant_admin",
+} as const;
+
 function cipherA() {
   return getCredentialCipher({ ...process.env, SESSION_SECRET: TEST_SECRET_A });
 }
@@ -143,7 +157,7 @@ function cipherB() {
 describe("SocialTokensRepo (cipher-aware) -- encrypt->save->read round-trip (REQ-006)", () => {
   it("getToken returns the original plaintext access and refresh tokens after saveToken", async () => {
     const handle = makeFakeDb();
-    const repo = createSocialTokensRepo(handle.db, cipherA());
+    const repo = createSocialTokensRepo(handle.db, cipherA(), TEST_TENANT_CTX);
 
     const expiresAt = new Date("2026-12-01T00:00:00Z");
     const input: SaveSocialTokenInput = {
@@ -167,7 +181,7 @@ describe("SocialTokensRepo (cipher-aware) -- encrypt->save->read round-trip (REQ
 
   it("withTokenLock callback receives decrypted accessToken and refreshToken", async () => {
     const handle = makeFakeDb();
-    const repo = createSocialTokensRepo(handle.db, cipherA());
+    const repo = createSocialTokensRepo(handle.db, cipherA(), TEST_TENANT_CTX);
 
     await repo.saveToken("linkedin", {
       accessToken: "lock-access-token",
@@ -175,7 +189,7 @@ describe("SocialTokensRepo (cipher-aware) -- encrypt->save->read round-trip (REQ
       expiresAt: new Date("2026-12-01T00:00:00Z"),
     });
 
-    const repo2 = createSocialTokensRepo(handle.db, cipherA());
+    const repo2 = createSocialTokensRepo(handle.db, cipherA(), TEST_TENANT_CTX);
 
     let observedAccessToken: string | null = null;
     let observedRefreshToken: string | null = null;
@@ -198,7 +212,7 @@ describe("SocialTokensRepo (cipher-aware) -- encrypt->save->read round-trip (REQ
 describe("SocialTokensRepo (cipher-aware) -- raw DB value is ciphertext (REQ-006)", () => {
   it("the raw encryptedFields stored in the DB contains no plaintext token substring", async () => {
     const handle = makeFakeDb();
-    const repo = createSocialTokensRepo(handle.db, cipherA());
+    const repo = createSocialTokensRepo(handle.db, cipherA(), TEST_TENANT_CTX);
 
     const accessToken = "super-secret-access-token-12345";
     const refreshToken = "ultra-secret-refresh-token-67890";
@@ -233,7 +247,7 @@ describe("SocialTokensRepo (cipher-aware) -- wrong SESSION_SECRET returns null o
   it("getToken returns null when trying to decrypt with a different SESSION_SECRET", async () => {
     const handle = makeFakeDb();
 
-    const repoA = createSocialTokensRepo(handle.db, cipherA());
+    const repoA = createSocialTokensRepo(handle.db, cipherA(), TEST_TENANT_CTX);
     await repoA.saveToken("linkedin", {
       accessToken: "secret-at",
       refreshToken: "secret-rt",
@@ -242,14 +256,14 @@ describe("SocialTokensRepo (cipher-aware) -- wrong SESSION_SECRET returns null o
 
     // A rotated SESSION_SECRET should cause the pipeline to treat the token as
     // missing (return null) so jobs skip gracefully rather than crashing.
-    const repoB = createSocialTokensRepo(handle.db, cipherB());
+    const repoB = createSocialTokensRepo(handle.db, cipherB(), TEST_TENANT_CTX);
     await expect(repoB.getToken("linkedin")).resolves.toBeNull();
   });
 
   it("withTokenLock passes null to callback when the stored token was encrypted with a different SESSION_SECRET", async () => {
     const handle = makeFakeDb();
 
-    const repoA = createSocialTokensRepo(handle.db, cipherA());
+    const repoA = createSocialTokensRepo(handle.db, cipherA(), TEST_TENANT_CTX);
     await repoA.saveToken("twitter", {
       accessToken: "secret-at",
       refreshToken: "secret-rt",
@@ -258,7 +272,7 @@ describe("SocialTokensRepo (cipher-aware) -- wrong SESSION_SECRET returns null o
 
     // A rotated SESSION_SECRET should cause the pipeline to treat the token as
     // missing (null row) so the job skips gracefully.
-    const repoB = createSocialTokensRepo(handle.db, cipherB());
+    const repoB = createSocialTokensRepo(handle.db, cipherB(), TEST_TENANT_CTX);
     let observedRow: unknown = "untouched";
     await repoB.withTokenLock("twitter", (row) => {
       observedRow = row;
@@ -275,13 +289,13 @@ describe("SocialTokensRepo (cipher-aware) -- wrong SESSION_SECRET returns null o
 describe("SocialTokensRepo (cipher-aware) -- null row handling", () => {
   it("getToken returns null when no row exists", async () => {
     const handle = makeFakeDb();
-    const repo = createSocialTokensRepo(handle.db, cipherA());
+    const repo = createSocialTokensRepo(handle.db, cipherA(), TEST_TENANT_CTX);
     expect(await repo.getToken("linkedin")).toBeNull();
   });
 
   it("withTokenLock passes null to callback when no row exists", async () => {
     const handle = makeFakeDb();
-    const repo = createSocialTokensRepo(handle.db, cipherA());
+    const repo = createSocialTokensRepo(handle.db, cipherA(), TEST_TENANT_CTX);
     let observedRow: unknown = "untouched";
     await repo.withTokenLock("linkedin", (row) => {
       observedRow = row;
@@ -298,7 +312,7 @@ describe("SocialTokensRepo (cipher-aware) -- null row handling", () => {
 describe("SocialTokensRepo (cipher-aware) -- withTokenLock saves encrypted tokens", () => {
   it("token saved inside withTokenLock callback is encrypted at rest", async () => {
     const handle = makeFakeDb();
-    const repo = createSocialTokensRepo(handle.db, cipherA());
+    const repo = createSocialTokensRepo(handle.db, cipherA(), TEST_TENANT_CTX);
 
     const newAccessToken = "fresh-access-plaintext";
     const newRefreshToken = "fresh-refresh-plaintext";

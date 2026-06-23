@@ -1,27 +1,17 @@
+/**
+ * Tenant-level social credentials (P12, REQ-083): rows keyed
+ * `(tenant_id, platform)`, holding ONLY per-tenant secrets — the tenant's
+ * Twitter OAuth1 posting keys. App-level secrets (LinkedIn client, Twitter
+ * collector cookie) live in `app_credentials` (see app-credentials.ts) and
+ * are writable only via super-admin routes (REQ-082).
+ */
 import { eq } from "drizzle-orm";
-import { socialCredentials } from "@newsletter/shared/db";
-import type { AppDb } from "@newsletter/shared/db";
-import type {
-  LinkedInEncryptedFields,
-  TwitterEncryptedFields,
-  TwitterCollectorEncryptedFields,
-} from "@newsletter/shared/db";
+import { scopedTenantId, socialCredentials, tenantScoped } from "@newsletter/shared/db";
+import type { AppDb, TenantScope } from "@newsletter/shared/db";
+import type { TwitterEncryptedFields } from "@newsletter/shared/db";
 import type { CredentialCipher } from "@newsletter/shared/services/credential-cipher";
 
-export interface LinkedInCredentialRecord {
-  clientId: string;
-  clientSecret: string;
-  apiVersion: string | null;
-  updatedAt: Date;
-}
-
-export type SocialCredentialPlatform = "linkedin" | "twitter" | "twitter_collector";
-
-export interface LinkedInUpsertInput {
-  readonly clientId: string;
-  readonly clientSecret: string;
-  readonly apiVersion?: string;
-}
+export type SocialCredentialPlatform = "twitter";
 
 export interface TwitterUpsertInput {
   readonly apiKey: string;
@@ -30,128 +20,59 @@ export interface TwitterUpsertInput {
   readonly accessTokenSecret: string;
 }
 
-export interface TwitterCollectorUpsertInput {
-  readonly apiKey: string;
-}
-
-export interface LinkedInStatus {
-  readonly configured: boolean;
-  readonly apiVersion: string | null;
-  readonly updatedAt: string | null;
-}
-
 export interface TwitterStatus {
   readonly configured: boolean;
   readonly updatedAt: string | null;
 }
 
-export interface TwitterCollectorStatus {
-  readonly configured: boolean;
-  readonly updatedAt: string | null;
-}
-
 export interface SocialCredentialsStatus {
-  readonly linkedin: LinkedInStatus;
   readonly twitter: TwitterStatus;
-  readonly twitterCollector: TwitterCollectorStatus;
 }
 
 export interface SocialCredentialsRepo {
   getStatus(): Promise<SocialCredentialsStatus>;
-  /**
-   * Returns the decrypted LinkedIn client credentials, or null when no row
-   * exists. Uses the cipher to decrypt encryptedFields. Mirror of the
-   * pipeline's social-credentials repo getLinkedIn() — do NOT import pipeline.
-   */
-  getLinkedIn(): Promise<LinkedInCredentialRecord | null>;
-  upsertLinkedIn(input: LinkedInUpsertInput): Promise<{ updatedAt: string }>;
   upsertTwitter(input: TwitterUpsertInput): Promise<{ updatedAt: string }>;
-  upsertTwitterCollector(
-    input: TwitterCollectorUpsertInput,
-  ): Promise<{ updatedAt: string }>;
   delete(platform: SocialCredentialPlatform): Promise<boolean>;
 }
 
 type DbSlice = Pick<AppDb, "select" | "insert" | "delete">;
 
+/**
+ * tenant_id is part of the PK (P12) — writes must stamp a concrete tenant.
+ * Reads stay scope-optional (legacy unscoped mode), but an unscoped write
+ * would be a cross-tenant bug, so it throws loudly.
+ */
+function requireTenantId(ctx: TenantScope | undefined): string {
+  const tenantId = scopedTenantId(ctx);
+  if (tenantId === undefined) {
+    throw new Error(
+      "social_credentials write requires a concrete tenant scope (tenant_id is part of the primary key)",
+    );
+  }
+  return tenantId;
+}
+
 export function createSocialCredentialsRepo(
   db: DbSlice,
   cipher: CredentialCipher,
+  ctx?: TenantScope,
 ): SocialCredentialsRepo {
   return {
-    async getLinkedIn(): Promise<LinkedInCredentialRecord | null> {
+    async getStatus(): Promise<SocialCredentialsStatus> {
       const rows = await db
         .select()
         .from(socialCredentials)
-        .where(eq(socialCredentials.platform, "linkedin"))
+        .where(tenantScoped(socialCredentials.tenantId, ctx, eq(socialCredentials.platform, "twitter")))
         .limit(1);
-      if (rows.length === 0) return null;
-      const row = rows[0];
-      const fields = row.encryptedFields as LinkedInEncryptedFields;
-      return {
-        clientId: cipher.decrypt(fields.clientId),
-        clientSecret: cipher.decrypt(fields.clientSecret),
-        apiVersion: row.metadata?.apiVersion ?? null,
-        updatedAt: row.updatedAt,
-      };
-    },
-
-    async getStatus(): Promise<SocialCredentialsStatus> {
-      const rows = await db.select().from(socialCredentials);
-      let linkedin: LinkedInStatus = {
-        configured: false,
-        apiVersion: null,
-        updatedAt: null,
-      };
-      let twitter: TwitterStatus = { configured: false, updatedAt: null };
-      let twitterCollector: TwitterCollectorStatus = {
-        configured: false,
-        updatedAt: null,
-      };
-      for (const row of rows) {
-        if (row.platform === "linkedin") {
-          linkedin = {
-            configured: true,
-            apiVersion: row.metadata?.apiVersion ?? null,
-            updatedAt: row.updatedAt.toISOString(),
-          };
-        } else if (row.platform === "twitter") {
-          twitter = {
-            configured: true,
-            updatedAt: row.updatedAt.toISOString(),
-          };
-        } else {
-          twitterCollector = {
-            configured: true,
-            updatedAt: row.updatedAt.toISOString(),
-          };
-        }
+      if (rows.length === 0) {
+        return { twitter: { configured: false, updatedAt: null } };
       }
-      return { linkedin, twitter, twitterCollector };
-    },
-
-    async upsertLinkedIn(input: LinkedInUpsertInput): Promise<{ updatedAt: string }> {
-      const encryptedFields: LinkedInEncryptedFields = {
-        clientId: cipher.encrypt(input.clientId),
-        clientSecret: cipher.encrypt(input.clientSecret),
+      return {
+        twitter: {
+          configured: true,
+          updatedAt: rows[0].updatedAt.toISOString(),
+        },
       };
-      const metadata = input.apiVersion ? { apiVersion: input.apiVersion } : null;
-      const now = new Date();
-      const [row] = await db
-        .insert(socialCredentials)
-        .values({
-          platform: "linkedin",
-          encryptedFields,
-          metadata,
-          updatedAt: now,
-          updatedBy: "admin",
-        })
-        .onConflictDoUpdate({
-          target: socialCredentials.platform,
-          set: { encryptedFields, metadata, updatedAt: now, updatedBy: "admin" },
-        })
-        .returning();
-      return { updatedAt: row.updatedAt.toISOString() };
     },
 
     async upsertTwitter(input: TwitterUpsertInput): Promise<{ updatedAt: string }> {
@@ -166,37 +87,14 @@ export function createSocialCredentialsRepo(
         .insert(socialCredentials)
         .values({
           platform: "twitter",
+          tenantId: requireTenantId(ctx),
           encryptedFields,
           metadata: null,
           updatedAt: now,
           updatedBy: "admin",
         })
         .onConflictDoUpdate({
-          target: socialCredentials.platform,
-          set: { encryptedFields, metadata: null, updatedAt: now, updatedBy: "admin" },
-        })
-        .returning();
-      return { updatedAt: row.updatedAt.toISOString() };
-    },
-
-    async upsertTwitterCollector(
-      input: TwitterCollectorUpsertInput,
-    ): Promise<{ updatedAt: string }> {
-      const encryptedFields: TwitterCollectorEncryptedFields = {
-        apiKey: cipher.encrypt(input.apiKey),
-      };
-      const now = new Date();
-      const [row] = await db
-        .insert(socialCredentials)
-        .values({
-          platform: "twitter_collector",
-          encryptedFields,
-          metadata: null,
-          updatedAt: now,
-          updatedBy: "admin",
-        })
-        .onConflictDoUpdate({
-          target: socialCredentials.platform,
+          target: [socialCredentials.tenantId, socialCredentials.platform],
           set: { encryptedFields, metadata: null, updatedAt: now, updatedBy: "admin" },
         })
         .returning();
@@ -206,7 +104,7 @@ export function createSocialCredentialsRepo(
     async delete(platform: SocialCredentialPlatform): Promise<boolean> {
       const result = await db
         .delete(socialCredentials)
-        .where(eq(socialCredentials.platform, platform))
+        .where(tenantScoped(socialCredentials.tenantId, ctx, eq(socialCredentials.platform, platform)))
         .returning({ platform: socialCredentials.platform });
       return result.length > 0;
     },

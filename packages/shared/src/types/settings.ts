@@ -54,6 +54,8 @@ export interface RunSummary {
   isDryRun: boolean;
   costBreakdown: RunCostBreakdown | null;
   issueDate?: string;
+  /** ISO timestamp when the digest was broadcast to subscribers, or null. */
+  emailSentAt?: string | null;
   linkedinPostedAt?: string | null;
   twitterPostedAt?: string | null;
   linkedinPermalink?: string | null;

@@ -38,8 +38,11 @@ import type {
 } from "@newsletter/shared";
 import type { RunSubmitWebSearchConfig } from "@newsletter/shared/types";
 
-const DEFAULT_HN: RunSubmitHnConfig = {
-  keywords: ["ai", "llm", "agents"],
+// FIX #5: collectors start with NO seeded content — toggling one on pre-fills
+// only operational defaults (thresholds, counts, feeds). The tenant must add
+// their own keywords / subreddits / blog sources before saving.
+const DEFAULT_HN: NonNullable<SettingsFormValues["hnConfig"]> = {
+  keywords: [],
   pointsThreshold: 100,
   sinceDays: 1,
   count: 50,
@@ -48,16 +51,14 @@ const DEFAULT_HN: RunSubmitHnConfig = {
 };
 
 const DEFAULT_REDDIT: RunSubmitRedditConfig = {
-  subreddits: ["MachineLearning", "LocalLLaMA"],
+  subreddits: [],
   sort: "hot",
   limit: 25,
   sinceDays: 1,
 };
 
 const DEFAULT_WEB: RunSubmitWebConfig = {
-  sources: [
-    { name: "Anthropic", listingUrl: "https://www.anthropic.com/news" },
-  ],
+  sources: [],
   maxItems: 10,
   sinceDays: 7,
 };
@@ -501,7 +502,7 @@ function HnEditPanel({
             <Input
               id="hn-keywords"
               className="mt-1"
-              value={(field.value ?? []).join(", ")}
+              value={field.value.join(", ")}
               onChange={(e) => {
                 field.onChange(
                   e.target.value.split(",").map((k) => k.trimStart()),

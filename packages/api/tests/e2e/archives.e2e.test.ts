@@ -34,6 +34,7 @@ import {
   createPublicArchivesRouter,
 } from "@api/routes/archives.js";
 import { createArchivesSearchRouter } from "@api/routes/archives-search.js";
+import { ensureE2eTenant } from "./helpers/tenant.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../../..");
@@ -41,8 +42,9 @@ config({ path: resolve(REPO_ROOT, ".env") });
 
 const db = getDb();
 const redis = createRedisConnection();
-const rawItemsRepo = createRawItemsRepo(db);
-const archiveRepo = createRunArchivesRepo(db);
+const tenantCtx = await ensureE2eTenant();
+const rawItemsRepo = createRawItemsRepo(db, tenantCtx);
+const archiveRepo = createRunArchivesRepo(db, tenantCtx);
 
 const archiveListResponseSchema = z.object({
   archives: z.array(
@@ -144,6 +146,7 @@ async function insertRawItem(opts: {
   const [row] = await db
     .insert(rawItems)
     .values({
+      tenantId: tenantCtx.tenantId,
       sourceType: "hn",
       externalId: `${seedPrefix}-${opts.externalId}`,
       title: opts.title,
@@ -187,6 +190,7 @@ async function insertArchive(opts: {
 
   await db.insert(runArchives).values({
     id: runId,
+    tenantId: tenantCtx.tenantId,
     status: "completed",
     rankedItems,
     topN: rankedItems.length,
@@ -622,12 +626,14 @@ describe("DELETE /api/admin/archives/:runId (e2e)", () => {
     const [subscriber] = await db
       .insert(subscribers)
       .values({
+        tenantId: tenantCtx.tenantId,
         email: `${archive.runId}@example.com`,
         status: "confirmed",
       })
       .returning({ id: subscribers.id });
     seededSubscriberIds.add(subscriber.id);
     await db.insert(emailSends).values({
+      tenantId: tenantCtx.tenantId,
       subscriberId: subscriber.id,
       runArchiveId: archive.runId,
       messageId: `msg-${archive.runId}`,
@@ -669,7 +675,7 @@ describe("DELETE /api/admin/archives/:runId (e2e)", () => {
 
 // ── immediate-publish e2e (Phase 2) ──────────────────────────────────────────
 
-const settingsRepo = createUserSettingsRepo(db);
+const settingsRepo = createUserSettingsRepo(db, tenantCtx);
 
 /**
  * Seed a singleton user_settings row with all three publish channels enabled
@@ -785,12 +791,12 @@ describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
       expect(addSpy).toHaveBeenCalledWith(
         "linkedin-post",
         { runId: archive.runId },
-        { jobId: `linkedin-post:${archive.runId}`, delay: 0 },
+        { jobId: `linkedin-post-${archive.runId}`, delay: 0 },
       );
       expect(addSpy).toHaveBeenCalledWith(
         "twitter-post",
         { runId: archive.runId },
-        { jobId: `twitter-post:${archive.runId}`, delay: 0 },
+        { jobId: `twitter-post-${archive.runId}`, delay: 0 },
       );
     },
   );
@@ -858,12 +864,12 @@ describe("PATCH /api/admin/archives/:runId — immediate publish (e2e)", () => {
       expect(addSpy).toHaveBeenCalledWith(
         "linkedin-post",
         { runId: archive.runId },
-        { jobId: `linkedin-post:${archive.runId}`, delay: 0 },
+        { jobId: `linkedin-post-${archive.runId}`, delay: 0 },
       );
       expect(addSpy).toHaveBeenCalledWith(
         "twitter-post",
         { runId: archive.runId },
-        { jobId: `twitter-post:${archive.runId}`, delay: 0 },
+        { jobId: `twitter-post-${archive.runId}`, delay: 0 },
       );
     },
   );

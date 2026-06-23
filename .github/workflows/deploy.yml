@@ -54,6 +54,9 @@ jobs:
 
   build-web:
     runs-on: ubuntu-latest
+    # Needs the production environment to read ROOT_DOMAIN / APP_HOST, which the
+    # web bundle bakes in (VITE_*) for host-surface routing + the slug preview.
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +74,12 @@ jobs:
       - run: pnpm --filter @newsletter/shared build
 
       - run: pnpm --filter @newsletter/web build
+        env:
+          # Baked into the bundle: host-surface routing (apex / app.<root> →
+          # product landing; <slug>.<root> / custom domains → tenant newsletter)
+          # and the onboarding slug preview (`<slug>.<root>`).
+          VITE_PUBLIC_ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
+          VITE_APP_HOST: ${{ secrets.APP_HOST }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -119,9 +128,13 @@ jobs:
           JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
           RANKING_MODEL: ${{ secrets.RANKING_MODEL }}
           WEB_CRAWLER_CONCURRENCY: ${{ secrets.WEB_CRAWLER_CONCURRENCY }}
+          WEB_PROXY_URL: ${{ secrets.WEB_PROXY_URL }}
           RETTIWT_API_KEY: ${{ secrets.RETTIWT_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           API_PORT: ${{ secrets.API_PORT }}
+          ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
+          APP_HOST: ${{ secrets.APP_HOST }}
+          CUSTOM_DOMAIN_MAP: ${{ secrets.CUSTOM_DOMAIN_MAP }}
           PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL }}
           NEWSLETTER_BASE_URL: ${{ secrets.NEWSLETTER_BASE_URL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
@@ -161,6 +174,8 @@ jobs:
               "RETTIWT_API_KEY",
               "TAVILY_API_KEY",
               "API_PORT",
+              "ROOT_DOMAIN",
+              "APP_HOST",
               "PUBLIC_BASE_URL",
               "NEWSLETTER_BASE_URL",
               "ADMIN_PASSWORD",
@@ -172,7 +187,9 @@ jobs:
               "GHCR_TOKEN",
           ]
           optional = [
+              "CUSTOM_DOMAIN_MAP",
               "WEB_CRAWLER_CONCURRENCY",
+              "WEB_PROXY_URL",
               "NEWSLETTER_REPLY_TO_EMAIL",
               "SLACK_WEBHOOK_URL",
               "LINKEDIN_CLIENT_ID",
@@ -247,3 +264,46 @@ jobs:
         run: |
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "bash /opt/newsletter/deployment/deploy.sh ${{ github.sha }}"
+
+  notify:
+    # Runs after the full pipeline regardless of outcome so the channel hears
+    # about broken deploys too. `result` of the deploy job drives success vs
+    # failure; if an earlier job (build-images/build-web) failed, deploy is
+    # skipped and we report failure.
+    needs: [build-images, build-web, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      # The `secrets` context isn't allowed in `if:` conditions, so surface the
+      # webhook as an env var and gate the step on that instead.
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    steps:
+      - name: Post deploy status to Slack (#newsletter-updates)
+        if: ${{ env.SLACK_WEBHOOK_URL != '' }}
+        env:
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ "$DEPLOY_RESULT" = "success" ]; then
+            EMOJI="🟢"; STATUS="Deploy succeeded"
+          else
+            EMOJI="🔴"; STATUS="Deploy ${DEPLOY_RESULT:-failed}"
+          fi
+          SHORT_SHA="${SHA:0:7}"
+          # Build the Block Kit payload with jq so commit messages / branch names
+          # are JSON-escaped rather than string-interpolated into the body.
+          PAYLOAD="$(jq -nc \
+            --arg header "${EMOJI} ${STATUS}" \
+            --arg detail "*Branch:* \`${REF_NAME}\`  •  *Commit:* <${COMMIT_URL}|${SHORT_SHA}>  •  *By:* ${ACTOR}" \
+            --arg run "<${RUN_URL}|View workflow run>" \
+            '{blocks: [
+              {type:"header", text:{type:"plain_text", text:$header, emoji:true}},
+              {type:"section", text:{type:"mrkdwn", text:$detail}},
+              {type:"context", elements:[{type:"mrkdwn", text:$run}]}
+            ]}')"
+          curl -sSf -X POST -H 'Content-Type: application/json' \
+            --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"

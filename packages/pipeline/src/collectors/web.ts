@@ -15,6 +15,7 @@ import type { RawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { fetchAdaptive } from "@pipeline/services/web-fetch/index.js";
 import {
   runWebCrawl,
+  crawlWithProxyFallback,
   type CrawlJob,
   type CrawlResult,
   type CrawlSuccess,
@@ -41,7 +42,7 @@ function blogUnitId(listingUrl: string): string {
 
 const MAX_ERROR_LENGTH = 200;
 
-export const WEB_COLLECTOR_MODEL_ID = "deepseek-chat";
+export const WEB_COLLECTOR_MODEL_ID = "deepseek-v4-flash";
 
 export const COMBINED_DISCOVERY_CAP = 120_000;
 
@@ -76,8 +77,20 @@ export async function discoverPostUrls(
   structuredData: string | null,
   model: LanguageModel,
   reportUsage?: UsageReporter,
+  sinceDays?: number,
 ): Promise<DiscoveredPost[]> {
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  // Constrain the model to recent posts when a window is configured. This keeps
+  // the model's output small on long archive pages (e.g. a 148-post listing
+  // would otherwise need ~15k output tokens and truncate). It's a best-effort
+  // optimization, not a correctness gate: callers still re-filter the result
+  // with applySinceDays(), so a few stragglers are harmless.
+  const recencyInstruction =
+    typeof sinceDays === "number" && sinceDays > 0
+      ? `Only return posts published on or after ${new Date(now.getTime() - sinceDays * 86_400_000).toISOString().slice(0, 10)} (YYYY-MM-DD). ` +
+        `The full date is often in the URL path (e.g. /2026/05/31/slug) even when the visible text shows only a year or partial date — derive published_at from the URL when needed. Skip older posts.\n\n`
+      : "";
   const combined = structuredData
     ? `${listingMarkdown}\n\n--- STRUCTURED DATA ---\n${structuredData}`
     : listingMarkdown;
@@ -91,6 +104,7 @@ export async function discoverPostUrls(
       `converted to markdown. The listing URL is ${listingUrl}. Today is ${today}.\n\n` +
       `Find every post-like entry on the page and return it in the schema. Skip ` +
       `obvious non-posts like navigation, footer, and social links.\n\n` +
+      recencyInstruction +
       `Normalize published_at to ISO 8601 (YYYY-MM-DD). If the page shows a ` +
       `relative date like "2 hours ago", "yesterday", or "3 days ago", compute ` +
       `the absolute date from today. Use empty strings for fields that are not ` +
@@ -257,6 +271,7 @@ async function processDiscoveryPhase(
       listingResult.result.structuredData,
       llmModel,
       reportDiscovery,
+      config.sinceDays,
     );
     const validated = validateDiscoveredUrls(discovered, source.listingUrl);
     const sorted = sortPostsByPublishedAtDesc(validated);
@@ -433,7 +448,7 @@ export async function collectWeb(
 ): Promise<WebCollectorResult> {
   const startTime = Date.now();
   const llmModel = deps.llmModel ?? (await resolveDefaultModel());
-  const fetcher = deps.runWebCrawl ?? runWebCrawl;
+  const fetcher = deps.runWebCrawl ?? crawlWithProxyFallback;
   const tracker = deps.tracker;
   const reportDiscovery: UsageReporter | undefined = tracker
     ? (usage, providerMetadata) => {

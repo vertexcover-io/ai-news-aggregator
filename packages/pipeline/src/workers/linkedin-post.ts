@@ -20,7 +20,8 @@ export interface LinkedInPostDeps {
 export interface LinkedInPostJobLike {
   readonly name: string;
   readonly id?: string;
-  readonly data: { readonly runId?: string };
+  /** `tenantId` (P9, REQ-060): consumed by the dispatcher to scope publish deps. */
+  readonly data: { readonly runId?: string; readonly tenantId?: string };
 }
 
 export async function handleLinkedInPostJob(

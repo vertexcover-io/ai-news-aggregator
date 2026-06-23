@@ -39,6 +39,8 @@ function renderMenu(run: RunSummary): void {
         runDate="Apr 14, 2026"
         onPostConfirm={vi.fn()}
         isPending={false}
+        onSendEmailConfirm={vi.fn()}
+        emailPending={false}
       />
     </MemoryRouter>,
   );

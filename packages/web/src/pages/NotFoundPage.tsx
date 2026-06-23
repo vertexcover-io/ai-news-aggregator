@@ -2,12 +2,18 @@ import type { ReactElement } from "react";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { setMeta } from "../lib/meta";
+import {
+  brandDisplayName,
+  useTenantBranding,
+} from "../hooks/useTenantBranding";
 
 export function NotFoundPage(): ReactElement {
+  const branding = useTenantBranding();
   useEffect(() => {
-    document.title = "Not found — AgentLoop";
+    const name = brandDisplayName(branding);
+    document.title = name ? `Not found — ${name}` : "Not found";
     setMeta("description", "The page you were looking for isn't here.");
-  }, []);
+  }, [branding]);
 
   return (
     <main className="mx-auto max-w-[680px] px-4 sm:px-6 md:px-8 py-24 text-center">

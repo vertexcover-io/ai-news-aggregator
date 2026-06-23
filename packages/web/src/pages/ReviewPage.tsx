@@ -365,7 +365,20 @@ export function ReviewPage(): ReactElement {
     ? "Regeneration is unavailable for dry-run archives."
     : null;
 
+  // A published issue must have a headline and summary (they drive the public
+  // hero, archive cards, and the email). Block publishing while either is blank;
+  // drafts may still be saved with incomplete copy.
+  const digestIncomplete =
+    digestMeta.headline.trim() === "" || digestMeta.summary.trim() === "";
+  const publishDisabledReason = digestIncomplete
+    ? "Add a headline and summary before publishing."
+    : null;
+
   async function handleSave(): Promise<void> {
+    if (digestIncomplete) {
+      toast.error(publishDisabledReason ?? "Add a headline and summary before publishing.");
+      return;
+    }
     setSaving(true);
     try {
       await patchArchive(runId, {
@@ -562,6 +575,7 @@ export function ReviewPage(): ReactElement {
           void handleSave();
         }}
         onDiscard={handleDiscard}
+        publishDisabledReason={publishDisabledReason}
         {...(!isEdit && {
           onSaveDraft: () => { void handleSaveDraft(); },
           draftSaving,

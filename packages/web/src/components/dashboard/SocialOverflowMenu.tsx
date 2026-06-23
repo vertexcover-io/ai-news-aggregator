@@ -54,6 +54,10 @@ interface SocialOverflowMenuProps {
   runDate: string;
   onPostConfirm: (channel: SocialChannel) => void;
   isPending: boolean;
+  /** Force-send the digest email to all confirmed subscribers (on-demand). */
+  onSendEmailConfirm: () => void;
+  /** True while an email send is in flight — disables the menu item. */
+  emailPending: boolean;
 }
 
 export function SocialOverflowMenu({
@@ -61,9 +65,12 @@ export function SocialOverflowMenu({
   runDate,
   onPostConfirm,
   isPending,
+  onSendEmailConfirm,
+  emailPending,
 }: SocialOverflowMenuProps): ReactElement {
   const [open, setOpen] = useState(false);
   const [confirmChannel, setConfirmChannel] = useState<SocialChannel | null>(null);
+  const [confirmEmail, setConfirmEmail] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuPosition, setMenuPosition] = useState<{
@@ -115,6 +122,10 @@ export function SocialOverflowMenu({
   }, [open]);
 
   const editEligible = run.status === "completed" && run.reviewed;
+
+  const emailSent = run.emailSentAt != null;
+  const emailEligible =
+    run.status === "completed" && run.reviewed && !run.isDryRun;
 
   const linkedin = deriveChannelState(run, "linkedin");
   const twitter = deriveChannelState(run, "twitter");
@@ -188,6 +199,40 @@ export function SocialOverflowMenu({
     );
   }
 
+  function renderEmailItem(): ReactElement {
+    if (emailSent) {
+      return (
+        <div
+          role="menuitem"
+          aria-disabled="true"
+          className="flex w-full items-center gap-1 px-3 py-2 text-left text-sm text-emerald-700 opacity-70"
+        >
+          Email ✓ Sent
+        </div>
+      );
+    }
+    const disabled = !emailEligible || emailPending;
+    return (
+      <button
+        type="button"
+        role="menuitem"
+        aria-disabled={disabled ? "true" : undefined}
+        disabled={disabled}
+        onClick={() => {
+          if (disabled) return;
+          setOpen(false);
+          setConfirmEmail(true);
+        }}
+        className={cn(
+          "block w-full px-3 py-2 text-left text-sm hover:bg-gray-50",
+          disabled && "opacity-50 cursor-not-allowed",
+        )}
+      >
+        Send email
+      </button>
+    );
+  }
+
   const confirmLabel =
     confirmChannel != null ? channelLabel[confirmChannel] : "";
 
@@ -218,6 +263,39 @@ export function SocialOverflowMenu({
               onClick={() => { handleConfirm(); }}
             >
               Post now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={confirmEmail}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setConfirmEmail(false);
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Send this newsletter by email?</DialogTitle>
+            <DialogDescription>
+              Send the {runDate} digest to all confirmed subscribers now. This
+              delivers the email immediately and cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setConfirmEmail(false); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                onSendEmailConfirm();
+                setConfirmEmail(false);
+              }}
+            >
+              Send now
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -262,6 +340,7 @@ export function SocialOverflowMenu({
                     Edit newsletter
                   </button>
                 )}
+                {renderEmailItem()}
                 {renderChannelItem("linkedin")}
                 {renderChannelItem("twitter")}
               </div>,

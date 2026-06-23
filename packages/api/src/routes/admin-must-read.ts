@@ -7,6 +7,8 @@ import {
   type StaticFetchError,
 } from "@newsletter/shared/services/static-page-fetcher";
 import { extractPageMetadata } from "@newsletter/shared/services/page-metadata";
+import type { TenantScope } from "@newsletter/shared/types/tenant-context";
+import { tenantScopeFromContext } from "@api/auth/tenant-scope.js";
 import {
   createMustReadRepo,
   type MustReadRepo,
@@ -39,7 +41,7 @@ export type FetchPageStaticFn = (
 ) => Promise<StaticFetchOk | { error: StaticFetchError }>;
 
 export interface AdminMustReadRouterDeps {
-  getRepo: () => MustReadRepo;
+  getRepo: (scope?: TenantScope) => MustReadRepo;
   fetchPage?: FetchPageStaticFn;
   previewTimeoutMs?: number;
   logger?: ReturnType<typeof createLogger>;
@@ -136,7 +138,7 @@ export function createAdminMustReadRouter(
         400,
       );
     }
-    const repo = deps.getRepo();
+    const repo = deps.getRepo(tenantScopeFromContext(c));
     const existing = await repo.findByUrl(parsed.data.url);
     if (existing) {
       return c.json(
@@ -155,7 +157,7 @@ export function createAdminMustReadRouter(
   });
 
   app.get("/", async (c) => {
-    const rows = await deps.getRepo().listAdmin();
+    const rows = await deps.getRepo(tenantScopeFromContext(c)).listAdmin();
     return c.json(rows);
   });
 
@@ -172,7 +174,7 @@ export function createAdminMustReadRouter(
         400,
       );
     }
-    const repo = deps.getRepo();
+    const repo = deps.getRepo(tenantScopeFromContext(c));
     if (parsed.data.url !== undefined) {
       const conflict = await repo.findByUrl(parsed.data.url);
       if (conflict && conflict.id !== id) {
@@ -199,7 +201,7 @@ export function createAdminMustReadRouter(
     if (!UUID_RE.test(id)) {
       return c.json({ error: "not_found" }, 404);
     }
-    const removed = await deps.getRepo().delete(id);
+    const removed = await deps.getRepo(tenantScopeFromContext(c)).delete(id);
     if (!removed) {
       return c.json({ error: "not_found" }, 404);
     }
@@ -211,6 +213,6 @@ export function createAdminMustReadRouter(
 
 export function createDefaultAdminMustReadRouter(): Hono {
   return createAdminMustReadRouter({
-    getRepo: () => createMustReadRepo(defaultGetDb()),
+    getRepo: (scope) => createMustReadRepo(defaultGetDb(), scope),
   });
 }

@@ -18,7 +18,13 @@ packages/
   api/      @newsletter/api       — Hono REST API, auth, job enqueueing, email delivery
   pipeline/ @newsletter/pipeline  — BullMQ workers (collectors, processors), no HTTP
   web/      @newsletter/web       — React + Vite frontend (admin UI + public archive)
+  extension/ @newsletter/extension — MV3 Chrome extension (popup) to add URLs to the next run
 ```
+
+The extension submits URLs via a SEPARATE bearer-token API path (`/api/extension/*`,
+`ext|`-namespaced HMAC, CORS scoped to `chrome-extension://`) — isolated from the admin
+cookie gate. Submissions land in `raw_items` as `sourceType: "manual"` and are picked up by
+the next run's candidate query.
 
 - Frontend → API via HTTP; API enqueues BullMQ jobs to Redis; pipeline workers consume them
 - API and pipeline share PostgreSQL through the shared Drizzle schema
@@ -60,9 +66,9 @@ Pre-commit hooks (Husky + lint-staged) run lint + typecheck on staged files auto
 
 Required for a full run: `DATABASE_URL`, `REDIS_URL`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `ADMIN_PASSWORD`, `SESSION_SECRET` (≥32 bytes; doubles as HKDF KEK for credential encryption at rest).
 
-Optional integrations (each disabled when unset): `SLACK_WEBHOOK_URL`, `PUBLIC_BASE_URL`, `TAVILY_API_KEY`, `RETTIWT_API_KEY`, LinkedIn (`LINKEDIN_CLIENT_ID/SECRET/API_VERSION`), Twitter OAuth 1.0a (`TWITTER_API_KEY/SECRET/ACCESS_TOKEN/ACCESS_TOKEN_SECRET`), `RANKING_MODEL`, `SHORTLIST_MODEL`, `WEB_CRAWLER_CONCURRENCY`, `EMAIL_SEND_RATE_PER_SECOND`, PostHog analytics + error tracking (`POSTHOG_PROJECT_TOKEN` or `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_ENABLED`).
+Optional integrations (each disabled when unset): `SLACK_WEBHOOK_URL`, `PUBLIC_BASE_URL`, `TAVILY_API_KEY`, `RETTIWT_API_KEY`, `APIFY_API_KEY` (Reddit collector — env fallback; prefer setting via super-admin `/api/super/app-credentials/apify`), LinkedIn (`LINKEDIN_CLIENT_ID/SECRET/API_VERSION`), Twitter OAuth 1.0a (`TWITTER_API_KEY/SECRET/ACCESS_TOKEN/ACCESS_TOKEN_SECRET`), `RANKING_MODEL`, `SHORTLIST_MODEL`, `WEB_CRAWLER_CONCURRENCY`, `EMAIL_SEND_RATE_PER_SECOND`, PostHog analytics + error tracking (`POSTHOG_PROJECT_TOKEN` or `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_ENABLED`).
 
-Social/collector credentials saved at `/admin/settings` are stored encrypted in the DB and shadow env vars — resolved DB-first per pipeline job.
+Social/collector credentials saved at `/admin/settings` are stored encrypted in the DB and shadow env vars — resolved DB-first per pipeline job. The Apify token is a **platform-level** secret (not per-tenant) — set once by a super-admin via `PUT /api/super/app-credentials/apify` and stored in `app_credentials` under key `apify_api_token`.
 
 ## Design Decisions & Gotchas
 

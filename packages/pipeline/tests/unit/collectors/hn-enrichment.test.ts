@@ -117,7 +117,7 @@ describe("collectHn + link enrichment (VS-2)", () => {
     fetchAdaptiveMock.mockResolvedValue(okResult);
 
     const repo = createMockRepo();
-    const config: HnCollectConfig = { feeds: ["newest"], commentsPerItem: 0 };
+    const config: HnCollectConfig = { feeds: ["newest"], keywords: ["AI"], commentsPerItem: 0 };
     const enrichment = makeEnrichmentCtx();
 
     const result: CollectorResult = await collectHn(
@@ -149,7 +149,7 @@ describe("collectHn + link enrichment (VS-2)", () => {
 
   it("does not enrich when deps.enrichment is absent", async () => {
     const repo = createMockRepo();
-    const config: HnCollectConfig = { feeds: ["newest"], commentsPerItem: 0 };
+    const config: HnCollectConfig = { feeds: ["newest"], keywords: ["AI"], commentsPerItem: 0 };
 
     await collectHn(
       { rawItemsRepo: repo, fetchFn: makeFetchFn() },

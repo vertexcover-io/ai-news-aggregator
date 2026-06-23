@@ -18,7 +18,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { Client } from "pg";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
+import { ADMIN_EMAIL, ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
 
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
 
@@ -56,7 +56,7 @@ async function ensureUserSettings(client: Client): Promise<void> {
         ranking_prompt, shortlist_prompt, shortlist_size)
      VALUES (10, '08:00', 'UTC', '08:00', '08:00', '08:00',
              'rank by signal', 'shortlist by title', 40)
-     ON CONFLICT (singleton) DO NOTHING`,
+     ON CONFLICT (tenant_id) DO NOTHING`,
   );
 }
 
@@ -544,8 +544,8 @@ async function seedPerItemObservabilityRun(): Promise<string> {
 }
 
 async function adminLogin(page: Page): Promise<void> {
-  const res = await page.request.post(`${API_BASE}/api/admin/login`, {
-    data: { password: ADMIN_PASSWORD },
+  const res = await page.request.post(`${API_BASE}/api/auth/login`, {
+    data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
   });
   expect(res.ok()).toBe(true);
 }

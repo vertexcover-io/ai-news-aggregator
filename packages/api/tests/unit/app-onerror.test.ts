@@ -16,7 +16,7 @@ import type { MiddlewareHandler } from "hono";
  */
 function makeMinimalDeps(): BuildAppDeps {
   const stub = () => new Hono();
-  const requireAdminFactory = (_secret: string): MiddlewareHandler =>
+  const requireAuthFactory = (_secret: string): MiddlewareHandler =>
     async (_c, next) => {
       await next();
     };
@@ -34,8 +34,8 @@ function makeMinimalDeps(): BuildAppDeps {
     adminMustReadRouter: stub(),
     runsRouter: stub(),
     settingsRouter: stub(),
-    adminRouter: stub(),
-    requireAdminFactory,
+    authRouter: stub(),
+    requireAuthFactory,
     subscribeRouter: stub(),
     webhooksRouter: stub(),
     analyticsRouter: stub(),
@@ -43,6 +43,9 @@ function makeMinimalDeps(): BuildAppDeps {
     linkedInOAuthRouter: stub(),
     linkedInOAuthCallbackRouter: stub(),
     collectorHealthRouter: stub(),
+    llmTxtIndexRouter: stub(),
+    llmTxtArchiveRouter: stub(),
+    extensionRouter: stub(),
   };
 }
 

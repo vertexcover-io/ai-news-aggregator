@@ -1,14 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type IORedis from "ioredis";
 import type { Queue } from "bullmq";
-import type {
-  RunState,
-  RunSubmitHnConfig,
-  RunSubmitRedditConfig,
-  RunSubmitTwitterConfig,
-  RunSubmitWebConfig,
-  RunSubmitWebSearchConfig,
-} from "./types/run.js";
+import type { RunCollectorsPayload, RunState } from "./types/run.js";
 import type { UserSettings } from "./types/settings.js";
 
 const TTL_SECONDS = 3600;
@@ -16,16 +9,17 @@ const TTL_SECONDS = 3600;
 export interface RunProcessJobPayload {
   runId: string;
   topN: number;
-  sourceTypes: ("hn" | "reddit" | "blog" | "twitter" | "web_search")[];
-  collectors: {
-    hn?: RunSubmitHnConfig;
-    reddit?: RunSubmitRedditConfig;
-    web?: RunSubmitWebConfig;
-    twitter?: RunSubmitTwitterConfig;
-    webSearch?: RunSubmitWebSearchConfig;
-  };
+  sourceTypes: ("hn" | "reddit" | "blog" | "twitter" | "web_search" | "manual")[];
+  collectors: RunCollectorsPayload;
   halfLifeHours?: number;
   dryRun?: boolean;
+  /**
+   * Originating tenant (REQ-060, P9). Optional in the TYPE only for
+   * backward compatibility with in-flight jobs enqueued before P9 — every
+   * live enqueue site supplies it; workers fall back to the default-tenant
+   * bridge when absent.
+   */
+  tenantId?: string;
 }
 
 export interface StartRunDeps {
@@ -35,19 +29,49 @@ export interface StartRunDeps {
   runId?: () => string;
 }
 
+export interface StartRunOptions {
+  dryRun?: boolean;
+  /** Stamped onto the job payload (REQ-060). */
+  tenantId?: string;
+  /**
+   * Collection set derived from the tenant's enabled `sources` ROWS
+   * (REQ-073). When provided it replaces the legacy `user_settings` JSONB
+   * configs entirely; settings still supply topN/halfLifeHours/prompts.
+   */
+  collectors?: RunCollectorsPayload;
+}
+
 export async function startRun(
   settings: UserSettings,
   deps: StartRunDeps,
-  opts?: { dryRun?: boolean },
+  opts?: StartRunOptions,
 ): Promise<{ runId: string }> {
   const runId = (deps.runId ?? randomUUID)();
   const nowIso = (deps.now ? deps.now() : new Date()).toISOString();
-  const hnConfig = settings.hnEnabled ? settings.hnConfig : null;
-  const redditConfig = settings.redditEnabled ? settings.redditConfig : null;
-  const webConfig = settings.webEnabled ? settings.webConfig : null;
-  const twitterConfig = settings.twitterEnabled ? settings.twitterConfig : null;
-  const webSearchConfig =
-    settings.webSearchEnabled && settings.webSearchConfig
+  const override = opts?.collectors;
+  const hnConfig = override
+    ? (override.hn ?? null)
+    : settings.hnEnabled
+      ? settings.hnConfig
+      : null;
+  const redditConfig = override
+    ? (override.reddit ?? null)
+    : settings.redditEnabled
+      ? settings.redditConfig
+      : null;
+  const webConfig = override
+    ? (override.web ?? null)
+    : settings.webEnabled
+      ? settings.webConfig
+      : null;
+  const twitterConfig = override
+    ? (override.twitter ?? null)
+    : settings.twitterEnabled
+      ? settings.twitterConfig
+      : null;
+  const webSearchConfig = override
+    ? (override.webSearch ?? null)
+    : settings.webSearchEnabled && settings.webSearchConfig
       ? settings.webSearchConfig
       : null;
 
@@ -81,6 +105,8 @@ export async function startRun(
     shortlistedItemIds: null,
     warnings: [],
     error: null,
+    // REQ-013: lets the API tenant-fence live run-state reads and cancels.
+    ...(opts?.tenantId !== undefined ? { tenantId: opts.tenantId } : {}),
   };
 
   await deps.redis.set(
@@ -90,7 +116,8 @@ export async function startRun(
     TTL_SECONDS,
   );
 
-  const sourceTypes: RunProcessJobPayload["sourceTypes"] = [];
+  // "manual" is always included so user-submitted URLs are eligible candidates
+  const sourceTypes: RunProcessJobPayload["sourceTypes"] = ["manual"];
   const collectors: RunProcessJobPayload["collectors"] = {};
   if (hnConfig) {
     sourceTypes.push("hn");
@@ -122,6 +149,7 @@ export async function startRun(
       ? { halfLifeHours: settings.halfLifeHours }
       : {}),
     ...(opts?.dryRun === true ? { dryRun: true } : {}),
+    ...(opts?.tenantId !== undefined ? { tenantId: opts.tenantId } : {}),
   };
 
   await deps.queue.add("run-process", jobPayload, { jobId: runId });

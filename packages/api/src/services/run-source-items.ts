@@ -13,6 +13,10 @@ import type {
   RunState,
   RunStatus,
 } from "@newsletter/shared/types";
+import {
+  isTenantContext,
+  type TenantScope,
+} from "@newsletter/shared/types/tenant-context";
 import type { SourceType } from "@newsletter/shared/db";
 import { computeDedupGroups } from "@newsletter/pipeline/eval";
 import type { RawItemWithEnrichment, RawItemsRepo } from "@api/repositories/raw-items.js";
@@ -32,6 +36,12 @@ export interface BuildRunSourceItemsDeps {
   readonly archiveRepo: Pick<RunArchivesRepo, "findById">;
   readonly rawItemsRepo: Pick<RawItemsRepo, "listForRunWithEnrichment">;
   readonly runLogRepo: Pick<RunLogRepo, "listForRunSource">;
+  /**
+   * REQ-013: the repos arrive tenant-fenced, but the raw Redis `run:{runId}`
+   * state is global — another tenant's live state must read as absent here.
+   * Legacy states without a tenantId stay readable (grandfathered).
+   */
+  readonly requesterScope?: TenantScope;
 }
 
 const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>([
@@ -67,7 +77,15 @@ export async function buildRunSourceItems(
     deps.redis.get(runKey(runId)),
     deps.archiveRepo.findById(runId),
   ]);
-  const runState = parseRunState(stateRaw);
+  const parsedState = parseRunState(stateRaw);
+  // REQ-013: another tenant's live state is treated as absent.
+  const runState =
+    parsedState !== null &&
+    isTenantContext(deps.requesterScope) &&
+    typeof parsedState.tenantId === "string" &&
+    parsedState.tenantId !== deps.requesterScope.tenantId
+      ? null
+      : parsedState;
 
   if (runState === null && archive === null) {
     throw new NotFoundError(`run not found: ${runId}`);

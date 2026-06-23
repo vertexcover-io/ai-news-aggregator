@@ -26,6 +26,8 @@ function getDefaultProcessingQueue(): Queue<RunProcessJobPayload> {
 
 export interface CreateRunOptions {
   halfLifeHours?: number;
+  /** Originating tenant (P9, REQ-060) — stamped onto the job payload. */
+  tenantId?: string;
 }
 
 export async function createRun(
@@ -68,5 +70,9 @@ export async function createRun(
     updatedAt: new Date().toISOString(),
   };
 
-  return startRun(settings, { redis, queue: processingQueue });
+  return startRun(
+    settings,
+    { redis, queue: processingQueue },
+    options.tenantId !== undefined ? { tenantId: options.tenantId } : undefined,
+  );
 }

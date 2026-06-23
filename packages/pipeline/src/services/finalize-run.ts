@@ -17,6 +17,9 @@ import { toEnrichmentTelemetry } from "@pipeline/services/link-enrichment/index.
 import type { EnrichmentContext } from "@pipeline/services/link-enrichment/types.js";
 import type { RunLogger } from "@pipeline/services/run-logger.js";
 import { nonEmptyText, pickArchiveDigest } from "@pipeline/services/run-archive-writer.js";
+import { notifyReviewReady } from "@pipeline/services/review-ready-notify.js";
+import type { NotificationEmailSender } from "@pipeline/services/notification-email.js";
+import type { TenantNotificationChannels } from "@pipeline/services/tenant-notify.js";
 import { capturePipelineEvent } from "@pipeline/lib/posthog.js";
 
 export interface RunHealthEmitInput extends RunHealthInput {
@@ -67,6 +70,14 @@ export interface FinalizeRunInput {
   readonly archiveRepo: RunArchivesRepo;
   readonly rawItemsRepo: RawItemsRepo;
   readonly slackNotifier: SlackNotifier | undefined;
+  /**
+   * Per-tenant notification channels (P16, REQ-090). Optional with
+   * backward-compat defaults: absent = legacy Slack-only behavior, toggles
+   * treated as on.
+   */
+  readonly notificationChannels?: TenantNotificationChannels;
+  readonly notificationEmailSender?: NotificationEmailSender;
+  readonly publicArchiveBaseUrl?: string;
   readonly settings: UserSettings | null;
   readonly rankResult: RankResult;
   readonly collectingOutcomes: CollectorOutcome[];
@@ -216,7 +227,18 @@ export async function finalizeRun(input: FinalizeRunInput): Promise<FinalizeRunR
   }
 
   if (archiveWritten && settings && !settings.autoReview) {
-    await slackNotifier?.notifyReviewPending({ runId });
+    // P16 (REQ-090): fan out to the TENANT's configured channels — the
+    // notifier already carries the tenant-resolved webhook; the email
+    // channel stamps its own D-107 marker (reviewPendingEmail).
+    await notifyReviewReady({
+      runId,
+      channels: input.notificationChannels,
+      slackNotifier,
+      emailSender: input.notificationEmailSender,
+      archives: archiveRepo,
+      logger,
+      publicArchiveBaseUrl: input.publicArchiveBaseUrl,
+    });
   }
 
   logger.info(

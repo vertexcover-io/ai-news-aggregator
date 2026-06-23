@@ -5,6 +5,7 @@ import type { SubscriberSelect } from "@newsletter/shared";
 import { EmailSendError } from "@newsletter/shared";
 
 const { handleEmailSendJob, resolveSendRate, getSharedPacer, resetSharedPacerForTests, createSendPacer } = await import("@pipeline/workers/email-send.js");
+const { handleLinkedInPostJob } = await import("@pipeline/workers/linkedin-post.js");
 
 function makeSubscriber(overrides: Partial<SubscriberSelect> = {}): SubscriberSelect {
   return {
@@ -98,9 +99,27 @@ function makeDeps(
       updateRecapData: vi.fn(),
       listForRun: vi.fn(() => Promise.resolve([])),
     },
+    // Default: grandfathered tenant 0 (managed mode, verified domain status,
+    // no own domain name) → keeps the shared platform sender. Gate tests
+    // override this with other email modes/states.
+    tenantsRepo: {
+      getEmailSettings: vi.fn(() =>
+        Promise.resolve({
+          mode: "managed" as const,
+          smtp: null,
+          sendingDomainName: null,
+          sendingDomainStatus: "verified" as const,
+          slug: "agentloop",
+        }),
+      ),
+    },
+    createSmtpProvider: vi.fn(() => ({
+      send: vi.fn(() => Promise.resolve({ messageId: "smtp-msg" })),
+    })),
     renderNewsletter: vi.fn(() => Promise.resolve("<html>newsletter</html>")),
     sessionSecret: "secret",
     fromMail: "newsletter@example.com",
+    managedEmailDomain: "news.example.com",
     baseUrl: "https://newsletter.example.com",
     slackNotifier: {
       notifyNewsletterSent: vi.fn(() => Promise.resolve()),
@@ -135,6 +154,332 @@ function makeSlackNotifier(overrides: Partial<NonNullable<EmailSendDeps["slackNo
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P14: sending-domain broadcast gate (REQ-053 / EDGE-005 / EDGE-006, REQ-052)
+// ─────────────────────────────────────────────────────────────────────────────
+describe("per-tenant email mode broadcast resolution (Fix #3, REQ-310/320/321/REQ-084/052)", () => {
+  interface EmailSettings {
+    mode: "managed" | "managed_domain" | "smtp";
+    smtp: {
+      host: string;
+      port: number;
+      secure: boolean;
+      username: string;
+      password: string;
+      fromAddress: string;
+      fromName?: string;
+    } | null;
+    sendingDomainName: string | null;
+    sendingDomainStatus: "pending" | "verified" | "failed" | null;
+    slug: string | null;
+  }
+  function makeEmailRepo(
+    settings: Partial<EmailSettings>,
+  ): { getEmailSettings: ReturnType<typeof vi.fn> } {
+    const full: EmailSettings = {
+      mode: "managed",
+      smtp: null,
+      sendingDomainName: null,
+      sendingDomainStatus: null,
+      slug: "inference",
+      ...settings,
+    };
+    return { getEmailSettings: vi.fn(() => Promise.resolve(full)) };
+  }
+
+  it.each([
+    ["pending", "pending" as const],
+    ["failed", "failed" as const],
+    ["absent (never registered)", null],
+  ])(
+    "test_REQ_310_managed_default — a managed-mode tenant (%s domain) broadcasts from <slug>@<managed domain>, never blocked",
+    async (_label, status) => {
+      const archive = makeArchive();
+      const slackNotifier = makeSlackNotifier();
+      const deps = makeDeps(archive, {
+        tenantsRepo: makeEmailRepo({
+          mode: "managed",
+          sendingDomainStatus: status,
+          slug: "inference",
+        }),
+        slackNotifier,
+      });
+
+      await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+      expect(deps.emailProvider.send).toHaveBeenCalledWith(
+        expect.objectContaining({ from: "inference@news.example.com" }),
+      );
+      expect(deps.archiveRepo.markEmailSent).toHaveBeenCalledOnce();
+      expect(slackNotifier.notifyPublishFailed).not.toHaveBeenCalled();
+    },
+  );
+
+  it("test_REQ_084_managed_domain_verified — managed_domain mode sends from newsletter@<verified domain>", async () => {
+    const archive = makeArchive();
+    const deps = makeDeps(archive, {
+      tenantsRepo: makeEmailRepo({
+        mode: "managed_domain",
+        sendingDomainName: "news.acme.com",
+        sendingDomainStatus: "verified",
+      }),
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "newsletter@news.acme.com" }),
+    );
+    expect(deps.archiveRepo.markEmailSent).toHaveBeenCalledOnce();
+  });
+
+  it.each([["pending" as const], ["failed" as const], [null]])(
+    "managed_domain mode with an unverified domain (%s) BLOCKS the broadcast (fail-closed)",
+    async (status) => {
+      const archive = makeArchive();
+      const slackNotifier = makeSlackNotifier();
+      const deps = makeDeps(archive, {
+        tenantsRepo: makeEmailRepo({
+          mode: "managed_domain",
+          sendingDomainName: "news.acme.com",
+          sendingDomainStatus: status,
+        }),
+        slackNotifier,
+      });
+
+      await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+      expect(deps.emailProvider.send).not.toHaveBeenCalled();
+      expect(deps.archiveRepo.markEmailSent).not.toHaveBeenCalled();
+      expect(slackNotifier.notifyPublishFailed).toHaveBeenCalledWith({
+        runId: archive.id,
+        channel: "email-send",
+        reason: "sending_domain_not_verified",
+      });
+    },
+  );
+
+  it("test_REQ_321_smtp_mode — routes the broadcast through the per-tenant SMTP provider, from the configured address", async () => {
+    const archive = makeArchive();
+    const smtpSend = vi.fn(() => Promise.resolve({ messageId: "smtp-1" }));
+    const createSmtpProvider = vi.fn(() => ({ send: smtpSend }));
+    const deps = makeDeps(archive, {
+      createSmtpProvider,
+      tenantsRepo: makeEmailRepo({
+        mode: "smtp",
+        smtp: {
+          host: "smtp.acme.com",
+          port: 587,
+          secure: false,
+          username: "user",
+          password: "pass",
+          fromAddress: "news@acme.com",
+        },
+      }),
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(createSmtpProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ host: "smtp.acme.com", fromAddress: "news@acme.com" }),
+    );
+    expect(smtpSend).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "news@acme.com" }),
+    );
+    // The shared (Resend/SES) provider is NOT used for an smtp-mode broadcast.
+    expect(deps.emailProvider.send).not.toHaveBeenCalled();
+    expect(deps.archiveRepo.markEmailSent).toHaveBeenCalledOnce();
+  });
+
+  // SECURITY (fail-closed): `tenantsRepo` is REQUIRED on EmailSendDeps. This
+  // simulates an untyped/JS caller omitting it and proves the broadcast still
+  // cannot go out unchecked — the job throws before any email is sent.
+  it("test_REQ_053_fail_closed_gate_omission — omitting tenantsRepo can no longer bypass the gate: the broadcast never sends", async () => {
+    const archive = makeArchive();
+    const base = makeDeps(archive);
+    const depsWithoutRepo = { ...base, tenantsRepo: undefined };
+
+    await expect(
+      handleEmailSendJob(depsWithoutRepo as never, {
+        name: "email-send",
+        id: "job-1",
+        data: {},
+      }),
+    ).rejects.toThrow();
+
+    expect(base.emailProvider.send).not.toHaveBeenCalled();
+    expect(base.archiveRepo.markEmailSent).not.toHaveBeenCalled();
+  });
+
+  it("test_EDGE_006_managed_default_and_social_proceed — a tenant with no own domain still broadcasts (managed default) and social posts independently", async () => {
+    const archive = makeArchive();
+    const deps = makeDeps(archive, {
+      tenantsRepo: makeEmailRepo({ mode: "managed", slug: "inference" }),
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "inference@news.example.com" }),
+    );
+
+    // LinkedIn publish of the SAME archive is independent of the email path.
+    const linkedinNotifier = {
+      notifyArchiveReady: vi.fn(() => Promise.resolve({ status: "posted" as const })),
+    };
+    await handleLinkedInPostJob(
+      {
+        archiveRepo: deps.archiveRepo,
+        linkedinNotifier,
+        slackNotifier: deps.slackNotifier,
+      },
+      { name: "linkedin-post", id: "job-2", data: { runId: archive.id } },
+    );
+    expect(linkedinNotifier.notifyArchiveReady).toHaveBeenCalledWith({
+      runId: archive.id,
+    });
+  });
+
+  // Targeted (welcome back-issue) sends are subscriber-facing, so they carry the
+  // tenant's identity just like the broadcast — with one difference: an
+  // unverified custom domain never blocks a targeted send (it gracefully falls
+  // back to the managed default so the welcome email always delivers).
+  it("targeted send from a managed_domain tenant with a VERIFIED domain uses newsletter@<domain>", async () => {
+    const archive = makeArchive();
+    const slackNotifier = makeSlackNotifier();
+    const deps = makeDeps(archive, {
+      slackNotifier,
+      tenantsRepo: makeEmailRepo({
+        mode: "managed_domain",
+        sendingDomainName: "news.acme.com",
+        sendingDomainStatus: "verified",
+      }),
+    });
+
+    await handleEmailSendJob(deps, {
+      name: "email-send",
+      id: "job-2",
+      data: { runId: archive.id, subscriberIds: ["sub-1"] },
+    });
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "newsletter@news.acme.com" }),
+    );
+    expect(slackNotifier.notifyPublishFailed).not.toHaveBeenCalled();
+  });
+
+  it.each([["pending" as const], ["failed" as const], [null]])(
+    "targeted send from a managed_domain tenant with an UNVERIFIED domain (%s) falls back to the managed default — never blocked",
+    async (status) => {
+      const archive = makeArchive();
+      const slackNotifier = makeSlackNotifier();
+      const deps = makeDeps(archive, {
+        slackNotifier,
+        tenantsRepo: makeEmailRepo({
+          mode: "managed_domain",
+          sendingDomainName: "news.acme.com",
+          sendingDomainStatus: status,
+          slug: "inference",
+        }),
+      });
+
+      await handleEmailSendJob(deps, {
+        name: "email-send",
+        id: "job-2",
+        data: { runId: archive.id, subscriberIds: ["sub-1"] },
+      });
+      expect(deps.emailProvider.send).toHaveBeenCalledWith(
+        expect.objectContaining({ from: "inference@news.example.com" }),
+      );
+      expect(slackNotifier.notifyPublishFailed).not.toHaveBeenCalled();
+    },
+  );
+
+  it("targeted send from a managed-mode tenant uses the managed default <slug>@<managed domain>", async () => {
+    const archive = makeArchive();
+    const deps = makeDeps(archive, {
+      tenantsRepo: makeEmailRepo({ mode: "managed", slug: "inference" }),
+    });
+
+    await handleEmailSendJob(deps, {
+      name: "email-send",
+      id: "job-2",
+      data: { runId: archive.id, subscriberIds: ["sub-1"] },
+    });
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "inference@news.example.com" }),
+    );
+  });
+
+  it("targeted send from an smtp-mode tenant routes through the per-tenant SMTP provider", async () => {
+    const archive = makeArchive();
+    const smtpSend = vi.fn(() => Promise.resolve({ messageId: "smtp-1" }));
+    const createSmtpProvider = vi.fn(() => ({ send: smtpSend }));
+    const deps = makeDeps(archive, {
+      createSmtpProvider,
+      tenantsRepo: makeEmailRepo({
+        mode: "smtp",
+        smtp: {
+          host: "smtp.acme.com",
+          port: 587,
+          secure: false,
+          username: "user",
+          password: "pass",
+          fromAddress: "news@acme.com",
+        },
+      }),
+    });
+
+    await handleEmailSendJob(deps, {
+      name: "email-send",
+      id: "job-2",
+      data: { runId: archive.id, subscriberIds: ["sub-1"] },
+    });
+    expect(smtpSend).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "news@acme.com" }),
+    );
+    expect(deps.emailProvider.send).not.toHaveBeenCalled();
+  });
+
+  it("grandfathered verified tenant with NO domain name (tenant 0) keeps the shared FROM", async () => {
+    const archive = makeArchive();
+    const deps = makeDeps(archive, {
+      tenantsRepo: makeEmailRepo({
+        mode: "managed",
+        sendingDomainStatus: "verified",
+        sendingDomainName: null,
+      }),
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(deps.emailProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ from: deps.fromMail }),
+    );
+  });
+
+  it("test_REQ_052_broadcast_only_confirmed_of_tenant — a broadcast resolves recipients via the tenant-scoped listConfirmed, never findByIds", async () => {
+    const archive = makeArchive();
+    const confirmed = [
+      makeSubscriber({ id: "sub-1", email: "a@example.com" }),
+      makeSubscriber({ id: "sub-2", email: "b@example.com" }),
+    ];
+    const deps = makeDeps(archive, {
+      tenantsRepo: makeEmailRepo({ mode: "managed", slug: "inference" }),
+      subscribersRepo: {
+        listConfirmed: vi.fn(() => Promise.resolve(confirmed)),
+        findByIds: vi.fn(() => Promise.resolve([])),
+      },
+    });
+
+    await handleEmailSendJob(deps, { name: "email-send", id: "job-1", data: {} });
+
+    expect(deps.subscribersRepo.listConfirmed).toHaveBeenCalledOnce();
+    expect(deps.subscribersRepo.findByIds).not.toHaveBeenCalled();
+    expect(deps.emailProvider.send).toHaveBeenCalledTimes(2);
+    const sentTo = (deps.emailProvider.send as ReturnType<typeof vi.fn>).mock.calls
+      .map((call) => (call[0] as { to: string[] }).to)
+      .flat()
+      .sort();
+    expect(sentTo).toEqual(["a@example.com", "b@example.com"]);
+  });
 });
 
 describe("handleEmailSendJob", () => {

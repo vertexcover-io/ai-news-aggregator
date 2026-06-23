@@ -1,6 +1,6 @@
 import { desc, eq, inArray, sql } from "drizzle-orm";
-import { runArchives, rawItems } from "@newsletter/shared/db";
-import type { AppDb } from "@newsletter/shared/db";
+import { runArchives, rawItems, scopedTenantId, tenantScoped } from "@newsletter/shared/db";
+import type { AppDb, TenantScope } from "@newsletter/shared/db";
 import type {
   NotificationKey,
   NotificationState,
@@ -85,6 +85,7 @@ export interface RunArchivesRepo {
 
 export function createRunArchivesRepo(
   db: Pick<AppDb, "insert" | "select" | "update">,
+  ctx?: TenantScope,
 ): RunArchivesRepo {
   const selectArchiveRow = {
     id: runArchives.id,
@@ -115,7 +116,7 @@ export function createRunArchivesRepo(
       const rows = await db
         .select(selectArchiveRow)
         .from(runArchives)
-        .where(eq(runArchives.id, id));
+        .where(tenantScoped(runArchives.tenantId, ctx, eq(runArchives.id, id)));
       return rows[0] ?? null;
     },
 
@@ -123,6 +124,7 @@ export function createRunArchivesRepo(
       const rows = await db
         .select(selectArchiveRow)
         .from(runArchives)
+        .where(tenantScoped(runArchives.tenantId, ctx))
         .orderBy(desc(runArchives.completedAt))
         .limit(1);
       return rows[0] ?? null;
@@ -132,13 +134,13 @@ export function createRunArchivesRepo(
       await db
         .update(runArchives)
         .set({ slackNotifiedAt: at })
-        .where(eq(runArchives.id, runId));
+        .where(tenantScoped(runArchives.tenantId, ctx, eq(runArchives.id, runId)));
     },
     async markEmailSent(runId: string, at: Date): Promise<void> {
       await db
         .update(runArchives)
         .set({ emailSentAt: at })
-        .where(eq(runArchives.id, runId));
+        .where(tenantScoped(runArchives.tenantId, ctx, eq(runArchives.id, runId)));
     },
     async markNotification(
       runId: string,
@@ -150,7 +152,7 @@ export function createRunArchivesRepo(
         .set({
           notificationState: sql`coalesce(${runArchives.notificationState}, '{}'::jsonb) || jsonb_build_object(${key}::text, ${at.toISOString()}::text)`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(tenantScoped(runArchives.tenantId, ctx, eq(runArchives.id, runId)));
     },
 
     async markLinkedInPosted(
@@ -162,7 +164,7 @@ export function createRunArchivesRepo(
         await db
           .update(runArchives)
           .set({ linkedinPostedAt: at })
-          .where(eq(runArchives.id, runId));
+          .where(tenantScoped(runArchives.tenantId, ctx, eq(runArchives.id, runId)));
         return;
       }
       const patch: SocialMetadata = { linkedinPermalink: permalink };
@@ -172,7 +174,7 @@ export function createRunArchivesRepo(
           linkedinPostedAt: at,
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(tenantScoped(runArchives.tenantId, ctx, eq(runArchives.id, runId)));
     },
 
     async markTwitterPosted(
@@ -190,7 +192,7 @@ export function createRunArchivesRepo(
         await db
           .update(runArchives)
           .set({ twitterPostedAt: at })
-          .where(eq(runArchives.id, runId));
+          .where(tenantScoped(runArchives.tenantId, ctx, eq(runArchives.id, runId)));
         return;
       }
       await db
@@ -199,7 +201,7 @@ export function createRunArchivesRepo(
           twitterPostedAt: at,
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(tenantScoped(runArchives.tenantId, ctx, eq(runArchives.id, runId)));
     },
 
     async setCostBreakdown(
@@ -209,7 +211,7 @@ export function createRunArchivesRepo(
       await db
         .update(runArchives)
         .set({ costBreakdown: breakdown })
-        .where(eq(runArchives.id, runId));
+        .where(tenantScoped(runArchives.tenantId, ctx, eq(runArchives.id, runId)));
     },
 
     async getCostBreakdown(runId: string): Promise<RunCostBreakdown | null> {
@@ -219,7 +221,7 @@ export function createRunArchivesRepo(
       const rows = await db
         .select({ costBreakdown: runArchives.costBreakdown })
         .from(runArchives)
-        .where(eq(runArchives.id, runId));
+        .where(tenantScoped(runArchives.tenantId, ctx, eq(runArchives.id, runId)));
       if (rows.length === 0) return null;
       return parseRunCostBreakdown(rows[0].costBreakdown);
     },
@@ -236,7 +238,7 @@ export function createRunArchivesRepo(
         .set({
           socialMetadata: sql`coalesce(${runArchives.socialMetadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         })
-        .where(eq(runArchives.id, runId));
+        .where(tenantScoped(runArchives.tenantId, ctx, eq(runArchives.id, runId)));
     },
 
     async upsert(input: RunArchiveUpsertInput): Promise<void> {
@@ -244,6 +246,7 @@ export function createRunArchivesRepo(
         .insert(runArchives)
         .values({
           id: input.id,
+          tenantId: scopedTenantId(ctx),
           status: input.status,
           rankedItems: input.rankedItems,
           topN: input.topN,
@@ -295,7 +298,11 @@ export function createRunArchivesRepo(
         .select({ rankedItems: runArchives.rankedItems })
         .from(runArchives)
         .where(
-          sql`${runArchives.reviewed} = true AND ${runArchives.isDryRun} = false AND ${runArchives.status} = 'completed'`,
+          tenantScoped(
+            runArchives.tenantId,
+            ctx,
+            sql`${runArchives.reviewed} = true AND ${runArchives.isDryRun} = false AND ${runArchives.status} = 'completed'`,
+          ),
         );
 
       if (archiveRows.length === 0) return new Set<string>();
@@ -311,7 +318,7 @@ export function createRunArchivesRepo(
       const urlRows = await db
         .select({ url: rawItems.url })
         .from(rawItems)
-        .where(inArray(rawItems.id, rawItemIds));
+        .where(tenantScoped(rawItems.tenantId, ctx, inArray(rawItems.id, rawItemIds)));
 
       // Step 4: canonicalize and return
       return new Set(urlRows.map((row) => canonicalizeUrl(row.url)));

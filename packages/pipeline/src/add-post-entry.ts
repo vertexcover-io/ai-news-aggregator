@@ -33,3 +33,5 @@ export {
   fetchTwitterPost,
   type FetchTwitterPostDeps,
 } from "@pipeline/collectors/twitter/index.js";
+
+export { canonicalizeUrl } from "@pipeline/processors/dedup.js";

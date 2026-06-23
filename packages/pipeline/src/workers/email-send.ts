@@ -1,8 +1,10 @@
 import { createLogger } from "@newsletter/shared/logger";
 import type { EmailProvider, RankedItemRef, RecapContent, SlackNotifier, SubscriberSelect } from "@newsletter/shared";
+import type { SmtpConfig } from "@newsletter/shared/types/tenant";
 import { EmailSendError } from "@newsletter/shared";
 import { withUtmSource } from "@newsletter/shared/utils";
 import type { PipelineSubscribersRepo } from "@pipeline/repositories/subscribers.js";
+import type { PipelineTenantsRepo } from "@pipeline/repositories/tenants.js";
 import type { PipelineEmailSendsRepo } from "@pipeline/repositories/email-sends.js";
 import type { RunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import type { RawItemsRepo, RawItemRow } from "@pipeline/repositories/raw-items.js";
@@ -80,12 +82,33 @@ export interface NewsletterRenderProps {
 export interface EmailSendDeps {
   emailProvider: EmailProvider;
   subscribersRepo: PipelineSubscribersRepo;
+  /**
+   * P14 (REQ-053/EDGE-006): tenant sending-domain lookup for the broadcast
+   * gate. REQUIRED — fail-closed: the gate cannot be disabled by omitting the
+   * repo (a previous optional-with-fail-open default let exactly that happen).
+   * Production (`buildDefaultPublishDeps`) wires `createPipelineTenantsRepo`,
+   * and a broadcast is BLOCKED unless the job tenant's domain status is
+   * `verified`. Targeted sends (welcome/back-issue) and API-side transactional
+   * mail use the shared platform sender and are never gated (EDGE-005).
+   */
+  tenantsRepo: Pick<PipelineTenantsRepo, "getEmailSettings">;
+  /**
+   * Builds a per-tenant SMTP provider from decrypted creds (Fix #3, Phase B).
+   * Injected so tests pass a fake transport (no real SMTP connection).
+   */
+  createSmtpProvider: (config: SmtpConfig) => EmailProvider;
   emailSendsRepo: PipelineEmailSendsRepo;
   archiveRepo: RunArchivesRepo;
   rawItemsRepo: RawItemsRepo;
   renderNewsletter: (props: NewsletterRenderProps) => Promise<string>;
   sessionSecret: string;
   fromMail: string;
+  /**
+   * Fix #3: shared, pre-verified Resend domain for the managed-default sender.
+   * A tenant with no own verified sending domain broadcasts from
+   * `<slug>@<managedEmailDomain>` (zero-config) instead of being blocked.
+   */
+  managedEmailDomain: string;
   replyToEmail?: string;
   baseUrl: string;
   slackNotifier?: SlackNotifier;
@@ -96,7 +119,8 @@ export interface EmailSendDeps {
 export interface EmailSendJobLike {
   name: string;
   id?: string;
-  data: { runId?: string; subscriberIds?: string[] | "all" };
+  /** `tenantId` (P9, REQ-060): consumed by the dispatcher to scope publish deps. */
+  data: { runId?: string; subscriberIds?: string[] | "all"; tenantId?: string };
 }
 
 function isRetryable(err: unknown): boolean {
@@ -194,6 +218,73 @@ export async function handleEmailSendJob(
   // would silently no-op. Per-subscriber dedup (the `email_sends` table) already
   // prevents duplicate delivery in both modes.
   if (isBroadcast && archive.emailSentAt !== null) return;
+
+  // Provider + FROM resolution per tenant email mode (Fix #3). Applies to BOTH
+  // the broadcast and the targeted (welcome back-issue) send, so every
+  // subscriber-facing email carries the tenant's identity:
+  //   • smtp           → the tenant's own provider; FROM = their configured
+  //                       address (they own SPF/DKIM, we just relay).
+  //   • managed_domain → our Resend account from `newsletter@<verified domain>`.
+  //   • managed        → our shared pre-verified Resend domain. Grandfathered
+  //                       tenant 0 (verified, no domain name) keeps the shared
+  //                       platform sender; everyone else sends from the managed
+  //                       default `<slug>@<managed domain>` (zero-config).
+  // The ONLY difference between the two paths is an unverified custom domain
+  // (managed_domain): the broadcast FAILS CLOSED (block + alert), but a targeted
+  // send must always deliver, so it GRACEFULLY FALLS BACK to the managed default
+  // (the shared pre-verified domain) instead of blocking. FAIL-CLOSED:
+  // `tenantsRepo` is required, so an untyped caller omitting it throws before
+  // any email goes out.
+  let sendProvider = deps.emailProvider;
+  let fromAddress = deps.fromMail;
+  const email = await deps.tenantsRepo.getEmailSettings();
+  const managedDefaultFrom = (): string => {
+    const slug = email?.slug ?? null;
+    return slug !== null ? `${slug}@${deps.managedEmailDomain}` : deps.fromMail;
+  };
+  if (email !== null && email.mode === "smtp" && email.smtp !== null) {
+    sendProvider = deps.createSmtpProvider(email.smtp);
+    fromAddress = email.smtp.fromAddress;
+  } else if (email !== null && email.mode === "managed_domain") {
+    if (
+      email.sendingDomainStatus === "verified" &&
+      email.sendingDomainName !== null
+    ) {
+      fromAddress = `newsletter@${email.sendingDomainName}`;
+    } else if (isBroadcast) {
+      logger.warn(
+        {
+          event: "newsletter-send.broadcast_blocked",
+          runId: archive.id,
+          jobId: job.id,
+          reason: "sending_domain_not_verified",
+          domainStatus: email.sendingDomainStatus ?? "none",
+        },
+        "newsletter-send: broadcast blocked — custom sending domain not verified",
+      );
+      await deps.slackNotifier?.notifyPublishFailed({
+        runId: archive.id,
+        channel: "email-send",
+        reason: "sending_domain_not_verified",
+      });
+      return;
+    } else {
+      // Targeted send: never block on an unverified custom domain — fall back
+      // to the managed default so the welcome email still reaches the new
+      // subscriber, tenant-branded on the shared pre-verified domain.
+      fromAddress = managedDefaultFrom();
+    }
+  } else if (
+    email !== null &&
+    email.sendingDomainStatus === "verified" &&
+    email.sendingDomainName === null
+  ) {
+    // Grandfathered tenant 0 (managed mode): keep the shared platform sender.
+    fromAddress = deps.fromMail;
+  } else {
+    fromAddress = managedDefaultFrom();
+  }
+
   const runId = archive.id;
 
   const rawIds = archive.rankedItems.map((r) => r.rawItemId);
@@ -267,9 +358,9 @@ export async function handleEmailSendJob(
           for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             await pacer.acquire();
             try {
-              const result = await deps.emailProvider.send({
+              const result = await sendProvider.send({
                 to: [subscriber.email],
-                from: deps.fromMail,
+                from: fromAddress,
                 replyTo: deps.replyToEmail,
                 subject,
                 html,

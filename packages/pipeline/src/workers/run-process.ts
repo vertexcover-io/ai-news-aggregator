@@ -39,11 +39,14 @@ import { collectWeb } from "@pipeline/collectors/web.js";
 import { collectTwitter } from "@pipeline/collectors/twitter/index.js";
 import { collectWebSearch } from "@pipeline/collectors/web-search/index.js";
 import type { WebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
+import type { ErrorAlerter } from "@pipeline/services/error-alerts.js";
+import type { NotificationEmailSender } from "@pipeline/services/notification-email.js";
+import type { TenantNotificationChannels } from "@pipeline/services/tenant-notify.js";
 import { createRettiwtClient } from "@pipeline/collectors/twitter/clients/rettiwt.js";
 import { refreshRettiwtCsrfToken } from "@pipeline/collectors/twitter/clients/rettiwt-auth.js";
 import type { TwitterClient } from "@pipeline/collectors/twitter/types.js";
 import { Rettiwt } from "rettiwt-api";
-import { createSocialCredentialsRepo } from "@pipeline/repositories/social-credentials.js";
+import { createAppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
 import { resolveTwitterCollectorCookie } from "@pipeline/services/credential-resolver.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
@@ -85,12 +88,17 @@ import {
   type RunLogRepo,
 } from "@pipeline/repositories/run-logs.js";
 import {
+  getDefaultTenantScope,
+  jobTenantContext,
+} from "@pipeline/repositories/default-tenant.js";
+import {
   createRunLogger,
   type RunLogger,
 } from "@pipeline/services/run-logger.js";
 import type { RunCostBreakdown, RunFunnel } from "@newsletter/shared";
 import { writeFailedArchive } from "@pipeline/services/run-archive-writer.js";
 import { finalizeRun } from "@pipeline/services/finalize-run.js";
+import type { SourceRateLimiter } from "@pipeline/services/source-rate-limit.js";
 
 const logger = createLogger("worker:run-process");
 
@@ -117,6 +125,11 @@ export interface RunProcessJobData {
   collectors: RunCollectorsPayload;
   halfLifeHours?: number;
   dryRun?: boolean;
+  /**
+   * Originating tenant (P9, REQ-060). Optional only for in-flight jobs
+   * enqueued before P9 — those fall back to the default AGENTLOOP bridge.
+   */
+  tenantId?: string;
 }
 
 export interface RunProcessJobLike {
@@ -173,6 +186,8 @@ export type TwitterCollectFn = (
     rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
     signal?: AbortSignal;
     enrichment?: EnrichmentContext;
+    /** Global page throttle shared across tenants (P10, REQ-068). */
+    throttle?: () => Promise<void>;
   },
   config: TwitterCollectConfig,
 ) => Promise<CollectorResult>;
@@ -215,8 +230,27 @@ export interface RunProcessDeps {
    */
   twitterClient: () => Promise<TwitterClient>;
   slackNotifier?: SlackNotifier;
+  /**
+   * Per-tenant notification channels + email sender (P16, REQ-090).
+   * Resolved per job by the deps builder; optional with backward-compat
+   * defaults (absent = legacy Slack-only review-ready behavior).
+   */
+  notificationChannels?: TenantNotificationChannels;
+  notificationEmailSender?: NotificationEmailSender;
+  /**
+   * Tenant error alerts (P16, REQ-091): run-crash notifications to the
+   * tenant's channels. Markerless (D-111 counterpart) and never throws.
+   */
+  errorAlerter?: ErrorAlerter;
   /** Tavily (or future) web-search provider. Resolved once at worker startup from TAVILY_API_KEY env var. */
   webSearchProvider?: WebSearchProvider;
+  /**
+   * Global per-external-source limiter (P10, REQ-067/068): Redis-shared
+   * token buckets pace collector starts (and Twitter page fetches) across
+   * concurrent tenant runs. Optional — absence (or a limiter failure) means
+   * unthrottled collection, never a failed source.
+   */
+  sourceRateLimiter?: SourceRateLimiter;
 }
 
 interface CollectingOutcome {
@@ -258,6 +292,27 @@ async function runCollecting(
 
   const collectorDeps = { rawItemsRepo: runScopedRawItemsRepo, signal };
   const enrichingDeps = { ...collectorDeps, enrichment: enrichmentCtx };
+
+  // P10 (REQ-067): pace each collector start on the GLOBAL per-source bucket
+  // so concurrent tenant runs share one upstream budget. Limiter failures are
+  // swallowed — collection proceeds unthrottled rather than failing a source.
+  const sourceRateLimiter = deps.sourceRateLimiter;
+  const paceSource = async (sourceKey: string): Promise<void> => {
+    if (!sourceRateLimiter) return;
+    try {
+      await sourceRateLimiter.acquire(sourceKey);
+    } catch (err) {
+      logger.warn(
+        {
+          event: "run.source.rate_limiter_unavailable",
+          runId,
+          sourceType: sourceKey,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "source rate limiter unavailable — proceeding unthrottled",
+      );
+    }
+  };
 
   type SourceKey = CollectorSourceType;
   interface Task {
@@ -310,6 +365,12 @@ async function runCollecting(
             rawItemsRepo: runScopedRawItemsRepo,
             signal,
             enrichment: enrichmentCtx,
+            // REQ-068: page-level throttle on the SHARED twitter budget — the
+            // collector invokes it before every page fetch and tolerates
+            // throttle failures itself (graceful degrade, EDGE-011).
+            ...(sourceRateLimiter !== undefined
+              ? { throttle: (): Promise<void> => sourceRateLimiter.acquire("twitter") }
+              : {}),
           },
           config,
         );
@@ -346,6 +407,7 @@ async function runCollecting(
   let failureCount = 0;
 
   const runTask = async (task: Task): Promise<void> => {
+    await paceSource(task.sourceKey);
     const started = Date.now();
     try {
       const result = await task.run();
@@ -603,6 +665,16 @@ export async function handleRunProcessJob(
         },
         `run.failed: ${errorMessage}`,
       );
+      // P16 (REQ-091): all collectors down = terminal failure → alert the
+      // tenant's channels (dry runs stay silent, matching the notifier's
+      // dry-run gate). Markerless + never throws.
+      if (!dryRun) {
+        await deps.errorAlerter?.runCrashed({
+          runId,
+          error: errorMessage,
+          stage: "collecting",
+        });
+      }
       // Ensure archive row exists before setCostBreakdown (REQ-040 / EDGE-002):
       // setCostBreakdown is a plain UPDATE that silently no-ops without a row.
       try {
@@ -927,6 +999,10 @@ export async function handleRunProcessJob(
       archiveRepo: deps.archiveRepo,
       rawItemsRepo: deps.rawItemsRepo,
       slackNotifier: deps.slackNotifier,
+      notificationChannels: deps.notificationChannels,
+      notificationEmailSender: deps.notificationEmailSender,
+      publicArchiveBaseUrl:
+        process.env.PUBLIC_BASE_URL ?? process.env.NEWSLETTER_BASE_URL,
       settings,
       rankResult,
       collectingOutcomes: collecting.outcomes,
@@ -997,6 +1073,15 @@ export async function handleRunProcessJob(
       runFunnel: { ...funnel },
       logger,
     });
+    // P16 (REQ-091): unhandled stage crash → alert the tenant's channels
+    // before re-throwing (dry runs stay silent). Markerless + never throws.
+    if (!dryRun) {
+      await deps.errorAlerter?.runCrashed({
+        runId,
+        error: message,
+        stage: currentStage,
+      });
+    }
     throw err;
   } finally {
     await subscriber.close();
@@ -1018,12 +1103,26 @@ export interface CreateRunProcessWorkerOptions {
   cancelSubscriber?: CancelSubscriberFactory;
   twitterClient?: () => Promise<TwitterClient>;
   slackNotifier?: SlackNotifier;
+  notificationChannels?: TenantNotificationChannels;
+  notificationEmailSender?: NotificationEmailSender;
+  errorAlerter?: ErrorAlerter;
   webSearchProvider?: WebSearchProvider;
+  sourceRateLimiter?: SourceRateLimiter;
 }
 
-export function createRunProcessWorker(
-  options: CreateRunProcessWorkerOptions = {},
-): Worker<RunProcessJobData, RunProcessResult> {
+/**
+ * Builds the deps for ONE run-process job (P9, REQ-061/064): every repo not
+ * injected via `options` is constructed with the job's tenant scope —
+ * `jobTenantContext(jobData)` for P9 payloads, falling back to the default
+ * AGENTLOOP bridge (`getDefaultTenantScope()`, primed at process startup)
+ * for legacy in-flight jobs with no `tenantId`. All tenant-owned writes the
+ * run performs (raw_items, run_archives, run_logs) therefore stamp the
+ * originating tenant.
+ */
+export function buildRunProcessDepsForJob(
+  options: CreateRunProcessWorkerOptions,
+  jobData: { tenantId?: unknown } | undefined,
+): Promise<RunProcessDeps> {
   const connection = options.connection ?? createRedisConnection();
   const runState = options.runState ?? createRunStateService(connection);
   const needsDb =
@@ -1032,10 +1131,14 @@ export function createRunProcessWorker(
     !options.archiveRepo ||
     !options.runLogRepo;
   const db: AppDb | undefined = needsDb ? getDb() : undefined;
+  // Per-job tenant scope (REQ-060/064). The sync bridge read keeps this
+  // function dependency-free for unit tests with fake DBs; production primes
+  // the bridge once at process startup (src/index.ts).
+  const tenantScope = jobTenantContext(jobData) ?? getDefaultTenantScope();
   const rawItemsRepo =
-    options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db));
+    options.rawItemsRepo ?? createRawItemsRepo(ensureDb(db), tenantScope);
   const candidatesRepo =
-    options.candidatesRepo ?? createCandidatesRepo(ensureDb(db));
+    options.candidatesRepo ?? createCandidatesRepo(ensureDb(db), tenantScope);
   const loadFn = options.loadFn ?? loadCandidatesSince;
   const shortlistFn: ShortlistFn =
     options.shortlistFn ??
@@ -1044,22 +1147,38 @@ export function createRunProcessWorker(
     options.rankFn ?? ((candidates, opts) => rankCandidates(candidates, opts));
   const collectFns: CollectFns = {
     hn: options.collectFns?.hn ?? collectHn,
-    reddit: options.collectFns?.reddit ?? collectReddit,
+    reddit:
+      options.collectFns?.reddit ??
+      // Per-job factory: resolves the Apify token from the app-level
+      // `app_credentials` store first (super-admin managed), falling back to
+      // APIFY_API_KEY env var. Wired lazily so the collector stays db-free
+      // (enforce-repository-access rule). DB read happens per-call (so admin
+      // saves take effect on the next run); cipher is a process-singleton
+      // (SESSION_SECRET is never rotated — D-104).
+      (async (deps, config) => {
+        const { buildRedditResolveToken } = await import(
+          "@pipeline/lib/reddit-deps.js"
+        );
+        const resolveToken = await buildRedditResolveToken();
+        return collectReddit({ ...deps, resolveToken }, config);
+      }),
     web: options.collectFns?.web ?? collectWeb,
     twitter: options.collectFns?.twitter ?? collectTwitter,
     webSearch: options.collectFns?.webSearch ?? collectWebSearch,
   };
 
-  // Per-job factory: resolves cookies from `social_credentials.twitter_collector`
-  // first (admin-managed), falling back to RETTIWT_API_KEY env var. Construction
-  // happens at job time so admin saves take effect on the next run without a
-  // worker restart. Rettiwt accepts an undefined apiKey (guest mode).
+  // Per-job factory: resolves the SHARED collector cookie from the app-level
+  // `app_credentials` store first (super-admin managed, P12 REQ-086), falling
+  // back to RETTIWT_API_KEY env var. Construction happens at job time so saves
+  // take effect on the next run without a worker restart (S-pipeline-03). The
+  // cookie is app-level by design — never tenant-scoped. Rettiwt accepts an
+  // undefined apiKey (guest mode).
   const twitterClient: () => Promise<TwitterClient> =
     options.twitterClient ??
     (async () => {
-      const repo = createSocialCredentialsRepo(ensureDb(db), getCredentialCipher());
+      const repo = createAppCredentialsRepo(ensureDb(db), getCredentialCipher());
       const cookie = await resolveTwitterCollectorCookie({
-        repo,
+        appRepo: repo,
         env: process.env,
       });
       const rettiwt = new Rettiwt({ apiKey: cookie?.apiKey });
@@ -1079,14 +1198,15 @@ export function createRunProcessWorker(
     });
 
   const archiveRepo =
-    options.archiveRepo ?? createRunArchivesRepo(ensureDb(db));
-  const runLogRepo = options.runLogRepo ?? createRunLogRepo(ensureDb(db));
+    options.archiveRepo ?? createRunArchivesRepo(ensureDb(db), tenantScope);
+  const runLogRepo =
+    options.runLogRepo ?? createRunLogRepo(ensureDb(db), tenantScope);
   const userSettingsRepo = options.userSettingsRepo;
 
   const cancelSubscriber =
     options.cancelSubscriber ?? createCancelSubscriber(connection);
 
-  const deps: RunProcessDeps = {
+  return Promise.resolve({
     runState,
     rawItemsRepo,
     candidatesRepo,
@@ -1100,12 +1220,35 @@ export function createRunProcessWorker(
     cancelSubscriber,
     twitterClient,
     slackNotifier: options.slackNotifier,
+    notificationChannels: options.notificationChannels,
+    notificationEmailSender: options.notificationEmailSender,
+    errorAlerter: options.errorAlerter,
     webSearchProvider: options.webSearchProvider,
+    sourceRateLimiter: options.sourceRateLimiter,
+  });
+}
+
+export function createRunProcessWorker(
+  options: CreateRunProcessWorkerOptions = {},
+): Worker<RunProcessJobData, RunProcessResult> {
+  const connection = options.connection ?? createRedisConnection();
+  // Connection-bound services are shared across jobs; repos are rebuilt per
+  // job so each run's writes stamp the job's tenant (P9, REQ-064).
+  const sharedOptions: CreateRunProcessWorkerOptions = {
+    ...options,
+    connection,
+    runState: options.runState ?? createRunStateService(connection),
+    cancelSubscriber:
+      options.cancelSubscriber ?? createCancelSubscriber(connection),
   };
 
   return new Worker<RunProcessJobData, RunProcessResult>(
     "processing",
-    (job) => handleRunProcessJob(deps, job as RunProcessJobLike),
+    async (job) => {
+      const typed = job as RunProcessJobLike;
+      const deps = await buildRunProcessDepsForJob(sharedOptions, typed.data);
+      return handleRunProcessJob(deps, typed);
+    },
     { connection },
   );
 }

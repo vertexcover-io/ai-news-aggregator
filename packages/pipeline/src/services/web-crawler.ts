@@ -3,6 +3,7 @@ import {
   type AdaptivePlaywrightCrawlerOptions,
   type RequestHandlerResult,
   Configuration,
+  ProxyConfiguration,
 } from "crawlee";
 import type { ConvertResult, FetchMode } from "@pipeline/services/web-fetch/types.js";
 import { convert, isHealthyResult, hasListingPostLinks } from "@pipeline/services/web-fetch/convert.js";
@@ -33,6 +34,12 @@ export interface RunWebCrawlOptions {
   signal?: AbortSignal;
   maxConcurrency?: number;
   runLogger?: RunLogger;
+  /**
+   * Optional HTTP proxy URL (with embedded credentials, e.g.
+   * `http://user:pass@host:port`). When set, all requests in this crawl route
+   * through the proxy. Chromium only authenticates HTTP(S) proxies — not SOCKS5.
+   */
+  proxyUrl?: string;
 }
 
 interface PushedItem {
@@ -91,6 +98,13 @@ export async function runWebCrawl(
   // its bundled headless shell (skipped at build via PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1).
   const executablePath = resolveChromiumExecutablePath();
 
+  // Route through a proxy only when one is supplied (the proxy-fallback retry
+  // path sets this after a direct attempt is blocked). ProxyConfiguration
+  // applies to both the static and browser crawl paths.
+  const proxyConfiguration = opts.proxyUrl
+    ? new ProxyConfiguration({ proxyUrls: [opts.proxyUrl] })
+    : undefined;
+
   const crawlerOptions: AdaptivePlaywrightCrawlerOptions = {
     maxConcurrency,
     maxRequestRetries: 3,
@@ -98,6 +112,7 @@ export async function runWebCrawl(
     sameDomainDelaySecs: 1,
     respectRobotsTxtFile: true,
     renderingTypeDetectionRatio: 0.1,
+    proxyConfiguration,
     launchContext: executablePath
       ? { launchOptions: { executablePath } }
       : undefined,
@@ -262,4 +277,62 @@ export async function runWebCrawl(
   );
 
   return results;
+}
+
+/** A crawl failure caused by an HTTP 403 (datacenter-IP block). Matches both
+ * Crawlee's "Request blocked - received 403 status code." and our own
+ * "HTTP 403 for …" — the failure object only carries the error string. */
+function is403Failure(result: CrawlResult): boolean {
+  return !result.ok && /\b403\b/.test(result.error);
+}
+
+/**
+ * Crawl with a proxy fallback: run a direct (no-proxy) pass first, then retry
+ * ONLY the URLs that were blocked with a 403 through the proxy configured in
+ * `WEB_PROXY_URL`. Anything still failing after the proxy pass is left as a
+ * failure so the collector moves on. Drop-in replacement for `runWebCrawl`.
+ *
+ * `crawlFn` is injectable for testing; it defaults to `runWebCrawl`.
+ */
+export async function crawlWithProxyFallback(
+  jobs: CrawlJob[],
+  opts: RunWebCrawlOptions = {},
+  crawlFn: typeof runWebCrawl = runWebCrawl,
+): Promise<Map<string, CrawlResult>> {
+  const direct = await crawlFn(jobs, opts);
+
+  const proxyUrl = process.env.WEB_PROXY_URL?.trim();
+  if (!proxyUrl) return direct;
+
+  const blockedJobs = jobs.filter((j) => {
+    const r = direct.get(j.url);
+    return r !== undefined && is403Failure(r);
+  });
+  if (blockedJobs.length === 0) return direct;
+
+  logger.info(
+    { event: "crawler.proxy_fallback", blocked: blockedJobs.length },
+    "retrying 403-blocked URLs through proxy",
+  );
+
+  const retry = await crawlFn(blockedJobs, { ...opts, proxyUrl });
+
+  let recovered = 0;
+  for (const [url, r] of retry) {
+    direct.set(url, r);
+    if (r.ok) recovered += 1;
+  }
+
+  const fallbackFields = {
+    event: "crawler.proxy_fallback_done" as const,
+    blocked: blockedJobs.length,
+    recovered,
+  };
+  logger.info(fallbackFields, "proxy fallback completed");
+  void opts.runLogger?.info(
+    { stage: "collect", source: "blog", step: "crawl", ...fallbackFields },
+    "proxy fallback completed",
+  );
+
+  return direct;
 }

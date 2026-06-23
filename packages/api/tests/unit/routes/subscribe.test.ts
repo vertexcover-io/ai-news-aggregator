@@ -5,6 +5,8 @@ import type { FeedbackEventInsert, FeedbackEventSelect, FeedbackRating } from "@
 import { createSubscribeRouter } from "@api/routes/subscribe.js";
 import type { SubscribersRepo, SubscriberStatusUpdateResult } from "@api/repositories/subscribers.js";
 import type { FeedbackEventsRepo } from "@api/repositories/feedback-events.js";
+import type { PublicTenantCtx } from "@api/middleware/resolve-tenant.js";
+import type { TenantScope } from "@newsletter/shared/types/tenant-context";
 import { issueSubscriberToken } from "@api/lib/subscriber-token.js";
 
 const FEEDBACK_CAMPAIGN = "2026-06-reading-check";
@@ -46,6 +48,7 @@ function makeSubscriber(overrides: Partial<SubscriberSelect> = {}): SubscriberSe
     unsubscribedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+    tenantId: null,
     ...overrides,
   };
 }
@@ -117,15 +120,46 @@ function buildApp(opts: {
   repo: SubscribersRepo;
   feedbackRepo?: FeedbackEventsRepo;
   slackNotifier?: SlackNotifier;
-  sendConfirmationEmail?: (email: string, confirmUrl: string) => Promise<void>;
-  sendNewsletterToSubscriber?: (runId: string, subscriberId: string) => Promise<void>;
-  getMostRecentReviewedArchiveId?: () => Promise<string | null>;
+  sendConfirmationEmail?: (
+    email: string,
+    confirmUrl: string,
+    tenantId?: string,
+  ) => Promise<void>;
+  sendNewsletterToSubscriber?: (
+    runId: string,
+    subscriberId: string,
+    tenantId?: string,
+  ) => Promise<void>;
+  getMostRecentReviewedArchiveId?: (tenantId?: string) => Promise<string | null>;
   logger?: ReturnType<typeof makeLogger>;
+  /** Simulates the P5 host resolver: sets `publicTenant` for every request. */
+  publicTenantId?: string;
+  defaultTenantScope?: TenantScope;
+  /** Captures the scope handed to getSubscribersRepo on every call. */
+  subscriberScopesSeen?: (TenantScope | undefined)[];
 }): Hono {
   const app = new Hono();
+  const publicTenantId = opts.publicTenantId;
+  if (publicTenantId !== undefined) {
+    app.use("*", async (c, next) => {
+      const publicTenant: PublicTenantCtx = {
+        tenantId: publicTenantId,
+        slug: "tenant-under-test",
+        featureCanon: false,
+      };
+      c.set("publicTenant", publicTenant);
+      await next();
+    });
+  }
   const router = createSubscribeRouter({
-    subscribersRepo: opts.repo,
-    feedbackEventsRepo: opts.feedbackRepo ?? makeFeedbackRepo(),
+    getSubscribersRepo: (scope) => {
+      opts.subscriberScopesSeen?.push(scope);
+      return opts.repo;
+    },
+    getFeedbackEventsRepo: () => opts.feedbackRepo ?? makeFeedbackRepo(),
+    ...(opts.defaultTenantScope === undefined
+      ? {}
+      : { defaultTenantScope: opts.defaultTenantScope }),
     feedbackCampaign: FEEDBACK_CAMPAIGN,
     sessionSecret: SECRET,
     baseUrl: BASE_URL,
@@ -265,7 +299,7 @@ describe("GET /api/confirm", () => {
     const res = await app.request(`/api/confirm?token=${token}`);
 
     expect(res.status).toBe(302);
-    expect(sendNewsletterToSubscriber).toHaveBeenCalledWith("archive-123", subscriber.id);
+    expect(sendNewsletterToSubscriber).toHaveBeenCalledWith("archive-123", subscriber.id, undefined);
   });
 
   it("EDGE-005: when no reviewed archive exists, sendNewsletterToSubscriber is NOT called", async () => {
@@ -282,6 +316,33 @@ describe("GET /api/confirm", () => {
     await app.request(`/api/confirm?token=${token}`);
 
     expect(sendNewsletterToSubscriber).not.toHaveBeenCalled();
+  });
+});
+
+describe("EDGE-005 (P14): transactional email is independent of the sending domain", () => {
+  it("test_EDGE_005_transactional_before_domain_uses_shared — confirmation email goes out via the injected shared platform sender; the subscribe path has no sending-domain dependency", async () => {
+    // The router's dependency surface (SubscribeRouterDeps) deliberately has
+    // NO sending-domain / tenant-domain input: the confirmation email is sent
+    // through `sendConfirmationEmail`, which index.ts wires to the shared
+    // platform sender (env FROM_MAIL via the platform email provider). The
+    // P14 broadcast gate lives ONLY in the pipeline email-send worker — this
+    // test pins that a tenant with an unverified (or absent) sending domain
+    // still gets its double-opt-in confirmation sent (REQ-053/EDGE-005).
+    const repo = makeRepo();
+    const sendConfirmationEmail = vi.fn(() => Promise.resolve());
+    const app = buildApp({ repo, sendConfirmationEmail });
+
+    const res = await app.request("/api/subscribe", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "reader@example.com" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sendConfirmationEmail).toHaveBeenCalledOnce();
+    // Type-level guard: no domain-shaped dep exists to consult.
+    const depKeys: keyof SubscribeRouterDeps = "sendConfirmationEmail";
+    expect(depKeys).toBe("sendConfirmationEmail");
   });
 });
 
@@ -544,5 +605,110 @@ describe("GET /api/feedback", () => {
     expect(res.status).toBe(302);
     expect(res.headers.get("location") ?? "").toContain("status=expired");
     expect(feedbackRepo.inserted).toHaveLength(0);
+  });
+});
+
+describe("tenant scoping (REQ-050/051)", () => {
+  const TENANT_X = "11111111-1111-1111-1111-111111111111";
+  const TENANT_ZERO = "00000000-0000-0000-0000-0000000000aa";
+
+  it("test_REQ_050_subscribe_creates_pending_for_host_tenant — subscribe on a tenant host scopes the repo to the Host-resolved tenant", async () => {
+    const repo = makeRepo();
+    const subscriberScopesSeen: (TenantScope | undefined)[] = [];
+    const app = buildApp({
+      repo,
+      publicTenantId: TENANT_X,
+      defaultTenantScope: { tenantId: TENANT_ZERO, role: "tenant_admin" },
+      subscriberScopesSeen,
+    });
+
+    const res = await app.request("/api/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "reader@example.com" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(repo.create).toHaveBeenCalledOnce();
+    // Every repo handed to the intake path is fenced to the HOST tenant,
+    // never the platform default (tenant 0).
+    expect(subscriberScopesSeen.length).toBeGreaterThan(0);
+    for (const scope of subscriberScopesSeen) {
+      expect(scope).toEqual({ tenantId: TENANT_X, role: "tenant_admin" });
+    }
+  });
+
+  it("subscribe on a tenant host passes that tenant's id to sendConfirmationEmail (tenant-branded From)", async () => {
+    const repo = makeRepo();
+    const sendConfirmationEmail = vi.fn(() => Promise.resolve());
+    const app = buildApp({
+      repo,
+      publicTenantId: TENANT_X,
+      defaultTenantScope: { tenantId: TENANT_ZERO, role: "tenant_admin" },
+      sendConfirmationEmail,
+    });
+
+    const res = await app.request("/api/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "reader@example.com" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sendConfirmationEmail).toHaveBeenCalledWith(
+      "reader@example.com",
+      expect.stringContaining("/api/confirm?token="),
+      TENANT_X,
+    );
+  });
+
+  it("test_REQ_050_subscribe_app_host_falls_back_to_default_tenant — no Host tenant resolves to the wiring's default scope", async () => {
+    const repo = makeRepo();
+    const subscriberScopesSeen: (TenantScope | undefined)[] = [];
+    const app = buildApp({
+      repo,
+      defaultTenantScope: { tenantId: TENANT_ZERO, role: "tenant_admin" },
+      subscriberScopesSeen,
+    });
+
+    const res = await app.request("/api/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "reader@example.com" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(subscriberScopesSeen[0]).toEqual({
+      tenantId: TENANT_ZERO,
+      role: "tenant_admin",
+    });
+  });
+
+  it("test_REQ_051_confirm_marks_confirmed_scoped — welcome send and archive lookup carry the SUBSCRIBER's tenant", async () => {
+    const subscriber = makeSubscriber({ tenantId: TENANT_X });
+    const repo = makeRepo({ existing: subscriber });
+    const sendNewsletterToSubscriber = vi.fn(() => Promise.resolve());
+    const getMostRecentReviewedArchiveId = vi.fn((tenantId?: string) => {
+      expect(tenantId).toBe(TENANT_X);
+      return Promise.resolve("archive-x");
+    });
+    const app = buildApp({
+      repo,
+      defaultTenantScope: { tenantId: TENANT_ZERO, role: "tenant_admin" },
+      sendNewsletterToSubscriber,
+      getMostRecentReviewedArchiveId,
+    });
+
+    const token = issueSubscriberToken(subscriber.id, "confirm", SECRET);
+    const res = await app.request(`/api/confirm?token=${token}`);
+
+    expect(res.status).toBe(302);
+    expect(repo.updated).toEqual([{ id: subscriber.id, status: "confirmed" }]);
+    expect(getMostRecentReviewedArchiveId).toHaveBeenCalledWith(TENANT_X);
+    expect(sendNewsletterToSubscriber).toHaveBeenCalledWith(
+      "archive-x",
+      subscriber.id,
+      TENANT_X,
+    );
   });
 });

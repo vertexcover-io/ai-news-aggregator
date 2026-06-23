@@ -1,6 +1,10 @@
 import type IORedis from "ioredis";
 import type { RunState, RunSummary } from "@newsletter/shared";
 import { formatDateInTimezone, parseRunCostBreakdown } from "@newsletter/shared";
+import {
+  isTenantContext,
+  type TenantScope,
+} from "@newsletter/shared/types/tenant-context";
 import type { RunArchivesRepo } from "@api/repositories/run-archives.js";
 import { TERMINAL_STATUSES } from "@api/services/run-observability.js";
 
@@ -8,6 +12,13 @@ export interface RunListDeps {
   redis: Pick<IORedis, "scanStream" | "get" | "mget">;
   archiveRepo: RunArchivesRepo;
   timezone?: string;
+  /**
+   * REQ-013: the SCAN over `run:*` sees every tenant's live state, so each
+   * entry is fenced to the requester's tenant here (the archiveRepo side is
+   * already fenced by its scoped factory). Legacy states without a tenantId
+   * stay listed (grandfathered — written before the stamp existed).
+   */
+  requesterScope?: TenantScope;
 }
 
 async function scanRunKeys(
@@ -51,6 +62,14 @@ export async function listRuns(
   for (const raw of values) {
     const state = parseRunState(raw);
     if (!state) continue;
+    // REQ-013: another tenant's live run reads as absent.
+    if (
+      isTenantContext(deps.requesterScope) &&
+      typeof state.tenantId === "string" &&
+      state.tenantId !== deps.requesterScope.tenantId
+    ) {
+      continue;
+    }
     // Skip terminal Redis entries that have no matching archive row: these are
     // ghosts (the empty-shortlist class — terminal in Redis but the archive
     // upsert was never reached). The archive row is the source of truth for
@@ -67,6 +86,7 @@ export async function listRuns(
       reviewed: false,
       isDryRun: false,
       costBreakdown: null,
+      emailSentAt: null,
       linkedinPostedAt: null,
       twitterPostedAt: null,
       linkedinPermalink: null,
@@ -94,6 +114,7 @@ export async function listRuns(
         row.publishedAt ?? row.completedAt,
         deps.timezone,
       ),
+      emailSentAt: row.emailSentAt?.toISOString() ?? null,
       linkedinPostedAt: row.linkedinPostedAt?.toISOString() ?? null,
       twitterPostedAt: row.twitterPostedAt?.toISOString() ?? null,
       linkedinPermalink: row.socialMetadata?.linkedinPermalink ?? null,

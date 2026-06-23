@@ -5,6 +5,8 @@ import { rawItems } from "@newsletter/shared/db";
 import { collectHn } from "@pipeline/collectors/hn.js";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import type { AppDb } from "@newsletter/shared/db";
 import type { HnCollectConfig } from "@pipeline/types.js";
 
@@ -13,8 +15,12 @@ config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
 describe("HN Collector E2E", () => {
   let db: AppDb;
 
-  beforeAll(() => {
+  let tenant: TenantContext;
+
+  beforeAll(async () => {
     db = getTestDb();
+    // tenant_id is NOT NULL on raw_items — repo writes stamp the e2e tenant
+    tenant = await ensurePipelineTenant();
   });
 
   beforeEach(async () => {
@@ -29,7 +35,7 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    const result = await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    const result = await collectHn({ rawItemsRepo: createRawItemsRepo(db, tenant) }, cfg);
 
     expect(result.itemsFetched).toBeGreaterThan(0);
     expect(result.itemsStored).toBeGreaterThan(0);
@@ -55,7 +61,7 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 5,
     };
 
-    const result = await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    const result = await collectHn({ rawItemsRepo: createRawItemsRepo(db, tenant) }, cfg);
 
     expect(result.commentsFetched).toBeGreaterThanOrEqual(0);
 
@@ -74,11 +80,11 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db, tenant) }, cfg);
     const firstRunRows = await db.select().from(rawItems);
     const firstRunCount = firstRunRows.length;
 
-    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db, tenant) }, cfg);
     const secondRunRows = await db.select().from(rawItems);
 
     // Same items should be upserted, not duplicated
@@ -106,7 +112,7 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db, tenant) }, cfg);
 
     const rows = await db.select().from(rawItems);
     for (const row of rows) {
@@ -122,7 +128,7 @@ describe("HN Collector E2E", () => {
       commentsPerItem: 0,
     };
 
-    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db, tenant) }, cfg);
 
     const rows = await db.select().from(rawItems);
     for (const row of rows) {
@@ -140,7 +146,7 @@ describe("HN Collector E2E", () => {
       sinceDays,
     };
 
-    await collectHn({ rawItemsRepo: createRawItemsRepo(db) }, cfg);
+    await collectHn({ rawItemsRepo: createRawItemsRepo(db, tenant) }, cfg);
 
     const rows = await db.select().from(rawItems);
     const cutoff = Date.now() - sinceDays * 86_400_000;

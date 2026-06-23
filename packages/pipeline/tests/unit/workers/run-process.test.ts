@@ -2862,4 +2862,185 @@ describe("run-process notifySourceDistribution (Phase 2)", () => {
 
     expect(notifyNewsletterSent).not.toHaveBeenCalled();
   });
+
+  // ── P10: global per-source rate limiting + graceful collector degrade ──
+  describe("global per-source rate limiting (P10, REQ-067/068, EDGE-011)", () => {
+    function okResult(): CollectorResult {
+      return { itemsFetched: 1, itemsStored: 1, failures: 0, durationMs: 1 } as unknown as CollectorResult;
+    }
+
+    const stubClient: TwitterClient = {
+      fetchListTweets: vi.fn(() => Promise.resolve({ tweets: [], nextCursor: null })),
+      fetchUserTimeline: vi.fn(() => Promise.resolve({ tweets: [], nextCursor: null })),
+    };
+
+    it("REQ-067: gates each collector start on the shared per-source limiter", async () => {
+      const runStateMock = makeMockRunState(makeRunState());
+      const acquired: string[] = [];
+      const sourceRateLimiter = {
+        acquire: vi.fn((source: string) => {
+          acquired.push(source);
+          return Promise.resolve();
+        }),
+      };
+      const events: string[] = [];
+      const hn = vi.fn((): Promise<CollectorResult> => {
+        events.push("hn-collect");
+        return Promise.resolve(okResult());
+      });
+      const twitter = vi.fn((): Promise<CollectorResult> => {
+        events.push("twitter-collect");
+        return Promise.resolve(okResult());
+      });
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn: vi.fn(() => Promise.resolve([])),
+        rankFn: vi.fn(),
+        collectFns: { hn, reddit: vi.fn(), web: vi.fn(), twitter },
+        twitterClient: () => Promise.resolve(stubClient),
+        sourceRateLimiter,
+      });
+
+      await worker.handler({
+        ...baseJob,
+        data: {
+          ...baseJob.data,
+          sourceTypes: ["hn", "twitter"],
+          collectors: {
+            hn: { sinceDays: 1 } as unknown as HnCollectConfig,
+            twitter: { listIds: ["1"], users: [] } as unknown as TwitterCollectConfig,
+          },
+        },
+      });
+
+      // each configured source waited on its own global bucket before collecting
+      expect(acquired).toContain("hn");
+      expect(acquired).toContain("twitter");
+      expect(hn).toHaveBeenCalledOnce();
+      expect(twitter).toHaveBeenCalledOnce();
+    });
+
+    it("REQ-068: passes a twitter page-throttle bound to the shared limiter", async () => {
+      const runStateMock = makeMockRunState(makeRunState());
+      const acquired: string[] = [];
+      const sourceRateLimiter = {
+        acquire: vi.fn((source: string) => {
+          acquired.push(source);
+          return Promise.resolve();
+        }),
+      };
+      let capturedThrottle: (() => Promise<void>) | undefined;
+      const twitter = vi.fn(
+        (deps: { throttle?: () => Promise<void> }): Promise<CollectorResult> => {
+          capturedThrottle = deps.throttle;
+          return Promise.resolve(okResult());
+        },
+      );
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn: vi.fn(() => Promise.resolve([])),
+        rankFn: vi.fn(),
+        collectFns: {
+          hn: vi.fn(),
+          reddit: vi.fn(),
+          web: vi.fn(),
+          twitter: twitter as never,
+        },
+        twitterClient: () => Promise.resolve(stubClient),
+        sourceRateLimiter,
+      });
+
+      await worker.handler({
+        ...baseJob,
+        data: {
+          ...baseJob.data,
+          sourceTypes: ["twitter"],
+          collectors: {
+            twitter: { listIds: ["1"], users: [] } as unknown as TwitterCollectConfig,
+          },
+        },
+      });
+
+      expect(capturedThrottle).toBeDefined();
+      acquired.length = 0;
+      await capturedThrottle?.();
+      expect(acquired).toEqual(["twitter"]);
+    });
+
+    it("proceeds unthrottled when the limiter itself fails (graceful degrade)", async () => {
+      const runStateMock = makeMockRunState(makeRunState());
+      const sourceRateLimiter = {
+        acquire: vi.fn(() => Promise.reject(new Error("redis hiccup"))),
+      };
+      const hn = vi.fn((): Promise<CollectorResult> => Promise.resolve(okResult()));
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn: vi.fn(() => Promise.resolve([])),
+        rankFn: vi.fn(),
+        collectFns: { hn, reddit: vi.fn(), web: vi.fn(), twitter: vi.fn() },
+        sourceRateLimiter,
+      });
+
+      await worker.handler({
+        ...baseJob,
+        data: {
+          ...baseJob.data,
+          sourceTypes: ["hn"],
+          collectors: { hn: { sinceDays: 1 } as unknown as HnCollectConfig },
+        },
+      });
+
+      expect(hn).toHaveBeenCalledOnce();
+      const last = runStateMock.updates.at(-1);
+      expect(last?.status).toBe("completed");
+    });
+
+    // EDGE-011: a banned/rate-limited shared Twitter collector degrades to a
+    // failed SOURCE — it never fails the whole run while a sibling succeeds.
+    it("test_EDGE_011_collector_ban_degrades_not_fails_run", async () => {
+      const runStateMock = makeMockRunState(makeRunState());
+      const sourceRateLimiter = { acquire: vi.fn(() => Promise.resolve()) };
+      const hn = vi.fn((): Promise<CollectorResult> => Promise.resolve(okResult()));
+      const twitter = vi.fn(
+        (): Promise<CollectorResult> =>
+          Promise.reject(new Error("twitter rate-limited: 429 — banned")),
+      );
+      const worker = createRunProcessWorker({
+        runState: runStateMock.service,
+        loadFn: vi.fn(() => Promise.resolve([makeCandidate(1)])),
+        rankFn: makeRankFnP2(),
+        shortlistFn: makeShortlistFn(passthroughShortlist),
+        archiveRepo: { upsert: vi.fn(() => Promise.resolve()) },
+        collectFns: { hn, reddit: vi.fn(), web: vi.fn(), twitter },
+        twitterClient: () => Promise.resolve(stubClient),
+        sourceRateLimiter,
+      });
+
+      await worker.handler({
+        ...baseJob,
+        data: {
+          ...baseJob.data,
+          sourceTypes: ["hn", "twitter"],
+          collectors: {
+            hn: { sinceDays: 1 } as unknown as HnCollectConfig,
+            twitter: { listIds: ["1"], users: [] } as unknown as TwitterCollectConfig,
+          },
+        },
+      });
+
+      // run completed despite the banned collector...
+      const last = runStateMock.updates.at(-1);
+      expect(last?.status).toBe("completed");
+      // ...and the twitter source was individually marked failed
+      const sourceCalls = (
+        runStateMock.service.updateSource as ReturnType<typeof vi.fn>
+      ).mock.calls;
+      const twitterFail = sourceCalls.find(
+        (c) =>
+          c[1] === "twitter" &&
+          (c[2] as { status?: string }).status === "failed",
+      );
+      expect(twitterFail).toBeDefined();
+    });
+  });
 });

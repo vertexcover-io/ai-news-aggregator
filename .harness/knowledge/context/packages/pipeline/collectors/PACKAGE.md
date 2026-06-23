@@ -14,7 +14,7 @@ Each collector function fetches from a specific source API, transforms responses
 
 ## Public surface
 - `collectHn(deps, config)` → `CollectorResult` — batch collect from HN via Algolia API, fetches top comments per item
-- `collectReddit(deps, config)` → `CollectorResult` — batch collect from Reddit via RSS feeds, parses XML/HTML
+- `collectReddit(deps, config)` → `CollectorResult` — batch collect from Reddit via Apify actor `trudax/reddit-scraper-lite`; RSS/jsdom removed
 - `collectWeb(deps, config)` → `WebCollectorResult` — two-pass web collector: Pass 1 listings via Crawlee, Pass 2 details via Crawlee + LLM extraction
 - `collectTwitter(deps, config)` → `CollectorResult` — batch collect from X/Twitter lists + user timelines via Rettiwt
 - `collectWebSearch(deps, config)` → `CollectorResult` — batch collect from web search provider (Tavily)
@@ -34,7 +34,7 @@ Each collector function fetches from a specific source API, transforms responses
 - `parseTweetIdFromUrl(url)` → `string | null` — extracts tweet ID from x.com/twitter.com status URLs
 
 ## Depends on / used by
-- Uses: `@newsletter/shared` (types, logger), `@pipeline/repositories/raw-items`, `@pipeline/services/link-enrichment`, `@pipeline/services/web-crawler`, `@pipeline/services/web-fetch`, `crawlee`, `@ai-sdk/deepseek`, `rettiwt-api`, `@tavily/core`, `chrono-node`, `jsdom`
+- Uses: `@newsletter/shared` (types, logger), `@pipeline/repositories/raw-items`, `@pipeline/services/link-enrichment`, `@pipeline/services/web-crawler`, `@pipeline/services/web-fetch`, `crawlee`, `@ai-sdk/deepseek`, `rettiwt-api`, `@tavily/core`, `chrono-node`, `jsdom` (web-fetch only; Reddit no longer uses it), `apify-client` (Reddit collector)
 - Used by: `workers/run-process.ts`, `services/add-post/dispatch.ts`
 
 ## Data flows
@@ -66,7 +66,17 @@ Each collector function fetches from a specific source API, transforms responses
     → reportUsage(usage) → result.object.posts
   (LLM extracts {url, title, published_at} per post from markdown)
 
+### collectReddit(deps, config) → CollectorResult
+  resolveToken() → Apify API token (DB-first, env APIFY_API_KEY fallback, null → empty result)
+    → token present → runRedditListing(apiToken, startUrls, input) via `apify-client` (actor: trudax/reddit-scraper-lite)
+      → items grouped by parsedCommunityName → dedup by externalId → sinceDays filter → per-sub cap to config.limit
+        → mapApifyPostToRawItem → enrichRawItems (inline URL enrichment)
+          → rawItemsRepo.upsertItems → CollectorResult {unitResults per subreddit}
+    → token absent → CollectorResult {itemsStored:0} (no throw, warns)
+  (fetchRedditPost: same token resolution → single-permalink actor run → returns RawItemInsert)
+
 ## Gotchas / landmines
+- **Reddit uses Apify, not RSS**: As of the Apify migration, `collectReddit` calls the `trudax/reddit-scraper-lite` Apify actor — no RSS feed, no jsdom, no `*.rss` URLs. The Apify API token is a platform-level secret stored in `app_credentials` under key `apify_api_token`, set by a super-admin, and resolved DB-first (fallback to `APIFY_API_KEY` env var). No token → empty CollectorResult (logs a warning; does not crash the run).
 - **Web collector uses DeepSeek, not Anthropic**: `discoverPostUrls` and `extractPostFields` run on `deepseek-chat` (V4 Flash) via `@ai-sdk/deepseek`, distinct from the Anthropic-based shortlist/rerank/recap stages. Requires `DEEPSEEK_API_KEY`. (D-010)
 - **Crawlee rejects invalid URLs atomically**: A single non-http(s) URL in `addRequests` aborts the entire crawl batch. `validateDiscoveredUrls` drops them before enqueue, and `runWebCrawl` has a redundant `isCrawlableUrl` backstop. (D-011)
 - **self-referential linking URLs skip Pass 2**: The web collector checks `resolvesToListing(postUrl, listingUrl)` — if true, the post URL resolves to the listing page itself (e.g. anchor links), the detail crawl is skipped and a RawItemInsert is built from discovery-only data. (D-012)

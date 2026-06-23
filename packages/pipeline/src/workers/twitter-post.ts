@@ -20,7 +20,8 @@ export interface TwitterPostDeps {
 export interface TwitterPostJobLike {
   readonly name: string;
   readonly id?: string;
-  readonly data: { readonly runId?: string };
+  /** `tenantId` (P9, REQ-060): consumed by the dispatcher to scope publish deps. */
+  readonly data: { readonly runId?: string; readonly tenantId?: string };
 }
 
 export async function handleTwitterPostJob(

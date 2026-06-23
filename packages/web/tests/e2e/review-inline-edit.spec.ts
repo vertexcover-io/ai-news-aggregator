@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
-import { ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
+import { ADMIN_EMAIL, ADMIN_PASSWORD, API_BASE, makeDbClient } from "./_infra";
 
 
 interface SeededReview {
@@ -12,8 +12,8 @@ interface SeededReview {
 }
 
 async function adminLogin(page: Page): Promise<void> {
-  const res = await page.request.post(`${API_BASE}/api/admin/login`, {
-    data: { password: ADMIN_PASSWORD },
+  const res = await page.request.post(`${API_BASE}/api/auth/login`, {
+    data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
   });
   expect(res.ok()).toBe(true);
 }

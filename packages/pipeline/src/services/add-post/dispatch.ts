@@ -59,8 +59,13 @@ export async function dispatchFetch(
       return fn(url, forwarded);
     }
     case "reddit": {
-      const fn = deps.fetchRedditPost ?? defaultFetchRedditPost;
-      return fn(url, forwarded);
+      if (deps.fetchRedditPost) {
+        return deps.fetchRedditPost(url, forwarded);
+      }
+      return defaultFetchRedditPost(
+        url,
+        await buildDefaultRedditDeps(forwarded),
+      );
     }
     case "twitter": {
       if (deps.fetchTwitterPost) {
@@ -109,27 +114,30 @@ async function loadTwitterDefaults(): Promise<{
     const [
       { resolveTwitterCollectorCookie },
       { refreshRettiwtCsrfToken },
-      { createSocialCredentialsRepo },
+      { createAppCredentialsRepo },
       { getDb },
       { getCredentialCipher },
       { Rettiwt },
     ] = await Promise.all([
       import("@pipeline/services/credential-resolver.js"),
       import("@pipeline/collectors/twitter/clients/rettiwt-auth.js"),
-      import("@pipeline/repositories/social-credentials.js"),
+      import("@pipeline/repositories/app-credentials.js"),
       import("@newsletter/shared/db"),
       import("@newsletter/shared/services/credential-cipher"),
       import("rettiwt-api"),
     ]);
 
-    const repo = createSocialCredentialsRepo(getDb(), getCredentialCipher());
+    // The shared collector cookie is APP-LEVEL (P12, REQ-086) — read from
+    // app_credentials with no tenant scope; CSRF refresh writes back to the
+    // same store.
+    const repo = createAppCredentialsRepo(getDb(), getCredentialCipher());
 
     return {
       rettiwtCtor: Rettiwt as unknown as new (opts: {
         apiKey: string;
       }) => RettiwtTweetFacade,
       resolveCookie: () =>
-        resolveTwitterCollectorCookie({ repo, env: process.env }),
+        resolveTwitterCollectorCookie({ appRepo: repo, env: process.env }),
       refreshCsrf: async (
         apiKey: string,
         source: "db" | "env",
@@ -158,5 +166,22 @@ async function buildDefaultTwitterDeps(forwarded: {
     resolveCookie: defaults.resolveCookie,
     rettiwtFactory: (apiKey: string) => new defaults.rettiwtCtor({ apiKey }),
     refreshCsrf: defaults.refreshCsrf,
+  };
+}
+
+// Default reddit/apify wiring — lazy dynamic imports so the collector stays
+// db-free. The token is resolved per-call (freshness: admin saves take effect
+// on the next fetchRedditPost without a worker restart).
+
+async function buildDefaultRedditDeps(forwarded: {
+  signal?: AbortSignal;
+}): Promise<FetchRedditPostDeps> {
+  const { buildRedditResolveToken } = await import(
+    "@pipeline/lib/reddit-deps.js"
+  );
+  const resolveToken = await buildRedditResolveToken();
+  return {
+    signal: forwarded.signal,
+    resolveToken,
   };
 }

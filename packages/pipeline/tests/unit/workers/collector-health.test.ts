@@ -182,6 +182,8 @@ import type { CollectorHealthResult, HealthCheckCollector } from "@newsletter/sh
 import type { CheckableCollector, CollectorHealthOutcome, HealthCheckDeps } from "@pipeline/services/collector-health/index.js";
 import type { UserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 import type { UserSettings } from "@newsletter/shared";
+import type { SourceRow } from "@newsletter/shared/db";
+import type { SourceConfig } from "@newsletter/shared/types";
 import { COLLECTOR_HEALTH_QUEUE_NAME } from "@newsletter/shared/constants";
 
 // ─── Fakes ────────────────────────────────────────────────────────────────────
@@ -244,6 +246,25 @@ function makeUserSettingsRepo(settings: UserSettings | null = makeSettings()): U
   return {
     get: vi.fn().mockResolvedValue(settings),
   };
+}
+
+let sourceRowSeq = 0;
+function makeSourceRow(config: SourceConfig, enabled = true): SourceRow {
+  sourceRowSeq += 1;
+  return {
+    id: `src-${sourceRowSeq}`,
+    tenantId: "tenant-1",
+    type: config.kind === "web" ? "blog" : config.kind === "web_search" ? "web_search" : config.kind === "reddit" ? "reddit" : config.kind === "hn" ? "hn" : "twitter",
+    config,
+    enabled,
+    lastHealth: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  } as unknown as SourceRow;
+}
+
+function makeSourcesRepo(rows: SourceRow[]): { list: () => Promise<SourceRow[]> } {
+  return { list: vi.fn().mockResolvedValue(rows) };
 }
 
 function makeHealthOutcome(status: "healthy" | "failed" = "healthy"): CollectorHealthOutcome {
@@ -309,14 +330,14 @@ describe("handleCollectorHealthJob", () => {
     expect(vi.mocked(store.setRunning)).not.toHaveBeenCalled();
 
     // Both collectors must be persisted via store.set
-    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
-    const persistedCollectors = setCalls.map((c) => c[0].collector);
+    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [string, CollectorHealthResult][];
+    const persistedCollectors = setCalls.map((c) => c[1].collector);
     expect(persistedCollectors).toContain("hn");
     expect(persistedCollectors).toContain("reddit");
 
     // Both should be terminal (healthy or failed)
     for (const call of setCalls) {
-      expect(["healthy", "failed"]).toContain(call[0].status);
+      expect(["healthy", "failed"]).toContain(call[1].status);
     }
   });
 
@@ -332,8 +353,8 @@ describe("handleCollectorHealthJob", () => {
     });
 
     // setRunning must be called for each enabled collector before the check
-    const setRunningCalls = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls as [HealthCheckCollector, "scheduled" | "manual", Date][];
-    const runningCollectors = setRunningCalls.map((c) => c[0]);
+    const setRunningCalls = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls as [string, HealthCheckCollector, "scheduled" | "manual", Date][];
+    const runningCollectors = setRunningCalls.map((c) => c[1]);
 
     // With all enabled, should include hn, reddit, twitter, blog, web_search
     expect(runningCollectors).toContain("hn");
@@ -344,11 +365,11 @@ describe("handleCollectorHealthJob", () => {
 
     // trigger must be "scheduled"
     for (const call of setRunningCalls) {
-      expect(call[1]).toBe("scheduled");
+      expect(call[2]).toBe("scheduled");
     }
 
     // All should also reach terminal
-    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
+    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [string, CollectorHealthResult][];
     expect(setCalls.length).toBe(5); // 5 enabled collectors
   });
 
@@ -366,18 +387,18 @@ describe("handleCollectorHealthJob", () => {
     });
 
     // Both collectors should still get store.set called
-    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
-    const persistedCollectors = setCalls.map((c) => c[0].collector);
+    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [string, CollectorHealthResult][];
+    const persistedCollectors = setCalls.map((c) => c[1].collector);
     expect(persistedCollectors).toContain("hn");
     expect(persistedCollectors).toContain("reddit");
 
     // The thrown one must result in a "failed" status
-    const redditResult = setCalls.find((c) => c[0].collector === "reddit");
-    expect(redditResult?.[0]?.status).toBe("failed");
+    const redditResult = setCalls.find((c) => c[1].collector === "reddit");
+    expect(redditResult?.[1]?.status).toBe("failed");
 
     // The healthy one must be "healthy"
-    const hnResult = setCalls.find((c) => c[0].collector === "hn");
-    expect(hnResult?.[0]?.status).toBe("healthy");
+    const hnResult = setCalls.find((c) => c[1].collector === "hn");
+    expect(hnResult?.[1]?.status).toBe("healthy");
   });
 
   it("≥1 failure + webhook set → exactly one postToWebhook call with consolidated message (REQ-014)", async () => {
@@ -441,6 +462,69 @@ describe("handleCollectorHealthJob", () => {
     ).resolves.toBeUndefined();
 
     expect(postToWebhook).not.toHaveBeenCalled();
+  });
+
+  it("P16 REQ-091: per-tenant channels — failure alert goes to the TENANT webhook + email, not the global one", async () => {
+    const postToWebhook = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    const emails: { to: string; subject: string; text: string }[] = [];
+    const runCheck = makeRunCollectorHealthCheck({ hn: makeHealthOutcome("failed") });
+    const deps = makeDeps({
+      runCollectorHealthCheck: runCheck,
+      slackWebhookUrl: "https://hooks.slack.com/services/T/B/GLOBAL",
+      resolveNotificationChannels: vi.fn().mockResolvedValue({
+        slackWebhookUrl: "https://hooks.slack.com/services/T/B/TENANT",
+        notifyEmail: "ada@studio.com",
+        notifyReviewReady: true,
+        notifyErrors: true,
+      }),
+      notificationEmailSender: {
+        send: (input) => {
+          emails.push(input);
+          return Promise.resolve();
+        },
+      },
+      postToWebhook,
+    });
+
+    await handleCollectorHealthJob(deps, {
+      name: "collector-health",
+      id: "job-t1",
+      data: { collectors: ["hn"], trigger: "scheduled", tenantId: "t-1" },
+    });
+
+    expect(postToWebhook).toHaveBeenCalledOnce();
+    const callArgs = postToWebhook.mock.calls[0] as [{ url: string }];
+    expect(callArgs[0].url).toBe("https://hooks.slack.com/services/T/B/TENANT");
+    expect(emails).toEqual([
+      expect.objectContaining({ to: "ada@studio.com" }),
+    ]);
+  });
+
+  it("P16 REQ-091: tenant error-alert toggle off suppresses webhook + email", async () => {
+    const postToWebhook = vi.fn();
+    const sendEmail = vi.fn();
+    const runCheck = makeRunCollectorHealthCheck({ hn: makeHealthOutcome("failed") });
+    const deps = makeDeps({
+      runCollectorHealthCheck: runCheck,
+      slackWebhookUrl: "https://hooks.slack.com/services/T/B/GLOBAL",
+      resolveNotificationChannels: vi.fn().mockResolvedValue({
+        slackWebhookUrl: "https://hooks.slack.com/services/T/B/TENANT",
+        notifyEmail: "ada@studio.com",
+        notifyReviewReady: true,
+        notifyErrors: false,
+      }),
+      notificationEmailSender: { send: sendEmail },
+      postToWebhook,
+    });
+
+    await handleCollectorHealthJob(deps, {
+      name: "collector-health",
+      id: "job-t2",
+      data: { collectors: ["hn"], trigger: "scheduled", tenantId: "t-1" },
+    });
+
+    expect(postToWebhook).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 
   it("webhook non-2xx → warn log, job ok, does not throw (REQ-016)", async () => {
@@ -523,7 +607,7 @@ describe("handleCollectorHealthJob", () => {
   it("last-writer-wins: two sequential calls for same collector overwrite (EDGE-008)", async () => {
     const setResults: CollectorHealthResult[] = [];
     const store = makeStore({
-      set: vi.fn().mockImplementation((r: CollectorHealthResult) => {
+      set: vi.fn().mockImplementation((_tenantId: string, r: CollectorHealthResult) => {
         setResults.push(r);
         return Promise.resolve();
       }),
@@ -564,9 +648,9 @@ describe("handleCollectorHealthJob", () => {
       data: { collectors: ["hn"], trigger: "manual" },
     });
 
-    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
+    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [string, CollectorHealthResult][];
     expect(setCalls.length).toBe(1);
-    const result = setCalls[0][0];
+    const result = setCalls[0][1];
     expect(result.collector).toBe("hn");
     expect(result.trigger).toBe("manual");
     expect(result.checkedAt).toBeDefined();
@@ -591,17 +675,17 @@ describe("handleCollectorHealthJob", () => {
     ).rejects.toThrow("credential DB failure");
 
     // setRunning was called for scheduled trigger
-    const setRunningCalls = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls as [HealthCheckCollector, string, Date][];
-    expect(setRunningCalls.map((c) => c[0])).toContain("hn");
-    expect(setRunningCalls.map((c) => c[0])).toContain("reddit");
+    const setRunningCalls = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls as [string, HealthCheckCollector, string, Date][];
+    expect(setRunningCalls.map((c) => c[1])).toContain("hn");
+    expect(setRunningCalls.map((c) => c[1])).toContain("reddit");
 
     // store.set must have been called with "failed" for each targeted collector
-    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
-    const persistedCollectors = setCalls.map((c) => c[0].collector);
+    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [string, CollectorHealthResult][];
+    const persistedCollectors = setCalls.map((c) => c[1].collector);
     expect(persistedCollectors).toContain("hn");
     expect(persistedCollectors).toContain("reddit");
     for (const call of setCalls) {
-      expect(call[0].status).toBe("failed");
+      expect(call[1].status).toBe("failed");
     }
   });
 
@@ -623,8 +707,90 @@ describe("handleCollectorHealthJob", () => {
     ).rejects.toThrow("DB unavailable");
 
     // store.set must have been called with "failed" for "hn"
-    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [CollectorHealthResult][];
-    expect(setCalls.some((c) => c[0].collector === "hn" && c[0].status === "failed")).toBe(true);
+    const setCalls = (store.set as ReturnType<typeof vi.fn>).mock.calls as [string, CollectorHealthResult][];
+    expect(setCalls.some((c) => c[1].collector === "hn" && c[1].status === "failed")).toBe(true);
+  });
+
+  // ─── FIX #6: source rows are authoritative over user_settings ──────────────
+
+  it("FIX6: rows override user_settings — reddit check uses rows config even when user_settings.redditConfig is null", async () => {
+    const runCheck = makeRunCollectorHealthCheck();
+    // Onboarded shape: user_settings collector configs null, real config in rows.
+    const onboarded = makeSettings({ redditConfig: null, redditEnabled: false });
+    const rows = [makeSourceRow({ kind: "reddit", subreddit: "LocalLLaMA" }, true)];
+    const deps = makeDeps({
+      runCollectorHealthCheck: runCheck,
+      userSettingsRepo: makeUserSettingsRepo(onboarded),
+      getSourcesRepo: () => makeSourcesRepo(rows),
+    });
+
+    await handleCollectorHealthJob(deps, {
+      name: "collector-health",
+      id: "fix6-1",
+      data: { collectors: ["reddit"], trigger: "manual" },
+    });
+
+    const call = runCheck.mock.calls.find((c) => c[0] === "reddit") as
+      | [CheckableCollector, { reddit?: { subreddits?: string[] } }, HealthCheckDeps]
+      | undefined;
+    expect(call).toBeDefined();
+    expect(call?.[1]?.reddit?.subreddits).toEqual(["LocalLLaMA"]);
+  });
+
+  it("FIX6: scheduled enabled targets derive from source rows, not user_settings flags", async () => {
+    const store = makeStore();
+    // user_settings says hn+twitter enabled with NO rows for them; rows are reddit+web.
+    const onboarded = makeSettings({
+      hnEnabled: true,
+      redditEnabled: false,
+      webEnabled: false,
+      twitterEnabled: true,
+      webSearchEnabled: false,
+      hnConfig: null,
+      redditConfig: null,
+      webConfig: null,
+      twitterConfig: null,
+      webSearchConfig: null,
+    });
+    const rows = [
+      makeSourceRow({ kind: "reddit", subreddit: "LocalLLaMA" }, true),
+      makeSourceRow({ kind: "web", name: "Blog", listingUrl: "https://ex.com/blog" }, true),
+    ];
+    const deps = makeDeps({
+      store,
+      userSettingsRepo: makeUserSettingsRepo(onboarded),
+      getSourcesRepo: () => makeSourcesRepo(rows),
+    });
+
+    await handleCollectorHealthJob(deps, {
+      name: "collector-health",
+      id: "fix6-2",
+      data: { trigger: "scheduled" },
+    });
+
+    const targets = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => (c as [string, HealthCheckCollector])[1])
+      .sort();
+    expect(targets).toEqual(["blog", "reddit"]);
+  });
+
+  it("FIX6: no source rows → falls back to user_settings enabled flags (regression)", async () => {
+    const store = makeStore();
+    const deps = makeDeps({
+      store,
+      getSourcesRepo: () => makeSourcesRepo([]),
+    });
+
+    await handleCollectorHealthJob(deps, {
+      name: "collector-health",
+      id: "fix6-3",
+      data: { trigger: "scheduled" },
+    });
+
+    const targets = (store.setRunning as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => (c as [string, HealthCheckCollector])[1])
+      .sort();
+    expect(targets).toEqual(["blog", "hn", "reddit", "twitter", "web_search"]);
   });
 });
 

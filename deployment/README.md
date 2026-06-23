@@ -7,6 +7,9 @@ This folder is the single source of truth for deploying the AI Newsletter Aggreg
 ```
 Internet → Caddy (host) → {  /api/*  → 127.0.0.1:3000  (api container)
                              /*      → /var/www/newsletter/web  (static) }
+   (same SPA + API serve every host: <slug>.<root>, app.<root>, custom domains;
+    the API resolves the tenant from the inbound Host header — see
+    "Multi-tenant subdomains")
 
               docker compose newsletter:
                 api        → postgres + redis
@@ -55,6 +58,9 @@ Production secrets live in GitHub Environment secrets under the `production` env
    - `WEB_CRAWLER_CONCURRENCY` if used
    - `RETTIWT_API_KEY`
    - `API_PORT`
+   - `ROOT_DOMAIN` — apex for tenant subdomains, e.g. `agentloop.live` (see "Multi-tenant subdomains" below)
+   - `APP_HOST` — admin/signup host, e.g. `app.agentloop.live`
+   - `CUSTOM_DOMAIN_MAP` if used — `host=slug` pairs for legacy/custom domains
    - `PUBLIC_BASE_URL`
    - `NEWSLETTER_BASE_URL`
    - `ADMIN_PASSWORD`
@@ -82,7 +88,10 @@ Production secrets live in GitHub Environment secrets under the `production` env
 - Ubuntu 24.04 LTS, 2 GB RAM minimum.
 - Firewall/security group allowing inbound 22, 80, and 443.
 - Attach an initial SSH key you control.
-- Point `agentloop.vertexcover.io` at the server IP before the first real deploy.
+- DNS, before the first real deploy (see "Multi-tenant subdomains" for detail):
+  - `app.<ROOT_DOMAIN>` → server IP (A/AAAA).
+  - `*.<ROOT_DOMAIN>` → server IP (wildcard A/AAAA) for tenant public sites.
+  - any custom domain in `CUSTOM_DOMAIN_MAP` → server IP.
 
 ### 2. Run bootstrap.sh on the server
 
@@ -123,6 +132,72 @@ On the server:
 ssh deploy@agentloop.vertexcover.io
 docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/compose.prod.yml ps
 ```
+
+## Multi-tenant subdomains
+
+Each tenant gets a public site at `<slug>.<ROOT_DOMAIN>`; the admin/signup app lives at `<APP_HOST>` (e.g. `app.<ROOT_DOMAIN>`). The **same** static SPA and API serve every host — the API resolves the tenant from the inbound `Host` header (`packages/api/src/middleware/resolve-tenant.ts`):
+
+- `<slug>.<root>` → look up the tenant by slug; only **active** tenants serve a public site (others 404). A renamed tenant's old slug 301-redirects to the new one.
+- `<APP_HOST>` / loopback → admin/signup surface; tenant comes from the session, never the Host.
+- a host in `CUSTOM_DOMAIN_MAP` → its mapped tenant slug.
+- anything else → generic 404 (leaks no tenant existence).
+
+Caddy's `reverse_proxy` forwards the inbound `Host` unchanged, so once the env + DNS + TLS below are in place, resolution works with no app code changes.
+
+### 1. Environment
+
+Set these production secrets (also listed in `deployment/.env.prod.example`):
+
+- `ROOT_DOMAIN` — **required**. Without it the resolver classifies every `<slug>.<root>` request as "unknown" and 404s.
+- `APP_HOST` — **required**. The admin/signup host (defaults to `app.<ROOT_DOMAIN>` in code, but the Caddyfile needs it as a concrete site address).
+- `CUSTOM_DOMAIN_MAP` — optional, `host=slug` comma-separated. Use it to keep the existing single-tenant domain serving tenant 0 during cutover, e.g. `agentloop.vertexcover.io=agentloop`.
+
+### 2. DNS
+
+Point all tenant-facing names at the server IP:
+
+| Record | Type | Value |
+|---|---|---|
+| `app.<root>` | A / AAAA | server IP |
+| `*.<root>` | A / AAAA | server IP (wildcard — covers every tenant slug) |
+| `<root>` (apex) | A / AAAA | server IP (optional landing) |
+| each custom domain | A / AAAA (or CNAME) | server IP |
+
+### 3. TLS (wildcard requires DNS-01)
+
+`app.<root>` and any single custom domain obtain certs automatically over HTTP-01. The **wildcard** `*.<root>` cert **cannot** use HTTP-01 — Caddy must solve the **DNS-01** challenge, which needs:
+
+1. A Caddy binary that includes your DNS provider's module. The stock binary does not; build one with [`xcaddy`](https://caddyserver.com/docs/build#xcaddy) or download a custom build:
+   ```bash
+   xcaddy build --with github.com/caddy-dns/<provider>
+   ```
+   (e.g. `caddy-dns/cloudflare`, `caddy-dns/route53`).
+2. An API token for that provider, stored as the `CADDY_DNS_API_TOKEN` secret (or provider-specific vars), rendered into the server env.
+3. Uncomment the `tls { dns <provider> {$CADDY_DNS_API_TOKEN} }` block in `deployment/Caddyfile` and set `<provider>` to your module.
+
+If you do not need a wildcard yet, you can instead add an explicit site block per tenant slug (HTTP-01) — but that does not scale and is only a stop-gap.
+
+### 4. Validate & deploy
+
+```bash
+# Locally, before pushing — confirm the Caddyfile parses with the env set:
+ROOT_DOMAIN=<root> APP_HOST=app.<root> caddy validate --config deployment/Caddyfile --adapter caddyfile
+```
+
+Push to `main` (deploy installs the Caddyfile and reloads Caddy). Then verify resolution end-to-end:
+
+```bash
+# Admin surface up:
+curl -sI https://app.<root>/api/health
+
+# A known ACTIVE tenant resolves to its own site (Host drives the tenant):
+curl -s https://<slug>.<root>/api/branding | jq '{name, isTenantZero}'
+
+# An unknown slug leaks nothing:
+curl -s -o /dev/null -w '%{http_code}\n' https://nope.<root>/api/branding   # → 404
+```
+
+`/api/branding` should return the tenant's own `name`; two different `<slug>.<root>` hosts must return different branding and isolated archives.
 
 ## Day-to-day ops
 
@@ -168,7 +243,7 @@ docker compose --env-file /etc/newsletter/.env -f /opt/newsletter/deployment/com
 ### Tail Caddy access log
 
 ```bash
-ssh deploy@agentloop.vertexcover.io 'tail -f /var/log/caddy/agentloop.log'
+ssh deploy@agentloop.vertexcover.io 'tail -f /var/log/caddy/newsletter.log'
 ```
 
 ### Edit the Caddyfile

@@ -14,6 +14,12 @@ vi.mock("../../../../src/hooks/useTriggerSocialPost", () => ({
     isPending: false,
   }),
 }));
+vi.mock("../../../../src/hooks/useTriggerEmailSend", () => ({
+  useTriggerEmailSend: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+}));
 
 afterEach(() => {
   cleanup();

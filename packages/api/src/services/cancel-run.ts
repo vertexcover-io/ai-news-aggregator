@@ -1,6 +1,10 @@
 import type IORedis from "ioredis";
 import { runKey, runCancelChannel } from "@newsletter/shared";
 import type { RunState, RunStatus } from "@newsletter/shared";
+import {
+  isTenantContext,
+  type TenantScope,
+} from "@newsletter/shared/types/tenant-context";
 import type { RunArchivesRepo } from "@api/repositories/run-archives.js";
 
 export class CancelNotFoundError extends Error {
@@ -23,6 +27,14 @@ export interface CancelRunDeps {
   redis: IORedis;
   publisher: IORedis;
   archiveRepo: RunArchivesRepo;
+  /**
+   * Requester's tenant fence (REQ-013): when a concrete tenant context is
+   * supplied and the live state carries a DIFFERENT tenantId, the run reads
+   * as not-found — a tenant can never cancel another tenant's run. Legacy
+   * states without a tenantId stay cancellable (grandfathered); the archive
+   * fallback below is already fenced by the scoped archiveRepo.
+   */
+  requesterScope?: TenantScope;
 }
 
 export async function cancelRun(
@@ -42,6 +54,14 @@ export async function cancelRun(
   }
 
   const state = JSON.parse(raw) as RunState;
+
+  if (
+    isTenantContext(deps.requesterScope) &&
+    typeof state.tenantId === "string" &&
+    state.tenantId !== deps.requesterScope.tenantId
+  ) {
+    throw new CancelNotFoundError(runId);
+  }
 
   if (state.status === "cancelling") {
     // Already cancelling — idempotent, no re-publish

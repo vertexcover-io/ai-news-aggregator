@@ -1,13 +1,45 @@
-# Caddy reverse proxy for the newsletter app.
+# Caddy reverse proxy for the (multi-tenant) newsletter app.
 # - `/api/*` proxies to the api container on the loopback interface.
+# - The root-served llm.txt files (`/llms.txt`, `/llms-full.txt`) are produced by
+#   the API, not the SPA, so they need explicit proxy rules — otherwise they fall
+#   through to the static React build and return the index.html SPA shell.
 # - Everything else is served from the static React build at /var/www/newsletter/web.
-# - TLS is obtained automatically from Let's Encrypt on first startup.
+# - The SAME static SPA + API serve every host; the API resolves the tenant from
+#   the inbound Host header (`<slug>.<root>` → tenant by slug; `app.<root>` →
+#   admin/signup; a mapped custom domain → its tenant). Caddy's reverse_proxy
+#   preserves the inbound Host by default, so no header rewriting is needed.
+#
+# Site addresses come from env (rendered into /etc/newsletter/.env by the deploy
+# workflow; Caddy reads them as {$VAR}):
+#   ROOT_DOMAIN  e.g. agentloop.live  → serves `*.<root>` (tenant sites) + the apex
+#   APP_HOST     e.g. app.agentloop.live → admin/signup surface
+#
+# TLS:
+# - The app host (`dispatch.<root>`, from $APP_HOST) is an explicit site and
+#   gets its cert via the normal HTTP-01 challenge automatically.
+# - Tenant subdomains (`<slug>.<root>`) and tenant CUSTOM web domains have no
+#   wildcard cert; they use On-Demand TLS. Caddy mints a cert at first request
+#   for ANY host the `ask` endpoint approves (GET /internal/tls-allow?domain=…).
+#   The API approves only active-tenant slugs + VERIFIED tenant custom domains —
+#   the abuse / Let's-Encrypt rate-limit guard. A wildcard `*.<root>` site is
+#   deliberately NOT defined: a wildcard block plus the explicit hosts below is
+#   an "ambiguous site definition" to Caddy and breaks the config. (If tenant
+#   onboarding ever outpaces LE's ~50 certs/week/domain, switch to a DNS-01
+#   wildcard build instead.)
 
-agentloop.vertexcover.io {
+# On-Demand TLS: ask the API before issuing a cert for an unknown host.
+{
+	on_demand_tls {
+		ask http://127.0.0.1:3000/internal/tls-allow
+	}
+}
+
+# Shared handlers for every tenant-facing host.
+(newsletter_site) {
 	encode zstd gzip
 
 	log {
-		output file /var/log/caddy/agentloop.log {
+		output file /var/log/caddy/newsletter.log {
 			roll_size 10mb
 			roll_keep 5
 		}
@@ -18,9 +50,56 @@ agentloop.vertexcover.io {
 		reverse_proxy 127.0.0.1:3000
 	}
 
+	# llm.txt site files are served by the API (the web app is a static SPA).
+	handle /llms.txt {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	handle /llms-full.txt {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	# Per-issue llm.txt at the archive URL shape (`/archive/:runId/llms.txt`,
+	# `/archive/:runId/llms-full.txt`) is API-generated too. Only the llm.txt
+	# suffixes match here — the archive HTML pages (`/archive`, `/archive/:runId`)
+	# still fall through to the SPA below.
+	handle /archive/*/llms.txt {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	handle /archive/*/llms-full.txt {
+		reverse_proxy 127.0.0.1:3000
+	}
+
 	handle {
 		root * /var/www/newsletter/web
 		try_files {path} /index.html
 		file_server
 	}
+}
+
+# Admin / signup / product-landing surface (dispatch.<root>, from $APP_HOST).
+# Explicit site → automatic HTTP-01 cert. The API resolves the tenant from the
+# session cookie here, never the Host, and 404s public-content routes.
+{$APP_HOST} {
+	import newsletter_site
+}
+
+# Legacy/custom domain kept reachable during cutover. The API maps it to a
+# tenant via CUSTOM_DOMAIN_MAP (e.g. agentloop.vertexcover.io=agentloop).
+agentloop.vertexcover.io {
+	import newsletter_site
+}
+
+# Everything else: tenant subdomains (`<slug>.<root>`) + tenant-registered
+# custom web domains (Fix #3, Phase C). This catch-all matches any host NOT
+# matched above; On-Demand TLS gates cert issuance on the `ask` endpoint, so
+# only active-tenant slugs + verified custom domains get a cert + are served.
+# (The bare apex `<root>` falls here too; the API 404s it and the ask endpoint
+# declines it, so it simply isn't served — intentional.)
+https:// {
+	tls {
+		on_demand
+	}
+	import newsletter_site
 }

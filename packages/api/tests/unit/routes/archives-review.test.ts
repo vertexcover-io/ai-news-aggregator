@@ -22,6 +22,9 @@ function makeArchiveRow(refs: RankedItemRef[]): RunArchiveRow {
     reviewed: false,
     completedAt: date,
     createdAt: date,
+    // Non-empty so a publish passes the headline/summary guard (review.ts).
+    digestHeadline: "Generated headline",
+    digestSummary: "Generated summary",
   };
 }
 

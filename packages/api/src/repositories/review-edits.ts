@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { reviewEdits } from "@newsletter/shared/db";
-import type { AppDb } from "@newsletter/shared/db";
+import { reviewEdits, scopedTenantId, tenantScoped } from "@newsletter/shared/db";
+import type { AppDb, TenantScope } from "@newsletter/shared/db";
 import type { ReviewEditRow } from "@newsletter/shared/review-edits";
 
 /** Minimal DB interface required by this repo — also satisfied by a Drizzle tx. */
@@ -28,15 +28,16 @@ function dbRowToReviewEditRow(row: typeof reviewEdits.$inferSelect): ReviewEditR
   };
 }
 
-export function createReviewEditsRepo(db: AppDb): ReviewEditsRepo {
+export function createReviewEditsRepo(db: AppDb, ctx?: TenantScope): ReviewEditsRepo {
   return {
     async replaceForRun(runId, rows, tx) {
       const executor: DbOrTx = tx ?? db;
-      await executor.delete(reviewEdits).where(eq(reviewEdits.runId, runId));
+      await executor.delete(reviewEdits).where(tenantScoped(reviewEdits.tenantId, ctx, eq(reviewEdits.runId, runId)));
       if (rows.length > 0) {
         await executor.insert(reviewEdits).values(
           rows.map((r) => ({
             runId,
+            tenantId: scopedTenantId(ctx),
             editType: r.editType,
             rawItemId: r.rawItemId ?? undefined,
             field: r.field ?? undefined,
@@ -52,7 +53,7 @@ export function createReviewEditsRepo(db: AppDb): ReviewEditsRepo {
       const rows = await db
         .select()
         .from(reviewEdits)
-        .where(eq(reviewEdits.runId, runId))
+        .where(tenantScoped(reviewEdits.tenantId, ctx, eq(reviewEdits.runId, runId)))
         .orderBy(reviewEdits.id);
       return rows.map(dbRowToReviewEditRow);
     },

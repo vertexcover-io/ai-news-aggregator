@@ -4,6 +4,7 @@ import type IORedis from "ioredis";
 import { Hono } from "hono";
 import type { Queue, JobsOptions } from "bullmq";
 import type { RunCostBreakdown, RunState } from "@newsletter/shared";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import { listRuns } from "@api/services/run-list.js";
 import { createRunsRouter } from "@api/routes/runs.js";
 import type {
@@ -588,6 +589,46 @@ describe("listRuns", () => {
     expect(result[0].draftSavedAt).toBeNull();
   });
 
+  it("test_REQ_013_run_list_tenant_fence: skips other tenants' live Redis entries, keeps own + legacy", async () => {
+    const TENANT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const TENANT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const requesterScope: TenantContext = { tenantId: TENANT_A, role: "tenant_admin" };
+    const redisEntries = new Map<string, RedisEntry>([
+      [
+        "run:mine",
+        {
+          value: JSON.stringify(
+            runState({ id: "mine", tenantId: TENANT_A, startedAt: "2026-06-11T10:00:00.000Z" }),
+          ),
+        },
+      ],
+      [
+        "run:theirs",
+        {
+          value: JSON.stringify(
+            runState({ id: "theirs", tenantId: TENANT_B, startedAt: "2026-06-11T11:00:00.000Z" }),
+          ),
+        },
+      ],
+      [
+        // Legacy state written before the tenant stamp existed — grandfathered.
+        "run:legacy",
+        {
+          value: JSON.stringify(
+            runState({ id: "legacy", startedAt: "2026-06-11T09:00:00.000Z" }),
+          ),
+        },
+      ],
+    ]);
+    const result = await listRuns(10, {
+      redis: makeRedis(redisEntries) as unknown as IORedis,
+      archiveRepo: makeArchiveRepo([]),
+      requesterScope,
+    });
+    const ids = result.map((r) => r.runId).sort();
+    expect(ids).toEqual(["legacy", "mine"]);
+  });
+
   it("REQ-007: redis-only live summary carries all four social fields as null", async () => {
     const redisEntries = new Map<string, RedisEntry>([
       [
@@ -632,10 +673,17 @@ function makeQueueStub() {
 }
 
 describe("GET /api/runs", () => {
-  function buildApp() {
+  function buildApp(opts: { sessionTenantId?: string } = {}) {
     const entries = new Map<string, RedisEntry>();
     const app = new Hono();
     const redis = makeRedis(entries);
+    if (opts.sessionTenantId !== undefined) {
+      const tenantId = opts.sessionTenantId;
+      app.use("*", async (c, next) => {
+        c.set("tenantCtx", { userId: "u-1", tenantId, role: "tenant_admin" });
+        await next();
+      });
+    }
     app.route(
       "/api/runs",
       createRunsRouter({
@@ -673,5 +721,25 @@ describe("GET /api/runs", () => {
     const { app } = buildApp();
     const res = await app.request("/api/runs?limit=abc");
     expect(res.status).toBe(400);
+  });
+
+  it("test_REQ_013_run_list_route_passes_session_fence: another tenant's live run never appears", async () => {
+    const TENANT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const TENANT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const { app, entries } = buildApp({ sessionTenantId: TENANT_A });
+    entries.set("run:foreign-live", {
+      value: JSON.stringify(
+        runState({ id: "foreign-live", tenantId: TENANT_B, startedAt: "2026-06-11T10:00:00.000Z" }),
+      ),
+    });
+    entries.set("run:own-live", {
+      value: JSON.stringify(
+        runState({ id: "own-live", tenantId: TENANT_A, startedAt: "2026-06-11T11:00:00.000Z" }),
+      ),
+    });
+    const res = await app.request("/api/runs");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { runs: { runId: string }[] };
+    expect(body.runs.map((r) => r.runId)).toEqual(["own-live"]);
   });
 });

@@ -17,7 +17,9 @@ import type {
   HealthCheckCollector,
   CollectorHealthTrigger,
   CollectorHealthResult,
+  SettingsCollectorConfigs,
 } from "@newsletter/shared/types";
+import { settingsConfigsFromSourceRows } from "@newsletter/shared/types";
 import {
   runCollectorHealthCheck as defaultRunCollectorHealthCheck,
   type CheckableCollector,
@@ -26,20 +28,35 @@ import {
   type CollectorHealthOutcome,
 } from "@pipeline/services/collector-health/index.js";
 import type { UserSettingsRepo } from "@pipeline/repositories/user-settings.js";
-import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
 import {
-  createSocialCredentialsRepo,
-} from "@pipeline/repositories/social-credentials.js";
+  getDefaultTenantScope,
+  jobTenantContext,
+} from "@pipeline/repositories/default-tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
+import { createUserSettingsRepo } from "@pipeline/repositories/user-settings.js";
+import { createSourcesRepo } from "@pipeline/repositories/sources.js";
+import type { SourcesRepo } from "@pipeline/repositories/sources.js";
+import { createPipelineTenantsRepo } from "@pipeline/repositories/tenants.js";
+import {
+  resolveTenantNotificationChannels,
+  type TenantNotificationChannels,
+} from "@pipeline/services/tenant-notify.js";
+import {
+  createNotificationEmailSender,
+  type NotificationEmailSender,
+} from "@pipeline/services/notification-email.js";
+import { createAppCredentialsRepo } from "@pipeline/repositories/app-credentials.js";
 import { getCredentialCipher } from "@newsletter/shared/services/credential-cipher";
 import { resolveTwitterCollectorCookie } from "@pipeline/services/credential-resolver.js";
 import { runWebCrawl } from "@pipeline/services/web-crawler.js";
 import { createWebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
 import { Rettiwt } from "rettiwt-api";
-import type { UserSettings } from "@newsletter/shared";
 
 export interface CollectorHealthJobData {
   collectors?: HealthCheckCollector[];
   trigger: CollectorHealthTrigger;
+  /** Originating tenant (P9, REQ-060); legacy entries fall back to the bridge. */
+  tenantId?: string;
 }
 
 export interface CollectorHealthJobLike {
@@ -52,6 +69,21 @@ type PostToWebhookFn = typeof postToWebhook;
 
 export interface CollectorHealthJobDeps {
   userSettingsRepo: UserSettingsRepo;
+  /**
+   * Per-job settings repo factory (P9, REQ-061): when present, the handler
+   * loads settings scoped to the job's tenant (`data.tenantId`) instead of
+   * the fixed `userSettingsRepo` (kept for injected-test deps and legacy
+   * single-tenant wiring).
+   */
+  getUserSettingsRepo?: (ctx?: TenantContext) => UserSettingsRepo;
+  /**
+   * FIX #6: per-job sources repo factory. When present and the job's tenant has
+   * any source ROWS, those rows are the authoritative collector config (mirrors
+   * daily-run + GET /settings) — the health check resolves enabled targets and
+   * the probe config from the rows, NOT the (often-null on onboarded tenants)
+   * user_settings JSONB. Absent → legacy user_settings-only behavior.
+   */
+  getSourcesRepo?: (ctx?: TenantContext) => Pick<SourcesRepo, "list">;
   store: CollectorHealthStore;
   runCollectorHealthCheck: (
     collector: CheckableCollector,
@@ -61,6 +93,16 @@ export interface CollectorHealthJobDeps {
   /** Factory called per-job so credentials are always fresh (S-pipeline-03 / D-051) */
   buildHealthCheckDeps: () => Promise<HealthCheckDeps>;
   slackWebhookUrl: string | undefined;
+  /**
+   * Per-job tenant channel resolution (P16, REQ-091): when present, the
+   * failure alert goes to the JOB tenant's webhook/email instead of the
+   * fixed `slackWebhookUrl` (kept as the legacy fallback for injected test
+   * deps). Stays MARKERLESS either way (D-111).
+   */
+  resolveNotificationChannels?: (
+    ctx?: TenantContext,
+  ) => Promise<TenantNotificationChannels>;
+  notificationEmailSender?: NotificationEmailSender;
   postToWebhook: PostToWebhookFn;
   /** Emits one `collector_preflight_failed` PostHog event per failed collector. Silent no-op when PostHog is unconfigured. */
   capturePipelineEvent: (event: string, properties?: Record<string, unknown>) => void;
@@ -82,7 +124,7 @@ export interface CreateCollectorHealthWorkerOptions {
 //   We default to "day" which matches the run-process worker's behavior.
 // - web: RunSubmitWebConfig uses `RunSubmitWebSource`; HealthCheckSettings.web uses
 //   `RunSubmitWebConfig` (they share the same shape from @newsletter/shared/types).
-function buildHealthCheckSettings(settings: UserSettings): HealthCheckSettings {
+function buildHealthCheckSettings(settings: SettingsCollectorConfigs): HealthCheckSettings {
   const result: HealthCheckSettings = {};
 
   if (settings.hnConfig) {
@@ -131,7 +173,7 @@ function buildHealthCheckSettings(settings: UserSettings): HealthCheckSettings {
 }
 
 // Map "web_search" enabled flag; also handle "blog" as alias for "web"
-function resolveEnabledCollectors(settings: UserSettings): HealthCheckCollector[] {
+function resolveEnabledCollectors(settings: SettingsCollectorConfigs): HealthCheckCollector[] {
   const enabled: HealthCheckCollector[] = [];
   for (const collector of HEALTH_CHECKABLE_COLLECTORS) {
     switch (collector) {
@@ -188,16 +230,42 @@ export async function handleCollectorHealthJob(
   // failure inside the catch block.
   const payloadCollectors = job.data.collectors ?? [];
 
+  // P9 (REQ-061): scheduled entries carry the owning tenant — load THAT
+  // tenant's settings. Legacy entries (no tenantId) keep the fixed repo.
+  const tenantCtx = jobTenantContext(job.data) ?? getDefaultTenantScope();
+  // The store is tenant-scoped: results are written under the job's tenant so
+  // they surface in THAT tenant's snapshot. Manual checks always carry a
+  // tenantId (stamped by the API); the "default" fallback only ever applies to
+  // a legacy tenant-less job.
+  const storeTenantId = tenantCtx?.tenantId ?? "default";
+  const settingsRepo =
+    deps.getUserSettingsRepo !== undefined
+      ? deps.getUserSettingsRepo(tenantCtx)
+      : deps.userSettingsRepo;
+
   let settings: Awaited<ReturnType<typeof deps.userSettingsRepo.get>>;
+  // FIX #6: the collector config the check actually uses. Source rows win when
+  // the tenant has any (onboarded tenants keep config in rows with null
+  // user_settings JSONB); otherwise fall back to user_settings.
+  let effectiveConfigs: SettingsCollectorConfigs | null;
   let targets: HealthCheckCollector[];
 
   try {
-    settings = await deps.userSettingsRepo.get();
+    settings = await settingsRepo.get();
+    effectiveConfigs = settings;
+
+    const sourcesRepo = deps.getSourcesRepo?.(tenantCtx);
+    if (sourcesRepo) {
+      const rows = await sourcesRepo.list();
+      if (rows.length > 0) {
+        effectiveConfigs = settingsConfigsFromSourceRows(rows);
+      }
+    }
 
     if (payloadCollectors.length > 0) {
       targets = payloadCollectors;
-    } else if (settings !== null) {
-      targets = resolveEnabledCollectors(settings);
+    } else if (effectiveConfigs !== null) {
+      targets = resolveEnabledCollectors(effectiveConfigs);
     } else {
       targets = [];
     }
@@ -214,7 +282,7 @@ export async function handleCollectorHealthJob(
       const erroredAt = new Date().toISOString();
       await Promise.allSettled(
         payloadCollectors.map((c) =>
-          deps.store.set({
+          deps.store.set(storeTenantId, {
             collector: c,
             status: "failed",
             trigger,
@@ -248,11 +316,12 @@ export async function handleCollectorHealthJob(
   // For scheduled trigger only: write "running" state (manual already set by API)
   if (trigger === "scheduled") {
     await Promise.all(
-      targets.map((c) => deps.store.setRunning(c, "scheduled", now)),
+      targets.map((c) => deps.store.setRunning(storeTenantId, c, "scheduled", now)),
     );
   }
 
-  const healthCheckSettings = settings !== null ? buildHealthCheckSettings(settings) : {};
+  const healthCheckSettings =
+    effectiveConfigs !== null ? buildHealthCheckSettings(effectiveConfigs) : {};
 
   // Guard: if buildHealthCheckDeps throws after setRunning, write "failed" for all
   // targeted collectors so they don't stay stuck in "running" (NF1 / REQ-019).
@@ -271,7 +340,7 @@ export async function handleCollectorHealthJob(
     const erroredAt = new Date().toISOString();
     await Promise.allSettled(
       targets.map((c) =>
-        deps.store.set({
+        deps.store.set(storeTenantId, {
           collector: c,
           status: "failed",
           trigger,
@@ -305,7 +374,7 @@ export async function handleCollectorHealthJob(
           reason: outcome.reason,
           detail: outcome.detail,
         };
-        await deps.store.set(result);
+        await deps.store.set(storeTenantId, result);
         return { collector, outcome };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -322,7 +391,7 @@ export async function handleCollectorHealthJob(
           reason: msg,
           detail: null,
         };
-        await deps.store.set(failedResult);
+        await deps.store.set(storeTenantId, failedResult);
         return { collector, outcome: { status: "failed" as const, durationMs: 0, reason: msg, detail: null } };
       }
     }),
@@ -355,8 +424,59 @@ export async function handleCollectorHealthJob(
     "collector health job completed",
   );
 
-  // Post Slack alert if there are failures and webhook is configured
-  if (failures.length === 0 || deps.slackWebhookUrl === undefined || deps.slackWebhookUrl === "") {
+  if (failures.length === 0) {
+    return;
+  }
+
+  // P16 (REQ-091): resolve the JOB tenant's channels — its decrypted webhook
+  // and/or notification email; legacy wiring keeps the fixed global webhook.
+  // D-111 holds: no notification_state marker, the alert re-fires every
+  // failed check.
+  const channels: TenantNotificationChannels =
+    deps.resolveNotificationChannels !== undefined
+      ? await deps.resolveNotificationChannels(
+          jobTenantContext(job.data) ?? getDefaultTenantScope(),
+        )
+      : {
+          slackWebhookUrl: deps.slackWebhookUrl,
+          notifyEmail: undefined,
+          notifyReviewReady: true,
+          notifyErrors: true,
+        };
+
+  if (!channels.notifyErrors) {
+    log.info(
+      { event: "collector_health.alert_skipped", reason: "toggle_off", jobId: job.id },
+      "collector health alert skipped (tenant error alerts off)",
+    );
+    return;
+  }
+
+  if (
+    channels.notifyEmail !== undefined &&
+    deps.notificationEmailSender !== undefined
+  ) {
+    try {
+      await deps.notificationEmailSender.send({
+        to: channels.notifyEmail,
+        subject: "Collector health check failed",
+        text: failures
+          .map((f) => `${f.collector}: ${f.reason}`)
+          .join("\n"),
+      });
+    } catch (err) {
+      log.warn(
+        {
+          event: "collector_health.email_alert_failed",
+          error: err instanceof Error ? err.message : String(err),
+          jobId: job.id,
+        },
+        "collector health email alert failed",
+      );
+    }
+  }
+
+  if (channels.slackWebhookUrl === undefined || channels.slackWebhookUrl === "") {
     return;
   }
 
@@ -364,7 +484,7 @@ export async function handleCollectorHealthJob(
 
   try {
     const webhookResult = await deps.postToWebhook({
-      url: deps.slackWebhookUrl,
+      url: channels.slackWebhookUrl,
       blocks: message.blocks,
     });
 
@@ -416,14 +536,24 @@ export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
   const db = getDb();
 
   return {
-    userSettingsRepo: createUserSettingsRepo(db),
+    userSettingsRepo: createUserSettingsRepo(db, getDefaultTenantScope()),
+    // P9 (REQ-061): the handler prefers this factory, scoping settings to the
+    // job's tenant; the fixed repo above remains the legacy fallback.
+    getUserSettingsRepo: (ctx?: TenantContext) => createUserSettingsRepo(db, ctx),
+    // FIX #6: rows are authoritative when present — same precedence as daily-run.
+    getSourcesRepo: (ctx?: TenantContext) => createSourcesRepo(db, ctx),
     store: createCollectorHealthStore(createRedisConnection()),
     runCollectorHealthCheck: defaultRunCollectorHealthCheck,
     // Per-job factory so credentials are always fresh (S-pipeline-03 / D-051)
     buildHealthCheckDeps: async (): Promise<HealthCheckDeps> => {
-      const credentialsRepo = createSocialCredentialsRepo(getDb(), getCredentialCipher());
+      // Shared collector cookie is APP-LEVEL (P12, REQ-086) — resolved from
+      // app_credentials, never tenant-scoped.
+      const appCredentialsRepo = createAppCredentialsRepo(
+        getDb(),
+        getCredentialCipher(),
+      );
       const twitterCookie = await resolveTwitterCollectorCookie({
-        repo: credentialsRepo,
+        appRepo: appCredentialsRepo,
         env: process.env,
       });
       const tavilyApiKey = process.env.TAVILY_API_KEY;
@@ -443,6 +573,16 @@ export function buildDefaultCollectorHealthDeps(): CollectorHealthJobDeps {
       };
     },
     slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
+    // P16 (REQ-091): per-job tenant channel resolution — decrypts the JOB
+    // tenant's webhook at send time; global env webhook stays the fallback.
+    resolveNotificationChannels: (ctx?: TenantContext) =>
+      resolveTenantNotificationChannels({
+        tenantsRepo: createPipelineTenantsRepo(getDb(), ctx),
+        cipher: getCredentialCipher(),
+        env: process.env,
+        logger: createLogger("tenant-notify"),
+      }),
+    notificationEmailSender: createNotificationEmailSender(),
     postToWebhook,
     capturePipelineEvent,
     logger: createLogger("worker:collector-health"),

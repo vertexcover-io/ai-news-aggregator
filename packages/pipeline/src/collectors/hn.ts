@@ -134,15 +134,15 @@ export async function fetchHnPost(
 
 // ── Batch collection ──────────────────────────────────────────────────────────
 
-const DEFAULT_KEYWORDS = [
-  "AI", "LLM", "GPT", "machine learning", "deep learning",
-  "neural network", "transformer", "Claude", "Gemini",
-];
 const DEFAULT_POINTS_THRESHOLD = 20;
 const DEFAULT_COUNT = 100;
 const DEFAULT_COMMENTS_PER_ITEM = 20;
 const DEFAULT_FEEDS = ["newest", "best"];
 const MAX_RETRIES = 3;
+// HTTP status codes that are genuinely permanent for the Algolia API — retrying
+// them is pointless. Everything else (incl. transient 400s, 408, 429, 5xx) is
+// retried by fetchWithRetry.
+const PERMANENT_STATUSES = new Set([401, 403, 404, 410]);
 const RATE_LIMIT_MS = 500;
 
 const ALGOLIA_BASE = "https://hn.algolia.com/api/v1";
@@ -210,13 +210,21 @@ function buildKeywordParams(keywords: string[]): { query: string; optionalWords:
 }
 
 function buildSearchUrl(feed: string, config: HnCollectConfig): string {
-  const keywords = config.keywords ?? DEFAULT_KEYWORDS;
+  const keywords = config.keywords ?? [];
   const points = config.pointsThreshold ?? DEFAULT_POINTS_THRESHOLD;
   const count = config.count ?? DEFAULT_COUNT;
 
   const { query, optionalWords } = buildKeywordParams(keywords);
 
-  const numericFilters: string[] = [`points>${points}`];
+  // The relevance index (/search, used by the "best" feed) does not list
+  // `points` in its numericAttributesForFiltering and rejects a points filter
+  // with HTTP 400 — only /search_by_date (newest) supports it. Apply the
+  // points filter to the API only for newest; the best feed is post-filtered
+  // by points in code (see collectHn).
+  const numericFilters: string[] = [];
+  if (feed !== "best") {
+    numericFilters.push(`points>${points}`);
+  }
   if (config.sinceDays !== undefined && config.sinceDays > 0) {
     const cutoffSeconds = Math.floor((Date.now() - config.sinceDays * 86_400_000) / 1000);
     numericFilters.push(`created_at_i>${cutoffSeconds}`);
@@ -226,9 +234,11 @@ function buildSearchUrl(feed: string, config: HnCollectConfig): string {
     query,
     tags: "story",
     optionalWords,
-    numericFilters: numericFilters.join(","),
     hitsPerPage: String(count),
   });
+  if (numericFilters.length > 0) {
+    params.set("numericFilters", numericFilters.join(","));
+  }
 
   const endpoint = feed === "best" ? "search" : "search_by_date";
   return `${ALGOLIA_BASE}/${endpoint}?${params.toString()}`;
@@ -273,7 +283,12 @@ async function fetchWithRetry<T>(
       const response = await fetchFn(url);
       if (!response.ok) {
         const status = response.status;
-        if (status >= 400 && status < 500 && status !== 429) {
+        // Only genuinely-permanent client errors fail fast. Algolia returns
+        // sporadic 400s under load even for valid queries (verified: the exact
+        // prod query replays as 200), so 400 — along with 408/425/429/5xx — is
+        // treated as transient and retried via the backoff loop below. Without
+        // this, a one-off 400 nukes the whole HN source for the day.
+        if (status >= 400 && status < 500 && PERMANENT_STATUSES.has(status)) {
           throw new Error(`Non-retryable HTTP error: ${status}`);
         }
         throw new Error(`HTTP error: ${status}`);
@@ -336,7 +351,9 @@ function parseStories(response: AlgoliaStorySearchResponse): RawItemInsert[] {
       sourceType: "hn" as const,
       externalId: hit.objectID,
       title: hit.title,
-      url: hit.url ?? "",
+      // Ask HN / Show HN stories have no external url — fall back to the HN
+      // permalink (same convention as the single-item fetch path above).
+      url: hit.url ?? `https://news.ycombinator.com/item?id=${hit.objectID}`,
       sourceUrl: `https://news.ycombinator.com/item?id=${hit.objectID}`,
       author: hit.author ?? null,
       content: hit.story_text ?? null,
@@ -361,6 +378,25 @@ export async function collectHn(
   const startTime = Date.now();
   const baseFetch = deps.fetchFn ?? fetch;
   const fetchFn = deps.signal ? withAbortSignal(baseFetch, deps.signal) : baseFetch;
+
+  // FIX #5: HN searches Algolia by keyword and has no default keyword set. A
+  // config with no keywords collects nothing — rather than silently searching
+  // the old AI/LLM defaults — so the tenant's HN content reflects exactly what
+  // they configured in Settings.
+  if ((config.keywords ?? []).length === 0) {
+    logger.warn(
+      { event: "collector.hn.skipped", reason: "no keywords configured" },
+      "HN collection skipped: configure keywords at /admin/settings",
+    );
+    return {
+      itemsFetched: 0,
+      commentsFetched: 0,
+      itemsStored: 0,
+      durationMs: Date.now() - startTime,
+      unitResults: [],
+    };
+  }
+
   const feeds = config.feeds ?? DEFAULT_FEEDS;
   const commentsPerItem = config.commentsPerItem ?? DEFAULT_COMMENTS_PER_ITEM;
 
@@ -377,51 +413,93 @@ export async function collectHn(
   const seenIds = new Set<string>();
   const allItems: RawItemInsert[] = [];
   const unitResults: SourceUnitResult[] = [];
+  const pointsThreshold = config.pointsThreshold ?? DEFAULT_POINTS_THRESHOLD;
+  let successfulFeeds = 0;
 
   for (const feed of feeds) {
     const url = buildSearchUrl(feed, config);
     const feedStart = Date.now();
-    const response = await fetchWithRetry(fetchFn, url, parseAlgoliaStoryResponse);
-    const items = parseStories(response);
-    // Stamp the collection-unit identity so the observability items panel and
-    // per-source log strip resolve by feed (matches the unitResults identifier
-    // below — HN's URL-derived identity is always "news.ycombinator.com").
-    const sourceUnit = {
-      identifier: `hn:${feed}`,
-      displayName: `Hacker News ${feed}`,
-    };
-    let added = 0;
-    for (const item of items) {
-      if (!seenIds.has(item.externalId)) {
-        seenIds.add(item.externalId);
-        item.metadata = { ...item.metadata, comments: item.metadata?.comments ?? [], sourceUnit };
-        allItems.push(item);
-        added += 1;
+    try {
+      const response = await fetchWithRetry(fetchFn, url, parseAlgoliaStoryResponse);
+      let items = parseStories(response);
+      // The best feed has no API-side points filter (the relevance index
+      // rejects it), so enforce the threshold here to preserve the floor.
+      if (feed === "best") {
+        items = items.filter((item) => (item.engagement?.points ?? 0) > pointsThreshold);
       }
-    }
-    logger.info(
-      {
-        event: "collector.hn.feed_completed",
-        feed,
-        url,
-        sinceDays: config.sinceDays,
-        fetched: items.length,
-        added,
+      // Stamp the collection-unit identity so the observability items panel and
+      // per-source log strip resolve by feed (matches the unitResults identifier
+      // below — HN's URL-derived identity is always "news.ycombinator.com").
+      const sourceUnit = {
+        identifier: `hn:${feed}`,
+        displayName: `Hacker News ${feed}`,
+      };
+      let added = 0;
+      for (const item of items) {
+        if (!seenIds.has(item.externalId)) {
+          seenIds.add(item.externalId);
+          item.metadata = { ...item.metadata, comments: item.metadata?.comments ?? [], sourceUnit };
+          allItems.push(item);
+          added += 1;
+        }
+      }
+      logger.info(
+        {
+          event: "collector.hn.feed_completed",
+          feed,
+          url,
+          sinceDays: config.sinceDays,
+          fetched: items.length,
+          added,
+          durationMs: Date.now() - feedStart,
+        },
+        "hn feed fetched",
+      );
+      unitResults.push({
+        identifier: `hn:${feed}`,
+        displayName: `Hacker News ${feed}`,
+        itemsFetched: added,
+        status: "completed",
+        errors: [],
         durationMs: Date.now() - feedStart,
-      },
-      "hn feed fetched",
-    );
-    unitResults.push({
-      identifier: `hn:${feed}`,
-      displayName: `Hacker News ${feed}`,
-      itemsFetched: added,
-      status: "completed",
-      errors: [],
-      durationMs: Date.now() - feedStart,
-    });
+      });
+      successfulFeeds += 1;
+    } catch (err) {
+      // Cancellation must abort the whole collector, not degrade to a feed
+      // failure — propagate it so the run finalises as cancelled.
+      if (deps.signal?.aborted) throw err;
+      // A single feed failing (e.g. an Algolia 400 on one index) degrades to
+      // the surviving feeds rather than failing the entire HN source.
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(
+        {
+          event: "collector.hn.feed_failed",
+          feed,
+          url,
+          error: message,
+          durationMs: Date.now() - feedStart,
+        },
+        "hn feed failed",
+      );
+      unitResults.push({
+        identifier: `hn:${feed}`,
+        displayName: `Hacker News ${feed}`,
+        itemsFetched: 0,
+        status: "failed",
+        errors: [message],
+        durationMs: Date.now() - feedStart,
+      });
+    }
     if (feed !== feeds[feeds.length - 1]) {
       await delay(RATE_LIMIT_MS, deps.signal);
     }
+  }
+
+  // Only fail the HN source when EVERY feed failed; otherwise proceed with
+  // whatever the surviving feeds returned.
+  if (successfulFeeds === 0) {
+    const reasons = unitResults.map((u) => u.errors[0] ?? "unknown").join("; ");
+    throw new Error(`all HN feeds failed: ${reasons}`);
   }
 
   let totalComments = 0;

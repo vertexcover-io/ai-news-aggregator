@@ -21,6 +21,8 @@ import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { createCandidatesRepo } from "@pipeline/repositories/candidates.js";
 import { createRunArchivesRepo } from "@pipeline/repositories/run-archives.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import {
   getTestRedis,
   closeTestRedis,
@@ -68,6 +70,9 @@ const noopCancelSubscriber: CancelSubscriberFactory = {
   subscribe: () => Promise.resolve({ close: () => Promise.resolve() }),
 };
 
+// tenant_id is NOT NULL on raw_items/run_archives — primed before buildWorker
+let tenant: TenantContext;
+
 interface WorkerHandle {
   worker: Worker<unknown, RunProcessResult>;
   queue: Queue;
@@ -97,9 +102,9 @@ function buildWorker(
       handleRunProcessJob(
         {
           runState: runStateService,
-          rawItemsRepo: createRawItemsRepo(db),
-          candidatesRepo: createCandidatesRepo(db),
-          archiveRepo: createRunArchivesRepo(db),
+          rawItemsRepo: createRawItemsRepo(db, tenant),
+          candidatesRepo: createCandidatesRepo(db, tenant),
+          archiveRepo: createRunArchivesRepo(db, tenant),
           loadFn: loadCandidatesSince,
           shortlistFn: (candidates) =>
             Promise.resolve({ shortlist: candidates, breakdowns: [] }),
@@ -162,8 +167,9 @@ describe("cost-tracking E2E", () => {
   let db: AppDb;
   let handle: WorkerHandle;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     db = getTestDb();
+    tenant = await ensurePipelineTenant();
     handle = buildWorker(db, "cost-tracking-e2e-test");
 
     return async () => {
@@ -190,6 +196,7 @@ describe("cost-tracking E2E", () => {
         url: "https://example.com/cost-a",
         engagement: { points: 100, commentCount: 1 },
         metadata: { comments: [] },
+        tenantId: tenant.tenantId,
       },
     ]);
     const connection = getTestRedis();
@@ -289,6 +296,7 @@ describe("cost-tracking E2E", () => {
 
     await db.insert(runArchives).values({
       id: runId,
+      tenantId: tenant.tenantId,
       status: "completed",
       rankedItems: [],
       topN: 1,
@@ -296,8 +304,8 @@ describe("cost-tracking E2E", () => {
       costBreakdown: existing,
     });
 
-    const archiveRepo = createRunArchivesRepo(db);
-    const rawItemsRepo = createRawItemsRepo(db);
+    const archiveRepo = createRunArchivesRepo(db, tenant);
+    const rawItemsRepo = createRawItemsRepo(db, tenant);
 
     await hydrateAddedPost(
       "https://example.com/add-merge",
@@ -319,6 +327,7 @@ describe("cost-tracking E2E", () => {
             collectedAt: new Date(),
             engagement: { points: 0, commentCount: 0 },
             metadata: { comments: [] },
+            tenantId: tenant.tenantId,
             imageUrl: null,
             updatedAt: new Date(),
           }),
@@ -360,6 +369,7 @@ describe("cost-tracking E2E", () => {
           url: `https://example.com/unknown-${runId}`,
           engagement: { points: 50, commentCount: 1 },
           metadata: { comments: [] },
+          tenantId: tenant.tenantId,
         },
       ]);
       const connection = getTestRedis();
@@ -416,6 +426,7 @@ describe("cost-tracking E2E", () => {
           url: `https://example.com/fail-${runId}`,
           engagement: { points: 10, commentCount: 0 },
           metadata: { comments: [] },
+          tenantId: tenant.tenantId,
         },
       ]);
       const connection = getTestRedis();
@@ -472,6 +483,7 @@ describe("cost-tracking E2E", () => {
           url: `https://example.com/rank-fail-tokens-${runId}`,
           engagement: { points: 10, commentCount: 0 },
           metadata: { comments: [] },
+          tenantId: tenant.tenantId,
         },
       ]);
       const connection = getTestRedis();

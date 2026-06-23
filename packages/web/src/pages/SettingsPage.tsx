@@ -14,6 +14,7 @@ import {
   type SettingsFormValues,
   type TwitterFormConfig,
 } from "./settingsSchema";
+import { firstFieldErrorMessage } from "./settingsErrors";
 import type { RunSubmitTwitterConfig } from "@newsletter/shared";
 
 function persistedToFormTwitter(
@@ -32,10 +33,16 @@ import { ScheduleSection } from "../components/settings/ScheduleSection";
 import { AnalyticsSection } from "../components/settings/AnalyticsSection";
 import { RankingPromptSection } from "../components/settings/RankingPromptSection";
 import { ShortlistPromptSection } from "../components/settings/ShortlistPromptSection";
-import { ShortlistSizeField } from "../components/settings/ShortlistSizeField";
 import { DEFAULT_SHORTLIST_PROMPT } from "@newsletter/shared/constants";
 import { SaveBar } from "../components/settings/SaveBar";
 import { SocialCredentialsPanel } from "../components/SocialCredentialsPanel";
+import { SitePanel } from "../components/settings/SitePanel";
+import { EmailPanel } from "../components/settings/EmailPanel";
+import { WebDomainPanel } from "../components/settings/WebDomainPanel";
+import { SendingDomainPanel } from "../components/settings/SendingDomainPanel";
+import { BrandingPanel } from "../components/settings/BrandingPanel";
+import { NotificationsPanel } from "../components/settings/NotificationsPanel";
+import { FeaturesPanel } from "../components/settings/FeaturesPanel";
 
 function getDefaults(): SettingsFormValues {
   return {
@@ -87,7 +94,6 @@ export function SettingsPage(): ReactElement {
   const settingsQuery = useSettings();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
     defaultValues: getDefaults(),
@@ -162,11 +168,11 @@ export function SettingsPage(): ReactElement {
       // rejected and react-hook-form's default behaviour swallowed the
       // failure, leaving the operator with a green "All changes saved"
       // banner and no clue why nothing persisted.)
-      const firstField = Object.keys(errors)[0];
-      const firstError = firstField
-        ? (errors as Record<string, { message?: string }>)[firstField]
-        : undefined;
-      const detail = firstError?.message ?? "Please check your inputs.";
+      //
+      // Walk the whole errors tree for the first field-level message — a
+      // top-level read misses nested failures like twitterConfig.listIds[0]
+      // .value and degrades to a useless "Please check your inputs."
+      const detail = firstFieldErrorMessage(errors) ?? "Please check your inputs.";
       toast.error(`Cannot save: ${detail}`);
     },
   );
@@ -239,13 +245,38 @@ export function SettingsPage(): ReactElement {
               register={form.register}
               control={form.control}
             />
-            <ShortlistSizeField />
+            {/* REQ-094: the shortlist-size control is hidden from the tenant
+                dashboard — the form keeps the persisted value (internal
+                default for new tenants) and submits it unchanged. */}
             <ShortlistPromptSection />
             <RankingPromptSection />
           </form>
         </FormProvider>
 
+        {/* Site URL + default sending address, both zero-config (Fix #3). */}
+        <SitePanel />
+
+        {/* Bring-your-own custom web domain with automatic TLS (Fix #3, C). */}
+        <WebDomainPanel />
+
+        {/* Brand identity captured at onboarding — view + edit (FIX #1). */}
+        <BrandingPanel />
+
         <SocialCredentialsPanel />
+
+        {/* Email sending mode: managed default / own domain / own SMTP (Fix #3). */}
+        <EmailPanel />
+
+        {/* Sending-domain verification (P14, REQ-084/085): the broadcast is
+            gated on a verified domain; transactional mail stays on the
+            shared platform sender. */}
+        <SendingDomainPanel />
+
+        {/* Per-tenant notification channels (P16, REQ-090–092). */}
+        <NotificationsPanel />
+
+        {/* Optional feature flags, all off by default (P16, REQ-093). */}
+        <FeaturesPanel />
 
         <SaveBar
           formId="settings-form"

@@ -802,6 +802,10 @@ describe("PATCH /api/archives/:runId", () => {
       linkedinPostedAt: null,
       twitterPostedAt: null,
       notificationState: {},
+      // Non-empty so the publish guard (review.ts) is satisfied without the
+      // patch body re-sending the digest.
+      digestHeadline: "Generated headline",
+      digestSummary: "Generated summary",
     };
   }
 
@@ -1168,6 +1172,10 @@ describe("PATCH /api/archives/:runId — draft vs publish (Phase 1)", () => {
       notificationState: {},
       isDryRun: false,
       draftSavedAt: null,
+      // Non-empty so a publish (publish=true) passes the headline/summary guard
+      // unless a test overrides them.
+      digestHeadline: "Generated headline",
+      digestSummary: "Generated summary",
       ...overrides,
     } as RunArchiveRow;
   }

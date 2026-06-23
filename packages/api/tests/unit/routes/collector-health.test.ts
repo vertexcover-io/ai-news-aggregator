@@ -3,15 +3,18 @@ import { Hono } from "hono";
 import type { UserSettings } from "@newsletter/shared";
 import { HEALTH_CHECKABLE_COLLECTORS } from "@newsletter/shared";
 import type { CollectorHealthSnapshot } from "@newsletter/shared/types";
-import { requireAdmin } from "@api/auth/middleware.js";
+import { requireAuth } from "@api/auth/middleware.js";
 import { issueToken } from "@api/auth/session.js";
 import { createCollectorHealthRouter } from "@api/routes/collector-health.js";
 import type { CollectorHealthRouterDeps } from "@api/routes/collector-health.js";
 
 const SESSION_SECRET = "test-session-secret-32-chars-ok!";
+// The collector-health check is tenant-scoped — every request needs a session
+// tenant (the route 400s without one).
+const TEST_TENANT = "00000000-0000-4000-8000-0000000000aa";
 
 function adminCookie(): string {
-  const token = issueToken(SESSION_SECRET, Date.now());
+  const token = issueToken({ userId: "00000000-0000-4000-8000-000000000001", tenantId: TEST_TENANT, role: "tenant_admin" }, SESSION_SECRET, Date.now());
   return `admin_session=${token}`;
 }
 
@@ -25,9 +28,9 @@ function makeQueue() {
 }
 
 function makeStore() {
-  const setRunningCalls: { collector: string; trigger: string }[] = [];
-  const setRunning = vi.fn((collector: string, trigger: string, _now: Date) => {
-    setRunningCalls.push({ collector, trigger });
+  const setRunningCalls: { tenantId: string; collector: string; trigger: string }[] = [];
+  const setRunning = vi.fn((tenantId: string, collector: string, trigger: string, _now: Date) => {
+    setRunningCalls.push({ tenantId, collector, trigger });
     return Promise.resolve();
   });
 
@@ -88,7 +91,14 @@ function baseSettings(overrides: Partial<UserSettings> = {}): UserSettings {
 function buildApp(deps: CollectorHealthRouterDeps, withAuth = false): Hono {
   const app = new Hono();
   if (withAuth) {
-    app.use("/api/admin/*", requireAdmin(SESSION_SECRET));
+    app.use("/api/admin/*", requireAuth(SESSION_SECRET));
+  } else {
+    // No auth middleware in these tests — inject the session tenant the route
+    // now requires (mirrors what requireAuth would set from the cookie).
+    app.use("/api/admin/*", async (c, next) => {
+      c.set("tenantCtx", { userId: "u-test", tenantId: TEST_TENANT, role: "tenant_admin" });
+      await next();
+    });
   }
   app.route("/api/admin/collector-health", createCollectorHealthRouter(deps));
   return app;
@@ -123,9 +133,9 @@ describe("POST /api/admin/collector-health/check", () => {
     expect(body.enqueued).toEqual(["hn"]);
     expect(queue.add).toHaveBeenCalledWith(
       "collector-health",
-      { collectors: ["hn"], trigger: "manual" },
+      { collectors: ["hn"], trigger: "manual", tenantId: TEST_TENANT },
     );
-    expect(store.setRunning).toHaveBeenCalledWith("hn", "manual", expect.any(Date));
+    expect(store.setRunning).toHaveBeenCalledWith(TEST_TENANT, "hn", "manual", expect.any(Date));
   });
 
   it("REQ-002: POST with no body -> targets = all enabled collectors from settings", async () => {
@@ -178,6 +188,64 @@ describe("POST /api/admin/collector-health/check", () => {
     expect(queue.add).not.toHaveBeenCalled();
   });
 
+  it("FIX6: 'Check all' derives enabled collectors from source ROWS when present (not user_settings flags)", async () => {
+    // Onboarded shape: user_settings collector flags all off / configs null;
+    // the real config lives in source rows (reddit + web).
+    const onboarded = baseSettings({
+      hnEnabled: false,
+      redditEnabled: false,
+      webEnabled: false,
+      twitterEnabled: false,
+      webSearchEnabled: false,
+      hnConfig: null,
+      redditConfig: null,
+      webConfig: null,
+    });
+    const rows = [
+      { config: { kind: "reddit", subreddit: "LocalLLaMA" }, enabled: true },
+      { config: { kind: "web", name: "Blog", listingUrl: "https://ex.com/blog" }, enabled: true },
+    ];
+    const app = buildApp({
+      collectorHealthQueue: queue as never,
+      store,
+      getSettings: () => Promise.resolve(onboarded),
+      getSourcesRepo: () => ({ list: () => Promise.resolve(rows as never) }),
+    });
+
+    const res = await app.request("/api/admin/collector-health/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json() as { enqueued: string[] };
+    expect([...body.enqueued].sort()).toEqual(["blog", "reddit"]);
+    expect(store.setRunning).toHaveBeenCalledWith(TEST_TENANT, "reddit", "manual", expect.any(Date));
+    expect(store.setRunning).toHaveBeenCalledWith(TEST_TENANT, "blog", "manual", expect.any(Date));
+  });
+
+  it("FIX6: 'Check all' with NO source rows falls back to user_settings enabled flags (regression)", async () => {
+    const app = buildApp({
+      collectorHealthQueue: queue as never,
+      store,
+      getSettings: () => Promise.resolve(settings), // hn + reddit enabled
+      getSourcesRepo: () => ({ list: () => Promise.resolve([] as never) }),
+    });
+
+    const res = await app.request("/api/admin/collector-health/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json() as { enqueued: string[] };
+    expect(body.enqueued).toContain("hn");
+    expect(body.enqueued).toContain("reddit");
+    expect(body.enqueued).not.toContain("blog");
+  });
+
   it("EDGE-013: explicit collector is allowed even if disabled in settings", async () => {
     const noTwitter = baseSettings({ twitterEnabled: false });
     const app = buildApp({
@@ -197,7 +265,7 @@ describe("POST /api/admin/collector-health/check", () => {
     expect(body.enqueued).toEqual(["twitter"]);
     expect(queue.add).toHaveBeenCalledWith(
       "collector-health",
-      { collectors: ["twitter"], trigger: "manual" },
+      { collectors: ["twitter"], trigger: "manual", tenantId: TEST_TENANT },
     );
   });
 
@@ -302,5 +370,42 @@ describe("GET /api/admin/collector-health", () => {
     });
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe("tenant scoping", () => {
+  it("getSettings receives the SESSION tenant scope (not unscoped)", async () => {
+    const TENANT_X = "11111111-1111-1111-1111-111111111111";
+    const scopes: unknown[] = [];
+    const { Hono } = await import("hono");
+    const outer = new Hono();
+    outer.use("*", async (c, next) => {
+      c.set("tenantCtx", {
+        userId: "u1",
+        tenantId: TENANT_X,
+        role: "tenant_admin",
+      });
+      await next();
+    });
+    outer.route(
+      "/",
+      createCollectorHealthRouter({
+        collectorHealthQueue: { add: vi.fn() },
+        store: makeStore(),
+        getSettings: (scope?: unknown) => {
+          scopes.push(scope);
+          return Promise.resolve(null);
+        },
+      }),
+    );
+    const res = await outer.request("/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(202);
+    expect(scopes).toEqual([
+      { tenantId: TENANT_X, userId: "u1", role: "tenant_admin" },
+    ]);
   });
 });

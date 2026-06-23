@@ -2,6 +2,8 @@ import { type ReactElement } from "react";
 import { useSearchParams } from "react-router-dom";
 import { DeliverabilityTab } from "@/components/analytics/DeliverabilityTab";
 import { SourcesTab } from "@/components/analytics/SourcesTab";
+import { FeatureDisabledNotice } from "@/components/admin/FeatureDisabledNotice";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 
 type TabId = "deliverability" | "sources";
 
@@ -12,6 +14,11 @@ function readTab(params: URLSearchParams): TabId {
 export function AnalyticsPage(): ReactElement {
   const [params, setParams] = useSearchParams();
   const tab = readTab(params);
+  const { data: flags, isLoading: flagsLoading } = useFeatureFlags();
+  // Deliverability is flag-gated (Fix #4). Block on an explicit `false`; while
+  // the flag is still loading we render nothing for the tab rather than mount
+  // DeliverabilityTab (which would fire a request the API gate then 403s).
+  const deliverabilityDisabled = flags?.featureDeliverability === false;
 
   const setTab = (next: TabId): void => {
     const p = new URLSearchParams(params);
@@ -52,7 +59,15 @@ export function AnalyticsPage(): ReactElement {
         </TabButton>
       </div>
 
-      {tab === "deliverability" ? <DeliverabilityTab /> : <SourcesTab />}
+      {tab === "deliverability" ? (
+        deliverabilityDisabled ? (
+          <FeatureDisabledNotice featureLabel="Deliverability analytics" />
+        ) : flagsLoading ? null : (
+          <DeliverabilityTab />
+        )
+      ) : (
+        <SourcesTab />
+      )}
     </div>
   );
 }

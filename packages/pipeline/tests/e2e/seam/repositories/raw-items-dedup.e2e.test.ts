@@ -20,6 +20,8 @@ import { config } from "dotenv";
 import { resolve } from "node:path";
 import { createRawItemsRepo } from "@pipeline/repositories/raw-items.js";
 import { getTestDb, truncateAll } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import type { RawItemInsert } from "@newsletter/shared/db";
 
 config({ path: resolve(import.meta.dirname, "../../../../../.env.test") });
@@ -45,9 +47,13 @@ function makeItem(overrides: Partial<RawItemInsert> = {}): RawItemInsert {
 }
 
 describe("createRawItemsRepo.upsertItems — within-batch dedup", () => {
-  beforeAll(() => {
+  let tenant: TenantContext;
+
+  beforeAll(async () => {
     // Force connection initialization; throws if DATABASE_URL is missing
     getTestDb();
+    // tenant_id is NOT NULL — every repo write must stamp the e2e tenant
+    tenant = await ensurePipelineTenant();
   });
 
   beforeEach(async () => {
@@ -58,7 +64,7 @@ describe("createRawItemsRepo.upsertItems — within-batch dedup", () => {
   // in one batch must NOT crash. This is the exact failure mode from
   // run b91d826e.
   it("does not throw when batch contains two items with the same (sourceType, externalId)", async () => {
-    const repo = createRawItemsRepo(getTestDb());
+    const repo = createRawItemsRepo(getTestDb(), tenant);
 
     const dup1 = makeItem({ title: "First copy" });
     const dup2 = makeItem({ title: "Second copy (cross-linked)" });
@@ -74,7 +80,7 @@ describe("createRawItemsRepo.upsertItems — within-batch dedup", () => {
   // semantics, matching what ON CONFLICT DO UPDATE would have produced if
   // the duplicates had been issued as separate statements.
   it("last write wins when batch contains duplicates", async () => {
-    const repo = createRawItemsRepo(getTestDb());
+    const repo = createRawItemsRepo(getTestDb(), tenant);
 
     const first = makeItem({
       title: "First copy",
@@ -103,7 +109,7 @@ describe("createRawItemsRepo.upsertItems — within-batch dedup", () => {
   // EDGE: different externalId values in the same batch must continue
   // to work (no false-positive dedup).
   it("inserts two distinct items in the same batch without dedup", async () => {
-    const repo = createRawItemsRepo(getTestDb());
+    const repo = createRawItemsRepo(getTestDb(), tenant);
 
     const a = makeItem({
       externalId: "https://hugobowne.substack.com/p/post-a",
@@ -133,7 +139,7 @@ describe("createRawItemsRepo.upsertItems — within-batch dedup", () => {
   // EDGE: same externalId but different sourceType is NOT a duplicate
   // (the conflict target is the composite key).
   it("does not dedup when externalId matches but sourceType differs", async () => {
-    const repo = createRawItemsRepo(getTestDb());
+    const repo = createRawItemsRepo(getTestDb(), tenant);
 
     // Contrived but legal: a Reddit post and a blog post happen to share
     // the same externalId string (unlikely for URL-based IDs, but the

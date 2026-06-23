@@ -27,9 +27,26 @@ vi.mock("../../../src/api/analytics", () => ({
     }),
   ),
 }));
+vi.mock("../../../src/api/notifications", () => ({
+  getFeatureFlags: vi.fn(),
+}));
 
 import { fetchSourcesSummary } from "../../../src/api/sources";
+import { getFeatureFlags } from "../../../src/api/notifications";
 const mockFetchSources = vi.mocked(fetchSourcesSummary);
+const mockGetFeatureFlags = vi.mocked(getFeatureFlags);
+
+function flags(deliverability: boolean): {
+  featureCanon: boolean;
+  featureDeliverability: boolean;
+  featureEval: boolean;
+} {
+  return {
+    featureCanon: false,
+    featureDeliverability: deliverability,
+    featureEval: false,
+  };
+}
 
 afterEach(() => {
   cleanup();
@@ -38,6 +55,8 @@ afterEach(() => {
 
 beforeEach(() => {
   mockFetchSources.mockReset();
+  // Default: Deliverability enabled so the existing tab tests render metrics.
+  mockGetFeatureFlags.mockResolvedValue(flags(true));
 });
 
 function makeSourcesResponse(): SourcesSummaryResponse {
@@ -149,5 +168,31 @@ describe("AnalyticsPage tabs", () => {
     expect(screen.getByText(/Failures · in range/i)).toBeTruthy();
     expect(screen.getAllByText(/RSS 403/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/3 runs/i).length).toBeGreaterThan(0);
+  });
+
+  // Fix #4: Deliverability is flag-gated. When off, its tab shows the disabled
+  // notice instead of metrics; the Sources tab is unaffected.
+  it("shows the disabled notice on the Deliverability tab when the flag is off", async () => {
+    mockGetFeatureFlags.mockResolvedValue(flags(false));
+    renderAnalytics();
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: /enable in settings/i }).getAttribute("href"),
+    ).toBe("/admin/settings");
+  });
+
+  it("keeps the Sources tab working when Deliverability is off", async () => {
+    mockGetFeatureFlags.mockResolvedValue(flags(false));
+    mockFetchSources.mockResolvedValue(makeSourcesResponse());
+    renderAnalytics();
+    await screen.findByText(/Deliverability analytics is currently disabled/i);
+    fireEvent.click(screen.getByRole("tab", { name: /sources/i }));
+    await waitFor(() => {
+      expect(screen.getAllByText("Hacker News").length).toBeGreaterThan(0);
+    });
+    // The deliverability disabled notice is gone; Sources renders normally.
+    expect(
+      screen.queryByText(/Deliverability analytics is currently disabled/i),
+    ).toBeNull();
   });
 });

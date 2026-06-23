@@ -14,11 +14,17 @@ import { createSocialTokensRepo } from "@pipeline/repositories/social-tokens.js"
 import { createLinkedInApiClient, createLinkedInNotifier } from "@pipeline/social/linkedin/index.js";
 import { handleLinkedInPostJob } from "@pipeline/workers/linkedin-post.js";
 import { getTestDb } from "@pipeline-tests/e2e/setup/test-db.js";
+import { ensurePipelineTenant } from "@pipeline-tests/e2e/setup/tenant.js";
+import type { TenantContext } from "@newsletter/shared/types/tenant-context";
 import { closeTestRedis } from "@pipeline-tests/e2e/setup/test-redis.js";
 import type { AppDb, RawItemInsert } from "@newsletter/shared/db";
 import type { SocialMetadata } from "@newsletter/shared";
 
 config({ path: resolve(import.meta.dirname, "../../../../../../.env.test") });
+
+// social_tokens are encrypted at rest — the cipher KEK derives from
+// SESSION_SECRET (>=32 bytes), which .env.test does not provide.
+process.env.SESSION_SECRET ??= "test-session-secret-please-do-not-use-in-prod";
 
 const LINKEDIN_POSTS_URL = "https://api.linkedin.com/rest/posts";
 const LINKEDIN_SOCIAL_ACTIONS_URL = "https://api.linkedin.com/rest/socialActions/";
@@ -53,6 +59,10 @@ async function loadArchiveSocialState(
   return row;
 }
 
+// tenant_id is NOT NULL on raw_items/run_archives/social_tokens — all seeds
+// and repos stamp this tenant
+let tenant: TenantContext;
+
 async function seedReviewedArchive(
   db: AppDb,
   options: {
@@ -63,6 +73,7 @@ async function seedReviewedArchive(
 ): Promise<string> {
   const runId = randomUUID();
   const raw: RawItemInsert = {
+    tenantId: tenant.tenantId,
     sourceType: "hn",
     externalId: `linkedin-worker-${runId}`,
     title: "Agent benchmarks reshape enterprise buying",
@@ -87,6 +98,7 @@ async function seedReviewedArchive(
 
   await db.insert(runArchives).values({
     id: runId,
+    tenantId: tenant.tenantId,
     status: "completed",
     rankedItems: [
       {
@@ -109,7 +121,7 @@ async function seedReviewedArchive(
 }
 
 async function seedLinkedInToken(db: AppDb): Promise<void> {
-  await createSocialTokensRepo(db, getCredentialCipher()).saveToken("linkedin", {
+  await createSocialTokensRepo(db, getCredentialCipher(), tenant).saveToken("linkedin", {
     accessToken: "linkedin-access-token",
     refreshToken: "",
     expiresAt: new Date(Date.now() + 60 * 60 * 1000),
@@ -121,8 +133,9 @@ describe("linkedin-post worker e2e", () => {
   let db: AppDb;
   let linkedInRequests: readonly string[];
 
-  beforeAll(() => {
+  beforeAll(async () => {
     db = getTestDb();
+    tenant = await ensurePipelineTenant();
     server.listen({ onUnhandledRequest: "error" });
   });
 
@@ -162,12 +175,12 @@ describe("linkedin-post worker e2e", () => {
       }),
     );
 
-    const archiveRepo = createRunArchivesRepo(db);
+    const archiveRepo = createRunArchivesRepo(db, tenant);
     const notifier = createLinkedInNotifier({
       apiClient: createLinkedInApiClient(),
       archives: archiveRepo,
-      rawItems: createRawItemsRepo(db),
-      tokens: createSocialTokensRepo(db, getCredentialCipher()),
+      rawItems: createRawItemsRepo(db, tenant),
+      tokens: createSocialTokensRepo(db, getCredentialCipher(), tenant),
       config: {
         clientId: "linkedin-client-id",
         clientSecret: "linkedin-client-secret",
@@ -209,12 +222,12 @@ describe("linkedin-post worker e2e", () => {
       }),
     );
 
-    const archiveRepo = createRunArchivesRepo(db);
+    const archiveRepo = createRunArchivesRepo(db, tenant);
     const notifier = createLinkedInNotifier({
       apiClient: createLinkedInApiClient(),
       archives: archiveRepo,
-      rawItems: createRawItemsRepo(db),
-      tokens: createSocialTokensRepo(db, getCredentialCipher()),
+      rawItems: createRawItemsRepo(db, tenant),
+      tokens: createSocialTokensRepo(db, getCredentialCipher(), tenant),
       config: {
         clientId: "linkedin-client-id",
         clientSecret: "linkedin-client-secret",
@@ -259,12 +272,12 @@ describe("linkedin-post worker e2e", () => {
       }),
     );
 
-    const archiveRepo = createRunArchivesRepo(db);
+    const archiveRepo = createRunArchivesRepo(db, tenant);
     const notifier = createLinkedInNotifier({
       apiClient: createLinkedInApiClient(),
       archives: archiveRepo,
-      rawItems: createRawItemsRepo(db),
-      tokens: createSocialTokensRepo(db, getCredentialCipher()),
+      rawItems: createRawItemsRepo(db, tenant),
+      tokens: createSocialTokensRepo(db, getCredentialCipher(), tenant),
       config: {
         clientId: "linkedin-client-id",
         clientSecret: "linkedin-client-secret",
@@ -308,13 +321,13 @@ describe("linkedin-post worker e2e", () => {
       }),
     );
 
-    const archiveRepo = createRunArchivesRepo(db);
+    const archiveRepo = createRunArchivesRepo(db, tenant);
     const makeNotifier = () =>
       createLinkedInNotifier({
         apiClient: createLinkedInApiClient(),
         archives: archiveRepo,
-        rawItems: createRawItemsRepo(db),
-        tokens: createSocialTokensRepo(db, getCredentialCipher()),
+        rawItems: createRawItemsRepo(db, tenant),
+        tokens: createSocialTokensRepo(db, getCredentialCipher(), tenant),
         config: {
           clientId: "linkedin-client-id",
           clientSecret: "linkedin-client-secret",
@@ -355,12 +368,12 @@ describe("linkedin-post worker e2e", () => {
       }),
     );
 
-    const archiveRepo = createRunArchivesRepo(db);
+    const archiveRepo = createRunArchivesRepo(db, tenant);
     const notifier = createLinkedInNotifier({
       apiClient: createLinkedInApiClient(),
       archives: archiveRepo,
-      rawItems: createRawItemsRepo(db),
-      tokens: createSocialTokensRepo(db, getCredentialCipher()),
+      rawItems: createRawItemsRepo(db, tenant),
+      tokens: createSocialTokensRepo(db, getCredentialCipher(), tenant),
       config: {
         clientId: "linkedin-client-id",
         clientSecret: "linkedin-client-secret",

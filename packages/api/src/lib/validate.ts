@@ -113,11 +113,18 @@ const webSearchConfigSchema = z.object({
   queries: z.array(webSearchQueryConfigSchema).max(25),
 });
 
+// FIX #5: HN searches Algolia by keyword and has no default keyword set, so an
+// HN config saved from Settings must carry at least one keyword (run-submit
+// keeps the looser hnConfigSchema). Mirrors redditConfigSchema.subreddits.min(1).
+const settingsHnConfigSchema = hnConfigSchema.extend({
+  keywords: z.array(z.string().min(1)).min(1),
+});
+
 const userSettingsCommonShape = {
   topN: z.number().int().min(1).max(50),
   halfLifeHours: z.number().positive().nullable(),
   hnEnabled: z.boolean(),
-  hnConfig: hnConfigSchema.nullable(),
+  hnConfig: settingsHnConfigSchema.nullable(),
   redditEnabled: z.boolean(),
   redditConfig: redditConfigSchema.nullable(),
   webEnabled: z.boolean(),
@@ -385,6 +392,18 @@ export const regenerateDigestMetaSchema = z.object({
 
 export const addPostSchema = z.object({
   url: z.url(),
+});
+
+/** Chrome extension login — per-user email + password (multi-tenant). */
+export const extensionLoginSchema = z.object({
+  email: z.email().trim().max(320),
+  password: z.string().min(1).max(200),
+});
+
+/** Chrome extension URL submission. Title is the page title (optional). */
+export const submitUrlSchema = z.object({
+  url: z.url(),
+  title: z.string().min(1).max(200).optional(),
 });
 
 export const socialChannelSchema = z.enum(["linkedin", "twitter"]);

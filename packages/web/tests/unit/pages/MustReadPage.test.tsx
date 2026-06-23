@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { PublicMustReadEntry } from "@newsletter/shared/types";
 import { MustReadPage } from "../../../src/pages/MustReadPage";
 import { PublicLayout } from "../../../src/layouts/PublicLayout";
+import { AGENTLOOP_BRANDING } from "../../helpers/branding";
 
 vi.mock("../../../src/api/must-read", () => ({
   listMustRead: vi.fn(),
@@ -12,6 +13,10 @@ vi.mock("../../../src/api/must-read", () => ({
 
 vi.mock("../../../src/api/subscribe", () => ({
   postSubscribe: vi.fn(),
+}));
+
+vi.mock("../../../src/api/branding", () => ({
+  getBranding: vi.fn(() => Promise.resolve(AGENTLOOP_BRANDING)),
 }));
 
 vi.mock("../../../src/lib/analytics", () => ({
@@ -48,6 +53,7 @@ function renderPage(entries: PublicMustReadEntry[]): ReturnType<typeof render> {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
+  qc.setQueryData(["branding"], AGENTLOOP_BRANDING);
   qc.setQueryData(["must-read", "list"], entries);
   return render(
     <QueryClientProvider client={qc}>
