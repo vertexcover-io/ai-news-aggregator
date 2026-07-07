@@ -48,6 +48,8 @@ pnpm dev              # Start all packages in dev mode (via Turborepo)
 pnpm build            # Build all packages
 pnpm lint             # Lint all packages (ESLint)
 pnpm typecheck        # Type check all packages
+pnpm test:unit        # Unit tests across all packages (Vitest, --project unit)
+pnpm test:e2e         # E2E tests across all packages (Vitest seam/crawler projects + Playwright for web/extension)
 pnpm infra:up         # Start local PostgreSQL + Redis via podman-compose
 pnpm infra:down       # Stop local infrastructure
 pnpm infra:reset      # Wipe volumes and restart infrastructure
@@ -59,6 +61,17 @@ pnpm --filter @newsletter/shared db:migrate    # Apply migrations
 # Ranking eval (offline)
 pnpm --filter @newsletter/pipeline eval:ranking
 ```
+
+### Running a single test
+
+Scope to one package with `--filter`, then pass Vitest args after `--`:
+
+```bash
+pnpm --filter @newsletter/api test:unit -- path/to/file.test.ts
+pnpm --filter @newsletter/pipeline test:unit -- -t "test name"
+```
+
+`web` and `extension` e2e suites run via `node tests/e2e/run-e2e.mjs` (Playwright), not Vitest — check that script for how to target a single spec.
 
 Pre-commit hooks (Husky + lint-staged) run lint + typecheck on staged files automatically.
 

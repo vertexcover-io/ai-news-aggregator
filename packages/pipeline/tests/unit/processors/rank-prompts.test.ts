@@ -96,8 +96,8 @@ describe("rank prompts", () => {
       expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("≤25 words");
     });
 
-    it("requires exactly 3 bullets", () => {
-      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("Exactly 3");
+    it("caps bullets at up to 3", () => {
+      expect(RANK_SYSTEM_PROMPT_NO_PROFILE).toContain("Up to 3");
     });
 
     it("imposes a ≤15 word cap per bullet", () => {

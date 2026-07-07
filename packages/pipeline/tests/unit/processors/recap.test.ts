@@ -138,7 +138,7 @@ describe("generateRecap", () => {
     expect(RECAP_SYSTEM_PROMPT).toContain("summary = ORIENT");
     expect(RECAP_SYSTEM_PROMPT).toContain("bullets = EXPLAIN");
     expect(RECAP_SYSTEM_PROMPT).toContain("bottomLine = INTERPRET");
-    expect(RECAP_SYSTEM_PROMPT).toContain("Exactly 3");
+    expect(RECAP_SYSTEM_PROMPT).toContain("Up to 3");
     expect(RECAP_SYSTEM_PROMPT).toContain(
       "Each bullet must add new information not already stated in the summary",
     );
