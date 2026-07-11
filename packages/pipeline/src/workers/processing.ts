@@ -107,6 +107,7 @@ import { createRettiwtClient } from "@pipeline/collectors/twitter/clients/rettiw
 import { refreshRettiwtCsrfToken } from "@pipeline/collectors/twitter/clients/rettiwt-auth.js";
 import type { TwitterClient } from "@pipeline/collectors/twitter/types.js";
 import { collectWebSearch } from "@pipeline/collectors/web-search/index.js";
+import { collectYoutube } from "@pipeline/collectors/youtube.js";
 import { createWebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
 import { Rettiwt } from "rettiwt-api";
 import { rankCandidates } from "@pipeline/processors/rank.js";
@@ -300,6 +301,7 @@ async function buildDefaultRunProcessDeps(
     web: collectWeb,
     twitter: collectTwitter,
     webSearch: collectWebSearch,
+    youtube: collectYoutube,
   };
   // Per-job factory: resolves the SHARED collector cookie from the app-level
   // `app_credentials` store first (super-admin managed, P12 REQ-086), falling

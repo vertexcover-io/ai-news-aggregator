@@ -38,6 +38,7 @@ import { collectReddit } from "@pipeline/collectors/reddit.js";
 import { collectWeb } from "@pipeline/collectors/web.js";
 import { collectTwitter } from "@pipeline/collectors/twitter/index.js";
 import { collectWebSearch } from "@pipeline/collectors/web-search/index.js";
+import { collectYoutube } from "@pipeline/collectors/youtube.js";
 import type { WebSearchProvider } from "@pipeline/collectors/web-search/providers/index.js";
 import type { ErrorAlerter } from "@pipeline/services/error-alerts.js";
 import type { NotificationEmailSender } from "@pipeline/services/notification-email.js";
@@ -60,6 +61,7 @@ import type {
   RedditCollectConfig,
   TwitterCollectConfig,
   WebCollectConfig,
+  YoutubeCollectConfig,
 } from "@pipeline/types.js";
 import type { RunSubmitWebSearchConfig } from "@newsletter/shared/types";
 import type { CollectorResult } from "@newsletter/shared";
@@ -116,6 +118,7 @@ export interface RunCollectorsPayload {
   web?: WebCollectConfig;
   twitter?: TwitterCollectConfig;
   webSearch?: RunSubmitWebSearchConfig;
+  youtube?: YoutubeCollectConfig;
 }
 
 export interface RunProcessJobData {
@@ -202,12 +205,21 @@ export type WebSearchCollectFn = (
   config: RunSubmitWebSearchConfig,
 ) => Promise<CollectorResult>;
 
+export type YoutubeCollectFn = (
+  deps: {
+    rawItemsRepo: ReturnType<typeof createRawItemsRepo>;
+    signal?: AbortSignal;
+  },
+  config: YoutubeCollectConfig,
+) => Promise<CollectorResult>;
+
 export interface CollectFns {
   hn: HnCollectFn;
   reddit: RedditCollectFn;
   web: WebCollectFn;
   twitter: TwitterCollectFn;
   webSearch: WebSearchCollectFn;
+  youtube: YoutubeCollectFn;
 }
 
 export interface RunProcessDeps {
@@ -399,6 +411,13 @@ async function runCollecting(
       { source: "web_search" },
       "web_search collector requested but no provider configured (TAVILY_API_KEY missing)",
     );
+  }
+  if (collectors.youtube) {
+    const config = collectors.youtube;
+    tasks.push({
+      sourceKey: "youtube",
+      run: () => deps.collectFns.youtube(collectorDeps, config),
+    });
   }
 
   const errors: string[] = [];
@@ -1165,6 +1184,7 @@ export function buildRunProcessDepsForJob(
     web: options.collectFns?.web ?? collectWeb,
     twitter: options.collectFns?.twitter ?? collectTwitter,
     webSearch: options.collectFns?.webSearch ?? collectWebSearch,
+    youtube: options.collectFns?.youtube ?? collectYoutube,
   };
 
   // Per-job factory: resolves the SHARED collector cookie from the app-level

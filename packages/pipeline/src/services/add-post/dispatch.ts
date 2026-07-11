@@ -19,13 +19,19 @@ import {
   type FetchTwitterPostDeps,
   type RettiwtTweetFacade,
 } from "@pipeline/collectors/twitter/index.js";
+import {
+  fetchYoutubePost as defaultFetchYoutubePost,
+  parseYoutubeVideoIdFromUrl,
+  type FetchYoutubePostDeps,
+} from "@pipeline/collectors/youtube.js";
 
-export type AddPostSourceType = "hn" | "reddit" | "twitter" | "web";
+export type AddPostSourceType = "hn" | "reddit" | "twitter" | "youtube" | "web";
 
 export function detectAddPostSourceType(url: string): AddPostSourceType {
   if (parseTweetIdFromUrl(url) !== null) return "twitter";
   if (parseHnItemIdFromUrl(url) !== null) return "hn";
   if (parseRedditPostUrl(url) !== null) return "reddit";
+  if (parseYoutubeVideoIdFromUrl(url) !== null) return "youtube";
   return "web";
 }
 
@@ -42,6 +48,10 @@ export interface DispatchFetchDeps {
   fetchTwitterPost?: (
     url: string,
     deps?: FetchTwitterPostDeps,
+  ) => Promise<RawItemInsert>;
+  fetchYoutubePost?: (
+    url: string,
+    deps?: FetchYoutubePostDeps,
   ) => Promise<RawItemInsert>;
   fetchFn?: typeof fetch;
   signal?: AbortSignal;
@@ -78,6 +88,10 @@ export async function dispatchFetch(
     }
     case "web": {
       const fn = deps.fetchWebPost ?? defaultFetchWebPost;
+      return fn(url, forwarded);
+    }
+    case "youtube": {
+      const fn = deps.fetchYoutubePost ?? defaultFetchYoutubePost;
       return fn(url, forwarded);
     }
     default: {

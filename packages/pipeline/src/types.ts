@@ -46,3 +46,15 @@ export interface CollectorFailure {
 export interface WebCollectorResult extends CollectorResult {
   failures?: CollectorFailure[];
 }
+
+export interface YoutubeChannelSource {
+  name: string;
+  /** Channel ID, @handle, or channel URL — resolved to a UC… id by the collector. */
+  channelRef: string;
+}
+
+export interface YoutubeCollectConfig {
+  channels: YoutubeChannelSource[];
+  maxItems: number;
+  sinceDays?: number;
+}
