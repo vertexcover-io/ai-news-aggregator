@@ -73,6 +73,8 @@ export interface RawItemMetadata {
   provider?: string;
   query?: string;
   rawScore?: number;
+  // youtube collector fields
+  channelId?: string;
 }
 
 export interface SourceUnitResult {

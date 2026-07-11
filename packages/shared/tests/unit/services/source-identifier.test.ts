@@ -8,7 +8,7 @@ interface Case {
   readonly sourceType: SourceType;
   readonly url: string | null;
   readonly sourceUrl?: string | null;
-  readonly metadata?: { readonly query?: string } | null;
+  readonly metadata?: { readonly query?: string; readonly channelId?: string } | null;
   readonly expected: string;
 }
 
@@ -39,6 +39,8 @@ const cases: readonly Case[] = [
   { name: "rss invalid URL returns unknown", sourceType: "rss", url: "not-a-url", sourceUrl: null, expected: "unknown" },
   { name: "manual falls back to hostname", sourceType: "manual", url: "https://example.com/article", expected: "example.com" },
   { name: "manual null url returns unknown", sourceType: "manual", url: null, sourceUrl: null, expected: "unknown" },
+  { name: "youtube uses metadata.channelId when present", sourceType: "youtube", url: "https://www.youtube.com/watch?v=abc", metadata: { channelId: "UCbfYPyITQ-7l4upoX8nvctg" }, expected: "youtube:UCbfYPyITQ-7l4upoX8nvctg" },
+  { name: "youtube no metadata falls back to hostname", sourceType: "youtube", url: "https://www.youtube.com/watch?v=abc", expected: "youtube.com" },
 ];
 
 describe("deriveRawItemIdentifier", () => {
@@ -66,6 +68,7 @@ describe("SOURCE_TYPE_SECTION_LABELS", () => {
       blog: "Engineering Blogs",
       newsletter: "Newsletters",
       web_search: "Web Search",
+      youtube: "YouTube",
       manual: "Manually added",
     });
   });

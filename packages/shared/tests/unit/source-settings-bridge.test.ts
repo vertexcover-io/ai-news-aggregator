@@ -71,6 +71,21 @@ describe("settingsConfigsFromSourceRows", () => {
     expect(collectorsFromSources(rows.map((r) => r.config)).twitter).toBeUndefined();
   });
 
+  // Youtube is rows-only (no legacy user_settings JSONB column, added after
+  // the P8 lift) — this bridge only ever knows the 5 legacy-backed types, so
+  // a youtube row must be silently excluded here, not surfaced or errored.
+  // The PUT /settings route is responsible for NOT letting `replaceAll`
+  // (driven by `sourceRowsFromSettings`) delete such rows on a plain save —
+  // see packages/api/src/routes/settings.ts.
+  it("silently excludes youtube rows — they have no legacy bridge field", () => {
+    const configs = settingsConfigsFromSourceRows([
+      row({ kind: "youtube", name: "Two Minute Papers", channelRef: "UCabc" }),
+      row({ kind: "reddit", subreddit: "LocalLLaMA", sinceDays: 1 }),
+    ]);
+    expect(configs.redditConfig).toEqual({ subreddits: ["LocalLLaMA"], sinceDays: 1 });
+    expect(Object.keys(configs)).not.toContain("youtubeConfig");
+  });
+
   it("returns all-null / all-false for an empty tenant", () => {
     const configs = settingsConfigsFromSourceRows([]);
     expect(configs).toEqual({

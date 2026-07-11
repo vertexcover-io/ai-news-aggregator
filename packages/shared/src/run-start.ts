@@ -9,7 +9,7 @@ const TTL_SECONDS = 3600;
 export interface RunProcessJobPayload {
   runId: string;
   topN: number;
-  sourceTypes: ("hn" | "reddit" | "blog" | "twitter" | "web_search" | "manual")[];
+  sourceTypes: ("hn" | "reddit" | "blog" | "twitter" | "web_search" | "youtube" | "manual")[];
   collectors: RunCollectorsPayload;
   halfLifeHours?: number;
   dryRun?: boolean;
@@ -74,6 +74,9 @@ export async function startRun(
     : settings.webSearchEnabled && settings.webSearchConfig
       ? settings.webSearchConfig
       : null;
+  // Youtube has no legacy user_settings JSONB column — it only ever arrives
+  // via the sources-ROWS override (collectorsFromSources), never from `settings`.
+  const youtubeConfig = override ? (override.youtube ?? null) : null;
 
   const sources: RunState["sources"] = {};
   if (hnConfig) {
@@ -90,6 +93,9 @@ export async function startRun(
   }
   if (webSearchConfig) {
     sources.web_search = { status: "pending", itemsFetched: 0, errors: [] };
+  }
+  if (youtubeConfig) {
+    sources.youtube = { status: "pending", itemsFetched: 0, errors: [] };
   }
 
   const initial: RunState = {
@@ -138,6 +144,10 @@ export async function startRun(
   if (webSearchConfig) {
     sourceTypes.push("web_search");
     collectors.webSearch = webSearchConfig;
+  }
+  if (youtubeConfig) {
+    sourceTypes.push("youtube");
+    collectors.youtube = youtubeConfig;
   }
 
   const jobPayload: RunProcessJobPayload = {

@@ -9,6 +9,7 @@ export const SOURCE_TYPE_SECTION_LABELS: Record<SourceType, string> = {
   blog: "Engineering Blogs",
   newsletter: "Newsletters",
   web_search: "Web Search",
+  youtube: "YouTube",
   manual: "Manually added",
 };
 
@@ -21,5 +22,6 @@ export const SOURCE_TYPE_ORDER: readonly SourceType[] = [
   "blog",
   "newsletter",
   "web_search",
+  "youtube",
   "manual",
 ] as const;

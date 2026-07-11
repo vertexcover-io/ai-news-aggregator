@@ -5,7 +5,7 @@ interface DeriveArgs {
   readonly sourceType: SourceType;
   readonly url: string | null;
   readonly sourceUrl: string | null;
-  readonly metadata?: Pick<RawItemMetadata, "query"> | null;
+  readonly metadata?: Pick<RawItemMetadata, "query" | "channelId"> | null;
 }
 
 function hostname(url: string | null): string | null {
@@ -66,6 +66,12 @@ export function deriveRawItemIdentifier(args: DeriveArgs): string {
       const query = args.metadata?.query?.trim();
       if (query) return query;
       return "web search";
+    }
+
+    case "youtube": {
+      const channelId = args.metadata?.channelId;
+      if (channelId) return `youtube:${channelId}`;
+      return hostnameFallback(args);
     }
 
     case "manual":

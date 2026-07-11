@@ -103,6 +103,7 @@ export interface RunState {
     blog?: SourceRunState;
     twitter?: SourceRunState;
     web_search?: SourceRunState;
+    youtube?: SourceRunState;
   };
   rankedItems: RankedItemRef[] | null;
   shortlistedItemIds: number[] | null;
@@ -173,12 +174,25 @@ export interface RunSubmitWebSearchConfig {
   queries: WebSearchQueryConfig[];
 }
 
+export interface RunSubmitYoutubeChannel {
+  name: string;
+  /** Channel ID, @handle, or channel URL — resolved to a UC… id by the collector. */
+  channelRef: string;
+}
+
+export interface RunSubmitYoutubeConfig {
+  channels: RunSubmitYoutubeChannel[];
+  maxItems: number;
+  sinceDays?: number;
+}
+
 export interface RunCollectorsPayload {
   hn?: RunSubmitHnConfig;
   reddit?: RunSubmitRedditConfig;
   web?: RunSubmitWebConfig;
   twitter?: RunSubmitTwitterConfig;
   webSearch?: RunSubmitWebSearchConfig;
+  youtube?: RunSubmitYoutubeConfig;
 }
 
 export interface RunSubmitPayload {
@@ -213,7 +227,7 @@ export interface PoolResponse {
 }
 
 export interface SourceTelemetryEntry {
-  sourceType: "hn" | "reddit" | "blog" | "twitter" | "web_search";
+  sourceType: "hn" | "reddit" | "blog" | "twitter" | "web_search" | "youtube";
   identifier: string;
   displayName: string;
   itemsFetched: number;

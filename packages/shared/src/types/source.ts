@@ -22,6 +22,7 @@ import type {
   RunSubmitWebConfig,
   RunSubmitWebSearchConfig,
   RunSubmitWebSource,
+  RunSubmitYoutubeChannel,
   WebSearchQueryConfig,
 } from "./run.js";
 
@@ -81,13 +82,29 @@ export interface WebSearchSourceConfig {
   maxItems: number;
 }
 
+/**
+ * One YouTube channel per row. Rows-only — unlike hn/reddit/web/twitter/
+ * web_search there is no legacy `user_settings` JSONB column for this type
+ * (it was added after the P8 lift), so it never round-trips through
+ * `settingsConfigsFromSourceRows`/`sourceRowsFromSettings` below.
+ */
+export interface YoutubeSourceConfig {
+  kind: "youtube";
+  name: string;
+  /** Channel ID, @handle, or channel URL — resolved to a UC… id by the collector. */
+  channelRef: string;
+  maxItems?: number;
+  sinceDays?: number;
+}
+
 export type SourceConfig =
   | HnSourceConfig
   | RedditSourceConfig
   | TwitterUserSourceConfig
   | TwitterListSourceConfig
   | WebSourceConfig
-  | WebSearchSourceConfig;
+  | WebSearchSourceConfig
+  | YoutubeSourceConfig;
 
 /** Last health-check snapshot for a source row (populated by collector health). */
 export interface SourceHealth {
@@ -118,6 +135,7 @@ export const MANUAL_SOURCE_TYPES = [
   "hn",
   "twitter",
   "web_search",
+  "youtube",
 ] as const satisfies readonly SourceType[];
 
 export type ManualSourceType = (typeof MANUAL_SOURCE_TYPES)[number];
@@ -142,6 +160,23 @@ function requireListingUrl(value: string): string {
     throw new Error(`invalid listing URL: ${trimmed}`);
   }
   return trimmed;
+}
+
+/**
+ * Best-effort display name from a pasted channel ID / @handle / channel URL —
+ * no network call here (buildSourceConfig is synchronous); the collector
+ * resolves the actual channel identity at collect time.
+ */
+function deriveYoutubeName(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("@")) return trimmed;
+  try {
+    const u = new URL(trimmed);
+    const segment = u.pathname.split("/").filter(Boolean).pop();
+    return segment ?? u.hostname;
+  } catch {
+    return trimmed;
+  }
 }
 
 /**
@@ -180,6 +215,10 @@ export function buildSourceConfig(
         sinceDays: 7,
         maxItems: 10,
       };
+    case "youtube": {
+      const channelRef = requireValue(value, "channel");
+      return { kind: "youtube", name: deriveYoutubeName(channelRef), channelRef };
+    }
     case "blog":
     case "rss":
     case "newsletter":
@@ -192,6 +231,9 @@ export function buildSourceConfig(
 
 /** Web collector default page budget when no row specifies one (UI default). */
 const DEFAULT_WEB_MAX_ITEMS = 10;
+
+/** Youtube collector default per-channel video budget when no row specifies one. */
+const DEFAULT_YOUTUBE_MAX_ITEMS = 10;
 
 function firstDefined<T>(values: (T | undefined)[]): T | undefined {
   return values.find((v) => v !== undefined);
@@ -297,6 +339,28 @@ export function collectorsFromSources(
     collectors.webSearch = { provider: "tavily", queries };
   }
 
+  const youtube = rowConfigs.filter(
+    (c): c is YoutubeSourceConfig => c.kind === "youtube",
+  );
+  if (youtube.length > 0) {
+    const maxItemsValues = youtube
+      .map((y) => y.maxItems)
+      .filter((v): v is number => v !== undefined);
+    const sinceDays = firstDefined(youtube.map((y) => y.sinceDays));
+    const channels: RunSubmitYoutubeChannel[] = youtube.map((y) => ({
+      name: y.name,
+      channelRef: y.channelRef,
+    }));
+    collectors.youtube = {
+      channels,
+      maxItems:
+        maxItemsValues.length > 0
+          ? Math.max(...maxItemsValues)
+          : DEFAULT_YOUTUBE_MAX_ITEMS,
+      ...(sinceDays !== undefined ? { sinceDays } : {}),
+    };
+  }
+
   return collectors;
 }
 
@@ -307,7 +371,8 @@ export function hasAnyCollector(collectors: RunCollectorsPayload): boolean {
     collectors.reddit !== undefined ||
     collectors.web !== undefined ||
     collectors.twitter !== undefined ||
-    collectors.webSearch !== undefined
+    collectors.webSearch !== undefined ||
+    collectors.youtube !== undefined
   );
 }
 
@@ -326,6 +391,8 @@ export function sourceDisplayName(config: SourceConfig): string {
       return config.name;
     case "web_search":
       return `“${config.query}”`;
+    case "youtube":
+      return config.name;
   }
 }
 

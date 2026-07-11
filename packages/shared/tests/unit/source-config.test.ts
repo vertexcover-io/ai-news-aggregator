@@ -49,8 +49,26 @@ describe("test_REQ_072_build_source_config_from_manual_input", () => {
         maxItems: 10,
       },
     ],
+    [
+      "youtube",
+      "@lexfridman",
+      { kind: "youtube", name: "@lexfridman", channelRef: "@lexfridman" },
+    ],
+    [
+      "youtube",
+      "https://www.youtube.com/channel/UCbfYPyITQ-7l4upoX8nvctg",
+      {
+        kind: "youtube",
+        name: "UCbfYPyITQ-7l4upoX8nvctg",
+        channelRef: "https://www.youtube.com/channel/UCbfYPyITQ-7l4upoX8nvctg",
+      },
+    ],
   ] as const)("%s + %j → config", (type, value, expected) => {
     expect(buildSourceConfig(type, value)).toEqual(expected);
+  });
+
+  it("rejects an empty value for youtube", () => {
+    expect(() => buildSourceConfig("youtube", "  ")).toThrow(/required/i);
   });
 
   it("rejects an invalid listing URL for web-backed types", () => {
@@ -92,6 +110,10 @@ describe("sourceDisplayName", () => {
       },
       "“agentic ai”",
     ],
+    [
+      { kind: "youtube", name: "Two Minute Papers", channelRef: "UCbfYPyITQ-7l4upoX8nvctg" },
+      "Two Minute Papers",
+    ],
   ] as const)("%j → %s", (config, expected) => {
     expect(sourceDisplayName(config)).toBe(expected);
   });
@@ -115,6 +137,8 @@ describe("collectorsFromSources", () => {
       { kind: "twitter_user", handle: "unresolved" }, // no userId yet → skipped
       { kind: "twitter_list", listId: "158" },
       { kind: "web_search", provider: "tavily", query: "AI agents", sinceDays: 7, maxItems: 10 },
+      { kind: "youtube", name: "Two Minute Papers", channelRef: "UCbfYPyITQ-7l4upoX8nvctg", maxItems: 5, sinceDays: 3 },
+      { kind: "youtube", name: "Lex Fridman", channelRef: "@lexfridman" },
     ]);
 
     expect(collectors.hn).toEqual({ sinceDays: 2, pointsThreshold: 50 });
@@ -141,6 +165,15 @@ describe("collectorsFromSources", () => {
       provider: "tavily",
       queries: [{ query: "AI agents", sinceDays: 7, maxItems: 10 }],
     });
+    expect(collectors.youtube).toEqual({
+      channels: [
+        { name: "Two Minute Papers", channelRef: "UCbfYPyITQ-7l4upoX8nvctg" },
+        { name: "Lex Fridman", channelRef: "@lexfridman" },
+      ],
+      // max across rows (the row with maxItems:5 wins over the row with none)
+      maxItems: 5,
+      sinceDays: 3,
+    });
   });
 
   it("returns an empty payload for no rows and omits twitter when no row is collectable", async () => {
@@ -150,5 +183,25 @@ describe("collectorsFromSources", () => {
       { kind: "twitter_user", handle: "nobody" },
     ]);
     expect(onlyUnresolved.twitter).toBeUndefined();
+  });
+});
+
+// P9: a tenant configured with ONLY youtube rows must still be treated as
+// "has a collector" — daily-run.ts skips the run entirely when
+// hasAnyCollector() is false, and youtube has no legacy user_settings JSONB
+// fallback to catch a false negative here.
+describe("hasAnyCollector", () => {
+  it("is true for a youtube-only collectors payload", async () => {
+    const { hasAnyCollector } = await import("@shared/types/source.js");
+    expect(
+      hasAnyCollector({
+        youtube: { channels: [{ name: "Ch", channelRef: "UCabc" }], maxItems: 10 },
+      }),
+    ).toBe(true);
+  });
+
+  it("is false for an empty payload", async () => {
+    const { hasAnyCollector } = await import("@shared/types/source.js");
+    expect(hasAnyCollector({})).toBe(false);
   });
 });

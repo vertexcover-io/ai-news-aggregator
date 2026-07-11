@@ -42,6 +42,7 @@ export const PLATFORM_LABEL: Record<SourceType, string> = {
   github: "GitHub",
   newsletter: "Newsletter",
   web_search: "Web Search",
+  youtube: "YouTube",
   manual: "Manually added",
 };
 
