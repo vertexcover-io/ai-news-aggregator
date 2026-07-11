@@ -98,7 +98,7 @@ export const MISSING_STEP_LABELS: Record<OnboardingRequiredStep, string> = {
  * infers it from the shape of the input, per the mock's one-field UX).
  */
 export function inferManualSource(raw: string): {
-  type: "twitter" | "reddit" | "rss";
+  type: "twitter" | "reddit" | "rss" | "youtube";
   value: string;
 } {
   const value = raw.trim();
@@ -106,6 +106,12 @@ export function inferManualSource(raw: string): {
   if (value.startsWith("@")) return { type: "twitter", value };
   if (lower.startsWith("r/") || lower.startsWith("/r/")) {
     return { type: "reddit", value };
+  }
+  // YouTube channel URLs (/channel/UC…, /@handle, /c/…, /user/…) must be
+  // detected before the generic "rss" fallback below — a YouTube channel
+  // page is not a blog listing page the web/blog collector can scrape.
+  if (/(^|\/\/|\.)(youtube\.com|youtu\.be)(\/|$)/.test(lower)) {
+    return { type: "youtube", value };
   }
   // FIX #5: HN is no longer addable from the one-field manual input — it needs
   // keywords, configured via the Settings panel after onboarding.

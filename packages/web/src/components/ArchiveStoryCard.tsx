@@ -20,7 +20,9 @@ export function ArchiveStoryCard({ item, rank }: Props): ReactElement {
       ? `Read on ${enriched.hostname}`
       : item.sourceType === "github"
         ? "Read repo"
-        : "Read source";
+        : item.sourceType === "youtube"
+          ? "Watch video"
+          : "Read source";
   const showImage = Boolean(item.imageUrl) && !imgError;
   const headlineId = `story-${String(rank)}-${String(item.id)}`;
 

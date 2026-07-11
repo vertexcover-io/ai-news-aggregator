@@ -29,6 +29,7 @@ function persistedToFormTwitter(
   };
 }
 import { SourcesSection } from "../components/settings/SourcesSection";
+import { YoutubeSourcesSection } from "../components/settings/YoutubeSourcesSection";
 import { ScheduleSection } from "../components/settings/ScheduleSection";
 import { AnalyticsSection } from "../components/settings/AnalyticsSection";
 import { RankingPromptSection } from "../components/settings/RankingPromptSection";
@@ -252,6 +253,9 @@ export function SettingsPage(): ReactElement {
             <RankingPromptSection />
           </form>
         </FormProvider>
+
+        {/* Rows-only (no legacy JSONB column) — immediate-effect, outside the form. */}
+        <YoutubeSourcesSection />
 
         {/* Site URL + default sending address, both zero-config (Fix #3). */}
         <SitePanel />
