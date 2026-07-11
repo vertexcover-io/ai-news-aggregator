@@ -779,6 +779,44 @@ describe("user_settings ⇄ sources-rows bridge (REQ-073)", () => {
     ]);
   });
 
+  it("PUT preserves youtube rows — they have no legacy JSONB column to rebuild from", async () => {
+    // Regression: youtube is rows-only (added after the P8 lift, no
+    // user_settings column). sourceRowsFromSettings only knows the 5
+    // legacy-bridge types, so a naive `replaceAll(sourceRowsFromSettings(saved))`
+    // would silently wipe any youtube channels on every plain settings save.
+    const { repo } = makeRepo(storedSettings);
+    const sources = makeSourcesRepo([
+      { kind: "reddit", subreddit: "old", sinceDays: 1 },
+      { kind: "youtube", name: "Two Minute Papers", channelRef: "UCbfYPyITQ-7l4upoX8nvctg" },
+    ]);
+    const app = buildApp(repo, makeQueue(), undefined, sources.repo);
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validBody,
+        scheduleEnabled: false,
+        hnEnabled: false,
+        hnConfig: null,
+        redditEnabled: true,
+        redditConfig: { subreddits: ["mlops"], sinceDays: 1 },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(sources.replaceAllCalls).toHaveLength(1);
+    const saved = sources.replaceAllCalls[0];
+    expect(saved).toContainEqual({
+      type: "reddit",
+      enabled: true,
+      config: { kind: "reddit", subreddit: "mlops", sinceDays: 1 },
+    });
+    expect(saved).toContainEqual({
+      type: "youtube",
+      enabled: true,
+      config: { kind: "youtube", name: "Two Minute Papers", channelRef: "UCbfYPyITQ-7l4upoX8nvctg" },
+    });
+  });
+
   it("PUT does NOT create rows for a legacy tenant with no rows (stays on JSONB)", async () => {
     const { repo } = makeRepo(storedSettings);
     const sources = makeSourcesRepo([]);

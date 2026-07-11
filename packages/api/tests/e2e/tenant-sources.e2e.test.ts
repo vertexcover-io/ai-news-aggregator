@@ -128,6 +128,7 @@ describe("test_REQ_072_manual_source_add_remove", () => {
     { type: "github", value: "https://github.com/trending", expected: { kind: "web", listingUrl: "https://github.com/trending" } },
     { type: "hn", value: "", expected: { kind: "hn" } },
     { type: "web_search", value: "kv-cache optimization", expected: { kind: "web_search", query: "kv-cache optimization" } },
+    { type: "youtube", value: "@lexfridman", expected: { kind: "youtube", channelRef: "@lexfridman" } },
   ];
 
   it("adds and removes a source of each supported type through the router", async () => {

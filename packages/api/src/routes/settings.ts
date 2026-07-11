@@ -33,8 +33,10 @@ import {
 } from "@api/repositories/user-settings.js";
 import {
   createSourcesRepo,
+  type SourceCreateInput,
   type SourcesRepo,
 } from "@api/repositories/sources.js";
+import type { SourceType } from "@newsletter/shared";
 import {
   reconcilePipelineSchedule,
   reconcileCollectorHealthSchedule,
@@ -306,7 +308,25 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
     if (sourcesRepo) {
       const existing = await sourcesRepo.list();
       if (existing.length > 0) {
-        await sourcesRepo.replaceAll(sourceRowsFromSettings(saved));
+        // sourceRowsFromSettings only rebuilds rows for the 5 legacy
+        // user_settings-JSONB-backed types (hn/reddit/blog/twitter/
+        // web_search). Types added after the P8 lift (youtube) have no JSONB
+        // column and never appear in `saved` — replaceAll would silently
+        // delete them if we didn't carry them forward here.
+        const rebuiltTypes: ReadonlySet<SourceType> = new Set([
+          "hn",
+          "reddit",
+          "blog",
+          "twitter",
+          "web_search",
+        ]);
+        const preserved: SourceCreateInput[] = existing
+          .filter((row) => !rebuiltTypes.has(row.type))
+          .map((row) => ({ type: row.type, config: row.config, enabled: row.enabled }));
+        await sourcesRepo.replaceAll([
+          ...sourceRowsFromSettings(saved),
+          ...preserved,
+        ]);
       }
     }
 
