@@ -25,9 +25,10 @@ export async function enrichOne(
   originalUrl: string,
   canonical: string,
   ctx: EnrichmentContext,
+  options: { timeoutMs?: number } = {},
 ): Promise<EnrichedLinkContent> {
   const start = Date.now();
-  const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  const timeoutSignal = AbortSignal.timeout(options.timeoutMs ?? FETCH_TIMEOUT_MS);
   const signal = composeSignal(ctx.signal, timeoutSignal);
   const domain = (() => {
     try {

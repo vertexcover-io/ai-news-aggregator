@@ -91,12 +91,13 @@ describe("enrichOne", () => {
       "https://example.com/slow",
       "https://example.com/slow",
       ctx,
+      { timeoutMs: 20 },
     );
 
     expect(enriched.status).toBe("failed");
     expect(enriched.failureReason).toBe("timeout");
     expect(enriched.domain).toBe("example.com");
-  }, 20_000);
+  });
 
   it("maps HTTP errors to http_<code>", async () => {
     fetchAdaptiveMock.mockRejectedValueOnce(new Error("HTTP 503 for https://example.com"));
