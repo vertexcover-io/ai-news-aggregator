@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { Queue } from "bullmq";
+import type { Queue } from "bullmq";
+import { createQueue } from "@newsletter/shared/queue";
 import {
   COLLECTOR_HEALTH_QUEUE_NAME,
   HEALTH_CHECKABLE_COLLECTORS,
@@ -131,9 +132,7 @@ export function createCollectorHealthRouter(deps: CollectorHealthRouterDeps): Ho
 
 let defaultCollectorHealthQueue: Queue | null = null;
 function getDefaultCollectorHealthQueue(): Queue {
-  defaultCollectorHealthQueue ??= new Queue(COLLECTOR_HEALTH_QUEUE_NAME, {
-    connection: createRedisConnection(),
-  });
+  defaultCollectorHealthQueue ??= createQueue(COLLECTOR_HEALTH_QUEUE_NAME);
   return defaultCollectorHealthQueue;
 }
 

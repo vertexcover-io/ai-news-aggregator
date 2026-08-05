@@ -1,4 +1,5 @@
-import { Queue, Worker } from "bullmq";
+import { Worker, type Queue } from "bullmq";
+import { createQueue } from "@newsletter/shared/queue";
 import type IORedis from "ioredis";
 import { getDb } from "@newsletter/shared";
 import { createRedisConnection } from "@newsletter/shared/redis";
@@ -134,7 +135,7 @@ export function createDailyRunWorker(
   const connection = options.connection ?? options.redis ?? createRedisConnection();
   const redis = options.redis ?? connection;
   const queue =
-    options.queue ?? new Queue<RunProcessJobPayload>("processing", { connection });
+    options.queue ?? createQueue<RunProcessJobPayload>("processing", { connection });
   const fixedSettingsRepo = options.userSettingsRepo;
   const getUserSettingsRepo =
     options.getUserSettingsRepo ??

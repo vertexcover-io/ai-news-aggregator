@@ -1,5 +1,6 @@
 import type IORedis from "ioredis";
-import { Queue } from "bullmq";
+import type { Queue } from "bullmq";
+import { createQueue } from "@newsletter/shared/queue";
 import { createRedisConnection, startRun } from "@newsletter/shared";
 import {
   DEFAULT_RANKING_PROMPT,
@@ -18,9 +19,7 @@ export interface CreatedRun {
 let defaultQueue: Queue<RunProcessJobPayload> | null = null;
 
 function getDefaultProcessingQueue(): Queue<RunProcessJobPayload> {
-  defaultQueue ??= new Queue<RunProcessJobPayload>("processing", {
-    connection: createRedisConnection(),
-  });
+  defaultQueue ??= createQueue<RunProcessJobPayload>("processing");
   return defaultQueue;
 }
 

@@ -19,7 +19,7 @@ import {
   PUBLISH_CHANNELS,
   type PublishChannel,
 } from "@newsletter/shared/scheduling";
-import { Queue as BullQueue } from "bullmq";
+import { createQueue } from "@newsletter/shared/queue";
 import { hydrateRankedItems } from "@api/services/rank-hydration.js";
 import {
   createRawItemsRepo,
@@ -623,10 +623,7 @@ export function createDefaultAdminArchivesRouter(): Hono {
 
 let defaultProcessingQueue: Queue | null = null;
 function getDefaultProcessingQueue(): Queue {
-  defaultProcessingQueue ??= new BullQueue(
-    "processing",
-    { connection: createRedisConnection() },
-  );
+  defaultProcessingQueue ??= createQueue("processing");
   return defaultProcessingQueue;
 }
 

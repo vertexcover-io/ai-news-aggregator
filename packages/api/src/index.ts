@@ -113,11 +113,11 @@ const managedEmailDomain =
 const replyToEmail = process.env.NEWSLETTER_REPLY_TO_EMAIL;
 const { baseUrl: apiBaseUrl, webBaseUrl: newsletterBaseUrl } = resolveBaseUrls(process.env);
 
-const { Queue: BullQueue } = await import("bullmq");
+const { createQueue } = await import("@newsletter/shared/queue");
 const { createRedisConnection } = await import("@newsletter/shared/redis");
 const { COLLECTOR_HEALTH_QUEUE_NAME } = await import("@newsletter/shared");
-const processingQueue = new BullQueue("processing", { connection: createRedisConnection() });
-const collectorHealthQueue = new BullQueue(COLLECTOR_HEALTH_QUEUE_NAME, { connection: createRedisConnection() });
+const processingQueue = createQueue("processing");
+const collectorHealthQueue = createQueue(COLLECTOR_HEALTH_QUEUE_NAME);
 // Shared Redis connection for OAuth state storage (SET/GET/DEL — not a BullMQ queue).
 const oauthRedis = createRedisConnection();
 // Redis connection backing the version-keyed llm.txt content cache.
