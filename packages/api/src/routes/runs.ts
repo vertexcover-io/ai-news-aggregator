@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type IORedis from "ioredis";
-import { Queue } from "bullmq";
+import type { Queue } from "bullmq";
+import { createQueue } from "@newsletter/shared/queue";
 import {
   createLogger,
   createRedisConnection,
@@ -353,9 +354,7 @@ export function createRunsRouter(deps: RunsRouterDeps): Hono {
 let defaultProcessingQueue: Queue<RunProcessJobPayload> | null = null;
 
 function getDefaultProcessingQueue(): Queue<RunProcessJobPayload> {
-  defaultProcessingQueue ??= new Queue<RunProcessJobPayload>("processing", {
-    connection: createRedisConnection(),
-  });
+  defaultProcessingQueue ??= createQueue<RunProcessJobPayload>("processing");
   return defaultProcessingQueue;
 }
 

@@ -1,4 +1,5 @@
-import { Queue, Worker } from "bullmq";
+import { Worker } from "bullmq";
+import { createQueue } from "@newsletter/shared/queue";
 import type IORedis from "ioredis";
 import type { Job } from "bullmq";
 import { getDb, createSlackNotifier } from "@newsletter/shared";
@@ -382,7 +383,7 @@ async function buildDefaultRunProcessDeps(
 
 function buildDefaultDailyRunDeps(connection: IORedis): DailyRunDeps {
   const db = getDb();
-  const queue = new Queue<RunProcessJobPayload>("processing", { connection });
+  const queue = createQueue<RunProcessJobPayload>("processing", { connection });
   // Per-job repo factories (P9, REQ-061/073): the daily-run handler resolves
   // the job's tenant context and asks for repos scoped to it.
   return {

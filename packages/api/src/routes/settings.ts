@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import type { Queue } from "bullmq";
 import {
   createLogger,
-  createRedisConnection,
   getDb as defaultGetDb,
 } from "@newsletter/shared";
 import type {
@@ -15,7 +14,7 @@ import {
   settingsConfigsFromSourceRows,
   sourceRowsFromSettings,
 } from "@newsletter/shared/types";
-import { Queue as BullQueue } from "bullmq";
+import { createQueue } from "@newsletter/shared/queue";
 import { COLLECTOR_HEALTH_QUEUE_NAME } from "@newsletter/shared";
 import {
   userSettingsUpsertSchema,
@@ -347,17 +346,13 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Hono {
 
 let defaultProcessingQueue: Queue | null = null;
 function getDefaultProcessingQueue(): Queue {
-  defaultProcessingQueue ??= new BullQueue("processing", {
-    connection: createRedisConnection(),
-  });
+  defaultProcessingQueue ??= createQueue("processing");
   return defaultProcessingQueue;
 }
 
 let defaultCollectorHealthQueue: Queue | null = null;
 function getDefaultCollectorHealthQueue(): Queue {
-  defaultCollectorHealthQueue ??= new BullQueue(COLLECTOR_HEALTH_QUEUE_NAME, {
-    connection: createRedisConnection(),
-  });
+  defaultCollectorHealthQueue ??= createQueue(COLLECTOR_HEALTH_QUEUE_NAME);
   return defaultCollectorHealthQueue;
 }
 

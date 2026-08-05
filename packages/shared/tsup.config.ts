@@ -5,6 +5,7 @@ export default defineConfig((options) => ({
     "src/index.ts",
     "src/db/index.ts",
     "src/redis.ts",
+    "src/queue.ts",
     "src/types/index.ts",
     "src/types/settings.ts",
     "src/run-start.ts",

@@ -20,7 +20,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import postgres from "postgres";
 import IORedis from "ioredis";
-import { Queue } from "bullmq";
+import { createQueue } from "@newsletter/shared/queue";
 import { startRun, runKey } from "@newsletter/shared";
 import type { RunProcessJobPayload, UserSettings } from "@newsletter/shared";
 import { TENANT_OWNED_TABLES } from "./tenant-tables.js";
@@ -259,7 +259,7 @@ async function checkDryRunEnqueue(
     return { name, pass: false, detail: `redis unreachable: ${String(err)}` };
   }
 
-  const queue = new Queue<RunProcessJobPayload>(queueName, { connection: redis });
+  const queue = createQueue<RunProcessJobPayload>(queueName, { connection: redis });
   try {
     const { runId } = await startRun(toUserSettings(row), { redis, queue }, { dryRun: true });
     const job = await queue.getJob(runId);
