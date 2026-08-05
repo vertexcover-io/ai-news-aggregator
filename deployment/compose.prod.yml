@@ -59,6 +59,15 @@ services:
   pipeline:
     image: ghcr.io/${GHCR_REPO_OWNER:?GHCR_REPO_OWNER must be set}/ai-news-aggregator-pipeline:${GIT_SHA:?GIT_SHA must be set}
     restart: unless-stopped
+    # Run tini as PID 1 so orphaned grandchildren get reaped. Playwright's
+    # chromium spawns zygote/GPU/crashpad helpers; when the browser exits they
+    # are reparented to PID 1. Bare `node` never waitpid()s processes it did not
+    # spawn, so each browser launch leaked a permanent zombie. They accumulated
+    # until the container hit its pids cgroup cap (~4.6k, systemd's 15%-of-
+    # threads-max default), after which every fork() failed with EAGAIN —
+    # surfacing as "Web sources: spawn ps EAGAIN" (Crawlee's getMemoryInfo
+    # shells out to `ps`) and "spawn /usr/bin/chromium EAGAIN".
+    init: true
     env_file:
       - ${NEWSLETTER_ENV_FILE:-/etc/newsletter/.env}
     depends_on:
