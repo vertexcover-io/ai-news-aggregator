@@ -33,6 +33,13 @@ import type {
   UserRole,
 } from "@shared/types/tenant.js";
 import type { SourceConfig, SourceHealth } from "@shared/types/source.js";
+import type {
+  ErrorCategory,
+  Fixability,
+  IncidentContext,
+  IncidentStatus,
+  SourcePackage,
+} from "@shared/errors/types.js";
 
 export type SourceType = "hn" | "reddit" | "twitter" | "rss" | "github" | "blog" | "newsletter" | "web_search" | "manual";
 
@@ -275,6 +282,42 @@ export const runLogs = pgTable(
 
 export type RunLogRow = typeof runLogs.$inferSelect;
 export type RunLogInsertRow = typeof runLogs.$inferInsert;
+
+/**
+ * Tracked error incidents (error-tracking → triage system). One row per unique
+ * `fingerprint` (occurrence dedup): repeat occurrences bump `occurrence_count` /
+ * `last_seen` instead of inserting. `tenant_id` is informational context (which
+ * tenant's run surfaced it, when known) — NOT part of the dedup key, since a
+ * schema/code bug is the same defect across tenants and must collapse to one
+ * incident (and one PR/issue). Operational infra table; rows from crash/worker
+ * handlers carry a null tenant.
+ */
+export const errorIncidents = pgTable(
+  "error_incidents",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    fingerprint: text("fingerprint").notNull(),
+    category: text("category").$type<ErrorCategory>().notNull(),
+    fixability: text("fixability").$type<Fixability>().notNull(),
+    sourcePackage: text("source_package").$type<SourcePackage>().notNull(),
+    status: text("status").$type<IncidentStatus>().notNull().default("open"),
+    occurrenceCount: integer("occurrence_count").notNull().default(1),
+    firstSeen: timestamp("first_seen", { withTimezone: true }).notNull().defaultNow(),
+    lastSeen: timestamp("last_seen", { withTimezone: true }).notNull().defaultNow(),
+    githubRef: text("github_ref"),
+    posthogIssueUrl: text("posthog_issue_url"),
+    context: jsonb("context").$type<IncidentContext | null>(),
+    tenantId: uuid("tenant_id"),
+  },
+  (t) => [
+    uniqueIndex("error_incidents_fingerprint_uq").on(t.fingerprint),
+    index("error_incidents_status_idx").on(t.status),
+    index("error_incidents_tenant_id_idx").on(t.tenantId),
+  ],
+);
+
+export type ErrorIncidentRow = typeof errorIncidents.$inferSelect;
+export type ErrorIncidentInsertRow = typeof errorIncidents.$inferInsert;
 
 export interface SocialTokenEncryptedFields {
   accessToken: EncryptedBlob;

@@ -41,10 +41,10 @@ describe("pipeline crash handlers", () => {
       await handler(err);
 
       expect(mockCaptureException).toHaveBeenCalledOnce();
-      expect(mockCaptureException).toHaveBeenCalledWith(err, {
-        fatal: true,
-        source: "uncaughtException",
-      });
+      expect(mockCaptureException).toHaveBeenCalledWith(
+        err,
+        expect.objectContaining({ fatal: true, source: "uncaughtException" }),
+      );
       expect(mockShutdownPostHog).toHaveBeenCalledOnce();
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -56,10 +56,10 @@ describe("pipeline crash handlers", () => {
       await handler(err);
 
       expect(mockCaptureException).toHaveBeenCalledOnce();
-      expect(mockCaptureException).toHaveBeenCalledWith(err, {
-        fatal: true,
-        source: "unhandledRejection",
-      });
+      expect(mockCaptureException).toHaveBeenCalledWith(
+        err,
+        expect.objectContaining({ fatal: true, source: "unhandledRejection" }),
+      );
       expect(mockShutdownPostHog).toHaveBeenCalledOnce();
       expect(mockExit).toHaveBeenCalledWith(1);
     });

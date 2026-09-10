@@ -13,3 +13,5 @@ export * from "./services/archive-search-text.js";
 export * from "./services/credential-cipher.js";
 export * from "./pricing.js";
 export * from "./cost.js";
+export * from "./errors/index.js";
+export * from "./github/index.js";

@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Job } from "bullmq";
 
-// We need to test handleWorkerFailure without importing the real index.ts (which boots workers)
-// So we test it from the module it will be extracted to.
-// We import the helper function directly.
+// We test handleWorkerFailure directly (not via index.ts, which boots workers).
 
 const mockCaptureException = vi.fn<(error: unknown, context?: Record<string, unknown>) => void>();
+const mockRecordIncident = vi.fn();
+const deps = {
+  captureException: mockCaptureException,
+  recordIncident: mockRecordIncident,
+};
 
 import { handleWorkerFailure } from "@pipeline/lib/worker-failure.js";
 
@@ -14,7 +17,7 @@ describe("pipeline failed listener capture", () => {
     vi.clearAllMocks();
   });
 
-  // REQ-007: terminal attempt triggers capture
+  // REQ-007: terminal attempt triggers capture + incident
   describe("test_REQ_007_pipeline_failed_terminal_captures", () => {
     it("calls captureException when job.attemptsMade >= opts.attempts", () => {
       const job = {
@@ -22,16 +25,24 @@ describe("pipeline failed listener capture", () => {
         name: "run-process",
         attemptsMade: 3,
         opts: { attempts: 3 },
+        data: {},
       } as unknown as Job;
 
-      handleWorkerFailure("processing", job, new Error("fatal"), mockCaptureException);
+      handleWorkerFailure("processing", job, new Error("fatal"), deps);
 
       expect(mockCaptureException).toHaveBeenCalledOnce();
-      expect(mockCaptureException).toHaveBeenCalledWith(expect.any(Error), {
-        queue: "processing",
-        jobId: "job-123",
-        jobName: "run-process",
-      });
+      expect(mockCaptureException).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          queue: "processing",
+          jobId: "job-123",
+          jobName: "run-process",
+          source_package: "pipeline",
+          category: expect.any(String),
+          fixability: expect.any(String),
+        }),
+      );
+      expect(mockRecordIncident).toHaveBeenCalledOnce();
     });
 
     it("calls captureException with context for collection queue", () => {
@@ -40,16 +51,20 @@ describe("pipeline failed listener capture", () => {
         name: "collect-hn",
         attemptsMade: 1,
         opts: { attempts: 1 },
+        data: {},
       } as unknown as Job;
 
-      handleWorkerFailure("collection", job, new Error("collect fail"), mockCaptureException);
+      handleWorkerFailure("collection", job, new Error("collect fail"), deps);
 
       expect(mockCaptureException).toHaveBeenCalledOnce();
-      expect(mockCaptureException).toHaveBeenCalledWith(expect.any(Error), {
-        queue: "collection",
-        jobId: "col-456",
-        jobName: "collect-hn",
-      });
+      expect(mockCaptureException).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          queue: "collection",
+          jobId: "col-456",
+          jobName: "collect-hn",
+        }),
+      );
     });
 
     it("treats attempts=undefined as 1 (terminal on first failure)", () => {
@@ -57,10 +72,11 @@ describe("pipeline failed listener capture", () => {
         id: "job-no-attempts",
         name: "daily-run",
         attemptsMade: 1,
-        opts: {},  // no attempts field
+        opts: {}, // no attempts field
+        data: {},
       } as unknown as Job;
 
-      handleWorkerFailure("processing", job, new Error("first fail"), mockCaptureException);
+      handleWorkerFailure("processing", job, new Error("first fail"), deps);
 
       expect(mockCaptureException).toHaveBeenCalledOnce();
     });
@@ -74,15 +90,17 @@ describe("pipeline failed listener capture", () => {
         name: "run-process",
         attemptsMade: 1,
         opts: { attempts: 3 },
+        data: {},
       } as unknown as Job;
 
-      handleWorkerFailure("processing", job, new Error("retryable"), mockCaptureException);
+      handleWorkerFailure("processing", job, new Error("retryable"), deps);
 
       expect(mockCaptureException).not.toHaveBeenCalled();
+      expect(mockRecordIncident).not.toHaveBeenCalled();
     });
 
     it("does not call captureException when job is undefined", () => {
-      handleWorkerFailure("collection", undefined, new Error("no job"), mockCaptureException);
+      handleWorkerFailure("collection", undefined, new Error("no job"), deps);
 
       expect(mockCaptureException).not.toHaveBeenCalled();
     });
@@ -96,9 +114,10 @@ describe("pipeline failed listener capture", () => {
         name: "email-send",
         attemptsMade: 2,
         opts: { attempts: 5 },
+        data: {},
       } as unknown as Job;
 
-      handleWorkerFailure("processing", job, new Error("transient"), mockCaptureException);
+      handleWorkerFailure("processing", job, new Error("transient"), deps);
 
       expect(mockCaptureException).not.toHaveBeenCalled();
     });
